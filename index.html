@@ -411,13 +411,23 @@ const PAL = {
 };
 
 // Materiaalhulp. Voor bijzondere materialen kun je extra opties meegeven.
+// De wereld gebruikt maar een handvol kleur/ruwheid/metaal-combinaties, dus
+// we hergebruiken hetzelfde materiaal-object waar mogelijk. Dat scheelt op
+// een plein vol gebouwen honderden materialen en draw calls. Alleen wanneer
+// `extra` iets bevat (bijzondere emissive-opties e.d.) maken we een uniek
+// materiaal, omdat we dat niet betrouwbaar in de cache-sleutel kunnen vatten.
+const materiaalCache = new Map();
 function mat(kleur, ruwheid = 0.9, metaal = 0, extra = {}) {
-  return new THREE.MeshStandardMaterial({
-    color: kleur,
-    roughness: ruwheid,
-    metalness: metaal,
-    ...extra
-  });
+  if (Object.keys(extra).length > 0) {
+    return new THREE.MeshStandardMaterial({ color: kleur, roughness: ruwheid, metalness: metaal, ...extra });
+  }
+  const sleutel = `${kleur}|${ruwheid}|${metaal}`;
+  let gedeeld = materiaalCache.get(sleutel);
+  if (!gedeeld) {
+    gedeeld = new THREE.MeshStandardMaterial({ color: kleur, roughness: ruwheid, metalness: metaal });
+    materiaalCache.set(sleutel, gedeeld);
+  }
+  return gedeeld;
 }
 
 function blok(breedte, hoogte, diepte, kleur, ruwheid = 0.88, metaal = 0) {
@@ -433,7 +443,11 @@ function blok(breedte, hoogte, diepte, kleur, ruwheid = 0.88, metaal = 0) {
 function schaduwAan(object) {
   object.traverse(deel => {
     if (deel.isMesh) {
-      deel.castShadow = true;
+      // Kleine gevelonderdelen (raamkozijnen e.d.) kunnen zichzelf uitsluiten
+      // van het werpen van schaduw via userData.geenSchaduw: ze zijn zo klein
+      // dat niemand het verschil ziet, maar met honderden ramen per plein
+      // scheelt dit fors in het aantal schaduw-casters.
+      deel.castShadow = !deel.userData.geenSchaduw;
       deel.receiveShadow = true;
     }
   });
@@ -546,6 +560,10 @@ function zadeldak(lengteX, diepteZ, hoogte, kleur) {
 function raamOpFacade(parent, x, y, z, breedte, hoogte, richting = 'east') {
   const kozijn = new THREE.Mesh(new THREE.BoxGeometry(0.12, hoogte + 0.22, breedte + 0.22), mat(PAL.kozijn, 0.72));
   const glas = new THREE.Mesh(new THREE.BoxGeometry(0.14, hoogte, breedte), mat(PAL.raam, 0.45, 0.05));
+  // Met honderden ramen per plein is losse schaduwwerp per raampje niet te
+  // zien maar wel kostbaar; schaduwAan() slaat deze twee daarom over.
+  kozijn.userData.geenSchaduw = true;
+  glas.userData.geenSchaduw = true;
   if (richting === 'east' || richting === 'west') {
     kozijn.position.set(x, y, z);
     glas.position.set(x + (richting === 'east' ? 0.012 : -0.012), y, z);
@@ -1046,8 +1064,16 @@ function plaatsGevelrij({ aantal, x, z, richting = 'x', rotY = 0, tussen = 6.35,
 
 // Zuidrand bij Madame Tussauds en Kalverstraat.
 plaatsGevelrij({ aantal: 8, x: -8, z: 70, richting: 'x', rotY: Math.PI, tussen: 6.4, diepte: 12 });
-// Oostranden rond Damstraat.
-plaatsGevelrij({ aantal: 6, x: 111, z: -10, richting: 'z', rotY: -Math.PI / 2, tussen: 7.0, startOffset: -18, diepte: 12 });
+// Oostranden rond Damstraat. De rij laat bewust een opening rond z=4 vrij:
+// dat is precies waar de Damstraat-spawnpoort (SPAWN_POORTEN) op aansluit,
+// zodat robots vanuit die poort daadwerkelijk naar het plein kunnen lopen
+// in plaats van tegen een aaneengesloten gevelrij vast te lopen.
+// Oorspronkelijk stonden hier 6 panden (wereld-z -28 tot 7), maar de laatste
+// drie (wereld-z -7, 0 en 7) verzegelden precies de opening waar de
+// Damstraat-spawnpoort op aansluit (z=4, zie SPAWN_POORTEN). Robots konden
+// het plein daardoor nooit bereiken. We houden alleen de eerste drie panden
+// aan (wereld-z -28, -21, -14) en laten de rest van de straatopening vrij.
+plaatsGevelrij({ aantal: 3, x: 111, z: -10, richting: 'z', rotY: -Math.PI / 2, tussen: 7.0, startOffset: -18, diepte: 12 });
 // Noordelijke Damrakgevels.
 plaatsGevelrij({ aantal: 7, x: -28, z: -88, richting: 'z', rotY: Math.PI / 2, tussen: 7.0, startOffset: -24, diepte: 11 });
 plaatsGevelrij({ aantal: 6, x: 30, z: -88, richting: 'z', rotY: -Math.PI / 2, tussen: 7.0, startOffset: -20, diepte: 11 });
@@ -1583,9 +1609,17 @@ addEventListener('mousemove', e => {
   speler.pitch = Math.max(-1.45, Math.min(1.45, speler.pitch));
 });
 
-// Schieten met de linkermuisknop.
+// Schieten met de linkermuisknop. Ingedrukt houden blijft vuren (de cooldown
+// in probeerTeSchieten regelt het tempo, dat is ook waar de vuurtempo-upgrade op werkt).
+let schietKnopIngedrukt = false;
 addEventListener('mousedown', e => {
-  if (document.pointerLockElement === renderer.domElement && e.button === 0) probeerTeSchieten();
+  if (document.pointerLockElement === renderer.domElement && e.button === 0) {
+    schietKnopIngedrukt = true;
+    probeerTeSchieten();
+  }
+});
+addEventListener('mouseup', e => {
+  if (e.button === 0) schietKnopIngedrukt = false;
 });
 
 // --- Botsingen: duw een punt (met straal) uit alle obstakels ----
@@ -1709,7 +1743,7 @@ function afstandTotMonument(positie) {
 const SPAWN_POORTEN = [
   { naam: 'Damrak', positie: new THREE.Vector3(0, 0, -106), spreidingX: 8, spreidingZ: 3 },
   { naam: 'Rokin', positie: new THREE.Vector3(2, 0, 96), spreidingX: 8, spreidingZ: 3 },
-  { naam: 'Damstraat', positie: new THREE.Vector3(116, 0, 4), spreidingX: 3, spreidingZ: 8 },
+  { naam: 'Damstraat', positie: new THREE.Vector3(123, 0, 4), spreidingX: 2, spreidingZ: 8 },
   { naam: 'Kalverstraat', positie: new THREE.Vector3(-55, 0, 92), spreidingX: 6, spreidingZ: 4 },
   { naam: 'Nieuwendijk', positie: new THREE.Vector3(-52, 0, -106), spreidingX: 6, spreidingZ: 4 }
 ];
@@ -1725,6 +1759,7 @@ const spel = {
   combo: 0,
   comboTimer: 0,
   tussenWaveTimer: 0,
+  waveBonusGegeven: false,
   gameOver: false,
   laatsteSpawnPoort: 'Damrak'
 };
@@ -1746,7 +1781,7 @@ const waveBanner = document.getElementById('waveBanner');
 function updateArcadeUI() {
   if (!scoreUI) return;
   scoreUI.innerHTML = `Score ${spel.score}<br>Combo x${spel.combo}`;
-  waveUI.textContent = `Wave ${spel.wave}, ${spel.waveKills}/${spel.waveDoel}`;
+  waveUI.textContent = `Wave ${spel.wave}, nog ${spel.teSpawnen + robots.length} robots`;
   objectiveUI.textContent = spel.gameOver
     ? 'Game over, het Monument is gevallen. Refresh om opnieuw te spelen.'
     : `Bescherm het Nationaal Monument, ${Math.max(0, Math.ceil(spel.monumentHP))}%`;
@@ -1775,6 +1810,7 @@ function startWave(nummer) {
   spel.teSpawnen = spel.waveDoel;
   spel.maxActieveRobots = Math.min(5 + Math.floor(nummer * 0.65), 13);
   spel.tussenWaveTimer = 0;
+  spel.waveBonusGegeven = false;
   toonWaveBanner(`Wave ${nummer}`);
   updateArcadeUI();
 }
@@ -1794,7 +1830,8 @@ function updateWaveSysteem(dt) {
   }
   if (spel.teSpawnen <= 0 && robots.length === 0) {
     spel.tussenWaveTimer += dt;
-    if (spel.tussenWaveTimer < dt + 0.01) {
+    if (!spel.waveBonusGegeven) {
+      spel.waveBonusGegeven = true;
       geld += 40 + spel.wave * 15;
       updateGeldUI();
       toonPopup(`Wave bonus +€${40 + spel.wave * 15}`);
@@ -1930,6 +1967,9 @@ function maakRobot() {
     pauze: 0,                            // even stilstaan bij aankomst
     snelheid: 1.4 + Math.random(),       // elke robot loopt anders snel
     stapfase: Math.random() * 10,        // zodat ze niet synchroon lopen
+    vastTijd: 0,                         // hoe lang staat hij al nauwelijks te bewegen?
+    ontwijkTimer: 0,                     // tijdelijk zijwaarts uitwijken bij vastlopen
+    ontwijkOffset: new THREE.Vector3(),
   };
   groep.userData.robot = robot;          // zo vinden we bij een raak schot de robot terug
   return robot;
@@ -1956,9 +1996,16 @@ function updateRobots(dt) {
   for (const robot of [...robots]) {
     const positie = robot.groep.position;
 
+    // Tijdelijke zijwaartse uitwijking laten aftellen (zie vastloop-detectie hieronder).
+    if (robot.ontwijkTimer > 0) {
+      robot.ontwijkTimer -= dt;
+      if (robot.ontwijkTimer <= 0) robot.ontwijkOffset.set(0, 0, 0);
+    }
+
     // V4: robots komen uit de straatopeningen en lopen naar het Nationaal Monument.
+    // Bij vastlopen wijken ze tijdelijk uit naar een punt naast het monument.
     robot.doel = MONUMENT_POSITIE;
-    const richting = robot.doel.clone().sub(positie).setY(0);
+    const richting = robot.doel.clone().add(robot.ontwijkOffset).sub(positie).setY(0);
 
     // Raakt de robot het monument-vlak zelf (niet alleen het middelpunt)?
     // De obstakel-rechthoek rond het monument houdt robots anders voor altijd
@@ -1969,14 +2016,23 @@ function updateRobots(dt) {
     }
 
     richting.normalize();
-    positie.addScaledVector(richting, robot.snelheid * dt);
-
-    const voorBotsing = positie.clone();
+    const positieVoorStap = positie.clone();
+    const verplaatsing = robot.snelheid * dt;
+    positie.addScaledVector(richting, verplaatsing);
     losBotsingenOp(positie, 0.45);
-    if (positie.distanceToSquared(voorBotsing) > 0.0001) {
-      // Niet slimmer maken dan nodig: als hij vastloopt, duw hem licht terug richting open plein.
-      positie.x += richting.x * 0.45;
-      positie.z += richting.z * 0.45;
+
+    // Botst de robot al een tijdje tegen iets aan zonder echt vooruit te komen?
+    // Dan even zijwaarts uitwijken in plaats van te blijven trillen tegen de muur.
+    if (positie.distanceTo(positieVoorStap) < verplaatsing * 0.15) {
+      robot.vastTijd += dt;
+    } else {
+      robot.vastTijd = 0;
+    }
+    if (robot.vastTijd > 1.5 && robot.ontwijkTimer <= 0) {
+      const zijkant = Math.random() < 0.5 ? 1 : -1;
+      robot.ontwijkOffset.set(-richting.z * zijkant * 10, 0, richting.x * zijkant * 10);
+      robot.ontwijkTimer = 3;
+      robot.vastTijd = 0;
     }
 
     const doelHoek = Math.atan2(richting.x, richting.z);
@@ -2290,6 +2346,7 @@ function gameLoop(nu) {
   klok += dt;
 
   updateSpeler(dt);
+  if (schietKnopIngedrukt && document.pointerLockElement === renderer.domElement) probeerTeSchieten();
   updateWaveSysteem(dt);
   updateRobots(dt);
   updateDuiven(dt);
