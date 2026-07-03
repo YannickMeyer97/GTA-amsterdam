@@ -1,8 +1,8 @@
-# Dam Chaos 🤖💥
+# Dam Chaos — Verdedig de Dam v4 🤖🏛️
 
-Een klein, vrolijk 3D open-wereld spel in de browser, gesitueerd op en rond
-de Dam in Amsterdam. Schiet op rondwandelende robots en verzamel de munten
-die ze achterlaten.
+Een klein, vrolijk 3D arcade-shooter in de browser: verdedig het Nationaal
+Monument op de Dam in Amsterdam tegen golven robots die uit de omliggende
+straten komen aanlopen.
 
 ## Spelen
 
@@ -21,28 +21,46 @@ HTML-bestand en kan dus ook direct als static site gehost worden
 | Lopen | `W` `A` `S` `D` |
 | Rondkijken | Muis (klik eerst in het spel) |
 | Schieten | Linkermuisknop |
+| Upgrade vuurtempo | `1` |
+| Upgrade pickup-radius | `2` |
+| Upgrade loopsnelheid | `3` |
 | Pauze | `Esc` |
 
-## Wat zit erin?
+## Gameplay: Verdedig de Dam
 
-- Een compacte, gestileerde low-poly versie van de Dam: het Koninklijk
-  Paleis, de Nieuwe Kerk, het Nationaal Monument, grachtenpandjes met
-  trapgevels, het Damrak en het Rokin.
-- Amsterdamse sfeer: duiven (die opvliegen als je te dichtbij komt),
-  fietsenrekken, terrasjes met parasols, lantaarnpalen, bankjes en bomen.
-- Robot-NPC's die zelfstandig over het plein wandelen. Schiet je er één
-  neer, dan valt hij uit elkaar en laat hij een munt van €5–€25 achter.
-- Loop over een munt om hem op te pakken; je totaal staat linksboven.
-- Robots komen na een paar seconden ergens anders weer tevoorschijn.
+- Robots spawnen uit vijf herkenbare straatopeningen: Damrak, Rokin,
+  Damstraat, Kalverstraat en Nieuwendijk, en lopen recht op het Nationaal
+  Monument af.
+- Bereikt een robot het monument, dan verliest het monument HP (zichtbaar
+  als percentage in de UI). Zakt het monument naar 0%, dan is het game over.
+- Schiet robots neer voordat ze aankomen: ze vallen uiteen in brokstukken
+  en laten een munt van €5–€25 achter.
+- Elke wave heeft een kill-doel; haal je dat, dan krijg je een wave-bonus
+  en begint de volgende, moeilijkere wave automatisch.
+- Combo's, score, hitmarker en een korte camera-shake bij treffers en
+  monumentschade geven het geheel een arcade-gevoel.
+- Geld kun je tijdens het spelen direct besteden aan drie upgrades
+  (vuurtempo, pickup-radius, loopsnelheid), elk tot max. niveau 5.
+
+## Herkenbare Dam
+
+Een compacte, gestileerde low-poly versie van het plein: het Koninklijk
+Paleis, de Nieuwe Kerk, het Nationaal Monument, De Bijenkorf, Hotel
+Krasnapolsky en Madame Tussauds (met leesbare gevelborden), straatnaam-
+borden, tramrails met een rijdende tram en bel, grachtenpandjes met
+trapgevels, zebrapaden, duiven, terrasjes, fietsenrekken, lantaarnpalen,
+een straatmuzikant en een levend standbeeld.
 
 ## Techniek
 
 - [Three.js](https://threejs.org/) (via CDN) voor de 3D-weergave.
 - Alle code staat becommentarieerd in `index.html`, opgebouwd in acht
-  duidelijke stappen: basis → wereld → speler → robots → schieten → geld
-  → geluid → game-loop.
+  duidelijke stappen: basis → wereld → speler → robots/waves → schieten →
+  geld/upgrades → geluid → game-loop.
 - Botsingen werken met simpele rechthoeken (obstakels) waar de speler en
-  de robots uit weggeduwd worden.
+  de robots uit weggeduwd worden. De hitbox waarmee robots het monument
+  "raken" is gelijk aan de werkelijk geregistreerde monument-rechthoek,
+  zodat de HP ook echt daalt zodra een robot het vlak bereikt.
 - De geluidjes worden live gemaakt met de Web Audio API, dus er zijn geen
   audiobestanden nodig.
 
@@ -51,6 +69,9 @@ HTML-bestand en kan dus ook direct als static site gehost worden
 Open de browserconsole (F12) en speel met `DamChaosDebug`, bijvoorbeeld:
 
 ```js
-DamChaosDebug.spawnRobot();     // extra robot
-DamChaosDebug.geldStand();      // huidig geldbedrag
+DamChaosDebug.spawnRobotVanafPoort();  // extra robot vanuit een willekeurige straat
+DamChaosDebug.startWave(5);            // spring naar wave 5
+DamChaosDebug.spel;                    // score, wave, monumentHP, combo
+DamChaosDebug.upgrades;                // huidige upgrade-niveaus
+DamChaosDebug.geldStand();             // huidig geldbedrag
 ```

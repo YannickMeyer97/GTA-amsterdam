@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dam Chaos — Amsterdam</title>
+<title>Dam Chaos — Verdedig de Dam v4</title>
 <style>
   /* ============================================================
      STIJL VAN DE PAGINA EN DE UI (alles wat GEEN 3D is)
@@ -34,6 +34,124 @@
     text-shadow: 0 2px 4px rgba(0,0,0,0.5);
     pointer-events: none;
     z-index: 5;
+  }
+
+
+
+  /* --- Extra arcade UI voor v4 --- */
+  #scoreUI {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    padding: 10px 16px;
+    background: rgba(20, 30, 45, 0.65);
+    color: #ffffff;
+    font-size: 20px;
+    font-weight: 800;
+    border-radius: 12px;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    pointer-events: none;
+    z-index: 5;
+    text-align: right;
+  }
+
+  #objectiveUI {
+    position: fixed;
+    top: 72px;
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 360px;
+    padding: 10px 18px;
+    background: rgba(20, 30, 45, 0.68);
+    color: #e8f6ff;
+    font-size: 18px;
+    font-weight: 800;
+    border-radius: 14px;
+    text-align: center;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.45);
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  #waveUI {
+    position: fixed;
+    top: 72px;
+    left: 16px;
+    padding: 8px 14px;
+    background: rgba(20, 30, 45, 0.65);
+    color: #cfe8ff;
+    font-size: 17px;
+    font-weight: 800;
+    border-radius: 12px;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  #comboUI {
+    position: fixed;
+    top: 122px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #ffd75e;
+    font-size: 42px;
+    font-weight: 950;
+    letter-spacing: 1px;
+    text-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    pointer-events: none;
+    z-index: 6;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+
+  #shopUI {
+    position: fixed;
+    left: 16px;
+    bottom: 56px;
+    max-width: 370px;
+    padding: 12px 14px;
+    background: rgba(20, 30, 45, 0.72);
+    color: rgba(255,255,255,0.92);
+    font-size: 14px;
+    line-height: 1.55;
+    border-radius: 14px;
+    z-index: 5;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+  }
+  #shopUI b { color: #ffd75e; }
+  #shopUI .regel { display: block; }
+  #shopUI .gekocht { color: #83e6a8; }
+
+  #hitmarker {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 38px;
+    height: 38px;
+    transform: translate(-50%, -50%) rotate(45deg);
+    border: 4px solid rgba(255, 215, 94, 0.95);
+    border-radius: 4px;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 7;
+    transition: opacity 0.07s ease;
+  }
+
+  #waveBanner {
+    position: fixed;
+    top: 38%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 14px 34px;
+    background: rgba(10, 20, 40, 0.78);
+    color: #ffd75e;
+    font-size: 36px;
+    font-weight: 950;
+    border-radius: 18px;
+    text-shadow: 0 4px 12px rgba(0,0,0,0.55);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 8;
+    transition: opacity 0.2s ease;
   }
 
   /* --- Klein hulptekstje onderin --- */
@@ -148,17 +266,30 @@
      DE UI-LAAG (HTML bovenop het 3D-canvas)
      ============================================================ -->
 <div id="geldUI">💰 €0</div>
+<div id="scoreUI">Score 0<br>Combo x0</div>
+<div id="waveUI">Wave 1</div>
+<div id="objectiveUI">Bescherm het Nationaal Monument, 100%</div>
+<div id="comboUI">COMBO x2</div>
+<div id="hitmarker"></div>
+<div id="waveBanner"></div>
+<div id="shopUI">
+  <b>Upgrades</b>, druk tijdens het spelen:<br>
+  <span class="regel">1, Vuurtempo €100</span>
+  <span class="regel">2, Pickup radius €150</span>
+  <span class="regel">3, Loopsnelheid €200</span>
+</div>
 <div id="richtkruis" style="display:none"></div>
 <div id="popups"></div>
 <div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; klik = schieten &nbsp;·&nbsp; Esc = pauze</div>
 
 <div id="startscherm">
   <h1>DAM CHAOS</h1>
-  <h2>Robotjacht op de Dam — Amsterdam</h2>
+  <h2>Verdedig de Dam — Amsterdam</h2>
   <div class="uitleg">
     🚶 <b>WASD</b> om te lopen, <b>muis</b> om rond te kijken<br>
-    🔫 <b>Linkermuisknop</b> om op robots te schieten<br>
-    💰 Loop over de munten die ze achterlaten om geld te verdienen<br>
+    🔫 <b>Linkermuisknop</b> om robots tegen te houden<br>
+    🏛️ Bescherm het <b>Nationaal Monument</b> tegen robots uit de straten<br>
+    💰 Verzamel munten en koop upgrades met <b>1, 2 en 3</b><br>
     ⏸️ <b>Esc</b> om te pauzeren
   </div>
   <div class="knop">Klik om te spelen</div>
@@ -197,6 +328,9 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;                      // schaduwen aan
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;       // zachte schaduwranden
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
 document.body.appendChild(renderer.domElement);
 
 // De zon: één sterk gericht licht dat schaduwen werpt.
@@ -223,422 +357,1098 @@ addEventListener('resize', () => {
 });
 
 /* ================================================================
-   STAP 2 — DE WERELD: de Dam en omgeving bouwen
-   ================================================================
-   Alles is opgebouwd uit simpele blokken (low-poly stijl).
-   Elk gebouw/object dat de speler moet blokkeren registreren we
-   als "obstakel" (een rechthoek op de plattegrond).
+   STAP 2 - DE WERELD V2: Polished low-poly Dam Amsterdam
+   Drop-in replacement voor de huidige wereldsectie.
+
+   Plaats dit blok in de bestaande <script type="module"> direct na
+   de resize-listener en voor de sectie met duiven.
+
+   Belangrijk:
+   - Behoudt dezelfde globale namen: wereld, obstakels, GRENS, mat, blok.
+   - Gameplay blijft hetzelfde: robots, munten, schieten en UI blijven werken.
+   - Schaal: 1 game-unit is ongeveer 1 meter.
+   - Richting: x = west-oost, z = noord-zuid, noord is negatieve z.
    ================================================================ */
 
-const wereld = new THREE.Group();   // alle vaste decorstukken komen hierin
+const wereld = new THREE.Group();
+wereld.name = 'Dam Amsterdam polished world';
 scene.add(wereld);
 
-const obstakels = [];               // lijst van { minX, maxX, minZ, maxZ }
+const obstakels = [];
 
-// De grenzen van het beloopbare gebied (verder kun je niet lopen).
-const GRENS = { minX: -72, maxX: 72, minZ: -88, maxZ: 58 };
+// Groter speelgebied zodat het plein, Damrak, Rokin en zijstraten kloppen.
+const GRENS = { minX: -118, maxX: 126, minZ: -118, maxZ: 106 };
 
-// --- Handige bouw-hulpjes -------------------------------------
+// Palet met iets warmere, minder platte kleuren dan de eerste versie.
+const PAL = {
+  luchtMist: 0x8fcff2,
+  asfalt: 0x6f6f6a,
+  asfaltDonker: 0x4e4f4c,
+  plein: 0xcdb99b,
+  pleinLicht: 0xd9c8a8,
+  stoep: 0xb7afa0,
+  voeg: 0xa89170,
+  zandsteen: 0xc8b27c,
+  zandsteenLicht: 0xd8c18a,
+  paleisDonker: 0x8e784f,
+  kerkSteen: 0x9c8f80,
+  kerkDonker: 0x6e6258,
+  dak: 0x4b535e,
+  dakDonker: 0x303741,
+  koper: 0x3f7d5e,
+  goud: 0xe8c84e,
+  monument: 0xf2eee7,
+  monumentSchaduw: 0xd8d1c6,
+  raam: 0x23303a,
+  kozijn: 0xe7dfcf,
+  hout: 0x7a5a38,
+  metaal: 0x5d6670,
+  tramRood: 0xb53b32,
+  tramWit: 0xf5ead8,
+  groen: 0x4f7d3d,
+  boomDonker: 0x2f5f30,
+  water: 0x356f85
+};
 
-// Maak een standaard materiaal met een kleur.
-function mat(kleur, ruwheid = 0.9, metaal = 0) {
-  return new THREE.MeshStandardMaterial({ color: kleur, roughness: ruwheid, metalness: metaal });
+// Materiaalhulp. Voor bijzondere materialen kun je extra opties meegeven.
+function mat(kleur, ruwheid = 0.9, metaal = 0, extra = {}) {
+  return new THREE.MeshStandardMaterial({
+    color: kleur,
+    roughness: ruwheid,
+    metalness: metaal,
+    ...extra
+  });
 }
 
-// Maak een blok (doos) dat schaduw werpt en ontvangt.
-function blok(breedte, hoogte, diepte, kleur) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(breedte, hoogte, diepte), mat(kleur));
+function blok(breedte, hoogte, diepte, kleur, ruwheid = 0.88, metaal = 0) {
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(breedte, hoogte, diepte),
+    mat(kleur, ruwheid, metaal)
+  );
   m.castShadow = true;
   m.receiveShadow = true;
   return m;
 }
 
-// Registreer een 3D-object als obstakel: we berekenen de rechthoek
-// die het op de grond inneemt, en daar kan niemand doorheen.
+function schaduwAan(object) {
+  object.traverse(deel => {
+    if (deel.isMesh) {
+      deel.castShadow = true;
+      deel.receiveShadow = true;
+    }
+  });
+}
+
 function registreerObstakel(object, marge = 0) {
   object.updateWorldMatrix(true, true);
   const doos = new THREE.Box3().setFromObject(object);
   obstakels.push({
-    minX: doos.min.x - marge, maxX: doos.max.x + marge,
-    minZ: doos.min.z - marge, maxZ: doos.max.z + marge,
+    minX: doos.min.x - marge,
+    maxX: doos.max.x + marge,
+    minZ: doos.min.z - marge,
+    maxZ: doos.max.z + marge
   });
 }
 
-// --- De grond: plein, straten en stoepen ----------------------
+function registreerRechthoek(minX, maxX, minZ, maxZ, marge = 0) {
+  obstakels.push({ minX: minX - marge, maxX: maxX + marge, minZ: minZ - marge, maxZ: maxZ + marge });
+}
 
-// Grote basisvloer (asfaltkleur).
-const grond = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), mat(0x8f8b82, 1));
-grond.rotation.x = -Math.PI / 2;    // plat neerleggen
+function zet(object, x, y, z, rotY = 0) {
+  object.position.set(x, y, z);
+  object.rotation.y = rotY;
+  return object;
+}
+
+function vloerRechthoek(breedte, diepte, x, z, kleur, y = 0.035, hoogte = 0.07) {
+  const v = new THREE.Mesh(new THREE.BoxGeometry(breedte, hoogte, diepte), mat(kleur, 0.98));
+  v.position.set(x, y, z);
+  v.receiveShadow = true;
+  wereld.add(v);
+  return v;
+}
+
+function vloerPoly(punten, kleur, y = 0.08) {
+  const shape = new THREE.Shape();
+  shape.moveTo(punten[0][0], -punten[0][1]);
+  for (let i = 1; i < punten.length; i++) shape.lineTo(punten[i][0], -punten[i][1]);
+  shape.closePath();
+  const geo = new THREE.ShapeGeometry(shape);
+  const mesh = new THREE.Mesh(geo, mat(kleur, 1));
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = y;
+  mesh.receiveShadow = true;
+  wereld.add(mesh);
+  return mesh;
+}
+
+function lijnOpGrond(x1, z1, x2, z2, kleur = PAL.voeg, dikte = 0.025, y = 0.105) {
+  const dx = x2 - x1;
+  const dz = z2 - z1;
+  const lengte = Math.hypot(dx, dz);
+  const lijn = new THREE.Mesh(new THREE.BoxGeometry(dikte, 0.012, lengte), mat(kleur, 1));
+  lijn.position.set((x1 + x2) / 2, y, (z1 + z2) / 2);
+  lijn.rotation.y = Math.atan2(dx, dz);
+  lijn.receiveShadow = true;
+  wereld.add(lijn);
+  return lijn;
+}
+
+function tegelRaster(minX, maxX, minZ, maxZ, stap = 5) {
+  for (let x = Math.ceil(minX / stap) * stap; x <= maxX; x += stap) {
+    lijnOpGrond(x, minZ, x, maxZ, PAL.voeg, 0.018, 0.112);
+  }
+  for (let z = Math.ceil(minZ / stap) * stap; z <= maxZ; z += stap) {
+    lijnOpGrond(minX, z, maxX, z, PAL.voeg, 0.018, 0.112);
+  }
+}
+
+function driehoekFacade(x, zMidden, yBasis, breedteZ, hoogteY, kleur) {
+  const geo = new THREE.BufferGeometry();
+  const vertices = new Float32Array([
+    x, yBasis, zMidden - breedteZ / 2,
+    x, yBasis, zMidden + breedteZ / 2,
+    x, yBasis + hoogteY, zMidden
+  ]);
+  geo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+  geo.setIndex([0, 1, 2]);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, mat(kleur, 0.85));
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+function zadeldak(lengteX, diepteZ, hoogte, kleur) {
+  const w = lengteX / 2;
+  const d = diepteZ / 2;
+  const h = hoogte;
+  const geo = new THREE.BufferGeometry();
+  const v = new Float32Array([
+    -w, 0, -d,   w, 0, -d,   -w, 0, d,   w, 0, d,
+    -w, h, 0,    w, h, 0
+  ]);
+  geo.setAttribute('position', new THREE.BufferAttribute(v, 3));
+  geo.setIndex([
+    0, 1, 5, 0, 5, 4,
+    2, 4, 5, 2, 5, 3,
+    0, 4, 2,
+    1, 3, 5,
+    0, 2, 3, 0, 3, 1
+  ]);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, mat(kleur, 0.78));
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+function raamOpFacade(parent, x, y, z, breedte, hoogte, richting = 'east') {
+  const kozijn = new THREE.Mesh(new THREE.BoxGeometry(0.12, hoogte + 0.22, breedte + 0.22), mat(PAL.kozijn, 0.72));
+  const glas = new THREE.Mesh(new THREE.BoxGeometry(0.14, hoogte, breedte), mat(PAL.raam, 0.45, 0.05));
+  if (richting === 'east' || richting === 'west') {
+    kozijn.position.set(x, y, z);
+    glas.position.set(x + (richting === 'east' ? 0.012 : -0.012), y, z);
+  } else {
+    kozijn.geometry = new THREE.BoxGeometry(breedte + 0.22, hoogte + 0.22, 0.12);
+    glas.geometry = new THREE.BoxGeometry(breedte, hoogte, 0.14);
+    kozijn.position.set(x, y, z);
+    glas.position.set(x, y, z + (richting === 'south' ? 0.012 : -0.012));
+  }
+  parent.add(kozijn, glas);
+}
+
+function deurOpFacade(parent, x, y, z, breedte, hoogte, richting = 'east', kleur = 0x3f2b1d) {
+  const deur = richting === 'east' || richting === 'west'
+    ? new THREE.Mesh(new THREE.BoxGeometry(0.16, hoogte, breedte), mat(kleur, 0.8))
+    : new THREE.Mesh(new THREE.BoxGeometry(breedte, hoogte, 0.16), mat(kleur, 0.8));
+  deur.position.set(x, y, z);
+  deur.castShadow = true;
+  parent.add(deur);
+  return deur;
+}
+
+
+function maakGevelTekst(parent, tekst, x, y, z, breedte, hoogte, richting = 'south', opties = {}) {
+  const canvas = document.createElement('canvas');
+  canvas.width = opties.canvasBreedte || 1024;
+  canvas.height = opties.canvasHoogte || 256;
+  const ctx = canvas.getContext('2d');
+
+  const achtergrond = opties.achtergrond ?? 'rgba(30, 24, 20, 0.88)';
+  const rand = opties.rand ?? 'rgba(245, 220, 145, 0.95)';
+  const tekstKleur = opties.tekstKleur ?? '#f8e8b8';
+  const subtekst = opties.subtekst ?? '';
+  const radius = 34;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = achtergrond;
+  ctx.strokeStyle = rand;
+  ctx.lineWidth = 16;
+  ctx.beginPath();
+  ctx.moveTo(radius, 8);
+  ctx.lineTo(canvas.width - radius, 8);
+  ctx.quadraticCurveTo(canvas.width - 8, 8, canvas.width - 8, radius);
+  ctx.lineTo(canvas.width - 8, canvas.height - radius);
+  ctx.quadraticCurveTo(canvas.width - 8, canvas.height - 8, canvas.width - radius, canvas.height - 8);
+  ctx.lineTo(radius, canvas.height - 8);
+  ctx.quadraticCurveTo(8, canvas.height - 8, 8, canvas.height - radius);
+  ctx.lineTo(8, radius);
+  ctx.quadraticCurveTo(8, 8, radius, 8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  const bovenTekst = tekst.toUpperCase();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = tekstKleur;
+  let fontSize = opties.fontSize || 94;
+  do {
+    ctx.font = `900 ${fontSize}px Segoe UI, Arial, sans-serif`;
+    fontSize -= 4;
+  } while (ctx.measureText(bovenTekst).width > canvas.width * 0.84 && fontSize > 36);
+  ctx.fillText(bovenTekst, canvas.width / 2, subtekst ? canvas.height * 0.43 : canvas.height / 2);
+
+  if (subtekst) {
+    ctx.font = `700 ${Math.max(32, fontSize * 0.43)}px Segoe UI, Arial, sans-serif`;
+    ctx.fillStyle = opties.subtekstKleur ?? 'rgba(255,255,255,0.82)';
+    ctx.fillText(subtekst.toUpperCase(), canvas.width / 2, canvas.height * 0.72);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(breedte, hoogte),
+    new THREE.MeshBasicMaterial({ map: texture, transparent: true })
+  );
+
+  const offset = 0.055;
+  mesh.position.set(x, y, z);
+  if (richting === 'north') {
+    mesh.rotation.y = Math.PI;
+    mesh.position.z -= offset;
+  } else if (richting === 'south') {
+    mesh.position.z += offset;
+  } else if (richting === 'east') {
+    mesh.rotation.y = Math.PI / 2;
+    mesh.position.x += offset;
+  } else if (richting === 'west') {
+    mesh.rotation.y = -Math.PI / 2;
+    mesh.position.x -= offset;
+  }
+  parent.add(mesh);
+  return mesh;
+}
+
+function seededRandomFactory(seed = 12345) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+const rnd = seededRandomFactory(240514);
+function kies(arr) { return arr[Math.floor(rnd() * arr.length)]; }
+
+/* ----------------------------------------------------------------
+   Grond, straten, plein en tramrails
+   ---------------------------------------------------------------- */
+
+scene.background = new THREE.Color(PAL.luchtMist);
+scene.fog = new THREE.Fog(PAL.luchtMist, 120, 420);
+
+const grond = new THREE.Mesh(new THREE.PlaneGeometry(620, 620), mat(0x8f8b82, 1));
+grond.rotation.x = -Math.PI / 2;
 grond.receiveShadow = true;
 wereld.add(grond);
 
-// Het plein zelf: lichte klinkertjes, iets boven het asfalt.
-function vloerdeel(breedte, diepte, x, z, kleur) {
-  const v = new THREE.Mesh(new THREE.BoxGeometry(breedte, 0.08, diepte), mat(kleur, 1));
-  v.position.set(x, 0.04, z);
-  v.receiveShadow = true;
-  wereld.add(v);
+// Asfaltvlak onder de hele kruising.
+vloerRechthoek(270, 245, 2, -8, PAL.asfalt, 0.025, 0.05);
+
+// Het plein is bewust niet perfect rechthoekig. Dat maakt het veel meer Dam.
+const damPleinPunten = [
+  [-86, -42], [-48, -58], [34, -55], [72, -34], [84, 14],
+  [50, 56], [-39, 54], [-82, 30], [-92, -20]
+];
+vloerPoly(damPleinPunten, PAL.plein, 0.09);
+
+// Lichtere strook op het hoofdplein voor een subtiele looproute richting monument.
+vloerPoly([[-45, -39], [26, -43], [65, -24], [70, 15], [42, 45], [-30, 44], [-67, 23], [-72, -13]], PAL.pleinLicht, 0.102);
+
+// Belangrijke straten rond de Dam.
+vloerRechthoek(34, 76, 0, -91, PAL.asfaltDonker, 0.115, 0.06);       // Damrak
+vloerRechthoek(34, 68, 2, 86, PAL.asfaltDonker, 0.115, 0.06);        // Rokin
+vloerRechthoek(62, 31, 105, 2, PAL.asfaltDonker, 0.115, 0.06);       // Damstraat
+vloerRechthoek(38, 68, -55, 88, PAL.asfaltDonker, 0.115, 0.06);      // Kalverstraat
+vloerRechthoek(39, 74, -50, -91, PAL.asfaltDonker, 0.115, 0.06);     // Nieuwendijk
+vloerRechthoek(44, 24, -109, 38, PAL.asfaltDonker, 0.115, 0.06);     // Paleisstraat west
+
+// Stoepen en randen.
+vloerRechthoek(24, 80, -28, -91, PAL.stoep, 0.125, 0.05);
+vloerRechthoek(24, 80, 29, -91, PAL.stoep, 0.125, 0.05);
+vloerRechthoek(82, 16, 85, -30, PAL.stoep, 0.125, 0.05);
+vloerRechthoek(76, 16, 84, 31, PAL.stoep, 0.125, 0.05);
+vloerRechthoek(72, 16, -6, 64, PAL.stoep, 0.125, 0.05);
+
+tegelRaster(-82, 78, -52, 54, 5);
+
+function zebrapad(x, z, breedte, aantal, rotY = 0) {
+  const groep = new THREE.Group();
+  for (let i = 0; i < aantal; i++) {
+    const streep = new THREE.Mesh(new THREE.BoxGeometry(breedte, 0.045, 1.1), mat(0xf4f0e8, 0.82));
+    streep.position.set((i - (aantal - 1) / 2) * 2.4, 0.16, 0);
+    streep.receiveShadow = true;
+    groep.add(streep);
+  }
+  groep.position.set(x, 0, z);
+  groep.rotation.y = rotY;
+  wereld.add(groep);
 }
-vloerdeel(120, 95, -5, -2, 0xcdb99b);   // de Dam (het grote plein)
-vloerdeel(28, 70, 0, -55, 0xa7a29a);    // het Damrak (straat naar het noorden)
-vloerdeel(24, 40, 5, 45, 0xa7a29a);     // het Rokin (straat naar het zuiden)
+zebrapad(0, -52, 16, 7, Math.PI / 2);
+zebrapad(5, 54, 14, 6, Math.PI / 2);
+zebrapad(78, 4, 15, 6, 0);
+zebrapad(-78, 38, 12, 5, 0);
 
-// Zebrapad bij het begin van het Damrak (paar witte streepjes).
-for (let i = 0; i < 6; i++) {
-  const streep = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.09, 3.5), mat(0xf2f2f2, 0.8));
-  streep.position.set(-7 + i * 2.8, 0.05, -46);
-  streep.receiveShadow = true;
-  wereld.add(streep);
+function railCurve(punten, offsetX = 0) {
+  const curve = new THREE.CatmullRomCurve3(
+    punten.map(([x, z]) => new THREE.Vector3(x + offsetX, 0.19, z)),
+    false,
+    'catmullrom',
+    0.2
+  );
+  const geo = new THREE.TubeGeometry(curve, 96, 0.045, 7, false);
+  const mesh = new THREE.Mesh(geo, mat(0x7f858c, 0.34, 0.75));
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  wereld.add(mesh);
+  return { curve, mesh };
 }
 
-// --- Het Koninklijk Paleis (westkant van het plein) ------------
+const railPad = [[-4, -116], [-3, -78], [-2, -48], [2, -15], [4, 24], [3, 62], [2, 105]];
+const railA = railCurve(railPad, -2.1);
+const railB = railCurve(railPad, 2.1);
+for (let i = 0; i <= 32; i++) {
+  const t = i / 32;
+  const a = railA.curve.getPoint(t);
+  const b = railB.curve.getPoint(t);
+  const midden = a.clone().add(b).multiplyScalar(0.5);
+  const dwars = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.045, 0.32), mat(0x4f453a, 0.85));
+  dwars.position.copy(midden);
+  dwars.position.y = 0.155;
+  const tangent = railA.curve.getTangent(t);
+  dwars.rotation.y = Math.atan2(tangent.x, tangent.z) + Math.PI / 2;
+  dwars.receiveShadow = true;
+  wereld.add(dwars);
+}
 
-function bouwPaleis() {
-  const paleis = new THREE.Group();
+/* ----------------------------------------------------------------
+   Iconische gebouwen
+   ---------------------------------------------------------------- */
 
-  // Hoofdgebouw: groot zandsteenkleurig blok.
-  const hoofd = blok(16, 14, 44, 0xc8b27c);
-  hoofd.position.y = 7;
-  paleis.add(hoofd);
+function bouwKoninklijkPaleis() {
+  const g = new THREE.Group();
 
-  // Middenstuk dat iets naar voren steekt, met driehoekig fronton.
-  const midden = blok(3, 15, 16, 0xd2bc86);
-  midden.position.set(7, 7.5, 0);
-  paleis.add(midden);
-  // (we draaien de piramide-geometrie eerst 45°, zodat de platte kanten
-  //  netjes langs de assen liggen, en maken hem daarna dun in de diepte)
-  const frontonGeometrie = new THREE.CylinderGeometry(0.01, 6.5, 3, 4);
-  frontonGeometrie.rotateY(Math.PI / 4);
-  const fronton = new THREE.Mesh(frontonGeometrie, mat(0xd2bc86));
-  fronton.scale.set(0.35, 1, 1);
-  fronton.position.set(7.5, 16.4, 0);
-  fronton.castShadow = true;
-  paleis.add(fronton);
+  const hoofd = blok(29, 22, 82, PAL.zandsteen, 0.86);
+  hoofd.position.set(0, 11, 0);
+  g.add(hoofd);
 
-  // Dak.
-  const dak = blok(15, 1.6, 43, 0x6b6f75);
-  dak.position.y = 14.8;
-  paleis.add(dak);
+  const plint = blok(31, 2.2, 84, PAL.paleisDonker, 0.88);
+  plint.position.set(0, 1.1, 0);
+  g.add(plint);
 
-  // De beroemde groene koepel met torentje.
-  const koepelVoet = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.4, 4, 10), mat(0xd2bc86));
-  koepelVoet.position.y = 17.5;
-  koepelVoet.castShadow = true;
-  paleis.add(koepelVoet);
-  const koepel = new THREE.Mesh(new THREE.SphereGeometry(3, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(0x3f7d5e, 0.6));
-  koepel.position.y = 19.5;
-  koepel.castShadow = true;
-  paleis.add(koepel);
-  const spits = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.35, 3.5, 6), mat(0xe8c84e, 0.4, 0.6));
-  spits.position.y = 23.5;
-  paleis.add(spits);
+  const dakrand = blok(31.5, 1.2, 84.5, PAL.zandsteenLicht, 0.82);
+  dakrand.position.set(0, 22.6, 0);
+  g.add(dakrand);
 
-  // Rijen donkere raampjes op de oostgevel (de kant van het plein).
-  for (let rij = 0; rij < 3; rij++) {
-    for (let kolom = 0; kolom < 10; kolom++) {
-      const raam = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.2, 1.4), mat(0x2c3540, 0.4));
-      raam.position.set(8.05, 3.5 + rij * 4, -19 + kolom * 4.2);
-      paleis.add(raam);
+  const dak = blok(27, 3.2, 78, PAL.dak, 0.75, 0.05);
+  dak.position.set(-0.6, 24.2, 0);
+  g.add(dak);
+
+  // Middenrisaliet met fronton aan de pleinzijde.
+  const midden = blok(6.6, 24.5, 22, PAL.zandsteenLicht, 0.84);
+  midden.position.set(15.4, 12.25, 0);
+  g.add(midden);
+  const fronton = driehoekFacade(18.85, 0, 24.6, 24, 5.8, PAL.zandsteenLicht);
+  g.add(fronton);
+
+  // Kolommen aan de oostgevel, de zijde die je vanaf de Dam ziet.
+  for (let i = 0; i < 11; i++) {
+    const z = -35 + i * 7;
+    const pilaster = blok(0.55, 15, 0.78, PAL.zandsteenLicht, 0.8);
+    pilaster.position.set(15.1, 10.5, z);
+    g.add(pilaster);
+  }
+
+  // Rij ramen op de oostgevel.
+  for (let rij = 0; rij < 4; rij++) {
+    for (let kol = 0; kol < 10; kol++) {
+      raamOpFacade(g, 14.92, 4.4 + rij * 4.2, -34 + kol * 7.5, 1.7, 2.2, 'east');
     }
   }
+  deurOpFacade(g, 19.02, 2.3, 0, 6.2, 4.6, 'east', 0x3b2a1c);
 
-  paleis.position.set(-56, 0, -2);
-  wereld.add(paleis);
-  registreerObstakel(paleis);
+  // Groene koepel en kleine gouden details bovenop.
+  const voet = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 4.8, 3.3, 16), mat(PAL.zandsteenLicht, 0.78));
+  voet.position.set(-2.5, 27.3, 0);
+  g.add(voet);
+  const koepel = new THREE.Mesh(new THREE.SphereGeometry(4.4, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat(PAL.koper, 0.58, 0.15));
+  koepel.position.set(-2.5, 28.9, 0);
+  g.add(koepel);
+  const spits = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.42, 5.3, 8), mat(PAL.goud, 0.35, 0.65));
+  spits.position.set(-2.5, 34.3, 0);
+  g.add(spits);
+  const atlasBol = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 8), mat(PAL.goud, 0.45, 0.55));
+  atlasBol.position.set(-13.2, 27.3, 0);
+  g.add(atlasBol);
+
+  g.position.set(-93, 0, 0);
+  wereld.add(g);
+  schaduwAan(g);
+  registreerObstakel(g, 0.4);
 }
-bouwPaleis();
-
-// --- De Nieuwe Kerk (naast het paleis, noordwesthoek) -----------
+bouwKoninklijkPaleis();
 
 function bouwNieuweKerk() {
-  const kerk = new THREE.Group();
+  const g = new THREE.Group();
 
-  // Schip van de kerk (het lange hoofdgedeelte).
-  const schip = blok(26, 11, 13, 0x9c8f80);
-  schip.position.y = 5.5;
-  kerk.add(schip);
+  const schip = blok(52, 15.5, 27, PAL.kerkSteen, 0.9);
+  schip.position.set(0, 7.75, 0);
+  g.add(schip);
 
-  // Steil zadeldak (uitgerekte piramide = mooi genoeg voor low-poly).
-  const dakGeometrie = new THREE.CylinderGeometry(0.01, 9.5, 7, 4);
-  dakGeometrie.rotateY(Math.PI / 4);   // platte kanten langs de assen leggen
-  const dak = new THREE.Mesh(dakGeometrie, mat(0x4d5560));
-  dak.scale.set(2.0, 1, 1);            // uitrekken in de lengte van de kerk
-  dak.position.y = 14.5;
-  dak.castShadow = true;
-  kerk.add(dak);
+  const transept = blok(24, 13.5, 42, PAL.kerkSteen, 0.9);
+  transept.position.set(2, 6.75, 2);
+  g.add(transept);
 
-  // Torentje met spits.
-  const toren = blok(4, 17, 4, 0x8f8274);
-  toren.position.set(-13, 8.5, 0);
-  kerk.add(toren);
-  const spitsGeometrie = new THREE.CylinderGeometry(0.01, 3.4, 7, 4);
-  spitsGeometrie.rotateY(Math.PI / 4);
-  const torenspits = new THREE.Mesh(spitsGeometrie, mat(0x3f4854));
-  torenspits.position.set(-13, 20.5, 0);
-  torenspits.castShadow = true;
-  kerk.add(torenspits);
+  const dak1 = zadeldak(55, 31, 8.5, PAL.dakDonker);
+  dak1.position.set(0, 15.45, 0);
+  g.add(dak1);
 
-  // Hoge spitsboogramen (donker met een lichte rand-suggestie).
-  for (let i = 0; i < 6; i++) {
-    const raam = new THREE.Mesh(new THREE.BoxGeometry(1.5, 5.5, 0.2), mat(0x27313d, 0.3));
-    raam.position.set(-10 + i * 4, 5.5, 6.6);
-    kerk.add(raam);
+  const dak2 = zadeldak(27, 45, 7.2, PAL.dakDonker);
+  dak2.position.set(2, 13.45, 2);
+  dak2.rotation.y = Math.PI / 2;
+  g.add(dak2);
+
+  const toren = blok(10, 24, 10, PAL.kerkDonker, 0.86);
+  toren.position.set(-29, 12, -2);
+  g.add(toren);
+  const torenSpits = new THREE.Mesh(new THREE.ConeGeometry(7.2, 12, 4), mat(PAL.dakDonker, 0.75));
+  torenSpits.rotation.y = Math.PI / 4;
+  torenSpits.position.set(-29, 30, -2);
+  torenSpits.castShadow = true;
+  g.add(torenSpits);
+
+  // Spitsboogramen als hoge donkere vlakken met lichte rand.
+  for (let i = 0; i < 7; i++) {
+    const x = -20 + i * 7;
+    raamOpFacade(g, x, 7.2, 13.65, 1.7, 5.5, 'south');
+  }
+  for (let i = 0; i < 4; i++) {
+    raamOpFacade(g, 25.95, 6.8, -9 + i * 6, 1.5, 4.6, 'east');
   }
 
-  kerk.position.set(-38, 0, -40);
-  wereld.add(kerk);
-  registreerObstakel(kerk);
+  g.position.set(-67, 0, -67);
+  wereld.add(g);
+  schaduwAan(g);
+  registreerObstakel(g, 0.4);
 }
 bouwNieuweKerk();
 
-// --- Het Nationaal Monument (oostkant van het plein) ------------
+function bouwNationaalMonument() {
+  const g = new THREE.Group();
 
-function bouwMonument() {
-  const monument = new THREE.Group();
+  const tree1 = new THREE.Mesh(new THREE.CylinderGeometry(13, 13, 0.55, 40), mat(PAL.monumentSchaduw, 0.82));
+  tree1.position.y = 0.32;
+  g.add(tree1);
+  const tree2 = new THREE.Mesh(new THREE.CylinderGeometry(10.2, 10.2, 0.48, 40), mat(0xe5ded4, 0.82));
+  tree2.position.y = 0.85;
+  g.add(tree2);
+  const tree3 = new THREE.Mesh(new THREE.CylinderGeometry(6.7, 7.5, 0.75, 36), mat(PAL.monument, 0.75));
+  tree3.position.y = 1.45;
+  g.add(tree3);
 
-  // Twee ronde traptreden als voet.
-  const tree1 = new THREE.Mesh(new THREE.CylinderGeometry(7, 7, 0.6, 24), mat(0xd9d2c4));
-  tree1.position.y = 0.3;
-  tree1.receiveShadow = true; tree1.castShadow = true;
-  monument.add(tree1);
-  const tree2 = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 0.6, 24), mat(0xe2dccf));
-  tree2.position.y = 0.9;
-  tree2.receiveShadow = true; tree2.castShadow = true;
-  monument.add(tree2);
+  const zuil = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 2.45, 22, 18), mat(PAL.monument, 0.68));
+  zuil.position.y = 13;
+  g.add(zuil);
+  const top = new THREE.Mesh(new THREE.ConeGeometry(1.1, 1.7, 18), mat(0xffffff, 0.65));
+  top.position.y = 24.8;
+  g.add(top);
 
-  // De witte pyloon (taps toelopende zuil).
-  const zuil = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 2.4, 20, 14), mat(0xf0ece2, 0.7));
-  zuil.position.y = 11;
-  zuil.castShadow = true;
-  monument.add(zuil);
-
-  // Kleine kring witte paaltjes eromheen.
-  for (let i = 0; i < 12; i++) {
-    const hoek = (i / 12) * Math.PI * 2;
-    const paaltje = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1, 8), mat(0xe8e2d4));
-    paaltje.position.set(Math.cos(hoek) * 9.5, 0.5, Math.sin(hoek) * 9.5);
-    paaltje.castShadow = true;
-    monument.add(paaltje);
+  // Sculptuurachtige figuren aan de voet, abstract maar herkenbaar.
+  for (let i = 0; i < 6; i++) {
+    const hoek = (i / 6) * Math.PI * 2 + 0.35;
+    const fig = new THREE.Group();
+    const lijf = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 1.6, 7), mat(0xd6cfc4, 0.78));
+    lijf.position.y = 2.15;
+    const kop = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), mat(0xd6cfc4, 0.78));
+    kop.position.y = 3.1;
+    fig.add(lijf, kop);
+    fig.position.set(Math.cos(hoek) * 4.5, 0, Math.sin(hoek) * 4.5);
+    fig.rotation.y = -hoek;
+    g.add(fig);
   }
 
-  monument.position.set(38, 0, -2);
-  wereld.add(monument);
-  // Alleen het middenstuk blokkeert (tussen de paaltjes door lopen mag).
-  obstakels.push({ minX: 38 - 7, maxX: 38 + 7, minZ: -2 - 7, maxZ: -2 + 7 });
+  // Paaltjes rond het monument, zonder alles onnodig te blokkeren.
+  for (let i = 0; i < 20; i++) {
+    const hoek = (i / 20) * Math.PI * 2;
+    const paal = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.85, 8), mat(0xcfc8bc, 0.76));
+    paal.position.set(Math.cos(hoek) * 15.5, 0.48, Math.sin(hoek) * 15.5);
+    g.add(paal);
+  }
+
+  g.position.set(42, 0, -4);
+  wereld.add(g);
+  schaduwAan(g);
+  // Alleen de trappen en zuil blokkeren. De ring eromheen blijft beloopbaar genoeg.
+  registreerRechthoek(42 - 10.5, 42 + 10.5, -4 - 10.5, -4 + 10.5, 0.2);
 }
-bouwMonument();
+bouwNationaalMonument();
 
-// --- Amsterdamse grachtenpandjes rondom het plein ----------------
-
-// Vrolijk kleurenpalet voor de gevels.
-const GEVELKLEUREN = [0x8a4b3a, 0x54402f, 0x3e4a3d, 0xb08d57, 0x6e4a4a, 0x424d5c, 0x94684a, 0x5c4a63];
-
-// Bouwt één smal huisje met trapgevel en raampjes. De voorkant wijst
-// standaard naar +z; daarna draaien we het hele huis de goede kant op.
-function maakHuis() {
-  const huis = new THREE.Group();
-  const breedte = 5.6;
-  const diepte  = 9;
-  const hoogte  = 8 + Math.random() * 5;
-  const kleur   = GEVELKLEUREN[Math.floor(Math.random() * GEVELKLEUREN.length)];
-
-  const romp = blok(breedte, hoogte, diepte, kleur);
-  romp.position.y = hoogte / 2;
-  huis.add(romp);
-
-  // Trapgevel: drie steeds smallere blokjes bovenop.
-  for (let i = 0; i < 3; i++) {
-    const trap = blok(breedte * (0.78 - i * 0.24), 0.9, 1.2, kleur);
-    trap.position.set(0, hoogte + 0.45 + i * 0.9, diepte / 2 - 0.6);
-    huis.add(trap);
-  }
-
-  // Witte raampjes met donker glas op de voorgevel.
-  const verdiepingen = Math.floor(hoogte / 3);
-  for (let v = 0; v < verdiepingen; v++) {
-    for (let k = 0; k < 2; k++) {
-      const kozijn = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2, 0.15), mat(0xe8e4da, 0.6));
-      kozijn.position.set(-1.3 + k * 2.6, 2.4 + v * 3, diepte / 2 + 0.05);
-      huis.add(kozijn);
-      const glas = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.7, 0.16), mat(0x2c3540, 0.3));
-      glas.position.set(-1.3 + k * 2.6, 2.4 + v * 3, diepte / 2 + 0.06);
-      huis.add(glas);
+function bouwBijenkorf() {
+  const g = new THREE.Group();
+  const hoofd = blok(58, 23, 38, 0xb18b5a, 0.82);
+  hoofd.position.set(0, 11.5, 0);
+  g.add(hoofd);
+  const dak = blok(58, 2.8, 38, 0x3f454d, 0.78);
+  dak.position.set(0, 24.4, 0);
+  g.add(dak);
+  const hoek = blok(13, 28, 13, 0xc3a06b, 0.78);
+  hoek.position.set(-28, 14, 18);
+  g.add(hoek);
+  for (let rij = 0; rij < 5; rij++) {
+    for (let kol = 0; kol < 8; kol++) {
+      raamOpFacade(g, -29.12 + kol * 7.4, 5 + rij * 3.6, 19.12, 2.2, 1.9, 'south');
     }
   }
-
-  // Voordeur.
-  const deur = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.15), mat(0x33261c, 0.7));
-  deur.position.set(0, 1.1, diepte / 2 + 0.05);
-  huis.add(deur);
-
-  return huis;
-}
-
-// Zet een rij huisjes neer. (x,z) is het midden van de rij,
-// `draai` bepaalt welke kant de voordeuren op wijzen.
-function rijHuizen(aantal, x, z, draai, richting) {
-  for (let i = 0; i < aantal; i++) {
-    const huis = maakHuis();
-    const afstand = (i - (aantal - 1) / 2) * 6.2;
-    if (richting === 'x') huis.position.set(x + afstand, 0, z);
-    else                  huis.position.set(x, 0, z + afstand);
-    huis.rotation.y = draai;
-    wereld.add(huis);
-    registreerObstakel(huis);
+  for (let rij = 0; rij < 4; rij++) {
+    for (let kol = 0; kol < 5; kol++) {
+      raamOpFacade(g, -29.12, 6 + rij * 4, -11 + kol * 6, 1.8, 2.1, 'west');
+    }
   }
+  maakGevelTekst(g, 'de Bijenkorf', 0, 20.2, 19.25, 27, 3.7, 'south', {
+    achtergrond: 'rgba(36, 28, 18, 0.92)',
+    rand: 'rgba(238, 194, 88, 0.95)',
+    tekstKleur: '#ffd75e',
+    fontSize: 92
+  });
+  g.position.set(75, 0, -53);
+  wereld.add(g);
+  schaduwAan(g);
+  registreerObstakel(g, 0.5);
 }
+bouwBijenkorf();
 
-rijHuizen(10, -5, 52, Math.PI, 'x');          // zuidrand van het plein (naast Rokin)
-rijHuizen(6, 47, -35, -Math.PI / 2, 'z');     // oostrand (achter het monument)
-rijHuizen(5, 47, 28, -Math.PI / 2, 'z');      // oostrand, zuidelijk stuk
-rijHuizen(6, -22, -68, Math.PI / 2, 'z');     // westkant van het Damrak
-rijHuizen(6, 22, -68, -Math.PI / 2, 'z');     // oostkant van het Damrak
-rijHuizen(4, -58, 35, Math.PI / 2, 'z');      // zuidwest hoek
+function bouwKrasnapolsky() {
+  const g = new THREE.Group();
+  const hoofd = blok(61, 21, 29, 0xc7b49b, 0.84);
+  hoofd.position.set(0, 10.5, 0);
+  g.add(hoofd);
+  const dak = blok(62, 3.2, 30, PAL.dak, 0.75);
+  dak.position.set(0, 22.4, 0);
+  g.add(dak);
+  const torentje = new THREE.Mesh(new THREE.CylinderGeometry(4, 4.8, 8, 12), mat(0xb89d7f, 0.8));
+  torentje.position.set(-25, 25, -9);
+  g.add(torentje);
+  const torenDak = new THREE.Mesh(new THREE.ConeGeometry(5.4, 5.6, 12), mat(PAL.dakDonker, 0.72));
+  torenDak.position.set(-25, 31.5, -9);
+  g.add(torenDak);
+  for (let rij = 0; rij < 5; rij++) {
+    for (let kol = 0; kol < 9; kol++) {
+      raamOpFacade(g, -26 + kol * 6.5, 4.5 + rij * 3.5, -14.6, 1.9, 1.8, 'north');
+    }
+  }
+  deurOpFacade(g, 0, 2.2, -14.8, 5.5, 4.4, 'north', 0x4a2f20);
+  maakGevelTekst(g, 'Hotel Krasnapolsky', 0, 18.5, -14.95, 32, 3.5, 'north', {
+    achtergrond: 'rgba(45, 32, 24, 0.9)',
+    rand: 'rgba(236, 213, 174, 0.95)',
+    tekstKleur: '#fff2d0',
+    fontSize: 82
+  });
+  g.position.set(72, 0, 58);
+  wereld.add(g);
+  schaduwAan(g);
+  registreerObstakel(g, 0.5);
+}
+bouwKrasnapolsky();
 
 /* ----------------------------------------------------------------
-   Sfeerelementen: lantaarns, bankjes, terrasjes, fietsen, bomen
+   Gevelrijen, winkels en Amsterdamse panden rondom het plein
    ---------------------------------------------------------------- */
 
-// Klassieke Amsterdamse lantaarnpaal.
-function lantaarn(x, z) {
-  const paal = new THREE.Group();
-  const stok = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.13, 4.6, 8), mat(0x2e4034, 0.6, 0.4));
-  stok.position.y = 2.3;
-  stok.castShadow = true;
-  paal.add(stok);
-  const kap = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.5, 6), mat(0x2e4034, 0.6, 0.4));
-  kap.position.y = 4.85;
-  kap.castShadow = true;
-  paal.add(kap);
-  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8),
-    new THREE.MeshStandardMaterial({ color: 0xfff2b0, emissive: 0xffe28a, emissiveIntensity: 0.35 }));
-  lamp.position.y = 4.5;
-  paal.add(lamp);
-  paal.position.set(x, 0, z);
-  wereld.add(paal);
-  obstakels.push({ minX: x - 0.25, maxX: x + 0.25, minZ: z - 0.25, maxZ: z + 0.25 });
-}
-[[-30, -25], [-30, 20], [20, 25], [25, -30], [0, -5], [-8, -46], [8, -46],
- [-8, -78], [8, -78], [55, -2], [-45, 25], [12, 40]].forEach(([x, z]) => lantaarn(x, z));
+const GEVELKLEUREN = [0x8a4b3a, 0x54402f, 0x3e4a3d, 0xb08d57, 0x6e4a4a, 0x424d5c, 0x94684a, 0x5c4a63, 0xc5a46c, 0x7b6a55];
 
-// Houten bankje.
-function bankje(x, z, draai = 0) {
-  const bank = new THREE.Group();
-  const zitting = blok(2.4, 0.15, 0.7, 0x7a5a38);
-  zitting.position.y = 0.55;
-  bank.add(zitting);
-  const leuning = blok(2.4, 0.7, 0.12, 0x7a5a38);
-  leuning.position.set(0, 1.0, -0.32);
-  bank.add(leuning);
-  for (const kant of [-1, 1]) {
-    const poot = blok(0.15, 0.55, 0.6, 0x3d4247);
-    poot.position.set(kant * 1.0, 0.27, 0);
-    bank.add(poot);
+function maakGrachtenpand(opt = {}) {
+  const breedte = opt.breedte ?? (5.2 + rnd() * 1.4);
+  const diepte = opt.diepte ?? (9.5 + rnd() * 3.5);
+  const hoogte = opt.hoogte ?? (10 + rnd() * 7);
+  const kleur = opt.kleur ?? kies(GEVELKLEUREN);
+  const g = new THREE.Group();
+
+  const romp = blok(breedte, hoogte, diepte, kleur, 0.86);
+  romp.position.y = hoogte / 2;
+  g.add(romp);
+
+  const plint = blok(breedte + 0.2, 1.0, diepte + 0.2, 0x3f352d, 0.86);
+  plint.position.y = 0.5;
+  g.add(plint);
+
+  const dakType = opt.dakType ?? Math.floor(rnd() * 3);
+  if (dakType === 0) {
+    const dak = zadeldak(breedte + 0.6, diepte + 0.6, 2.8, PAL.dakDonker);
+    dak.position.y = hoogte;
+    dak.rotation.y = Math.PI / 2;
+    g.add(dak);
+  } else if (dakType === 1) {
+    for (let i = 0; i < 3; i++) {
+      const trap = blok(breedte * (0.86 - i * 0.22), 0.85, 0.9, kleur, 0.84);
+      trap.position.set(0, hoogte + 0.45 + i * 0.85, diepte / 2 + 0.05);
+      g.add(trap);
+    }
+    const dak = blok(breedte + 0.4, 1.5, diepte + 0.2, PAL.dakDonker, 0.78);
+    dak.position.y = hoogte + 0.6;
+    g.add(dak);
+  } else {
+    const dak = blok(breedte + 0.5, 1.8, diepte + 0.5, PAL.dak, 0.78);
+    dak.position.y = hoogte + 0.9;
+    g.add(dak);
   }
-  bank.position.set(x, 0, z);
-  bank.rotation.y = draai;
-  wereld.add(bank);
-  registreerObstakel(bank);
-}
-bankje(18, 12, Math.PI / 6);
-bankje(-15, -28, -0.4);
-bankje(26, -18, Math.PI / 2);
-bankje(-25, 32, 0);
 
-// Terrasje: parasol met tafeltje en stoeltjes.
-function terras(x, z) {
-  const t = new THREE.Group();
-  // Parasol.
-  const stok = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 6), mat(0x8a8a8a, 0.5, 0.3));
-  stok.position.y = 1.3;
-  t.add(stok);
-  const doek = new THREE.Mesh(new THREE.ConeGeometry(1.9, 0.8, 8), mat(0xd6483b, 0.8));
-  doek.position.y = 2.7;
-  doek.castShadow = true;
-  t.add(doek);
-  // Tafeltje.
-  const blad = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.08, 12), mat(0xe8e4da, 0.6));
-  blad.position.y = 0.75;
-  blad.castShadow = true;
-  t.add(blad);
-  // Stoeltjes eromheen.
-  for (let i = 0; i < 3; i++) {
-    const hoek = (i / 3) * Math.PI * 2 + 0.5;
-    const stoel = blok(0.5, 0.5, 0.5, 0x4a6c50);
-    stoel.position.set(Math.cos(hoek) * 1.3, 0.25, Math.sin(hoek) * 1.3);
-    t.add(stoel);
+  const verdiepingen = Math.max(2, Math.floor(hoogte / 3.1));
+  for (let v = 0; v < verdiepingen; v++) {
+    for (let k = 0; k < 2; k++) {
+      const x = -breedte * 0.23 + k * breedte * 0.46;
+      raamOpFacade(g, x, 2.6 + v * 3.05, diepte / 2 + 0.12, 1.35, 1.75, 'south');
+    }
   }
-  t.position.set(x, 0, z);
-  wereld.add(t);
-  obstakels.push({ minX: x - 1.6, maxX: x + 1.6, minZ: z - 1.6, maxZ: z + 1.6 });
-}
-terras(-38, 25); terras(-34, 29); terras(30, 34); terras(34, 30);
+  deurOpFacade(g, 0, 1.25, diepte / 2 + 0.14, 1.35, 2.5, 'south', 0x302219);
 
-// Fietsenrek met een rijtje fietsen (heel Amsterdams).
-function fietsenrek(x, z, draai = 0) {
-  const rek = new THREE.Group();
-  const stang = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 8, 6), mat(0x777777, 0.4, 0.6));
+  // Smalle hijsbalk, zeer Amsterdam herkenbaar.
+  const balk = blok(0.12, 0.12, 1.2, 0x2f2720, 0.8);
+  balk.position.set(0, hoogte + 1.3, diepte / 2 + 0.7);
+  g.add(balk);
+
+  schaduwAan(g);
+  return g;
+}
+
+function plaatsGevelrij({ aantal, x, z, richting = 'x', rotY = 0, tussen = 6.35, startOffset = null, diepte = 10 }) {
+  for (let i = 0; i < aantal; i++) {
+    const pand = maakGrachtenpand({ diepte, hoogte: 9 + rnd() * 9, dakType: Math.floor(rnd() * 3) });
+    const afstand = startOffset === null ? (i - (aantal - 1) / 2) * tussen : startOffset + i * tussen;
+    if (richting === 'x') pand.position.set(x + afstand, 0, z);
+    else pand.position.set(x, 0, z + afstand);
+    pand.rotation.y = rotY;
+    wereld.add(pand);
+    registreerObstakel(pand, 0.25);
+  }
+}
+
+// Zuidrand bij Madame Tussauds en Kalverstraat.
+plaatsGevelrij({ aantal: 8, x: -8, z: 70, richting: 'x', rotY: Math.PI, tussen: 6.4, diepte: 12 });
+// Oostranden rond Damstraat.
+plaatsGevelrij({ aantal: 6, x: 111, z: -10, richting: 'z', rotY: -Math.PI / 2, tussen: 7.0, startOffset: -18, diepte: 12 });
+// Noordelijke Damrakgevels.
+plaatsGevelrij({ aantal: 7, x: -28, z: -88, richting: 'z', rotY: Math.PI / 2, tussen: 7.0, startOffset: -24, diepte: 11 });
+plaatsGevelrij({ aantal: 6, x: 30, z: -88, richting: 'z', rotY: -Math.PI / 2, tussen: 7.0, startOffset: -20, diepte: 11 });
+// Zuidwest en Paleisstraat.
+plaatsGevelrij({ aantal: 5, x: -104, z: 58, richting: 'x', rotY: 0, tussen: 6.4, diepte: 11 });
+plaatsGevelrij({ aantal: 5, x: -106, z: 10, richting: 'z', rotY: Math.PI / 2, tussen: 7.0, startOffset: -8, diepte: 10 });
+
+function bouwMadameTussaudsBlok() {
+  const g = new THREE.Group();
+  const hoofd = blok(43, 18, 15, 0x9a765d, 0.84);
+  hoofd.position.y = 9;
+  g.add(hoofd);
+  const kroon = blok(44, 2.3, 15.6, 0x6e584a, 0.82);
+  kroon.position.y = 19.1;
+  g.add(kroon);
+  for (let rij = 0; rij < 4; rij++) {
+    for (let kol = 0; kol < 6; kol++) {
+      raamOpFacade(g, -17 + kol * 6.8, 4 + rij * 3.5, -7.65, 1.9, 1.8, 'north');
+    }
+  }
+  maakGevelTekst(g, 'Madame Tussauds', 0, 15.7, -7.85, 30, 3.4, 'north', {
+    achtergrond: 'rgba(110, 24, 28, 0.92)',
+    rand: 'rgba(248, 229, 185, 0.96)',
+    tekstKleur: '#fff3d6',
+    subtekst: 'Amsterdam',
+    fontSize: 76
+  });
+  g.position.set(-13, 0, 60);
+  wereld.add(g);
+  schaduwAan(g);
+  registreerObstakel(g, 0.3);
+}
+bouwMadameTussaudsBlok();
+
+/* ----------------------------------------------------------------
+   Straatmeubilair en sfeerobjecten, gepolijst maar lichtgewicht
+   ---------------------------------------------------------------- */
+
+function lantaarn(x, z, schaal = 1) {
+  const g = new THREE.Group();
+  const stok = new THREE.Mesh(new THREE.CylinderGeometry(0.09 * schaal, 0.14 * schaal, 4.8 * schaal, 10), mat(0x2e4034, 0.55, 0.35));
+  stok.position.y = 2.4 * schaal;
+  g.add(stok);
+  const arm = blok(0.08 * schaal, 0.08 * schaal, 1.35 * schaal, 0x2e4034, 0.55, 0.35);
+  arm.position.set(0, 4.55 * schaal, 0.55 * schaal);
+  arm.rotation.x = 0.14;
+  g.add(arm);
+  const kap = new THREE.Mesh(new THREE.ConeGeometry(0.48 * schaal, 0.55 * schaal, 8), mat(0x2e4034, 0.55, 0.35));
+  kap.position.set(0, 4.55 * schaal, 1.18 * schaal);
+  g.add(kap);
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.26 * schaal, 10, 8), new THREE.MeshStandardMaterial({
+    color: 0xfff2b0,
+    emissive: 0xffe28a,
+    emissiveIntensity: 0.32,
+    roughness: 0.45
+  }));
+  lamp.position.set(0, 4.3 * schaal, 1.18 * schaal);
+  g.add(lamp);
+  g.position.set(x, 0, z);
+  wereld.add(g);
+  schaduwAan(g);
+  registreerRechthoek(x - 0.25, x + 0.25, z - 0.25, z + 0.25, 0.1);
+}
+[
+  [-37, -29], [-35, 23], [18, 28], [25, -31], [0, -8],
+  [-10, -55], [10, -55], [-10, -90], [10, -90], [58, -4],
+  [-49, 30], [14, 43], [75, 28], [75, -32]
+].forEach(([x, z]) => lantaarn(x, z));
+
+function bankje(x, z, rotY = 0) {
+  const g = new THREE.Group();
+  const zitting = blok(3.2, 0.18, 0.85, PAL.hout, 0.78);
+  zitting.position.y = 0.58;
+  g.add(zitting);
+  const leuning = blok(3.2, 0.75, 0.16, PAL.hout, 0.78);
+  leuning.position.set(0, 1.02, -0.42);
+  g.add(leuning);
+  for (const kant of [-1.2, 1.2]) {
+    const poot = blok(0.15, 0.55, 0.62, 0x3d4247, 0.5, 0.3);
+    poot.position.set(kant, 0.28, 0);
+    g.add(poot);
+  }
+  g.position.set(x, 0, z);
+  g.rotation.y = rotY;
+  wereld.add(g);
+  registreerObstakel(g, 0.1);
+}
+bankje(17, 14, Math.PI / 8);
+bankje(-18, -31, -0.4);
+bankje(26, -19, Math.PI / 2);
+bankje(-29, 34, 0);
+bankje(54, 21, -0.6);
+
+function terras(x, z, rotY = 0) {
+  const g = new THREE.Group();
+  const stok = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.8, 8), mat(0x8a8a8a, 0.48, 0.35));
+  stok.position.y = 1.4;
+  g.add(stok);
+  const doek = new THREE.Mesh(new THREE.ConeGeometry(2.25, 0.85, 10), mat(0xd6483b, 0.82));
+  doek.position.y = 2.85;
+  g.add(doek);
+  const blad = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.08, 14), mat(0xe8e4da, 0.6));
+  blad.position.y = 0.78;
+  g.add(blad);
+  for (let i = 0; i < 4; i++) {
+    const hoek = (i / 4) * Math.PI * 2 + 0.4;
+    const stoel = blok(0.55, 0.55, 0.55, 0x4a6c50, 0.75);
+    stoel.position.set(Math.cos(hoek) * 1.45, 0.28, Math.sin(hoek) * 1.45);
+    stoel.rotation.y = -hoek;
+    g.add(stoel);
+  }
+  g.position.set(x, 0, z);
+  g.rotation.y = rotY;
+  wereld.add(g);
+  schaduwAan(g);
+  registreerRechthoek(x - 2.0, x + 2.0, z - 2.0, z + 2.0, 0.15);
+}
+terras(-39, 27); terras(-34, 31); terras(30, 35); terras(35, 31); terras(88, 26);
+
+function fietsenrek(x, z, rotY = 0) {
+  const g = new THREE.Group();
+  const stang = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 9.2, 7), mat(0x777777, 0.4, 0.6));
   stang.rotation.z = Math.PI / 2;
   stang.position.y = 0.75;
-  rek.add(stang);
-  const fietsKleuren = [0x333333, 0x7a3030, 0x2f4a6e, 0x333333, 0x5a4a2f];
-  for (let i = 0; i < 5; i++) {
+  g.add(stang);
+  const kleuren = [0x2d2d2d, 0x7a3030, 0x2f4a6e, 0x333333, 0x5a4a2f, 0x184f45];
+  for (let i = 0; i < 6; i++) {
     const fiets = new THREE.Group();
-    const kleur = fietsKleuren[i];
-    // Twee wielen (torus = donut-vorm).
+    const kleur = kleuren[i % kleuren.length];
     for (const kant of [-0.55, 0.55]) {
-      const wiel = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.045, 6, 14), mat(0x222222, 0.6));
-      wiel.position.set(0, 0.33, kant);
+      const wiel = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.045, 8, 16), mat(0x222222, 0.6));
+      wiel.position.set(0, 0.35, kant);
       wiel.rotation.y = Math.PI / 2;
-      wiel.castShadow = true;
       fiets.add(wiel);
     }
-    // Frame en stuur, heel simpel.
-    const frame = blok(0.06, 0.5, 1.0, kleur);
-    frame.position.y = 0.55;
-    frame.rotation.x = 0.2;
+    const frame = blok(0.07, 0.55, 1.08, kleur, 0.6);
+    frame.position.y = 0.58;
+    frame.rotation.x = 0.22;
     fiets.add(frame);
-    const stuur = blok(0.5, 0.06, 0.06, 0x888888);
-    stuur.position.set(0, 0.95, -0.5);
+    const stuur = blok(0.54, 0.06, 0.06, 0x888888, 0.45, 0.3);
+    stuur.position.set(0, 0.98, -0.54);
     fiets.add(stuur);
-    fiets.position.set(-3.2 + i * 1.6, 0, 0);
-    fiets.rotation.y = Math.PI / 2 + (Math.random() - 0.5) * 0.2;
-    rek.add(fiets);
+    fiets.position.set(-4.0 + i * 1.6, 0, 0);
+    fiets.rotation.y = Math.PI / 2 + (rnd() - 0.5) * 0.26;
+    g.add(fiets);
   }
-  rek.position.set(x, 0, z);
-  rek.rotation.y = draai;
-  wereld.add(rek);
-  registreerObstakel(rek, 0.2);
+  g.position.set(x, 0, z);
+  g.rotation.y = rotY;
+  wereld.add(g);
+  schaduwAan(g);
+  registreerObstakel(g, 0.2);
 }
-fietsenrek(-20, 42, 0);
-fietsenrek(42, 14, Math.PI / 2);
-fietsenrek(-12, -50, 0);
+fietsenrek(-21, 43, 0);
+fietsenrek(43, 15, Math.PI / 2);
+fietsenrek(-13, -51, 0);
+fietsenrek(70, -25, Math.PI / 2);
 
-// Een paar bomen voor wat groen.
-function boom(x, z) {
-  const b = new THREE.Group();
-  const stam = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.4, 3, 8), mat(0x6a4a30));
-  stam.position.y = 1.5;
-  stam.castShadow = true;
-  b.add(stam);
-  const kruin = new THREE.Mesh(new THREE.SphereGeometry(2 + Math.random(), 10, 8), mat(0x4f7d3d));
-  kruin.position.y = 4.2;
-  kruin.castShadow = true;
-  b.add(kruin);
-  b.position.set(x, 0, z);
-  wereld.add(b);
-  obstakels.push({ minX: x - 0.5, maxX: x + 0.5, minZ: z - 0.5, maxZ: z + 0.5 });
+function boom(x, z, schaal = 1) {
+  const g = new THREE.Group();
+  const stam = new THREE.Mesh(new THREE.CylinderGeometry(0.25 * schaal, 0.42 * schaal, 3.1 * schaal, 9), mat(0x6a4a30, 0.82));
+  stam.position.y = 1.55 * schaal;
+  g.add(stam);
+  const kruin1 = new THREE.Mesh(new THREE.IcosahedronGeometry(2.25 * schaal, 1), mat(PAL.groen, 0.86));
+  kruin1.position.y = 4.1 * schaal;
+  const kruin2 = new THREE.Mesh(new THREE.IcosahedronGeometry(1.65 * schaal, 1), mat(0x5d8a43, 0.86));
+  kruin2.position.set(0.85 * schaal, 4.65 * schaal, -0.25 * schaal);
+  g.add(kruin1, kruin2);
+  g.position.set(x, 0, z);
+  wereld.add(g);
+  schaduwAan(g);
+  registreerRechthoek(x - 0.55 * schaal, x + 0.55 * schaal, z - 0.55 * schaal, z + 0.55 * schaal);
 }
-boom(-42, 18); boom(-46, 30); boom(24, 38); boom(52, 22); boom(56, -28); boom(-30, -34);
+boom(-43, 18, 1.0); boom(-47, 30, 1.05); boom(25, 39, 0.95); boom(53, 23, 1.1); boom(57, -28, 1.0); boom(-31, -35, 0.9);
 
-// Witte wolkjes hoog in de lucht (simpele platte bollen).
-for (let i = 0; i < 7; i++) {
-  const wolk = new THREE.Mesh(new THREE.SphereGeometry(8 + Math.random() * 6, 8, 6),
-    new THREE.MeshBasicMaterial({ color: 0xffffff }));
-  wolk.position.set(-150 + Math.random() * 300, 70 + Math.random() * 25, -150 + Math.random() * 300);
-  wolk.scale.y = 0.35;
+function tram(x, z, rotY = 0) {
+  const g = new THREE.Group();
+  const body = blok(4.2, 3.0, 16, PAL.tramWit, 0.62);
+  body.position.y = 1.75;
+  g.add(body);
+  const band = blok(4.35, 0.55, 16.2, PAL.tramRood, 0.55);
+  band.position.y = 2.25;
+  g.add(band);
+  const dak = blok(4.0, 0.5, 15, 0xd0d4d6, 0.48, 0.15);
+  dak.position.y = 3.45;
+  g.add(dak);
+  for (let i = 0; i < 5; i++) {
+    raamOpFacade(g, -2.18, 2.55, -5.8 + i * 2.9, 1.7, 0.85, 'west');
+    raamOpFacade(g, 2.18, 2.55, -5.8 + i * 2.9, 1.7, 0.85, 'east');
+  }
+  for (const dz of [-5.2, 5.2]) {
+    const wielstel = blok(4.6, 0.35, 1.4, 0x30343a, 0.45, 0.45);
+    wielstel.position.set(0, 0.35, dz);
+    g.add(wielstel);
+  }
+  g.position.set(x, 0.02, z);
+  g.rotation.y = rotY;
+  wereld.add(g);
+  schaduwAan(g);
+  registreerObstakel(g, 0.25);
+}
+tram(5, -74, 0.03);
+
+function bollardsLangsLijn(x1, z1, x2, z2, aantal) {
+  for (let i = 0; i < aantal; i++) {
+    const t = aantal === 1 ? 0 : i / (aantal - 1);
+    const x = x1 + (x2 - x1) * t;
+    const z = z1 + (z2 - z1) * t;
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.75, 8), mat(0x4b4f55, 0.56, 0.35));
+    b.position.set(x, 0.38, z);
+    b.castShadow = true;
+    wereld.add(b);
+  }
+}
+bollardsLangsLijn(-76, -42, -76, 42, 15);
+bollardsLangsLijn(30, -30, 57, -30, 8);
+bollardsLangsLijn(30, 26, 57, 26, 8);
+
+function vlag(x, z, kleur = 0xe23d3d) {
+  const g = new THREE.Group();
+  const paal = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 4.2, 8), mat(0x70777d, 0.45, 0.5));
+  paal.position.y = 2.1;
+  const doek = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.75, 1.35), mat(kleur, 0.9));
+  doek.position.set(0, 3.4, 0.65);
+  g.add(paal, doek);
+  g.position.set(x, 0, z);
+  wereld.add(g);
+}
+vlag(-76, -23, 0xee1c25); vlag(-76, -18, 0xffffff); vlag(-76, -13, 0x21468b);
+
+// Kleine groepjes toeristen als schaalreferentie. Geen obstakels, zodat gameplay soepel blijft.
+function toerist(x, z, kleur = 0x2f4a6e) {
+  const g = new THREE.Group();
+  const benen = blok(0.32, 0.8, 0.28, 0x333333, 0.8);
+  benen.position.y = 0.4;
+  const lijf = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.9, 7), mat(kleur, 0.8));
+  lijf.position.y = 1.2;
+  const hoofd = new THREE.Mesh(new THREE.SphereGeometry(0.23, 8, 6), mat(0xd6a77a, 0.75));
+  hoofd.position.y = 1.83;
+  g.add(benen, lijf, hoofd);
+  g.position.set(x, 0, z);
+  g.rotation.y = rnd() * Math.PI * 2;
+  wereld.add(g);
+  schaduwAan(g);
+}
+const toeristKleuren = [0x2f4a6e, 0x6e4a4a, 0x3e4a3d, 0xb08d57, 0x5c4a63, 0x8a4b3a];
+for (let i = 0; i < 36; i++) {
+  const x = -42 + rnd() * 112;
+  const z = -34 + rnd() * 76;
+  // Houd het monument zelf vrij.
+  const dx = x - 42, dz = z + 4;
+  if (dx * dx + dz * dz < 16 * 16) continue;
+  toerist(x, z, kies(toeristKleuren));
+}
+
+
+// Straatnaamborden, zodat de spawnpoorten en echte Dam-straten leesbaar zijn.
+function straatNaambord(x, z, naam, rotY = 0) {
+  const g = new THREE.Group();
+  const paal = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 3.0, 8), mat(0x2f3740, 0.5, 0.4));
+  paal.position.y = 1.5;
+  g.add(paal);
+  maakGevelTekst(g, naam, 0, 2.55, 0.08, 4.8, 0.86, 'south', {
+    achtergrond: 'rgba(25, 58, 90, 0.94)',
+    rand: 'rgba(230, 238, 246, 0.96)',
+    tekstKleur: '#ffffff',
+    fontSize: 72,
+    canvasBreedte: 900,
+    canvasHoogte: 220
+  });
+  g.position.set(x, 0, z);
+  g.rotation.y = rotY;
+  wereld.add(g);
+}
+straatNaambord(-8, -52, 'Damrak', 0.12);
+straatNaambord(10, 50, 'Rokin', Math.PI + 0.05);
+straatNaambord(79, 7, 'Damstraat', -Math.PI / 2);
+straatNaambord(-47, 60, 'Kalverstraat', Math.PI);
+straatNaambord(-44, -80, 'Nieuwendijk', Math.PI / 2);
+straatNaambord(-88, 35, 'Paleisstraat', Math.PI / 2);
+
+// Straatmuzikant en levend standbeeld, herkenbare Dam-sfeer zonder gameplay te blokkeren.
+function straatMuzikant(x, z, rotY = 0) {
+  const g = new THREE.Group();
+  const benen = blok(0.34, 0.8, 0.28, 0x2e2e33, 0.82);
+  benen.position.y = 0.4;
+  const lijf = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.9, 7), mat(0x5c4a63, 0.82));
+  lijf.position.y = 1.2;
+  const hoofd = new THREE.Mesh(new THREE.SphereGeometry(0.23, 10, 8), mat(0xd6a77a, 0.75));
+  hoofd.position.y = 1.82;
+  const gitaar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.72, 0.46), mat(0x9b5e2e, 0.8));
+  gitaar.position.set(0.32, 1.18, 0.2);
+  gitaar.rotation.z = 0.6;
+  const hoed = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.28, 0.12, 12), mat(0x2a2522, 0.75));
+  hoed.position.set(1.0, 0.06, 0.0);
+  g.add(benen, lijf, hoofd, gitaar, hoed);
+  g.position.set(x, 0, z);
+  g.rotation.y = rotY;
+  wereld.add(g);
+  schaduwAan(g);
+}
+straatMuzikant(21, 24, -0.6);
+
+function levendStandbeeld(x, z, rotY = 0) {
+  const g = new THREE.Group();
+  const voet = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.05, 0.25, 12), mat(0x777b80, 0.65));
+  voet.position.y = 0.13;
+  const benen = blok(0.34, 0.8, 0.28, 0x9ca0a5, 0.62, 0.15);
+  benen.position.y = 0.65;
+  const lijf = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.38, 1.0, 8), mat(0xa9adb2, 0.58, 0.15));
+  lijf.position.y = 1.45;
+  const hoofd = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), mat(0xb8bcc0, 0.55, 0.12));
+  hoofd.position.y = 2.1;
+  const arm = blok(0.12, 0.85, 0.12, 0xb0b4b8, 0.55, 0.12);
+  arm.position.set(0.46, 1.48, 0);
+  arm.rotation.z = -0.7;
+  g.add(voet, benen, lijf, hoofd, arm);
+  g.position.set(x, 0, z);
+  g.rotation.y = rotY;
+  wereld.add(g);
+  schaduwAan(g);
+}
+levendStandbeeld(36, 17, -0.35);
+
+// Bewegende decortram langs Damrak en Rokin. Geen obstakel, puur sfeer en herkenbaarheid.
+const bewegendeTrams = [];
+function maakRijdendeTram() {
+  const g = new THREE.Group();
+  const body = blok(4.25, 3.0, 15.5, PAL.tramWit, 0.62);
+  body.position.y = 1.9;
+  const band = blok(4.45, 0.55, 15.8, PAL.tramRood, 0.55);
+  band.position.y = 2.0;
+  g.add(body, band);
+  for (let i = 0; i < 5; i++) {
+    const raam = new THREE.Mesh(new THREE.BoxGeometry(4.55, 1.0, 1.6), mat(0x23303a, 0.36, 0.05, { emissive: 0x101820, emissiveIntensity: 0.08 }));
+    raam.position.set(0, 2.6, -5.4 + i * 2.7);
+    g.add(raam);
+  }
+  for (const dz of [-5.4, 5.4]) {
+    const wiel = blok(4.6, 0.35, 1.2, 0x30343a, 0.45, 0.45);
+    wiel.position.set(0, 0.35, dz);
+    g.add(wiel);
+  }
+  schaduwAan(g);
+  return g;
+}
+function plaatsRijdendeTram() {
+  const g = maakRijdendeTram();
+  g.position.set(5, 0.05, -112);
+  wereld.add(g);
+  bewegendeTrams.push({ groep: g, zMin: -112, zMax: 106, richting: 1, snelheid: 5.5, belTimer: 5 });
+}
+plaatsRijdendeTram();
+function updateBewegendeTrams(dt) {
+  for (const t of bewegendeTrams) {
+    t.groep.position.z += t.richting * t.snelheid * dt;
+    if (t.groep.position.z > t.zMax) { t.groep.position.z = t.zMax; t.richting = -1; }
+    if (t.groep.position.z < t.zMin) { t.groep.position.z = t.zMin; t.richting = 1; }
+    t.groep.rotation.y = t.richting > 0 ? 0 : Math.PI;
+    t.belTimer -= dt;
+    if (t.belTimer <= 0) {
+      if (typeof speelTramBel === 'function') speelTramBel();
+      t.belTimer = 8 + rnd() * 8;
+    }
+  }
+}
+
+wereld.userData.spawnPoorten = [
+  { naam: 'Damrak', x: 0, z: -106 },
+  { naam: 'Rokin', x: 2, z: 96 },
+  { naam: 'Damstraat', x: 116, z: 4 },
+  { naam: 'Kalverstraat', x: -55, z: 92 },
+  { naam: 'Nieuwendijk', x: -52, z: -106 }
+];
+
+// Wolken in low-poly stijl.
+for (let i = 0; i < 9; i++) {
+  const wolk = new THREE.Group();
+  const delen = 3 + Math.floor(rnd() * 3);
+  for (let j = 0; j < delen; j++) {
+    const bol = new THREE.Mesh(new THREE.IcosahedronGeometry(5 + rnd() * 3, 1), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    bol.scale.y = 0.35;
+    bol.position.set((j - delen / 2) * 5.2, rnd() * 1.2, (rnd() - 0.5) * 2.0);
+    wolk.add(bol);
+  }
+  wolk.position.set(-170 + rnd() * 340, 70 + rnd() * 30, -175 + rnd() * 330);
   scene.add(wolk);
 }
+
+// Extra: klein debug-object om de globale oriëntatie te herkennen in devtools.
+wereld.userData.layout = {
+  schaal: 'ongeveer 1 unit = 1 meter',
+  orientatie: 'x west-oost, z noord-zuid, noord is negatieve z',
+  belangrijkstePunten: {
+    paleis: { x: -93, z: 0 },
+    nieuweKerk: { x: -67, z: -67 },
+    monument: { x: 42, z: -4 },
+    damrak: { x: 0, z: -91 },
+    rokin: { x: 2, z: 86 }
+  }
+};
+
 
 /* ----------------------------------------------------------------
    Duiven: ze scharrelen rond en vliegen op als je te dichtbij komt
@@ -721,8 +1531,8 @@ function updateDuiven(dt) {
    ================================================================ */
 
 const speler = {
-  positie: new THREE.Vector3(15, 0, 25),   // startplek op het plein
-  yaw: 2.4,        // draaiing (kijkt richting het paleis)
+  positie: new THREE.Vector3(16, 0, 30),   // startplek op de Dam, tussen Paleis en Monument
+  yaw: 2.35,       // draaiing (kijkt richting Paleis en Nieuwe Kerk)
   pitch: 0,        // op/neer kijken
   hoogte: 1.7,     // ooghoogte in meters
   straal: 0.4,     // "dikte" voor botsingen
@@ -731,7 +1541,12 @@ const speler = {
 };
 
 const ingedrukt = {};   // welke toetsen zijn nu ingedrukt?
-addEventListener('keydown', e => { ingedrukt[e.code] = true; });
+addEventListener('keydown', e => {
+  ingedrukt[e.code] = true;
+  if (e.code === 'Digit1') koopUpgrade('vuurtempo');
+  if (e.code === 'Digit2') koopUpgrade('pickup');
+  if (e.code === 'Digit3') koopUpgrade('snelheid');
+});
 addEventListener('keyup',   e => { ingedrukt[e.code] = false; });
 
 // --- Pointer lock: muis "vastzetten" zodra je klikt ------------
@@ -751,10 +1566,10 @@ document.addEventListener('pointerlockchange', () => {
   richtkruis.style.display = actief ? 'block' : 'none';
   hulpUI.style.display = actief ? 'block' : 'none';
   if (actief) {
-    startscherm.querySelector('h2').textContent = 'Robotjacht op de Dam — Amsterdam';
+    startscherm.querySelector('h2').textContent = 'Verdedig de Dam — Amsterdam';
   } else {
     // Speler drukte op Esc: toon het scherm als pauzescherm.
-    startscherm.querySelector('h2').textContent = 'Gepauzeerd — klik om verder te spelen';
+    startscherm.querySelector('h2').textContent = 'Gepauzeerd, klik om verder te spelen';
     for (const k in ingedrukt) ingedrukt[k] = false;   // toetsen loslaten
   }
 });
@@ -770,7 +1585,7 @@ addEventListener('mousemove', e => {
 
 // Schieten met de linkermuisknop.
 addEventListener('mousedown', e => {
-  if (document.pointerLockElement === renderer.domElement && e.button === 0) schiet();
+  if (document.pointerLockElement === renderer.domElement && e.button === 0) probeerTeSchieten();
 });
 
 // --- Botsingen: duw een punt (met straal) uit alle obstakels ----
@@ -880,7 +1695,179 @@ function updateSpeler(dt) {
    doel op het plein en wandelen daarheen.
    ================================================================ */
 
-const ROBOT_AANTAL = 8;      // zoveel robots lopen er tegelijk rond
+
+// Arcade structuur v4: verdedig het Nationaal Monument.
+const MONUMENT_POSITIE = new THREE.Vector3(42, 0, -4);
+// Zelfde rechthoek als het geregistreerde monument-obstakel (zie registreerRechthoek
+// hierboven). Robots moeten dit vlak raken, niet alleen dicht bij het middelpunt komen.
+const MONUMENT_BOX = { minX: 42 - 10.7, maxX: 42 + 10.7, minZ: -4 - 10.7, maxZ: -4 + 10.7 };
+function afstandTotMonument(positie) {
+  const dichtstX = Math.max(MONUMENT_BOX.minX, Math.min(positie.x, MONUMENT_BOX.maxX));
+  const dichtstZ = Math.max(MONUMENT_BOX.minZ, Math.min(positie.z, MONUMENT_BOX.maxZ));
+  return Math.hypot(positie.x - dichtstX, positie.z - dichtstZ);
+}
+const SPAWN_POORTEN = [
+  { naam: 'Damrak', positie: new THREE.Vector3(0, 0, -106), spreidingX: 8, spreidingZ: 3 },
+  { naam: 'Rokin', positie: new THREE.Vector3(2, 0, 96), spreidingX: 8, spreidingZ: 3 },
+  { naam: 'Damstraat', positie: new THREE.Vector3(116, 0, 4), spreidingX: 3, spreidingZ: 8 },
+  { naam: 'Kalverstraat', positie: new THREE.Vector3(-55, 0, 92), spreidingX: 6, spreidingZ: 4 },
+  { naam: 'Nieuwendijk', positie: new THREE.Vector3(-52, 0, -106), spreidingX: 6, spreidingZ: 4 }
+];
+
+const spel = {
+  score: 0,
+  wave: 1,
+  waveKills: 0,
+  waveDoel: 8,
+  teSpawnen: 8,
+  maxActieveRobots: 4,
+  monumentHP: 100,
+  combo: 0,
+  comboTimer: 0,
+  tussenWaveTimer: 0,
+  gameOver: false,
+  laatsteSpawnPoort: 'Damrak'
+};
+
+const upgrades = {
+  vuurtempo: 0,
+  pickup: 0,
+  snelheid: 0
+};
+
+const scoreUI = document.getElementById('scoreUI');
+const waveUI = document.getElementById('waveUI');
+const objectiveUI = document.getElementById('objectiveUI');
+const comboUI = document.getElementById('comboUI');
+const shopUI = document.getElementById('shopUI');
+const hitmarkerUI = document.getElementById('hitmarker');
+const waveBanner = document.getElementById('waveBanner');
+
+function updateArcadeUI() {
+  if (!scoreUI) return;
+  scoreUI.innerHTML = `Score ${spel.score}<br>Combo x${spel.combo}`;
+  waveUI.textContent = `Wave ${spel.wave}, ${spel.waveKills}/${spel.waveDoel}`;
+  objectiveUI.textContent = spel.gameOver
+    ? 'Game over, het Monument is gevallen. Refresh om opnieuw te spelen.'
+    : `Bescherm het Nationaal Monument, ${Math.max(0, Math.ceil(spel.monumentHP))}%`;
+  comboUI.textContent = `COMBO x${spel.combo}`;
+  comboUI.style.opacity = spel.combo >= 2 && spel.comboTimer > 0 ? '1' : '0';
+  shopUI.innerHTML = `
+    <b>Upgrades</b>, druk tijdens het spelen:<br>
+    <span class="regel">1, Vuurtempo €${upgradeKosten('vuurtempo')} <span class="gekocht">lv ${upgrades.vuurtempo}</span></span>
+    <span class="regel">2, Pickup radius €${upgradeKosten('pickup')} <span class="gekocht">lv ${upgrades.pickup}</span></span>
+    <span class="regel">3, Loopsnelheid €${upgradeKosten('snelheid')} <span class="gekocht">lv ${upgrades.snelheid}</span></span>
+    <span class="regel">Robots komen uit: ${spel.laatsteSpawnPoort}</span>
+  `;
+}
+
+function toonWaveBanner(tekst) {
+  waveBanner.textContent = tekst;
+  waveBanner.style.opacity = '1';
+  clearTimeout(toonWaveBanner.timer);
+  toonWaveBanner.timer = setTimeout(() => { waveBanner.style.opacity = '0'; }, 1600);
+}
+
+function startWave(nummer) {
+  spel.wave = nummer;
+  spel.waveKills = 0;
+  spel.waveDoel = 7 + nummer * 3;
+  spel.teSpawnen = spel.waveDoel;
+  spel.maxActieveRobots = Math.min(5 + Math.floor(nummer * 0.65), 13);
+  spel.tussenWaveTimer = 0;
+  toonWaveBanner(`Wave ${nummer}`);
+  updateArcadeUI();
+}
+
+function updateWaveSysteem(dt) {
+  if (spel.gameOver) return;
+  if (spel.comboTimer > 0) {
+    spel.comboTimer -= dt;
+    if (spel.comboTimer <= 0) {
+      spel.combo = 0;
+      updateArcadeUI();
+    }
+  }
+  while (spel.teSpawnen > 0 && robots.length < spel.maxActieveRobots) {
+    spawnRobotVanafPoort();
+    spel.teSpawnen--;
+  }
+  if (spel.teSpawnen <= 0 && robots.length === 0) {
+    spel.tussenWaveTimer += dt;
+    if (spel.tussenWaveTimer < dt + 0.01) {
+      geld += 40 + spel.wave * 15;
+      updateGeldUI();
+      toonPopup(`Wave bonus +€${40 + spel.wave * 15}`);
+      toonWaveBanner(`Wave ${spel.wave} gehaald`);
+    }
+    if (spel.tussenWaveTimer > 4.5) startWave(spel.wave + 1);
+  }
+}
+
+function kiesSpawnPoort() {
+  return SPAWN_POORTEN[Math.floor(Math.random() * SPAWN_POORTEN.length)];
+}
+
+function spawnPlekVoorPoort(poort) {
+  for (let poging = 0; poging < 30; poging++) {
+    const x = poort.positie.x + (Math.random() - 0.5) * poort.spreidingX;
+    const z = poort.positie.z + (Math.random() - 0.5) * poort.spreidingZ;
+    if (isVrijePlek(x, z, 1.0)) return new THREE.Vector3(x, 0, z);
+  }
+  return poort.positie.clone();
+}
+
+function spawnRobotVanafPoort() {
+  const poort = kiesSpawnPoort();
+  spawnRobot(poort);
+}
+
+function robotRaaktMonument(robot) {
+  speelExplosie();
+  scene.remove(robot.groep);
+  robots.splice(robots.indexOf(robot), 1);
+  spel.monumentHP -= 8;
+  spel.combo = 0;
+  cameraShake = Math.max(cameraShake, 0.22);
+  toonPopup('-8% Monument');
+  if (spel.monumentHP <= 0) {
+    spel.monumentHP = 0;
+    spel.gameOver = true;
+    toonWaveBanner('Game over');
+  }
+  updateArcadeUI();
+}
+
+function upgradeKosten(type) {
+  const basis = { vuurtempo: 100, pickup: 150, snelheid: 200 }[type];
+  return basis + upgrades[type] * basis;
+}
+
+function koopUpgrade(type) {
+  if (!upgrades || spel.gameOver) return;
+  if (upgrades[type] >= 5) {
+    toonPopup('Max upgrade');
+    return;
+  }
+  const prijs = upgradeKosten(type);
+  if (geld < prijs) {
+    toonPopup(`Nog €${prijs - geld} nodig`);
+    return;
+  }
+  geld -= prijs;
+  upgrades[type]++;
+  if (type === 'snelheid') speler.snelheid += 0.65;
+  updateGeldUI();
+  updateArcadeUI();
+  toonPopup('Upgrade gekocht');
+  speelMunt();
+}
+
+function updateGeldUI() {
+  geldUI.textContent = `💰 €${geld}`;
+}
+
+const ROBOT_AANTAL = 0;      // v4 gebruikt het wave systeem in plaats van vaste robots
 const robots = [];           // alle levende robots
 const respawnLijst = [];     // tijdstippen waarop een nieuwe robot komt
 
@@ -948,51 +1935,56 @@ function maakRobot() {
   return robot;
 }
 
-function spawnRobot() {
+function spawnRobot(poort = null) {
   const robot = maakRobot();
-  robot.groep.position.copy(willekeurigePlek(14));   // niet te dicht bij de speler
-  robot.doel = willekeurigePlek(0);
+  if (poort) {
+    robot.groep.position.copy(spawnPlekVoorPoort(poort));
+    spel.laatsteSpawnPoort = poort.naam;
+  } else {
+    robot.groep.position.copy(willekeurigePlek(18));
+  }
+  robot.doel = MONUMENT_POSITIE.clone();
+  robot.snelheid = Math.min(1.35 + Math.random() * 0.7 + spel.wave * 0.07, 3.2);
   scene.add(robot.groep);
   robots.push(robot);
+  updateArcadeUI();
 }
 
 function updateRobots(dt) {
-  for (const robot of robots) {
+  if (spel.gameOver) return;
+
+  for (const robot of [...robots]) {
     const positie = robot.groep.position;
 
-    // Even pauzeren op de plek van bestemming.
-    if (robot.pauze > 0) {
-      robot.pauze -= dt;
-      if (robot.pauze <= 0) robot.doel = willekeurigePlek(0);
+    // V4: robots komen uit de straatopeningen en lopen naar het Nationaal Monument.
+    robot.doel = MONUMENT_POSITIE;
+    const richting = robot.doel.clone().sub(positie).setY(0);
+
+    // Raakt de robot het monument-vlak zelf (niet alleen het middelpunt)?
+    // De obstakel-rechthoek rond het monument houdt robots anders voor altijd
+    // op afstand van het middelpunt, waardoor de monument-HP nooit daalt.
+    if (afstandTotMonument(positie) < 0.6) {
+      robotRaaktMonument(robot);
       continue;
     }
 
-    // Richting het doel lopen.
-    const richting = robot.doel.clone().sub(positie).setY(0);
-    const afstand = richting.length();
-    if (afstand < 1) {
-      robot.pauze = 0.5 + Math.random() * 2.5;   // aangekomen: even rondkijken
-      continue;
-    }
     richting.normalize();
     positie.addScaledVector(richting, robot.snelheid * dt);
 
-    // Netjes tegen gebouwen aan botsen, net als de speler.
     const voorBotsing = positie.clone();
     losBotsingenOp(positie, 0.45);
-    // Zit hij vast tegen een muur? Kies dan gewoon een nieuw doel.
-    if (positie.distanceToSquared(voorBotsing) > 0.0001 && Math.random() < 0.05) {
-      robot.doel = willekeurigePlek(0);
+    if (positie.distanceToSquared(voorBotsing) > 0.0001) {
+      // Niet slimmer maken dan nodig: als hij vastloopt, duw hem licht terug richting open plein.
+      positie.x += richting.x * 0.45;
+      positie.z += richting.z * 0.45;
     }
 
-    // Soepel in de looprichting draaien.
     const doelHoek = Math.atan2(richting.x, richting.z);
     let verschil = doelHoek - robot.groep.rotation.y;
     while (verschil >  Math.PI) verschil -= Math.PI * 2;
     while (verschil < -Math.PI) verschil += Math.PI * 2;
     robot.groep.rotation.y += verschil * Math.min(1, dt * 6);
 
-    // Loop-animatie: benen en armen zwaaien, lijfje hupt mee.
     robot.stapfase += dt * robot.snelheid * 5;
     const zwaai = Math.sin(robot.stapfase) * 0.55;
     robot.beenLinks.rotation.x  =  zwaai;
@@ -1000,14 +1992,6 @@ function updateRobots(dt) {
     robot.armLinks.rotation.x   = -zwaai * 0.8;
     robot.armRechts.rotation.x  =  zwaai * 0.8;
     positie.y = Math.abs(Math.sin(robot.stapfase)) * 0.06;
-  }
-
-  // Is het tijd om gesneuvelde robots te vervangen?
-  for (let i = respawnLijst.length - 1; i >= 0; i--) {
-    if (klok >= respawnLijst[i]) {
-      respawnLijst.splice(i, 1);
-      spawnRobot();
-    }
   }
 }
 
@@ -1054,9 +2038,19 @@ const vlam = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8),
 vlam.position.set(0, 0.03, -0.58);
 vlam.visible = false;
 wapen.add(vlam);
+const vlamLicht = new THREE.PointLight(0xffb347, 1.35, 7);
+vlamLicht.position.set(0, 0.03, -0.58);
+vlamLicht.visible = false;
+wapen.add(vlamLicht);
 
 let terugslag = 0;   // 1 = net geschoten, zakt langzaam terug naar 0
 let vlamTimer = 0;
+let hitmarkerTimer = 0;
+let cameraShake = 0;
+function toonHitmarker() {
+  hitmarkerTimer = 0.12;
+  hitmarkerUI.style.opacity = '1';
+}
 
 // --- Brokstukken en vonkjes (kleine "physics" deeltjes) ----------
 
@@ -1108,10 +2102,22 @@ function updateBrokstukken(dt) {
 const raycaster = new THREE.Raycaster();
 raycaster.far = 150;   // verder dan dit reikt het schot niet
 
+
+let laatsteSchotTijd = -999;
+function huidigeSchotCooldown() {
+  return Math.max(0.09, 0.26 - upgrades.vuurtempo * 0.035);
+}
+function probeerTeSchieten() {
+  if (klok - laatsteSchotTijd < huidigeSchotCooldown()) return;
+  laatsteSchotTijd = klok;
+  schiet();
+}
+
 function schiet() {
   // Wapen-effectjes: terugslag, vlam en geluid.
   terugslag = 1;
   vlam.visible = true;
+  vlamLicht.visible = true;
   vlam.scale.setScalar(0.8 + Math.random() * 0.6);
   vlamTimer = 0.05;
   speelSchot();
@@ -1128,6 +2134,8 @@ function schiet() {
   while (onderdeel && !onderdeel.userData.robot) onderdeel = onderdeel.parent;
 
   if (onderdeel) {
+    toonHitmarker();
+    cameraShake = Math.max(cameraShake, 0.12);
     vernietigRobot(onderdeel.userData.robot);
   } else {
     // Muur of grond geraakt: klein grijs vonkje op de inslagplek.
@@ -1143,7 +2151,6 @@ function schiet() {
 function vernietigRobot(robot) {
   speelExplosie();
 
-  // Elk blokje van de robot wordt een los rondvliegend brokstuk.
   const losseDelen = [];
   robot.groep.traverse(deel => { if (deel.isMesh) losseDelen.push(deel); });
   for (const deel of losseDelen) {
@@ -1153,13 +2160,17 @@ function vernietigRobot(robot) {
     maakBrokstuk(kopie, wereldPositie, 6);
   }
 
-  // Robot weghalen en een munt achterlaten.
   scene.remove(robot.groep);
   robots.splice(robots.indexOf(robot), 1);
   legMuntNeer(robot.groep.position);
 
-  // Over een paar seconden komt er ergens een nieuwe robot bij.
-  respawnLijst.push(klok + 4 + Math.random() * 5);
+  spel.combo += 1;
+  spel.comboTimer = 3.2;
+  spel.waveKills += 1;
+  const punten = 100 * Math.max(1, spel.combo);
+  spel.score += punten;
+  toonPopup(`+${punten} score`);
+  updateArcadeUI();
 }
 
 /* ================================================================
@@ -1200,9 +2211,10 @@ function updateMunten(dt) {
     // Loopt de speler er dichtbij genoeg langs? Dan oppakken!
     const dx = munt.groep.position.x - speler.positie.x;
     const dz = munt.groep.position.z - speler.positie.z;
-    if (dx * dx + dz * dz < 1.4 * 1.4) {
+    const pickupStraal = 1.4 + upgrades.pickup * 0.45;
+    if (dx * dx + dz * dz < pickupStraal * pickupStraal) {
       geld += munt.bedrag;
-      geldUI.textContent = `💰 €${geld}`;
+      updateGeldUI();
       toonPopup(`+€${munt.bedrag}`);
       speelMunt();
       scene.remove(munt.groep);
@@ -1250,6 +2262,7 @@ function piep(type, startHz, eindHz, duur, volume) {
 }
 
 function speelSchot()    { piep('square', 620, 140, 0.12, 0.12); }
+function speelTramBel()  { piep('sine', 980, 980, 0.08, 0.045); setTimeout(() => piep('sine', 1320, 1320, 0.08, 0.035), 90); }
 function speelMunt()     { piep('sine', 880, 880, 0.08, 0.15); setTimeout(() => piep('sine', 1320, 1320, 0.15, 0.15), 80); }
 function speelExplosie() {
   piep('sawtooth', 220, 40, 0.3, 0.2);
@@ -1263,9 +2276,9 @@ function speelExplosie() {
 let klok = 0;                       // totale speeltijd in seconden
 let vorigeTijd = performance.now();
 
-// Zet bij de start de eerste robots en duiven neer.
-for (let i = 0; i < ROBOT_AANTAL; i++) spawnRobot();
-for (let i = 0; i < 12; i++) plaatsDuif();
+// Zet bij de start de eerste wave en duiven neer.
+startWave(1);
+for (let i = 0; i < 18; i++) plaatsDuif();
 
 function gameLoop(nu) {
   requestAnimationFrame(gameLoop);
@@ -1277,10 +2290,12 @@ function gameLoop(nu) {
   klok += dt;
 
   updateSpeler(dt);
+  updateWaveSysteem(dt);
   updateRobots(dt);
   updateDuiven(dt);
   updateMunten(dt);
   updateBrokstukken(dt);
+  if (typeof updateBewegendeTrams === 'function') updateBewegendeTrams(dt);
 
   // Wapen-terugslag laten uitdempen.
   if (terugslag > 0) {
@@ -1290,7 +2305,18 @@ function gameLoop(nu) {
   }
   if (vlamTimer > 0) {
     vlamTimer -= dt;
-    if (vlamTimer <= 0) vlam.visible = false;
+    if (vlamTimer <= 0) { vlam.visible = false; vlamLicht.visible = false; }
+  }
+
+  if (hitmarkerTimer > 0) {
+    hitmarkerTimer -= dt;
+    if (hitmarkerTimer <= 0) hitmarkerUI.style.opacity = '0';
+  }
+  if (cameraShake > 0) {
+    const sterkte = cameraShake * 0.12;
+    camera.position.x += (Math.random() - 0.5) * sterkte;
+    camera.position.y += (Math.random() - 0.5) * sterkte;
+    cameraShake = Math.max(0, cameraShake - dt * 1.9);
   }
 
   renderer.render(scene, camera);
@@ -1299,7 +2325,7 @@ requestAnimationFrame(gameLoop);
 
 // Handig om te experimenteren in de browserconsole (F12 → Console):
 // bijvoorbeeld `DamChaosDebug.spawnRobot()` voor een extra robot.
-window.DamChaosDebug = { scene, camera, speler, robots, munten, spawnRobot, vernietigRobot, geldStand: () => geld };
+window.DamChaosDebug = { scene, camera, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, spel, upgrades, startWave, geldStand: () => geld };
 </script>
 </body>
 </html>
