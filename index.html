@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dam Chaos — Amsterdam</title>
+<style>
+  /* ============================================================
+     STIJL VAN DE PAGINA EN DE UI (alles wat GEEN 3D is)
+     ============================================================ */
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;            /* geen scrollbalken */
+    height: 100%;
+    background: #87ceeb;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  canvas { display: block; }
+
+  /* --- Geldteller linksboven --- */
+  #geldUI {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    padding: 10px 18px;
+    background: rgba(20, 30, 45, 0.65);
+    color: #ffd75e;
+    font-size: 26px;
+    font-weight: 700;
+    border-radius: 12px;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  /* --- Klein hulptekstje onderin --- */
+  #hulpUI {
+    position: fixed;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.85);
+    background: rgba(20, 30, 45, 0.45);
+    padding: 6px 14px;
+    border-radius: 10px;
+    font-size: 14px;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  /* --- Richtkruis in het midden van het scherm --- */
+  #richtkruis {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 24px;
+    height: 24px;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 5;
+  }
+  #richtkruis::before, #richtkruis::after {
+    content: "";
+    position: absolute;
+    background: rgba(255,255,255,0.9);
+    box-shadow: 0 0 3px rgba(0,0,0,0.8);
+  }
+  /* horizontale streep */
+  #richtkruis::before { top: 11px; left: 0; width: 24px; height: 2px; }
+  /* verticale streep */
+  #richtkruis::after  { left: 11px; top: 0; width: 2px; height: 24px; }
+
+  /* --- Zwevende "+€" tekstjes als je geld oppakt --- */
+  #popups {
+    position: fixed;
+    top: 45%;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+    z-index: 6;
+    text-align: center;
+  }
+  .popup {
+    color: #ffd75e;
+    font-size: 30px;
+    font-weight: 800;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+    animation: zweef 1.1s ease-out forwards;
+  }
+  @keyframes zweef {
+    0%   { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-70px); }
+  }
+
+  /* --- Startscherm / pauzescherm --- */
+  #startscherm {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 20, 40, 0.72);
+    backdrop-filter: blur(3px);
+    color: white;
+    text-align: center;
+    cursor: pointer;
+    z-index: 10;
+  }
+  #startscherm h1 {
+    font-size: 64px;
+    margin: 0 0 4px 0;
+    letter-spacing: 4px;
+    color: #ffd75e;
+    text-shadow: 0 4px 12px rgba(0,0,0,0.6);
+  }
+  #startscherm h2 {
+    font-size: 20px;
+    font-weight: 400;
+    margin: 0 0 28px 0;
+    color: #cfe8ff;
+  }
+  #startscherm .uitleg {
+    background: rgba(255,255,255,0.1);
+    border-radius: 14px;
+    padding: 18px 30px;
+    font-size: 17px;
+    line-height: 1.9;
+    margin-bottom: 30px;
+  }
+  #startscherm .knop {
+    font-size: 22px;
+    font-weight: 700;
+    background: #ffd75e;
+    color: #24303f;
+    padding: 12px 36px;
+    border-radius: 999px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     DE UI-LAAG (HTML bovenop het 3D-canvas)
+     ============================================================ -->
+<div id="geldUI">💰 €0</div>
+<div id="richtkruis" style="display:none"></div>
+<div id="popups"></div>
+<div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; klik = schieten &nbsp;·&nbsp; Esc = pauze</div>
+
+<div id="startscherm">
+  <h1>DAM CHAOS</h1>
+  <h2>Robotjacht op de Dam — Amsterdam</h2>
+  <div class="uitleg">
+    🚶 <b>WASD</b> om te lopen, <b>muis</b> om rond te kijken<br>
+    🔫 <b>Linkermuisknop</b> om op robots te schieten<br>
+    💰 Loop over de munten die ze achterlaten om geld te verdienen<br>
+    ⏸️ <b>Esc</b> om te pauzeren
+  </div>
+  <div class="knop">Klik om te spelen</div>
+</div>
+
+<!-- Three.js laden vanaf een CDN. Dankzij deze "importmap" kunnen we
+     hieronder gewoon `import * as THREE from 'three'` schrijven. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+/* ================================================================
+   STAP 1 — DE BASIS: scene, camera, renderer en licht
+   ================================================================
+   - De "scene" is de 3D-wereld waar alles in zit.
+   - De "camera" is het oog van de speler (first-person).
+   - De "renderer" tekent alles op het scherm.
+   ================================================================ */
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);          // heldere blauwe lucht
+scene.fog = new THREE.Fog(0x87ceeb, 140, 340);          // lichte mist in de verte
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 600);
+camera.rotation.order = 'YXZ';                          // eerst draaien (yaw), dan kijken op/neer (pitch)
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;                      // schaduwen aan
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;       // zachte schaduwranden
+document.body.appendChild(renderer.domElement);
+
+// De zon: één sterk gericht licht dat schaduwen werpt.
+const zon = new THREE.DirectionalLight(0xfff2d0, 2.6);
+zon.position.set(70, 100, 45);
+zon.castShadow = true;
+zon.shadow.mapSize.set(2048, 2048);
+zon.shadow.camera.left   = -110;
+zon.shadow.camera.right  =  110;
+zon.shadow.camera.top    =  110;
+zon.shadow.camera.bottom = -110;
+zon.shadow.camera.near   = 10;
+zon.shadow.camera.far    = 300;
+scene.add(zon);
+
+// Hemellicht: zachte vulling zodat schaduwkanten niet pikzwart zijn.
+scene.add(new THREE.HemisphereLight(0xbfe3ff, 0x9b8f7a, 1.15));
+
+// Bij het schalen van het venster passen we camera + renderer aan.
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ================================================================
+   STAP 2 — DE WERELD: de Dam en omgeving bouwen
+   ================================================================
+   Alles is opgebouwd uit simpele blokken (low-poly stijl).
+   Elk gebouw/object dat de speler moet blokkeren registreren we
+   als "obstakel" (een rechthoek op de plattegrond).
+   ================================================================ */
+
+const wereld = new THREE.Group();   // alle vaste decorstukken komen hierin
+scene.add(wereld);
+
+const obstakels = [];               // lijst van { minX, maxX, minZ, maxZ }
+
+// De grenzen van het beloopbare gebied (verder kun je niet lopen).
+const GRENS = { minX: -72, maxX: 72, minZ: -88, maxZ: 58 };
+
+// --- Handige bouw-hulpjes -------------------------------------
+
+// Maak een standaard materiaal met een kleur.
+function mat(kleur, ruwheid = 0.9, metaal = 0) {
+  return new THREE.MeshStandardMaterial({ color: kleur, roughness: ruwheid, metalness: metaal });
+}
+
+// Maak een blok (doos) dat schaduw werpt en ontvangt.
+function blok(breedte, hoogte, diepte, kleur) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(breedte, hoogte, diepte), mat(kleur));
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
+
+// Registreer een 3D-object als obstakel: we berekenen de rechthoek
+// die het op de grond inneemt, en daar kan niemand doorheen.
+function registreerObstakel(object, marge = 0) {
+  object.updateWorldMatrix(true, true);
+  const doos = new THREE.Box3().setFromObject(object);
+  obstakels.push({
+    minX: doos.min.x - marge, maxX: doos.max.x + marge,
+    minZ: doos.min.z - marge, maxZ: doos.max.z + marge,
+  });
+}
+
+// --- De grond: plein, straten en stoepen ----------------------
+
+// Grote basisvloer (asfaltkleur).
+const grond = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), mat(0x8f8b82, 1));
+grond.rotation.x = -Math.PI / 2;    // plat neerleggen
+grond.receiveShadow = true;
+wereld.add(grond);
+
+// Het plein zelf: lichte klinkertjes, iets boven het asfalt.
+function vloerdeel(breedte, diepte, x, z, kleur) {
+  const v = new THREE.Mesh(new THREE.BoxGeometry(breedte, 0.08, diepte), mat(kleur, 1));
+  v.position.set(x, 0.04, z);
+  v.receiveShadow = true;
+  wereld.add(v);
+}
+vloerdeel(120, 95, -5, -2, 0xcdb99b);   // de Dam (het grote plein)
+vloerdeel(28, 70, 0, -55, 0xa7a29a);    // het Damrak (straat naar het noorden)
+vloerdeel(24, 40, 5, 45, 0xa7a29a);     // het Rokin (straat naar het zuiden)
+
+// Zebrapad bij het begin van het Damrak (paar witte streepjes).
+for (let i = 0; i < 6; i++) {
+  const streep = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.09, 3.5), mat(0xf2f2f2, 0.8));
+  streep.position.set(-7 + i * 2.8, 0.05, -46);
+  streep.receiveShadow = true;
+  wereld.add(streep);
+}
+
+// --- Het Koninklijk Paleis (westkant van het plein) ------------
+
+function bouwPaleis() {
+  const paleis = new THREE.Group();
+
+  // Hoofdgebouw: groot zandsteenkleurig blok.
+  const hoofd = blok(16, 14, 44, 0xc8b27c);
+  hoofd.position.y = 7;
+  paleis.add(hoofd);
+
+  // Middenstuk dat iets naar voren steekt, met driehoekig fronton.
+  const midden = blok(3, 15, 16, 0xd2bc86);
+  midden.position.set(7, 7.5, 0);
+  paleis.add(midden);
+  // (we draaien de piramide-geometrie eerst 45°, zodat de platte kanten
+  //  netjes langs de assen liggen, en maken hem daarna dun in de diepte)
+  const frontonGeometrie = new THREE.CylinderGeometry(0.01, 6.5, 3, 4);
+  frontonGeometrie.rotateY(Math.PI / 4);
+  const fronton = new THREE.Mesh(frontonGeometrie, mat(0xd2bc86));
+  fronton.scale.set(0.35, 1, 1);
+  fronton.position.set(7.5, 16.4, 0);
+  fronton.castShadow = true;
+  paleis.add(fronton);
+
+  // Dak.
+  const dak = blok(15, 1.6, 43, 0x6b6f75);
+  dak.position.y = 14.8;
+  paleis.add(dak);
+
+  // De beroemde groene koepel met torentje.
+  const koepelVoet = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.4, 4, 10), mat(0xd2bc86));
+  koepelVoet.position.y = 17.5;
+  koepelVoet.castShadow = true;
+  paleis.add(koepelVoet);
+  const koepel = new THREE.Mesh(new THREE.SphereGeometry(3, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(0x3f7d5e, 0.6));
+  koepel.position.y = 19.5;
+  koepel.castShadow = true;
+  paleis.add(koepel);
+  const spits = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.35, 3.5, 6), mat(0xe8c84e, 0.4, 0.6));
+  spits.position.y = 23.5;
+  paleis.add(spits);
+
+  // Rijen donkere raampjes op de oostgevel (de kant van het plein).
+  for (let rij = 0; rij < 3; rij++) {
+    for (let kolom = 0; kolom < 10; kolom++) {
+      const raam = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.2, 1.4), mat(0x2c3540, 0.4));
+      raam.position.set(8.05, 3.5 + rij * 4, -19 + kolom * 4.2);
+      paleis.add(raam);
+    }
+  }
+
+  paleis.position.set(-56, 0, -2);
+  wereld.add(paleis);
+  registreerObstakel(paleis);
+}
+bouwPaleis();
+
+// --- De Nieuwe Kerk (naast het paleis, noordwesthoek) -----------
+
+function bouwNieuweKerk() {
+  const kerk = new THREE.Group();
+
+  // Schip van de kerk (het lange hoofdgedeelte).
+  const schip = blok(26, 11, 13, 0x9c8f80);
+  schip.position.y = 5.5;
+  kerk.add(schip);
+
+  // Steil zadeldak (uitgerekte piramide = mooi genoeg voor low-poly).
+  const dakGeometrie = new THREE.CylinderGeometry(0.01, 9.5, 7, 4);
+  dakGeometrie.rotateY(Math.PI / 4);   // platte kanten langs de assen leggen
+  const dak = new THREE.Mesh(dakGeometrie, mat(0x4d5560));
+  dak.scale.set(2.0, 1, 1);            // uitrekken in de lengte van de kerk
+  dak.position.y = 14.5;
+  dak.castShadow = true;
+  kerk.add(dak);
+
+  // Torentje met spits.
+  const toren = blok(4, 17, 4, 0x8f8274);
+  toren.position.set(-13, 8.5, 0);
+  kerk.add(toren);
+  const spitsGeometrie = new THREE.CylinderGeometry(0.01, 3.4, 7, 4);
+  spitsGeometrie.rotateY(Math.PI / 4);
+  const torenspits = new THREE.Mesh(spitsGeometrie, mat(0x3f4854));
+  torenspits.position.set(-13, 20.5, 0);
+  torenspits.castShadow = true;
+  kerk.add(torenspits);
+
+  // Hoge spitsboogramen (donker met een lichte rand-suggestie).
+  for (let i = 0; i < 6; i++) {
+    const raam = new THREE.Mesh(new THREE.BoxGeometry(1.5, 5.5, 0.2), mat(0x27313d, 0.3));
+    raam.position.set(-10 + i * 4, 5.5, 6.6);
+    kerk.add(raam);
+  }
+
+  kerk.position.set(-38, 0, -40);
+  wereld.add(kerk);
+  registreerObstakel(kerk);
+}
+bouwNieuweKerk();
+
+// --- Het Nationaal Monument (oostkant van het plein) ------------
+
+function bouwMonument() {
+  const monument = new THREE.Group();
+
+  // Twee ronde traptreden als voet.
+  const tree1 = new THREE.Mesh(new THREE.CylinderGeometry(7, 7, 0.6, 24), mat(0xd9d2c4));
+  tree1.position.y = 0.3;
+  tree1.receiveShadow = true; tree1.castShadow = true;
+  monument.add(tree1);
+  const tree2 = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 0.6, 24), mat(0xe2dccf));
+  tree2.position.y = 0.9;
+  tree2.receiveShadow = true; tree2.castShadow = true;
+  monument.add(tree2);
+
+  // De witte pyloon (taps toelopende zuil).
+  const zuil = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 2.4, 20, 14), mat(0xf0ece2, 0.7));
+  zuil.position.y = 11;
+  zuil.castShadow = true;
+  monument.add(zuil);
+
+  // Kleine kring witte paaltjes eromheen.
+  for (let i = 0; i < 12; i++) {
+    const hoek = (i / 12) * Math.PI * 2;
+    const paaltje = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1, 8), mat(0xe8e2d4));
+    paaltje.position.set(Math.cos(hoek) * 9.5, 0.5, Math.sin(hoek) * 9.5);
+    paaltje.castShadow = true;
+    monument.add(paaltje);
+  }
+
+  monument.position.set(38, 0, -2);
+  wereld.add(monument);
+  // Alleen het middenstuk blokkeert (tussen de paaltjes door lopen mag).
+  obstakels.push({ minX: 38 - 7, maxX: 38 + 7, minZ: -2 - 7, maxZ: -2 + 7 });
+}
+bouwMonument();
+
+// --- Amsterdamse grachtenpandjes rondom het plein ----------------
+
+// Vrolijk kleurenpalet voor de gevels.
+const GEVELKLEUREN = [0x8a4b3a, 0x54402f, 0x3e4a3d, 0xb08d57, 0x6e4a4a, 0x424d5c, 0x94684a, 0x5c4a63];
+
+// Bouwt één smal huisje met trapgevel en raampjes. De voorkant wijst
+// standaard naar +z; daarna draaien we het hele huis de goede kant op.
+function maakHuis() {
+  const huis = new THREE.Group();
+  const breedte = 5.6;
+  const diepte  = 9;
+  const hoogte  = 8 + Math.random() * 5;
+  const kleur   = GEVELKLEUREN[Math.floor(Math.random() * GEVELKLEUREN.length)];
+
+  const romp = blok(breedte, hoogte, diepte, kleur);
+  romp.position.y = hoogte / 2;
+  huis.add(romp);
+
+  // Trapgevel: drie steeds smallere blokjes bovenop.
+  for (let i = 0; i < 3; i++) {
+    const trap = blok(breedte * (0.78 - i * 0.24), 0.9, 1.2, kleur);
+    trap.position.set(0, hoogte + 0.45 + i * 0.9, diepte / 2 - 0.6);
+    huis.add(trap);
+  }
+
+  // Witte raampjes met donker glas op de voorgevel.
+  const verdiepingen = Math.floor(hoogte / 3);
+  for (let v = 0; v < verdiepingen; v++) {
+    for (let k = 0; k < 2; k++) {
+      const kozijn = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2, 0.15), mat(0xe8e4da, 0.6));
+      kozijn.position.set(-1.3 + k * 2.6, 2.4 + v * 3, diepte / 2 + 0.05);
+      huis.add(kozijn);
+      const glas = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.7, 0.16), mat(0x2c3540, 0.3));
+      glas.position.set(-1.3 + k * 2.6, 2.4 + v * 3, diepte / 2 + 0.06);
+      huis.add(glas);
+    }
+  }
+
+  // Voordeur.
+  const deur = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.15), mat(0x33261c, 0.7));
+  deur.position.set(0, 1.1, diepte / 2 + 0.05);
+  huis.add(deur);
+
+  return huis;
+}
+
+// Zet een rij huisjes neer. (x,z) is het midden van de rij,
+// `draai` bepaalt welke kant de voordeuren op wijzen.
+function rijHuizen(aantal, x, z, draai, richting) {
+  for (let i = 0; i < aantal; i++) {
+    const huis = maakHuis();
+    const afstand = (i - (aantal - 1) / 2) * 6.2;
+    if (richting === 'x') huis.position.set(x + afstand, 0, z);
+    else                  huis.position.set(x, 0, z + afstand);
+    huis.rotation.y = draai;
+    wereld.add(huis);
+    registreerObstakel(huis);
+  }
+}
+
+rijHuizen(10, -5, 52, Math.PI, 'x');          // zuidrand van het plein (naast Rokin)
+rijHuizen(6, 47, -35, -Math.PI / 2, 'z');     // oostrand (achter het monument)
+rijHuizen(5, 47, 28, -Math.PI / 2, 'z');      // oostrand, zuidelijk stuk
+rijHuizen(6, -22, -68, Math.PI / 2, 'z');     // westkant van het Damrak
+rijHuizen(6, 22, -68, -Math.PI / 2, 'z');     // oostkant van het Damrak
+rijHuizen(4, -58, 35, Math.PI / 2, 'z');      // zuidwest hoek
+
+/* ----------------------------------------------------------------
+   Sfeerelementen: lantaarns, bankjes, terrasjes, fietsen, bomen
+   ---------------------------------------------------------------- */
+
+// Klassieke Amsterdamse lantaarnpaal.
+function lantaarn(x, z) {
+  const paal = new THREE.Group();
+  const stok = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.13, 4.6, 8), mat(0x2e4034, 0.6, 0.4));
+  stok.position.y = 2.3;
+  stok.castShadow = true;
+  paal.add(stok);
+  const kap = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.5, 6), mat(0x2e4034, 0.6, 0.4));
+  kap.position.y = 4.85;
+  kap.castShadow = true;
+  paal.add(kap);
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8),
+    new THREE.MeshStandardMaterial({ color: 0xfff2b0, emissive: 0xffe28a, emissiveIntensity: 0.35 }));
+  lamp.position.y = 4.5;
+  paal.add(lamp);
+  paal.position.set(x, 0, z);
+  wereld.add(paal);
+  obstakels.push({ minX: x - 0.25, maxX: x + 0.25, minZ: z - 0.25, maxZ: z + 0.25 });
+}
+[[-30, -25], [-30, 20], [20, 25], [25, -30], [0, -5], [-8, -46], [8, -46],
+ [-8, -78], [8, -78], [55, -2], [-45, 25], [12, 40]].forEach(([x, z]) => lantaarn(x, z));
+
+// Houten bankje.
+function bankje(x, z, draai = 0) {
+  const bank = new THREE.Group();
+  const zitting = blok(2.4, 0.15, 0.7, 0x7a5a38);
+  zitting.position.y = 0.55;
+  bank.add(zitting);
+  const leuning = blok(2.4, 0.7, 0.12, 0x7a5a38);
+  leuning.position.set(0, 1.0, -0.32);
+  bank.add(leuning);
+  for (const kant of [-1, 1]) {
+    const poot = blok(0.15, 0.55, 0.6, 0x3d4247);
+    poot.position.set(kant * 1.0, 0.27, 0);
+    bank.add(poot);
+  }
+  bank.position.set(x, 0, z);
+  bank.rotation.y = draai;
+  wereld.add(bank);
+  registreerObstakel(bank);
+}
+bankje(18, 12, Math.PI / 6);
+bankje(-15, -28, -0.4);
+bankje(26, -18, Math.PI / 2);
+bankje(-25, 32, 0);
+
+// Terrasje: parasol met tafeltje en stoeltjes.
+function terras(x, z) {
+  const t = new THREE.Group();
+  // Parasol.
+  const stok = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 6), mat(0x8a8a8a, 0.5, 0.3));
+  stok.position.y = 1.3;
+  t.add(stok);
+  const doek = new THREE.Mesh(new THREE.ConeGeometry(1.9, 0.8, 8), mat(0xd6483b, 0.8));
+  doek.position.y = 2.7;
+  doek.castShadow = true;
+  t.add(doek);
+  // Tafeltje.
+  const blad = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.08, 12), mat(0xe8e4da, 0.6));
+  blad.position.y = 0.75;
+  blad.castShadow = true;
+  t.add(blad);
+  // Stoeltjes eromheen.
+  for (let i = 0; i < 3; i++) {
+    const hoek = (i / 3) * Math.PI * 2 + 0.5;
+    const stoel = blok(0.5, 0.5, 0.5, 0x4a6c50);
+    stoel.position.set(Math.cos(hoek) * 1.3, 0.25, Math.sin(hoek) * 1.3);
+    t.add(stoel);
+  }
+  t.position.set(x, 0, z);
+  wereld.add(t);
+  obstakels.push({ minX: x - 1.6, maxX: x + 1.6, minZ: z - 1.6, maxZ: z + 1.6 });
+}
+terras(-38, 25); terras(-34, 29); terras(30, 34); terras(34, 30);
+
+// Fietsenrek met een rijtje fietsen (heel Amsterdams).
+function fietsenrek(x, z, draai = 0) {
+  const rek = new THREE.Group();
+  const stang = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 8, 6), mat(0x777777, 0.4, 0.6));
+  stang.rotation.z = Math.PI / 2;
+  stang.position.y = 0.75;
+  rek.add(stang);
+  const fietsKleuren = [0x333333, 0x7a3030, 0x2f4a6e, 0x333333, 0x5a4a2f];
+  for (let i = 0; i < 5; i++) {
+    const fiets = new THREE.Group();
+    const kleur = fietsKleuren[i];
+    // Twee wielen (torus = donut-vorm).
+    for (const kant of [-0.55, 0.55]) {
+      const wiel = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.045, 6, 14), mat(0x222222, 0.6));
+      wiel.position.set(0, 0.33, kant);
+      wiel.rotation.y = Math.PI / 2;
+      wiel.castShadow = true;
+      fiets.add(wiel);
+    }
+    // Frame en stuur, heel simpel.
+    const frame = blok(0.06, 0.5, 1.0, kleur);
+    frame.position.y = 0.55;
+    frame.rotation.x = 0.2;
+    fiets.add(frame);
+    const stuur = blok(0.5, 0.06, 0.06, 0x888888);
+    stuur.position.set(0, 0.95, -0.5);
+    fiets.add(stuur);
+    fiets.position.set(-3.2 + i * 1.6, 0, 0);
+    fiets.rotation.y = Math.PI / 2 + (Math.random() - 0.5) * 0.2;
+    rek.add(fiets);
+  }
+  rek.position.set(x, 0, z);
+  rek.rotation.y = draai;
+  wereld.add(rek);
+  registreerObstakel(rek, 0.2);
+}
+fietsenrek(-20, 42, 0);
+fietsenrek(42, 14, Math.PI / 2);
+fietsenrek(-12, -50, 0);
+
+// Een paar bomen voor wat groen.
+function boom(x, z) {
+  const b = new THREE.Group();
+  const stam = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.4, 3, 8), mat(0x6a4a30));
+  stam.position.y = 1.5;
+  stam.castShadow = true;
+  b.add(stam);
+  const kruin = new THREE.Mesh(new THREE.SphereGeometry(2 + Math.random(), 10, 8), mat(0x4f7d3d));
+  kruin.position.y = 4.2;
+  kruin.castShadow = true;
+  b.add(kruin);
+  b.position.set(x, 0, z);
+  wereld.add(b);
+  obstakels.push({ minX: x - 0.5, maxX: x + 0.5, minZ: z - 0.5, maxZ: z + 0.5 });
+}
+boom(-42, 18); boom(-46, 30); boom(24, 38); boom(52, 22); boom(56, -28); boom(-30, -34);
+
+// Witte wolkjes hoog in de lucht (simpele platte bollen).
+for (let i = 0; i < 7; i++) {
+  const wolk = new THREE.Mesh(new THREE.SphereGeometry(8 + Math.random() * 6, 8, 6),
+    new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  wolk.position.set(-150 + Math.random() * 300, 70 + Math.random() * 25, -150 + Math.random() * 300);
+  wolk.scale.y = 0.35;
+  scene.add(wolk);
+}
+
+/* ----------------------------------------------------------------
+   Duiven: ze scharrelen rond en vliegen op als je te dichtbij komt
+   ---------------------------------------------------------------- */
+
+const duiven = [];
+
+function maakDuif() {
+  const duif = new THREE.Group();
+  const lijf = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), mat(0x8d93a1, 0.8));
+  lijf.scale.set(1, 0.85, 1.35);
+  lijf.position.y = 0.16;
+  lijf.castShadow = true;
+  duif.add(lijf);
+  const kop = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), mat(0x5c6472, 0.8));
+  kop.position.set(0, 0.3, 0.16);
+  duif.add(kop);
+  const snavel = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.07, 5), mat(0xd8a24a, 0.7));
+  snavel.rotation.x = Math.PI / 2;
+  snavel.position.set(0, 0.3, 0.26);
+  duif.add(snavel);
+  return duif;
+}
+
+function plaatsDuif() {
+  const duif = maakDuif();
+  duif.position.copy(willekeurigePlek(0));
+  scene.add(duif);
+  duiven.push({
+    groep: duif,
+    richting: Math.random() * Math.PI * 2,   // waar hij heen wandelt
+    timer: Math.random() * 3,                // wanneer hij een nieuwe kant kiest
+    vliegend: false,
+    vliegSnelheid: new THREE.Vector3(),
+  });
+}
+
+function updateDuiven(dt) {
+  for (const d of duiven) {
+    if (d.vliegend) {
+      // Wegfladderen: omhoog en van de speler vandaan.
+      d.groep.position.addScaledVector(d.vliegSnelheid, dt);
+      d.groep.rotation.z = Math.sin(klok * 30) * 0.4;   // fladder-wiebel
+      if (d.groep.position.y > 25) {
+        // Hoog genoeg: ergens anders opnieuw neerstrijken.
+        d.groep.position.copy(willekeurigePlek(0));
+        d.groep.rotation.z = 0;
+        d.vliegend = false;
+      }
+      continue;
+    }
+    // Schrikt hij van de speler?
+    if (d.groep.position.distanceTo(speler.positie) < 3) {
+      d.vliegend = true;
+      const weg = d.groep.position.clone().sub(speler.positie).setY(0).normalize();
+      d.vliegSnelheid.set(weg.x * 6, 9, weg.z * 6);
+      continue;
+    }
+    // Rustig rondscharrelen.
+    d.timer -= dt;
+    if (d.timer <= 0) {
+      d.richting = Math.random() * Math.PI * 2;
+      d.timer = 1 + Math.random() * 3;
+    }
+    d.groep.rotation.y = -d.richting + Math.PI / 2;
+    d.groep.position.x += Math.cos(d.richting) * 0.8 * dt;
+    d.groep.position.z += Math.sin(d.richting) * 0.8 * dt;
+    // Kopje op en neer alsof hij pikt.
+    d.groep.children[1].position.y = 0.3 - Math.max(0, Math.sin(klok * 6 + d.richting * 10)) * 0.12;
+  }
+}
+
+/* ================================================================
+   STAP 3 — DE SPELER: first-person besturing met botsingen
+   ================================================================
+   - WASD om te lopen, muis om te kijken (pointer lock).
+   - De speler is onzichtbaar: we bewegen simpelweg de camera.
+   - Botsingen: de speler is een cirkel (van bovenaf gezien) die
+     uit de obstakel-rechthoeken wordt geduwd.
+   ================================================================ */
+
+const speler = {
+  positie: new THREE.Vector3(15, 0, 25),   // startplek op het plein
+  yaw: 2.4,        // draaiing (kijkt richting het paleis)
+  pitch: 0,        // op/neer kijken
+  hoogte: 1.7,     // ooghoogte in meters
+  straal: 0.4,     // "dikte" voor botsingen
+  snelheid: 7,     // loopsnelheid in meter per seconde
+  bobTijd: 0,      // teller voor het loop-wiebeltje van de camera
+};
+
+const ingedrukt = {};   // welke toetsen zijn nu ingedrukt?
+addEventListener('keydown', e => { ingedrukt[e.code] = true; });
+addEventListener('keyup',   e => { ingedrukt[e.code] = false; });
+
+// --- Pointer lock: muis "vastzetten" zodra je klikt ------------
+
+const startscherm = document.getElementById('startscherm');
+const richtkruis = document.getElementById('richtkruis');
+const hulpUI = document.getElementById('hulpUI');
+
+startscherm.addEventListener('click', () => {
+  initGeluid();   // geluid mag pas starten na een klik (browserregel)
+  renderer.domElement.requestPointerLock();
+});
+
+document.addEventListener('pointerlockchange', () => {
+  const actief = document.pointerLockElement === renderer.domElement;
+  startscherm.style.display = actief ? 'none' : 'flex';
+  richtkruis.style.display = actief ? 'block' : 'none';
+  hulpUI.style.display = actief ? 'block' : 'none';
+  if (actief) {
+    startscherm.querySelector('h2').textContent = 'Robotjacht op de Dam — Amsterdam';
+  } else {
+    // Speler drukte op Esc: toon het scherm als pauzescherm.
+    startscherm.querySelector('h2').textContent = 'Gepauzeerd — klik om verder te spelen';
+    for (const k in ingedrukt) ingedrukt[k] = false;   // toetsen loslaten
+  }
+});
+
+// Rondkijken met de muis (alleen als pointer lock actief is).
+addEventListener('mousemove', e => {
+  if (document.pointerLockElement !== renderer.domElement) return;
+  speler.yaw   -= e.movementX * 0.0022;
+  speler.pitch -= e.movementY * 0.0022;
+  // Niet verder dan recht omhoog/omlaag kunnen kijken.
+  speler.pitch = Math.max(-1.45, Math.min(1.45, speler.pitch));
+});
+
+// Schieten met de linkermuisknop.
+addEventListener('mousedown', e => {
+  if (document.pointerLockElement === renderer.domElement && e.button === 0) schiet();
+});
+
+// --- Botsingen: duw een punt (met straal) uit alle obstakels ----
+
+function losBotsingenOp(positie, straal) {
+  for (const o of obstakels) {
+    // Zoek het punt op de rechthoek dat het dichtst bij ons ligt.
+    const dichtstX = Math.max(o.minX, Math.min(positie.x, o.maxX));
+    const dichtstZ = Math.max(o.minZ, Math.min(positie.z, o.maxZ));
+    const dx = positie.x - dichtstX;
+    const dz = positie.z - dichtstZ;
+    const afstand2 = dx * dx + dz * dz;
+    if (afstand2 < straal * straal) {
+      if (afstand2 > 0.000001) {
+        // We raken de rand: duw naar buiten langs de kortste weg.
+        const afstand = Math.sqrt(afstand2);
+        positie.x = dichtstX + (dx / afstand) * straal;
+        positie.z = dichtstZ + (dz / afstand) * straal;
+      } else {
+        // We staan er middenin: duw naar de dichtstbijzijnde zijkant.
+        const naarLinks  = positie.x - o.minX + straal;
+        const naarRechts = o.maxX - positie.x + straal;
+        const naarVoor   = positie.z - o.minZ + straal;
+        const naarAchter = o.maxZ - positie.z + straal;
+        const kleinste = Math.min(naarLinks, naarRechts, naarVoor, naarAchter);
+        if (kleinste === naarLinks)       positie.x = o.minX - straal;
+        else if (kleinste === naarRechts) positie.x = o.maxX + straal;
+        else if (kleinste === naarVoor)   positie.z = o.minZ - straal;
+        else                              positie.z = o.maxZ + straal;
+      }
+    }
+  }
+  // Binnen de wereldgrenzen blijven.
+  positie.x = Math.max(GRENS.minX, Math.min(GRENS.maxX, positie.x));
+  positie.z = Math.max(GRENS.minZ, Math.min(GRENS.maxZ, positie.z));
+}
+
+// Staat dit punt vrij (niet in een obstakel)? Handig voor spawnen.
+function isVrijePlek(x, z, marge = 1) {
+  if (x < GRENS.minX + 2 || x > GRENS.maxX - 2 || z < GRENS.minZ + 2 || z > GRENS.maxZ - 2) return false;
+  for (const o of obstakels) {
+    if (x > o.minX - marge && x < o.maxX + marge && z > o.minZ - marge && z < o.maxZ + marge) return false;
+  }
+  return true;
+}
+
+// Zoek een willekeurige vrije plek, eventueel minimaal `minAfstand`
+// van de speler vandaan (zodat robots niet ín je gezicht spawnen).
+function willekeurigePlek(minAfstand = 0) {
+  for (let poging = 0; poging < 60; poging++) {
+    const x = GRENS.minX + Math.random() * (GRENS.maxX - GRENS.minX);
+    const z = GRENS.minZ + Math.random() * (GRENS.maxZ - GRENS.minZ);
+    if (!isVrijePlek(x, z)) continue;
+    if (minAfstand > 0) {
+      const dx = x - speler.positie.x, dz = z - speler.positie.z;
+      if (dx * dx + dz * dz < minAfstand * minAfstand) continue;
+    }
+    return new THREE.Vector3(x, 0, z);
+  }
+  return new THREE.Vector3(0, 0, 20);   // noodoplossing: midden op het plein
+}
+
+// --- De speler elke frame bewegen -------------------------------
+
+function updateSpeler(dt) {
+  // Alleen bewegen als het spel actief is (pointer lock aan).
+  if (document.pointerLockElement === renderer.domElement) {
+    // Bepaal de gewenste richting op basis van WASD.
+    let stapVooruit = 0, stapZijwaarts = 0;
+    if (ingedrukt['KeyW']) stapVooruit += 1;
+    if (ingedrukt['KeyS']) stapVooruit -= 1;
+    if (ingedrukt['KeyD']) stapZijwaarts += 1;
+    if (ingedrukt['KeyA']) stapZijwaarts -= 1;
+
+    if (stapVooruit !== 0 || stapZijwaarts !== 0) {
+      // "Vooruit" hangt af van waar je heen kijkt (de yaw).
+      const sin = Math.sin(speler.yaw), cos = Math.cos(speler.yaw);
+      let bewegingX = (-sin * stapVooruit) + (cos * stapZijwaarts);
+      let bewegingZ = (-cos * stapVooruit) + (-sin * stapZijwaarts);
+      // Normaliseren zodat diagonaal lopen niet sneller is.
+      const lengte = Math.hypot(bewegingX, bewegingZ);
+      bewegingX /= lengte; bewegingZ /= lengte;
+
+      speler.positie.x += bewegingX * speler.snelheid * dt;
+      speler.positie.z += bewegingZ * speler.snelheid * dt;
+      speler.bobTijd += dt * 9;   // camera wiebelt tijdens het lopen
+    }
+  }
+
+  losBotsingenOp(speler.positie, speler.straal);
+
+  // Camera op ooghoogte zetten, met een subtiel loop-wiebeltje.
+  camera.position.set(
+    speler.positie.x,
+    speler.hoogte + Math.sin(speler.bobTijd) * 0.035,
+    speler.positie.z
+  );
+  camera.rotation.y = speler.yaw;
+  camera.rotation.x = speler.pitch;
+}
+
+/* ================================================================
+   STAP 4 — DE ROBOTS: blokkerige NPC's die rondwandelen
+   ================================================================
+   Elke robot is een groepje blokken: benen, lijf, armen, kop met
+   gloeiende ogen en een antenne. Ze kiezen steeds een willekeurig
+   doel op het plein en wandelen daarheen.
+   ================================================================ */
+
+const ROBOT_AANTAL = 8;      // zoveel robots lopen er tegelijk rond
+const robots = [];           // alle levende robots
+const respawnLijst = [];     // tijdstippen waarop een nieuwe robot komt
+
+const ACCENTKLEUREN = [0x4ecdc4, 0xff6b6b, 0xffd93d, 0x6bcB77, 0xc084fc, 0xff9f43];
+
+function maakRobot() {
+  const groep = new THREE.Group();
+  const accent = ACCENTKLEUREN[Math.floor(Math.random() * ACCENTKLEUREN.length)];
+  const metaal = new THREE.MeshStandardMaterial({ color: 0x9aa5b1, roughness: 0.35, metalness: 0.8 });
+  const metaalDonker = new THREE.MeshStandardMaterial({ color: 0x5c6672, roughness: 0.4, metalness: 0.7 });
+
+  // Benen (bewegen tijdens het lopen).
+  const beenLinks = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.6, 0.22), metaalDonker);
+  beenLinks.position.set(-0.18, 0.3, 0);
+  const beenRechts = beenLinks.clone();
+  beenRechts.position.x = 0.18;
+  groep.add(beenLinks, beenRechts);
+
+  // Lijf met een gloeiend "hartje" op de borst.
+  const lijf = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.85, 0.45), metaal);
+  lijf.position.y = 1.05;
+  groep.add(lijf);
+  const paneel = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.05),
+    new THREE.MeshBasicMaterial({ color: accent }));
+  paneel.position.set(0, 1.1, 0.24);
+  groep.add(paneel);
+
+  // Armen (zwaaien tijdens het lopen).
+  const armLinks = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.65, 0.16), metaalDonker);
+  armLinks.position.set(-0.5, 1.15, 0);
+  const armRechts = armLinks.clone();
+  armRechts.position.x = 0.5;
+  groep.add(armLinks, armRechts);
+
+  // Kop met gloeiende ogen en antenne.
+  const kop = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.45, 0.45), metaal);
+  kop.position.y = 1.75;
+  groep.add(kop);
+  const oogMateriaal = new THREE.MeshBasicMaterial({ color: accent });
+  for (const kant of [-0.12, 0.12]) {
+    const oog = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), oogMateriaal);
+    oog.position.set(kant, 1.8, 0.24);
+    groep.add(oog);
+  }
+  const antenne = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.3, 6), metaalDonker);
+  antenne.position.y = 2.12;
+  groep.add(antenne);
+  const antenneBol = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0xff5555 }));
+  antenneBol.position.y = 2.3;
+  groep.add(antenneBol);
+
+  // Alle onderdelen werpen schaduw.
+  groep.traverse(deel => { if (deel.isMesh) deel.castShadow = true; });
+
+  const robot = {
+    groep,
+    beenLinks, beenRechts, armLinks, armRechts,
+    doel: null,                          // waar wandelt hij heen?
+    pauze: 0,                            // even stilstaan bij aankomst
+    snelheid: 1.4 + Math.random(),       // elke robot loopt anders snel
+    stapfase: Math.random() * 10,        // zodat ze niet synchroon lopen
+  };
+  groep.userData.robot = robot;          // zo vinden we bij een raak schot de robot terug
+  return robot;
+}
+
+function spawnRobot() {
+  const robot = maakRobot();
+  robot.groep.position.copy(willekeurigePlek(14));   // niet te dicht bij de speler
+  robot.doel = willekeurigePlek(0);
+  scene.add(robot.groep);
+  robots.push(robot);
+}
+
+function updateRobots(dt) {
+  for (const robot of robots) {
+    const positie = robot.groep.position;
+
+    // Even pauzeren op de plek van bestemming.
+    if (robot.pauze > 0) {
+      robot.pauze -= dt;
+      if (robot.pauze <= 0) robot.doel = willekeurigePlek(0);
+      continue;
+    }
+
+    // Richting het doel lopen.
+    const richting = robot.doel.clone().sub(positie).setY(0);
+    const afstand = richting.length();
+    if (afstand < 1) {
+      robot.pauze = 0.5 + Math.random() * 2.5;   // aangekomen: even rondkijken
+      continue;
+    }
+    richting.normalize();
+    positie.addScaledVector(richting, robot.snelheid * dt);
+
+    // Netjes tegen gebouwen aan botsen, net als de speler.
+    const voorBotsing = positie.clone();
+    losBotsingenOp(positie, 0.45);
+    // Zit hij vast tegen een muur? Kies dan gewoon een nieuw doel.
+    if (positie.distanceToSquared(voorBotsing) > 0.0001 && Math.random() < 0.05) {
+      robot.doel = willekeurigePlek(0);
+    }
+
+    // Soepel in de looprichting draaien.
+    const doelHoek = Math.atan2(richting.x, richting.z);
+    let verschil = doelHoek - robot.groep.rotation.y;
+    while (verschil >  Math.PI) verschil -= Math.PI * 2;
+    while (verschil < -Math.PI) verschil += Math.PI * 2;
+    robot.groep.rotation.y += verschil * Math.min(1, dt * 6);
+
+    // Loop-animatie: benen en armen zwaaien, lijfje hupt mee.
+    robot.stapfase += dt * robot.snelheid * 5;
+    const zwaai = Math.sin(robot.stapfase) * 0.55;
+    robot.beenLinks.rotation.x  =  zwaai;
+    robot.beenRechts.rotation.x = -zwaai;
+    robot.armLinks.rotation.x   = -zwaai * 0.8;
+    robot.armRechts.rotation.x  =  zwaai * 0.8;
+    positie.y = Math.abs(Math.sin(robot.stapfase)) * 0.06;
+  }
+
+  // Is het tijd om gesneuvelde robots te vervangen?
+  for (let i = respawnLijst.length - 1; i >= 0; i--) {
+    if (klok >= respawnLijst[i]) {
+      respawnLijst.splice(i, 1);
+      spawnRobot();
+    }
+  }
+}
+
+/* ================================================================
+   STAP 5 — SCHIETEN: wapen, raycast, explosies en brokstukken
+   ================================================================
+   - Er hangt een simpel wapen rechtsonder in beeld (kind van de
+     camera, dus het beweegt automatisch mee).
+   - Schieten = een onzichtbare straal (raycast) vanuit het midden
+     van het scherm. Raakt die een robot, dan valt hij uit elkaar.
+   ================================================================ */
+
+// --- Het wapenmodel, vastgemaakt aan de camera -------------------
+
+const wapen = new THREE.Group();
+{
+  const loop = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.055, 0.42),
+    new THREE.MeshStandardMaterial({ color: 0x3a4148, roughness: 0.4, metalness: 0.7 }));
+  loop.position.set(0, 0.03, -0.3);
+  wapen.add(loop);
+  const kast = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.24),
+    new THREE.MeshStandardMaterial({ color: 0x545e68, roughness: 0.5, metalness: 0.6 }));
+  kast.position.set(0, 0, -0.08);
+  wapen.add(kast);
+  const greep = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.16, 0.1),
+    new THREE.MeshStandardMaterial({ color: 0x8a5a30, roughness: 0.8 }));
+  greep.position.set(0, -0.12, 0);
+  greep.rotation.x = 0.35;
+  wapen.add(greep);
+  // Oranje dopje op de loop: duidelijk speelgoed, geen echt wapen.
+  const dop = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.05, 10),
+    new THREE.MeshStandardMaterial({ color: 0xff8c1a, roughness: 0.5 }));
+  dop.rotation.x = Math.PI / 2;
+  dop.position.set(0, 0.03, -0.52);
+  wapen.add(dop);
+}
+wapen.position.set(0.28, -0.24, -0.55);   // rechtsonder in beeld
+camera.add(wapen);
+scene.add(camera);   // camera moet in de scene zitten, anders zie je het wapen niet
+
+// Mondingsvlam: een fel bolletje dat heel even oplicht bij een schot.
+const vlam = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8),
+  new THREE.MeshBasicMaterial({ color: 0xffe28a }));
+vlam.position.set(0, 0.03, -0.58);
+vlam.visible = false;
+wapen.add(vlam);
+
+let terugslag = 0;   // 1 = net geschoten, zakt langzaam terug naar 0
+let vlamTimer = 0;
+
+// --- Brokstukken en vonkjes (kleine "physics" deeltjes) ----------
+
+const brokstukken = [];   // { mesh, snelheid, draai, leeftijd }
+
+function maakBrokstuk(mesh, positie, extraSnelheid = 8) {
+  mesh.castShadow = true;
+  mesh.position.copy(positie);
+  scene.add(mesh);
+  brokstukken.push({
+    mesh,
+    snelheid: new THREE.Vector3(
+      (Math.random() - 0.5) * extraSnelheid,
+      3 + Math.random() * 5,
+      (Math.random() - 0.5) * extraSnelheid
+    ),
+    draai: new THREE.Vector3(Math.random() * 10 - 5, Math.random() * 10 - 5, Math.random() * 10 - 5),
+    leeftijd: 0,
+  });
+}
+
+function updateBrokstukken(dt) {
+  for (let i = brokstukken.length - 1; i >= 0; i--) {
+    const b = brokstukken[i];
+    b.leeftijd += dt;
+    b.snelheid.y -= 14 * dt;                       // zwaartekracht
+    b.mesh.position.addScaledVector(b.snelheid, dt);
+    b.mesh.rotation.x += b.draai.x * dt;
+    b.mesh.rotation.y += b.draai.y * dt;
+    b.mesh.rotation.z += b.draai.z * dt;
+    if (b.mesh.position.y < 0.05) {                // stuiteren op de grond
+      b.mesh.position.y = 0.05;
+      b.snelheid.y *= -0.35;
+      b.snelheid.x *= 0.7;
+      b.snelheid.z *= 0.7;
+    }
+    if (b.leeftijd > 1.6) {                        // langzaam krimpen en verdwijnen
+      b.mesh.scale.multiplyScalar(0.85);
+      if (b.mesh.scale.x < 0.05) {
+        scene.remove(b.mesh);
+        brokstukken.splice(i, 1);
+      }
+    }
+  }
+}
+
+// --- Het schot zelf ----------------------------------------------
+
+const raycaster = new THREE.Raycaster();
+raycaster.far = 150;   // verder dan dit reikt het schot niet
+
+function schiet() {
+  // Wapen-effectjes: terugslag, vlam en geluid.
+  terugslag = 1;
+  vlam.visible = true;
+  vlam.scale.setScalar(0.8 + Math.random() * 0.6);
+  vlamTimer = 0.05;
+  speelSchot();
+
+  // Straal vanuit het midden van het scherm (waar het richtkruis staat).
+  raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+  const doelwitten = robots.map(r => r.groep).concat([wereld]);
+  const raak = raycaster.intersectObjects(doelwitten, true);
+  if (raak.length === 0) return;
+
+  // Kijk of we een robot hebben geraakt: loop omhoog door de "ouders"
+  // van het geraakte onderdeel tot we (misschien) een robot vinden.
+  let onderdeel = raak[0].object;
+  while (onderdeel && !onderdeel.userData.robot) onderdeel = onderdeel.parent;
+
+  if (onderdeel) {
+    vernietigRobot(onderdeel.userData.robot);
+  } else {
+    // Muur of grond geraakt: klein grijs vonkje op de inslagplek.
+    const vonk = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6),
+      new THREE.MeshBasicMaterial({ color: 0xd8d8d8 }));
+    vonk.position.copy(raak[0].point);
+    scene.add(vonk);
+    brokstukken.push({ mesh: vonk, snelheid: new THREE.Vector3(0, 1, 0), draai: new THREE.Vector3(), leeftijd: 1.5 });
+  }
+}
+
+// Robot kapot: alle onderdelen vliegen in het rond, munt blijft achter.
+function vernietigRobot(robot) {
+  speelExplosie();
+
+  // Elk blokje van de robot wordt een los rondvliegend brokstuk.
+  const losseDelen = [];
+  robot.groep.traverse(deel => { if (deel.isMesh) losseDelen.push(deel); });
+  for (const deel of losseDelen) {
+    const wereldPositie = new THREE.Vector3();
+    deel.getWorldPosition(wereldPositie);
+    const kopie = new THREE.Mesh(deel.geometry, deel.material);
+    maakBrokstuk(kopie, wereldPositie, 6);
+  }
+
+  // Robot weghalen en een munt achterlaten.
+  scene.remove(robot.groep);
+  robots.splice(robots.indexOf(robot), 1);
+  legMuntNeer(robot.groep.position);
+
+  // Over een paar seconden komt er ergens een nieuwe robot bij.
+  respawnLijst.push(klok + 4 + Math.random() * 5);
+}
+
+/* ================================================================
+   STAP 6 — GELD: munten oprapen en de teller bijhouden
+   ================================================================ */
+
+let geld = 0;
+const munten = [];   // { groep, bedrag, basisY }
+const geldUI = document.getElementById('geldUI');
+const popups = document.getElementById('popups');
+
+function legMuntNeer(positie) {
+  const bedrag = 5 + Math.floor(Math.random() * 21);   // €5 t/m €25
+
+  const munt = new THREE.Group();
+  const schijf = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.07, 18),
+    new THREE.MeshStandardMaterial({ color: 0xffc93c, roughness: 0.25, metalness: 0.85 }));
+  schijf.rotation.x = Math.PI / 2;   // rechtop zetten zoals een draaiende munt
+  schijf.castShadow = true;
+  munt.add(schijf);
+  // Euroteken-streepje op de munt (simpel randje).
+  const rand = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.035, 6, 16),
+    new THREE.MeshStandardMaterial({ color: 0xb8860b, roughness: 0.3, metalness: 0.8 }));
+  munt.add(rand);
+
+  munt.position.set(positie.x, 0.6, positie.z);
+  scene.add(munt);
+  munten.push({ groep: munt, bedrag, basisY: 0.6 });
+}
+
+function updateMunten(dt) {
+  for (let i = munten.length - 1; i >= 0; i--) {
+    const munt = munten[i];
+    // Ronddraaien en zachtjes op en neer zweven.
+    munt.groep.rotation.y += dt * 3;
+    munt.groep.position.y = munt.basisY + Math.sin(klok * 3 + i) * 0.1;
+
+    // Loopt de speler er dichtbij genoeg langs? Dan oppakken!
+    const dx = munt.groep.position.x - speler.positie.x;
+    const dz = munt.groep.position.z - speler.positie.z;
+    if (dx * dx + dz * dz < 1.4 * 1.4) {
+      geld += munt.bedrag;
+      geldUI.textContent = `💰 €${geld}`;
+      toonPopup(`+€${munt.bedrag}`);
+      speelMunt();
+      scene.remove(munt.groep);
+      munten.splice(i, 1);
+    }
+  }
+}
+
+// Zwevend "+€12"-tekstje in beeld.
+function toonPopup(tekst) {
+  const el = document.createElement('div');
+  el.className = 'popup';
+  el.textContent = tekst;
+  popups.appendChild(el);
+  setTimeout(() => el.remove(), 1100);
+}
+
+/* ================================================================
+   STAP 7 — GELUID: kleine cartoony geluidjes zonder audiobestanden
+   ================================================================
+   We maken de geluidjes zelf met de Web Audio API, zodat er geen
+   losse mp3-bestanden nodig zijn.
+   ================================================================ */
+
+let audio = null;
+
+function initGeluid() {
+  if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+  if (audio.state === 'suspended') audio.resume();
+}
+
+// Hulpje: een simpel toontje dat in volume en toonhoogte wegzakt.
+function piep(type, startHz, eindHz, duur, volume) {
+  if (!audio) return;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(startHz, audio.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(eindHz, audio.currentTime + duur);
+  gain.gain.setValueAtTime(volume, audio.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + duur);
+  osc.connect(gain).connect(audio.destination);
+  osc.start();
+  osc.stop(audio.currentTime + duur);
+}
+
+function speelSchot()    { piep('square', 620, 140, 0.12, 0.12); }
+function speelMunt()     { piep('sine', 880, 880, 0.08, 0.15); setTimeout(() => piep('sine', 1320, 1320, 0.15, 0.15), 80); }
+function speelExplosie() {
+  piep('sawtooth', 220, 40, 0.3, 0.2);
+  piep('square', 160, 30, 0.25, 0.12);
+}
+
+/* ================================================================
+   STAP 8 — DE GAME-LOOP: alles elke frame bijwerken en tekenen
+   ================================================================ */
+
+let klok = 0;                       // totale speeltijd in seconden
+let vorigeTijd = performance.now();
+
+// Zet bij de start de eerste robots en duiven neer.
+for (let i = 0; i < ROBOT_AANTAL; i++) spawnRobot();
+for (let i = 0; i < 12; i++) plaatsDuif();
+
+function gameLoop(nu) {
+  requestAnimationFrame(gameLoop);
+
+  // dt = tijd sinds het vorige frame, met een maximum zodat het spel
+  // niet "springt" als het tabblad even op de achtergrond stond.
+  const dt = Math.min((nu - vorigeTijd) / 1000, 0.05);
+  vorigeTijd = nu;
+  klok += dt;
+
+  updateSpeler(dt);
+  updateRobots(dt);
+  updateDuiven(dt);
+  updateMunten(dt);
+  updateBrokstukken(dt);
+
+  // Wapen-terugslag laten uitdempen.
+  if (terugslag > 0) {
+    terugslag = Math.max(0, terugslag - dt * 6);
+    wapen.position.z = -0.55 + terugslag * 0.09;
+    wapen.rotation.x = terugslag * 0.15;
+  }
+  if (vlamTimer > 0) {
+    vlamTimer -= dt;
+    if (vlamTimer <= 0) vlam.visible = false;
+  }
+
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(gameLoop);
+
+// Handig om te experimenteren in de browserconsole (F12 → Console):
+// bijvoorbeeld `DamChaosDebug.spawnRobot()` voor een extra robot.
+window.DamChaosDebug = { scene, camera, speler, robots, munten, spawnRobot, vernietigRobot, geldStand: () => geld };
+</script>
+</body>
+</html>
