@@ -1594,9 +1594,14 @@ document.addEventListener('pointerlockchange', () => {
   if (actief) {
     startscherm.querySelector('h2').textContent = 'Verdedig de Dam — Amsterdam';
   } else {
-    // Speler drukte op Esc: toon het scherm als pauzescherm.
+    // Speler drukte op Esc (of verloor pointer lock door bv. alt-tab):
+    // toon het scherm als pauzescherm en laat alle knoppen los. Een
+    // mouseup kan gemist zijn terwijl het venster geen focus had, dus
+    // schietKnopIngedrukt moet hier ook expliciet gereset worden —
+    // anders blijft het wapen na het heractiveren vanzelf doorvuren.
     startscherm.querySelector('h2').textContent = 'Gepauzeerd, klik om verder te spelen';
     for (const k in ingedrukt) ingedrukt[k] = false;   // toetsen loslaten
+    schietKnopIngedrukt = false;
   }
 });
 
@@ -2254,12 +2259,25 @@ function legMuntNeer(positie) {
 
   munt.position.set(positie.x, 0.6, positie.z);
   scene.add(munt);
-  munten.push({ groep: munt, bedrag, basisY: 0.6 });
+  munten.push({ groep: munt, bedrag, basisY: 0.6, leeftijd: 0 });
 }
+
+// Munten die de speler nooit oppakt (bijvoorbeeld ver van de looproute, of
+// simpelweg gemist) mogen niet voor altijd in de scene en de munten-array
+// blijven staan: bij lange sessies met veel waves stapelen die anders
+// onbeperkt op. Na deze tijd verdwijnen ze vanzelf, net als brokstukken.
+const MUNT_MAX_LEEFTIJD = 45;
 
 function updateMunten(dt) {
   for (let i = munten.length - 1; i >= 0; i--) {
     const munt = munten[i];
+    munt.leeftijd += dt;
+    if (munt.leeftijd > MUNT_MAX_LEEFTIJD) {
+      scene.remove(munt.groep);
+      munten.splice(i, 1);
+      continue;
+    }
+
     // Ronddraaien en zachtjes op en neer zweven.
     munt.groep.rotation.y += dt * 3;
     munt.groep.position.y = munt.basisY + Math.sin(klok * 3 + i) * 0.1;
