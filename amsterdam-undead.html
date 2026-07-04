@@ -9,77 +9,110 @@
   html, body {
     margin: 0;
     height: 100%;
-    font-family: 'Segoe UI', Arial, sans-serif;
     overflow: hidden;
+    font-family: 'Segoe UI', Arial, sans-serif;
     background: #05070a;
   }
-  #scene {
+  canvas { display: block; }
+
+  /* --- Terug-naar-menu-link, altijd zichtbaar linksboven (zelfde patroon
+       als defend-national-monument.html, maar in de linkerhoek zodat hij
+       nooit UI van latere tickets rechtsboven in de weg zit) --- */
+  #menuLink {
     position: fixed;
-    inset: 0;
-    display: block;
+    top: 16px;
+    left: 16px;
+    padding: 8px 14px;
+    background: rgba(20, 30, 45, 0.65);
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    text-decoration: none;
+    border-radius: 10px;
+    z-index: 20;
+    cursor: pointer;
   }
-  #overlay {
+  #menuLink:hover { background: rgba(20, 30, 45, 0.85); }
+
+  /* --- Korte besturings-hint onderin, alleen zichtbaar tijdens het spelen --- */
+  #hulpUI {
+    position: fixed;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.85);
+    background: rgba(20, 30, 45, 0.45);
+    padding: 6px 14px;
+    border-radius: 10px;
+    font-size: 14px;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  /* --- Startscherm / pauzescherm --- */
+  #startscherm {
     position: fixed;
     inset: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    background: rgba(5, 8, 10, 0.78);
+    backdrop-filter: blur(3px);
+    color: white;
     text-align: center;
-    padding: 24px;
-    color: #eaf2ea;
-    background: linear-gradient(rgba(5,8,10,0.35), rgba(5,8,10,0.65));
-  }
-  #overlay h1 {
-    font-size: 38px;
-    font-weight: 900;
-    margin: 0 0 10px;
-    text-shadow: 0 3px 10px rgba(0,0,0,0.6);
-  }
-  #overlay p {
-    max-width: 480px;
-    color: #cfe0d2;
-    font-size: 15px;
-    line-height: 1.5;
-    margin: 0 0 28px;
-  }
-  .knoppen { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
-  .knoppen a, .knoppen button {
-    padding: 12px 22px;
-    border-radius: 12px;
-    border: none;
-    font-family: inherit;
-    font-weight: 700;
-    font-size: 15px;
     cursor: pointer;
-    text-decoration: none;
+    z-index: 10;
   }
-  #terugKnop { background: rgba(255,255,255,0.12); color: #eaf2ea; }
-  #terugKnop:hover { background: rgba(255,255,255,0.22); }
-  #startKnop { background: #3fae63; color: #04170a; }
-  #startKnop:hover { background: #55c97c; }
-  #melding {
-    margin-top: 18px;
-    font-size: 13px;
-    color: #9fd6b0;
-    min-height: 18px;
-    opacity: 0;
-    transition: opacity 0.2s ease;
+  #startscherm h1 {
+    font-size: 52px;
+    margin: 0 0 4px;
+    letter-spacing: 3px;
+    color: #7fd99a;
+    text-shadow: 0 4px 12px rgba(0,0,0,0.6);
+  }
+  #startscherm h2 {
+    font-size: 18px;
+    font-weight: 400;
+    margin: 0 0 26px;
+    color: #bcd6c4;
+  }
+  #startscherm .uitleg {
+    background: rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 16px 28px;
+    font-size: 16px;
+    line-height: 1.85;
+    margin-bottom: 26px;
+  }
+  #startscherm .knop {
+    font-size: 20px;
+    font-weight: 700;
+    background: #3fae63;
+    color: #04170a;
+    padding: 12px 34px;
+    border-radius: 999px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
   }
 </style>
 </head>
 <body>
 
-<canvas id="scene"></canvas>
+<!-- ============================================================
+     DE UI-LAAG (HTML bovenop het 3D-canvas)
+     ============================================================ -->
+<a id="menuLink" href="index.html">← Menu</a>
+<div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; Esc = pauze</div>
 
-<div id="overlay">
-  <h1>🧟 Amsterdam Undead</h1>
-  <p>A new undead survival mode in an Amsterdam canal house.</p>
-  <div class="knoppen">
-    <a id="terugKnop" href="index.html">← Terug naar menu</a>
-    <button id="startKnop">Start prototype</button>
+<div id="startscherm">
+  <h1>AMSTERDAM UNDEAD</h1>
+  <h2>Een verlaten grachtenpand — Amsterdam</h2>
+  <div class="uitleg">
+    🚶 <b>WASD</b> om te lopen, <b>muis</b> om rond te kijken<br>
+    ⏸️ <b>Esc</b> om te pauzeren
   </div>
-  <div id="melding"></div>
+  <div class="knop">Klik om te spelen</div>
 </div>
 
 <!-- Three.js laden vanaf een CDN, zelfde importmap-patroon als de andere game. -->
@@ -90,74 +123,293 @@
   }
 }
 </script>
+
 <script type="module">
 import * as THREE from 'three';
 
-// Simpele, statische sfeerscene: een donker grachtenpand-silhouet met een
-// paar verlichte ramen. Puur decoratief, geen besturing, geen gameplay —
-// bewijst alleen dat de Three.js-pijplijn werkt voor latere tickets.
-const canvas = document.getElementById('scene');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
+/* ================================================================
+   STAP 1 — DE BASIS: scene, camera, renderer en licht
+   ================================================================
+   Zelfde opzet als defend-national-monument.html (Three.js-boot,
+   pointer-lock-besturing, obstakel-rechthoeken), maar dan voor een
+   kleine, donkere grachtenhuis-kamer i.p.v. het open Dam-plein.
+   ================================================================ */
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x050a12);
-scene.fog = new THREE.Fog(0x050a12, 8, 34);
+scene.background = new THREE.Color(0x05080b);
+scene.fog = new THREE.Fog(0x05080b, 9, 22);
 
-const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.set(0, 2.4, 9);
-camera.lookAt(0, 2.2, 0);
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 50);
+camera.rotation.order = 'YXZ';
 
-scene.add(new THREE.AmbientLight(0x3a4a5a, 0.8));
-const maanlicht = new THREE.DirectionalLight(0x9fb3cc, 0.6);
-maanlicht.position.set(-4, 8, 4);
-scene.add(maanlicht);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.appendChild(renderer.domElement);
 
-const gevel = new THREE.Mesh(
-  new THREE.BoxGeometry(6, 6.5, 4),
-  new THREE.MeshStandardMaterial({ color: 0x1c2430, roughness: 0.9 })
-);
-gevel.position.y = 3.25;
-scene.add(gevel);
+// Zwak, koel algeheel licht — de kamer moet vooral door de lampen en de
+// ramen verlicht worden, niet door een felle "zon" zoals op het Dam-plein.
+scene.add(new THREE.HemisphereLight(0x25324a, 0x1a1310, 1.1));
 
-const raamMateriaal = new THREE.MeshStandardMaterial({ color: 0xffcf7a, emissive: 0xffb347, emissiveIntensity: 0.55 });
-for (let rij = 0; rij < 2; rij++) {
-  for (let kol = 0; kol < 3; kol++) {
-    const raam = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.2, 0.1), raamMateriaal);
-    raam.position.set(-1.8 + kol * 1.8, 2.2 + rij * 2.2, 2.06);
-    scene.add(raam);
-  }
-}
-
-const grond = new THREE.Mesh(
-  new THREE.PlaneGeometry(60, 60),
-  new THREE.MeshStandardMaterial({ color: 0x0a1520, roughness: 1 })
-);
-grond.rotation.x = -Math.PI / 2;
-scene.add(grond);
-
-function resize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-}
-addEventListener('resize', resize);
+  renderer.setSize(innerWidth, innerHeight);
+});
 
-function animeer() {
-  requestAnimationFrame(animeer);
-  gevel.rotation.y = Math.sin(Date.now() * 0.0002) * 0.15;
+/* ================================================================
+   STAP 2 — DE STARTKAMER: hout, baksteen, ramen en warme lampen
+   ================================================================ */
+
+const wereld = new THREE.Group();
+scene.add(wereld);
+
+const obstakels = [];
+function registreerRechthoek(minX, maxX, minZ, maxZ, marge = 0) {
+  obstakels.push({ minX: minX - marge, maxX: maxX + marge, minZ: minZ - marge, maxZ: maxZ + marge });
+}
+
+const materiaalCache = new Map();
+function mat(kleur, ruwheid = 0.9, metaal = 0, extra = {}) {
+  if (Object.keys(extra).length > 0) return new THREE.MeshStandardMaterial({ color: kleur, roughness: ruwheid, metalness: metaal, ...extra });
+  const sleutel = `${kleur}|${ruwheid}|${metaal}`;
+  let gedeeld = materiaalCache.get(sleutel);
+  if (!gedeeld) {
+    gedeeld = new THREE.MeshStandardMaterial({ color: kleur, roughness: ruwheid, metalness: metaal });
+    materiaalCache.set(sleutel, gedeeld);
+  }
+  return gedeeld;
+}
+
+function blok(breedte, hoogte, diepte, kleur, ruwheid = 0.88, metaal = 0) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(breedte, hoogte, diepte), mat(kleur, ruwheid, metaal));
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
+
+// Kamerafmetingen: 8m breed (x) x 6m diep (z) x 3.2m hoog — een kleine,
+// overzichtelijke startkamer. Latere tickets voegen een gang en tweede
+// kamer toe (zie ROADMAP.md, Ticket 5).
+const HALF_BREEDTE = 4;
+const HALF_DIEPTE = 3;
+const KAMER_HOOGTE = 3.2;
+const MUUR_DIKTE = 0.3;
+
+// Wereldgrens: gebruikt als extra klem bovenop de muur-obstakels, zodat de
+// speler nooit per ongeluk buiten de kamer kan raken.
+const GRENS = {
+  minX: -HALF_BREEDTE + 0.05, maxX: HALF_BREEDTE - 0.05,
+  minZ: -HALF_DIEPTE + 0.05, maxZ: HALF_DIEPTE - 0.05,
+};
+
+// Houten vloer.
+const vloer = new THREE.Mesh(
+  new THREE.PlaneGeometry(HALF_BREEDTE * 2, HALF_DIEPTE * 2),
+  mat(0x8a5f34, 0.75)
+);
+vloer.rotation.x = -Math.PI / 2;
+vloer.receiveShadow = true;
+wereld.add(vloer);
+
+// Plafond (donker, zodat de kamer echt "dicht" aanvoelt).
+const plafond = new THREE.Mesh(
+  new THREE.PlaneGeometry(HALF_BREEDTE * 2, HALF_DIEPTE * 2),
+  mat(0x14100c, 0.95)
+);
+plafond.rotation.x = Math.PI / 2;
+plafond.position.y = KAMER_HOOGTE;
+wereld.add(plafond);
+
+// Vier bakstenen muren, elk ook geregistreerd als obstakel zodat de speler
+// er niet doorheen kan lopen.
+const BAKSTEEN = 0x54281f;
+function bouwMuur(x, z, breedte, diepte) {
+  const muur = blok(breedte, KAMER_HOOGTE, diepte, BAKSTEEN, 0.92);
+  muur.position.set(x, KAMER_HOOGTE / 2, z);
+  wereld.add(muur);
+  registreerRechthoek(x - breedte / 2, x + breedte / 2, z - diepte / 2, z + diepte / 2);
+}
+bouwMuur(0, -HALF_DIEPTE - MUUR_DIKTE / 2, HALF_BREEDTE * 2 + MUUR_DIKTE * 2, MUUR_DIKTE);   // noordmuur
+bouwMuur(0, HALF_DIEPTE + MUUR_DIKTE / 2, HALF_BREEDTE * 2 + MUUR_DIKTE * 2, MUUR_DIKTE);    // zuidmuur (richting gracht)
+bouwMuur(-HALF_BREEDTE - MUUR_DIKTE / 2, 0, MUUR_DIKTE, HALF_DIEPTE * 2);                    // westmuur
+bouwMuur(HALF_BREEDTE + MUUR_DIKTE / 2, 0, MUUR_DIKTE, HALF_DIEPTE * 2);                     // oostmuur
+
+// Ramen richting de gracht: op de zuidmuur, met een koel, donkerblauw
+// gloeiend "buiten"-vlak achter een houten kozijn.
+const kozijnMateriaal = mat(0x2b1c12, 0.8);
+const glasMateriaal = mat(0x3a6a8f, 0.4, 0, { emissive: 0x5fa0c8, emissiveIntensity: 1.6 });
+for (const x of [-2, 2]) {
+  // Kozijn is een SOLIDE blok (geen echt gat erin), dus het glas moet
+  // duidelijk vóór het kozijn hangen (dichter bij de camera/kamer) — anders
+  // zit het glas verstopt in het kozijn-volume en is er alleen hout te zien.
+  const kozijn = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.6, 0.12), kozijnMateriaal);
+  kozijn.position.set(x, 1.9, HALF_DIEPTE - 0.06);   // vlak tegen de binnenmuur (front face op z ≈ 2.88)
+  wereld.add(kozijn);
+  const glas = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.3, 0.05), glasMateriaal);
+  glas.position.set(x, 1.9, HALF_DIEPTE - 0.18);   // ruim vóór het kozijn, dus altijd zichtbaar
+  wereld.add(glas);
+}
+
+// Warme lampen: een gloeiend bolletje + puntlicht, symmetrisch opgehangen.
+function hangLamp(x, z) {
+  const groep = new THREE.Group();
+  const koord = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.6, 6), mat(0x1a1410, 0.7));
+  koord.position.y = KAMER_HOOGTE - 0.3;
+  groep.add(koord);
+  const bol = new THREE.Mesh(
+    new THREE.SphereGeometry(0.16, 12, 10),
+    mat(0xffcf8a, 0.4, 0, { emissive: 0xffb347, emissiveIntensity: 0.9 })
+  );
+  bol.position.y = KAMER_HOOGTE - 0.62;
+  groep.add(bol);
+  const licht = new THREE.PointLight(0xffb877, 14, 9, 2);
+  licht.position.y = KAMER_HOOGTE - 0.62;
+  licht.castShadow = true;
+  groep.add(licht);
+  groep.position.set(x, 0, z);
+  wereld.add(groep);
+}
+hangLamp(-1.6, -1.2);
+hangLamp(1.6, 0.8);
+
+/* ================================================================
+   STAP 3 — DE SPELER: first-person besturing met botsingen
+   Vrijwel verbatim gekopieerd/aangepast uit defend-national-monument.html
+   (zelfde patroon: WASD + muis + pointer lock, obstakel-rechthoeken).
+   ================================================================ */
+
+const speler = {
+  positie: new THREE.Vector3(0, 0, -1.5),   // start met het zicht op de ramen
+  yaw: Math.PI,
+  pitch: 0,
+  hoogte: 1.7,
+  straal: 0.35,
+  snelheid: 4.5,
+  bobTijd: 0,
+};
+
+const ingedrukt = {};
+addEventListener('keydown', e => { ingedrukt[e.code] = true; });
+addEventListener('keyup', e => { ingedrukt[e.code] = false; });
+
+const startscherm = document.getElementById('startscherm');
+const hulpUI = document.getElementById('hulpUI');
+
+startscherm.addEventListener('click', () => {
+  renderer.domElement.requestPointerLock();
+});
+
+document.addEventListener('pointerlockchange', () => {
+  const actief = document.pointerLockElement === renderer.domElement;
+  startscherm.style.display = actief ? 'none' : 'flex';
+  hulpUI.style.display = actief ? 'block' : 'none';
+  if (actief) {
+    startscherm.querySelector('h2').textContent = 'Een verlaten grachtenpand — Amsterdam';
+  } else {
+    startscherm.querySelector('h2').textContent = 'Gepauzeerd, klik om verder te spelen';
+    for (const k in ingedrukt) ingedrukt[k] = false;
+  }
+});
+
+addEventListener('mousemove', e => {
+  if (document.pointerLockElement !== renderer.domElement) return;
+  speler.yaw -= e.movementX * 0.0022;
+  speler.pitch -= e.movementY * 0.0022;
+  speler.pitch = Math.max(-1.45, Math.min(1.45, speler.pitch));
+});
+
+// --- Botsingen: duw een punt (met straal) uit alle obstakels ----
+function losBotsingenOp(positie, straal) {
+  for (const o of obstakels) {
+    const dichtstX = Math.max(o.minX, Math.min(positie.x, o.maxX));
+    const dichtstZ = Math.max(o.minZ, Math.min(positie.z, o.maxZ));
+    const dx = positie.x - dichtstX;
+    const dz = positie.z - dichtstZ;
+    const afstand2 = dx * dx + dz * dz;
+    if (afstand2 < straal * straal) {
+      if (afstand2 > 0.000001) {
+        const afstand = Math.sqrt(afstand2);
+        positie.x = dichtstX + (dx / afstand) * straal;
+        positie.z = dichtstZ + (dz / afstand) * straal;
+      } else {
+        const naarLinks = positie.x - o.minX + straal;
+        const naarRechts = o.maxX - positie.x + straal;
+        const naarVoor = positie.z - o.minZ + straal;
+        const naarAchter = o.maxZ - positie.z + straal;
+        const kleinste = Math.min(naarLinks, naarRechts, naarVoor, naarAchter);
+        if (kleinste === naarLinks) positie.x = o.minX - straal;
+        else if (kleinste === naarRechts) positie.x = o.maxX + straal;
+        else if (kleinste === naarVoor) positie.z = o.minZ - straal;
+        else positie.z = o.maxZ + straal;
+      }
+    }
+  }
+  positie.x = Math.max(GRENS.minX, Math.min(GRENS.maxX, positie.x));
+  positie.z = Math.max(GRENS.minZ, Math.min(GRENS.maxZ, positie.z));
+}
+
+function isVrijePlek(x, z, marge = 0.5) {
+  if (x < GRENS.minX || x > GRENS.maxX || z < GRENS.minZ || z > GRENS.maxZ) return false;
+  for (const o of obstakels) {
+    if (x > o.minX - marge && x < o.maxX + marge && z > o.minZ - marge && z < o.maxZ + marge) return false;
+  }
+  return true;
+}
+
+function updateSpeler(dt) {
+  if (document.pointerLockElement === renderer.domElement) {
+    let stapVooruit = 0, stapZijwaarts = 0;
+    if (ingedrukt['KeyW']) stapVooruit += 1;
+    if (ingedrukt['KeyS']) stapVooruit -= 1;
+    if (ingedrukt['KeyD']) stapZijwaarts += 1;
+    if (ingedrukt['KeyA']) stapZijwaarts -= 1;
+
+    if (stapVooruit !== 0 || stapZijwaarts !== 0) {
+      const sin = Math.sin(speler.yaw), cos = Math.cos(speler.yaw);
+      let bewegingX = (-sin * stapVooruit) + (cos * stapZijwaarts);
+      let bewegingZ = (-cos * stapVooruit) + (-sin * stapZijwaarts);
+      const lengte = Math.hypot(bewegingX, bewegingZ);
+      bewegingX /= lengte; bewegingZ /= lengte;
+
+      speler.positie.x += bewegingX * speler.snelheid * dt;
+      speler.positie.z += bewegingZ * speler.snelheid * dt;
+      speler.bobTijd += dt * 9;
+    }
+  }
+
+  losBotsingenOp(speler.positie, speler.straal);
+
+  camera.position.set(
+    speler.positie.x,
+    speler.hoogte + Math.sin(speler.bobTijd) * 0.03,
+    speler.positie.z
+  );
+  camera.rotation.y = speler.yaw;
+  camera.rotation.x = speler.pitch;
+}
+
+/* ================================================================
+   STAP 4 — GAME LOOP
+   ================================================================ */
+
+let vorigeTijd = performance.now();
+function gameLoop(nu) {
+  requestAnimationFrame(gameLoop);
+  const dt = Math.min((nu - vorigeTijd) / 1000, 0.05);
+  vorigeTijd = nu;
+  updateSpeler(dt);
   renderer.render(scene, camera);
 }
-animeer();
+requestAnimationFrame(gameLoop);
 
-// "Start prototype" bouwt nog niets: eerlijke placeholder-feedback i.p.v.
-// doen alsof er al een spel is (dat komt in een volgend ticket).
-const melding = document.getElementById('melding');
-document.getElementById('startKnop').addEventListener('click', () => {
-  melding.textContent = 'Prototype volgt in een volgende stap — nog niet speelbaar.';
-  melding.style.opacity = '1';
-});
+// Debug-hooks voor Playwright-tests (zelfde patroon als DamChaosDebug).
+window.AmsterdamUndeadDebug = { scene, camera, speler, obstakels, isVrijePlek, GRENS };
 </script>
 </body>
 </html>
