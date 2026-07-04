@@ -2721,6 +2721,16 @@ function updateInteracties(dt) {
   } else {
     verbergInteractiePrompt();
   }
+
+  // De Bijenkorf-winkel moet niet openstaan als de speler wegloopt: anders
+  // blijft het venster (en de 1/2/3-hotkeys) actief terwijl je alweer ergens
+  // anders op het plein staat. Sluit 'm zodra de kiosk niet meer het
+  // dichtstbijzijnde (of enige bereikbare) interactiepunt is.
+  if (bijenkorfShopOpen && (!huidigeInteractie || huidigeInteractie.type !== 'upgradeShop')) {
+    bijenkorfShopOpen = false;
+    shopUI.style.display = 'none';
+    toonFeedbackMelding('Bijenkorf Upgrades gesloten (te ver weg)');
+  }
 }
 
 function vindDichtstbijzijndeInteractie() {
@@ -2851,7 +2861,7 @@ function spawnRobot(poort = null, type = 'normal') {
   }
   robot.doel = MONUMENT_POSITIE.clone();
   const config = ROBOT_TYPES[type] ?? ROBOT_TYPES.normal;
-  const basisSnelheid = Math.min(1.35 + Math.random() * 0.7 + spel.wave * 0.07, 3.2);
+  const basisSnelheid = Math.min(1.35 + Math.random() * 0.7 + spel.wave * 0.07, 3.2) * 1.1;   // standaard 10% sneller
   robot.snelheid = basisSnelheid * config.snelheidMultiplier;
   scene.add(robot.groep);
   robots.push(robot);
