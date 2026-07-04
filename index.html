@@ -121,6 +121,43 @@
   #shopUI .regel { display: block; }
   #shopUI .gekocht { color: #83e6a8; }
 
+  /* --- Eén centrale interactieprompt onderin, voor alle interactiepunten --- */
+  #interactiePrompt {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 20px;
+    background: rgba(20, 30, 45, 0.82);
+    color: #ffd75e;
+    font-size: 16px;
+    font-weight: 700;
+    border-radius: 999px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 6;
+    transition: opacity 0.12s ease;
+  }
+
+  /* --- Bannertje zolang de Kerkklok Boost actief is --- */
+  #kerkklokBanner {
+    position: fixed;
+    top: 160px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 20px;
+    background: rgba(45, 30, 20, 0.85);
+    color: #ffd75e;
+    font-size: 17px;
+    font-weight: 800;
+    border-radius: 12px;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 6;
+    transition: opacity 0.15s ease;
+  }
+
   #hitmarker {
     position: fixed;
     top: 50%;
@@ -272,15 +309,17 @@
 <div id="comboUI">COMBO x2</div>
 <div id="hitmarker"></div>
 <div id="waveBanner"></div>
-<div id="shopUI">
-  <b>Upgrades</b>, druk tijdens het spelen:<br>
+<div id="shopUI" style="display:none">
+  <b>Bijenkorf Upgrades</b>, druk 1/2/3 om te kopen, T om te sluiten:<br>
   <span class="regel">1, Vuurtempo €100</span>
   <span class="regel">2, Pickup radius €150</span>
   <span class="regel">3, Loopsnelheid €200</span>
 </div>
+<div id="interactiePrompt"></div>
+<div id="kerkklokBanner">🔔 KERKKLOK BOOST: robots sneller, 2x geld</div>
 <div id="richtkruis" style="display:none"></div>
 <div id="popups"></div>
-<div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; klik = schieten &nbsp;·&nbsp; Esc = pauze</div>
+<div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; klik = schieten &nbsp;·&nbsp; T = interactie &nbsp;·&nbsp; Esc = pauze</div>
 
 <div id="startscherm">
   <h1>DAM CHAOS</h1>
@@ -289,7 +328,7 @@
     🚶 <b>WASD</b> om te lopen, <b>muis</b> om rond te kijken<br>
     🔫 <b>Linkermuisknop</b> om robots tegen te houden<br>
     🏛️ Bescherm het <b>Nationaal Monument</b> tegen robots uit de straten<br>
-    💰 Verzamel munten en koop upgrades met <b>1, 2 en 3</b><br>
+    💰 Verzamel munten, en druk bij een bordje op <b>T</b> voor upgrades of andere hulp<br>
     ⏸️ <b>Esc</b> om te pauzeren
   </div>
   <div class="knop">Klik om te spelen</div>
@@ -664,6 +703,34 @@ function maakGevelTekst(parent, tekst, x, y, z, breedte, hoogte, richting = 'sou
   return mesh;
 }
 
+// Herbruikbare marker voor een interactiepunt: een zachte lichtcirkel op de
+// grond plus een dubbelzijdig zwevend emoji-icoon op een dun paaltje, zodat
+// je van beide kanten ziet dat er iets te doen is voordat je dichtbij genoeg
+// bent voor de "druk T"-prompt. `kleur` is zowel de ringkleur als de gloed.
+function interactieMarkering(x, z, emoji, kleur = 0xffd75e) {
+  const g = new THREE.Group();
+
+  const cirkel = new THREE.Mesh(
+    new THREE.RingGeometry(1.5, 2.15, 40),
+    new THREE.MeshBasicMaterial({ color: kleur, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false })
+  );
+  cirkel.rotation.x = -Math.PI / 2;
+  cirkel.position.y = 0.14;   // boven alle vloerlagen (plein/straat/lijnen tot ±0.115), anders zit hij eronder verstopt
+  g.add(cirkel);
+
+  const paal = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 2.05, 8), mat(0x39332a, 0.6, 0.25));
+  paal.position.y = 1.0;
+  g.add(paal);
+
+  const iconOpties = { achtergrond: 'rgba(0,0,0,0)', rand: 'rgba(0,0,0,0)', fontSize: 160, canvasBreedte: 320, canvasHoogte: 320 };
+  maakGevelTekst(g, emoji, 0, 2.35, 0, 1.7, 1.7, 'south', iconOpties);
+  maakGevelTekst(g, emoji, 0, 2.35, 0, 1.7, 1.7, 'north', iconOpties);
+
+  g.position.set(x, 0, z);
+  wereld.add(g);
+  return g;
+}
+
 function seededRandomFactory(seed = 12345) {
   let s = seed >>> 0;
   return () => {
@@ -832,6 +899,42 @@ function bouwKoninklijkPaleis() {
 }
 bouwKoninklijkPaleis();
 
+// Koninklijke Reparatiepost: een klein gouden balietje met kroontje en
+// vlaggetje voor de oostgevel van het Paleis (waar de deur zit), zodat
+// spelers een reden hebben om hierheen te lopen voor gratis monument-HP.
+function bouwReparatiepost(x, z) {
+  const g = new THREE.Group();
+
+  const balie = blok(1.7, 1.0, 0.9, PAL.goud, 0.4, 0.55);
+  balie.position.y = 0.5;
+  g.add(balie);
+  const balieRand = blok(1.8, 0.12, 1.0, 0x8a6a1e, 0.5, 0.4);
+  balieRand.position.y = 1.02;
+  g.add(balieRand);
+
+  const paalL = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 2.4, 8), mat(0x8a6a1e, 0.5, 0.4));
+  paalL.position.set(-0.65, 1.7, 0);
+  g.add(paalL);
+  const vlag = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.55, 0.9), mat(0xe0703a, 0.7));
+  vlag.position.set(-0.65, 2.55, 0.5);
+  g.add(vlag);
+
+  const kroon = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.32, 5), mat(PAL.goud, 0.35, 0.65));
+  kroon.position.set(0.55, 2.35, 0);
+  g.add(kroon);
+  const kroonBol = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), mat(0xd23c3c, 0.4, 0.4));
+  kroonBol.position.set(0.55, 2.55, 0);
+  g.add(kroonBol);
+
+  g.position.set(x, 0, z);
+  wereld.add(g);
+  schaduwAan(g);
+  registreerRechthoek(x - 1.1, x + 1.1, z - 0.9, z + 0.9, 0.3);
+
+  interactieMarkering(x, z, '👑', 0xe0b84a);
+}
+bouwReparatiepost(-70, 5);
+
 function bouwNieuweKerk() {
   const g = new THREE.Group();
 
@@ -876,6 +979,38 @@ function bouwNieuweKerk() {
   registreerObstakel(g, 0.4);
 }
 bouwNieuweKerk();
+
+// Kerkklok Boost: een kleine bel aan een houten frame, los voor de zuidgevel
+// van de Nieuwe Kerk, zodat spelers hier langs moeten komen voor de tijdelijke
+// snelheids- en geldboost.
+function bouwKerkklok(x, z) {
+  const g = new THREE.Group();
+
+  const balk = blok(0.16, 0.16, 1.7, PAL.hout, 0.85);
+  balk.position.y = 2.5;
+  g.add(balk);
+  const paalL = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 2.5, 8), mat(PAL.hout, 0.85));
+  paalL.position.set(0, 1.25, -0.72);
+  g.add(paalL);
+  const paalR = paalL.clone();
+  paalR.position.z = 0.72;
+  g.add(paalR);
+
+  const bel = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.8, 16, 1, true), mat(PAL.goud, 0.4, 0.6));
+  bel.position.y = 1.85;
+  g.add(bel);
+  const belKnop = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), mat(PAL.goud, 0.4, 0.6));
+  belKnop.position.y = 1.48;
+  g.add(belKnop);
+
+  g.position.set(x, 0, z);
+  wereld.add(g);
+  schaduwAan(g);
+  registreerRechthoek(x - 1.0, x + 1.0, z - 1.0, z + 1.0, 0.3);
+
+  interactieMarkering(x, z, '🔔', 0xffd75e);
+}
+bouwKerkklok(-67, -38);
 
 function bouwNationaalMonument() {
   const g = new THREE.Group();
@@ -1302,12 +1437,22 @@ function upgradeKiosk(x, z, rotY = 0) {
   const dak = blok(2.9, 0.18, 1.5, 0xb53b32, 0.7);
   dak.position.y = 2.65;
   g.add(dak);
+  // Dunne neonrand onder de dakrand, zodat de kiosk 's avonds opvalt als een
+  // echte winkel in plaats van een los bord.
+  const neonrand = new THREE.Mesh(
+    new THREE.BoxGeometry(3.0, 0.05, 1.6),
+    mat(0xffd75e, 0.4, 0.1, { emissive: 0xffd75e, emissiveIntensity: 0.55 })
+  );
+  neonrand.position.y = 2.54;
+  g.add(neonrand);
 
-  maakGevelTekst(g, 'Upgrades: toetsen 1, 2, 3', 0, 5.0, 0.62, 3.8, 0.7, 'south', {
+  maakGevelTekst(g, 'UPGRADES', 0, 5.15, 0.62, 3.2, 0.85, 'south', {
     achtergrond: 'rgba(20, 30, 45, 0.92)',
     rand: 'rgba(255, 215, 94, 0.95)',
     tekstKleur: '#ffffff',
-    fontSize: 44
+    subtekst: 'Druk T om te winkelen',
+    subtekstKleur: 'rgba(255, 215, 94, 0.95)',
+    fontSize: 64
   });
 
   const regels = [
@@ -1335,6 +1480,7 @@ function upgradeKiosk(x, z, rotY = 0) {
   registreerRechthoek(x - 1.5, x + 1.5, z - 0.8, z + 0.8, 0.3);
 }
 upgradeKiosk(60, -22);
+interactieMarkering(60, -17, '🛒', 0xffd75e);
 
 function boom(x, z, schaal = 1) {
   const g = new THREE.Group();
@@ -1684,9 +1830,22 @@ const speler = {
 const ingedrukt = {};   // welke toetsen zijn nu ingedrukt?
 addEventListener('keydown', e => {
   ingedrukt[e.code] = true;
-  if (e.code === 'Digit1') koopUpgrade('vuurtempo');
-  if (e.code === 'Digit2') koopUpgrade('pickup');
-  if (e.code === 'Digit3') koopUpgrade('snelheid');
+  // De upgrade-hotkeys werken alleen nog terwijl de Bijenkorf-winkel open
+  // staat (zie STAP 3.5, activeerBijenkorfUpgradeShop) — niet meer overal
+  // op de kaart.
+  if (bijenkorfShopOpen) {
+    if (e.code === 'Digit1') koopUpgrade('vuurtempo');
+    if (e.code === 'Digit2') koopUpgrade('pickup');
+    if (e.code === 'Digit3') koopUpgrade('snelheid');
+  }
+  // T activeert het dichtstbijzijnde interactiepunt. !e.repeat voorkomt dat
+  // ingedrukt houden meerdere keren per toetsdruk koopt/activeert (de
+  // browser stuurt anders herhaalde keydown-events terwijl de toets down
+  // blijft). Alleen buiten pointer lock geen interactie, zodat het
+  // start-/pauzescherm niet per ongeluk een aankoop triggert.
+  if (e.code === 'KeyT' && !e.repeat && document.pointerLockElement === renderer.domElement) {
+    activeerHuidigeInteractie();
+  }
 });
 addEventListener('keyup',   e => { ingedrukt[e.code] = false; });
 
@@ -1717,6 +1876,10 @@ document.addEventListener('pointerlockchange', () => {
     startscherm.querySelector('h2').textContent = 'Gepauzeerd, klik om verder te spelen';
     for (const k in ingedrukt) ingedrukt[k] = false;   // toetsen loslaten
     schietKnopIngedrukt = false;
+    // Ook de Bijenkorf-winkel en de interactieprompt netjes sluiten, zodat
+    // pauzeren nooit een open menu of een hangende prompt achterlaat.
+    if (bijenkorfShopOpen) { bijenkorfShopOpen = false; shopUI.style.display = 'none'; }
+    verbergInteractiePrompt();
   }
 });
 
@@ -1902,6 +2065,8 @@ const comboUI = document.getElementById('comboUI');
 const shopUI = document.getElementById('shopUI');
 const hitmarkerUI = document.getElementById('hitmarker');
 const waveBanner = document.getElementById('waveBanner');
+const interactiePromptUI = document.getElementById('interactiePrompt');
+const kerkklokBannerUI = document.getElementById('kerkklokBanner');
 
 function updateArcadeUI() {
   if (!scoreUI) return;
@@ -2058,6 +2223,179 @@ function updateGeldUI() {
   geldUI.textContent = `💰 €${geld}`;
 }
 
+/* ================================================================
+   STAP 3.5 — INTERACTIEPUNTEN: Kerkklok Boost, Koninklijke Reparatie
+   en de Bijenkorf-upgradewinkel, allemaal via één "loop ernaartoe en
+   druk op T"-systeem.
+   ================================================================ */
+
+const MONUMENT_MAX_HP = 100;
+
+// --- Kerkklok Boost (Nieuwe Kerk) ---------------------------------
+
+const kerkklokBoost = {
+  active: false,
+  resterend: 0,           // seconden nog actief
+  cooldownResterend: 0,   // seconden tot de klok weer luidt
+  duration: 30,
+  cooldown: 60,
+  speedMultiplier: 1.4,
+  rewardMultiplier: 2,
+};
+
+// Robots lezen hun beweeg- en loopanimatiesnelheid via deze functie i.p.v.
+// robot.snelheid rechtstreeks te vermenigvuldigen: zo blijft robot.snelheid
+// altijd de vaste basissnelheid en kan er nooit iets blijven "plakken" na
+// afloop van de boost (geen permanente stacking, ook niet bij respawns).
+function getRobotSpeedMultiplier() {
+  return kerkklokBoost.active ? kerkklokBoost.speedMultiplier : 1;
+}
+
+function getRewardMultiplier() {
+  return kerkklokBoost.active ? kerkklokBoost.rewardMultiplier : 1;
+}
+
+function activeerKerkklokBoost() {
+  if (kerkklokBoost.active) return;   // T mag niet opnieuw activeren tijdens de boost
+  if (kerkklokBoost.cooldownResterend > 0) {
+    toonFeedbackMelding(`Kerkklok rust nog: ${Math.ceil(kerkklokBoost.cooldownResterend)}s`);
+    return;
+  }
+  kerkklokBoost.active = true;
+  kerkklokBoost.resterend = kerkklokBoost.duration;
+  speelKerkklok();
+  toonFeedbackMelding('🔔 Kerkklok Boost gestart!');
+  kerkklokBannerUI.style.opacity = '1';
+}
+
+// Wordt elke frame aangeroepen (alleen als het spel actief is, dus de
+// boost/cooldown loopt niet door tijdens pauze).
+function updateKerkklokBoost(dt) {
+  if (kerkklokBoost.active) {
+    kerkklokBoost.resterend -= dt;
+    if (kerkklokBoost.resterend <= 0) {
+      kerkklokBoost.active = false;
+      kerkklokBoost.cooldownResterend = kerkklokBoost.cooldown;
+      kerkklokBannerUI.style.opacity = '0';
+      toonFeedbackMelding('Kerkklok Boost afgelopen');
+    }
+  } else if (kerkklokBoost.cooldownResterend > 0) {
+    kerkklokBoost.cooldownResterend = Math.max(0, kerkklokBoost.cooldownResterend - dt);
+  }
+}
+
+// --- Koninklijke Reparatiepost (Paleis) ---------------------------
+
+function koopMonumentReparatie() {
+  const kosten = 100;
+  if (spel.monumentHP >= MONUMENT_MAX_HP) {
+    toonFeedbackMelding('Monument is al volledig hersteld');
+    return;
+  }
+  if (geld < kosten) {
+    toonFeedbackMelding('Niet genoeg geld');
+    return;
+  }
+  geld -= kosten;
+  spel.monumentHP = Math.min(MONUMENT_MAX_HP, spel.monumentHP + 25);
+  updateGeldUI();
+  updateArcadeUI();
+  toonFeedbackMelding('+25 Monument HP');
+  speelMunt();
+}
+
+// --- Bijenkorf-upgradewinkel ---------------------------------------
+// De bestaande upgrades (koopUpgrade/upgradeKosten) blijven ongewijzigd;
+// alleen wannéér ze via de toetsen 1/2/3 werken verandert (zie de
+// keydown-listener hierboven): voortaan alleen terwijl dit menu open is.
+
+let bijenkorfShopOpen = false;
+
+function activeerBijenkorfUpgradeShop() {
+  bijenkorfShopOpen = !bijenkorfShopOpen;
+  shopUI.style.display = bijenkorfShopOpen ? 'block' : 'none';
+  toonFeedbackMelding(bijenkorfShopOpen ? 'Bijenkorf Upgrades geopend' : 'Bijenkorf Upgrades gesloten');
+}
+
+// --- Het centrale interactiesysteem ---------------------------------
+
+const interactiePunten = [
+  {
+    naam: 'Kerkklok Boost',
+    type: 'kerkklok',
+    positie: new THREE.Vector3(-67, 0, -38),
+    radius: 4,
+    prompt: () => kerkklokBoost.active
+      ? '🔔 Kerkklok Boost is al actief'
+      : kerkklokBoost.cooldownResterend > 0
+        ? `Kerkklok rust nog: ${Math.ceil(kerkklokBoost.cooldownResterend)}s`
+        : 'Druk T voor Kerkklok Boost',
+    actie: activeerKerkklokBoost,
+  },
+  {
+    naam: 'Koninklijke Reparatie',
+    type: 'reparatie',
+    positie: new THREE.Vector3(-70, 0, 5),
+    radius: 4,
+    prompt: 'Druk T voor Koninklijke Reparatie (€100, +25 HP)',
+    actie: koopMonumentReparatie,
+  },
+  {
+    naam: 'Bijenkorf Upgrades',
+    type: 'upgradeShop',
+    positie: new THREE.Vector3(60, 0, -17),
+    radius: 4,
+    prompt: () => bijenkorfShopOpen ? 'Druk T om de winkel te sluiten' : 'Druk T voor Bijenkorf Upgrades',
+    actie: activeerBijenkorfUpgradeShop,
+  },
+];
+
+let huidigeInteractie = null;
+
+function updateInteracties(dt) {
+  let dichtstbijzijnde = null;
+  let kleinsteAfstand = Infinity;
+  for (const punt of interactiePunten) {
+    const dx = punt.positie.x - speler.positie.x;
+    const dz = punt.positie.z - speler.positie.z;
+    const afstand = Math.hypot(dx, dz);
+    if (afstand <= punt.radius && afstand < kleinsteAfstand) {
+      kleinsteAfstand = afstand;
+      dichtstbijzijnde = punt;
+    }
+  }
+  huidigeInteractie = dichtstbijzijnde;
+  if (huidigeInteractie) {
+    const tekst = typeof huidigeInteractie.prompt === 'function' ? huidigeInteractie.prompt() : huidigeInteractie.prompt;
+    toonInteractiePrompt(tekst);
+  } else {
+    verbergInteractiePrompt();
+  }
+}
+
+function vindDichtstbijzijndeInteractie() {
+  return huidigeInteractie;
+}
+
+function toonInteractiePrompt(tekst) {
+  interactiePromptUI.textContent = tekst;
+  interactiePromptUI.style.opacity = '1';
+}
+
+function verbergInteractiePrompt() {
+  interactiePromptUI.style.opacity = '0';
+}
+
+function activeerHuidigeInteractie() {
+  if (huidigeInteractie) huidigeInteractie.actie();
+}
+
+// Dunne laag over de bestaande popup-tekstjes, zodat de interactiecode
+// een eigen duidelijk benoemde functie heeft voor feedbackmeldingen.
+function toonFeedbackMelding(tekst) {
+  toonPopup(tekst);
+}
+
 const ROBOT_AANTAL = 0;      // v4 gebruikt het wave systeem in plaats van vaste robots
 const robots = [];           // alle levende robots
 const respawnLijst = [];     // tijdstippen waarop een nieuwe robot komt
@@ -2205,7 +2543,12 @@ function updateRobots(dt) {
 
     richting.normalize();
     const positieVoorStap = positie.clone();
-    const verplaatsing = robot.snelheid * dt;
+    // robot.snelheid blijft de vaste basissnelheid (zie ROBOT_TYPES); de
+    // Kerkklok Boost werkt via een multiplier die hier wordt toegepast, dus
+    // er wordt nooit iets permanent op robot.snelheid gestapeld en nieuwe
+    // spawns tijdens de boost lopen automatisch ook sneller.
+    const effectieveSnelheid = robot.snelheid * getRobotSpeedMultiplier();
+    const verplaatsing = effectieveSnelheid * dt;
     positie.addScaledVector(richting, verplaatsing);
     losBotsingenOp(positie, 0.45);
 
@@ -2229,7 +2572,7 @@ function updateRobots(dt) {
     while (verschil < -Math.PI) verschil += Math.PI * 2;
     robot.groep.rotation.y += verschil * Math.min(1, dt * 6);
 
-    robot.stapfase += dt * robot.snelheid * 5;
+    robot.stapfase += dt * effectieveSnelheid * 5;
     const zwaai = Math.sin(robot.stapfase) * 0.55;
     robot.beenLinks.rotation.x  =  zwaai;
     robot.beenRechts.rotation.x = -zwaai;
@@ -2414,10 +2757,11 @@ function vernietigRobot(robot) {
 
   scene.remove(robot.groep);
   robots.splice(robots.indexOf(robot), 1);
-  legMuntNeer(robot.groep.position, robot.beloningMultiplier);
+  legMuntNeer(robot.groep.position, robot.beloningMultiplier * getRewardMultiplier());
 
   spel.combo += 1;
-  spel.comboTimer = 3.2;
+  // Tijdens de Kerkklok Boost mag een lopende combo iets langer doorlopen.
+  spel.comboTimer = kerkklokBoost.active ? 4.5 : 3.2;
   spel.waveKills += 1;
   const punten = 100 * Math.max(1, spel.combo);
   spel.score += punten;
@@ -2533,6 +2877,12 @@ function speelExplosie() {
   piep('sawtooth', 220, 40, 0.3, 0.2);
   piep('square', 160, 30, 0.25, 0.12);
 }
+// Kort, warm klokgeluid voor de Kerkklok Boost: twee dalende tonen, iets
+// trager en lager dan de muntjes-piep zodat het als een "bong" klinkt.
+function speelKerkklok() {
+  piep('sine', 520, 260, 0.4, 0.18);
+  setTimeout(() => piep('sine', 390, 195, 0.4, 0.14), 180);
+}
 
 /* ================================================================
    STAP 8 — DE GAME-LOOP: alles elke frame bijwerken en tekenen
@@ -2568,6 +2918,10 @@ function gameLoop(nu) {
     updateMunten(dt);
     updateBrokstukken(dt);
     if (typeof updateBewegendeTrams === 'function') updateBewegendeTrams(dt);
+    updateInteracties(dt);
+    updateKerkklokBoost(dt);
+  } else {
+    verbergInteractiePrompt();
   }
 
   // Wapen-terugslag laten uitdempen.
