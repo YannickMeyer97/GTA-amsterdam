@@ -450,7 +450,12 @@ const PAL = {
   tramWit: 0xf5ead8,
   groen: 0x4f7d3d,
   boomDonker: 0x2f5f30,
-  water: 0x356f85
+  water: 0x356f85,
+  // Toegevoegd voor de visual landmark pass: donkere etalagebeglazing,
+  // lichte balustrade/lijstkleur en het warme wit van de monumentpyloon.
+  etalageGlas: 0x1c2a33,
+  balustrade: 0xd4c396,
+  pyloonWit: 0xf6f2ea
 };
 
 // Materiaalhulp. Voor bijzondere materialen kun je extra opties meegeven.
@@ -627,6 +632,147 @@ function deurOpFacade(parent, x, y, z, breedte, hoogte, richting = 'east', kleur
   deur.castShadow = true;
   parent.add(deur);
   return deur;
+}
+
+/* ----------------------------------------------------------------
+   Herbruikbare geveldetail-helpers (visual landmark pass)
+   ----------------------------------------------------------------
+   Allemaal volgens dezelfde conventie als raamOpFacade: je geeft een
+   parent-group en lokale coördinaten mee, plus een 'richting' die
+   aangeeft welke gevelzijde het is. Kleine details zetten
+   userData.geenSchaduw zodat schaduwAan() ze overslaat — met honderden
+   van deze dingetjes op het plein scheelt dat fors in schaduw-casters.
+   ---------------------------------------------------------------- */
+
+// Eén gedeeld dubbelzijdig materiaal voor alle spitsboog-toppen: scheelt
+// een uniek materiaal per raam en de dubbelzijdigheid maakt winding-richting
+// irrelevant, ongeacht of de gevel noord of zuid kijkt.
+const spitsboogMateriaal = new THREE.MeshStandardMaterial({ color: PAL.raam, roughness: 0.5, metalness: 0.05, side: THREE.DoubleSide });
+
+// Raster van ramen in één aanroep, zodat de her en der gekopieerde dubbele
+// for-lussen niet meer nodig zijn. x0/y0/z0 is de eerste kolom/rij (net als de
+// bestaande code, dus posities blijven exact gelijk als je een lus vervangt).
+function maakRamenRij(parent, o) {
+  const langsX = (o.richting === 'south' || o.richting === 'north');
+  for (let r = 0; r < o.rijen; r++) {
+    for (let k = 0; k < o.kolommen; k++) {
+      const x = o.x0 + (langsX ? k * o.dx : 0);
+      const z = o.z0 + (langsX ? 0 : k * o.dx);
+      const y = o.y0 + r * o.dy;
+      raamOpFacade(parent, x, y, z, o.raamB, o.raamH, o.richting);
+    }
+  }
+}
+
+// Spitsboograam: een gewoon (rechthoekig) raam met daarboven een driehoekige
+// top in dezelfde donkere ruit-kleur, wat het gotische silhouet geeft.
+function maakSpitsboogRaam(parent, x, y, z, breedte, hoogte, richting = 'south') {
+  raamOpFacade(parent, x, y, z, breedte, hoogte, richting);
+  const langsX = (richting === 'south' || richting === 'north');
+  const uit = (richting === 'south' || richting === 'east') ? 1 : -1;
+  const b = breedte / 2;
+  const topHoogte = breedte * 0.62;
+  const yBasis = y + hoogte / 2;
+  const geo = new THREE.BufferGeometry();
+  const v = langsX
+    ? new Float32Array([-b, 0, 0, b, 0, 0, 0, topHoogte, 0])
+    : new Float32Array([0, 0, -b, 0, 0, b, 0, topHoogte, 0]);
+  geo.setAttribute('position', new THREE.BufferAttribute(v, 3));
+  geo.setIndex([0, 1, 2]);
+  geo.computeVertexNormals();
+  const top = new THREE.Mesh(geo, spitsboogMateriaal);
+  top.position.set(x + (langsX ? 0 : uit * 0.02), yBasis, z + (langsX ? uit * 0.02 : 0));
+  top.userData.geenSchaduw = true;
+  parent.add(top);
+}
+
+// Getrapte steunbeer tegen een gevel: onderblok breed/diep, bovenblok smaller
+// en dichter tegen de muur — het "getrapte" profiel maakt het gotisch. 'uit'
+// bepaalt aan welke kant hij uitsteekt (zelfde richtingconventie).
+function maakSteunbeer(parent, x, z, hoogte, richting = 'south') {
+  const langsX = (richting === 'south' || richting === 'north');
+  const uit = (richting === 'south' || richting === 'east') ? 1 : -1;
+  const onderDiep = 1.3, bovenDiep = 0.8, bw = 1.1, tw = 0.75;
+  const onder = langsX
+    ? blok(bw, hoogte * 0.62, onderDiep, PAL.kerkDonker, 0.88)
+    : blok(onderDiep, hoogte * 0.62, bw, PAL.kerkDonker, 0.88);
+  const bovenY = hoogte * 0.62;
+  onder.position.set(
+    x + (langsX ? 0 : uit * onderDiep / 2),
+    hoogte * 0.31,
+    z + (langsX ? uit * onderDiep / 2 : 0)
+  );
+  parent.add(onder);
+  const boven = langsX
+    ? blok(tw, hoogte * 0.42, bovenDiep, PAL.kerkDonker, 0.88)
+    : blok(bovenDiep, hoogte * 0.42, tw, PAL.kerkDonker, 0.88);
+  boven.position.set(
+    x + (langsX ? 0 : uit * bovenDiep / 2),
+    bovenY + hoogte * 0.21 - 0.1,
+    z + (langsX ? uit * bovenDiep / 2 : 0)
+  );
+  parent.add(boven);
+}
+
+// Rij ronde zuilen langs een gevel, met een doorlopende architraafbalk erboven.
+function maakZuilenrij(parent, o) {
+  const langsX = (o.richting === 'south' || o.richting === 'north');
+  const kl = o.kleur ?? PAL.zandsteenLicht;
+  for (let i = 0; i < o.aantal; i++) {
+    const off = (i - (o.aantal - 1) / 2) * o.tussen;
+    const zuil = new THREE.Mesh(new THREE.CylinderGeometry(o.straal, o.straal, o.hoogte, 10), mat(kl, 0.82));
+    zuil.position.set(o.x + (langsX ? off : 0), o.y + o.hoogte / 2, o.z + (langsX ? 0 : off));
+    zuil.castShadow = true;
+    parent.add(zuil);
+  }
+  const span = (o.aantal - 1) * o.tussen + o.straal * 4;
+  const balk = langsX
+    ? blok(span, 0.85, o.straal * 2.4, kl, 0.82)
+    : blok(o.straal * 2.4, 0.85, span, kl, 0.82);
+  balk.position.set(o.x, o.y + o.hoogte + 0.42, o.z);
+  balk.userData.geenSchaduw = true;
+  parent.add(balk);
+}
+
+// Dunne horizontale lijst/band (kroonlijst, verdiepingsband). Caller bepaalt de
+// maten; standaard zonder schaduw want het is een plat sierstripje.
+function maakDaklijst(parent, breedte, hoogte, diepte, x, y, z, kleur = PAL.zandsteenLicht) {
+  const lijst = blok(breedte, hoogte, diepte, kleur, 0.8);
+  lijst.position.set(x, y, z);
+  lijst.userData.geenSchaduw = true;
+  parent.add(lijst);
+  return lijst;
+}
+
+// Etalagepui: donkere doorlopende glasstrook met smalle penanten ertussen en
+// een luifelplaat erboven. Maakt van een blinde begane grond een warenhuis.
+function maakEtalage(parent, o) {
+  const langsX = (o.richting === 'south' || o.richting === 'north');
+  const uit = (o.richting === 'south' || o.richting === 'east') ? 1 : -1;
+  const dik = 0.25;
+  const glas = langsX
+    ? new THREE.Mesh(new THREE.BoxGeometry(o.breedte, o.hoogte, dik), mat(PAL.etalageGlas, 0.3, 0.15))
+    : new THREE.Mesh(new THREE.BoxGeometry(dik, o.hoogte, o.breedte), mat(PAL.etalageGlas, 0.3, 0.15));
+  glas.position.set(o.x + (langsX ? 0 : uit * 0.05), o.y, o.z + (langsX ? uit * 0.05 : 0));
+  glas.userData.geenSchaduw = true;
+  parent.add(glas);
+  const n = o.penanten ?? 6;
+  const penKleur = o.penantKleur ?? PAL.zandsteen;
+  for (let i = 0; i <= n; i++) {
+    const off = (i / n - 0.5) * o.breedte;
+    const pen = langsX
+      ? blok(0.35, o.hoogte + 0.3, dik + 0.18, penKleur, 0.8)
+      : blok(dik + 0.18, o.hoogte + 0.3, 0.35, penKleur, 0.8);
+    pen.position.set(o.x + (langsX ? off : uit * 0.06), o.y, o.z + (langsX ? uit * 0.06 : off));
+    pen.userData.geenSchaduw = true;
+    parent.add(pen);
+  }
+  const luifel = langsX
+    ? blok(o.breedte + 0.6, 0.2, 1.4, PAL.dakDonker, 0.7)
+    : blok(1.4, 0.2, o.breedte + 0.6, PAL.dakDonker, 0.7);
+  luifel.position.set(o.x + (langsX ? 0 : uit * 0.7), o.y + o.hoogte / 2 + 0.35, o.z + (langsX ? uit * 0.7 : 0));
+  luifel.userData.geenSchaduw = true;
+  parent.add(luifel);
 }
 
 
@@ -892,10 +1038,58 @@ function bouwKoninklijkPaleis() {
   atlasBol.position.set(-13.2, 27.3, 0);
   g.add(atlasBol);
 
+  // --- Visual landmark pass: monumentaler maken ---------------------
+  // Twee hoekrisalieten geven het klassieke vijfdelige Paleis-silhouet.
+  // Ze steken minder ver naar voren dan het middenrisaliet (oostface 18.7),
+  // zodat de reparatiepost op wereld-x -70 ruim vrij blijft.
+  for (const zc of [-33, 33]) {
+    const risaliet = blok(5, 23, 11, PAL.zandsteenLicht, 0.84);
+    risaliet.position.set(15.0, 11.5, zc);
+    g.add(risaliet);
+    // Kleine fronton-driehoek op elk hoekrisaliet, pleinzijde (oost).
+    const hoekFronton = driehoekFacade(17.55, zc, 23.1, 11, 2.6, PAL.zandsteenLicht);
+    g.add(hoekFronton);
+  }
+
+  // Grote zuilenportiek vóór de ingang: 6 ronde zuilen met architraaf.
+  maakZuilenrij(g, { x: 19.3, y: 2.3, z: 0, aantal: 6, tussen: 3.6, straal: 0.45, hoogte: 14.5, richting: 'east', kleur: PAL.zandsteenLicht });
+
+  // Twee verdiepingsbanden over de oostgevel, tussen de raamrijen.
+  for (const yb of [6.7, 10.9]) {
+    maakDaklijst(g, 0.3, 0.4, 70, 14.75, yb, 0, PAL.zandsteen);
+  }
+
+  // Balustrade langs de oostelijke dakrand: één doorlopende rail plus lage
+  // postjes, allemaal zonder schaduw (klein sierwerk).
+  maakDaklijst(g, 0.5, 0.7, 72, 15.2, 23.55, 0, PAL.balustrade);
+  for (let i = 0; i < 13; i++) {
+    const post = blok(0.45, 1.0, 0.45, PAL.balustrade, 0.8);
+    post.position.set(15.2, 23.7, -36 + i * 6);
+    post.userData.geenSchaduw = true;
+    g.add(post);
+  }
+
+  // Enkele dakkapellen op de oostrand van het platte dak.
+  for (const zc of [-23, -8, 8, 23]) {
+    const kapel = blok(2.2, 1.7, 2.0, PAL.zandsteenLicht, 0.82);
+    kapel.position.set(12.0, 25.9, zc);
+    kapel.userData.geenSchaduw = true;
+    g.add(kapel);
+    const kapelDak = zadeldak(2.6, 2.4, 1.0, PAL.dakDonker);
+    kapelDak.position.set(12.0, 26.75, zc);
+    kapelDak.rotation.y = Math.PI / 2;
+    kapelDak.userData.geenSchaduw = true;
+    g.add(kapelDak);
+  }
+
   g.position.set(-93, 0, 0);
   wereld.add(g);
   schaduwAan(g);
-  registreerObstakel(g, 0.4);
+  // Expliciete obstakelrechthoek i.p.v. registreerObstakel(Box3): zo groeit de
+  // collision niet stilletjes mee met de nieuwe uitstekende zuilen/risalieten.
+  // Wereldmaten: x = -93 + [-15.75(dakrand/west), 19.75(zuil-oostrand)],
+  // z = [-42.3, 42.3] (plint/dakrand-diepte).
+  registreerRechthoek(-108.75, -73.0, -42.3, 42.3, 0.3);
 }
 bouwKoninklijkPaleis();
 
@@ -946,11 +1140,12 @@ function bouwNieuweKerk() {
   transept.position.set(2, 6.75, 2);
   g.add(transept);
 
-  const dak1 = zadeldak(55, 31, 8.5, PAL.dakDonker);
+  // Steilere daken maken het silhouet gotischer (hogere nok, zelfde voet).
+  const dak1 = zadeldak(55, 31, 12, PAL.dakDonker);
   dak1.position.set(0, 15.45, 0);
   g.add(dak1);
 
-  const dak2 = zadeldak(27, 45, 7.2, PAL.dakDonker);
+  const dak2 = zadeldak(27, 45, 10, PAL.dakDonker);
   dak2.position.set(2, 13.45, 2);
   dak2.rotation.y = Math.PI / 2;
   g.add(dak2);
@@ -964,19 +1159,51 @@ function bouwNieuweKerk() {
   torenSpits.castShadow = true;
   g.add(torenSpits);
 
-  // Spitsboogramen als hoge donkere vlakken met lichte rand.
+  // Spitsboogramen: dezelfde posities/maten als voorheen, nu met gotische top.
   for (let i = 0; i < 7; i++) {
     const x = -20 + i * 7;
-    raamOpFacade(g, x, 7.2, 13.65, 1.7, 5.5, 'south');
+    maakSpitsboogRaam(g, x, 7.2, 13.65, 1.7, 5.5, 'south');
   }
   for (let i = 0; i < 4; i++) {
-    raamOpFacade(g, 25.95, 6.8, -9 + i * 6, 1.5, 4.6, 'east');
+    maakSpitsboogRaam(g, 25.95, 6.8, -9 + i * 6, 1.5, 4.6, 'east');
   }
+
+  // Steunberen langs de zuidwestelijke schipmuur (zuidwaarts, richting plein)
+  // en de oostgevel (oostwaarts). Beide staan ruim voor de kerkklok (lokaal
+  // z=29) en de open plein-zijde, dus ze blokkeren geen looproute.
+  for (const bx of [-24, -18, -12]) {
+    maakSteunbeer(g, bx, 13.65, 14, 'south');
+  }
+  const oostBeerZ = [-11, -4, 4, 11];
+  for (const bz of oostBeerZ) {
+    maakSteunbeer(g, 25.95, bz, 14, 'east');
+    // Pinakel-spitsje bovenop elke oostelijke steunbeer.
+    const pin = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.8, 4), mat(PAL.dakDonker, 0.75));
+    pin.position.set(26.6, 15.2, bz);
+    pin.rotation.y = Math.PI / 4;
+    pin.userData.geenSchaduw = true;
+    g.add(pin);
+  }
+
+  // Roosvenster op de zuidgevel van het transept (de prominente pleinzijde).
+  const roosRing = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 0.2, 20), mat(PAL.kerkDonker, 0.8));
+  roosRing.rotation.x = Math.PI / 2;
+  roosRing.position.set(2, 10.5, 23.12);
+  roosRing.userData.geenSchaduw = true;
+  g.add(roosRing);
+  const roosGlas = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.0, 0.16, 20), mat(PAL.raam, 0.45, 0.05));
+  roosGlas.rotation.x = Math.PI / 2;
+  roosGlas.position.set(2, 10.5, 23.16);
+  roosGlas.userData.geenSchaduw = true;
+  g.add(roosGlas);
 
   g.position.set(-67, 0, -67);
   wereld.add(g);
   schaduwAan(g);
-  registreerObstakel(g, 0.4);
+  // Expliciete rechthoek i.p.v. Box3, zodat de steunberen de collision niet
+  // ongemerkt oprekken. Wereldmaten: x = -67 + [-34(toren-west), 27.3(oostbeer)],
+  // z = -67 + [-19(transept-noord), 23(transept-zuid)].
+  registreerRechthoek(-101.3, -39.5, -86.3, -43.7, 0.3);
 }
 bouwNieuweKerk();
 
@@ -1025,11 +1252,16 @@ function bouwNationaalMonument() {
   tree3.position.y = 1.45;
   g.add(tree3);
 
-  const zuil = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 2.45, 22, 18), mat(PAL.monument, 0.68));
+  // Vierzijdige pyloon (i.p.v. ronde zuil): het echte Nationaal Monument is een
+  // vierkante witte pyloon. Een 4-segments cilinder, 45° gedraaid zodat een
+  // vlakke zijde naar het plein (west) kijkt, geeft precies dat silhouet.
+  const zuil = new THREE.Mesh(new THREE.CylinderGeometry(1.35, 2.75, 22, 4), mat(PAL.pyloonWit, 0.68));
+  zuil.rotation.y = Math.PI / 4;
   zuil.position.y = 13;
   g.add(zuil);
-  const top = new THREE.Mesh(new THREE.ConeGeometry(1.1, 1.7, 18), mat(0xffffff, 0.65));
-  top.position.y = 24.8;
+  const top = new THREE.Mesh(new THREE.ConeGeometry(1.7, 2.3, 4), mat(0xffffff, 0.65));
+  top.rotation.y = Math.PI / 4;
+  top.position.y = 25.1;
   g.add(top);
 
   // Sculptuurachtige figuren aan de voet, abstract maar herkenbaar.
@@ -1052,6 +1284,36 @@ function bouwNationaalMonument() {
     const paal = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.85, 8), mat(0xcfc8bc, 0.76));
     paal.position.set(Math.cos(hoek) * 15.5, 0.48, Math.sin(hoek) * 15.5);
     g.add(paal);
+  }
+
+  // --- Visual landmark pass: leeuwen (voorzijde/west) en keermuur (achter/oost).
+  // Bewust GEEN obstakelregistratie: dit decor staat buiten de bestaande
+  // trap-rechthoek en zou anders aanvalsroutes vanaf de poorten kunnen
+  // versperren. Omdat het niet in `obstakels` staat, kan het robots nooit
+  // laten vastlopen; ze lopen er hooguit heel even doorheen bij aankomst.
+  for (const lz of [-5, 5]) {
+    const voet = blok(1.7, 0.9, 1.3, PAL.monumentSchaduw, 0.8);
+    voet.position.set(-13.5, 0.45, lz);
+    voet.userData.geenSchaduw = true;
+    g.add(voet);
+    const romp = blok(0.8, 0.8, 1.7, PAL.monument, 0.78);
+    romp.position.set(-13.6, 1.3, lz);
+    romp.userData.geenSchaduw = true;
+    g.add(romp);
+    const kop = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), mat(PAL.monument, 0.78));
+    kop.position.set(-14.3, 1.75, lz);
+    kop.userData.geenSchaduw = true;
+    g.add(kop);
+  }
+  // Lage gebogen keermuur aan de oostzijde: losse segmenten langs een boog met
+  // ruime gaten ertussen, zodat het als muur leest maar niets afsluit.
+  for (let i = 0; i < 5; i++) {
+    const hoek = -0.7 + i * 0.35;   // ~ -40° tot +40° rond de +x (oost) as
+    const seg = blok(1.1, 2.0, 2.6, PAL.monumentSchaduw, 0.8);
+    seg.position.set(Math.cos(hoek) * 13.8, 1.0, Math.sin(hoek) * 13.8);
+    seg.rotation.y = -hoek;
+    seg.userData.geenSchaduw = true;
+    g.add(seg);
   }
 
   g.position.set(42, 0, -4);
@@ -1089,6 +1351,20 @@ function bouwBijenkorf() {
     tekstKleur: '#ffd75e',
     fontSize: 92
   });
+
+  // --- Visual landmark pass: echt warenhuis-gevoel -------------------
+  // Grote etalagepuien met luifel op de begane grond, zuid- en westzijde
+  // (de pleinzijden). Onder de bestaande raamrijen (die op y=5/6 beginnen).
+  maakEtalage(g, { x: -3, y: 2.9, z: 19.12, breedte: 52, hoogte: 2.8, penanten: 8, richting: 'south' });
+  maakEtalage(g, { x: -29.12, y: 2.9, z: -4, breedte: 26, hoogte: 2.8, penanten: 5, richting: 'west' });
+
+  // Doorlopende kroonlijst bovenaan de pleingevels.
+  maakDaklijst(g, 58, 0.7, 0.5, 0, 22.7, 19.3, PAL.zandsteenLicht);
+  maakDaklijst(g, 0.5, 0.7, 38, -29.3, 22.7, 0, PAL.zandsteenLicht);
+
+  // Brede hoofdingang midden in de zuidgevel.
+  deurOpFacade(g, -3, 2.4, 19.4, 5.5, 4.8, 'south', 0x2a2018);
+
   g.position.set(75, 0, -53);
   wereld.add(g);
   schaduwAan(g);
@@ -1180,7 +1456,7 @@ bouwGassanHotel27();
    Gevelrijen, winkels en Amsterdamse panden rondom het plein
    ---------------------------------------------------------------- */
 
-const GEVELKLEUREN = [0x8a4b3a, 0x54402f, 0x3e4a3d, 0xb08d57, 0x6e4a4a, 0x424d5c, 0x94684a, 0x5c4a63, 0xc5a46c, 0x7b6a55];
+const GEVELKLEUREN = [0x8a4b3a, 0x54402f, 0x3e4a3d, 0xb08d57, 0x6e4a4a, 0x424d5c, 0x94684a, 0x5c4a63, 0xc5a46c, 0x7b6a55, 0x6b2f2a, 0xd8cdb8, 0x35543f];
 
 function maakGrachtenpand(opt = {}) {
   const breedte = opt.breedte ?? (5.2 + rnd() * 1.4);
@@ -1197,13 +1473,14 @@ function maakGrachtenpand(opt = {}) {
   plint.position.y = 0.5;
   g.add(plint);
 
-  const dakType = opt.dakType ?? Math.floor(rnd() * 3);
+  const dakType = opt.dakType ?? Math.floor(rnd() * 5);
   if (dakType === 0) {
     const dak = zadeldak(breedte + 0.6, diepte + 0.6, 2.8, PAL.dakDonker);
     dak.position.y = hoogte;
     dak.rotation.y = Math.PI / 2;
     g.add(dak);
   } else if (dakType === 1) {
+    // Trapgevel.
     for (let i = 0; i < 3; i++) {
       const trap = blok(breedte * (0.86 - i * 0.22), 0.85, 0.9, kleur, 0.84);
       trap.position.set(0, hoogte + 0.45 + i * 0.85, diepte / 2 + 0.05);
@@ -1212,17 +1489,52 @@ function maakGrachtenpand(opt = {}) {
     const dak = blok(breedte + 0.4, 1.5, diepte + 0.2, PAL.dakDonker, 0.78);
     dak.position.y = hoogte + 0.6;
     g.add(dak);
-  } else {
+  } else if (dakType === 2) {
     const dak = blok(breedte + 0.5, 1.8, diepte + 0.5, PAL.dak, 0.78);
     dak.position.y = hoogte + 0.9;
     g.add(dak);
+  } else if (dakType === 3) {
+    // Halsgevel: smal verhoogd middenstuk met twee kleine schouderblokjes.
+    const dak = blok(breedte + 0.4, 1.4, diepte + 0.2, PAL.dakDonker, 0.78);
+    dak.position.y = hoogte + 0.6;
+    g.add(dak);
+    const nek = blok(breedte * 0.4, 2.7, 0.7, kleur, 0.84);
+    nek.position.set(0, hoogte + 1.55, diepte / 2 - 0.05);
+    g.add(nek);
+    const nekTop = blok(breedte * 0.46, 0.4, 0.7, PAL.dakDonker, 0.8);
+    nekTop.position.set(0, hoogte + 3.0, diepte / 2 - 0.05);
+    nekTop.userData.geenSchaduw = true;
+    g.add(nekTop);
+    for (const sx of [-1, 1]) {
+      const schouder = blok(breedte * 0.2, 0.55, 0.6, kleur, 0.84);
+      schouder.position.set(sx * breedte * 0.29, hoogte + 0.75, diepte / 2 - 0.05);
+      schouder.userData.geenSchaduw = true;
+      g.add(schouder);
+    }
+  } else {
+    // Klokgevel: drie gestapelde, versmallende blokken (klokvormig silhouet).
+    const dak = blok(breedte + 0.4, 1.4, diepte + 0.2, PAL.dakDonker, 0.78);
+    dak.position.y = hoogte + 0.6;
+    g.add(dak);
+    const breedtes = [0.72, 0.5, 0.3];
+    for (let i = 0; i < 3; i++) {
+      const stuk = blok(breedte * breedtes[i], 0.95, 0.72, kleur, 0.84);
+      stuk.position.set(0, hoogte + 0.9 + i * 0.9, diepte / 2 - 0.05);
+      if (i > 0) stuk.userData.geenSchaduw = true;
+      g.add(stuk);
+    }
   }
 
+  // Kroonlijst als lichte band net onder de daklijn (één plat stripje per pand).
+  maakDaklijst(g, breedte + 0.15, 0.3, 0.28, 0, hoogte - 0.25, diepte / 2 + 0.09, PAL.zandsteenLicht);
+
+  // Raamritme: brede panden krijgen 3 raamkolommen, smalle 2.
+  const kolommen = breedte > 5.8 ? 3 : 2;
   const verdiepingen = Math.max(2, Math.floor(hoogte / 3.1));
   for (let v = 0; v < verdiepingen; v++) {
-    for (let k = 0; k < 2; k++) {
-      const x = -breedte * 0.23 + k * breedte * 0.46;
-      raamOpFacade(g, x, 2.6 + v * 3.05, diepte / 2 + 0.12, 1.35, 1.75, 'south');
+    for (let k = 0; k < kolommen; k++) {
+      const x = (k - (kolommen - 1) / 2) * breedte * 0.32;
+      raamOpFacade(g, x, 2.6 + v * 3.05, diepte / 2 + 0.12, 1.2, 1.75, 'south');
     }
   }
   deurOpFacade(g, 0, 1.25, diepte / 2 + 0.14, 1.35, 2.5, 'south', 0x302219);
@@ -1238,7 +1550,7 @@ function maakGrachtenpand(opt = {}) {
 
 function plaatsGevelrij({ aantal, x, z, richting = 'x', rotY = 0, tussen = 6.35, startOffset = null, diepte = 10 }) {
   for (let i = 0; i < aantal; i++) {
-    const pand = maakGrachtenpand({ diepte, hoogte: 9 + rnd() * 9, dakType: Math.floor(rnd() * 3) });
+    const pand = maakGrachtenpand({ diepte, hoogte: 9 + rnd() * 9, dakType: Math.floor(rnd() * 5) });
     const afstand = startOffset === null ? (i - (aantal - 1) / 2) * tussen : startOffset + i * tussen;
     if (richting === 'x') pand.position.set(x + afstand, 0, z);
     else pand.position.set(x, 0, z + afstand);
@@ -1445,6 +1757,19 @@ function upgradeKiosk(x, z, rotY = 0) {
   );
   neonrand.position.y = 2.54;
   g.add(neonrand);
+  // Kleine integratie met De Bijenkorf: een luifelrandje in dezelfde donkere
+  // kleur als de warenhuis-luifel, plus twee zijschotten aan de toonbank, zodat
+  // de kiosk als onderdeel van de winkel voelt in plaats van een los kraampje.
+  const luifelrand = blok(3.0, 0.28, 0.12, PAL.dakDonker, 0.7);
+  luifelrand.position.set(0, 2.42, 0.78);
+  luifelrand.userData.geenSchaduw = true;
+  g.add(luifelrand);
+  for (const sx of [-1.28, 1.28]) {
+    const schot = blok(0.12, 1.1, 1.2, PAL.dakDonker, 0.75);
+    schot.position.set(sx, 0.6, 0);
+    schot.userData.geenSchaduw = true;
+    g.add(schot);
+  }
 
   maakGevelTekst(g, 'UPGRADES', 0, 5.15, 0.62, 3.2, 0.85, 'south', {
     achtergrond: 'rgba(20, 30, 45, 0.92)',
@@ -1604,6 +1929,31 @@ straatNaambord(79, 7, 'Damstraat', -Math.PI / 2);
 straatNaambord(-47, 60, 'Kalverstraat', Math.PI);
 straatNaambord(-44, -80, 'Nieuwendijk', Math.PI / 2);
 straatNaambord(-88, 35, 'Paleisstraat', Math.PI / 2);
+
+// --- Visual landmark pass: herkenbare straatopeningen -------------------
+// Markeert de monden van Damrak en Rokin met een lichte drempelband op de
+// grond en twee flankerende vlaggenmasten. Alles staat bewust op |x| >= 13,
+// ruim buiten de looproute van de robots (die door het midden komen,
+// spreidingX 8), en niets registreert een obstakel — dus geen pathing-risico.
+function straatOpening(xMidden, z, breedte, vlagKleur) {
+  // Drempel: lichte stoepkleurige strook dwars over de straatmond.
+  vloerRechthoek(breedte, 2.6, xMidden, z, PAL.stoep, 0.17, 0.06);
+  // Vlaggenmasten links en rechts van de opening.
+  vlag(xMidden - breedte / 2 + 1.5, z, vlagKleur);
+  vlag(xMidden + breedte / 2 - 1.5, z, vlagKleur);
+}
+straatOpening(0, -52, 32, 0xee1c25);   // Damrak
+straatOpening(2, 52, 32, 0xee1c25);    // Rokin
+
+// Klein tramhalte-accent bij de Damrak-mond: bordje op een paal plus een lage,
+// smalle perronrand langs de oostzijde — ruim buiten de robotroute (x >= 15).
+straatNaambord(16, -49, 'Tramhalte', -0.2);
+(function tramPerron() {
+  const perron = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.3, 12), mat(PAL.stoep, 0.9));
+  perron.position.set(16.5, 0.2, -55);
+  perron.receiveShadow = true;
+  wereld.add(perron);
+})();
 
 // Straatmuzikant en levend standbeeld, herkenbare Dam-sfeer zonder gameplay te blokkeren.
 function straatMuzikant(x, z, rotY = 0) {
@@ -2952,7 +3302,7 @@ requestAnimationFrame(gameLoop);
 
 // Handig om te experimenteren in de browserconsole (F12 → Console):
 // bijvoorbeeld `DamChaosDebug.spawnRobot()` voor een extra robot.
-window.DamChaosDebug = { scene, camera, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, spel, upgrades, startWave, geldStand: () => geld };
+window.DamChaosDebug = { scene, camera, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => bijenkorfShopOpen, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier };
 </script>
 </body>
 </html>
