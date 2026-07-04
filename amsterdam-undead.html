@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amsterdam Undead</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    overflow: hidden;
+    background: #05070a;
+  }
+  #scene {
+    position: fixed;
+    inset: 0;
+    display: block;
+  }
+  #overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    color: #eaf2ea;
+    background: linear-gradient(rgba(5,8,10,0.35), rgba(5,8,10,0.65));
+  }
+  #overlay h1 {
+    font-size: 38px;
+    font-weight: 900;
+    margin: 0 0 10px;
+    text-shadow: 0 3px 10px rgba(0,0,0,0.6);
+  }
+  #overlay p {
+    max-width: 480px;
+    color: #cfe0d2;
+    font-size: 15px;
+    line-height: 1.5;
+    margin: 0 0 28px;
+  }
+  .knoppen { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+  .knoppen a, .knoppen button {
+    padding: 12px 22px;
+    border-radius: 12px;
+    border: none;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  #terugKnop { background: rgba(255,255,255,0.12); color: #eaf2ea; }
+  #terugKnop:hover { background: rgba(255,255,255,0.22); }
+  #startKnop { background: #3fae63; color: #04170a; }
+  #startKnop:hover { background: #55c97c; }
+  #melding {
+    margin-top: 18px;
+    font-size: 13px;
+    color: #9fd6b0;
+    min-height: 18px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+
+<div id="overlay">
+  <h1>🧟 Amsterdam Undead</h1>
+  <p>A new undead survival mode in an Amsterdam canal house.</p>
+  <div class="knoppen">
+    <a id="terugKnop" href="index.html">← Terug naar menu</a>
+    <button id="startKnop">Start prototype</button>
+  </div>
+  <div id="melding"></div>
+</div>
+
+<!-- Three.js laden vanaf een CDN, zelfde importmap-patroon als de andere game. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// Simpele, statische sfeerscene: een donker grachtenpand-silhouet met een
+// paar verlichte ramen. Puur decoratief, geen besturing, geen gameplay —
+// bewijst alleen dat de Three.js-pijplijn werkt voor latere tickets.
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050a12);
+scene.fog = new THREE.Fog(0x050a12, 8, 34);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 2.4, 9);
+camera.lookAt(0, 2.2, 0);
+
+scene.add(new THREE.AmbientLight(0x3a4a5a, 0.8));
+const maanlicht = new THREE.DirectionalLight(0x9fb3cc, 0.6);
+maanlicht.position.set(-4, 8, 4);
+scene.add(maanlicht);
+
+const gevel = new THREE.Mesh(
+  new THREE.BoxGeometry(6, 6.5, 4),
+  new THREE.MeshStandardMaterial({ color: 0x1c2430, roughness: 0.9 })
+);
+gevel.position.y = 3.25;
+scene.add(gevel);
+
+const raamMateriaal = new THREE.MeshStandardMaterial({ color: 0xffcf7a, emissive: 0xffb347, emissiveIntensity: 0.55 });
+for (let rij = 0; rij < 2; rij++) {
+  for (let kol = 0; kol < 3; kol++) {
+    const raam = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.2, 0.1), raamMateriaal);
+    raam.position.set(-1.8 + kol * 1.8, 2.2 + rij * 2.2, 2.06);
+    scene.add(raam);
+  }
+}
+
+const grond = new THREE.Mesh(
+  new THREE.PlaneGeometry(60, 60),
+  new THREE.MeshStandardMaterial({ color: 0x0a1520, roughness: 1 })
+);
+grond.rotation.x = -Math.PI / 2;
+scene.add(grond);
+
+function resize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+addEventListener('resize', resize);
+
+function animeer() {
+  requestAnimationFrame(animeer);
+  gevel.rotation.y = Math.sin(Date.now() * 0.0002) * 0.15;
+  renderer.render(scene, camera);
+}
+animeer();
+
+// "Start prototype" bouwt nog niets: eerlijke placeholder-feedback i.p.v.
+// doen alsof er al een spel is (dat komt in een volgend ticket).
+const melding = document.getElementById('melding');
+document.getElementById('startKnop').addEventListener('click', () => {
+  melding.textContent = 'Prototype volgt in een volgende stap — nog niet speelbaar.';
+  melding.style.opacity = '1';
+});
+</script>
+</body>
+</html>
