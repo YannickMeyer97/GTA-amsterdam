@@ -983,12 +983,58 @@ function bouwKrasnapolsky() {
     tekstKleur: '#fff2d0',
     fontSize: 82
   });
-  g.position.set(72, 0, 58);
+  // In het echt staat Hotel Krasnapolsky vlak naast De Bijenkorf. Deze plek
+  // (west van de Bijenkorf, iets dichter naar het plein toe) laat de
+  // voorgevel via de 180 graden rotatie weer netjes richting het plein
+  // kijken, en houdt ruime afstand tot de Damrak-gevelrij noordelijker op
+  // het plein (anders ontstaat daar een te smalle hoek waar robots in
+  // vastlopen — vergelijkbaar met eerdere fixes bij Damstraat en Tussauds).
+  g.position.set(4, 0, -40);
+  g.rotation.y = Math.PI;
   wereld.add(g);
   schaduwAan(g);
   registreerObstakel(g, 0.5);
 }
 bouwKrasnapolsky();
+
+function bouwGassanHotel27() {
+  // Op de oude Krasnapolsky-plek staat in het echt een Gassan-winkel op
+  // straatniveau met Hotel27 in de verdiepingen erboven. Zelfde footprint
+  // als de vorige bebouwing daar, dus geen nieuwe obstakel-risico's; alleen
+  // de bewegwijzering en het torentje (een Krasnapolsky-kenmerk) verschillen.
+  const g = new THREE.Group();
+  const hoofd = blok(61, 21, 29, 0xc7b49b, 0.84);
+  hoofd.position.set(0, 10.5, 0);
+  g.add(hoofd);
+  const dak = blok(62, 3.2, 30, PAL.dak, 0.75);
+  dak.position.set(0, 22.4, 0);
+  g.add(dak);
+  for (let rij = 0; rij < 5; rij++) {
+    for (let kol = 0; kol < 9; kol++) {
+      raamOpFacade(g, -26 + kol * 6.5, 4.5 + rij * 3.5, -14.6, 1.9, 1.8, 'north');
+    }
+  }
+  deurOpFacade(g, 0, 2.2, -14.8, 5.5, 4.4, 'north', 0x1c1c1e);
+  // Gassan: opvallend, iets kleiner bord op straatniveau bij de ingang.
+  maakGevelTekst(g, 'Gassan', 0, 4.6, -14.95, 12, 2.2, 'north', {
+    achtergrond: 'rgba(15, 15, 18, 0.92)',
+    rand: 'rgba(210, 210, 215, 0.95)',
+    tekstKleur: '#f4f4f4',
+    fontSize: 78
+  });
+  // Hotel27: groter bord hoog op de gevel, zoals de hotelnaam erboven.
+  maakGevelTekst(g, 'Hotel27', 0, 18.5, -14.95, 26, 3.5, 'north', {
+    achtergrond: 'rgba(20, 24, 30, 0.9)',
+    rand: 'rgba(200, 210, 220, 0.95)',
+    tekstKleur: '#eef3f8',
+    fontSize: 82
+  });
+  g.position.set(72, 0, 58);
+  wereld.add(g);
+  schaduwAan(g);
+  registreerObstakel(g, 0.5);
+}
+bouwGassanHotel27();
 
 /* ----------------------------------------------------------------
    Gevelrijen, winkels en Amsterdamse panden rondom het plein
@@ -1145,8 +1191,8 @@ function lantaarn(x, z, schaal = 1) {
   registreerRechthoek(x - 0.25, x + 0.25, z - 0.25, z + 0.25, 0.1);
 }
 [
-  [-37, -29], [-35, 23], [18, 28], [25, -31], [0, -8],
-  [-10, -55], [10, -55], [-10, -90], [10, -90], [58, -4],
+  [-37, -29], [-35, 23], [18, 28], [25, -20], [0, -8],
+  [-10, -60], [10, -60], [-10, -90], [10, -90], [58, -4],
   [-49, 30], [14, 43], [75, 28], [75, -32]
 ].forEach(([x, z]) => lantaarn(x, z));
 
@@ -1169,7 +1215,7 @@ function bankje(x, z, rotY = 0) {
   registreerObstakel(g, 0.1);
 }
 bankje(17, 14, Math.PI / 8);
-bankje(-18, -31, -0.4);
+bankje(-34, -31, -0.4);   // verschoven i.v.m. het verplaatste Krasnapolsky-gebouw hiernaast
 bankje(26, -19, Math.PI / 2);
 bankje(-29, 34, 0);
 bankje(54, 21, -0.6);
@@ -1235,8 +1281,60 @@ function fietsenrek(x, z, rotY = 0) {
 }
 fietsenrek(-21, 43, 0);
 fietsenrek(43, 15, Math.PI / 2);
-fietsenrek(-13, -51, 0);
+fietsenrek(-13, -20, 0);   // verschoven i.v.m. het verplaatste Krasnapolsky-gebouw hiernaast
 fietsenrek(70, -25, Math.PI / 2);
+
+// Klein kraampje bij De Bijenkorf dat uitlegt wat de drie upgrades doen en
+// wat ze (vanaf) kosten. De aankoop zelf blijft via de toetsen 1, 2 en 3
+// werken, dit kraampje is puur de uitleg in de wereld zelf.
+function upgradeKiosk(x, z, rotY = 0) {
+  const g = new THREE.Group();
+
+  const toonbank = blok(2.6, 1.1, 1.2, 0x7a5a38, 0.82);
+  toonbank.position.y = 0.55;
+  g.add(toonbank);
+  const paalL = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 8), mat(0x4a3a24, 0.7));
+  paalL.position.set(-1.1, 1.3, 0.5);
+  g.add(paalL);
+  const paalR = paalL.clone();
+  paalR.position.x = 1.1;
+  g.add(paalR);
+  const dak = blok(2.9, 0.18, 1.5, 0xb53b32, 0.7);
+  dak.position.y = 2.65;
+  g.add(dak);
+
+  maakGevelTekst(g, 'Upgrades: toetsen 1, 2, 3', 0, 5.0, 0.62, 3.8, 0.7, 'south', {
+    achtergrond: 'rgba(20, 30, 45, 0.92)',
+    rand: 'rgba(255, 215, 94, 0.95)',
+    tekstKleur: '#ffffff',
+    fontSize: 44
+  });
+
+  const regels = [
+    { titel: '1. Vuurtempo', sub: 'sneller schieten — vanaf €100' },
+    { titel: '2. Pickup radius', sub: 'munten sneller oprapen — vanaf €150' },
+    { titel: '3. Loopsnelheid', sub: 'sneller lopen — vanaf €200' },
+  ];
+  regels.forEach((regel, i) => {
+    maakGevelTekst(g, regel.titel, 0, 3.6 - i * 1.15, 0.62, 3.6, 1.0, 'south', {
+      achtergrond: 'rgba(20, 30, 45, 0.9)',
+      rand: 'rgba(255, 215, 94, 0.95)',
+      tekstKleur: '#ffd75e',
+      subtekst: regel.sub,
+      subtekstKleur: 'rgba(255,255,255,0.9)',
+      fontSize: 58,
+      canvasBreedte: 900,
+      canvasHoogte: 260
+    });
+  });
+
+  g.position.set(x, 0, z);
+  g.rotation.y = rotY;
+  wereld.add(g);
+  schaduwAan(g);
+  registreerRechthoek(x - 1.5, x + 1.5, z - 0.8, z + 0.8, 0.3);
+}
+upgradeKiosk(60, -22);
 
 function boom(x, z, schaal = 1) {
   const g = new THREE.Group();
@@ -1326,7 +1424,7 @@ function toerist(x, z, kleur = 0x2f4a6e) {
   schaduwAan(g);
 }
 const toeristKleuren = [0x2f4a6e, 0x6e4a4a, 0x3e4a3d, 0xb08d57, 0x5c4a63, 0x8a4b3a];
-for (let i = 0; i < 36; i++) {
+for (let i = 0; i < 16; i++) {
   const x = -42 + rnd() * 112;
   const z = -34 + rnd() * 76;
   // Houd het monument zelf vrij.
@@ -1404,7 +1502,11 @@ function levendStandbeeld(x, z, rotY = 0) {
 }
 levendStandbeeld(36, 17, -0.35);
 
-// Bewegende decortram langs Damrak en Rokin. Geen obstakel, puur sfeer en herkenbaarheid.
+// Bewegende decortram langs Damrak en Rokin. De tram krijgt een eigen
+// obstakel-rechthoek die elke frame meebeweegt met de tram zelf, zodat de
+// speler (en robots) er niet meer doorheen kunnen lopen.
+const TRAM_HALF_X = 2.4;
+const TRAM_HALF_Z = 8.1;
 const bewegendeTrams = [];
 function maakRijdendeTram() {
   const g = new THREE.Group();
@@ -1430,7 +1532,11 @@ function plaatsRijdendeTram() {
   const g = maakRijdendeTram();
   g.position.set(5, 0.05, -112);
   wereld.add(g);
-  bewegendeTrams.push({ groep: g, zMin: -112, zMax: 106, richting: 1, snelheid: 5.5, belTimer: 5 });
+  // Eigen obstakel-object dat we straks elke frame bijwerken (minX/maxX
+  // staan vast, alleen minZ/maxZ schuiven mee met de tram).
+  const obstakel = { minX: g.position.x - TRAM_HALF_X, maxX: g.position.x + TRAM_HALF_X, minZ: g.position.z - TRAM_HALF_Z, maxZ: g.position.z + TRAM_HALF_Z };
+  obstakels.push(obstakel);
+  bewegendeTrams.push({ groep: g, obstakel, zMin: -112, zMax: 106, richting: 1, snelheid: 5.5, belTimer: 5 });
 }
 plaatsRijdendeTram();
 function updateBewegendeTrams(dt) {
@@ -1439,6 +1545,8 @@ function updateBewegendeTrams(dt) {
     if (t.groep.position.z > t.zMax) { t.groep.position.z = t.zMax; t.richting = -1; }
     if (t.groep.position.z < t.zMin) { t.groep.position.z = t.zMin; t.richting = 1; }
     t.groep.rotation.y = t.richting > 0 ? 0 : Math.PI;
+    t.obstakel.minZ = t.groep.position.z - TRAM_HALF_Z;
+    t.obstakel.maxZ = t.groep.position.z + TRAM_HALF_Z;
     t.belTimer -= dt;
     if (t.belTimer <= 0) {
       if (typeof speelTramBel === 'function') speelTramBel();
@@ -1801,9 +1909,9 @@ function updateArcadeUI() {
   comboUI.style.opacity = spel.combo >= 2 && spel.comboTimer > 0 ? '1' : '0';
   shopUI.innerHTML = `
     <b>Upgrades</b>, druk tijdens het spelen:<br>
-    <span class="regel">1, Vuurtempo €${upgradeKosten('vuurtempo')} <span class="gekocht">lv ${upgrades.vuurtempo}</span></span>
-    <span class="regel">2, Pickup radius €${upgradeKosten('pickup')} <span class="gekocht">lv ${upgrades.pickup}</span></span>
-    <span class="regel">3, Loopsnelheid €${upgradeKosten('snelheid')} <span class="gekocht">lv ${upgrades.snelheid}</span></span>
+    <span class="regel">1, Vuurtempo (sneller schieten) €${upgradeKosten('vuurtempo')} <span class="gekocht">lv ${upgrades.vuurtempo}</span></span>
+    <span class="regel">2, Pickup radius (munten sneller oprapen) €${upgradeKosten('pickup')} <span class="gekocht">lv ${upgrades.pickup}</span></span>
+    <span class="regel">3, Loopsnelheid (sneller lopen) €${upgradeKosten('snelheid')} <span class="gekocht">lv ${upgrades.snelheid}</span></span>
     <span class="regel">Robots komen uit: ${spel.laatsteSpawnPoort}</span>
   `;
 }
