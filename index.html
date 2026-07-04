@@ -1062,8 +1062,15 @@ function plaatsGevelrij({ aantal, x, z, richting = 'x', rotY = 0, tussen = 6.35,
   }
 }
 
-// Zuidrand bij Madame Tussauds en Kalverstraat.
-plaatsGevelrij({ aantal: 8, x: -8, z: 70, richting: 'x', rotY: Math.PI, tussen: 6.4, diepte: 12 });
+// Zuidrand bij Madame Tussauds en Kalverstraat. Deze rij (voorheen op z=70)
+// overlapte in het z-bereik met het Madame Tussauds-blok (dat tot z=68,1
+// reikt): elke westelijke rand van de rij vormde daardoor een concave hoek
+// die smaller was dan een robot (straal 0,45m, dus minstens 0,9m vrije
+// ruimte nodig). Robots die daar via Kalverstraat naartoe liepen raakten
+// permanent vast en konden zelfs met uitwijkgedrag niet ontsnappen, wat een
+// hele wave voor altijd kon laten hangen. De rij staat nu op z=78, ruim
+// voorbij Tussauds' noordgrens, zodat er een echte doorgang overblijft.
+plaatsGevelrij({ aantal: 8, x: -8, z: 78, richting: 'x', rotY: Math.PI, tussen: 6.4, diepte: 12 });
 // Oostranden rond Damstraat. De rij laat bewust een opening rond z=4 vrij:
 // dat is precies waar de Damstraat-spawnpoort (SPAWN_POORTEN) op aansluit,
 // zodat robots vanuit die poort daadwerkelijk naar het plein kunnen lopen
