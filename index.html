@@ -55,6 +55,27 @@
     text-align: right;
   }
 
+  /* --- Special-meter, compact onder de score --- */
+  #specialUI {
+    position: fixed;
+    top: 76px;
+    right: 16px;
+    padding: 6px 14px;
+    background: rgba(20, 30, 45, 0.65);
+    color: #9adfff;
+    font-size: 14px;
+    font-weight: 800;
+    border-radius: 12px;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    pointer-events: none;
+    z-index: 5;
+    text-align: right;
+    transition: color 0.15s ease;
+  }
+  #specialUI.gereed {
+    color: #ffd75e;
+  }
+
   #objectiveUI {
     position: fixed;
     top: 72px;
@@ -304,6 +325,7 @@
      ============================================================ -->
 <div id="geldUI">💰 €0</div>
 <div id="scoreUI">Score 0<br>Combo x0</div>
+<div id="specialUI">⚡ Special: 0%</div>
 <div id="waveUI">Wave 1</div>
 <div id="objectiveUI">Bescherm het Nationaal Monument, 100%</div>
 <div id="comboUI">COMBO x2</div>
@@ -2196,6 +2218,12 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyT' && !e.repeat && document.pointerLockElement === renderer.domElement) {
     activeerHuidigeInteractie();
   }
+  // X verzilvert de special-meter (zie STAP 3.5, gebruikSpecial) zodra die
+  // vol is. Zelfde veiligheidspatroon als T: !e.repeat tegen toets-herhaling,
+  // en alleen binnen pointer lock zodat het start-/pauzescherm niets triggert.
+  if (e.code === 'KeyX' && !e.repeat && document.pointerLockElement === renderer.domElement) {
+    gebruikSpecial();
+  }
 });
 addEventListener('keyup',   e => { ingedrukt[e.code] = false; });
 
@@ -2399,7 +2427,9 @@ const spel = {
   tussenWaveTimer: 0,
   waveBonusGegeven: false,
   gameOver: false,
-  laatsteSpawnPoort: 'Damrak'
+  laatsteSpawnPoort: 'Damrak',
+  waveGeenMonumentSchade: true,   // wordt false zodra een robot deze wave het monument raakt (zie robotRaaktMonument)
+  specialMeter: 0                 // 0-100, vult per kill, zie vernietigRobot/gebruikSpecial
 };
 
 const upgrades = {
@@ -2417,6 +2447,7 @@ const hitmarkerUI = document.getElementById('hitmarker');
 const waveBanner = document.getElementById('waveBanner');
 const interactiePromptUI = document.getElementById('interactiePrompt');
 const kerkklokBannerUI = document.getElementById('kerkklokBanner');
+const specialUI = document.getElementById('specialUI');
 
 function updateArcadeUI() {
   if (!scoreUI) return;
@@ -2427,6 +2458,9 @@ function updateArcadeUI() {
     : `Bescherm het Nationaal Monument, ${Math.max(0, Math.ceil(spel.monumentHP))}%`;
   comboUI.textContent = `COMBO x${spel.combo}`;
   comboUI.style.opacity = spel.combo >= 2 && spel.comboTimer > 0 ? '1' : '0';
+  const specialGereed = spel.specialMeter >= 100;
+  specialUI.textContent = specialGereed ? '⚡ SPECIAL GEREED — druk X!' : `⚡ Special: ${Math.floor(spel.specialMeter)}%`;
+  specialUI.classList.toggle('gereed', specialGereed);
   shopUI.innerHTML = `
     <b>Upgrades</b>, druk tijdens het spelen:<br>
     <span class="regel">1, Vuurtempo (sneller schieten) €${upgradeKosten('vuurtempo')} <span class="gekocht">lv ${upgrades.vuurtempo}</span></span>
@@ -2444,13 +2478,14 @@ function toonWaveBanner(tekst) {
 }
 
 // Korte, duidelijke aankondiging zodra een nieuw robottype voor het eerst
-// verschijnt. Vanaf wave 5 blijft het gewoon "Wave X" — de speler kent de
+// verschijnt. Vanaf wave 6 blijft het gewoon "Wave X" — de speler kent de
 // types dan al, en de mix/aantallen lopen daarna verder op via
 // kiesRobotTypeVoorWave() en de bestaande waveDoel/maxActieveRobots-formules.
 function waveBannerTekst(nummer) {
   if (nummer === 2) return `Wave 2: Sprinters gesignaleerd!`;
   if (nummer === 3) return `Wave 3: Tanks gesignaleerd!`;
   if (nummer === 4) return `Wave 4: Bommenwerpers gesignaleerd!`;
+  if (nummer === 5) return `Wave 5: Shield Bots gesignaleerd!`;
   return `Wave ${nummer}`;
 }
 
@@ -2462,6 +2497,7 @@ function kiesRobotTypeVoorWave(wave) {
   if (wave >= 2) gewichten.push(['sprinter', 5]);
   if (wave >= 3) gewichten.push(['tank', 3]);
   if (wave >= 4) gewichten.push(['bomber', 3]);
+  if (wave >= 5) gewichten.push(['shieldbot', 3]);
   const totaal = gewichten.reduce((som, [, gewicht]) => som + gewicht, 0);
   let r = Math.random() * totaal;
   for (const [type, gewicht] of gewichten) {
@@ -2479,6 +2515,7 @@ function startWave(nummer) {
   spel.maxActieveRobots = Math.min(5 + Math.floor(nummer * 0.65), 13);
   spel.tussenWaveTimer = 0;
   spel.waveBonusGegeven = false;
+  spel.waveGeenMonumentSchade = true;   // reset hier, niet in het wave-compleet-blok (zie updateWaveSysteem)
   toonWaveBanner(waveBannerTekst(nummer));
   updateArcadeUI();
 }
@@ -2503,7 +2540,18 @@ function updateWaveSysteem(dt) {
       geld += 40 + spel.wave * 15;
       updateGeldUI();
       toonPopup(`Wave bonus +€${40 + spel.wave * 15}`);
-      toonWaveBanner(`Wave ${spel.wave} gehaald`);
+      if (spel.waveGeenMonumentSchade) {
+        // Perfecte-Wave-bonus: geen enkele robot heeft deze wave het
+        // monument geraakt. Eigen banner i.p.v. de normale "gehaald"-tekst,
+        // zodat er nooit twee banners tegelijk verschijnen.
+        const perfectBonus = 50 + spel.wave * 10;
+        geld += perfectBonus;
+        updateGeldUI();
+        toonPopup(`PERFECTE WAVE! +€${perfectBonus}`);
+        toonWaveBanner(`Wave ${spel.wave} — PERFECT!`);
+      } else {
+        toonWaveBanner(`Wave ${spel.wave} gehaald`);
+      }
     }
     if (spel.tussenWaveTimer > 4.5) startWave(spel.wave + 1);
   }
@@ -2534,6 +2582,7 @@ function robotRaaktMonument(robot) {
   const schade = robot.monumentSchade ?? 8;
   spel.monumentHP -= schade;
   spel.combo = 0;
+  spel.waveGeenMonumentSchade = false;   // deze wave is niet meer "perfect" (zie updateWaveSysteem)
   cameraShake = Math.max(cameraShake, 0.14 + schade * 0.01);
   toonPopup(`-${schade}% Monument`);
   if (spel.monumentHP <= 0) {
@@ -2605,17 +2654,78 @@ function getRewardMultiplier() {
   return kerkklokBoost.active ? kerkklokBoost.rewardMultiplier : 1;
 }
 
+// Combo-beloningen: twee pure functies die live spel.combo aflezen, exact
+// hetzelfde patroon als hierboven bij de Kerkklok Boost. Geen nieuwe
+// permanente state, dus geen stacking-risico en automatisch "uit" zodra
+// spel.combo weer op 0 staat (bij monument-hit of na inactiviteit).
+function getComboGeldMultiplier() {
+  if (spel.combo >= 10) return 2.0;
+  if (spel.combo >= 6) return 1.5;
+  if (spel.combo >= 3) return 1.25;
+  return 1.0;
+}
+
+function getComboVuurtempoMultiplier() {
+  if (spel.combo >= 10) return 0.7;
+  if (spel.combo >= 5) return 0.85;
+  return 1.0;
+}
+
+// Combo-tier: 0/1/2/3 voor dezelfde drempels als getComboGeldMultiplier
+// hierboven. Gebruikt in vernietigRobot() om te zien of een kill de combo
+// net over een drempel heen tilt, zodat de tier-popup maar één keer per
+// drempel verschijnt in plaats van bij elke kill in een hoge tier.
+function comboTier(combo) {
+  if (combo >= 10) return 3;
+  if (combo >= 6) return 2;
+  if (combo >= 3) return 1;
+  return 0;
+}
+const COMBO_TIER_MELDING = {
+  1: '🔥 Combo x3 — +25% geld!',
+  2: '🔥 Combo x6 — +50% geld, sneller vuren!',
+  3: '⚡ Combo x10 — MAX bonus!',
+};
+
+// Gedeelde "start de boost"-body, hergebruikt door zowel de normale
+// T-interactie bij de kerk (via activeerKerkklokBoost, na de cooldown-check)
+// als door de special-meter (via gebruikSpecial, die de cooldown-check
+// bewust overslaat maar verder exact hetzelfde effect triggert: zelfde duur,
+// zelfde snelheids/beloningsmultiplier, zelfde banner/geluid). De cooldown
+// NA afloop loopt in beide gevallen via de ongewijzigde updateKerkklokBoost()
+// hieronder, dus een gratis special geeft nooit een permanente gratis-loop.
+function startKerkklokBoost(viaSpecial = false) {
+  kerkklokBoost.active = true;
+  kerkklokBoost.resterend = kerkklokBoost.duration;
+  speelKerkklok();
+  toonFeedbackMelding(viaSpecial ? '⚡ SPECIAL: Kerkklok Boost gestart!' : '🔔 Kerkklok Boost gestart!');
+  kerkklokBannerUI.style.opacity = '1';
+}
+
 function activeerKerkklokBoost() {
   if (kerkklokBoost.active) return;   // T mag niet opnieuw activeren tijdens de boost
   if (kerkklokBoost.cooldownResterend > 0) {
     toonFeedbackMelding(`Kerkklok rust nog: ${Math.ceil(kerkklokBoost.cooldownResterend)}s`);
     return;
   }
-  kerkklokBoost.active = true;
-  kerkklokBoost.resterend = kerkklokBoost.duration;
-  speelKerkklok();
-  toonFeedbackMelding('🔔 Kerkklok Boost gestart!');
-  kerkklokBannerUI.style.opacity = '1';
+  startKerkklokBoost(false);
+}
+
+// Special-meter: vult per kill (zie vernietigRobot), gecapt op 100. Bij 100%
+// kan de speler zelf het moment kiezen om 'm te verzilveren met X — een
+// gratis Kerkklok Boost, ongeacht een lopende cooldown. Bypast alléén de
+// cooldown-GATE (kerkklokBoost.cooldownResterend), niet de cooldown die NA
+// afloop van de boost start: die blijft via updateKerkklokBoost(dt) precies
+// zo lopen als na een normale, bij de kerk geactiveerde boost.
+function gebruikSpecial() {
+  if (spel.specialMeter < 100) return;
+  if (kerkklokBoost.active) {
+    toonFeedbackMelding('Kerkklok Boost is al actief');
+    return;
+  }
+  spel.specialMeter = 0;
+  startKerkklokBoost(true);
+  updateArcadeUI();
 }
 
 // Wordt elke frame aangeroepen (alleen als het spel actief is, dus de
@@ -2762,16 +2872,22 @@ const respawnLijst = [];     // tijdstippen waarop een nieuwe robot komt
 
 const ACCENTKLEUREN = [0x4ecdc4, 0xff6b6b, 0xffd93d, 0x6bcB77, 0xc084fc, 0xff9f43];
 
-// Vier robottypes, elk met een simpele set eigenschappen. hpMax bepaalt
-// hoeveel treffers een robot kost (1 = one-shot), snelheidMultiplier en
+// Robottypes, elk met een simpele set eigenschappen. hpMax bepaalt hoeveel
+// treffers een robot kost (1 = one-shot), snelheidMultiplier en
 // beloningMultiplier schalen de bestaande basiswaarden, kleur (indien
 // gezet) overschrijft de willekeurige accentkleur zodat het type
 // herkenbaar is, en monumentSchade bepaalt de HP-schade bij aankomst.
+// Spelernaam tussen haakjes: de interne key blijft ongewijzigd (normal/
+// sprinter/tank/bomber) om alle bestaande verwijzingen (kiesRobotTypeVoorWave,
+// tests, debug-exports) intact te laten; alleen UI-teksten tonen de naam.
+// schildDuur/schildPauze zijn alleen relevant voor het shieldbot-gedrag
+// (zie updateRobots/schiet) en worden door andere types genegeerd.
 const ROBOT_TYPES = {
-  normal:   { hpMax: 1, snelheidMultiplier: 1.0,  beloningMultiplier: 1.0, kleur: null,     schaal: 1.0,  monumentSchade: 8 },
-  sprinter: { hpMax: 1, snelheidMultiplier: 1.6,  beloningMultiplier: 0.6, kleur: 0x2effea, schaal: 0.85, monumentSchade: 8 },
-  tank:     { hpMax: 3, snelheidMultiplier: 0.55, beloningMultiplier: 2.5, kleur: 0xd1315c, schaal: 1.4,  monumentSchade: 8 },
-  bomber:   { hpMax: 1, snelheidMultiplier: 1.15, beloningMultiplier: 1.0, kleur: 0xff8c00, schaal: 1.05, monumentSchade: 25 },
+  normal:    { hpMax: 1, snelheidMultiplier: 1.0,  beloningMultiplier: 1.0, kleur: null,     schaal: 1.0,  monumentSchade: 8 },   // Grunt
+  sprinter:  { hpMax: 1, snelheidMultiplier: 1.6,  beloningMultiplier: 0.6, kleur: 0x2effea, schaal: 0.85, monumentSchade: 8 },   // Runner
+  tank:      { hpMax: 3, snelheidMultiplier: 0.55, beloningMultiplier: 2.5, kleur: 0xd1315c, schaal: 1.4,  monumentSchade: 8 },   // Tank
+  bomber:    { hpMax: 1, snelheidMultiplier: 1.15, beloningMultiplier: 1.0, kleur: 0xff8c00, schaal: 1.05, monumentSchade: 25 },  // Bomber
+  shieldbot: { hpMax: 1, snelheidMultiplier: 0.85, beloningMultiplier: 1.8, kleur: 0x3ad1ff, schaal: 1.0,  monumentSchade: 10, schildDuur: 1.8, schildPauze: 1.0 },  // Shield Bot
 };
 
 function maakRobot(type = 'normal') {
@@ -2822,8 +2938,22 @@ function maakRobot(type = 'normal') {
   antenneBol.position.y = 2.3;
   groep.add(antenneBol);
 
-  // Alle onderdelen werpen schaduw.
-  groep.traverse(deel => { if (deel.isMesh) deel.castShadow = true; });
+  // Shield Bot: doorschijnend cyaan schildpaneel vóór het lijf, dat aan/uit
+  // knippert (zie updateRobots). Alleen aangemaakt voor dit type, zodat
+  // andere robots geen extra mesh/kost krijgen.
+  let schildMesh = null;
+  if (type === 'shieldbot') {
+    schildMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.62, 0.95, 0.06),
+      new THREE.MeshStandardMaterial({ color: 0x3ad1ff, transparent: true, opacity: 0.85, emissive: 0x3ad1ff, emissiveIntensity: 0.6, roughness: 0.3 })
+    );
+    schildMesh.position.set(0, 1.1, 0.32);
+    schildMesh.userData.geenSchaduw = true;
+    groep.add(schildMesh);
+  }
+
+  // Alle onderdelen werpen schaduw (het schildpaneel niet: geenSchaduw hierboven).
+  groep.traverse(deel => { if (deel.isMesh) deel.castShadow = !deel.userData.geenSchaduw; });
 
   // Schaal is de duidelijkste, simpelste manier om een tank fors groter en
   // een sprinter iets kleiner/ijler te laten ogen dan een normale robot.
@@ -2845,6 +2975,12 @@ function maakRobot(type = 'normal') {
     vastTijd: 0,                         // hoe lang staat hij al nauwelijks te bewegen?
     ontwijkTimer: 0,                     // tijdelijk zijwaarts uitwijken bij vastlopen
     ontwijkOffset: new THREE.Vector3(),
+    // Alleen relevant voor shieldbot (zie updateRobots/schiet); voor andere
+    // types blijven dit onschadelijke standaardwaarden die nergens gelezen
+    // worden omdat alle checks expliciet op type === 'shieldbot' gaten.
+    schildMesh,
+    schildActief: type === 'shieldbot',
+    schildTimer: config.schildDuur ?? 0,
   };
   groep.userData.robot = robot;          // zo vinden we bij een raak schot de robot terug
   return robot;
@@ -2878,6 +3014,19 @@ function updateRobots(dt) {
     if (robot.ontwijkTimer > 0) {
       robot.ontwijkTimer -= dt;
       if (robot.ontwijkTimer <= 0) robot.ontwijkOffset.set(0, 0, 0);
+    }
+
+    // Shield Bot: schild wisselt AAN/UIT op een vaste cyclus (zie schiet()
+    // voor de schot-blokkade zelf). Volledig geïsoleerd per type, raakt
+    // beweging/pathing van geen enkel robottype aan.
+    if (robot.type === 'shieldbot') {
+      robot.schildTimer -= dt;
+      if (robot.schildTimer <= 0) {
+        robot.schildActief = !robot.schildActief;
+        const config = ROBOT_TYPES.shieldbot;
+        robot.schildTimer = robot.schildActief ? config.schildDuur : config.schildPauze;
+      }
+      if (robot.schildMesh) robot.schildMesh.visible = robot.schildActief;
     }
 
     // V4: robots komen uit de straatopeningen en lopen naar het Nationaal Monument.
@@ -3052,7 +3201,7 @@ raycaster.far = 150;   // verder dan dit reikt het schot niet
 
 let laatsteSchotTijd = -999;
 function huidigeSchotCooldown() {
-  return Math.max(0.09, 0.26 - upgrades.vuurtempo * 0.035);
+  return Math.max(0.07, (0.26 - upgrades.vuurtempo * 0.035) * getComboVuurtempoMultiplier());
 }
 function probeerTeSchieten() {
   if (klok - laatsteSchotTijd < huidigeSchotCooldown()) return;
@@ -3081,9 +3230,22 @@ function schiet() {
   while (onderdeel && !onderdeel.userData.robot) onderdeel = onderdeel.parent;
 
   if (onderdeel) {
+    const robot = onderdeel.userData.robot;
+    // Shield Bot: terwijl het schild AAN staat blokkeert elk schot volledig,
+    // vóór de normale hitmarker/cameraShake/raakRobot — anders krijgt de
+    // speler misleidende "het werkte"-feedback op een schot dat niets deed.
+    if (robot.type === 'shieldbot' && robot.schildActief) {
+      speelSchildBlok();
+      const vonk = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6),
+        new THREE.MeshBasicMaterial({ color: 0x9adfff }));
+      vonk.position.copy(raak[0].point);
+      scene.add(vonk);
+      brokstukken.push({ mesh: vonk, snelheid: new THREE.Vector3(0, 1, 0), draai: new THREE.Vector3(), leeftijd: 1.5 });
+      return;
+    }
     toonHitmarker();
     cameraShake = Math.max(cameraShake, 0.12);
-    raakRobot(onderdeel.userData.robot);
+    raakRobot(robot);
   } else {
     // Muur of grond geraakt: klein grijs vonkje op de inslagplek.
     const vonk = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6),
@@ -3117,12 +3279,23 @@ function vernietigRobot(robot) {
 
   scene.remove(robot.groep);
   robots.splice(robots.indexOf(robot), 1);
-  legMuntNeer(robot.groep.position, robot.beloningMultiplier * getRewardMultiplier());
 
+  // Combo eerst ophogen, zodat de geldbeloning van DEZE kill de eventuele
+  // net-bereikte combo-tier al meeneemt (voelt beter dan pas vanaf de
+  // volgende kill belonen).
+  const tierVoor = comboTier(spel.combo);
   spel.combo += 1;
+  const tierNa = comboTier(spel.combo);
+  legMuntNeer(robot.groep.position, robot.beloningMultiplier * getRewardMultiplier() * getComboGeldMultiplier());
+  // Alleen tonen bij het OVERSCHRIJDEN van een drempel, niet bij elke kill
+  // die al in een hoge tier zit — anders spamt dit bij een lange streak.
+  if (tierNa > tierVoor && COMBO_TIER_MELDING[tierNa]) {
+    toonFeedbackMelding(COMBO_TIER_MELDING[tierNa]);
+  }
   // Tijdens de Kerkklok Boost mag een lopende combo iets langer doorlopen.
   spel.comboTimer = kerkklokBoost.active ? 4.5 : 3.2;
   spel.waveKills += 1;
+  spel.specialMeter = Math.min(100, spel.specialMeter + 8);   // elk robottype telt gelijk mee
   const punten = 100 * Math.max(1, spel.combo);
   spel.score += punten;
   toonPopup(`+${punten} score`);
@@ -3139,7 +3312,11 @@ const geldUI = document.getElementById('geldUI');
 const popups = document.getElementById('popups');
 
 function legMuntNeer(positie, beloningMultiplier = 1) {
-  const bedrag = Math.max(1, Math.round((5 + Math.floor(Math.random() * 21)) * beloningMultiplier));   // €5 t/m €25, geschaald per robottype
+  // Plafond van €150: Kerkklok Boost (2x) x Tank-beloning (2.5x) x hoge combo
+  // (2x) kunnen tegelijk oplopen tot ~10x de basiswaarde. Dat mag een leuke
+  // uitschieter zijn in een schaars, tijdgebonden venster, maar niet
+  // onbeperkt — dit is de enige plek waar alle multipliers samenkomen.
+  const bedrag = Math.max(1, Math.min(150, Math.round((5 + Math.floor(Math.random() * 21)) * beloningMultiplier)));   // €5 t/m €25, geschaald per robottype
 
   const munt = new THREE.Group();
   const schijf = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.07, 18),
@@ -3243,6 +3420,10 @@ function speelKerkklok() {
   piep('sine', 520, 260, 0.4, 0.18);
   setTimeout(() => piep('sine', 390, 195, 0.4, 0.14), 180);
 }
+// Metalig "afgeketst" geluid als een schot een actief Shield Bot-schild
+// raakt: duidelijk anders dan speelSchot()/een normale treffer, zodat de
+// speler meteen hoort dat het schot niets deed.
+function speelSchildBlok() { piep('triangle', 900, 700, 0.09, 0.14); }
 
 /* ================================================================
    STAP 8 — DE GAME-LOOP: alles elke frame bijwerken en tekenen
@@ -3312,7 +3493,7 @@ requestAnimationFrame(gameLoop);
 
 // Handig om te experimenteren in de browserconsole (F12 → Console):
 // bijvoorbeeld `DamChaosDebug.spawnRobot()` voor een extra robot.
-window.DamChaosDebug = { scene, camera, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => bijenkorfShopOpen, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier };
+window.DamChaosDebug = { scene, camera, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => bijenkorfShopOpen, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, activeerKerkklokBoost, updateKerkklokBoost };
 </script>
 </body>
 </html>
