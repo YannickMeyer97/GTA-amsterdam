@@ -377,7 +377,11 @@ scene.add(wereld);
 const obstakels = [];
 
 // Groter speelgebied zodat het plein, Damrak, Rokin en zijstraten kloppen.
-const GRENS = { minX: -118, maxX: 126, minZ: -118, maxZ: 106 };
+// maxX is verruimd t.o.v. de oorspronkelijke 126: Hotel Krasnapolsky staat
+// nu met de lange gevel (61m) oost van De Bijenkorf en sluit zo die kant
+// van de kaart af (zie bouwKrasnapolsky hieronder), en dat past niet meer
+// binnen de oorspronkelijke kaartrand.
+const GRENS = { minX: -118, maxX: 165, minZ: -118, maxZ: 106 };
 
 // Palet met iets warmere, minder platte kleuren dan de eerste versie.
 const PAL = {
@@ -983,14 +987,15 @@ function bouwKrasnapolsky() {
     tekstKleur: '#fff2d0',
     fontSize: 82
   });
-  // In het echt staat Hotel Krasnapolsky vlak naast De Bijenkorf. Deze plek
-  // (west van de Bijenkorf, iets dichter naar het plein toe) laat de
-  // voorgevel via de 180 graden rotatie weer netjes richting het plein
-  // kijken, en houdt ruime afstand tot de Damrak-gevelrij noordelijker op
-  // het plein (anders ontstaat daar een te smalle hoek waar robots in
-  // vastlopen — vergelijkbaar met eerdere fixes bij Damstraat en Tussauds).
-  g.position.set(4, 0, -40);
-  g.rotation.y = Math.PI;
+  // In het echt staat Hotel Krasnapolsky vlak naast De Bijenkorf, aan de
+  // oostkant. Een kwartslag (rotY = 90 graden i.p.v. 180) laat de lange
+  // gevel (61m, met het naambord) naar het westen kijken, het plein op —
+  // net als op de referentiefoto, waar de lange gevel het plein aan die
+  // kant "afsluit" in plaats van er dwars op te staan. De smalle (29m)
+  // zijde wijst nu oost-west, met een ruime tussenafstand tot Bijenkorf's
+  // oostgevel (x=104,5) zodat het gebouw goed zichtbaar blijft.
+  g.position.set(134, 0, -40);
+  g.rotation.y = Math.PI / 2;
   wereld.add(g);
   schaduwAan(g);
   registreerObstakel(g, 0.5);
@@ -1117,16 +1122,11 @@ function plaatsGevelrij({ aantal, x, z, richting = 'x', rotY = 0, tussen = 6.35,
 // hele wave voor altijd kon laten hangen. De rij staat nu op z=78, ruim
 // voorbij Tussauds' noordgrens, zodat er een echte doorgang overblijft.
 plaatsGevelrij({ aantal: 8, x: -8, z: 78, richting: 'x', rotY: Math.PI, tussen: 6.4, diepte: 12 });
-// Oostranden rond Damstraat. De rij laat bewust een opening rond z=4 vrij:
-// dat is precies waar de Damstraat-spawnpoort (SPAWN_POORTEN) op aansluit,
-// zodat robots vanuit die poort daadwerkelijk naar het plein kunnen lopen
-// in plaats van tegen een aaneengesloten gevelrij vast te lopen.
-// Oorspronkelijk stonden hier 6 panden (wereld-z -28 tot 7), maar de laatste
-// drie (wereld-z -7, 0 en 7) verzegelden precies de opening waar de
-// Damstraat-spawnpoort op aansluit (z=4, zie SPAWN_POORTEN). Robots konden
-// het plein daardoor nooit bereiken. We houden alleen de eerste drie panden
-// aan (wereld-z -28, -21, -14) en laten de rest van de straatopening vrij.
-plaatsGevelrij({ aantal: 3, x: 111, z: -10, richting: 'z', rotY: -Math.PI / 2, tussen: 7.0, startOffset: -18, diepte: 12 });
+// Oostranden rond Damstraat: hier stonden voorheen 3 kleine huisjes, maar
+// die plek is nu voor Hotel Krasnapolsky (zie bouwKrasnapolsky hieronder,
+// direct ten oosten van De Bijenkorf). De Damstraat-spawnpoort blijft vrij
+// doorloopbaar, want Krasnapolsky staat noordelijker (rond z=-53) dan de
+// poort zelf (z=4).
 // Noordelijke Damrakgevels.
 plaatsGevelrij({ aantal: 7, x: -28, z: -88, richting: 'z', rotY: Math.PI / 2, tussen: 7.0, startOffset: -24, diepte: 11 });
 plaatsGevelrij({ aantal: 6, x: 30, z: -88, richting: 'z', rotY: -Math.PI / 2, tussen: 7.0, startOffset: -20, diepte: 11 });
@@ -1215,7 +1215,7 @@ function bankje(x, z, rotY = 0) {
   registreerObstakel(g, 0.1);
 }
 bankje(17, 14, Math.PI / 8);
-bankje(-34, -31, -0.4);   // verschoven i.v.m. het verplaatste Krasnapolsky-gebouw hiernaast
+bankje(-40, -31, -0.4);   // verschoven i.v.m. het verplaatste Krasnapolsky-gebouw hiernaast
 bankje(26, -19, Math.PI / 2);
 bankje(-29, 34, 0);
 bankje(54, 21, -0.6);
@@ -1351,7 +1351,7 @@ function boom(x, z, schaal = 1) {
   schaduwAan(g);
   registreerRechthoek(x - 0.55 * schaal, x + 0.55 * schaal, z - 0.55 * schaal, z + 0.55 * schaal);
 }
-boom(-43, 18, 1.0); boom(-47, 30, 1.05); boom(25, 39, 0.95); boom(53, 23, 1.1); boom(57, -28, 1.0); boom(-31, -35, 0.9);
+boom(-43, 18, 1.0); boom(-47, 30, 1.05); boom(25, 39, 0.95); boom(53, 23, 1.1); boom(57, -28, 1.0); boom(-38, -35, 0.9);   // laatste boom verschoven i.v.m. Krasnapolsky hiernaast
 
 function tram(x, z, rotY = 0) {
   const g = new THREE.Group();
@@ -1860,11 +1860,16 @@ function afstandTotMonument(positie) {
   const dichtstZ = Math.max(MONUMENT_BOX.minZ, Math.min(positie.z, MONUMENT_BOX.maxZ));
   return Math.hypot(positie.x - dichtstX, positie.z - dichtstZ);
 }
+// Kalverstraat-robots liepen in een rechte lijn naar het monument, wat ze
+// rakelings langs (of ogenschijnlijk achter) het Madame Tussauds-blok
+// stuurde en daarna dezelfde oostelijke corridor in als de Rokin-robots —
+// alsof ze van poort wisselden. Het tussenpunt houdt ze eerst duidelijk aan
+// de westkant van Tussauds voordat ze rechtstreeks op het monument afgaan.
 const SPAWN_POORTEN = [
   { naam: 'Damrak', positie: new THREE.Vector3(0, 0, -106), spreidingX: 8, spreidingZ: 3 },
   { naam: 'Rokin', positie: new THREE.Vector3(2, 0, 96), spreidingX: 8, spreidingZ: 3 },
   { naam: 'Damstraat', positie: new THREE.Vector3(123, 0, 4), spreidingX: 2, spreidingZ: 8 },
-  { naam: 'Kalverstraat', positie: new THREE.Vector3(-55, 0, 92), spreidingX: 6, spreidingZ: 4 },
+  { naam: 'Kalverstraat', positie: new THREE.Vector3(-55, 0, 92), spreidingX: 6, spreidingZ: 4, tussenpunt: new THREE.Vector3(-45, 0, 45) },
   { naam: 'Nieuwendijk', positie: new THREE.Vector3(-52, 0, -106), spreidingX: 6, spreidingZ: 4 }
 ];
 
@@ -1923,6 +1928,34 @@ function toonWaveBanner(tekst) {
   toonWaveBanner.timer = setTimeout(() => { waveBanner.style.opacity = '0'; }, 1600);
 }
 
+// Korte, duidelijke aankondiging zodra een nieuw robottype voor het eerst
+// verschijnt. Vanaf wave 5 blijft het gewoon "Wave X" — de speler kent de
+// types dan al, en de mix/aantallen lopen daarna verder op via
+// kiesRobotTypeVoorWave() en de bestaande waveDoel/maxActieveRobots-formules.
+function waveBannerTekst(nummer) {
+  if (nummer === 2) return `Wave 2: Sprinters gesignaleerd!`;
+  if (nummer === 3) return `Wave 3: Tanks gesignaleerd!`;
+  if (nummer === 4) return `Wave 4: Bommenwerpers gesignaleerd!`;
+  return `Wave ${nummer}`;
+}
+
+// Simpele gewogen loting: hoe hoger de wave, hoe meer robottypes er
+// "meedoen" en hoe groter hun aandeel wordt. Elk type dat al eerder is
+// aangekondigd (zie waveBannerTekst) blijft daarna gewoon meedoen.
+function kiesRobotTypeVoorWave(wave) {
+  const gewichten = [['normal', 10]];
+  if (wave >= 2) gewichten.push(['sprinter', 5]);
+  if (wave >= 3) gewichten.push(['tank', 3]);
+  if (wave >= 4) gewichten.push(['bomber', 3]);
+  const totaal = gewichten.reduce((som, [, gewicht]) => som + gewicht, 0);
+  let r = Math.random() * totaal;
+  for (const [type, gewicht] of gewichten) {
+    if (r < gewicht) return type;
+    r -= gewicht;
+  }
+  return 'normal';
+}
+
 function startWave(nummer) {
   spel.wave = nummer;
   spel.waveKills = 0;
@@ -1931,7 +1964,7 @@ function startWave(nummer) {
   spel.maxActieveRobots = Math.min(5 + Math.floor(nummer * 0.65), 13);
   spel.tussenWaveTimer = 0;
   spel.waveBonusGegeven = false;
-  toonWaveBanner(`Wave ${nummer}`);
+  toonWaveBanner(waveBannerTekst(nummer));
   updateArcadeUI();
 }
 
@@ -1945,7 +1978,7 @@ function updateWaveSysteem(dt) {
     }
   }
   while (spel.teSpawnen > 0 && robots.length < spel.maxActieveRobots) {
-    spawnRobotVanafPoort();
+    spawnRobotVanafPoort(kiesRobotTypeVoorWave(spel.wave));
     spel.teSpawnen--;
   }
   if (spel.teSpawnen <= 0 && robots.length === 0) {
@@ -1974,19 +2007,20 @@ function spawnPlekVoorPoort(poort) {
   return poort.positie.clone();
 }
 
-function spawnRobotVanafPoort() {
+function spawnRobotVanafPoort(type = 'normal') {
   const poort = kiesSpawnPoort();
-  spawnRobot(poort);
+  spawnRobot(poort, type);
 }
 
 function robotRaaktMonument(robot) {
   speelExplosie();
   scene.remove(robot.groep);
   robots.splice(robots.indexOf(robot), 1);
-  spel.monumentHP -= 8;
+  const schade = robot.monumentSchade ?? 8;
+  spel.monumentHP -= schade;
   spel.combo = 0;
-  cameraShake = Math.max(cameraShake, 0.22);
-  toonPopup('-8% Monument');
+  cameraShake = Math.max(cameraShake, 0.14 + schade * 0.01);
+  toonPopup(`-${schade}% Monument`);
   if (spel.monumentHP <= 0) {
     spel.monumentHP = 0;
     spel.gameOver = true;
@@ -2030,9 +2064,22 @@ const respawnLijst = [];     // tijdstippen waarop een nieuwe robot komt
 
 const ACCENTKLEUREN = [0x4ecdc4, 0xff6b6b, 0xffd93d, 0x6bcB77, 0xc084fc, 0xff9f43];
 
-function maakRobot() {
+// Vier robottypes, elk met een simpele set eigenschappen. hpMax bepaalt
+// hoeveel treffers een robot kost (1 = one-shot), snelheidMultiplier en
+// beloningMultiplier schalen de bestaande basiswaarden, kleur (indien
+// gezet) overschrijft de willekeurige accentkleur zodat het type
+// herkenbaar is, en monumentSchade bepaalt de HP-schade bij aankomst.
+const ROBOT_TYPES = {
+  normal:   { hpMax: 1, snelheidMultiplier: 1.0,  beloningMultiplier: 1.0, kleur: null,     schaal: 1.0,  monumentSchade: 8 },
+  sprinter: { hpMax: 1, snelheidMultiplier: 1.6,  beloningMultiplier: 0.6, kleur: 0x2effea, schaal: 0.85, monumentSchade: 8 },
+  tank:     { hpMax: 3, snelheidMultiplier: 0.55, beloningMultiplier: 2.5, kleur: 0xd1315c, schaal: 1.4,  monumentSchade: 8 },
+  bomber:   { hpMax: 1, snelheidMultiplier: 1.15, beloningMultiplier: 1.0, kleur: 0xff8c00, schaal: 1.05, monumentSchade: 25 },
+};
+
+function maakRobot(type = 'normal') {
+  const config = ROBOT_TYPES[type] ?? ROBOT_TYPES.normal;
   const groep = new THREE.Group();
-  const accent = ACCENTKLEUREN[Math.floor(Math.random() * ACCENTKLEUREN.length)];
+  const accent = config.kleur ?? ACCENTKLEUREN[Math.floor(Math.random() * ACCENTKLEUREN.length)];
   const metaal = new THREE.MeshStandardMaterial({ color: 0x9aa5b1, roughness: 0.35, metalness: 0.8 });
   const metaalDonker = new THREE.MeshStandardMaterial({ color: 0x5c6672, roughness: 0.4, metalness: 0.7 });
 
@@ -2080,10 +2127,20 @@ function maakRobot() {
   // Alle onderdelen werpen schaduw.
   groep.traverse(deel => { if (deel.isMesh) deel.castShadow = true; });
 
+  // Schaal is de duidelijkste, simpelste manier om een tank fors groter en
+  // een sprinter iets kleiner/ijler te laten ogen dan een normale robot.
+  groep.scale.setScalar(config.schaal);
+
   const robot = {
     groep,
     beenLinks, beenRechts, armLinks, armRechts,
+    type,
+    hp: config.hpMax,                    // aantal treffers dat deze robot nog kan hebben
+    beloningMultiplier: config.beloningMultiplier,
+    monumentSchade: config.monumentSchade,
     doel: null,                          // waar wandelt hij heen?
+    tussenpunt: null,                    // optioneel routepunt vóór het monument (zie SPAWN_POORTEN)
+    tussenpuntBereikt: false,
     pauze: 0,                            // even stilstaan bij aankomst
     snelheid: 1.4 + Math.random(),       // elke robot loopt anders snel
     stapfase: Math.random() * 10,        // zodat ze niet synchroon lopen
@@ -2095,16 +2152,19 @@ function maakRobot() {
   return robot;
 }
 
-function spawnRobot(poort = null) {
-  const robot = maakRobot();
+function spawnRobot(poort = null, type = 'normal') {
+  const robot = maakRobot(type);
   if (poort) {
     robot.groep.position.copy(spawnPlekVoorPoort(poort));
     spel.laatsteSpawnPoort = poort.naam;
+    robot.tussenpunt = poort.tussenpunt ? poort.tussenpunt.clone() : null;
   } else {
     robot.groep.position.copy(willekeurigePlek(18));
   }
   robot.doel = MONUMENT_POSITIE.clone();
-  robot.snelheid = Math.min(1.35 + Math.random() * 0.7 + spel.wave * 0.07, 3.2);
+  const config = ROBOT_TYPES[type] ?? ROBOT_TYPES.normal;
+  const basisSnelheid = Math.min(1.35 + Math.random() * 0.7 + spel.wave * 0.07, 3.2);
+  robot.snelheid = basisSnelheid * config.snelheidMultiplier;
   scene.add(robot.groep);
   robots.push(robot);
   updateArcadeUI();
@@ -2123,9 +2183,17 @@ function updateRobots(dt) {
     }
 
     // V4: robots komen uit de straatopeningen en lopen naar het Nationaal Monument.
-    // Bij vastlopen wijken ze tijdelijk uit naar een punt naast het monument.
-    robot.doel = MONUMENT_POSITIE;
-    const richting = robot.doel.clone().add(robot.ontwijkOffset).sub(positie).setY(0);
+    // Sommige poorten (zie SPAWN_POORTEN) geven eerst een tussenpunt mee, zodat
+    // robots duidelijk hun eigen straat volgen voordat ze de laatste rechte lijn
+    // naar het monument inzetten, in plaats van meteen dwars over het plein te
+    // snijden en in eenzelfde corridor als een andere poort te verdwijnen.
+    if (robot.tussenpunt && !robot.tussenpuntBereikt && positie.distanceTo(robot.tussenpunt) < 6) {
+      robot.tussenpuntBereikt = true;
+    }
+    const huidigDoel = (robot.tussenpunt && !robot.tussenpuntBereikt) ? robot.tussenpunt : MONUMENT_POSITIE;
+    robot.doel = huidigDoel;
+    // Bij vastlopen wijken ze tijdelijk uit naar een punt naast het huidige doel.
+    const richting = huidigDoel.clone().add(robot.ontwijkOffset).sub(positie).setY(0);
 
     // Raakt de robot het monument-vlak zelf (niet alleen het middelpunt)?
     // De obstakel-rechthoek rond het monument houdt robots anders voor altijd
@@ -2312,7 +2380,7 @@ function schiet() {
   if (onderdeel) {
     toonHitmarker();
     cameraShake = Math.max(cameraShake, 0.12);
-    vernietigRobot(onderdeel.userData.robot);
+    raakRobot(onderdeel.userData.robot);
   } else {
     // Muur of grond geraakt: klein grijs vonkje op de inslagplek.
     const vonk = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6),
@@ -2321,6 +2389,13 @@ function schiet() {
     scene.add(vonk);
     brokstukken.push({ mesh: vonk, snelheid: new THREE.Vector3(0, 1, 0), draai: new THREE.Vector3(), leeftijd: 1.5 });
   }
+}
+
+// Eén treffer: bij de meeste robots is dit meteen dodelijk (hp begint op 1),
+// een tank heeft er een paar nodig voordat vernietigRobot() wordt aangeroepen.
+function raakRobot(robot) {
+  robot.hp -= 1;
+  if (robot.hp <= 0) vernietigRobot(robot);
 }
 
 // Robot kapot: alle onderdelen vliegen in het rond, munt blijft achter.
@@ -2333,12 +2408,13 @@ function vernietigRobot(robot) {
     const wereldPositie = new THREE.Vector3();
     deel.getWorldPosition(wereldPositie);
     const kopie = new THREE.Mesh(deel.geometry, deel.material);
+    kopie.scale.copy(deel.getWorldScale(new THREE.Vector3()));   // schaal (tank/sprinter) meenemen
     maakBrokstuk(kopie, wereldPositie, 6);
   }
 
   scene.remove(robot.groep);
   robots.splice(robots.indexOf(robot), 1);
-  legMuntNeer(robot.groep.position);
+  legMuntNeer(robot.groep.position, robot.beloningMultiplier);
 
   spel.combo += 1;
   spel.comboTimer = 3.2;
@@ -2358,8 +2434,8 @@ const munten = [];   // { groep, bedrag, basisY }
 const geldUI = document.getElementById('geldUI');
 const popups = document.getElementById('popups');
 
-function legMuntNeer(positie) {
-  const bedrag = 5 + Math.floor(Math.random() * 21);   // €5 t/m €25
+function legMuntNeer(positie, beloningMultiplier = 1) {
+  const bedrag = Math.max(1, Math.round((5 + Math.floor(Math.random() * 21)) * beloningMultiplier));   // €5 t/m €25, geschaald per robottype
 
   const munt = new THREE.Group();
   const schijf = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.07, 18),
@@ -2479,13 +2555,20 @@ function gameLoop(nu) {
   klok += dt;
 
   updateSpeler(dt);
-  if (schietKnopIngedrukt && document.pointerLockElement === renderer.domElement) probeerTeSchieten();
-  updateWaveSysteem(dt);
-  updateRobots(dt);
-  updateDuiven(dt);
-  updateMunten(dt);
-  updateBrokstukken(dt);
-  if (typeof updateBewegendeTrams === 'function') updateBewegendeTrams(dt);
+
+  // Alles wat de wereld laat "leven" staat stil zolang het spel gepauzeerd is
+  // (pointer lock inactief, bijvoorbeeld na Esc). Voorheen liepen robots,
+  // munten en de tram gewoon door tijdens de pauze.
+  const spelActief = document.pointerLockElement === renderer.domElement;
+  if (spelActief) {
+    if (schietKnopIngedrukt) probeerTeSchieten();
+    updateWaveSysteem(dt);
+    updateRobots(dt);
+    updateDuiven(dt);
+    updateMunten(dt);
+    updateBrokstukken(dt);
+    if (typeof updateBewegendeTrams === 'function') updateBewegendeTrams(dt);
+  }
 
   // Wapen-terugslag laten uitdempen.
   if (terugslag > 0) {
@@ -2515,7 +2598,7 @@ requestAnimationFrame(gameLoop);
 
 // Handig om te experimenteren in de browserconsole (F12 → Console):
 // bijvoorbeeld `DamChaosDebug.spawnRobot()` voor een extra robot.
-window.DamChaosDebug = { scene, camera, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, spel, upgrades, startWave, geldStand: () => geld };
+window.DamChaosDebug = { scene, camera, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, spel, upgrades, startWave, geldStand: () => geld };
 </script>
 </body>
 </html>
