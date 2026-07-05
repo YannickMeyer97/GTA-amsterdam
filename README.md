@@ -95,25 +95,38 @@ te gaan naar het hoofdmenu.
 
 - Overleef doorlopende **golven ondoden** die uit de vensters het pand
   binnendringen en op je afkomen. De eerste twee golven zijn ze fragiel
-  (1 treffer), daarna taaier (2 treffers); elke golf komen er meer.
+  (1 treffer), daarna taaier (2 treffers); elke golf komen er meer, en elke
+  ontgrendelde zone verhoogt de spawndruk (sneller + meer gelijktijdig).
 - **Trefzones tellen:** een lichaamstreffer doet 1 schade, een **headshot**
-  het dubbele. Je magazijn houdt 8 kogels (reserve 48); `R` herlaadt in 1,2 s.
+  het dubbele. Je magazijn houdt 8 kogels (reserve 48); `R` herlaadt in 1,2 s
+  (0,7 s na de Snelspanner-upgrade).
 - Kom je te dicht bij een ondode, dan slaat 'ie (15 schade). Je HP (100)
   regenereert vanzelf na een paar seconden zonder klappen; een rode
   schermrand waarschuwt bij schade. Op 0 HP is het **game over** (klik
   "Opnieuw beginnen" om te herstarten).
-- Je verdient **geld** per treffer en per kill. Besteed het aan drie
-  interactiepunten (loop ernaartoe, druk `T`):
-  - **Deur forceren (€750)** — opent een gang naar een tweede kamer met
-    extra spawn-vensters.
-  - **Ammo-kist (€300)** — +48 reserve-munitie.
-  - **Upgradepunt (€500)** — schade +1 (daarna max).
+- Je verdient **geld** per treffer en per kill.
+
+### Drie zones, elk met een eigen doel
+
+1. **De woonkamer** (start) — warm, veilig, leert je de basis. Ammo-kist
+   (€300, +48 reserve-munitie) en het eerste upgradepunt (€500, schade +1,
+   daarna MAX).
+2. **De gang** — een smal, donker, kaal knelpunt tussen de woonkamer en het
+   atelier; puur doorgang, geen interacties.
+3. **Het schildersatelier** (achter deur 1, €750) — koel daglicht via een
+   dakraam, een schildersezel als landmark, en de **Werkbank**: een
+   eenmalige Snelspanner-upgrade (€600, herlaadtijd 1,2s → 0,7s).
+4. **De binnenplaats** (achter deur 2, €1250, vanuit het atelier) — buiten,
+   ommuurd, koud maanlicht op natte klinkers. De **Regenton** geeft eenmalig
+   €400, de **Watertap** is herbruikbaar (€200 → +50 HP, gecapt op je max).
 
 ### Sfeer & techniek
 
-Warme flikkerende lampen, koel grachtlicht door de ramen, binnenhuis-mist en
-decoratieve meubels (tafels, kratten, vaten, schilderijen) geven het pand een
-verlaten sfeer. Net als de andere game draait alles in één zelfstandig
+Warme flikkerende lampen in de woonkamer, een kaal koud-groen gangetje, koel
+daglicht in het atelier en blauw maanlicht op de binnenplaats geven elke zone
+een eigen identiteit. Binnenhuis-mist en decoratieve meubels (bewust zonder
+collision, zodat de pathing er niet op vasthaakt) maken het pand levendig
+zonder de gameplay te verstoren. Net als de andere game draait alles in één zelfstandig
 HTML-bestand met Three.js via CDN, botsingen via rechthoek-obstakels, en
 live gegenereerde Web Audio-geluiden (geen audiobestanden). De meubels zijn
 puur decor en hebben géén collision, zodat de pathing er niet op vasthaakt.

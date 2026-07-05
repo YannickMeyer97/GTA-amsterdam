@@ -287,6 +287,9 @@
   <div id="hpBarBuiten"><div id="hpBarBinnen"></div></div>
   <div>€ <span id="geldTekst">0</span></div>
   <div>Golf <span id="golfTekst">1</span></div>
+  <div id="upgradeStatusUI" style="font-size:12px; font-weight:600; opacity:0.85; margin-top:4px;">
+    Schade <span id="schadeTekst">1</span> &nbsp;·&nbsp; Herladen <span id="herlaadTekst">1.2s</span>
+  </div>
 </div>
 <div id="vignet"></div>
 <div id="gameOverScherm">
@@ -302,7 +305,8 @@
     🚶 <b>WASD</b> lopen &nbsp;·&nbsp; 🖱️ <b>muis</b> kijken &nbsp;·&nbsp; <b>klik</b> schieten<br>
     🔫 <b>R</b> herladen &nbsp;·&nbsp; 🛒 <b>T</b> kopen/gebruiken &nbsp;·&nbsp; ⏸️ <b>Esc</b> pauze<br>
     <span style="opacity:0.85">🎯 Headshots doen dubbele schade &nbsp;·&nbsp; 💰 verdien geld per kill</span><br>
-    <span style="opacity:0.85">🚪 Forceer de deur (€750) voor een tweede kamer, of koop munitie/upgrades</span>
+    <span style="opacity:0.85">🏠 Woonkamer → 🚪 het atelier (€750) → 🚪 de binnenplaats (€1250)</span><br>
+    <span style="opacity:0.85">🛠️ Elke zone heeft een eigen upgrade, ammo of beloning</span>
   </div>
   <div class="knop">Klik om te spelen</div>
 </div>
@@ -412,17 +416,30 @@ const DEUR_Z = -HALF_DIEPTE;   // vlak van de noordmuur
 const GANG_LENGTE = 3;
 const GANG_Z_EIND = DEUR_Z - GANG_LENGTE;
 
-// Tweede kamer: x ∈ [-KAMER2_HALF_B, KAMER2_HALF_B], z ∈ [KAMER2_Z_NOORD, GANG_Z_EIND].
+// Tweede kamer (v0.3: het schildersatelier, zone C): x ∈ [-KAMER2_HALF_B, KAMER2_HALF_B], z ∈ [KAMER2_Z_NOORD, GANG_Z_EIND].
 const KAMER2_HALF_B = 3.5;
 const KAMER2_DIEPTE = 5;
 const KAMER2_Z_NOORD = GANG_Z_EIND - KAMER2_DIEPTE;
 
+/* ----------------------------------------------------------------
+   ZONES v0.3 — vierde zone (D, "de binnenplaats") en de bijbehorende
+   koopbare tweede deur. Alleen constanten hier (Ticket V1); de geometrie
+   zelf komt pas in Ticket V5. Deur 2 zit in de OOSTMUUR van het atelier
+   (kamer 2), dus de plaats ligt oostelijk van kamer 2.
+   ---------------------------------------------------------------- */
+const DEUR2_HALF = 1;                                    // halve breedte van deuropening 2
+const DEUR2_X = KAMER2_HALF_B;                            // vlak van de oostmuur van kamer 2
+const PLAATS_BREEDTE = 6;                                 // binnenplaats: 6m breed (z, haaks op de deur)
+const PLAATS_DIEPTE = 5;                                  // 5m diep (x, richting van de deur af)
+const PLAATS_X_OOST = DEUR2_X + PLAATS_DIEPTE;            // oostgrens van de binnenplaats
+const PLAATS_CX = (DEUR2_X + PLAATS_X_OOST) / 2;          // midden-x van de binnenplaats
+
 // Wereldgrens: grove buiten-klem bovenop de muur-obstakels. Hij omvat vanaf
-// het begin het hele bereikbare gebied (startkamer + gang + tweede kamer); de
-// muren doen het echte werk, dus de deur-obstakel houdt de speler in de
-// startkamer tot de deur gekocht is.
+// het begin het hele bereikbare gebied (startkamer + gang + atelier +
+// binnenplaats); de muren doen het echte werk, dus de deur-obstakels houden
+// de speler tegen tot de bijbehorende deur gekocht is.
 const GRENS = {
-  minX: -HALF_BREEDTE + 0.05, maxX: HALF_BREEDTE - 0.05,
+  minX: -HALF_BREEDTE + 0.05, maxX: PLAATS_X_OOST - 0.05,
   minZ: KAMER2_Z_NOORD + 0.05, maxZ: HALF_DIEPTE - 0.05,
 };
 
@@ -447,8 +464,11 @@ wereld.add(plafond);
 // Vier bakstenen muren, elk ook geregistreerd als obstakel zodat de speler
 // er niet doorheen kan lopen.
 const BAKSTEEN = 0x54281f;
-function bouwMuur(x, z, breedte, diepte) {
-  const muur = blok(breedte, KAMER_HOOGTE, diepte, BAKSTEEN, 0.92);
+// `kleur` optioneel: laat de gang (Ticket V4) een eigen, kaler pleister-
+// materiaal gebruiken i.p.v. de baksteen van de kamers, zonder de collision-
+// registratie (die blijft identiek) te raken.
+function bouwMuur(x, z, breedte, diepte, kleur = BAKSTEEN) {
+  const muur = blok(breedte, KAMER_HOOGTE, diepte, kleur, 0.92);
   muur.position.set(x, KAMER_HOOGTE / 2, z);
   wereld.add(muur);
   registreerRechthoek(x - breedte / 2, x + breedte / 2, z - diepte / 2, z + diepte / 2);
@@ -475,32 +495,106 @@ function vlak(kleur, breedte, diepte, cx, cz, y, omhoog) {
   m.receiveShadow = !omhoog;
   wereld.add(m);
 }
+// Gang (zone B): donker, kaal knelpunt — bewust ANDER materiaal en veel
+// donkerder dan beide kamers, zodat de overgang meteen voelbaar is.
+const GANG_PLEISTER = 0x2e332c;   // koel, afbladderend grijsgroen i.p.v. baksteen
+const GANG_Z_MIDDEN = (-HALF_DIEPTE + GANG_Z_EIND) / 2;
 // Gang-vloer/plafond (x ∈ [-DEUR_HALF, DEUR_HALF], z ∈ [GANG_Z_EIND, -HALF_DIEPTE]).
 {
   const gangDiepte = -HALF_DIEPTE - GANG_Z_EIND;
-  const gangCz = (-HALF_DIEPTE + GANG_Z_EIND) / 2;
-  vlak(0x8a5f34, DEUR_HALF * 2, gangDiepte, 0, gangCz, 0, false);
-  vlak(0x14100c, DEUR_HALF * 2, gangDiepte, 0, gangCz, KAMER_HOOGTE, true);
-  // Gangmuren west en oost (x = ±DEUR_HALF).
-  bouwMuur(-(DEUR_HALF + MUUR_DIKTE / 2), gangCz, MUUR_DIKTE, gangDiepte);
-  bouwMuur(DEUR_HALF + MUUR_DIKTE / 2, gangCz, MUUR_DIKTE, gangDiepte);
+  vlak(0x1c1a16, DEUR_HALF * 2, gangDiepte, 0, GANG_Z_MIDDEN, 0, false);
+  vlak(0x100e0b, DEUR_HALF * 2, gangDiepte, 0, GANG_Z_MIDDEN, KAMER_HOOGTE, true);
+  // Gangmuren west en oost (x = ±DEUR_HALF), eigen pleister i.p.v. baksteen.
+  bouwMuur(-(DEUR_HALF + MUUR_DIKTE / 2), GANG_Z_MIDDEN, MUUR_DIKTE, gangDiepte, GANG_PLEISTER);
+  bouwMuur(DEUR_HALF + MUUR_DIKTE / 2, GANG_Z_MIDDEN, MUUR_DIKTE, gangDiepte, GANG_PLEISTER);
 }
+// Het schildersatelier (zone C, tweede kamer): bewust radicaal anders dan de
+// warme woonkamer — koele grijze plankenvloer i.p.v. warm hout.
+const ATELIER_MIDDEN_Z = (GANG_Z_EIND + KAMER2_Z_NOORD) / 2;
+const DEUR2_Z = ATELIER_MIDDEN_Z;   // deur 2 zit gecentreerd in de oostmuur van het atelier
+const PLAATS_Z_NOORD = DEUR2_Z - PLAATS_BREEDTE / 2;
+const PLAATS_Z_ZUID  = DEUR2_Z + PLAATS_BREEDTE / 2;
 // Tweede-kamer-vloer/plafond.
 {
   const k2Diepte = GANG_Z_EIND - KAMER2_Z_NOORD;
-  const k2Cz = (GANG_Z_EIND + KAMER2_Z_NOORD) / 2;
-  vlak(0x7d5730, KAMER2_HALF_B * 2, k2Diepte, 0, k2Cz, 0, false);
+  const k2Cz = ATELIER_MIDDEN_Z;
+  vlak(0x9a9284, KAMER2_HALF_B * 2, k2Diepte, 0, k2Cz, 0, false);
   vlak(0x14100c, KAMER2_HALF_B * 2, k2Diepte, 0, k2Cz, KAMER_HOOGTE, true);
   // Zuidmuur van kamer 2 (z = GANG_Z_EIND) met gang-opening (x ∈ [-DEUR_HALF, DEUR_HALF]).
   const zuidBreedte = (KAMER2_HALF_B + MUUR_DIKTE) - DEUR_HALF;
   const zuidZ = GANG_Z_EIND + MUUR_DIKTE / 2;
   bouwMuur(-(DEUR_HALF + zuidBreedte / 2), zuidZ, zuidBreedte, MUUR_DIKTE);
   bouwMuur(DEUR_HALF + zuidBreedte / 2, zuidZ, zuidBreedte, MUUR_DIKTE);
-  // Noord-, west- en oostmuur van kamer 2.
+  // Noord- en westmuur van kamer 2.
   bouwMuur(0, KAMER2_Z_NOORD - MUUR_DIKTE / 2, KAMER2_HALF_B * 2 + MUUR_DIKTE * 2, MUUR_DIKTE);
   bouwMuur(-KAMER2_HALF_B - MUUR_DIKTE / 2, k2Cz, MUUR_DIKTE, k2Diepte);
-  bouwMuur(KAMER2_HALF_B + MUUR_DIKTE / 2, k2Cz, MUUR_DIKTE, k2Diepte);
+  // Oostmuur van kamer 2: gesplitst met een deurgat voor deur 2 (Ticket V5),
+  // gecentreerd op ATELIER_MIDDEN_Z (== k2Cz) — exact hetzelfde patroon als
+  // het deurgat van deur 1 in de noordmuur van de startkamer.
+  {
+    const oostSegmentDiepte = (k2Diepte / 2) - DEUR2_HALF;
+    bouwMuur(KAMER2_HALF_B + MUUR_DIKTE / 2, k2Cz - (DEUR2_HALF + oostSegmentDiepte / 2), MUUR_DIKTE, oostSegmentDiepte);
+    bouwMuur(KAMER2_HALF_B + MUUR_DIKTE / 2, k2Cz + (DEUR2_HALF + oostSegmentDiepte / 2), MUUR_DIKTE, oostSegmentDiepte);
+  }
 }
+
+/* ================================================================
+   ZONE D — DE BINNENPLAATS (Ticket V5): buiten, ommuurd, koud maanlicht.
+   Achter deur 2, in de oostmuur van het atelier. Bewust GEEN plafond (open
+   lucht) en GEEN westmuur — de atelier-oostmuur (met het deurgat hierboven)
+   vormt de gedeelde grens, zelfde patroon als de gang die ook niet de
+   noordmuur van de startkamer herbouwt.
+   ================================================================ */
+{
+  // Natte klinkervloer: donker, blauwgrijs, glanzend (lage ruwheid).
+  const klinkers = new THREE.Mesh(
+    new THREE.PlaneGeometry(PLAATS_DIEPTE, PLAATS_BREEDTE),
+    new THREE.MeshStandardMaterial({ color: 0x2a3138, roughness: 0.35, metalness: 0.15 })
+  );
+  klinkers.rotation.x = -Math.PI / 2;
+  klinkers.position.set(PLAATS_CX, 0, DEUR2_Z);
+  klinkers.receiveShadow = true;
+  wereld.add(klinkers);
+  // Een paar ondiepe "plassen": nog glanzender vlakken die het maanlicht spiegelen.
+  for (const [px, pz, pb, pd] of [[4.4, DEUR2_Z - 1.5, 1.1, 0.7], [6.2, DEUR2_Z + 1.2, 1.4, 0.9]]) {
+    const plas = new THREE.Mesh(new THREE.PlaneGeometry(pb, pd),
+      new THREE.MeshStandardMaterial({ color: 0x1c2f3a, roughness: 0.08, metalness: 0.4 }));
+    plas.rotation.x = -Math.PI / 2;
+    plas.position.set(px, 0.005, pz);
+    wereld.add(plas);
+  }
+
+  // Muren (noord/zuid/oost) mét obstakel — géén plafond, géén westmuur.
+  bouwMuur(PLAATS_CX, PLAATS_Z_NOORD - MUUR_DIKTE / 2, PLAATS_DIEPTE + MUUR_DIKTE * 2, MUUR_DIKTE, GANG_PLEISTER);
+  bouwMuur(PLAATS_CX, PLAATS_Z_ZUID + MUUR_DIKTE / 2, PLAATS_DIEPTE + MUUR_DIKTE * 2, MUUR_DIKTE, GANG_PLEISTER);
+  bouwMuur(PLAATS_X_OOST + MUUR_DIKTE / 2, DEUR2_Z, MUUR_DIKTE, PLAATS_BREEDTE + MUUR_DIKTE * 2, GANG_PLEISTER);
+
+  // Koud maanlicht: het enige buitenlicht, schaduwloos (perf) en zonder
+  // flikker. Sterker/dichterbij dan een decoratief lampje zou zijn, want dit
+  // moet de hele binnenplaats speelbaar-zichtbaar houden.
+  const maanlicht = new THREE.PointLight(0x9fc0e8, 26, 15, 2);
+  maanlicht.position.set(PLAATS_CX, KAMER_HOOGTE + 0.4, DEUR2_Z);
+  wereld.add(maanlicht);
+  // Tweede, zwakker maanlicht bij de deur zodat je 'm bij binnenkomst
+  // meteen ziet i.p.v. eerst een paar meter het donker in te moeten lopen.
+  const maanlichtDeur = new THREE.PointLight(0x9fc0e8, 14, 10, 2);
+  maanlichtDeur.position.set(DEUR2_X + 1.5, KAMER_HOOGTE + 0.2, DEUR2_Z);
+  wereld.add(maanlichtDeur);
+}
+
+// De koopbare deur 2: zelfde patroon als deur 1 (mesh + klink + obstakel die
+// bij aankoop verdwijnen). Vult het deurgat in de oostmuur van het atelier.
+const deur2Mesh = new THREE.Mesh(
+  new THREE.BoxGeometry(0.16, KAMER_HOOGTE - 0.2, DEUR2_HALF * 2),
+  mat(0x4a5058, 0.6, 0.2)   // grijzer, "verweerd" hout — anders dan de warme deur 1
+);
+deur2Mesh.position.set(DEUR2_X + MUUR_DIKTE / 2, (KAMER_HOOGTE - 0.2) / 2, DEUR2_Z);
+deur2Mesh.castShadow = true;
+wereld.add(deur2Mesh);
+const deur2Klink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), mat(0xb8c4cc, 0.4, 0.6));
+deur2Klink.position.set(DEUR2_X + MUUR_DIKTE / 2 - 0.1, 1.0, DEUR2_Z - (DEUR2_HALF - 0.25));
+wereld.add(deur2Klink);
+const deur2Obstakel = registreerRechthoek(DEUR2_X, DEUR2_X + MUUR_DIKTE, DEUR2_Z - DEUR2_HALF, DEUR2_Z + DEUR2_HALF);
 
 // Ramen richting de gracht: op de zuidmuur, met een koel, donkerblauw
 // gloeiend "buiten"-vlak achter een houten kozijn.
@@ -518,15 +612,25 @@ for (const x of [-2, 2]) {
   wereld.add(glas);
 }
 
-// Ramen op de noordmuur van de tweede kamer: dit worden de nieuwe
-// spawn-vensters zodra de deur gekocht is (zie VENSTERS_KAMER2).
-for (const x of [-1.6, 1.6]) {
-  const kozijn = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.6, 0.12), kozijnMateriaal);
-  kozijn.position.set(x, 1.9, KAMER2_Z_NOORD + 0.06);
-  wereld.add(kozijn);
-  const glas = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.3, 0.05), glasMateriaal);
-  glas.position.set(x, 1.9, KAMER2_Z_NOORD + 0.18);
-  wereld.add(glas);
+// Atelier-ramen: bewust ASYMMETRISCH (één noordwest, één op de oostmuur) i.p.v.
+// het symmetrische paar in de woonkamer — de ondoden vallen hier vanuit twee
+// verschillende hoeken aan (flankerend) i.p.v. frontaal. Zie VENSTERS_KAMER2
+// voor de bijbehorende spawnpunten.
+const ATELIER_OOSTRAAM_Z = ATELIER_MIDDEN_Z - 1.7;
+{
+  const kozijnNW = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.6, 0.12), kozijnMateriaal);
+  kozijnNW.position.set(-1.8, 1.9, KAMER2_Z_NOORD + 0.06);
+  wereld.add(kozijnNW);
+  const glasNW = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.3, 0.05), glasMateriaal);
+  glasNW.position.set(-1.8, 1.9, KAMER2_Z_NOORD + 0.18);
+  wereld.add(glasNW);
+
+  const kozijnOost = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.6, 1.3), kozijnMateriaal);
+  kozijnOost.position.set(KAMER2_HALF_B - 0.06, 1.9, ATELIER_OOSTRAAM_Z);
+  wereld.add(kozijnOost);
+  const glasOost = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.3, 1.0), glasMateriaal);
+  glasOost.position.set(KAMER2_HALF_B - 0.18, 1.9, ATELIER_OOSTRAAM_Z);
+  wereld.add(glasOost);
 }
 
 // Warme lampen: een gloeiend bolletje + puntlicht, symmetrisch opgehangen.
@@ -536,31 +640,57 @@ const lampLichten = [];
 const LAMP_INTENSITEIT = 16;
 // Perf: schaduw-cubemaps van een PointLight zijn duur (6 faces/frame). Daarom
 // werpt maar ÉÉN lamp schaduw; de andere verlichten zonder schaduw.
-function hangLamp(x, z, schaduw = false) {
+// `opties` laat latere zones (gang, atelier) een eigen kleur/intensiteit en
+// flikker-amplitude meegeven zonder de bestaande, warme kamer-1-lampen te
+// raken — alle defaults zijn exact het huidige gedrag.
+function hangLamp(x, z, schaduw = false, opties = {}) {
+  const bolKleur = opties.bolKleur ?? 0xffcf8a;
+  const emissief = opties.emissief ?? 0xffb347;
+  const lichtKleur = opties.lichtKleur ?? 0xffb877;
+  const intensiteit = opties.intensiteit ?? LAMP_INTENSITEIT;
+  const amp1 = opties.amp1 ?? 0.06;
+  const amp2 = opties.amp2 ?? 0.03;
+  const minFactor = opties.minFactor ?? 0;   // ondergrens van de flikkerfactor (voorkomt "naar zwart" klappen)
+
   const groep = new THREE.Group();
   const koord = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.6, 6), mat(0x1a1410, 0.7));
   koord.position.y = KAMER_HOOGTE - 0.3;
   groep.add(koord);
   const bol = new THREE.Mesh(
     new THREE.SphereGeometry(0.16, 12, 10),
-    mat(0xffcf8a, 0.4, 0, { emissive: 0xffb347, emissiveIntensity: 0.9 })
+    mat(bolKleur, 0.4, 0, { emissive: emissief, emissiveIntensity: 0.9 })
   );
   bol.position.y = KAMER_HOOGTE - 0.62;
   groep.add(bol);
-  const licht = new THREE.PointLight(0xffb877, LAMP_INTENSITEIT, 10, 2);
+  const licht = new THREE.PointLight(lichtKleur, intensiteit, 10, 2);
   licht.position.y = KAMER_HOOGTE - 0.62;
   licht.castShadow = schaduw;
   if (schaduw) licht.shadow.mapSize.set(512, 512);
   groep.add(licht);
   groep.position.set(x, 0, z);
   wereld.add(groep);
-  lampLichten.push({ licht, basis: LAMP_INTENSITEIT, fase: Math.random() * Math.PI * 2 });
+  lampLichten.push({ licht, basis: intensiteit, fase: Math.random() * Math.PI * 2, amp1, amp2, minFactor });
 }
 // Twee lampen gespreid over de diepere startkamer: één richting de deur
 // (noord) en één richting de ramen (zuid), zodat beide uiteinden verlicht zijn.
 hangLamp(-1.8, -3, true);   // enige schaduwwerpende lamp
 hangLamp(1.8, 2.2);
-hangLamp(0, (GANG_Z_EIND + KAMER2_Z_NOORD) / 2);   // lamp midden in de tweede kamer
+
+// Atelier-dakraam: koel noorderlicht i.p.v. een warme hanglamp — het enige
+// interieur met een stabiel (niet-flikkerend) hoofdlicht van bovenaf, zodat
+// het contrast met de warme, flikkerende woonkamer direct voelbaar is.
+{
+  const dakraam = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.8, 1.8),
+    new THREE.MeshBasicMaterial({ color: 0xbfe0ff })
+  );
+  dakraam.rotation.x = Math.PI / 2;
+  dakraam.position.set(0, KAMER_HOOGTE - 0.02, ATELIER_MIDDEN_Z);
+  wereld.add(dakraam);
+  const dakraamLicht = new THREE.PointLight(0xaacdf0, 15, 9, 2);
+  dakraamLicht.position.set(0, KAMER_HOOGTE - 0.3, ATELIER_MIDDEN_Z);
+  wereld.add(dakraamLicht);
+}
 
 // De koopbare deur: een houten paneel dat het deurgat vult, plus een obstakel
 // zodat de speler er niet doorheen kan tot 'ie gekocht is. Beide worden bij
@@ -646,6 +776,90 @@ function bouwKleed(cx, cz, b, d, kleur) {
   wereld.add(kleed);
 }
 
+/* ---- Atelier-decor (zone C): eigen, herkenbare set — geen hergebruik van
+   de warme-woonkamer-meubels, zodat de twee ruimtes ook qua props duidelijk
+   verschillen. Alles decor, geen collision. ---- */
+
+// Landmark: een schildersezel met een onaf grachtengezicht-doek.
+function bouwEzel(cx, cz, rotY = 0) {
+  const g = new THREE.Group();
+  const houtE = 0xc9c2b3;   // lichter, "gebleekt" hout i.p.v. het donkere meubelhout elders
+  for (const [rotZ, px] of [[0.35, -0.28], [-0.35, 0.28]]) {
+    const poot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.5, 0.06), mat(houtE, 0.8));
+    poot.position.set(px, 0.75, -0.15);
+    poot.rotation.z = rotZ;
+    g.add(poot);
+  }
+  const voorpoot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.4, 0.06), mat(houtE, 0.8));
+  voorpoot.position.set(0, 0.7, 0.22);
+  voorpoot.rotation.x = -0.25;
+  g.add(voorpoot);
+  const doek = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.78, 0.03), mat(0xe8e2d4, 0.9));
+  doek.position.set(0, 1.15, 0.02);
+  g.add(doek);
+  // Simpele kleurvlakken i.p.v. een textuur: een schets van lucht/gevel/gracht.
+  const hemel = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.32), new THREE.MeshBasicMaterial({ color: 0x9cc4dd }));
+  hemel.position.set(0, 1.38, 0.04); g.add(hemel);
+  const gevel = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.3), new THREE.MeshBasicMaterial({ color: 0xb5603a }));
+  gevel.position.set(0, 1.08, 0.04); g.add(gevel);
+  const grachtVlak = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.16), new THREE.MeshBasicMaterial({ color: 0x4a7a8c }));
+  grachtVlak.position.set(0, 0.9, 0.04); g.add(grachtVlak);
+  g.position.set(cx, 0, cz); g.rotation.y = rotY; wereld.add(g);
+}
+
+// Een stapel lege schilderslijsten, leunend tegen de muur.
+function bouwLijstenstapel(cx, cz, rotY = 0) {
+  const g = new THREE.Group();
+  [0x3a2c17, 0x4a3520, 0x2c2114].forEach((kleur, i) => {
+    const lijst = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.85, 0.03), mat(kleur, 0.7));
+    lijst.position.set(i * 0.05, 0.43, i * 0.05);
+    lijst.rotation.x = -0.12;
+    g.add(lijst);
+  });
+  g.position.set(cx, 0, cz); g.rotation.y = rotY; wereld.add(g);
+}
+
+// Een plank met verfpotten in felle, originele kleuren.
+function bouwVerfplank(cx, cz, rotY = 0) {
+  const g = new THREE.Group();
+  const plank = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.05, 0.28), mat(0x6b5a3f, 0.8));
+  plank.position.y = 0.9; g.add(plank);
+  [0xb5603a, 0x3a5f8c, 0xd8c24a, 0x3a6b45, 0xe8e2d4].forEach((kleur, i) => {
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.14, 8),
+      new THREE.MeshStandardMaterial({ color: kleur, roughness: 0.5 }));
+    pot.position.set(-0.4 + i * 0.2, 0.97, 0);
+    g.add(pot);
+  });
+  g.position.set(cx, 0, cz); g.rotation.y = rotY; wereld.add(g);
+}
+
+// Een simpele houten kruk.
+function bouwKruk(cx, cz) {
+  const zit = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.06, 10), mat(0x5a3f24, 0.8));
+  zit.position.set(cx, 0.46, cz); zit.castShadow = true; wereld.add(zit);
+  for (const [dx, dz] of [[0.15, 0.15], [-0.15, 0.15], [0.15, -0.15], [-0.15, -0.15]]) {
+    const poot = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.44, 6), mat(0x3a2a1a, 0.8));
+    poot.position.set(cx + dx, 0.22, cz + dz); wereld.add(poot);
+  }
+}
+
+// Een platte verfspat op de vloer (kleuraccent, geen collision).
+function bouwVerfspat(cx, cz, kleur, straal = 0.08) {
+  const spat = new THREE.Mesh(new THREE.CircleGeometry(straal, 8), new THREE.MeshBasicMaterial({ color: kleur }));
+  spat.rotation.x = -Math.PI / 2;
+  spat.position.set(cx, 0.021, cz);
+  wereld.add(spat);
+}
+
+// Een wit afdekzeil op de vloer.
+function bouwZeil(cx, cz, b, d) {
+  const zeil = new THREE.Mesh(new THREE.PlaneGeometry(b, d), mat(0xd8d2c0, 0.95));
+  zeil.rotation.x = -Math.PI / 2;
+  zeil.position.set(cx, 0.015, cz);
+  zeil.receiveShadow = true;
+  wereld.add(zeil);
+}
+
 // --- Startkamer-decor (langs de muren / hoeken, niet op de looproutes) ---
 bouwKleed(0, 0, 3.2, 3.6, 0x4a2530);
 bouwTafel(-3.1, 1.2, 0.3);
@@ -657,12 +871,77 @@ for (const y of [0.5, 0.95, 1.4]) meubelBox(1.3, 0.05, 0.26, 0x2c2114, -4.05, y,
 bouwSchilderij(4.42, 1.9, 1.5, -Math.PI / 2);                          // schilderij oostmuur
 bouwSchilderij(-2, 1.9, -4.78, 0);                                     // schilderij naast de deur (noordmuur)
 
-// --- Tweede-kamer-decor ---
-const k2c = (GANG_Z_EIND + KAMER2_Z_NOORD) / 2;
-bouwKratten(-2.6, k2c - 1.2);
-bouwVat(2.7, k2c + 1.4);
-bouwTafel(2.4, k2c - 1.6, 0.5);
-bouwSchilderij(-3.57, 1.9, k2c, Math.PI / 2);
+// --- Gang-decor (zone B): een dunne, sombere loper — verder BEWUST leeg
+// (geen kratten/meubels), zodat er niets in het smalle looppad staat waar
+// de speler of een ondode op kan blijven haken. ---
+bouwKleed(0, GANG_Z_MIDDEN, DEUR_HALF * 1.7, -HALF_DIEPTE - GANG_Z_EIND - 0.4, 0x1a1613);
+// Eén zwak, koud-groen flikkerlampje halverwege de gang: merkbaar donkerder
+// en killer dan de warme woonkamerlampen (lagere basis, diepere flikker-dip
+// met een ondergrens zodat het nooit helemaal naar zwart klapt).
+hangLamp(0, GANG_Z_MIDDEN, false, {
+  bolKleur: 0x9fd9b0, emissief: 0x6fae82, lichtKleur: 0x7fcf9a,
+  intensiteit: 5, amp1: 0.18, amp2: 0.08, minFactor: 0.35,
+});
+// Warme lokgloed bij de atelier-drempel: trekt het oog vanuit de donkere gang
+// naar de volgende zone, zonder de gang zelf warm te maken.
+{
+  const lokgloed = new THREE.Mesh(
+    new THREE.PlaneGeometry(DEUR_HALF * 1.9, 0.06),
+    new THREE.MeshBasicMaterial({ color: 0xffb877, transparent: true, opacity: 0.5 })
+  );
+  lokgloed.rotation.x = -Math.PI / 2;
+  lokgloed.position.set(0, 0.03, GANG_Z_EIND + 0.15);
+  wereld.add(lokgloed);
+}
+
+// --- Binnenplaats-decor (zone D): klimop en een oud fietsenrek — puur
+// decor, geen collision, blijft ver van de deur- en interactieplekken. ---
+function bouwKlimop(x, y, z, rotY, breedte = 0.5, hoogte = 1.6) {
+  const klimop = new THREE.Mesh(new THREE.PlaneGeometry(breedte, hoogte),
+    new THREE.MeshStandardMaterial({ color: 0x2c4a2e, roughness: 0.9, side: THREE.DoubleSide }));
+  klimop.position.set(x, y, z);
+  klimop.rotation.y = rotY;
+  wereld.add(klimop);
+}
+bouwKlimop(PLAATS_X_OOST - 0.05, 1.3, DEUR2_Z - 2, Math.PI / 2, 0.9, 2.2);
+bouwKlimop(PLAATS_CX + 1, 1.1, PLAATS_Z_ZUID + 0.05, 0, 1.6, 1.8);
+function bouwFietsenrek(cx, cz) {
+  const rek = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.5, 0.1), mat(0x2a2a2a, 0.7, 0.3));
+  rek.position.set(cx, 0.25, cz); wereld.add(rek);
+  const fiets = new THREE.Group();
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, 0.06), mat(0x8a3020, 0.6, 0.5));
+  frame.position.y = 0.55; frame.rotation.z = 0.15; fiets.add(frame);
+  for (const wx of [-0.4, 0.4]) {
+    const wiel = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.03, 6, 12), mat(0x1a1a1a, 0.8));
+    wiel.position.set(wx, 0.28, 0); fiets.add(wiel);
+  }
+  fiets.position.set(cx, 0, cz + 0.15);
+  wereld.add(fiets);
+}
+bouwFietsenrek(PLAATS_CX + 1.6, DEUR2_Z + 2.2);
+// Decor-ankers op de toekomstige spawnpunten (poort + keldergat), zodat je
+// al ziet waar ondoden straks vandaan komen voordat deur 2 gekocht is.
+{
+  const poort = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.8, 0.15), mat(0x1f262b, 0.8));
+  poort.position.set(PLAATS_X_OOST - 0.1, 0.9, PLAATS_Z_NOORD + 0.4);
+  wereld.add(poort);
+  const keldergat = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.06, 0.8), mat(0x14181b, 0.7, 0.3));
+  keldergat.position.set(PLAATS_X_OOST - 0.4, 0.03, PLAATS_Z_ZUID - 0.4);
+  wereld.add(keldergat);
+}
+
+// --- Atelier-decor (zone C): koel, kaal, met verf-/doek-accenten — bewust
+// géén hergebruik van de warme-woonkamer-props (kratten/vat/tafel). ---
+bouwZeil(-2.3, ATELIER_MIDDEN_Z - 0.3, 1.6, 1.8);
+bouwEzel(-1.6, ATELIER_MIDDEN_Z, 0.4);                     // landmark, midden-west
+bouwLijstenstapel(-3.1, ATELIER_MIDDEN_Z + 1.6, 0.5);      // tegen de westmuur
+bouwVerfplank(2.6, ATELIER_MIDDEN_Z - 1.8, -0.3);
+bouwKruk(-1.0, ATELIER_MIDDEN_Z + 0.7);
+for (const [x, z, kleur] of [
+  [-1.8, ATELIER_MIDDEN_Z - 0.5, 0xb5603a], [-1.3, ATELIER_MIDDEN_Z + 0.3, 0x3a5f8c],
+  [-2.0, ATELIER_MIDDEN_Z + 0.6, 0xd8c24a], [0.4, ATELIER_MIDDEN_Z - 1.5, 0x3a6b45],
+  [1.0, ATELIER_MIDDEN_Z - 1.2, 0xb5603a],
+]) bouwVerfspat(x, z, kleur);
 
 /* ================================================================
    STAP 3 — DE SPELER: first-person besturing met botsingen
@@ -926,6 +1205,13 @@ const SCHOT_COOLDOWN = 0.2;   // vaste cadans (geen vuurtempo-upgrade in deze ti
 let laatsteSchotTijd = -999;
 let klok = 0;
 
+// Zone-sfeergeluiden (Ticket V8): eenmalige triggers + een zeldzame ambient.
+// Eenmalig-per-zone via booleans (geen herhaalde meldingen); de klok-ambient
+// via een steeds opnieuw willekeurig verzette drempel.
+let gangBetreden = false;
+let plaatsBetreden = false;
+let volgendeKlokGeluid = 40 + Math.random() * 40;
+
 function probeerTeSchieten() {
   if (wapenStaat.herladen) return;               // niet schieten tijdens herladen
   if (klok - laatsteSchotTijd < SCHOT_COOLDOWN) return;
@@ -1002,6 +1288,12 @@ function speelSpelerAu()  { piep('sawtooth', 160, 60, 0.18, 0.11); }
 function speelGolfStart() { piep('sawtooth', 130, 260, 0.18, 0.08); setTimeout(() => piep('square', 200, 340, 0.22, 0.06), 130); }
 function speelGolfKlaar() { piep('sine', 520, 780, 0.14, 0.06); setTimeout(() => piep('sine', 780, 1040, 0.16, 0.05), 150); }
 function speelGameOver()  { piep('sawtooth', 300, 70, 0.5, 0.12); setTimeout(() => piep('sine', 160, 50, 0.7, 0.09), 220); }
+// Zone-sfeergeluiden (Ticket V8): gedempte gracht-klok (zeldzaam, zone A),
+// een lage kraak bij de eerste stap de gang in, en een windvlaag bij de
+// eerste stap op de binnenplaats.
+function speelGrachtklok() { piep('sine', 440, 380, 0.9, 0.05); setTimeout(() => piep('sine', 660, 560, 0.9, 0.035), 550); }
+function speelGangKraak()  { piep('sawtooth', 90, 40, 0.35, 0.06); }
+function speelWindvlaag()  { piep('sine', 200, 260, 1.1, 0.035); setTimeout(() => piep('sine', 180, 140, 1.3, 0.03), 300); }
 
 /* ================================================================
    STAP 6 — ONDODEN: originele low-poly vijanden, spawn + jagen + melee
@@ -1040,6 +1332,10 @@ const GELD_PER_KILL = 20;   // bonus bovenop de hit-beloning bij een kill
 // --- Wapenschade (te upgraden via het upgradepunt in Ticket 5) ----
 const WAPEN_SCHADE_MAX = 2;   // basis-lichaamsschade: 1, na upgrade 2 (MAX)
 let schadePerTreffer = 1;     // huidige lichaams-schade per treffer
+// Snelspanner-status hier (i.p.v. bij de rest van STAP 9's werkbank-code)
+// gedeclareerd: updateHUD() leest 'm en wordt al aangeroepen vóórdat STAP 9
+// in de bestandsvolgorde aan de beurt komt — anders een TDZ-ReferenceError.
+let snelspannerGekocht = false;
 const HEADSHOT_EXTRA = 1;     // extra schade bij een kop-treffer (lichaam = schadePerTreffer, kop = +1)
 
 // --- Balanswaarden golven ------------------------------------------
@@ -1047,13 +1343,30 @@ const GOLF_BASIS_AANTAL   = 5;    // aantal ondoden in golf 1
 const GOLF_AANTAL_GROEI   = 2;    // extra ondoden per volgende golf
 const GOLF_SPAWN_INTERVAL = 1.1;  // s tussen twee spawns binnen dezelfde golf
 const GOLF_RUST_TIJD      = 4;    // s rust tussen golven (en vóór golf 1)
-const GOLF_MAX_ACTIEF     = 18;   // max. gelijktijdig levende ondoden (perf-plafond)
+const GOLF_MAX_ACTIEF     = 18;   // max. gelijktijdig levende ondoden (perf-plafond), bij enkel zone A
+
+// --- Spawn-pacing per ontgrendelde zone (Ticket V6) -----------------------
+// Elke gekochte deur ontgrendelt een extra zone: het spawn-interval daalt
+// 15% per extra zone (drukker), en het perf-plafond stijgt met 4 (meer
+// gelijktijdige ondoden toegestaan, want er zijn ook meer vensters actief).
+const ZONE_SPAWN_INTERVAL_FACTOR = 0.85;
+const ZONE_MAX_ACTIEF_BONUS = 4;
+
+function aantalOntgrendeldeZones() {
+  return 1 + (deurGekocht ? 1 : 0) + (deur2Gekocht ? 1 : 0);   // A telt altijd mee
+}
+function effectiefSpawnInterval() {
+  return GOLF_SPAWN_INTERVAL * Math.pow(ZONE_SPAWN_INTERVAL_FACTOR, aantalOntgrendeldeZones() - 1);
+}
+function effectiefMaxActief() {
+  return GOLF_MAX_ACTIEF + ZONE_MAX_ACTIEF_BONUS * (aantalOntgrendeldeZones() - 1);
+}
 
 // Vensterpunten: dezelfde x-posities als de ramen op de zuidmuur (STAP 2),
 // net binnen de kamer zodat de ondoden meteen op de vloer staan.
 const VENSTERS = [
-  { x: -2, z: HALF_DIEPTE - 0.4 },
-  { x: 2, z: HALF_DIEPTE - 0.4 },
+  { x: -2, z: HALF_DIEPTE - 0.4, zone: 'A' },
+  { x: 2, z: HALF_DIEPTE - 0.4, zone: 'A' },
 ];
 
 function maakOndodeModel() {
@@ -1247,6 +1560,9 @@ function updateHUD() {
   balk.style.background = percentage > 60 ? '#5fd97a' : (percentage > 30 ? '#e0c34f' : '#e05f5f');
   document.getElementById('geldTekst').textContent = spelStaat.geld;
   document.getElementById('golfTekst').textContent = spelStaat.golf;
+  // Upgrade-status (Ticket V7): laat in één oogopslag zien wat al MAX is.
+  document.getElementById('schadeTekst').textContent = schadePerTreffer >= WAPEN_SCHADE_MAX ? 'MAX' : schadePerTreffer;
+  document.getElementById('herlaadTekst').textContent = snelspannerGekocht ? 'MAX' : `${wapenStaat.herlaadDuur}s`;
 }
 
 /* ================================================================
@@ -1278,7 +1594,9 @@ function startGolf() {
   spelStaat.spawnTimer = 0;
   spelStaat.golfActief = true;
   const taai = spelStaat.golf > ONDODE_HP_GOLFGRENS ? 'de ondoden zijn nu taaier' : 'mik op het hoofd';
-  toonGolfBanner(`GOLF ${spelStaat.golf}`, `${spelStaat.teSpawnen} ondoden · ${taai}`);
+  const zones = aantalOntgrendeldeZones();
+  const drukte = zones > 1 ? ` · ${zones} zones actief` : '';
+  toonGolfBanner(`GOLF ${spelStaat.golf}`, `${spelStaat.teSpawnen} ondoden · ${taai}${drukte}`);
   speelGolfStart();
   updateHUD();
 }
@@ -1292,11 +1610,12 @@ function updateGolf(dt) {
   }
   if (spelStaat.teSpawnen > 0) {
     spelStaat.spawnTimer -= dt;
-    // Perf-plafond: niet bijspawnen zolang er al GOLF_MAX_ACTIEF ondoden leven.
-    if (spelStaat.spawnTimer <= 0 && ondoden.length < GOLF_MAX_ACTIEF) {
+    // Perf-plafond + spawn-interval schalen mee met het aantal ontgrendelde
+    // zones (Ticket V6): meer open deuren = drukker, tot aan het plafond.
+    if (spelStaat.spawnTimer <= 0 && ondoden.length < effectiefMaxActief()) {
       spawnWillekeurigeOndode();
       spelStaat.teSpawnen--;
-      spelStaat.spawnTimer = GOLF_SPAWN_INTERVAL;
+      spelStaat.spawnTimer = effectiefSpawnInterval();
     }
   } else if (ondoden.length === 0) {
     spelStaat.golfActief = false;
@@ -1318,15 +1637,32 @@ function updateGolf(dt) {
    ================================================================ */
 
 // --- Prijzen en munitie-opwaardering ------------------------------
-const DEUR_PRIJS       = 750;   // opent gang + tweede kamer
+const DEUR_PRIJS       = 750;   // opent gang + atelier (zone C)
 const AMMO_PRIJS       = 300;   // vult reserve-munitie bij
 const AMMO_KIST_KOGELS = 48;    // reserve-kogels per aankoop
 const UPGRADE_PRIJS    = 500;   // schade +1 (daarna MAX)
 
+// --- v0.3: Werkbank (atelier), tweede deur en binnenplaats-interacties ---
+const SNELSPANNER_PRIJS       = 600;   // eenmalig: sneller herladen
+const SNELSPANNER_HERLAADDUUR = 0.7;   // vervangt wapenStaat.herlaadDuur (was 1.2)
+const DEUR2_PRIJS  = 1250;             // opent de binnenplaats (zone D)
+const REGENTON_GELD = 400;             // eenmalige vondst op de binnenplaats
+const WATERTAP_PRIJS = 200;            // herbruikbaar: geld voor HP
+const WATERTAP_HP    = 50;             // hp per gebruik (gecapt op hpMax)
+
 // Nieuwe spawn-vensters die pas actief worden zodra de deur gekocht is.
+// Atelier-spawns matchen de asymmetrische ramen (Ticket V2): één noordwest,
+// één op de oostmuur — flankerende aanval i.p.v. frontaal.
 const VENSTERS_KAMER2 = [
-  { x: -1.6, z: KAMER2_Z_NOORD + 0.4 },
-  { x: 1.6, z: KAMER2_Z_NOORD + 0.4 },
+  { x: -1.8, z: KAMER2_Z_NOORD + 0.4, zone: 'C' },
+  { x: KAMER2_HALF_B - 0.4, z: ATELIER_OOSTRAAM_Z, zone: 'C' },
+];
+
+// Binnenplaats-spawns (Ticket V5): een poortdoorgang en een keldergat, pas
+// actief zodra deur 2 gekocht is (zie koopDeur2).
+const VENSTERS_PLAATS = [
+  { x: PLAATS_X_OOST - 0.4, z: PLAATS_Z_NOORD + 0.4, zone: 'D' },   // poortdoorgang, noordoost
+  { x: PLAATS_X_OOST - 0.4, z: PLAATS_Z_ZUID - 0.4, zone: 'D' },    // keldergat, zuidoost
 ];
 
 let deurGekocht = false;
@@ -1372,9 +1708,71 @@ const upgradeKern = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10),
   new THREE.MeshStandardMaterial({ color: 0xffe08a, emissive: 0xffb63a, emissiveIntensity: 1.1 }));
 upgradeKern.position.set(-3, 0.55, -2);
 wereld.add(upgradeKern);
-interactieMarkering(-3, -2, 0xffd75e);
+const upgradeMarkering = interactieMarkering(-3, -2, 0xffd75e);
 
 const deurMarkering = interactieMarkering(0, DEUR_Z + 0.7, 0x9fff9f);
+
+// Dooft een interactiemarkering naar grijs (Ticket V7): visuele hint dat een
+// eenmalige/MAX-upgrade hier niets meer te doen heeft.
+function doofMarkering(markering) {
+  markering.traverse(obj => {
+    if (!obj.material) return;
+    if (obj.material.color) obj.material.color.setHex(0x555555);
+    if (obj.material.emissive) obj.material.emissive.setHex(0x000000);
+    if ('opacity' in obj.material) obj.material.opacity = Math.min(obj.material.opacity, 0.25);
+  });
+}
+
+// --- Werkbank (Ticket V3): unieke reden om het atelier te openen ---------
+// Staat in de noordwesthoek, met de rug naar het noordwest-spawnraam toe:
+// kopen terwijl er ondoden actief zijn is dus even kwetsbaar (risk/reward).
+const WERKBANK_X = -2.8;
+const WERKBANK_Z = ATELIER_MIDDEN_Z - 2;
+{
+  const g = new THREE.Group();
+  const blad = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, 0.55), mat(0x4a3a26, 0.75));
+  blad.position.y = 0.8; g.add(blad);
+  for (const [px, pz] of [[-0.38, -0.22], [0.38, -0.22], [-0.38, 0.22], [0.38, 0.22]]) {
+    const poot = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.8, 0.07), mat(0x342718, 0.8));
+    poot.position.set(px, 0.4, pz); g.add(poot);
+  }
+  // Bankschroef als herkenbaar detail.
+  const schroef = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.16), mat(0x555f66, 0.5, 0.6));
+  schroef.position.set(0.15, 0.87, 0); g.add(schroef);
+  g.position.set(WERKBANK_X, 0, WERKBANK_Z);
+  wereld.add(g);
+}
+const werkbankMarkering = interactieMarkering(WERKBANK_X, WERKBANK_Z, 0xff9f5a);
+
+const deur2Markering = interactieMarkering(DEUR2_X + 0.7, DEUR2_Z, 0x9fc0e8);
+
+// --- Regenton (Ticket V5): eenmalige vondst op de binnenplaats -----------
+const REGENTON_X = PLAATS_CX - 0.5;
+const REGENTON_Z = DEUR2_Z + 1.8;
+{
+  const ton = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.34, 0.9, 12), mat(0x2f3a3d, 0.7, 0.2));
+  ton.position.set(REGENTON_X, 0.45, REGENTON_Z);
+  ton.castShadow = true;
+  wereld.add(ton);
+  const kistjeOpTon = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.3), mat(0x4a3a26, 0.8));
+  kistjeOpTon.position.set(REGENTON_X, 1.0, REGENTON_Z);
+  wereld.add(kistjeOpTon);
+}
+const regentonMarkering = interactieMarkering(REGENTON_X, REGENTON_Z, 0xffd75e);
+
+// --- Watertap (Ticket V5): herbruikbaar, geld voor HP (risk/reward) ------
+const WATERTAP_X = PLAATS_CX + 1.5;
+const WATERTAP_Z = DEUR2_Z - 1.6;
+{
+  const paal = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 1.0, 8), mat(0x3a4a52, 0.5, 0.5));
+  paal.position.set(WATERTAP_X, 0.5, WATERTAP_Z);
+  wereld.add(paal);
+  const kraan = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.25, 6), mat(0x556570, 0.4, 0.6));
+  kraan.rotation.z = Math.PI / 2;
+  kraan.position.set(WATERTAP_X + 0.12, 0.85, WATERTAP_Z);
+  wereld.add(kraan);
+}
+const watertapMarkering = interactieMarkering(WATERTAP_X, WATERTAP_Z, 0x6bd0ff);
 
 // --- UI-helpers ---------------------------------------------------
 function toonInteractiePrompt(tekst) {
@@ -1415,6 +1813,7 @@ function koopDeur() {
   if (pi !== -1) interactiePunten.splice(pi, 1);
   speelKoop();
   toonMelding('Deur geforceerd — de tweede kamer is nu open');
+  toonGolfBanner('HET ATELIER', 'nieuwe toegang geopend');
   updateHUD();
 }
 
@@ -1435,6 +1834,66 @@ function koopUpgrade() {
   schadePerTreffer += 1;
   speelKoop();
   toonMelding(schadePerTreffer >= WAPEN_SCHADE_MAX ? 'Schade-upgrade! Nu MAX' : `Schade-upgrade! Nu ${schadePerTreffer}`);
+  if (schadePerTreffer >= WAPEN_SCHADE_MAX) doofMarkering(upgradeMarkering);
+  updateHUD();
+}
+
+// Snelspanner (Ticket V3): eenmalige reload-upgrade, alleen te koop bij de
+// werkbank in het atelier. Verlaagt wapenStaat.herlaadDuur permanent.
+// (snelspannerGekocht is bovenin STAP 6 gedeclareerd, zie de toelichting daar.)
+function koopSnelspanner() {
+  if (snelspannerGekocht) return;
+  if (spelStaat.geld < SNELSPANNER_PRIJS) { toonMelding(`Nog €${SNELSPANNER_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  spelStaat.geld -= SNELSPANNER_PRIJS;
+  snelspannerGekocht = true;
+  wapenStaat.herlaadDuur = SNELSPANNER_HERLAADDUUR;
+  speelKoop();
+  toonMelding('Snelspanner gemonteerd — sneller herladen (MAX)');
+  doofMarkering(werkbankMarkering);
+  updateHUD();
+}
+
+// Deur 2 (Ticket V5): opent de binnenplaats. Exact hetzelfde patroon als koopDeur().
+let deur2Gekocht = false;
+function koopDeur2() {
+  if (deur2Gekocht) return;
+  if (spelStaat.geld < DEUR2_PRIJS) { toonMelding(`Nog €${DEUR2_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  spelStaat.geld -= DEUR2_PRIJS;
+  deur2Gekocht = true;
+  wereld.remove(deur2Mesh);
+  wereld.remove(deur2Klink);
+  wereld.remove(deur2Markering);
+  const oi = obstakels.indexOf(deur2Obstakel);
+  if (oi !== -1) obstakels.splice(oi, 1);
+  for (const v of VENSTERS_PLAATS) VENSTERS.push(v);
+  const pi = interactiePunten.indexOf(deur2Punt);
+  if (pi !== -1) interactiePunten.splice(pi, 1);
+  speelKoop();
+  toonMelding('Deur geforceerd — de binnenplaats is nu open');
+  toonGolfBanner('DE BINNENPLAATS', 'nieuwe toegang geopend');
+  updateHUD();
+}
+
+// Regenton (Ticket V5): eenmalige vondst.
+let regentonGeopend = false;
+function openRegenton() {
+  if (regentonGeopend) return;
+  regentonGeopend = true;
+  spelStaat.geld += REGENTON_GELD;
+  speelKoop();
+  toonMelding(`Weggestopt spaargeld gevonden: +€${REGENTON_GELD}`);
+  doofMarkering(regentonMarkering);
+  updateHUD();
+}
+
+// Watertap (Ticket V5): herbruikbaar, geld voor HP. Werkt niet als HP al vol is.
+function koopWatertap() {
+  if (spelerStaat.hp >= spelerStaat.hpMax) { toonMelding('HP is al vol'); return; }
+  if (spelStaat.geld < WATERTAP_PRIJS) { toonMelding(`Nog €${WATERTAP_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  spelStaat.geld -= WATERTAP_PRIJS;
+  spelerStaat.hp = Math.min(spelerStaat.hpMax, spelerStaat.hp + WATERTAP_HP);
+  speelKoop();
+  toonMelding(`+${WATERTAP_HP} HP`);
   updateHUD();
 }
 
@@ -1462,7 +1921,39 @@ const upgradePunt = {
     : `Druk T: schade-upgrade (€${UPGRADE_PRIJS})`,
   actie: koopUpgrade,
 };
-const interactiePunten = [deurPunt, ammoPunt, upgradePunt];
+const werkbankPunt = {
+  naam: 'Werkbank',
+  positie: new THREE.Vector3(WERKBANK_X, 0, WERKBANK_Z),
+  radius: 1.5,
+  prompt: () => snelspannerGekocht
+    ? 'Snelspanner is MAX'
+    : `Druk T: Snelspanner — sneller herladen (€${SNELSPANNER_PRIJS})`,
+  actie: koopSnelspanner,
+};
+const deur2Punt = {
+  naam: 'Deur 2',
+  positie: new THREE.Vector3(DEUR2_X + 0.7, 0, DEUR2_Z),
+  radius: 1.6,
+  prompt: () => `Druk T: forceer de deur (€${DEUR2_PRIJS})`,
+  actie: koopDeur2,
+};
+const regentonPunt = {
+  naam: 'Regenton',
+  positie: new THREE.Vector3(REGENTON_X, 0, REGENTON_Z),
+  radius: 1.4,
+  prompt: () => regentonGeopend ? 'Regenton is al doorzocht' : `Druk T: doorzoek de regenton (€${REGENTON_GELD} gevonden)`,
+  actie: openRegenton,
+};
+const watertapPunt = {
+  naam: 'Watertap',
+  positie: new THREE.Vector3(WATERTAP_X, 0, WATERTAP_Z),
+  radius: 1.4,
+  prompt: () => spelerStaat.hp >= spelerStaat.hpMax
+    ? 'HP is al vol'
+    : `Druk T: regenwater tappen (€${WATERTAP_PRIJS} -> +${WATERTAP_HP} HP)`,
+  actie: koopWatertap,
+};
+const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, deur2Punt, regentonPunt, watertapPunt];
 
 let huidigeInteractie = null;
 
@@ -1513,6 +2004,12 @@ function gameLoop(nu) {
     updateGolf(dt);
     updateSpelerRegen(dt);
     updateInteracties();
+
+    // Zone-sfeergeluiden (Ticket V8): eenmalige triggers bij de eerste stap
+    // in een nieuwe zone, plus een zeldzame gracht-klok op de achtergrond.
+    if (!gangBetreden && speler.positie.z < DEUR_Z) { gangBetreden = true; speelGangKraak(); }
+    if (!plaatsBetreden && speler.positie.x > DEUR2_X) { plaatsBetreden = true; speelWindvlaag(); }
+    if (klok > volgendeKlokGeluid) { speelGrachtklok(); volgendeKlokGeluid = klok + 40 + Math.random() * 40; }
   }
   updateVignet(dt);
 
@@ -1520,7 +2017,8 @@ function gameLoop(nu) {
   // cosmetisch). `nu` loopt altijd door, dus onafhankelijk van de spel-klok.
   const t = nu * 0.001;
   for (const l of lampLichten) {
-    l.licht.intensity = l.basis * (1 + 0.06 * Math.sin(t * 7 + l.fase) + 0.03 * Math.sin(t * 17 + l.fase * 2));
+    const factor = 1 + l.amp1 * Math.sin(t * 7 + l.fase) + l.amp2 * Math.sin(t * 17 + l.fase * 2);
+    l.licht.intensity = l.basis * Math.max(l.minFactor, factor);
   }
 
   if (terugslag > 0) {
@@ -1555,6 +2053,32 @@ window.AmsterdamUndeadDebug = {
   DEUR_Z, DEUR_HALF, GANG_Z_EIND, KAMER2_Z_NOORD, HALF_DIEPTE, HALF_BREEDTE, KAMER2_HALF_B,
   ONDODE_HP_VROEG, ONDODE_HP_LAAT, ONDODE_HP_GOLFGRENS, HEADSHOT_EXTRA, ondodeStartHP,
   GOLF_MAX_ACTIEF, lampLichten,
+  // v0.3 zone-D / werkbank-constanten (Ticket V1):
+  DEUR2_HALF, DEUR2_X, PLAATS_BREEDTE, PLAATS_DIEPTE, PLAATS_X_OOST,
+  SNELSPANNER_PRIJS, SNELSPANNER_HERLAADDUUR, DEUR2_PRIJS,
+  REGENTON_GELD, WATERTAP_PRIJS, WATERTAP_HP,
+  // Ticket V2/V3: atelier-constanten + werkbank/Snelspanner:
+  ATELIER_MIDDEN_Z, ATELIER_OOSTRAAM_Z, WERKBANK_X, WERKBANK_Z,
+  // Ticket V4: gang-constanten:
+  GANG_Z_MIDDEN, GANG_PLEISTER,
+  // Ticket V5: binnenplaats + deur 2:
+  DEUR2_Z, PLAATS_Z_NOORD, PLAATS_Z_ZUID, PLAATS_CX, VENSTERS_PLAATS,
+  deur2Mesh, deur2Obstakel, koopDeur2, openRegenton, koopWatertap,
+  deur2Punt, regentonPunt, watertapPunt,
+  get deur2Gekocht() { return deur2Gekocht; },
+  get regentonGeopend() { return regentonGeopend; },
+  // Ticket V6: spawn-pacing per zone:
+  aantalOntgrendeldeZones, effectiefSpawnInterval, effectiefMaxActief,
+  ZONE_SPAWN_INTERVAL_FACTOR, ZONE_MAX_ACTIEF_BONUS,
+  // Ticket V7: progressie-UI:
+  doofMarkering, upgradeMarkering, werkbankMarkering, regentonMarkering,
+  // Ticket V8: zone-audio (voor tests: booleans + drempel opvraagbaar/instelbaar):
+  get gangBetreden() { return gangBetreden; },
+  get plaatsBetreden() { return plaatsBetreden; },
+  set gangBetreden(v) { gangBetreden = v; },
+  set plaatsBetreden(v) { plaatsBetreden = v; },
+  koopSnelspanner, werkbankPunt,
+  get snelspannerGekocht() { return snelspannerGekocht; },
 };
 </script>
 </body>
