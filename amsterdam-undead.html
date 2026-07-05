@@ -50,6 +50,114 @@
     z-index: 5;
   }
 
+  /* --- Richtkruis in het midden van het scherm --- */
+  #richtkruis {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 5;
+  }
+  #richtkruis::before, #richtkruis::after {
+    content: "";
+    position: absolute;
+    background: rgba(255,255,255,0.85);
+    box-shadow: 0 0 3px rgba(0,0,0,0.8);
+  }
+  #richtkruis::before { top: 9px; left: 0; width: 20px; height: 2px; }
+  #richtkruis::after  { left: 9px; top: 0; width: 2px; height: 20px; }
+
+  /* --- Ammo-teller rechtsonder --- */
+  #ammoUI {
+    position: fixed;
+    bottom: 12px;
+    right: 16px;
+    color: #eaf2ea;
+    background: rgba(20, 30, 45, 0.55);
+    padding: 8px 16px;
+    border-radius: 10px;
+    font-size: 18px;
+    font-weight: 700;
+    pointer-events: none;
+    z-index: 5;
+  }
+  #ammoUI.herladen { color: #ffd75e; }
+
+  /* --- HUD rechtsboven: HP-balk, geld en golf-nummer --- */
+  #hudUI {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    color: #eaf2ea;
+    background: rgba(20, 30, 45, 0.55);
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    text-align: right;
+    line-height: 1.7;
+    pointer-events: none;
+    z-index: 5;
+  }
+  #hpBarBuiten {
+    width: 140px;
+    height: 9px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 3px 0 6px;
+  }
+  #hpBarBinnen {
+    height: 100%;
+    width: 100%;
+    background: #5fd97a;
+    transition: width 0.15s linear, background 0.15s linear;
+  }
+
+  /* --- Rode vignet: reageert op HP-verlies, dooft vanzelf weer uit --- */
+  #vignet {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 6;
+    opacity: 0;
+    background: radial-gradient(ellipse at center, rgba(170,10,10,0) 55%, rgba(170,10,10,0.9) 100%);
+  }
+
+  /* --- Game-over-scherm --- */
+  #gameOverScherm {
+    position: fixed;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(18, 4, 4, 0.85);
+    color: white;
+    text-align: center;
+    z-index: 11;
+  }
+  #gameOverScherm h1 {
+    font-size: 46px;
+    margin: 0 0 10px;
+    letter-spacing: 2px;
+    color: #ff6b6b;
+    text-shadow: 0 4px 12px rgba(0,0,0,0.6);
+  }
+  #gameOverScherm .knop {
+    font-size: 18px;
+    font-weight: 700;
+    background: #c23b3b;
+    color: white;
+    padding: 12px 32px;
+    border-radius: 999px;
+    margin-top: 20px;
+    cursor: pointer;
+  }
+
   /* --- Startscherm / pauzescherm --- */
   #startscherm {
     position: fixed;
@@ -103,7 +211,21 @@
      DE UI-LAAG (HTML bovenop het 3D-canvas)
      ============================================================ -->
 <a id="menuLink" href="index.html">← Menu</a>
-<div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; Esc = pauze</div>
+<div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; klik = schieten &nbsp;·&nbsp; R = herladen &nbsp;·&nbsp; Esc = pauze</div>
+<div id="richtkruis" style="display:none"></div>
+<div id="ammoUI" style="display:none">8 / 48</div>
+<div id="hudUI" style="display:none">
+  HP: <span id="hpTekst">100</span>
+  <div id="hpBarBuiten"><div id="hpBarBinnen"></div></div>
+  <div>€ <span id="geldTekst">0</span></div>
+  <div>Golf <span id="golfTekst">1</span></div>
+</div>
+<div id="vignet"></div>
+<div id="gameOverScherm">
+  <h1>JE BENT GEVALLEN</h1>
+  <div>Gehaalde golf: <span id="gameOverGolf">1</span> &nbsp;·&nbsp; Geld: € <span id="gameOverGeld">0</span></div>
+  <div class="knop" id="opnieuwKnop">Opnieuw beginnen</div>
+</div>
 
 <div id="startscherm">
   <h1>AMSTERDAM UNDEAD</h1>
@@ -295,25 +417,47 @@ const speler = {
 };
 
 const ingedrukt = {};
-addEventListener('keydown', e => { ingedrukt[e.code] = true; });
+addEventListener('keydown', e => {
+  ingedrukt[e.code] = true;
+  // R herlaadt. !e.repeat voorkomt dat ingedrukt houden steeds opnieuw
+  // herladen() aanroept; alleen binnen pointer lock, zelfde patroon als
+  // de T/X-acties in defend-national-monument.html.
+  if (e.code === 'KeyR' && !e.repeat && document.pointerLockElement === renderer.domElement) {
+    herladen();
+  }
+});
 addEventListener('keyup', e => { ingedrukt[e.code] = false; });
 
 const startscherm = document.getElementById('startscherm');
 const hulpUI = document.getElementById('hulpUI');
+const richtkruis = document.getElementById('richtkruis');
+const ammoUI = document.getElementById('ammoUI');
+const hudUI = document.getElementById('hudUI');
+const vignet = document.getElementById('vignet');
+const gameOverScherm = document.getElementById('gameOverScherm');
+document.getElementById('opnieuwKnop').addEventListener('click', () => location.reload());
 
 startscherm.addEventListener('click', () => {
+  initGeluid();   // geluid mag pas starten na een klik (browserregel)
   renderer.domElement.requestPointerLock();
 });
 
 document.addEventListener('pointerlockchange', () => {
   const actief = document.pointerLockElement === renderer.domElement;
-  startscherm.style.display = actief ? 'none' : 'flex';
   hulpUI.style.display = actief ? 'block' : 'none';
+  richtkruis.style.display = actief ? 'block' : 'none';
+  ammoUI.style.display = actief ? 'block' : 'none';
+  hudUI.style.display = actief ? 'block' : 'none';
+  // Na een game over roept gameOver() zelf exitPointerLock() aan; dit mag
+  // het startscherm niet laten terugpoppen over het game-over-scherm heen.
+  if (spelStaat.gameOver) return;
+  startscherm.style.display = actief ? 'none' : 'flex';
   if (actief) {
     startscherm.querySelector('h2').textContent = 'Een verlaten grachtenpand — Amsterdam';
   } else {
     startscherm.querySelector('h2').textContent = 'Gepauzeerd, klik om verder te spelen';
     for (const k in ingedrukt) ingedrukt[k] = false;
+    schietKnopIngedrukt = false;   // muisknop kan "hangen" als focus verloren ging tijdens het vasthouden
   }
 });
 
@@ -322,6 +466,19 @@ addEventListener('mousemove', e => {
   speler.yaw -= e.movementX * 0.0022;
   speler.pitch -= e.movementY * 0.0022;
   speler.pitch = Math.max(-1.45, Math.min(1.45, speler.pitch));
+});
+
+// Schieten met de linkermuisknop. Ingedrukt houden blijft vuren (de cooldown
+// in probeerTeSchieten regelt het tempo).
+let schietKnopIngedrukt = false;
+addEventListener('mousedown', e => {
+  if (document.pointerLockElement === renderer.domElement && e.button === 0) {
+    schietKnopIngedrukt = true;
+    probeerTeSchieten();
+  }
+});
+addEventListener('mouseup', e => {
+  if (e.button === 0) schietKnopIngedrukt = false;
 });
 
 // --- Botsingen: duw een punt (met straal) uit alle obstakels ----
@@ -395,7 +552,434 @@ function updateSpeler(dt) {
 }
 
 /* ================================================================
-   STAP 4 — GAME LOOP
+   STAP 4 — SCHIETEN: wapen, raycast, ammo en herladen
+   ================================================================
+   Zelfde opzet als STAP 5 in defend-national-monument.html (wapen als
+   kind van de camera, raycast vanuit schermmidden), maar met een eigen,
+   origineel model (drukspuit-achtig i.p.v. speelgoedpistool) en een
+   magazijn/reserve/herlaad-systeem dat de andere game niet heeft.
+   ================================================================ */
+
+// --- Het wapenmodel: een simpele, originele "drukspuit" ----------
+const wapen = new THREE.Group();
+{
+  const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.044, 0.2, 10),
+    new THREE.MeshStandardMaterial({ color: 0x4a6b52, roughness: 0.55, metalness: 0.4 }));
+  tank.rotation.x = Math.PI / 2;   // cilinder ligt standaard langs Y; dit wijst 'm naar voren (Z)
+  tank.position.set(0, 0.02, -0.05);
+  wapen.add(tank);
+  const mondstuk = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.017, 0.18, 8),
+    new THREE.MeshStandardMaterial({ color: 0x2e3a33, roughness: 0.5, metalness: 0.5 }));
+  mondstuk.rotation.x = Math.PI / 2;
+  mondstuk.position.set(0, 0.02, -0.24);
+  wapen.add(mondstuk);
+  const greep = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.12, 0.06),
+    new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.8 }));
+  greep.position.set(0, -0.09, 0.02);
+  greep.rotation.x = 0.3;
+  wapen.add(greep);
+  // Klein drukmeter-lampje i.p.v. een oranje speelgoeddop: eigen, herkenbaar detail.
+  const meter = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 8),
+    new THREE.MeshStandardMaterial({ color: 0x8fffb0, emissive: 0x4fdc7a, emissiveIntensity: 0.9 }));
+  meter.position.set(0, 0.065, 0.02);
+  wapen.add(meter);
+}
+wapen.position.set(0.26, -0.22, -0.5);
+camera.add(wapen);
+scene.add(camera);   // camera moet in de scene zitten, anders zie je het wapen niet
+
+// Mondingsflits: kort oplichtend bolletje + puntlicht bij een schot.
+const vlam = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8),
+  new THREE.MeshBasicMaterial({ color: 0xbfffcf }));
+vlam.position.set(0, 0.02, -0.33);
+vlam.visible = false;
+wapen.add(vlam);
+const vlamLicht = new THREE.PointLight(0x9fffb8, 1.1, 6);
+vlamLicht.position.copy(vlam.position);
+vlamLicht.visible = false;
+wapen.add(vlamLicht);
+
+let terugslag = 0;
+let vlamTimer = 0;
+
+// --- Ammo-toestand: magazijn 8, reserve 48, herladen kost 1.2s ----
+const wapenStaat = {
+  magazijn: 8,
+  magazijnMax: 8,
+  reserve: 48,
+  herladen: false,
+  herlaadTimer: 0,
+  herlaadDuur: 1.2,
+};
+
+function updateAmmoUI() {
+  ammoUI.textContent = wapenStaat.herladen ? 'Herladen…' : `${wapenStaat.magazijn} / ${wapenStaat.reserve}`;
+  ammoUI.classList.toggle('herladen', wapenStaat.herladen);
+}
+updateAmmoUI();
+
+function herladen() {
+  if (wapenStaat.herladen) return;                          // al bezig
+  if (wapenStaat.magazijn >= wapenStaat.magazijnMax) return; // al vol
+  if (wapenStaat.reserve <= 0) return;                       // niets om over te hevelen
+  wapenStaat.herladen = true;
+  wapenStaat.herlaadTimer = wapenStaat.herlaadDuur;
+  speelHerlaad();
+  updateAmmoUI();
+}
+
+// Wordt elke frame aangeroepen zolang het spel actief is (pointer lock aan);
+// de pauze-gate in de game loop zorgt dat de timer niet doortelt tijdens Esc.
+function updateWapen(dt) {
+  if (wapenStaat.herladen) {
+    wapenStaat.herlaadTimer -= dt;
+    if (wapenStaat.herlaadTimer <= 0) {
+      wapenStaat.herladen = false;
+      const nodig = wapenStaat.magazijnMax - wapenStaat.magazijn;
+      const overgeheveld = Math.min(nodig, wapenStaat.reserve);
+      wapenStaat.magazijn += overgeheveld;
+      wapenStaat.reserve -= overgeheveld;
+      updateAmmoUI();
+    }
+  }
+}
+
+// --- Het schot zelf ------------------------------------------------
+const raycaster = new THREE.Raycaster();
+raycaster.far = 30;   // kamer is klein, verder dan dit hoeft niet
+
+const SCHOT_COOLDOWN = 0.2;   // vaste cadans (geen vuurtempo-upgrade in deze ticket)
+let laatsteSchotTijd = -999;
+let klok = 0;
+
+function probeerTeSchieten() {
+  if (wapenStaat.herladen) return;               // niet schieten tijdens herladen
+  if (klok - laatsteSchotTijd < SCHOT_COOLDOWN) return;
+  laatsteSchotTijd = klok;
+  if (wapenStaat.magazijn <= 0) {
+    speelDroogKlik();
+    return;
+  }
+  schiet();
+}
+
+function schiet() {
+  wapenStaat.magazijn -= 1;
+  updateAmmoUI();
+
+  terugslag = 1;
+  vlam.visible = true;
+  vlamLicht.visible = true;
+  vlamTimer = 0.05;
+  speelSchot();
+
+  // Straal vanuit het midden van het scherm: eerst checken op een ondode-
+  // treffer, en alleen als dat mist een vonkje op muren/vloer/plafond.
+  raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+  const ondodeRaak = raycaster.intersectObject(ondodenGroep, true);
+  if (ondodeRaak.length > 0) {
+    let obj = ondodeRaak[0].object;
+    while (obj && !obj.userData.ondode) obj = obj.parent;
+    if (obj) raakOndode(obj.userData.ondode, ondodeRaak[0].point);
+    return;
+  }
+
+  const raak = raycaster.intersectObject(wereld, true);
+  if (raak.length === 0) return;
+  const vonk = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 6),
+    new THREE.MeshBasicMaterial({ color: 0xd8ffe0 }));
+  vonk.position.copy(raak[0].point);
+  scene.add(vonk);
+  setTimeout(() => scene.remove(vonk), 150);
+}
+
+/* ================================================================
+   STAP 5 — GELUID: kleine geluidjes zonder audiobestanden
+   ================================================================ */
+
+let audio = null;
+function initGeluid() {
+  if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+  if (audio.state === 'suspended') audio.resume();
+}
+
+function piep(type, startHz, eindHz, duur, volume) {
+  if (!audio) return;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(startHz, audio.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(eindHz, audio.currentTime + duur);
+  gain.gain.setValueAtTime(volume, audio.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + duur);
+  osc.connect(gain).connect(audio.destination);
+  osc.start();
+  osc.stop(audio.currentTime + duur);
+}
+
+function speelSchot()     { piep('sawtooth', 480, 120, 0.09, 0.1); }
+function speelDroogKlik() { piep('square', 200, 180, 0.04, 0.06); }
+function speelHerlaad()   { piep('sine', 300, 500, 0.15, 0.06); setTimeout(() => piep('sine', 500, 700, 0.12, 0.06), 900); }
+function speelTreffer()   { piep('square', 320, 90, 0.07, 0.08); }
+function speelSpelerAu()  { piep('sawtooth', 160, 60, 0.18, 0.11); }
+
+/* ================================================================
+   STAP 7 — ONDODEN: originele low-poly vijanden, spawn + jagen + melee
+   ================================================================
+   Balanswaarden staan hier allemaal bovenaan zodat ze makkelijk te
+   tunen zijn. Geen robots, geen bestaande-IP-verwijzingen: een eigen
+   "ondode" (sickly-groen lijf, scheve nek, gerafelde vodden, gloeiende
+   oogjes) die uit de vensters het pand binnendringt.
+   ================================================================ */
+
+// --- Balanswaarden ondoden / melee -------------------------------
+const ONDODE_SNELHEID    = 1.5;   // m/s — trager dan de speler (4.5), zodat ontwijken kan
+const ONDODE_HP          = 2;     // aantal treffers om er één te doden
+const ONDODE_STRAAL      = 0.4;   // botsingsstraal tegen de muren
+const MELEE_BEREIK       = 1.2;   // m — vanaf hier kan een ondode de speler raken
+const MELEE_SCHADE       = 15;    // schade per treffer
+const MELEE_COOLDOWN     = 1.0;   // s tussen twee treffers van dezelfde ondode
+
+// --- Balanswaarden speler-HP --------------------------------------
+const SPELER_HP_MAX           = 100;
+const SPELER_REGEN_VERTRAGING = 4;   // s zonder schade voordat regen start
+const SPELER_REGEN_PER_SEC    = 5;   // hp per seconde zodra regen actief is
+
+// --- Balanswaarden geld -------------------------------------------
+const GELD_PER_HIT  = 5;    // per treffer die niet dodelijk is
+const GELD_PER_KILL = 20;   // bonus bovenop de hit-beloning bij een kill
+
+// --- Balanswaarden golven ------------------------------------------
+const GOLF_BASIS_AANTAL   = 5;    // aantal ondoden in golf 1
+const GOLF_AANTAL_GROEI   = 2;    // extra ondoden per volgende golf
+const GOLF_SPAWN_INTERVAL = 1.1;  // s tussen twee spawns binnen dezelfde golf
+const GOLF_RUST_TIJD      = 4;    // s rust tussen golven (en vóór golf 1)
+
+// Vensterpunten: dezelfde x-posities als de ramen op de zuidmuur (STAP 2),
+// net binnen de kamer zodat de ondoden meteen op de vloer staan.
+const VENSTERS = [
+  { x: -2, z: HALF_DIEPTE - 0.4 },
+  { x: 2, z: HALF_DIEPTE - 0.4 },
+];
+
+function maakOndodeModel() {
+  const groep = new THREE.Group();
+  const tint = 0.85 + Math.random() * 0.3;   // kleine kleurvariatie per ondode
+  const huidKleur = new THREE.Color(0x5d7255).multiplyScalar(tint);
+
+  // Hoogtes zo gekozen dat het hoofd rond de ooghoogte van de speler (1.7m,
+  // zie speler.hoogte) uitkomt — anders mist een recht vooruit gericht schot
+  // de ondode altijd, ongeacht de afstand.
+  const benen = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.8, 0.16),
+    new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.9 }));
+  benen.position.y = 0.4;
+  groep.add(benen);
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.6, 0.22),
+    new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
+  torso.position.y = 1.1;
+  groep.add(torso);
+
+  const hoofd = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8),
+    new THREE.MeshStandardMaterial({ color: huidKleur.clone().multiplyScalar(1.15), roughness: 0.8 }));
+  hoofd.position.y = 1.58;
+  hoofd.rotation.z = (Math.random() - 0.5) * 0.5;   // scheve nek: een eigen, herkenbare "ondode"-houding
+  groep.add(hoofd);
+
+  for (const kant of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.5, 0.09),
+      new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
+    arm.position.set(kant * 0.24, 1.13, 0.06);
+    arm.rotation.x = -0.5;   // naar voren uitgestrekt
+    groep.add(arm);
+  }
+
+  // Gerafelde voddenstrook aan het middel — eigen, herkenbaar "tattered" detail.
+  const vod = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.32, 0.02),
+    new THREE.MeshStandardMaterial({ color: 0x40331f, roughness: 0.95 }));
+  vod.position.set(0.1, 0.78, 0.12);
+  vod.rotation.z = 0.3;
+  groep.add(vod);
+
+  // Twee kleine gloeiende oogjes: het enige griezelige lichtaccent.
+  const oogMateriaal = new THREE.MeshStandardMaterial({ color: 0xd8ff6b, emissive: 0xb9ec3f, emissiveIntensity: 1.4 });
+  for (const kant of [-1, 1]) {
+    const oog = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6), oogMateriaal);
+    oog.position.set(kant * 0.06, 1.59, 0.16);
+    groep.add(oog);
+  }
+
+  groep.scale.setScalar(0.94 + Math.random() * 0.16);
+  return groep;
+}
+
+const ondodenGroep = new THREE.Group();
+scene.add(ondodenGroep);
+const ondoden = [];
+
+function spawnOndode(vensterIndex) {
+  const venster = VENSTERS[vensterIndex % VENSTERS.length];
+  const groep = maakOndodeModel();
+  groep.position.set(venster.x, 0, venster.z);
+  const ondode = { groep, hp: ONDODE_HP, meleeTimer: 0 };
+  groep.userData.ondode = ondode;
+  ondodenGroep.add(groep);
+  ondoden.push(ondode);
+  return ondode;
+}
+
+function spawnWillekeurigeOndode() {
+  return spawnOndode(Math.floor(Math.random() * VENSTERS.length));
+}
+
+// Jagen op de speler + melee als ze dichtbij genoeg zijn. Hergebruikt
+// losBotsingenOp() uit STAP 3 zodat ondoden ook niet door muren lopen.
+function updateOndoden(dt) {
+  for (const ondode of ondoden) {
+    const richting = new THREE.Vector3().subVectors(speler.positie, ondode.groep.position);
+    const afstand = richting.length();
+    if (afstand <= MELEE_BEREIK) {
+      ondode.meleeTimer -= dt;
+      if (ondode.meleeTimer <= 0) {
+        spelerSchade(MELEE_SCHADE);
+        ondode.meleeTimer = MELEE_COOLDOWN;
+      }
+    } else {
+      richting.normalize();
+      ondode.groep.position.addScaledVector(richting, ONDODE_SNELHEID * dt);
+      losBotsingenOp(ondode.groep.position, ONDODE_STRAAL);
+      ondode.groep.rotation.y = Math.atan2(richting.x, richting.z);
+      ondode.meleeTimer = 0;   // meteen kunnen slaan zodra ze bij aankomst in bereik komen
+    }
+  }
+}
+
+function doodOndode(ondode) {
+  ondodenGroep.remove(ondode.groep);
+  const i = ondoden.indexOf(ondode);
+  if (i !== -1) ondoden.splice(i, 1);
+}
+
+// Eén treffer: schade, geld, en bij hp<=0 een kill (met kill-bonus).
+function raakOndode(ondode, punt) {
+  ondode.hp -= 1;
+  speelTreffer();
+  if (ondode.hp <= 0) {
+    spelStaat.geld += GELD_PER_KILL;
+    doodOndode(ondode);
+  } else {
+    spelStaat.geld += GELD_PER_HIT;
+  }
+  updateHUD();
+  const bloedvonk = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6),
+    new THREE.MeshBasicMaterial({ color: 0xb9ec3f }));
+  bloedvonk.position.copy(punt);
+  scene.add(bloedvonk);
+  setTimeout(() => scene.remove(bloedvonk), 150);
+}
+
+/* ================================================================
+   STAP 8 — SPELER-HP: schade, regen, vignet en game over
+   ================================================================ */
+
+const spelerStaat = {
+  hp: SPELER_HP_MAX,
+  hpMax: SPELER_HP_MAX,
+  laatsteSchadeTijd: -999,
+};
+
+let vignetFlits = 0;
+
+function spelerSchade(bedrag) {
+  if (spelStaat.gameOver) return;
+  spelerStaat.hp = Math.max(0, spelerStaat.hp - bedrag);
+  spelerStaat.laatsteSchadeTijd = klok;
+  vignetFlits = 1;
+  speelSpelerAu();
+  updateHUD();
+  if (spelerStaat.hp <= 0) gameOver();
+}
+
+function updateSpelerRegen(dt) {
+  if (spelStaat.gameOver) return;
+  if (spelerStaat.hp < spelerStaat.hpMax && (klok - spelerStaat.laatsteSchadeTijd) > SPELER_REGEN_VERTRAGING) {
+    spelerStaat.hp = Math.min(spelerStaat.hpMax, spelerStaat.hp + SPELER_REGEN_PER_SEC * dt);
+    updateHUD();
+  }
+}
+
+// Cosmetisch: laat gewoon elk frame doorlopen (ook tijdens pauze/game-over),
+// zodat een flits altijd netjes uitdooft in plaats van "vast" te blijven staan.
+function updateVignet(dt) {
+  vignetFlits = Math.max(0, vignetFlits - dt * 2.5);
+  const laag = (1 - spelerStaat.hp / spelerStaat.hpMax) * 0.55;
+  vignet.style.opacity = String(Math.min(1, laag + vignetFlits * 0.6));
+}
+
+function gameOver() {
+  spelStaat.gameOver = true;
+  document.getElementById('gameOverGolf').textContent = spelStaat.golf;
+  document.getElementById('gameOverGeld').textContent = spelStaat.geld;
+  gameOverScherm.style.display = 'flex';
+  if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
+}
+
+function updateHUD() {
+  document.getElementById('hpTekst').textContent = Math.round(spelerStaat.hp);
+  const percentage = Math.max(0, spelerStaat.hp / spelerStaat.hpMax) * 100;
+  const balk = document.getElementById('hpBarBinnen');
+  balk.style.width = percentage + '%';
+  balk.style.background = percentage > 60 ? '#5fd97a' : (percentage > 30 ? '#e0c34f' : '#e05f5f');
+  document.getElementById('geldTekst').textContent = spelStaat.geld;
+  document.getElementById('golfTekst').textContent = spelStaat.golf;
+}
+
+/* ================================================================
+   STAP 9 — GOLF-SYSTEEM: golven ondoden, oplopende aantallen
+   ================================================================ */
+
+const spelStaat = {
+  golf: 1,
+  geld: 0,
+  gameOver: false,
+  golfActief: false,
+  teSpawnen: 0,
+  spawnTimer: 0,
+  rustTimer: GOLF_RUST_TIJD,
+};
+updateHUD();
+
+function startGolf() {
+  spelStaat.teSpawnen = GOLF_BASIS_AANTAL + (spelStaat.golf - 1) * GOLF_AANTAL_GROEI;
+  spelStaat.spawnTimer = 0;
+  spelStaat.golfActief = true;
+  updateHUD();
+}
+
+function updateGolf(dt) {
+  if (spelStaat.gameOver) return;
+  if (!spelStaat.golfActief) {
+    spelStaat.rustTimer -= dt;
+    if (spelStaat.rustTimer <= 0) startGolf();
+    return;
+  }
+  if (spelStaat.teSpawnen > 0) {
+    spelStaat.spawnTimer -= dt;
+    if (spelStaat.spawnTimer <= 0) {
+      spawnWillekeurigeOndode();
+      spelStaat.teSpawnen--;
+      spelStaat.spawnTimer = GOLF_SPAWN_INTERVAL;
+    }
+  } else if (ondoden.length === 0) {
+    spelStaat.golfActief = false;
+    spelStaat.golf++;
+    spelStaat.rustTimer = GOLF_RUST_TIJD;
+    updateHUD();
+  }
+}
+
+/* ================================================================
+   STAP 6 — GAME LOOP
    ================================================================ */
 
 let vorigeTijd = performance.now();
@@ -403,13 +987,45 @@ function gameLoop(nu) {
   requestAnimationFrame(gameLoop);
   const dt = Math.min((nu - vorigeTijd) / 1000, 0.05);
   vorigeTijd = nu;
+  klok += dt;
+
   updateSpeler(dt);
+
+  // Alles wat de wereld laat "leven" staat stil zolang het spel gepauzeerd is
+  // (pointer lock inactief) of voorbij is (game over), zelfde patroon als
+  // defend-national-monument.html.
+  const spelActief = document.pointerLockElement === renderer.domElement && !spelStaat.gameOver;
+  if (spelActief) {
+    if (schietKnopIngedrukt) probeerTeSchieten();
+    updateWapen(dt);
+    updateOndoden(dt);
+    updateGolf(dt);
+    updateSpelerRegen(dt);
+  }
+  updateVignet(dt);
+
+  if (terugslag > 0) {
+    terugslag = Math.max(0, terugslag - dt * 6);
+    wapen.position.z = -0.5 + terugslag * 0.08;
+  }
+  if (vlamTimer > 0) {
+    vlamTimer -= dt;
+    if (vlamTimer <= 0) { vlam.visible = false; vlamLicht.visible = false; }
+  }
+
   renderer.render(scene, camera);
 }
 requestAnimationFrame(gameLoop);
 
 // Debug-hooks voor Playwright-tests (zelfde patroon als DamChaosDebug).
-window.AmsterdamUndeadDebug = { scene, camera, speler, obstakels, isVrijePlek, GRENS };
+window.AmsterdamUndeadDebug = {
+  scene, camera, speler, obstakels, isVrijePlek, GRENS,
+  wapenStaat, herladen, probeerTeSchieten, schiet,
+  ondoden, ondodenGroep, VENSTERS, spawnOndode, spawnWillekeurigeOndode,
+  updateOndoden, raakOndode, doodOndode,
+  spelerStaat, spelerSchade, updateSpelerRegen, updateVignet, updateHUD,
+  spelStaat, startGolf, updateGolf,
+};
 </script>
 </body>
 </html>
