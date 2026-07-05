@@ -348,7 +348,9 @@ document.body.appendChild(renderer.domElement);
 
 // Zwak, koel algeheel licht — de kamer moet vooral door de lampen en de
 // ramen verlicht worden, niet door een felle "zon" zoals op het Dam-plein.
-scene.add(new THREE.HemisphereLight(0x25324a, 0x1a1310, 1.1));
+// Iets opgehoogd t.o.v. het prototype zodat de meubels/hoeken leesbaar zijn
+// zonder de donkere sfeer te verpesten.
+scene.add(new THREE.HemisphereLight(0x2b3a54, 0x201811, 1.5));
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
@@ -531,7 +533,10 @@ for (const x of [-1.6, 1.6]) {
 // Elk licht wordt geregistreerd zodat de game-loop het zacht kan laten
 // flikkeren (kaars-/olielamp-sfeer).
 const lampLichten = [];
-function hangLamp(x, z) {
+const LAMP_INTENSITEIT = 16;
+// Perf: schaduw-cubemaps van een PointLight zijn duur (6 faces/frame). Daarom
+// werpt maar ÉÉN lamp schaduw; de andere verlichten zonder schaduw.
+function hangLamp(x, z, schaduw = false) {
   const groep = new THREE.Group();
   const koord = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.6, 6), mat(0x1a1410, 0.7));
   koord.position.y = KAMER_HOOGTE - 0.3;
@@ -542,17 +547,18 @@ function hangLamp(x, z) {
   );
   bol.position.y = KAMER_HOOGTE - 0.62;
   groep.add(bol);
-  const licht = new THREE.PointLight(0xffb877, 14, 9, 2);
+  const licht = new THREE.PointLight(0xffb877, LAMP_INTENSITEIT, 10, 2);
   licht.position.y = KAMER_HOOGTE - 0.62;
-  licht.castShadow = true;
+  licht.castShadow = schaduw;
+  if (schaduw) licht.shadow.mapSize.set(512, 512);
   groep.add(licht);
   groep.position.set(x, 0, z);
   wereld.add(groep);
-  lampLichten.push({ licht, basis: 14, fase: Math.random() * Math.PI * 2 });
+  lampLichten.push({ licht, basis: LAMP_INTENSITEIT, fase: Math.random() * Math.PI * 2 });
 }
 // Twee lampen gespreid over de diepere startkamer: één richting de deur
 // (noord) en één richting de ramen (zuid), zodat beide uiteinden verlicht zijn.
-hangLamp(-1.8, -3);
+hangLamp(-1.8, -3, true);   // enige schaduwwerpende lamp
 hangLamp(1.8, 2.2);
 hangLamp(0, (GANG_Z_EIND + KAMER2_Z_NOORD) / 2);   // lamp midden in de tweede kamer
 
@@ -998,7 +1004,7 @@ function speelGolfKlaar() { piep('sine', 520, 780, 0.14, 0.06); setTimeout(() =>
 function speelGameOver()  { piep('sawtooth', 300, 70, 0.5, 0.12); setTimeout(() => piep('sine', 160, 50, 0.7, 0.09), 220); }
 
 /* ================================================================
-   STAP 7 — ONDODEN: originele low-poly vijanden, spawn + jagen + melee
+   STAP 6 — ONDODEN: originele low-poly vijanden, spawn + jagen + melee
    ================================================================
    Balanswaarden staan hier allemaal bovenaan zodat ze makkelijk te
    tunen zijn. Geen robots, geen bestaande-IP-verwijzingen: een eigen
@@ -1041,6 +1047,7 @@ const GOLF_BASIS_AANTAL   = 5;    // aantal ondoden in golf 1
 const GOLF_AANTAL_GROEI   = 2;    // extra ondoden per volgende golf
 const GOLF_SPAWN_INTERVAL = 1.1;  // s tussen twee spawns binnen dezelfde golf
 const GOLF_RUST_TIJD      = 4;    // s rust tussen golven (en vóór golf 1)
+const GOLF_MAX_ACTIEF     = 18;   // max. gelijktijdig levende ondoden (perf-plafond)
 
 // Vensterpunten: dezelfde x-posities als de ramen op de zuidmuur (STAP 2),
 // net binnen de kamer zodat de ondoden meteen op de vloer staan.
@@ -1110,7 +1117,7 @@ function spawnOndode(vensterIndex) {
   const venster = VENSTERS[vensterIndex % VENSTERS.length];
   const groep = maakOndodeModel();
   groep.position.set(venster.x, 0, venster.z);
-  const ondode = { groep, hp: ondodeStartHP(), meleeTimer: 0 };
+  const ondode = { groep, hp: ondodeStartHP(), meleeTimer: 0, ontwijkTimer: 0, ontwijkRichting: 1 };
   groep.userData.ondode = ondode;
   ondodenGroep.add(groep);
   ondoden.push(ondode);
@@ -1135,8 +1142,23 @@ function updateOndoden(dt) {
       }
     } else {
       richting.normalize();
+      const voorPos = ondode.groep.position.clone();
       ondode.groep.position.addScaledVector(richting, ONDODE_SNELHEID * dt);
+      // Anti-vast: bij een lopende ontwijk-burst mengt 'ie een zijwaartse stap
+      // erbij om langs een muur/hoek (bv. de deuropening) te glijden.
+      if (ondode.ontwijkTimer > 0) {
+        const zij = new THREE.Vector3(-richting.z, 0, richting.x).multiplyScalar(ondode.ontwijkRichting);
+        ondode.groep.position.addScaledVector(zij, ONDODE_SNELHEID * dt);
+        ondode.ontwijkTimer -= dt;
+      }
       losBotsingenOp(ondode.groep.position, ONDODE_STRAAL);
+      // Nauwelijks opgeschoten terwijl 'ie niet in meleebereik is => vastgelopen:
+      // start een korte zijwaartse ontwijk-burst (afwisselend links/rechts).
+      if (ondode.ontwijkTimer <= 0 &&
+          ondode.groep.position.distanceTo(voorPos) < ONDODE_SNELHEID * dt * 0.3) {
+        ondode.ontwijkTimer = 0.6;
+        ondode.ontwijkRichting = Math.random() < 0.5 ? -1 : 1;
+      }
       ondode.groep.rotation.y = Math.atan2(richting.x, richting.z);
       ondode.meleeTimer = 0;   // meteen kunnen slaan zodra ze bij aankomst in bereik komen
     }
@@ -1171,7 +1193,7 @@ function raakOndode(ondode, punt, kop = false) {
 }
 
 /* ================================================================
-   STAP 8 — SPELER-HP: schade, regen, vignet en game over
+   STAP 7 — SPELER-HP: schade, regen, vignet en game over
    ================================================================ */
 
 const spelerStaat = {
@@ -1228,7 +1250,7 @@ function updateHUD() {
 }
 
 /* ================================================================
-   STAP 9 — GOLF-SYSTEEM: golven ondoden, oplopende aantallen
+   STAP 8 — GOLF-SYSTEEM: golven ondoden, oplopende aantallen
    ================================================================ */
 
 const spelStaat = {
@@ -1270,7 +1292,8 @@ function updateGolf(dt) {
   }
   if (spelStaat.teSpawnen > 0) {
     spelStaat.spawnTimer -= dt;
-    if (spelStaat.spawnTimer <= 0) {
+    // Perf-plafond: niet bijspawnen zolang er al GOLF_MAX_ACTIEF ondoden leven.
+    if (spelStaat.spawnTimer <= 0 && ondoden.length < GOLF_MAX_ACTIEF) {
       spawnWillekeurigeOndode();
       spelStaat.teSpawnen--;
       spelStaat.spawnTimer = GOLF_SPAWN_INTERVAL;
@@ -1286,7 +1309,7 @@ function updateGolf(dt) {
 }
 
 /* ================================================================
-   STAP 10 — INTERACTIES: koopbare deur, ammo-kist en upgradepunt
+   STAP 9 — INTERACTIES: koopbare deur, ammo-kist en upgradepunt
    ================================================================
    Eén centraal "loop ernaartoe en druk T"-systeem, gekopieerd en
    aangepast uit defend-national-monument.html (interactiePunten +
@@ -1465,7 +1488,7 @@ function activeerHuidigeInteractie() {
 }
 
 /* ================================================================
-   STAP 6 — GAME LOOP
+   STAP 10 — GAME LOOP
    ================================================================ */
 
 let vorigeTijd = performance.now();
@@ -1531,6 +1554,7 @@ window.AmsterdamUndeadDebug = {
   // Geometrie- en balansconstanten (voor tests):
   DEUR_Z, DEUR_HALF, GANG_Z_EIND, KAMER2_Z_NOORD, HALF_DIEPTE, HALF_BREEDTE, KAMER2_HALF_B,
   ONDODE_HP_VROEG, ONDODE_HP_LAAT, ONDODE_HP_GOLFGRENS, HEADSHOT_EXTRA, ondodeStartHP,
+  GOLF_MAX_ACTIEF, lampLichten,
 };
 </script>
 </body>
