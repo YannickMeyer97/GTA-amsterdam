@@ -86,6 +86,45 @@
   }
   #ammoUI.herladen { color: #ffd75e; }
 
+  /* --- Eén centrale interactieprompt onderin, voor alle interactiepunten
+       (deur, ammo-kist, upgradepunt) — zelfde patroon als
+       defend-national-monument.html --- */
+  #interactiePrompt {
+    position: fixed;
+    bottom: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 20px;
+    background: rgba(20, 30, 45, 0.82);
+    color: #ffd75e;
+    font-size: 16px;
+    font-weight: 700;
+    border-radius: 999px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 6;
+    transition: opacity 0.12s ease;
+  }
+
+  /* --- Kort oplichtende feedbackmelding (bv. "Nog €200 nodig") --- */
+  #meldingUI {
+    position: fixed;
+    bottom: 88px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 16px;
+    background: rgba(30, 12, 12, 0.82);
+    color: #ffd0c0;
+    font-size: 15px;
+    font-weight: 700;
+    border-radius: 999px;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 6;
+    transition: opacity 0.2s ease;
+  }
+
   /* --- HUD rechtsboven: HP-balk, geld en golf-nummer --- */
   #hudUI {
     position: fixed;
@@ -211,8 +250,10 @@
      DE UI-LAAG (HTML bovenop het 3D-canvas)
      ============================================================ -->
 <a id="menuLink" href="index.html">← Menu</a>
-<div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; klik = schieten &nbsp;·&nbsp; R = herladen &nbsp;·&nbsp; Esc = pauze</div>
+<div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; klik = schieten &nbsp;·&nbsp; R = herladen &nbsp;·&nbsp; T = kopen/gebruiken &nbsp;·&nbsp; Esc = pauze</div>
 <div id="richtkruis" style="display:none"></div>
+<div id="interactiePrompt"></div>
+<div id="meldingUI"></div>
 <div id="ammoUI" style="display:none">8 / 48</div>
 <div id="hudUI" style="display:none">
   HP: <span id="hpTekst">100</span>
@@ -293,7 +334,11 @@ scene.add(wereld);
 
 const obstakels = [];
 function registreerRechthoek(minX, maxX, minZ, maxZ, marge = 0) {
-  obstakels.push({ minX: minX - marge, maxX: maxX + marge, minZ: minZ - marge, maxZ: maxZ + marge });
+  // Geeft de aangemaakte rechthoek terug, zodat aanroepers (zoals de koopbare
+  // deur) 'm later weer uit `obstakels` kunnen halen.
+  const rechthoek = { minX: minX - marge, maxX: maxX + marge, minZ: minZ - marge, maxZ: maxZ + marge };
+  obstakels.push(rechthoek);
+  return rechthoek;
 }
 
 const materiaalCache = new Map();
@@ -315,19 +360,33 @@ function blok(breedte, hoogte, diepte, kleur, ruwheid = 0.88, metaal = 0) {
   return m;
 }
 
-// Kamerafmetingen: 8m breed (x) x 6m diep (z) x 3.2m hoog — een kleine,
-// overzichtelijke startkamer. Latere tickets voegen een gang en tweede
-// kamer toe (zie ROADMAP.md, Ticket 5).
+// Kamerafmetingen: startkamer 8m breed (x) x 6m diep (z) x 3.2m hoog. Ten
+// noorden (achter de dichte deur) zit een gang naar een tweede kamer; die
+// wordt in Ticket 5 fysiek meteen gebouwd maar pas bereikbaar zodra de speler
+// de deur koopt (de deur is een obstakel + mesh dat dan verdwijnt).
 const HALF_BREEDTE = 4;
 const HALF_DIEPTE = 3;
 const KAMER_HOOGTE = 3.2;
 const MUUR_DIKTE = 0.3;
 
-// Wereldgrens: gebruikt als extra klem bovenop de muur-obstakels, zodat de
-// speler nooit per ongeluk buiten de kamer kan raken.
+// Deurgat in de noordmuur (z = -HALF_DIEPTE): opening x ∈ [-DEUR_HALF, DEUR_HALF].
+const DEUR_HALF = 1;           // halve breedte van de deuropening
+const DEUR_Z = -HALF_DIEPTE;   // vlak van de noordmuur
+
+// Gang (x ∈ [-DEUR_HALF, DEUR_HALF]) van de deur (z=-3) naar de tweede kamer (z=-6).
+const GANG_Z_EIND = -6;
+
+// Tweede kamer: x ∈ [-KAMER2_HALF_B, KAMER2_HALF_B], z ∈ [KAMER2_Z_NOORD, GANG_Z_EIND].
+const KAMER2_HALF_B = 3.5;
+const KAMER2_Z_NOORD = -11;
+
+// Wereldgrens: grove buiten-klem bovenop de muur-obstakels. Hij omvat vanaf
+// het begin het hele bereikbare gebied (startkamer + gang + tweede kamer); de
+// muren doen het echte werk, dus de deur-obstakel houdt de speler in de
+// startkamer tot de deur gekocht is.
 const GRENS = {
   minX: -HALF_BREEDTE + 0.05, maxX: HALF_BREEDTE - 0.05,
-  minZ: -HALF_DIEPTE + 0.05, maxZ: HALF_DIEPTE - 0.05,
+  minZ: KAMER2_Z_NOORD + 0.05, maxZ: HALF_DIEPTE - 0.05,
 };
 
 // Houten vloer.
@@ -357,10 +416,54 @@ function bouwMuur(x, z, breedte, diepte) {
   wereld.add(muur);
   registreerRechthoek(x - breedte / 2, x + breedte / 2, z - diepte / 2, z + diepte / 2);
 }
-bouwMuur(0, -HALF_DIEPTE - MUUR_DIKTE / 2, HALF_BREEDTE * 2 + MUUR_DIKTE * 2, MUUR_DIKTE);   // noordmuur
+// Noordmuur: twee segmenten met een deurgat (x ∈ [-DEUR_HALF, DEUR_HALF]).
+const noordMuurZ = -HALF_DIEPTE - MUUR_DIKTE / 2;
+{
+  const westBreedte = (HALF_BREEDTE + MUUR_DIKTE) - DEUR_HALF;   // van x=-4.3 tot x=-DEUR_HALF
+  bouwMuur(-(DEUR_HALF + westBreedte / 2), noordMuurZ, westBreedte, MUUR_DIKTE);
+  bouwMuur(DEUR_HALF + westBreedte / 2, noordMuurZ, westBreedte, MUUR_DIKTE);
+}
 bouwMuur(0, HALF_DIEPTE + MUUR_DIKTE / 2, HALF_BREEDTE * 2 + MUUR_DIKTE * 2, MUUR_DIKTE);    // zuidmuur (richting gracht)
 bouwMuur(-HALF_BREEDTE - MUUR_DIKTE / 2, 0, MUUR_DIKTE, HALF_DIEPTE * 2);                    // westmuur
 bouwMuur(HALF_BREEDTE + MUUR_DIKTE / 2, 0, MUUR_DIKTE, HALF_DIEPTE * 2);                     // oostmuur
+
+/* ---- De gang + tweede kamer (achter de deur) --------------------
+   Meteen gebouwd, maar pas bereikbaar zodra de deur gekocht is. Vloer en
+   plafond worden per stuk toegevoegd zodat er onder de gang/kamer geen gat
+   in de wereld zit. */
+function vlak(kleur, breedte, diepte, cx, cz, y, omhoog) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(breedte, diepte), mat(kleur, omhoog ? 0.95 : 0.75));
+  m.rotation.x = omhoog ? Math.PI / 2 : -Math.PI / 2;
+  m.position.set(cx, y, cz);
+  m.receiveShadow = !omhoog;
+  wereld.add(m);
+}
+// Gang-vloer/plafond (x ∈ [-DEUR_HALF, DEUR_HALF], z ∈ [GANG_Z_EIND, -HALF_DIEPTE]).
+{
+  const gangDiepte = -HALF_DIEPTE - GANG_Z_EIND;
+  const gangCz = (-HALF_DIEPTE + GANG_Z_EIND) / 2;
+  vlak(0x8a5f34, DEUR_HALF * 2, gangDiepte, 0, gangCz, 0, false);
+  vlak(0x14100c, DEUR_HALF * 2, gangDiepte, 0, gangCz, KAMER_HOOGTE, true);
+  // Gangmuren west en oost (x = ±DEUR_HALF).
+  bouwMuur(-(DEUR_HALF + MUUR_DIKTE / 2), gangCz, MUUR_DIKTE, gangDiepte);
+  bouwMuur(DEUR_HALF + MUUR_DIKTE / 2, gangCz, MUUR_DIKTE, gangDiepte);
+}
+// Tweede-kamer-vloer/plafond.
+{
+  const k2Diepte = GANG_Z_EIND - KAMER2_Z_NOORD;
+  const k2Cz = (GANG_Z_EIND + KAMER2_Z_NOORD) / 2;
+  vlak(0x7d5730, KAMER2_HALF_B * 2, k2Diepte, 0, k2Cz, 0, false);
+  vlak(0x14100c, KAMER2_HALF_B * 2, k2Diepte, 0, k2Cz, KAMER_HOOGTE, true);
+  // Zuidmuur van kamer 2 (z = GANG_Z_EIND) met gang-opening (x ∈ [-DEUR_HALF, DEUR_HALF]).
+  const zuidBreedte = (KAMER2_HALF_B + MUUR_DIKTE) - DEUR_HALF;
+  const zuidZ = GANG_Z_EIND + MUUR_DIKTE / 2;
+  bouwMuur(-(DEUR_HALF + zuidBreedte / 2), zuidZ, zuidBreedte, MUUR_DIKTE);
+  bouwMuur(DEUR_HALF + zuidBreedte / 2, zuidZ, zuidBreedte, MUUR_DIKTE);
+  // Noord-, west- en oostmuur van kamer 2.
+  bouwMuur(0, KAMER2_Z_NOORD - MUUR_DIKTE / 2, KAMER2_HALF_B * 2 + MUUR_DIKTE * 2, MUUR_DIKTE);
+  bouwMuur(-KAMER2_HALF_B - MUUR_DIKTE / 2, k2Cz, MUUR_DIKTE, k2Diepte);
+  bouwMuur(KAMER2_HALF_B + MUUR_DIKTE / 2, k2Cz, MUUR_DIKTE, k2Diepte);
+}
 
 // Ramen richting de gracht: op de zuidmuur, met een koel, donkerblauw
 // gloeiend "buiten"-vlak achter een houten kozijn.
@@ -375,6 +478,17 @@ for (const x of [-2, 2]) {
   wereld.add(kozijn);
   const glas = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.3, 0.05), glasMateriaal);
   glas.position.set(x, 1.9, HALF_DIEPTE - 0.18);   // ruim vóór het kozijn, dus altijd zichtbaar
+  wereld.add(glas);
+}
+
+// Ramen op de noordmuur van de tweede kamer: dit worden de nieuwe
+// spawn-vensters zodra de deur gekocht is (zie VENSTERS_KAMER2).
+for (const x of [-1.6, 1.6]) {
+  const kozijn = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.6, 0.12), kozijnMateriaal);
+  kozijn.position.set(x, 1.9, KAMER2_Z_NOORD + 0.06);
+  wereld.add(kozijn);
+  const glas = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.3, 0.05), glasMateriaal);
+  glas.position.set(x, 1.9, KAMER2_Z_NOORD + 0.18);
   wereld.add(glas);
 }
 
@@ -399,6 +513,23 @@ function hangLamp(x, z) {
 }
 hangLamp(-1.6, -1.2);
 hangLamp(1.6, 0.8);
+hangLamp(0, -8.5);   // lamp in de tweede kamer
+
+// De koopbare deur: een houten paneel dat het deurgat vult, plus een obstakel
+// zodat de speler er niet doorheen kan tot 'ie gekocht is. Beide worden bij
+// aankoop (koopDeur) verwijderd. Refs worden onderaan geëxporteerd voor tests.
+const deurMesh = new THREE.Mesh(
+  new THREE.BoxGeometry(DEUR_HALF * 2, KAMER_HOOGTE - 0.2, 0.16),
+  mat(0x5a3a1e, 0.7, 0.1)
+);
+deurMesh.position.set(0, (KAMER_HOOGTE - 0.2) / 2, DEUR_Z - MUUR_DIKTE / 2);
+deurMesh.castShadow = true;
+wereld.add(deurMesh);
+// Klink als klein herkenbaar detail.
+const deurKlink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), mat(0xd8c47a, 0.4, 0.6));
+deurKlink.position.set(DEUR_HALF - 0.25, 1.0, DEUR_Z - MUUR_DIKTE / 2 + 0.1);
+wereld.add(deurKlink);
+const deurObstakel = registreerRechthoek(-DEUR_HALF, DEUR_HALF, DEUR_Z - MUUR_DIKTE, DEUR_Z);
 
 /* ================================================================
    STAP 3 — DE SPELER: first-person besturing met botsingen
@@ -425,6 +556,11 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyR' && !e.repeat && document.pointerLockElement === renderer.domElement) {
     herladen();
   }
+  // T activeert het dichtstbijzijnde interactiepunt (deur/ammo-kist/upgrade).
+  // Zelfde !e.repeat + pointer-lock-patroon als in defend-national-monument.html.
+  if (e.code === 'KeyT' && !e.repeat && document.pointerLockElement === renderer.domElement) {
+    activeerHuidigeInteractie();
+  }
 });
 addEventListener('keyup', e => { ingedrukt[e.code] = false; });
 
@@ -435,6 +571,8 @@ const ammoUI = document.getElementById('ammoUI');
 const hudUI = document.getElementById('hudUI');
 const vignet = document.getElementById('vignet');
 const gameOverScherm = document.getElementById('gameOverScherm');
+const interactiePromptUI = document.getElementById('interactiePrompt');
+const meldingUI = document.getElementById('meldingUI');
 document.getElementById('opnieuwKnop').addEventListener('click', () => location.reload());
 
 startscherm.addEventListener('click', () => {
@@ -458,6 +596,7 @@ document.addEventListener('pointerlockchange', () => {
     startscherm.querySelector('h2').textContent = 'Gepauzeerd, klik om verder te spelen';
     for (const k in ingedrukt) ingedrukt[k] = false;
     schietKnopIngedrukt = false;   // muisknop kan "hangen" als focus verloren ging tijdens het vasthouden
+    verbergInteractiePrompt();     // geen hangende "druk T"-prompt tijdens pauze
   }
 });
 
@@ -749,6 +888,10 @@ const SPELER_REGEN_PER_SEC    = 5;   // hp per seconde zodra regen actief is
 const GELD_PER_HIT  = 5;    // per treffer die niet dodelijk is
 const GELD_PER_KILL = 20;   // bonus bovenop de hit-beloning bij een kill
 
+// --- Wapenschade (te upgraden via het upgradepunt in Ticket 5) ----
+const WAPEN_SCHADE_MAX = 2;   // 1 = twee treffers per ondode, 2 = one-shot (MAX)
+let schadePerTreffer = 1;     // huidige schade per treffer
+
 // --- Balanswaarden golven ------------------------------------------
 const GOLF_BASIS_AANTAL   = 5;    // aantal ondoden in golf 1
 const GOLF_AANTAL_GROEI   = 2;    // extra ondoden per volgende golf
@@ -862,7 +1005,7 @@ function doodOndode(ondode) {
 
 // Eén treffer: schade, geld, en bij hp<=0 een kill (met kill-bonus).
 function raakOndode(ondode, punt) {
-  ondode.hp -= 1;
+  ondode.hp -= schadePerTreffer;
   speelTreffer();
   if (ondode.hp <= 0) {
     spelStaat.geld += GELD_PER_KILL;
@@ -979,6 +1122,185 @@ function updateGolf(dt) {
 }
 
 /* ================================================================
+   STAP 10 — INTERACTIES: koopbare deur, ammo-kist en upgradepunt
+   ================================================================
+   Eén centraal "loop ernaartoe en druk T"-systeem, gekopieerd en
+   aangepast uit defend-national-monument.html (interactiePunten +
+   updateInteracties + activeerHuidigeInteractie). Alle prijzen als
+   constanten bovenaan.
+   ================================================================ */
+
+// --- Prijzen en munitie-opwaardering ------------------------------
+const DEUR_PRIJS       = 750;   // opent gang + tweede kamer
+const AMMO_PRIJS       = 300;   // vult reserve-munitie bij
+const AMMO_KIST_KOGELS = 48;    // reserve-kogels per aankoop
+const UPGRADE_PRIJS    = 500;   // schade +1 (daarna MAX)
+
+// Nieuwe spawn-vensters die pas actief worden zodra de deur gekocht is.
+const VENSTERS_KAMER2 = [
+  { x: -1.6, z: KAMER2_Z_NOORD + 0.4 },
+  { x: 1.6, z: KAMER2_Z_NOORD + 0.4 },
+];
+
+let deurGekocht = false;
+
+// --- Kleine, zelfstandige interactiemarkering: een gloeiende ring op de
+//     vloer plus een zwevend icoon-kubusje. (Bewust simpeler dan de
+//     canvas-emoji-versie in de andere game — één-bestand, geen textures.)
+function interactieMarkering(x, z, kleur) {
+  const g = new THREE.Group();
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.55, 0.72, 32),
+    new THREE.MeshBasicMaterial({ color: kleur, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false })
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.03;
+  g.add(ring);
+  const icoon = new THREE.Mesh(
+    new THREE.BoxGeometry(0.12, 0.12, 0.12),
+    new THREE.MeshStandardMaterial({ color: kleur, emissive: kleur, emissiveIntensity: 0.6 })
+  );
+  icoon.position.y = 1.35;
+  g.add(icoon);
+  g.position.set(x, 0, z);
+  wereld.add(g);
+  return g;
+}
+
+// --- De props (louter decoratief, geen collision, net als de markeringen) ---
+const ammoKist = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.45), mat(0x6b5330, 0.8, 0.1));
+ammoKist.position.set(3, 0.25, -2);
+ammoKist.castShadow = true;
+wereld.add(ammoKist);
+const ammoBand = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.1, 0.49), mat(0x3a2c17, 0.7));
+ammoBand.position.set(3, 0.32, -2);
+wereld.add(ammoBand);
+interactieMarkering(3, -2, 0x6bd0ff);
+
+const upgradeTafel = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 0.5), mat(0x2f2a24, 0.8, 0.2));
+upgradeTafel.position.set(-3, 0.2, -2);
+upgradeTafel.castShadow = true;
+wereld.add(upgradeTafel);
+const upgradeKern = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10),
+  new THREE.MeshStandardMaterial({ color: 0xffe08a, emissive: 0xffb63a, emissiveIntensity: 1.1 }));
+upgradeKern.position.set(-3, 0.55, -2);
+wereld.add(upgradeKern);
+interactieMarkering(-3, -2, 0xffd75e);
+
+const deurMarkering = interactieMarkering(0, DEUR_Z + 0.7, 0x9fff9f);
+
+// --- UI-helpers ---------------------------------------------------
+function toonInteractiePrompt(tekst) {
+  interactiePromptUI.textContent = tekst;
+  interactiePromptUI.style.opacity = '1';
+}
+function verbergInteractiePrompt() {
+  interactiePromptUI.style.opacity = '0';
+}
+
+let meldingTimer = null;
+function toonMelding(tekst) {
+  meldingUI.textContent = tekst;
+  meldingUI.style.opacity = '1';
+  clearTimeout(meldingTimer);
+  meldingTimer = setTimeout(() => { meldingUI.style.opacity = '0'; }, 1800);
+}
+
+function speelKoop()    { piep('triangle', 420, 900, 0.1, 0.07); }
+function speelGeenGeld() { piep('square', 220, 120, 0.12, 0.06); }
+
+// --- De aankopen zelf ---------------------------------------------
+function koopDeur() {
+  if (deurGekocht) return;
+  if (spelStaat.geld < DEUR_PRIJS) { toonMelding(`Nog €${DEUR_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  spelStaat.geld -= DEUR_PRIJS;
+  deurGekocht = true;
+  // Mesh + obstakel weg: de doorgang is nu vrij.
+  wereld.remove(deurMesh);
+  wereld.remove(deurKlink);
+  wereld.remove(deurMarkering);
+  const oi = obstakels.indexOf(deurObstakel);
+  if (oi !== -1) obstakels.splice(oi, 1);
+  // Nieuwe spawn-vensters in de tweede kamer activeren.
+  for (const v of VENSTERS_KAMER2) VENSTERS.push(v);
+  // Deurpunt uit de interactielijst halen; er valt niets meer te kopen.
+  const pi = interactiePunten.indexOf(deurPunt);
+  if (pi !== -1) interactiePunten.splice(pi, 1);
+  speelKoop();
+  toonMelding('Deur geforceerd — de tweede kamer is nu open');
+  updateHUD();
+}
+
+function koopAmmo() {
+  if (spelStaat.geld < AMMO_PRIJS) { toonMelding(`Nog €${AMMO_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  spelStaat.geld -= AMMO_PRIJS;
+  wapenStaat.reserve += AMMO_KIST_KOGELS;
+  speelKoop();
+  toonMelding(`+${AMMO_KIST_KOGELS} reserve-munitie`);
+  updateAmmoUI();
+  updateHUD();
+}
+
+function koopUpgrade() {
+  if (schadePerTreffer >= WAPEN_SCHADE_MAX) { toonMelding('Schade is al maximaal'); return; }
+  if (spelStaat.geld < UPGRADE_PRIJS) { toonMelding(`Nog €${UPGRADE_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  spelStaat.geld -= UPGRADE_PRIJS;
+  schadePerTreffer += 1;
+  speelKoop();
+  toonMelding(schadePerTreffer >= WAPEN_SCHADE_MAX ? 'Schade-upgrade! Nu MAX' : `Schade-upgrade! Nu ${schadePerTreffer}`);
+  updateHUD();
+}
+
+// --- Het centrale interactiesysteem -------------------------------
+const deurPunt = {
+  naam: 'Deur',
+  positie: new THREE.Vector3(0, 0, DEUR_Z + 0.7),
+  radius: 1.6,
+  prompt: () => `Druk T: forceer de deur (€${DEUR_PRIJS})`,
+  actie: koopDeur,
+};
+const ammoPunt = {
+  naam: 'Ammo-kist',
+  positie: new THREE.Vector3(3, 0, -2),
+  radius: 1.5,
+  prompt: () => `Druk T: munitie bijvullen (€${AMMO_PRIJS})`,
+  actie: koopAmmo,
+};
+const upgradePunt = {
+  naam: 'Upgradepunt',
+  positie: new THREE.Vector3(-3, 0, -2),
+  radius: 1.5,
+  prompt: () => schadePerTreffer >= WAPEN_SCHADE_MAX
+    ? 'Schade is MAX'
+    : `Druk T: schade-upgrade (€${UPGRADE_PRIJS})`,
+  actie: koopUpgrade,
+};
+const interactiePunten = [deurPunt, ammoPunt, upgradePunt];
+
+let huidigeInteractie = null;
+
+function updateInteracties() {
+  let dichtst = null, kleinste = Infinity;
+  for (const punt of interactiePunten) {
+    const dx = punt.positie.x - speler.positie.x;
+    const dz = punt.positie.z - speler.positie.z;
+    const afstand = Math.hypot(dx, dz);
+    if (afstand <= punt.radius && afstand < kleinste) { kleinste = afstand; dichtst = punt; }
+  }
+  huidigeInteractie = dichtst;
+  if (huidigeInteractie) {
+    const tekst = typeof huidigeInteractie.prompt === 'function' ? huidigeInteractie.prompt() : huidigeInteractie.prompt;
+    toonInteractiePrompt(tekst);
+  } else {
+    verbergInteractiePrompt();
+  }
+}
+
+function activeerHuidigeInteractie() {
+  if (huidigeInteractie) huidigeInteractie.actie();
+}
+
+/* ================================================================
    STAP 6 — GAME LOOP
    ================================================================ */
 
@@ -987,7 +1309,6 @@ function gameLoop(nu) {
   requestAnimationFrame(gameLoop);
   const dt = Math.min((nu - vorigeTijd) / 1000, 0.05);
   vorigeTijd = nu;
-  klok += dt;
 
   updateSpeler(dt);
 
@@ -996,11 +1317,15 @@ function gameLoop(nu) {
   // defend-national-monument.html.
   const spelActief = document.pointerLockElement === renderer.domElement && !spelStaat.gameOver;
   if (spelActief) {
+    // klok telt ALLEEN tijdens actief spel op: zo is de spel-tijd (o.a. de
+    // regen-vertraging en schot-cooldown) niet via pauze te omzeilen (fix #1).
+    klok += dt;
     if (schietKnopIngedrukt) probeerTeSchieten();
     updateWapen(dt);
     updateOndoden(dt);
     updateGolf(dt);
     updateSpelerRegen(dt);
+    updateInteracties();
   }
   updateVignet(dt);
 
@@ -1025,6 +1350,13 @@ window.AmsterdamUndeadDebug = {
   updateOndoden, raakOndode, doodOndode,
   spelerStaat, spelerSchade, updateSpelerRegen, updateVignet, updateHUD,
   spelStaat, startGolf, updateGolf,
+  interactiePunten, updateInteracties, activeerHuidigeInteractie,
+  koopDeur, koopAmmo, koopUpgrade,
+  get deurGekocht() { return deurGekocht; },
+  get schadePerTreffer() { return schadePerTreffer; },
+  get huidigeInteractie() { return huidigeInteractie; },
+  deurObstakel, deurMesh, VENSTERS_KAMER2,
+  DEUR_PRIJS, AMMO_PRIJS, AMMO_KIST_KOGELS, UPGRADE_PRIJS, WAPEN_SCHADE_MAX,
 };
 </script>
 </body>
