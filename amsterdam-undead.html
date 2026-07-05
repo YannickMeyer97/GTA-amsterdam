@@ -125,6 +125,32 @@
     transition: opacity 0.2s ease;
   }
 
+  /* --- Wave-banner: groot, kort zichtbaar wanneer een golf begint --- */
+  #golfBanner {
+    position: fixed;
+    top: 26%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: #7fd99a;
+    font-size: 44px;
+    font-weight: 800;
+    letter-spacing: 3px;
+    text-shadow: 0 3px 16px rgba(0,0,0,0.7);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 7;
+    transition: opacity 0.35s ease;
+  }
+  #golfBanner .sub {
+    display: block;
+    margin-top: 6px;
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: #bcd6c4;
+  }
+
   /* --- HUD rechtsboven: HP-balk, geld en golf-nummer --- */
   #hudUI {
     position: fixed;
@@ -254,6 +280,7 @@
 <div id="richtkruis" style="display:none"></div>
 <div id="interactiePrompt"></div>
 <div id="meldingUI"></div>
+<div id="golfBanner"></div>
 <div id="ammoUI" style="display:none">8 / 48</div>
 <div id="hudUI" style="display:none">
   HP: <span id="hpTekst">100</span>
@@ -270,10 +297,12 @@
 
 <div id="startscherm">
   <h1>AMSTERDAM UNDEAD</h1>
-  <h2>Een verlaten grachtenpand — Amsterdam</h2>
+  <h2>Een verlaten grachtenpand — overleef de golven ondoden</h2>
   <div class="uitleg">
-    🚶 <b>WASD</b> om te lopen, <b>muis</b> om rond te kijken<br>
-    ⏸️ <b>Esc</b> om te pauzeren
+    🚶 <b>WASD</b> lopen &nbsp;·&nbsp; 🖱️ <b>muis</b> kijken &nbsp;·&nbsp; <b>klik</b> schieten<br>
+    🔫 <b>R</b> herladen &nbsp;·&nbsp; 🛒 <b>T</b> kopen/gebruiken &nbsp;·&nbsp; ⏸️ <b>Esc</b> pauze<br>
+    <span style="opacity:0.85">🎯 Headshots doen dubbele schade &nbsp;·&nbsp; 💰 verdien geld per kill</span><br>
+    <span style="opacity:0.85">🚪 Forceer de deur (€750) voor een tweede kamer, of koop munitie/upgrades</span>
   </div>
   <div class="knop">Klik om te spelen</div>
 </div>
@@ -300,7 +329,9 @@ import * as THREE from 'three';
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05080b);
-scene.fog = new THREE.Fog(0x05080b, 9, 22);
+// Subtiele binnenhuis-mist: dichtbij helder, veraf (gang/tweede kamer) dooft
+// alles zacht weg in het donker — geeft diepte en dreiging.
+scene.fog = new THREE.Fog(0x060a0e, 6, 24);
 
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 50);
 camera.rotation.order = 'YXZ';
@@ -497,6 +528,9 @@ for (const x of [-1.6, 1.6]) {
 }
 
 // Warme lampen: een gloeiend bolletje + puntlicht, symmetrisch opgehangen.
+// Elk licht wordt geregistreerd zodat de game-loop het zacht kan laten
+// flikkeren (kaars-/olielamp-sfeer).
+const lampLichten = [];
 function hangLamp(x, z) {
   const groep = new THREE.Group();
   const koord = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.6, 6), mat(0x1a1410, 0.7));
@@ -514,6 +548,7 @@ function hangLamp(x, z) {
   groep.add(licht);
   groep.position.set(x, 0, z);
   wereld.add(groep);
+  lampLichten.push({ licht, basis: 14, fase: Math.random() * Math.PI * 2 });
 }
 // Twee lampen gespreid over de diepere startkamer: één richting de deur
 // (noord) en één richting de ramen (zuid), zodat beide uiteinden verlicht zijn.
@@ -536,6 +571,92 @@ const deurKlink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), mat(0xd8c
 deurKlink.position.set(DEUR_HALF - 0.25, 1.0, DEUR_Z - MUUR_DIKTE / 2 + 0.1);
 wereld.add(deurKlink);
 const deurObstakel = registreerRechthoek(-DEUR_HALF, DEUR_HALF, DEUR_Z - MUUR_DIKTE, DEUR_Z);
+
+/* ================================================================
+   STAP 2b — SFEER: decoratieve meubels (BEWUST zonder collision)
+   ================================================================
+   Puur decor voor een verlaten-grachtenpand-sfeer. Ze worden NIET als
+   obstakel geregistreerd: de speler en de ondoden lopen er dwars doorheen,
+   zodat de (naïeve) pathing niet op meubels blijft haken. Alles low-poly
+   uit simpele boxes/cylinders — geen textures, geen externe assets.
+   ================================================================ */
+
+function meubelBox(b, h, d, kleur, x, y, z, ruw = 0.85, rotY = 0) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(b, h, d), mat(kleur, ruw));
+  m.position.set(x, y, z);
+  m.rotation.y = rotY;
+  m.castShadow = true;
+  m.receiveShadow = true;
+  wereld.add(m);
+  return m;
+}
+
+// Een houten tafel (blad + vier poten) op een gegeven plek.
+function bouwTafel(cx, cz, rotY = 0) {
+  const g = new THREE.Group();
+  const hout = 0x5a3f24;
+  const blad = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.08, 0.8), mat(hout, 0.8));
+  blad.position.y = 0.72; blad.castShadow = true; blad.receiveShadow = true; g.add(blad);
+  for (const [px, pz] of [[-0.55, -0.32], [0.55, -0.32], [-0.55, 0.32], [0.55, 0.32]]) {
+    const poot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.72, 0.08), mat(hout, 0.8));
+    poot.position.set(px, 0.36, pz); poot.castShadow = true; g.add(poot);
+  }
+  g.position.set(cx, 0, cz); g.rotation.y = rotY; wereld.add(g);
+}
+
+// Een stapel kratten.
+function bouwKratten(cx, cz) {
+  const houtK = 0x6b4f2c;
+  meubelBox(0.5, 0.5, 0.5, houtK, cx, 0.25, cz, 0.9);
+  meubelBox(0.44, 0.44, 0.44, 0x5e441f, cx + 0.1, 0.72, cz - 0.05, 0.9, 0.4);
+}
+
+// Een ton/vat (cilinder).
+function bouwVat(cx, cz) {
+  const vat = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.3, 0.85, 12), mat(0x4a3620, 0.8, 0.15));
+  vat.position.set(cx, 0.42, cz); vat.castShadow = true; vat.receiveShadow = true; wereld.add(vat);
+  for (const y of [0.18, 0.66]) {
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.31, 0.05, 12), mat(0x2a2018, 0.6, 0.4));
+    band.position.set(cx, y, cz); wereld.add(band);
+  }
+}
+
+// Een ingelijst "schilderij" tegen een muur (donker doek + lijst), platte box.
+function bouwSchilderij(x, y, z, rotY) {
+  const g = new THREE.Group();
+  const lijst = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.15, 0.06), mat(0x3a2c17, 0.6, 0.2));
+  g.add(lijst);
+  const doek = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.95, 0.02), mat(0x21303a, 0.7, 0));
+  doek.position.z = 0.04; g.add(doek);
+  g.position.set(x, y, z); g.rotation.y = rotY; wereld.add(g);
+}
+
+// Een plat vloerkleed (dun, ontvangt schaduw, geen collision).
+function bouwKleed(cx, cz, b, d, kleur) {
+  const kleed = new THREE.Mesh(new THREE.PlaneGeometry(b, d), mat(kleur, 0.95));
+  kleed.rotation.x = -Math.PI / 2;
+  kleed.position.set(cx, 0.02, cz);
+  kleed.receiveShadow = true;
+  wereld.add(kleed);
+}
+
+// --- Startkamer-decor (langs de muren / hoeken, niet op de looproutes) ---
+bouwKleed(0, 0, 3.2, 3.6, 0x4a2530);
+bouwTafel(-3.1, 1.2, 0.3);
+bouwKratten(3.4, 3.4);
+bouwVat(-3.6, 3.6);
+bouwVat(3.7, -3.9);
+meubelBox(1.4, 1.7, 0.3, 0x40301c, -4.15, 0.85, -1.5, 0.85);           // boekenkast tegen de westmuur
+for (const y of [0.5, 0.95, 1.4]) meubelBox(1.3, 0.05, 0.26, 0x2c2114, -4.05, y, -1.5); // planken
+bouwSchilderij(4.42, 1.9, 1.5, -Math.PI / 2);                          // schilderij oostmuur
+bouwSchilderij(-2, 1.9, -4.78, 0);                                     // schilderij naast de deur (noordmuur)
+
+// --- Tweede-kamer-decor ---
+const k2c = (GANG_Z_EIND + KAMER2_Z_NOORD) / 2;
+bouwKratten(-2.6, k2c - 1.2);
+bouwVat(2.7, k2c + 1.4);
+bouwTafel(2.4, k2c - 1.6, 0.5);
+bouwSchilderij(-3.57, 1.9, k2c, Math.PI / 2);
 
 /* ================================================================
    STAP 3 — DE SPELER: first-person besturing met botsingen
@@ -579,6 +700,7 @@ const vignet = document.getElementById('vignet');
 const gameOverScherm = document.getElementById('gameOverScherm');
 const interactiePromptUI = document.getElementById('interactiePrompt');
 const meldingUI = document.getElementById('meldingUI');
+const golfBannerUI = document.getElementById('golfBanner');
 document.getElementById('opnieuwKnop').addEventListener('click', () => location.reload());
 
 startscherm.addEventListener('click', () => {
@@ -603,6 +725,7 @@ document.addEventListener('pointerlockchange', () => {
     for (const k in ingedrukt) ingedrukt[k] = false;
     schietKnopIngedrukt = false;   // muisknop kan "hangen" als focus verloren ging tijdens het vasthouden
     verbergInteractiePrompt();     // geen hangende "druk T"-prompt tijdens pauze
+    golfBannerUI.style.opacity = '0';
   }
 });
 
@@ -869,6 +992,10 @@ function speelDroogKlik() { piep('square', 200, 180, 0.04, 0.06); }
 function speelHerlaad()   { piep('sine', 300, 500, 0.15, 0.06); setTimeout(() => piep('sine', 500, 700, 0.12, 0.06), 900); }
 function speelTreffer()   { piep('square', 320, 90, 0.07, 0.08); }
 function speelSpelerAu()  { piep('sawtooth', 160, 60, 0.18, 0.11); }
+// Nieuwe sfeergeluiden (allemaal live via Web Audio, geen bestanden):
+function speelGolfStart() { piep('sawtooth', 130, 260, 0.18, 0.08); setTimeout(() => piep('square', 200, 340, 0.22, 0.06), 130); }
+function speelGolfKlaar() { piep('sine', 520, 780, 0.14, 0.06); setTimeout(() => piep('sine', 780, 1040, 0.16, 0.05), 150); }
+function speelGameOver()  { piep('sawtooth', 300, 70, 0.5, 0.12); setTimeout(() => piep('sine', 160, 50, 0.7, 0.09), 220); }
 
 /* ================================================================
    STAP 7 — ONDODEN: originele low-poly vijanden, spawn + jagen + melee
@@ -1086,6 +1213,7 @@ function gameOver() {
   document.getElementById('gameOverGolf').textContent = spelStaat.golf;
   document.getElementById('gameOverGeld').textContent = spelStaat.geld;
   gameOverScherm.style.display = 'flex';
+  speelGameOver();
   if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
 }
 
@@ -1114,10 +1242,22 @@ const spelStaat = {
 };
 updateHUD();
 
+// Wave-banner: kort groot "GOLF X" in beeld wanneer een golf begint.
+let golfBannerTimer = null;
+function toonGolfBanner(titel, sub = '') {
+  golfBannerUI.innerHTML = sub ? `${titel}<span class="sub">${sub}</span>` : titel;
+  golfBannerUI.style.opacity = '1';
+  clearTimeout(golfBannerTimer);
+  golfBannerTimer = setTimeout(() => { golfBannerUI.style.opacity = '0'; }, 2200);
+}
+
 function startGolf() {
   spelStaat.teSpawnen = GOLF_BASIS_AANTAL + (spelStaat.golf - 1) * GOLF_AANTAL_GROEI;
   spelStaat.spawnTimer = 0;
   spelStaat.golfActief = true;
+  const taai = spelStaat.golf > ONDODE_HP_GOLFGRENS ? 'de ondoden zijn nu taaier' : 'mik op het hoofd';
+  toonGolfBanner(`GOLF ${spelStaat.golf}`, `${spelStaat.teSpawnen} ondoden · ${taai}`);
+  speelGolfStart();
   updateHUD();
 }
 
@@ -1139,6 +1279,8 @@ function updateGolf(dt) {
     spelStaat.golfActief = false;
     spelStaat.golf++;
     spelStaat.rustTimer = GOLF_RUST_TIJD;
+    toonGolfBanner('GOLF OVERLEEFD', 'koop bij de kist of het upgradepunt');
+    speelGolfKlaar();
     updateHUD();
   }
 }
@@ -1350,6 +1492,13 @@ function gameLoop(nu) {
     updateInteracties();
   }
   updateVignet(dt);
+
+  // Sfeer: lampen zacht laten flikkeren (loopt ook tijdens pauze, want puur
+  // cosmetisch). `nu` loopt altijd door, dus onafhankelijk van de spel-klok.
+  const t = nu * 0.001;
+  for (const l of lampLichten) {
+    l.licht.intensity = l.basis * (1 + 0.06 * Math.sin(t * 7 + l.fase) + 0.03 * Math.sin(t * 17 + l.fase * 2));
+  }
 
   if (terugslag > 0) {
     terugslag = Math.max(0, terugslag - dt * 6);
