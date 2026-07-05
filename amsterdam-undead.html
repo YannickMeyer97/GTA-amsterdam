@@ -360,12 +360,12 @@ function blok(breedte, hoogte, diepte, kleur, ruwheid = 0.88, metaal = 0) {
   return m;
 }
 
-// Kamerafmetingen: startkamer 8m breed (x) x 6m diep (z) x 3.2m hoog. Ten
+// Kamerafmetingen: startkamer 9m breed (x) x 10m diep (z) x 3.2m hoog. Ten
 // noorden (achter de dichte deur) zit een gang naar een tweede kamer; die
-// wordt in Ticket 5 fysiek meteen gebouwd maar pas bereikbaar zodra de speler
-// de deur koopt (de deur is een obstakel + mesh dat dan verdwijnt).
-const HALF_BREEDTE = 4;
-const HALF_DIEPTE = 3;
+// wordt fysiek meteen gebouwd maar pas bereikbaar zodra de speler de deur
+// koopt (de deur is een obstakel + mesh dat dan verdwijnt).
+const HALF_BREEDTE = 4.5;   // 9 m breed
+const HALF_DIEPTE = 5;      // 10 m diep
 const KAMER_HOOGTE = 3.2;
 const MUUR_DIKTE = 0.3;
 
@@ -373,12 +373,16 @@ const MUUR_DIKTE = 0.3;
 const DEUR_HALF = 1;           // halve breedte van de deuropening
 const DEUR_Z = -HALF_DIEPTE;   // vlak van de noordmuur
 
-// Gang (x ∈ [-DEUR_HALF, DEUR_HALF]) van de deur (z=-3) naar de tweede kamer (z=-6).
-const GANG_Z_EIND = -6;
+// Gang (x ∈ [-DEUR_HALF, DEUR_HALF]) vanaf de deur naar de tweede kamer.
+// Alles noordelijk van de deur wordt relatief aan DEUR_Z bepaald, zodat de
+// gang- en kamer-2-lengte gelijk blijven als de startkamer verandert.
+const GANG_LENGTE = 3;
+const GANG_Z_EIND = DEUR_Z - GANG_LENGTE;
 
 // Tweede kamer: x ∈ [-KAMER2_HALF_B, KAMER2_HALF_B], z ∈ [KAMER2_Z_NOORD, GANG_Z_EIND].
 const KAMER2_HALF_B = 3.5;
-const KAMER2_Z_NOORD = -11;
+const KAMER2_DIEPTE = 5;
+const KAMER2_Z_NOORD = GANG_Z_EIND - KAMER2_DIEPTE;
 
 // Wereldgrens: grove buiten-klem bovenop de muur-obstakels. Hij omvat vanaf
 // het begin het hele bereikbare gebied (startkamer + gang + tweede kamer); de
@@ -511,9 +515,11 @@ function hangLamp(x, z) {
   groep.position.set(x, 0, z);
   wereld.add(groep);
 }
-hangLamp(-1.6, -1.2);
-hangLamp(1.6, 0.8);
-hangLamp(0, -8.5);   // lamp in de tweede kamer
+// Twee lampen gespreid over de diepere startkamer: één richting de deur
+// (noord) en één richting de ramen (zuid), zodat beide uiteinden verlicht zijn.
+hangLamp(-1.8, -3);
+hangLamp(1.8, 2.2);
+hangLamp(0, (GANG_Z_EIND + KAMER2_Z_NOORD) / 2);   // lamp midden in de tweede kamer
 
 // De koopbare deur: een houten paneel dat het deurgat vult, plus een obstakel
 // zodat de speler er niet doorheen kan tot 'ie gekocht is. Beide worden bij
@@ -817,9 +823,11 @@ function schiet() {
   raycaster.setFromCamera({ x: 0, y: 0 }, camera);
   const ondodeRaak = raycaster.intersectObject(ondodenGroep, true);
   if (ondodeRaak.length > 0) {
-    let obj = ondodeRaak[0].object;
+    const raakObj = ondodeRaak[0].object;
+    const kop = raakObj.userData.lichaamsdeel === 'kop';   // headshot?
+    let obj = raakObj;
     while (obj && !obj.userData.ondode) obj = obj.parent;
-    if (obj) raakOndode(obj.userData.ondode, ondodeRaak[0].point);
+    if (obj) raakOndode(obj.userData.ondode, ondodeRaak[0].point, kop);
     return;
   }
 
@@ -873,11 +881,19 @@ function speelSpelerAu()  { piep('sawtooth', 160, 60, 0.18, 0.11); }
 
 // --- Balanswaarden ondoden / melee -------------------------------
 const ONDODE_SNELHEID    = 1.5;   // m/s — trager dan de speler (4.5), zodat ontwijken kan
-const ONDODE_HP          = 2;     // aantal treffers om er één te doden
+// HP per golf: de eerste golven zijn "papieren" ondoden (1 HP), daarna taaier.
+const ONDODE_HP_VROEG     = 1;    // golf 1 t/m ONDODE_HP_GOLFGRENS
+const ONDODE_HP_LAAT      = 2;    // golven daarna
+const ONDODE_HP_GOLFGRENS = 2;    // t/m deze golf geldt ONDODE_HP_VROEG (dus golf 1 en 2)
 const ONDODE_STRAAL      = 0.4;   // botsingsstraal tegen de muren
 const MELEE_BEREIK       = 1.2;   // m — vanaf hier kan een ondode de speler raken
 const MELEE_SCHADE       = 15;    // schade per treffer
 const MELEE_COOLDOWN     = 1.0;   // s tussen twee treffers van dezelfde ondode
+
+// Bepaalt de start-HP van een ondode op basis van de huidige golf.
+function ondodeStartHP() {
+  return spelStaat.golf <= ONDODE_HP_GOLFGRENS ? ONDODE_HP_VROEG : ONDODE_HP_LAAT;
+}
 
 // --- Balanswaarden speler-HP --------------------------------------
 const SPELER_HP_MAX           = 100;
@@ -889,8 +905,9 @@ const GELD_PER_HIT  = 5;    // per treffer die niet dodelijk is
 const GELD_PER_KILL = 20;   // bonus bovenop de hit-beloning bij een kill
 
 // --- Wapenschade (te upgraden via het upgradepunt in Ticket 5) ----
-const WAPEN_SCHADE_MAX = 2;   // 1 = twee treffers per ondode, 2 = one-shot (MAX)
-let schadePerTreffer = 1;     // huidige schade per treffer
+const WAPEN_SCHADE_MAX = 2;   // basis-lichaamsschade: 1, na upgrade 2 (MAX)
+let schadePerTreffer = 1;     // huidige lichaams-schade per treffer
+const HEADSHOT_EXTRA = 1;     // extra schade bij een kop-treffer (lichaam = schadePerTreffer, kop = +1)
 
 // --- Balanswaarden golven ------------------------------------------
 const GOLF_BASIS_AANTAL   = 5;    // aantal ondoden in golf 1
@@ -927,6 +944,7 @@ function maakOndodeModel() {
     new THREE.MeshStandardMaterial({ color: huidKleur.clone().multiplyScalar(1.15), roughness: 0.8 }));
   hoofd.position.y = 1.58;
   hoofd.rotation.z = (Math.random() - 0.5) * 0.5;   // scheve nek: een eigen, herkenbare "ondode"-houding
+  hoofd.userData.lichaamsdeel = 'kop';   // treffer hier = headshot (dubbele schade)
   groep.add(hoofd);
 
   for (const kant of [-1, 1]) {
@@ -949,6 +967,7 @@ function maakOndodeModel() {
   for (const kant of [-1, 1]) {
     const oog = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6), oogMateriaal);
     oog.position.set(kant * 0.06, 1.59, 0.16);
+    oog.userData.lichaamsdeel = 'kop';   // ogen horen bij het hoofd -> ook een headshot
     groep.add(oog);
   }
 
@@ -964,7 +983,7 @@ function spawnOndode(vensterIndex) {
   const venster = VENSTERS[vensterIndex % VENSTERS.length];
   const groep = maakOndodeModel();
   groep.position.set(venster.x, 0, venster.z);
-  const ondode = { groep, hp: ONDODE_HP, meleeTimer: 0 };
+  const ondode = { groep, hp: ondodeStartHP(), meleeTimer: 0 };
   groep.userData.ondode = ondode;
   ondodenGroep.add(groep);
   ondoden.push(ondode);
@@ -1004,8 +1023,10 @@ function doodOndode(ondode) {
 }
 
 // Eén treffer: schade, geld, en bij hp<=0 een kill (met kill-bonus).
-function raakOndode(ondode, punt) {
-  ondode.hp -= schadePerTreffer;
+// `kop` = true bij een headshot: lichaam = schadePerTreffer, kop = +HEADSHOT_EXTRA.
+function raakOndode(ondode, punt, kop = false) {
+  const schade = schadePerTreffer + (kop ? HEADSHOT_EXTRA : 0);
+  ondode.hp -= schade;
   speelTreffer();
   if (ondode.hp <= 0) {
     spelStaat.geld += GELD_PER_KILL;
@@ -1014,8 +1035,9 @@ function raakOndode(ondode, punt) {
     spelStaat.geld += GELD_PER_HIT;
   }
   updateHUD();
-  const bloedvonk = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6),
-    new THREE.MeshBasicMaterial({ color: 0xb9ec3f }));
+  // Iets grotere, feller vonk bij een headshot als visuele feedback.
+  const bloedvonk = new THREE.Mesh(new THREE.SphereGeometry(kop ? 0.075 : 0.05, 6, 6),
+    new THREE.MeshBasicMaterial({ color: kop ? 0xeaffa0 : 0xb9ec3f }));
   bloedvonk.position.copy(punt);
   scene.add(bloedvonk);
   setTimeout(() => scene.remove(bloedvonk), 150);
@@ -1357,6 +1379,9 @@ window.AmsterdamUndeadDebug = {
   get huidigeInteractie() { return huidigeInteractie; },
   deurObstakel, deurMesh, VENSTERS_KAMER2,
   DEUR_PRIJS, AMMO_PRIJS, AMMO_KIST_KOGELS, UPGRADE_PRIJS, WAPEN_SCHADE_MAX,
+  // Geometrie- en balansconstanten (voor tests):
+  DEUR_Z, DEUR_HALF, GANG_Z_EIND, KAMER2_Z_NOORD, HALF_DIEPTE, HALF_BREEDTE, KAMER2_HALF_B,
+  ONDODE_HP_VROEG, ONDODE_HP_LAAT, ONDODE_HP_GOLFGRENS, HEADSHOT_EXTRA, ondodeStartHP,
 };
 </script>
 </body>
