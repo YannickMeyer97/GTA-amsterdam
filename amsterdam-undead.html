@@ -433,6 +433,13 @@ const PLAATS_BREEDTE = 6;                                 // binnenplaats: 6m br
 const PLAATS_DIEPTE = 5;                                  // 5m diep (x, richting van de deur af)
 const PLAATS_X_OOST = DEUR2_X + PLAATS_DIEPTE;            // oostgrens van de binnenplaats
 const PLAATS_CX = (DEUR2_X + PLAATS_X_OOST) / 2;          // midden-x van de binnenplaats
+// Deur 2 zit gecentreerd in de oostmuur van het atelier; hier al berekend
+// (i.p.v. pas bij de atelier-geometrie verderop) zodat GRENS.minZ hieronder
+// meteen de binnenplaats kan meenemen (bugfix na code-review: anders bleef
+// een strook van de binnenplaats net buiten GRENS liggen, onbereikbaar).
+const DEUR2_Z = (GANG_Z_EIND + KAMER2_Z_NOORD) / 2;
+const PLAATS_Z_NOORD = DEUR2_Z - PLAATS_BREEDTE / 2;
+const PLAATS_Z_ZUID  = DEUR2_Z + PLAATS_BREEDTE / 2;
 
 // Wereldgrens: grove buiten-klem bovenop de muur-obstakels. Hij omvat vanaf
 // het begin het hele bereikbare gebied (startkamer + gang + atelier +
@@ -440,7 +447,7 @@ const PLAATS_CX = (DEUR2_X + PLAATS_X_OOST) / 2;          // midden-x van de bin
 // de speler tegen tot de bijbehorende deur gekocht is.
 const GRENS = {
   minX: -HALF_BREEDTE + 0.05, maxX: PLAATS_X_OOST - 0.05,
-  minZ: KAMER2_Z_NOORD + 0.05, maxZ: HALF_DIEPTE - 0.05,
+  minZ: PLAATS_Z_NOORD + 0.05, maxZ: HALF_DIEPTE - 0.05,
 };
 
 // Houten vloer.
@@ -510,10 +517,9 @@ const GANG_Z_MIDDEN = (-HALF_DIEPTE + GANG_Z_EIND) / 2;
 }
 // Het schildersatelier (zone C, tweede kamer): bewust radicaal anders dan de
 // warme woonkamer — koele grijze plankenvloer i.p.v. warm hout.
-const ATELIER_MIDDEN_Z = (GANG_Z_EIND + KAMER2_Z_NOORD) / 2;
-const DEUR2_Z = ATELIER_MIDDEN_Z;   // deur 2 zit gecentreerd in de oostmuur van het atelier
-const PLAATS_Z_NOORD = DEUR2_Z - PLAATS_BREEDTE / 2;
-const PLAATS_Z_ZUID  = DEUR2_Z + PLAATS_BREEDTE / 2;
+// (DEUR2_Z/PLAATS_Z_NOORD/PLAATS_Z_ZUID staan al hierboven, vóór GRENS —
+// ATELIER_MIDDEN_Z is puur een leesbare alias voor dezelfde waarde.)
+const ATELIER_MIDDEN_Z = DEUR2_Z;
 // Tweede-kamer-vloer/plafond.
 {
   const k2Diepte = GANG_Z_EIND - KAMER2_Z_NOORD;
@@ -1437,8 +1443,28 @@ function spawnOndode(vensterIndex) {
   return ondode;
 }
 
+// Kiest een venster gewogen naar afstand tot de speler (inverse-kwadraat):
+// dichtbij is veel waarschijnlijker, ver weg blijft mogelijk maar zeldzamer.
+// Bugfix na code-review: bij meerdere ontgrendelde zones kon een golf lang
+// "hangen" doordat spawns uit de verst mogelijke zone soms minutenlang
+// moesten reizen voordat de golf als voltooid telde.
+function kiesVensterIndex() {
+  if (VENSTERS.length <= 1) return 0;
+  const gewichten = VENSTERS.map(v => {
+    const dx = v.x - speler.positie.x, dz = v.z - speler.positie.z;
+    return 1 / Math.max(1, dx * dx + dz * dz);
+  });
+  const totaal = gewichten.reduce((a, b) => a + b, 0);
+  let r = Math.random() * totaal;
+  for (let i = 0; i < gewichten.length; i++) {
+    r -= gewichten[i];
+    if (r <= 0) return i;
+  }
+  return gewichten.length - 1;
+}
+
 function spawnWillekeurigeOndode() {
-  return spawnOndode(Math.floor(Math.random() * VENSTERS.length));
+  return spawnOndode(kiesVensterIndex());
 }
 
 // Jagen op de speler + melee als ze dichtbij genoeg zijn. Hergebruikt
@@ -1744,7 +1770,9 @@ const WERKBANK_Z = ATELIER_MIDDEN_Z - 2;
 }
 const werkbankMarkering = interactieMarkering(WERKBANK_X, WERKBANK_Z, 0xff9f5a);
 
-const deur2Markering = interactieMarkering(DEUR2_X + 0.7, DEUR2_Z, 0x9fc0e8);
+// Op de atelierkant (net als deurMarkering vóór deur 1 op de kamer-1-kant
+// staat), niet aan de binnenplaats-kant erachter (bugfix na code-review).
+const deur2Markering = interactieMarkering(DEUR2_X - 0.7, DEUR2_Z, 0x9fc0e8);
 
 // --- Regenton (Ticket V5): eenmalige vondst op de binnenplaats -----------
 const REGENTON_X = PLAATS_CX - 0.5;
@@ -1932,7 +1960,7 @@ const werkbankPunt = {
 };
 const deur2Punt = {
   naam: 'Deur 2',
-  positie: new THREE.Vector3(DEUR2_X + 0.7, 0, DEUR2_Z),
+  positie: new THREE.Vector3(DEUR2_X - 0.7, 0, DEUR2_Z),
   radius: 1.6,
   prompt: () => `Druk T: forceer de deur (€${DEUR2_PRIJS})`,
   actie: koopDeur2,
@@ -2008,7 +2036,13 @@ function gameLoop(nu) {
     // Zone-sfeergeluiden (Ticket V8): eenmalige triggers bij de eerste stap
     // in een nieuwe zone, plus een zeldzame gracht-klok op de achtergrond.
     if (!gangBetreden && speler.positie.z < DEUR_Z) { gangBetreden = true; speelGangKraak(); }
-    if (!plaatsBetreden && speler.positie.x > DEUR2_X) { plaatsBetreden = true; speelWindvlaag(); }
+    // Ook de z-band van de binnenplaats checken (niet alleen x > DEUR2_X):
+    // anders vuurt dit al in de oosthoek van de woonkamer, die dezelfde
+    // x-waarden bestrijkt (bugfix na code-review).
+    if (!plaatsBetreden && speler.positie.x > DEUR2_X &&
+        speler.positie.z > PLAATS_Z_NOORD && speler.positie.z < PLAATS_Z_ZUID) {
+      plaatsBetreden = true; speelWindvlaag();
+    }
     if (klok > volgendeKlokGeluid) { speelGrachtklok(); volgendeKlokGeluid = klok + 40 + Math.random() * 40; }
   }
   updateVignet(dt);
@@ -2038,7 +2072,7 @@ requestAnimationFrame(gameLoop);
 window.AmsterdamUndeadDebug = {
   scene, camera, speler, obstakels, isVrijePlek, GRENS,
   wapenStaat, herladen, probeerTeSchieten, schiet,
-  ondoden, ondodenGroep, VENSTERS, spawnOndode, spawnWillekeurigeOndode,
+  ondoden, ondodenGroep, VENSTERS, spawnOndode, spawnWillekeurigeOndode, kiesVensterIndex,
   updateOndoden, raakOndode, doodOndode,
   spelerStaat, spelerSchade, updateSpelerRegen, updateVignet, updateHUD,
   spelStaat, startGolf, updateGolf,
