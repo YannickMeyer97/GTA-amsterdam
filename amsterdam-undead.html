@@ -418,8 +418,21 @@ const GANG_Z_EIND = DEUR_Z - GANG_LENGTE;
 
 // Tweede kamer (v0.3: het schildersatelier, zone C): x ∈ [-KAMER2_HALF_B, KAMER2_HALF_B], z ∈ [KAMER2_Z_NOORD, GANG_Z_EIND].
 const KAMER2_HALF_B = 3.5;
-const KAMER2_DIEPTE = 5;
+const KAMER2_DIEPTE = 9;   // v0.4: uitgebreid (was 5) t.b.v. de L-vormige voorraadnis, zie hieronder
 const KAMER2_Z_NOORD = GANG_Z_EIND - KAMER2_DIEPTE;
+
+// v0.4: "de voorraadnis" — een L-vormige uitstulping die alleen aan het
+// noordelijke deel van de westmuur van het atelier vastzit (het zuidelijke
+// deel blijft een gewone muur, de "stomp"). Dit maakt kamer 2 groter en
+// geeft 'm een herkenbare, niet-rechthoekige plattegrond i.p.v. een simpele
+// kopie van de startkamer. x ∈ [KAMER2_NIS_X_WEST, -KAMER2_HALF_B],
+// z ∈ [KAMER2_Z_NOORD, KAMER2_NIS_Z_ZUID].
+const KAMER2_NIS_DIEPTE = 7;      // hoe ver de nis naar het westen uitsteekt
+const KAMER2_NIS_BREEDTE = 6;     // hoeveel van de westmuur de nis in beslag neemt (vanaf het noorden)
+const KAMER2_NIS_X_WEST = -KAMER2_HALF_B - KAMER2_NIS_DIEPTE;
+const KAMER2_NIS_Z_ZUID = KAMER2_Z_NOORD + KAMER2_NIS_BREEDTE;
+const KAMER2_NIS_CX = (KAMER2_NIS_X_WEST + -KAMER2_HALF_B) / 2;
+const KAMER2_NIS_CZ = (KAMER2_Z_NOORD + KAMER2_NIS_Z_ZUID) / 2;
 
 /* ----------------------------------------------------------------
    ZONES v0.3 — vierde zone (D, "de binnenplaats") en de bijbehorende
@@ -446,8 +459,13 @@ const PLAATS_Z_ZUID  = DEUR2_Z + PLAATS_BREEDTE / 2;
 // binnenplaats); de muren doen het echte werk, dus de deur-obstakels houden
 // de speler tegen tot de bijbehorende deur gekocht is.
 const GRENS = {
-  minX: -HALF_BREEDTE + 0.05, maxX: PLAATS_X_OOST - 0.05,
-  minZ: PLAATS_Z_NOORD + 0.05, maxZ: HALF_DIEPTE - 0.05,
+  // minX moet de nis meenemen: die steekt (v0.4) verder naar het westen uit
+  // dan de startkamer, anders ontstaat daar een onzichtbare muur.
+  minX: KAMER2_NIS_X_WEST + 0.05, maxX: PLAATS_X_OOST - 0.05,
+  // minZ moet de noordelijkste van kamer2 (v0.4, nu dieper) en de
+  // binnenplaats nemen — welke van de twee dat is, hangt af van hun
+  // afmetingen, dus reken 'm expliciet uit i.p.v. één van beide te kiezen.
+  minZ: Math.min(KAMER2_Z_NOORD, PLAATS_Z_NOORD) + 0.05, maxZ: HALF_DIEPTE - 0.05,
 };
 
 // Houten vloer.
@@ -531,9 +549,21 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
   const zuidZ = GANG_Z_EIND + MUUR_DIKTE / 2;
   bouwMuur(-(DEUR_HALF + zuidBreedte / 2), zuidZ, zuidBreedte, MUUR_DIKTE);
   bouwMuur(DEUR_HALF + zuidBreedte / 2, zuidZ, zuidBreedte, MUUR_DIKTE);
-  // Noord- en westmuur van kamer 2.
-  bouwMuur(0, KAMER2_Z_NOORD - MUUR_DIKTE / 2, KAMER2_HALF_B * 2 + MUUR_DIKTE * 2, MUUR_DIKTE);
-  bouwMuur(-KAMER2_HALF_B - MUUR_DIKTE / 2, k2Cz, MUUR_DIKTE, k2Diepte);
+  // Noordmuur: één doorlopende muur die zowel de hoofdruimte als de
+  // voorraadnis afsluit (v0.4, L-vorm — zie KAMER2_NIS_* hierboven); ze
+  // strekt zich net zo ver uit als de west/oostmuren dik zijn, zodat de
+  // hoeken zonder kier aansluiten (zelfde techniek als de rest van dit bestand).
+  {
+    const noordWestrand = KAMER2_NIS_X_WEST - MUUR_DIKTE;
+    const noordOostrand = KAMER2_HALF_B + MUUR_DIKTE;
+    bouwMuur((noordWestrand + noordOostrand) / 2, KAMER2_Z_NOORD - MUUR_DIKTE / 2, noordOostrand - noordWestrand, MUUR_DIKTE);
+  }
+  // Westmuur van de hoofdruimte: alleen het zuidelijke stuk ("de stomp") —
+  // het noordelijke stuk is nu de open doorgang naar de nis, geen muur meer.
+  {
+    const westStompDiepte = GANG_Z_EIND - KAMER2_NIS_Z_ZUID;
+    bouwMuur(-KAMER2_HALF_B - MUUR_DIKTE / 2, (GANG_Z_EIND + KAMER2_NIS_Z_ZUID) / 2, MUUR_DIKTE, westStompDiepte);
+  }
   // Oostmuur van kamer 2: gesplitst met een deurgat voor deur 2 (Ticket V5),
   // gecentreerd op ATELIER_MIDDEN_Z (== k2Cz) — exact hetzelfde patroon als
   // het deurgat van deur 1 in de noordmuur van de startkamer.
@@ -542,6 +572,16 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
     bouwMuur(KAMER2_HALF_B + MUUR_DIKTE / 2, k2Cz - (DEUR2_HALF + oostSegmentDiepte / 2), MUUR_DIKTE, oostSegmentDiepte);
     bouwMuur(KAMER2_HALF_B + MUUR_DIKTE / 2, k2Cz + (DEUR2_HALF + oostSegmentDiepte / 2), MUUR_DIKTE, oostSegmentDiepte);
   }
+}
+// De voorraadnis zelf (v0.4): eigen vloer/plafond in een net iets kalere,
+// grijzere tint dan de rest van het atelier (opslag i.p.v. schilderhoek),
+// een westmuur en een "afsluitmuur" die de dode hoek ten zuiden van de nis
+// (buiten de plattegrond, tussen de nis en de gang) verzegelt.
+{
+  vlak(0x6e6a5f, KAMER2_NIS_DIEPTE, KAMER2_NIS_BREEDTE, KAMER2_NIS_CX, KAMER2_NIS_CZ, 0, false);
+  vlak(0x14100c, KAMER2_NIS_DIEPTE, KAMER2_NIS_BREEDTE, KAMER2_NIS_CX, KAMER2_NIS_CZ, KAMER_HOOGTE, true);
+  bouwMuur(KAMER2_NIS_X_WEST - MUUR_DIKTE / 2, KAMER2_NIS_CZ, MUUR_DIKTE, KAMER2_NIS_BREEDTE);
+  bouwMuur(KAMER2_NIS_CX - MUUR_DIKTE, KAMER2_NIS_Z_ZUID + MUUR_DIKTE / 2, KAMER2_NIS_DIEPTE, MUUR_DIKTE);
 }
 
 /* ================================================================
@@ -637,6 +677,15 @@ const ATELIER_OOSTRAAM_Z = ATELIER_MIDDEN_Z - 1.7;
   const glasOost = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.3, 1.0), glasMateriaal);
   glasOost.position.set(KAMER2_HALF_B - 0.18, 1.9, ATELIER_OOSTRAAM_Z);
   wereld.add(glasOost);
+
+  // v0.4: derde raam op de westmuur van de nis — een derde, nog flankerender
+  // invalshoek zodra de nis-spawn actief wordt (zie VENSTERS_KAMER2 hieronder).
+  const kozijnNis = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.6, 1.3), kozijnMateriaal);
+  kozijnNis.position.set(KAMER2_NIS_X_WEST + 0.06, 1.9, KAMER2_NIS_CZ);
+  wereld.add(kozijnNis);
+  const glasNis = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.3, 1.0), glasMateriaal);
+  glasNis.position.set(KAMER2_NIS_X_WEST + 0.18, 1.9, KAMER2_NIS_CZ);
+  wereld.add(glasNis);
 }
 
 // Warme lampen: een gloeiend bolletje + puntlicht, symmetrisch opgehangen.
@@ -696,6 +745,20 @@ hangLamp(1.8, 2.2);
   const dakraamLicht = new THREE.PointLight(0xaacdf0, 15, 9, 2);
   dakraamLicht.position.set(0, KAMER_HOOGTE - 0.3, ATELIER_MIDDEN_Z);
   wereld.add(dakraamLicht);
+
+  // v0.4: de voorraadnis ligt te ver van het hoofd-dakraam om nog goed
+  // verlicht te worden — een eigen, kleiner daklicht (zelfde koele stijl,
+  // geen schaduw) houdt de hoek leesbaar zonder de perf-regel te breken.
+  const dakraamNis = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.4, 1.4),
+    new THREE.MeshBasicMaterial({ color: 0xbfe0ff })
+  );
+  dakraamNis.rotation.x = Math.PI / 2;
+  dakraamNis.position.set(KAMER2_NIS_CX, KAMER_HOOGTE - 0.02, KAMER2_NIS_CZ);
+  wereld.add(dakraamNis);
+  const dakraamNisLicht = new THREE.PointLight(0xaacdf0, 22, 11, 2);
+  dakraamNisLicht.position.set(KAMER2_NIS_CX, KAMER_HOOGTE - 0.3, KAMER2_NIS_CZ);
+  wereld.add(dakraamNisLicht);
 }
 
 // De koopbare deur: een houten paneel dat het deurgat vult, plus een obstakel
@@ -948,6 +1011,12 @@ for (const [x, z, kleur] of [
   [-2.0, ATELIER_MIDDEN_Z + 0.6, 0xd8c24a], [0.4, ATELIER_MIDDEN_Z - 1.5, 0x3a6b45],
   [1.0, ATELIER_MIDDEN_Z - 1.2, 0xb5603a],
 ]) bouwVerfspat(x, z, kleur);
+
+// v0.4: de voorraadnis leent bewust wél de kratten/vat-props van de
+// startkamer (i.p.v. de verf-props hierboven) — dat verkoopt het "opslag"-
+// karakter van de nis en geeft 'm een eigen identiteit binnen het atelier.
+bouwKratten(KAMER2_NIS_CX - 1.6, KAMER2_NIS_CZ - 1.5);
+bouwVat(KAMER2_NIS_CX + 1.5, KAMER2_NIS_CZ + 1.3);
 
 /* ================================================================
    STAP 3 — DE SPELER: first-person besturing met botsingen
@@ -1682,6 +1751,8 @@ const WATERTAP_HP    = 50;             // hp per gebruik (gecapt op hpMax)
 const VENSTERS_KAMER2 = [
   { x: -1.8, z: KAMER2_Z_NOORD + 0.4, zone: 'C' },
   { x: KAMER2_HALF_B - 0.4, z: ATELIER_OOSTRAAM_Z, zone: 'C' },
+  // v0.4: derde, meest westelijke invalshoek vanuit de nieuwe voorraadnis.
+  { x: KAMER2_NIS_X_WEST + 0.4, z: KAMER2_NIS_CZ, zone: 'C' },
 ];
 
 // Binnenplaats-spawns (Ticket V5): een poortdoorgang en een keldergat, pas
@@ -2113,6 +2184,29 @@ window.AmsterdamUndeadDebug = {
   set plaatsBetreden(v) { plaatsBetreden = v; },
   koopSnelspanner, werkbankPunt,
   get snelspannerGekocht() { return snelspannerGekocht; },
+  // v0.4: atelier (kamer 2) vergroot tot een L-vorm met een voorraadnis:
+  KAMER2_DIEPTE, KAMER2_NIS_DIEPTE, KAMER2_NIS_BREEDTE,
+  KAMER2_NIS_X_WEST, KAMER2_NIS_Z_ZUID, KAMER2_NIS_CX, KAMER2_NIS_CZ,
+  kamer2Bounds: {
+    hoofd: { minX: -KAMER2_HALF_B, maxX: KAMER2_HALF_B, minZ: KAMER2_Z_NOORD, maxZ: GANG_Z_EIND },
+    nis: { minX: KAMER2_NIS_X_WEST, maxX: -KAMER2_HALF_B, minZ: KAMER2_Z_NOORD, maxZ: KAMER2_NIS_Z_ZUID },
+  },
+  kamer2Spawnpunten: VENSTERS_KAMER2,
+  kamer2ThemeObjects: [
+    'ezel', 'lijstenstapel', 'verfplank', 'kruk', 'zeil', 'verfspatten',
+    'nis-kratten', 'nis-vat',
+  ],
+  kamer2Interacties: { werkbankPunt },
+  kamer2DebugInfo: (() => {
+    const oppervlakteHoofd = KAMER2_HALF_B * 2 * (GANG_Z_EIND - KAMER2_Z_NOORD);
+    const oppervlakteNis = KAMER2_NIS_DIEPTE * KAMER2_NIS_BREEDTE;
+    const oppervlakteTotaal = oppervlakteHoofd + oppervlakteNis;
+    const oppervlakteStartkamer = HALF_BREEDTE * 2 * (HALF_DIEPTE * 2);
+    return {
+      oppervlakteHoofd, oppervlakteNis, oppervlakteTotaal, oppervlakteStartkamer,
+      ratio: oppervlakteTotaal / oppervlakteStartkamer,
+    };
+  })(),
 };
 </script>
 </body>
