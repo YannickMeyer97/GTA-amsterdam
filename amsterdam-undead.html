@@ -288,7 +288,7 @@
   <div>€ <span id="geldTekst">0</span></div>
   <div>Golf <span id="golfTekst">1</span></div>
   <div id="upgradeStatusUI" style="font-size:12px; font-weight:600; opacity:0.85; margin-top:4px;">
-    Schade <span id="schadeTekst">1</span> &nbsp;·&nbsp; Herladen <span id="herlaadTekst">1.2s</span>
+    Schade <span id="schadeTekst">1</span> &nbsp;·&nbsp; Herladen <span id="herlaadTekst">1.2s</span> &nbsp;·&nbsp; Mag <span id="magazijnTekst">8</span>
   </div>
 </div>
 <div id="vignet"></div>
@@ -1411,6 +1411,8 @@ let schadePerTreffer = 1;     // huidige lichaams-schade per treffer
 // gedeclareerd: updateHUD() leest 'm en wordt al aangeroepen vóórdat STAP 9
 // in de bestandsvolgorde aan de beurt komt — anders een TDZ-ReferenceError.
 let snelspannerGekocht = false;
+// Zelfde TDZ-reden als hierboven voor magazijncapaciteitGekocht (updateHUD leest 'm ook).
+let magazijncapaciteitGekocht = false;
 const HEADSHOT_EXTRA = 1;     // extra schade bij een kop-treffer (lichaam = schadePerTreffer, kop = +1)
 
 // --- Balanswaarden golven ------------------------------------------
@@ -1658,6 +1660,7 @@ function updateHUD() {
   // Upgrade-status (Ticket V7): laat in één oogopslag zien wat al MAX is.
   document.getElementById('schadeTekst').textContent = schadePerTreffer >= WAPEN_SCHADE_MAX ? 'MAX' : schadePerTreffer;
   document.getElementById('herlaadTekst').textContent = snelspannerGekocht ? 'MAX' : `${wapenStaat.herlaadDuur}s`;
+  document.getElementById('magazijnTekst').textContent = magazijncapaciteitGekocht ? `${wapenStaat.magazijnMax} MAX` : wapenStaat.magazijnMax;
 }
 
 /* ================================================================
@@ -1732,10 +1735,12 @@ function updateGolf(dt) {
    ================================================================ */
 
 // --- Prijzen en munitie-opwaardering ------------------------------
-const DEUR_PRIJS       = 750;   // opent gang + atelier (zone C)
+const DEUR_PRIJS       = 500;   // opent gang + atelier (zone C)
 const AMMO_PRIJS       = 300;   // vult reserve-munitie bij
 const AMMO_KIST_KOGELS = 48;    // reserve-kogels per aankoop
 const UPGRADE_PRIJS    = 500;   // schade +1 (daarna MAX)
+const MAGAZIJN_PRIJS         = 550;   // eenmalig: grotere magazijncapaciteit (daarna MAX)
+const MAGAZIJN_CAPACITEIT_BONUS = 4;  // magazijnMax +4 (en het huidige magazijn vult meteen mee)
 
 // --- v0.3: Werkbank (atelier), tweede deur en binnenplaats-interacties ---
 const SNELSPANNER_PRIJS       = 600;   // eenmalig: sneller herladen
@@ -1840,6 +1845,13 @@ const WERKBANK_Z = ATELIER_MIDDEN_Z - 2;
   wereld.add(g);
 }
 const werkbankMarkering = interactieMarkering(WERKBANK_X, WERKBANK_Z, 0xff9f5a);
+
+// --- Magazijncapaciteit (v0.5): bij de opslagkratten in de voorraadnis ---
+// (de kratten zelf zijn al decor, zie STAP 2 — hier alleen de markering op
+// diezelfde plek, geen extra prop nodig.)
+const MAGAZIJN_X = KAMER2_NIS_CX - 1.6;
+const MAGAZIJN_Z = KAMER2_NIS_CZ - 1.5;
+const magazijnMarkering = interactieMarkering(MAGAZIJN_X, MAGAZIJN_Z, 0xc9a86b);
 
 // Op de atelierkant (net als deurMarkering vóór deur 1 op de kamer-1-kant
 // staat), niet aan de binnenplaats-kant erachter (bugfix na code-review).
@@ -1952,6 +1964,23 @@ function koopSnelspanner() {
   updateHUD();
 }
 
+// Magazijncapaciteit (v0.5): eenmalige upgrade bij de kratten in de
+// voorraadnis — extra magazijnruimte, meteen bijgevuld i.p.v. pas bij de
+// volgende herlaadbeurt. Zelfde eenmalig-tot-MAX-patroon als koopSnelspanner.
+function koopMagazijncapaciteit() {
+  if (magazijncapaciteitGekocht) return;
+  if (spelStaat.geld < MAGAZIJN_PRIJS) { toonMelding(`Nog €${MAGAZIJN_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  spelStaat.geld -= MAGAZIJN_PRIJS;
+  magazijncapaciteitGekocht = true;
+  wapenStaat.magazijnMax += MAGAZIJN_CAPACITEIT_BONUS;
+  wapenStaat.magazijn += MAGAZIJN_CAPACITEIT_BONUS;
+  speelKoop();
+  toonMelding(`Magazijncapaciteit vergroot! Nu ${wapenStaat.magazijnMax} per magazijn (MAX)`);
+  doofMarkering(magazijnMarkering);
+  updateAmmoUI();
+  updateHUD();
+}
+
 // Deur 2 (Ticket V5): opent de binnenplaats. Exact hetzelfde patroon als koopDeur().
 let deur2Gekocht = false;
 function koopDeur2() {
@@ -2029,6 +2058,15 @@ const werkbankPunt = {
     : `Druk T: Snelspanner — sneller herladen (€${SNELSPANNER_PRIJS})`,
   actie: koopSnelspanner,
 };
+const magazijnPunt = {
+  naam: 'Opslagkratten',
+  positie: new THREE.Vector3(MAGAZIJN_X, 0, MAGAZIJN_Z),
+  radius: 1.4,
+  prompt: () => magazijncapaciteitGekocht
+    ? 'Magazijncapaciteit is MAX'
+    : `Druk T: magazijncapaciteit (€${MAGAZIJN_PRIJS})`,
+  actie: koopMagazijncapaciteit,
+};
 const deur2Punt = {
   naam: 'Deur 2',
   positie: new THREE.Vector3(DEUR2_X - 0.7, 0, DEUR2_Z),
@@ -2052,7 +2090,7 @@ const watertapPunt = {
     : `Druk T: regenwater tappen (€${WATERTAP_PRIJS} -> +${WATERTAP_HP} HP)`,
   actie: koopWatertap,
 };
-const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, deur2Punt, regentonPunt, watertapPunt];
+const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, magazijnPunt, deur2Punt, regentonPunt, watertapPunt];
 
 let huidigeInteractie = null;
 
@@ -2184,6 +2222,10 @@ window.AmsterdamUndeadDebug = {
   set plaatsBetreden(v) { plaatsBetreden = v; },
   koopSnelspanner, werkbankPunt,
   get snelspannerGekocht() { return snelspannerGekocht; },
+  // v0.5: magazijncapaciteit-upgrade in de voorraadnis:
+  MAGAZIJN_PRIJS, MAGAZIJN_CAPACITEIT_BONUS, MAGAZIJN_X, MAGAZIJN_Z,
+  koopMagazijncapaciteit, magazijnPunt, magazijnMarkering,
+  get magazijncapaciteitGekocht() { return magazijncapaciteitGekocht; },
   // v0.4: atelier (kamer 2) vergroot tot een L-vorm met een voorraadnis:
   KAMER2_DIEPTE, KAMER2_NIS_DIEPTE, KAMER2_NIS_BREEDTE,
   KAMER2_NIS_X_WEST, KAMER2_NIS_Z_ZUID, KAMER2_NIS_CX, KAMER2_NIS_CZ,
