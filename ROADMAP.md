@@ -44,6 +44,31 @@ Doel: de tweede ruimte voelde te veel als een kopie van de startkamer. v0.3 maak
 - **V7** — Progressie-UI: een HUD-blokje toont schade/herlaadtijd-status (incl. MAX), interactiemarkeringen doven naar grijs zodra een eenmalige/MAX-upgrade daar niets meer te doen heeft, startscherm legt de drie-zones-route uit.
 - **V8** — Polish: eenmalige grote zone-banners bij het openen van elke deur ("HET ATELIER" / "DE BINNENPLAATS"), zone-sfeergeluiden (zeldzame gracht-klok, eenmalige gang-kraak, eenmalige windvlaag op de binnenplaats), README/ROADMAP bijgewerkt, volledige eindregressie van beide games.
 
+## v0.4/v0.5 — Atelier L-vorm, prijsverlaging en magazijncapaciteit ✅
+Het atelier (zone C) kreeg een L-vormige voorraadnis (eigen vloertint, raam,
+spawnpunt en opslag-decor) i.p.v. een simpele rechthoek; `GRENS` groeide mee
+op X en Z. Deur 1 werd goedkoper (€750 → €500) en er kwam een eenmalige
+magazijncapaciteit-upgrade bij de opslagkratten in de nis — later in v0.6
+weer vervangen door De Ratelaar (zie hieronder).
+
+## v0.6 — Headshot-bonus, grotere zones en een tweede wapen ✅
+- **Headshot-geldbonus**: een dodelijke headshot geeft nu 2x het normale
+  kill-geld (`HEADSHOT_GELD_MULTIPLIER`).
+- **Atelier verder vergroot**: `KAMER2_DIEPTE` 9 → 12 (+20% t.o.v. de eigen
+  v0.4-grootte), met een derde dakraam tegen de nu donkere noordkant en wat
+  extra decor om de diepte te vullen.
+- **De binnenplaats fors vergroot**: `PLAATS_BREEDTE`/`PLAATS_DIEPTE` 6×5 →
+  14×14 (+56% t.o.v. het vergrote atelier), vier lantaarnpalen als
+  belangrijkste lichtbron (het maanlicht is nu ambient-vulling), een derde
+  spawnpunt halverwege de noordmuur, en een koude lokgloed bij deur 2.
+- **Magazijncapaciteit-upgrade verwijderd**, vervangen door **De Ratelaar**:
+  een tweede, koopbaar wapen (€750) tegen de oostmuur van de binnenplaats —
+  16 kogels/magazijn, 96 reserve, halve schotcooldown t.o.v. de Drukspuit.
+  `Q` wisselt tussen beide wapens; elk houdt zijn eigen magazijn/reserve
+  aan, en de Snelspanner-upgrade werkt door op beide.
+- **Deur 2 goedkoper**: €1250 → €1000; startscherm/hulp-tekst bijgewerkt
+  (prijzen + `Q`-toets).
+
 ## Openstaande verbeteringen Defend National Monument (bevroren tot expliciet gevraagd)
 - Performance verbeteren
 - Wave balancing testen

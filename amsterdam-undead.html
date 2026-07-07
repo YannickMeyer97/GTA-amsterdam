@@ -276,7 +276,7 @@
      DE UI-LAAG (HTML bovenop het 3D-canvas)
      ============================================================ -->
 <a id="menuLink" href="index.html">← Menu</a>
-<div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; klik = schieten &nbsp;·&nbsp; R = herladen &nbsp;·&nbsp; T = kopen/gebruiken &nbsp;·&nbsp; Esc = pauze</div>
+<div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; klik = schieten &nbsp;·&nbsp; R = herladen &nbsp;·&nbsp; T = kopen/gebruiken &nbsp;·&nbsp; Q = wisselen van wapen &nbsp;·&nbsp; Esc = pauze</div>
 <div id="richtkruis" style="display:none"></div>
 <div id="interactiePrompt"></div>
 <div id="meldingUI"></div>
@@ -288,7 +288,7 @@
   <div>€ <span id="geldTekst">0</span></div>
   <div>Golf <span id="golfTekst">1</span></div>
   <div id="upgradeStatusUI" style="font-size:12px; font-weight:600; opacity:0.85; margin-top:4px;">
-    Schade <span id="schadeTekst">1</span> &nbsp;·&nbsp; Herladen <span id="herlaadTekst">1.2s</span> &nbsp;·&nbsp; Mag <span id="magazijnTekst">8</span>
+    Schade <span id="schadeTekst">1</span> &nbsp;·&nbsp; Herladen <span id="herlaadTekst">1.2s</span> &nbsp;·&nbsp; Wapen <span id="wapenTekst">Drukspuit</span>
   </div>
 </div>
 <div id="vignet"></div>
@@ -303,9 +303,9 @@
   <h2>Een verlaten grachtenpand — overleef de golven ondoden</h2>
   <div class="uitleg">
     🚶 <b>WASD</b> lopen &nbsp;·&nbsp; 🖱️ <b>muis</b> kijken &nbsp;·&nbsp; <b>klik</b> schieten<br>
-    🔫 <b>R</b> herladen &nbsp;·&nbsp; 🛒 <b>T</b> kopen/gebruiken &nbsp;·&nbsp; ⏸️ <b>Esc</b> pauze<br>
-    <span style="opacity:0.85">🎯 Headshots doen dubbele schade &nbsp;·&nbsp; 💰 verdien geld per kill</span><br>
-    <span style="opacity:0.85">🏠 Woonkamer → 🚪 het atelier (€750) → 🚪 de binnenplaats (€1250)</span><br>
+    🔫 <b>R</b> herladen &nbsp;·&nbsp; 🛒 <b>T</b> kopen/gebruiken &nbsp;·&nbsp; 🔄 <b>Q</b> wissel wapen &nbsp;·&nbsp; ⏸️ <b>Esc</b> pauze<br>
+    <span style="opacity:0.85">🎯 Headshots doen dubbele schade én dubbel kill-geld</span><br>
+    <span style="opacity:0.85">🏠 Woonkamer → 🚪 het atelier (€500) → 🚪 de binnenplaats (€1000)</span><br>
     <span style="opacity:0.85">🛠️ Elke zone heeft een eigen upgrade, ammo of beloning</span>
   </div>
   <div class="knop">Klik om te spelen</div>
@@ -418,7 +418,7 @@ const GANG_Z_EIND = DEUR_Z - GANG_LENGTE;
 
 // Tweede kamer (v0.3: het schildersatelier, zone C): x ∈ [-KAMER2_HALF_B, KAMER2_HALF_B], z ∈ [KAMER2_Z_NOORD, GANG_Z_EIND].
 const KAMER2_HALF_B = 3.5;
-const KAMER2_DIEPTE = 9;   // v0.4: uitgebreid (was 5) t.b.v. de L-vormige voorraadnis, zie hieronder
+const KAMER2_DIEPTE = 12;  // v0.4: 5->9 (nis), v0.6: 9->12 (+20% t.o.v. de startkamer, zie kamer2DebugInfo)
 const KAMER2_Z_NOORD = GANG_Z_EIND - KAMER2_DIEPTE;
 
 // v0.4: "de voorraadnis" — een L-vormige uitstulping die alleen aan het
@@ -442,8 +442,8 @@ const KAMER2_NIS_CZ = (KAMER2_Z_NOORD + KAMER2_NIS_Z_ZUID) / 2;
    ---------------------------------------------------------------- */
 const DEUR2_HALF = 1;                                    // halve breedte van deuropening 2
 const DEUR2_X = KAMER2_HALF_B;                            // vlak van de oostmuur van kamer 2
-const PLAATS_BREEDTE = 6;                                 // binnenplaats: 6m breed (z, haaks op de deur)
-const PLAATS_DIEPTE = 5;                                  // 5m diep (x, richting van de deur af)
+const PLAATS_BREEDTE = 14;                                // v0.6: 6->14 (was Ticket V5), +56% t.o.v. het vergrote atelier
+const PLAATS_DIEPTE = 14;                                 // v0.6: 5->14, samen met PLAATS_BREEDTE: open binnenplaats voor grote golven
 const PLAATS_X_OOST = DEUR2_X + PLAATS_DIEPTE;            // oostgrens van de binnenplaats
 const PLAATS_CX = (DEUR2_X + PLAATS_X_OOST) / 2;          // midden-x van de binnenplaats
 // Deur 2 zit gecentreerd in de oostmuur van het atelier; hier al berekend
@@ -601,12 +601,17 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
   klinkers.position.set(PLAATS_CX, 0, DEUR2_Z);
   klinkers.receiveShadow = true;
   wereld.add(klinkers);
-  // Een paar ondiepe "plassen": nog glanzender vlakken die het maanlicht spiegelen.
-  for (const [px, pz, pb, pd] of [[4.4, DEUR2_Z - 1.5, 1.1, 0.7], [6.2, DEUR2_Z + 1.2, 1.4, 0.9]]) {
+  // Een paar ondiepe "plassen": nog glanzender vlakken die het maanlicht/de
+  // lantaarns spiegelen. v0.6: offsets t.o.v. PLAATS_CX/DEUR2_Z i.p.v.
+  // absolute coördinaten, en twee extra voor de vergrote binnenplaats.
+  for (const [dx, dz, pb, pd] of [
+    [-1.6, -1.5, 1.1, 0.7], [0.2, 1.2, 1.4, 0.9],
+    [3.6, 3.2, 1.3, 0.8], [-3.2, -3.6, 1.0, 1.1],
+  ]) {
     const plas = new THREE.Mesh(new THREE.PlaneGeometry(pb, pd),
       new THREE.MeshStandardMaterial({ color: 0x1c2f3a, roughness: 0.08, metalness: 0.4 }));
     plas.rotation.x = -Math.PI / 2;
-    plas.position.set(px, 0.005, pz);
+    plas.position.set(PLAATS_CX + dx, 0.005, DEUR2_Z + dz);
     wereld.add(plas);
   }
 
@@ -615,10 +620,9 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
   bouwMuur(PLAATS_CX, PLAATS_Z_ZUID + MUUR_DIKTE / 2, PLAATS_DIEPTE + MUUR_DIKTE * 2, MUUR_DIKTE, GANG_PLEISTER);
   bouwMuur(PLAATS_X_OOST + MUUR_DIKTE / 2, DEUR2_Z, MUUR_DIKTE, PLAATS_BREEDTE + MUUR_DIKTE * 2, GANG_PLEISTER);
 
-  // Koud maanlicht: het enige buitenlicht, schaduwloos (perf) en zonder
-  // flikker. Sterker/dichterbij dan een decoratief lampje zou zijn, want dit
-  // moet de hele binnenplaats speelbaar-zichtbaar houden.
-  const maanlicht = new THREE.PointLight(0x9fc0e8, 26, 15, 2);
+  // v0.6: koud maanlicht is nu ambient-vulling — de lantaarns (zie hieronder)
+  // zijn de belangrijkste lichtbron op de vergrote binnenplaats.
+  const maanlicht = new THREE.PointLight(0x9fc0e8, 10, 15, 2);
   maanlicht.position.set(PLAATS_CX, KAMER_HOOGTE + 0.4, DEUR2_Z);
   wereld.add(maanlicht);
   // Tweede, zwakker maanlicht bij de deur zodat je 'm bij binnenkomst
@@ -626,6 +630,45 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
   const maanlichtDeur = new THREE.PointLight(0x9fc0e8, 14, 10, 2);
   maanlichtDeur.position.set(DEUR2_X + 1.5, KAMER_HOOGTE + 0.2, DEUR2_Z);
   wereld.add(maanlichtDeur);
+
+  // v0.6: vier lantaarnpalen als belangrijkste lichtbron van de vergrote
+  // binnenplaats — schaduwloos (perf), warm-wit, duidelijk anders dan het
+  // koude maanlicht. Rond het midden verspreid, uit de looproutes.
+  function bouwLantaarn(x, z) {
+    const paal = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 2.6, 8), mat(0x2a2e30, 0.6, 0.3));
+    paal.position.set(x, 1.3, z);
+    paal.castShadow = true;
+    wereld.add(paal);
+    const armatuur = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.22), mat(0x1c1f20, 0.5, 0.4));
+    armatuur.position.set(x, 2.62, z);
+    wereld.add(armatuur);
+    const bol = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 10),
+      new THREE.MeshStandardMaterial({ color: 0xffe6b0, emissive: 0xffb84a, emissiveIntensity: 1.3 }));
+    bol.position.set(x, 2.5, z);
+    wereld.add(bol);
+    const licht = new THREE.PointLight(0xffcf8a, 16, 9, 2);
+    licht.position.set(x, 2.5, z);
+    wereld.add(licht);
+  }
+  for (const [dx, dz] of [[-3, -3], [3, -3], [-3, 3], [3, 3]]) {
+    bouwLantaarn(PLAATS_CX + dx, DEUR2_Z + dz);
+  }
+
+  // v0.6: koude lokgloed aan de atelierkant van deur 2 (zelfde patroon als
+  // de warme lokgloed bij de gang-drempel) — trekt het oog naar de
+  // binnenplaats vóórdat de deur gekocht is.
+  {
+    // Deur 2 zit in een oost-westmuur (opening loopt in de z-richting), dus
+    // i.p.v. de x-brede lokgloed van de gang: hier de afmetingen verwisseld
+    // (smal in x, lang in z) zodat de gloed netjes in het deurgat past.
+    const lokgloedPlaats = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.06, DEUR2_HALF * 1.9),
+      new THREE.MeshBasicMaterial({ color: 0x9fc0e8, transparent: true, opacity: 0.4 })
+    );
+    lokgloedPlaats.rotation.x = -Math.PI / 2;
+    lokgloedPlaats.position.set(DEUR2_X - 0.15, 0.03, DEUR2_Z);
+    wereld.add(lokgloedPlaats);
+  }
 }
 
 // De koopbare deur 2: zelfde patroon als deur 1 (mesh + klink + obstakel die
@@ -742,7 +785,8 @@ hangLamp(1.8, 2.2);
   dakraam.rotation.x = Math.PI / 2;
   dakraam.position.set(0, KAMER_HOOGTE - 0.02, ATELIER_MIDDEN_Z);
   wereld.add(dakraam);
-  const dakraamLicht = new THREE.PointLight(0xaacdf0, 15, 9, 2);
+  // v0.6: bereik/intensiteit iets opgehoogd — de hoofdruimte is dieper geworden.
+  const dakraamLicht = new THREE.PointLight(0xaacdf0, 18, 12, 2);
   dakraamLicht.position.set(0, KAMER_HOOGTE - 0.3, ATELIER_MIDDEN_Z);
   wereld.add(dakraamLicht);
 
@@ -759,6 +803,20 @@ hangLamp(1.8, 2.2);
   const dakraamNisLicht = new THREE.PointLight(0xaacdf0, 22, 11, 2);
   dakraamNisLicht.position.set(KAMER2_NIS_CX, KAMER_HOOGTE - 0.3, KAMER2_NIS_CZ);
   wereld.add(dakraamNisLicht);
+
+  // v0.6: de hoofdruimte is 12m diep geworden (was 9m) — het noordelijke
+  // deel valt buiten het bereik van het centrale dakraam. Een derde,
+  // kleiner daklicht (zelfde stijl) houdt ook die hoek leesbaar.
+  const dakraamNoord = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.4, 1.4),
+    new THREE.MeshBasicMaterial({ color: 0xbfe0ff })
+  );
+  dakraamNoord.rotation.x = Math.PI / 2;
+  dakraamNoord.position.set(0.5, KAMER_HOOGTE - 0.02, ATELIER_MIDDEN_Z - 4);
+  wereld.add(dakraamNoord);
+  const dakraamNoordLicht = new THREE.PointLight(0xaacdf0, 18, 10, 2);
+  dakraamNoordLicht.position.set(0.5, KAMER_HOOGTE - 0.3, ATELIER_MIDDEN_Z - 4);
+  wereld.add(dakraamNoordLicht);
 }
 
 // De koopbare deur: een houten paneel dat het deurgat vult, plus een obstakel
@@ -997,7 +1055,32 @@ bouwFietsenrek(PLAATS_CX + 1.6, DEUR2_Z + 2.2);
   const keldergat = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.06, 0.8), mat(0x14181b, 0.7, 0.3));
   keldergat.position.set(PLAATS_X_OOST - 0.4, 0.03, PLAATS_Z_ZUID - 0.4);
   wereld.add(keldergat);
+  // v0.6: derde spawn-anker, halverwege de (nu 14m lange) noordmuur — anders
+  // komt alles uit de oosthoek en blijft de vergrote plaats tactisch vlak.
+  const poortNoord = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.8, 0.15), mat(0x1f262b, 0.8));
+  poortNoord.position.set(PLAATS_CX, 0.9, PLAATS_Z_NOORD + 0.08);
+  wereld.add(poortNoord);
 }
+
+// --- Wandkooppunt "De Ratelaar" (v0.6): tegen de oostmuur van de
+// binnenplaats, met een geschilderd silhouet als "etalage" plus een houten
+// rek waar het wapen op ligt — geen collision, puur decor + interactiepunt.
+const RATELAAR_X = PLAATS_X_OOST - 0.6;
+const RATELAAR_Z = DEUR2_Z + 5;
+{
+  const plank = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.3, 1.1), mat(0x3a2c1c, 0.75));
+  plank.position.set(PLAATS_X_OOST - 0.1, 0.9, RATELAAR_Z);
+  wereld.add(plank);
+  const silhouet = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.35),
+    new THREE.MeshBasicMaterial({ color: 0xe8dcc0 }));
+  silhouet.rotation.y = -Math.PI / 2;
+  silhouet.position.set(PLAATS_X_OOST - 0.15, 1.05, RATELAAR_Z);
+  wereld.add(silhouet);
+  const rek = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.9), mat(0x2a2018, 0.7));
+  rek.position.set(RATELAAR_X + 0.3, 0.6, RATELAAR_Z);
+  wereld.add(rek);
+}
+const ratelaarMarkering = interactieMarkering(RATELAAR_X, RATELAAR_Z, 0xd9a05a);
 
 // --- Atelier-decor (zone C): koel, kaal, met verf-/doek-accenten — bewust
 // géén hergebruik van de warme-woonkamer-props (kratten/vat/tafel). ---
@@ -1006,10 +1089,15 @@ bouwEzel(-1.6, ATELIER_MIDDEN_Z, 0.4);                     // landmark, midden-w
 bouwLijstenstapel(-3.1, ATELIER_MIDDEN_Z + 1.6, 0.5);      // tegen de westmuur
 bouwVerfplank(2.6, ATELIER_MIDDEN_Z - 1.8, -0.3);
 bouwKruk(-1.0, ATELIER_MIDDEN_Z + 0.7);
+// v0.6: extra decor bij de vergrote diepte (12m i.p.v. 9m), zodat het
+// noorden/zuiden van de hoofdruimte niet kaal aanvoelt.
+bouwVerfplank(2.2, ATELIER_MIDDEN_Z - 4.3, 0.2);           // dieper noordelijk, tegen de oostmuur
+bouwLijstenstapel(-0.6, ATELIER_MIDDEN_Z + 3.8, -0.4);     // dichter bij de gang-doorgang
 for (const [x, z, kleur] of [
   [-1.8, ATELIER_MIDDEN_Z - 0.5, 0xb5603a], [-1.3, ATELIER_MIDDEN_Z + 0.3, 0x3a5f8c],
   [-2.0, ATELIER_MIDDEN_Z + 0.6, 0xd8c24a], [0.4, ATELIER_MIDDEN_Z - 1.5, 0x3a6b45],
   [1.0, ATELIER_MIDDEN_Z - 1.2, 0xb5603a],
+  [1.6, ATELIER_MIDDEN_Z - 4.0, 0xd8c24a], [-0.8, ATELIER_MIDDEN_Z + 3.3, 0x3a5f8c],
 ]) bouwVerfspat(x, z, kleur);
 
 // v0.4: de voorraadnis leent bewust wél de kratten/vat-props van de
@@ -1047,6 +1135,10 @@ addEventListener('keydown', e => {
   // Zelfde !e.repeat + pointer-lock-patroon als in defend-national-monument.html.
   if (e.code === 'KeyT' && !e.repeat && document.pointerLockElement === renderer.domElement) {
     activeerHuidigeInteractie();
+  }
+  // Q wisselt van wapen (v0.6), alleen als De Ratelaar al gekocht is.
+  if (e.code === 'KeyQ' && !e.repeat && document.pointerLockElement === renderer.domElement) {
+    wisselWapen();
   }
 });
 addEventListener('keyup', e => { ingedrukt[e.code] = false; });
@@ -1179,6 +1271,12 @@ function updateSpeler(dt) {
   camera.rotation.x = speler.pitch;
 }
 
+// Snelspanner-/Ratelaar-status hier (i.p.v. pas bij hun eigen STAP 9-code)
+// gedeclareerd: nieuweWapenStaat() in STAP 4 hieronder leest snelspannerGekocht
+// al bij het opbouwen van het startwapen — anders een TDZ-ReferenceError.
+let snelspannerGekocht = false;
+let ratelaarGekocht = false;
+
 /* ================================================================
    STAP 4 — SCHIETEN: wapen, raycast, ammo en herladen
    ================================================================
@@ -1188,57 +1286,134 @@ function updateSpeler(dt) {
    magazijn/reserve/herlaad-systeem dat de andere game niet heeft.
    ================================================================ */
 
-// --- Het wapenmodel: een simpele, originele "drukspuit" ----------
-const wapen = new THREE.Group();
+// --- Wapenmodellen: twee originele, duidelijk verschillende ontwerpen ---
+// (v0.6: was één vast wapen; nu een startwapen + een koopbaar tweede wapen,
+// wisselbaar met Q. Elk wapen is een eigen Group met een eigen mondingsflits,
+// zodat schiet()/updateWapen() via wapenStaat.definitie alles vinden.)
+
+// 1) De "Drukspuit" — het originele startwapen, ongewijzigd model.
+const wapenDrukspuit = new THREE.Group();
 {
   const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.044, 0.2, 10),
     new THREE.MeshStandardMaterial({ color: 0x4a6b52, roughness: 0.55, metalness: 0.4 }));
   tank.rotation.x = Math.PI / 2;   // cilinder ligt standaard langs Y; dit wijst 'm naar voren (Z)
   tank.position.set(0, 0.02, -0.05);
-  wapen.add(tank);
+  wapenDrukspuit.add(tank);
   const mondstuk = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.017, 0.18, 8),
     new THREE.MeshStandardMaterial({ color: 0x2e3a33, roughness: 0.5, metalness: 0.5 }));
   mondstuk.rotation.x = Math.PI / 2;
   mondstuk.position.set(0, 0.02, -0.24);
-  wapen.add(mondstuk);
+  wapenDrukspuit.add(mondstuk);
   const greep = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.12, 0.06),
     new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.8 }));
   greep.position.set(0, -0.09, 0.02);
   greep.rotation.x = 0.3;
-  wapen.add(greep);
+  wapenDrukspuit.add(greep);
   // Klein drukmeter-lampje i.p.v. een oranje speelgoeddop: eigen, herkenbaar detail.
   const meter = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 8),
     new THREE.MeshStandardMaterial({ color: 0x8fffb0, emissive: 0x4fdc7a, emissiveIntensity: 0.9 }));
   meter.position.set(0, 0.065, 0.02);
-  wapen.add(meter);
+  wapenDrukspuit.add(meter);
 }
-wapen.position.set(0.26, -0.22, -0.5);
-camera.add(wapen);
+wapenDrukspuit.position.set(0.26, -0.22, -0.5);
+camera.add(wapenDrukspuit);
 scene.add(camera);   // camera moet in de scene zitten, anders zie je het wapen niet
 
-// Mondingsflits: kort oplichtend bolletje + puntlicht bij een schot.
-const vlam = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8),
+const vlamDrukspuit = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8),
   new THREE.MeshBasicMaterial({ color: 0xbfffcf }));
-vlam.position.set(0, 0.02, -0.33);
-vlam.visible = false;
-wapen.add(vlam);
-const vlamLicht = new THREE.PointLight(0x9fffb8, 1.1, 6);
-vlamLicht.position.copy(vlam.position);
-vlamLicht.visible = false;
-wapen.add(vlamLicht);
+vlamDrukspuit.position.set(0, 0.02, -0.33);
+vlamDrukspuit.visible = false;
+wapenDrukspuit.add(vlamDrukspuit);
+const vlamLichtDrukspuit = new THREE.PointLight(0x9fffb8, 1.1, 6);
+vlamLichtDrukspuit.position.copy(vlamDrukspuit.position);
+vlamLichtDrukspuit.visible = false;
+wapenDrukspuit.add(vlamLichtDrukspuit);
+
+// 2) "De Ratelaar" — groter, boxy, duidelijk ander silhouet dan de
+// Drukspuit: lange loop, blokkerig chassis, een magazijnkast onder de loop
+// en een tandwiel-detail (verwijst naar de naam, geen bestaand wapen).
+const wapenRatelaar = new THREE.Group();
+{
+  const loop = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.02, 0.34, 8),
+    new THREE.MeshStandardMaterial({ color: 0x24211d, roughness: 0.4, metalness: 0.6 }));
+  loop.rotation.x = Math.PI / 2;
+  loop.position.set(0, 0.03, -0.18);
+  wapenRatelaar.add(loop);
+  const chassis = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.09, 0.28),
+    new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 0.7, metalness: 0.2 }));
+  chassis.position.set(0, 0.01, 0.02);
+  wapenRatelaar.add(chassis);
+  const magazijnkast = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.16, 0.06),
+    new THREE.MeshStandardMaterial({ color: 0x2e2a22, roughness: 0.6, metalness: 0.3 }));
+  magazijnkast.position.set(0, -0.09, -0.02);
+  magazijnkast.rotation.x = -0.15;
+  wapenRatelaar.add(magazijnkast);
+  const greepRatelaar = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.13, 0.07),
+    new THREE.MeshStandardMaterial({ color: 0x2a2018, roughness: 0.8 }));
+  greepRatelaar.position.set(0, -0.1, 0.14);
+  greepRatelaar.rotation.x = 0.3;
+  wapenRatelaar.add(greepRatelaar);
+  const kolf = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.16),
+    new THREE.MeshStandardMaterial({ color: 0x3a2e1e, roughness: 0.8 }));
+  kolf.position.set(0, -0.02, 0.24);
+  wapenRatelaar.add(kolf);
+  // Tandwiel: het herkenbare "ratel"-detail, puur origineel/decoratief.
+  const tandwiel = new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.012, 6, 10),
+    new THREE.MeshStandardMaterial({ color: 0x8a8378, roughness: 0.4, metalness: 0.7 }));
+  tandwiel.position.set(0.045, 0.02, 0.04);
+  tandwiel.rotation.y = Math.PI / 2;
+  wapenRatelaar.add(tandwiel);
+}
+wapenRatelaar.position.set(0.26, -0.22, -0.5);
+wapenRatelaar.visible = false;
+camera.add(wapenRatelaar);
+
+const vlamRatelaar = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8),
+  new THREE.MeshBasicMaterial({ color: 0xffd9a0 }));
+vlamRatelaar.position.set(0, 0.03, -0.36);
+vlamRatelaar.visible = false;
+wapenRatelaar.add(vlamRatelaar);
+const vlamLichtRatelaar = new THREE.PointLight(0xffcf8a, 1.6, 7);
+vlamLichtRatelaar.position.copy(vlamRatelaar.position);
+vlamLichtRatelaar.visible = false;
+wapenRatelaar.add(vlamLichtRatelaar);
 
 let terugslag = 0;
 let vlamTimer = 0;
 
-// --- Ammo-toestand: magazijn 8, reserve 48, herladen kost 1.2s ----
-const wapenStaat = {
-  magazijn: 8,
-  magazijnMax: 8,
-  reserve: 48,
-  herladen: false,
-  herlaadTimer: 0,
-  herlaadDuur: 1.2,
+// --- Wapendefinities + actieve wapen-staat --------------------------
+// Elk wapen: naam (HUD), munitiestats, vuursnelheid en de bijbehorende
+// mesh/mondingsflits-referenties. `reserve` van de Ratelaar is bewust 2x
+// die van de Drukspuit ("ongeveer dubbel zoveel munitie").
+const WAPEN_DRUKSPUIT = {
+  naam: 'Drukspuit', magazijnMax: 8, reserve: 48, schotCooldown: 0.2,
+  herlaadDuurNormaal: 1.2, herlaadDuurSnel: 0.7,
+  groep: wapenDrukspuit, vlam: vlamDrukspuit, vlamLicht: vlamLichtDrukspuit,
 };
+const WAPEN_RATELAAR = {
+  naam: 'De Ratelaar', magazijnMax: 16, reserve: 96, schotCooldown: 0.1,
+  herlaadDuurNormaal: 1.5, herlaadDuurSnel: 0.9,
+  groep: wapenRatelaar, vlam: vlamRatelaar, vlamLicht: vlamLichtRatelaar,
+};
+
+function nieuweWapenStaat(definitie) {
+  return {
+    definitie,
+    magazijn: definitie.magazijnMax,
+    magazijnMax: definitie.magazijnMax,
+    reserve: definitie.reserve,
+    herladen: false,
+    herlaadTimer: 0,
+    herlaadDuur: snelspannerGekocht ? definitie.herlaadDuurSnel : definitie.herlaadDuurNormaal,
+  };
+}
+
+// Elk wapen houdt zijn eigen magazijn/reserve/herlaad-status aan (ook als je
+// wisselt); `wapenStaat` is de actieve referentie die alle bestaande functies
+// via hun closure lezen — bij een wissel wordt 'm herbonden (zie wisselWapen).
+const wapenStaten = { drukspuit: nieuweWapenStaat(WAPEN_DRUKSPUIT), ratelaar: null };
+let actiefWapenNaam = 'drukspuit';
+let wapenStaat = wapenStaten.drukspuit;
 
 function updateAmmoUI() {
   ammoUI.textContent = wapenStaat.herladen ? 'Herladen…' : `${wapenStaat.magazijn} / ${wapenStaat.reserve}`;
@@ -1254,6 +1429,25 @@ function herladen() {
   wapenStaat.herlaadTimer = wapenStaat.herlaadDuur;
   speelHerlaad();
   updateAmmoUI();
+}
+
+// Wisselen tussen Drukspuit en Ratelaar (Q). Alleen mogelijk als de Ratelaar
+// gekocht is; geblokkeerd tijdens herladen (eenvoudiger en voorspelbaarder
+// dan het herladen te onderbreken).
+function wisselWapen() {
+  if (!ratelaarGekocht) return;
+  if (wapenStaat.herladen) return;
+  // Een eventuele nog zichtbare mondingsflits van het uitgaande wapen meteen
+  // doven, anders blijft die (zeldzaam, bij wisselen vlak na een schot) hangen.
+  vlamTimer = 0;
+  wapenStaat.definitie.vlam.visible = false;
+  wapenStaat.definitie.vlamLicht.visible = false;
+  actiefWapenNaam = actiefWapenNaam === 'drukspuit' ? 'ratelaar' : 'drukspuit';
+  wapenStaat = wapenStaten[actiefWapenNaam];
+  WAPEN_DRUKSPUIT.groep.visible = actiefWapenNaam === 'drukspuit';
+  WAPEN_RATELAAR.groep.visible = actiefWapenNaam === 'ratelaar';
+  updateAmmoUI();
+  updateHUD();
 }
 
 // Wordt elke frame aangeroepen zolang het spel actief is (pointer lock aan);
@@ -1276,7 +1470,6 @@ function updateWapen(dt) {
 const raycaster = new THREE.Raycaster();
 raycaster.far = 30;   // kamer is klein, verder dan dit hoeft niet
 
-const SCHOT_COOLDOWN = 0.2;   // vaste cadans (geen vuurtempo-upgrade in deze ticket)
 let laatsteSchotTijd = -999;
 let klok = 0;
 
@@ -1289,7 +1482,7 @@ let volgendeKlokGeluid = 40 + Math.random() * 40;
 
 function probeerTeSchieten() {
   if (wapenStaat.herladen) return;               // niet schieten tijdens herladen
-  if (klok - laatsteSchotTijd < SCHOT_COOLDOWN) return;
+  if (klok - laatsteSchotTijd < wapenStaat.definitie.schotCooldown) return;
   laatsteSchotTijd = klok;
   if (wapenStaat.magazijn <= 0) {
     speelDroogKlik();
@@ -1302,6 +1495,7 @@ function schiet() {
   wapenStaat.magazijn -= 1;
   updateAmmoUI();
 
+  const { vlam, vlamLicht } = wapenStaat.definitie;
   terugslag = 1;
   vlam.visible = true;
   vlamLicht.visible = true;
@@ -1403,16 +1597,11 @@ const SPELER_REGEN_PER_SEC    = 5;   // hp per seconde zodra regen actief is
 // --- Balanswaarden geld -------------------------------------------
 const GELD_PER_HIT  = 5;    // per treffer die niet dodelijk is
 const GELD_PER_KILL = 20;   // bonus bovenop de hit-beloning bij een kill
+const HEADSHOT_GELD_MULTIPLIER = 2;   // een dodelijke headshot geeft 2x het normale kill-geld
 
 // --- Wapenschade (te upgraden via het upgradepunt in Ticket 5) ----
 const WAPEN_SCHADE_MAX = 2;   // basis-lichaamsschade: 1, na upgrade 2 (MAX)
 let schadePerTreffer = 1;     // huidige lichaams-schade per treffer
-// Snelspanner-status hier (i.p.v. bij de rest van STAP 9's werkbank-code)
-// gedeclareerd: updateHUD() leest 'm en wordt al aangeroepen vóórdat STAP 9
-// in de bestandsvolgorde aan de beurt komt — anders een TDZ-ReferenceError.
-let snelspannerGekocht = false;
-// Zelfde TDZ-reden als hierboven voor magazijncapaciteitGekocht (updateHUD leest 'm ook).
-let magazijncapaciteitGekocht = false;
 const HEADSHOT_EXTRA = 1;     // extra schade bij een kop-treffer (lichaam = schadePerTreffer, kop = +1)
 
 // --- Balanswaarden golven ------------------------------------------
@@ -1588,7 +1777,7 @@ function raakOndode(ondode, punt, kop = false) {
   ondode.hp -= schade;
   speelTreffer();
   if (ondode.hp <= 0) {
-    spelStaat.geld += GELD_PER_KILL;
+    spelStaat.geld += GELD_PER_KILL * (kop ? HEADSHOT_GELD_MULTIPLIER : 1);
     doodOndode(ondode);
   } else {
     spelStaat.geld += GELD_PER_HIT;
@@ -1660,7 +1849,7 @@ function updateHUD() {
   // Upgrade-status (Ticket V7): laat in één oogopslag zien wat al MAX is.
   document.getElementById('schadeTekst').textContent = schadePerTreffer >= WAPEN_SCHADE_MAX ? 'MAX' : schadePerTreffer;
   document.getElementById('herlaadTekst').textContent = snelspannerGekocht ? 'MAX' : `${wapenStaat.herlaadDuur}s`;
-  document.getElementById('magazijnTekst').textContent = magazijncapaciteitGekocht ? `${wapenStaat.magazijnMax} MAX` : wapenStaat.magazijnMax;
+  document.getElementById('wapenTekst').textContent = wapenStaat.definitie.naam;
 }
 
 /* ================================================================
@@ -1739,13 +1928,12 @@ const DEUR_PRIJS       = 500;   // opent gang + atelier (zone C)
 const AMMO_PRIJS       = 300;   // vult reserve-munitie bij
 const AMMO_KIST_KOGELS = 48;    // reserve-kogels per aankoop
 const UPGRADE_PRIJS    = 500;   // schade +1 (daarna MAX)
-const MAGAZIJN_PRIJS         = 550;   // eenmalig: grotere magazijncapaciteit (daarna MAX)
-const MAGAZIJN_CAPACITEIT_BONUS = 4;  // magazijnMax +4 (en het huidige magazijn vult meteen mee)
+const RATELAAR_PRIJS   = 750;   // eenmalig: tweede wapen, op de binnenplaats
 
 // --- v0.3: Werkbank (atelier), tweede deur en binnenplaats-interacties ---
 const SNELSPANNER_PRIJS       = 600;   // eenmalig: sneller herladen
 const SNELSPANNER_HERLAADDUUR = 0.7;   // vervangt wapenStaat.herlaadDuur (was 1.2)
-const DEUR2_PRIJS  = 1250;             // opent de binnenplaats (zone D)
+const DEUR2_PRIJS  = 1000;             // v0.6: 1250->1000, opent de binnenplaats (zone D)
 const REGENTON_GELD = 400;             // eenmalige vondst op de binnenplaats
 const WATERTAP_PRIJS = 200;            // herbruikbaar: geld voor HP
 const WATERTAP_HP    = 50;             // hp per gebruik (gecapt op hpMax)
@@ -1765,6 +1953,7 @@ const VENSTERS_KAMER2 = [
 const VENSTERS_PLAATS = [
   { x: PLAATS_X_OOST - 0.4, z: PLAATS_Z_NOORD + 0.4, zone: 'D' },   // poortdoorgang, noordoost
   { x: PLAATS_X_OOST - 0.4, z: PLAATS_Z_ZUID - 0.4, zone: 'D' },    // keldergat, zuidoost
+  { x: PLAATS_CX, z: PLAATS_Z_NOORD + 0.4, zone: 'D' },             // v0.6: poort halverwege de noordmuur
 ];
 
 let deurGekocht = false;
@@ -1845,13 +2034,6 @@ const WERKBANK_Z = ATELIER_MIDDEN_Z - 2;
   wereld.add(g);
 }
 const werkbankMarkering = interactieMarkering(WERKBANK_X, WERKBANK_Z, 0xff9f5a);
-
-// --- Magazijncapaciteit (v0.5): bij de opslagkratten in de voorraadnis ---
-// (de kratten zelf zijn al decor, zie STAP 2 — hier alleen de markering op
-// diezelfde plek, geen extra prop nodig.)
-const MAGAZIJN_X = KAMER2_NIS_CX - 1.6;
-const MAGAZIJN_Z = KAMER2_NIS_CZ - 1.5;
-const magazijnMarkering = interactieMarkering(MAGAZIJN_X, MAGAZIJN_Z, 0xc9a86b);
 
 // Op de atelierkant (net als deurMarkering vóór deur 1 op de kamer-1-kant
 // staat), niet aan de binnenplaats-kant erachter (bugfix na code-review).
@@ -1957,27 +2139,29 @@ function koopSnelspanner() {
   if (spelStaat.geld < SNELSPANNER_PRIJS) { toonMelding(`Nog €${SNELSPANNER_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
   spelStaat.geld -= SNELSPANNER_PRIJS;
   snelspannerGekocht = true;
-  wapenStaat.herlaadDuur = SNELSPANNER_HERLAADDUUR;
+  // Geldt voor elk wapen dat al een eigen wapenStaat heeft (de Ratelaar kan
+  // dan nog niet gekocht zijn — nieuweWapenStaat() past 'm dan later zelf toe).
+  for (const staat of Object.values(wapenStaten)) if (staat) staat.herlaadDuur = staat.definitie.herlaadDuurSnel;
   speelKoop();
   toonMelding('Snelspanner gemonteerd — sneller herladen (MAX)');
   doofMarkering(werkbankMarkering);
+  updateAmmoUI();
   updateHUD();
 }
 
-// Magazijncapaciteit (v0.5): eenmalige upgrade bij de kratten in de
-// voorraadnis — extra magazijnruimte, meteen bijgevuld i.p.v. pas bij de
-// volgende herlaadbeurt. Zelfde eenmalig-tot-MAX-patroon als koopSnelspanner.
-function koopMagazijncapaciteit() {
-  if (magazijncapaciteitGekocht) return;
-  if (spelStaat.geld < MAGAZIJN_PRIJS) { toonMelding(`Nog €${MAGAZIJN_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
-  spelStaat.geld -= MAGAZIJN_PRIJS;
-  magazijncapaciteitGekocht = true;
-  wapenStaat.magazijnMax += MAGAZIJN_CAPACITEIT_BONUS;
-  wapenStaat.magazijn += MAGAZIJN_CAPACITEIT_BONUS;
+/// De Ratelaar (v0.6): eenmalig tweede wapen, gekocht bij het wandkooppunt op
+// de binnenplaats. Bouwt een eigen, persistente wapenStaat en wisselt er
+// meteen naartoe zodat de aankoop direct voelbaar is.
+function koopRatelaar() {
+  if (ratelaarGekocht) return;
+  if (spelStaat.geld < RATELAAR_PRIJS) { toonMelding(`Nog €${RATELAAR_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  spelStaat.geld -= RATELAAR_PRIJS;
+  ratelaarGekocht = true;
+  wapenStaten.ratelaar = nieuweWapenStaat(WAPEN_RATELAAR);
   speelKoop();
-  toonMelding(`Magazijncapaciteit vergroot! Nu ${wapenStaat.magazijnMax} per magazijn (MAX)`);
-  doofMarkering(magazijnMarkering);
-  updateAmmoUI();
+  toonMelding('De Ratelaar is gekocht! Druk Q om te wisselen');
+  doofMarkering(ratelaarMarkering);
+  if (actiefWapenNaam === 'drukspuit') wisselWapen();
   updateHUD();
 }
 
@@ -2058,14 +2242,14 @@ const werkbankPunt = {
     : `Druk T: Snelspanner — sneller herladen (€${SNELSPANNER_PRIJS})`,
   actie: koopSnelspanner,
 };
-const magazijnPunt = {
-  naam: 'Opslagkratten',
-  positie: new THREE.Vector3(MAGAZIJN_X, 0, MAGAZIJN_Z),
-  radius: 1.4,
-  prompt: () => magazijncapaciteitGekocht
-    ? 'Magazijncapaciteit is MAX'
-    : `Druk T: magazijncapaciteit (€${MAGAZIJN_PRIJS})`,
-  actie: koopMagazijncapaciteit,
+const ratelaarPunt = {
+  naam: 'De Ratelaar',
+  positie: new THREE.Vector3(RATELAAR_X, 0, RATELAAR_Z),
+  radius: 1.5,
+  prompt: () => ratelaarGekocht
+    ? 'De Ratelaar is al gekocht (Q om te wisselen)'
+    : `Druk T: koop De Ratelaar (€${RATELAAR_PRIJS})`,
+  actie: koopRatelaar,
 };
 const deur2Punt = {
   naam: 'Deur 2',
@@ -2090,7 +2274,7 @@ const watertapPunt = {
     : `Druk T: regenwater tappen (€${WATERTAP_PRIJS} -> +${WATERTAP_HP} HP)`,
   actie: koopWatertap,
 };
-const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, magazijnPunt, deur2Punt, regentonPunt, watertapPunt];
+const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, deur2Punt, regentonPunt, watertapPunt, ratelaarPunt];
 
 let huidigeInteractie = null;
 
@@ -2166,11 +2350,11 @@ function gameLoop(nu) {
 
   if (terugslag > 0) {
     terugslag = Math.max(0, terugslag - dt * 6);
-    wapen.position.z = -0.5 + terugslag * 0.08;
+    wapenStaat.definitie.groep.position.z = -0.5 + terugslag * 0.08;
   }
   if (vlamTimer > 0) {
     vlamTimer -= dt;
-    if (vlamTimer <= 0) { vlam.visible = false; vlamLicht.visible = false; }
+    if (vlamTimer <= 0) { wapenStaat.definitie.vlam.visible = false; wapenStaat.definitie.vlamLicht.visible = false; }
   }
 
   renderer.render(scene, camera);
@@ -2180,7 +2364,8 @@ requestAnimationFrame(gameLoop);
 // Debug-hooks voor Playwright-tests (zelfde patroon als DamChaosDebug).
 window.AmsterdamUndeadDebug = {
   scene, camera, speler, obstakels, isVrijePlek, GRENS,
-  wapenStaat, herladen, probeerTeSchieten, schiet,
+  get wapenStaat() { return wapenStaat; },   // v0.6: wapenStaat wordt herbonden bij wisselen (getter i.p.v. stale referentie)
+  herladen, probeerTeSchieten, schiet,
   ondoden, ondodenGroep, VENSTERS, spawnOndode, spawnWillekeurigeOndode, kiesVensterIndex,
   updateOndoden, raakOndode, doodOndode,
   spelerStaat, spelerSchade, updateSpelerRegen, updateVignet, updateHUD,
@@ -2195,6 +2380,7 @@ window.AmsterdamUndeadDebug = {
   // Geometrie- en balansconstanten (voor tests):
   DEUR_Z, DEUR_HALF, GANG_Z_EIND, KAMER2_Z_NOORD, HALF_DIEPTE, HALF_BREEDTE, KAMER2_HALF_B,
   ONDODE_HP_VROEG, ONDODE_HP_LAAT, ONDODE_HP_GOLFGRENS, HEADSHOT_EXTRA, ondodeStartHP,
+  GELD_PER_HIT, GELD_PER_KILL, HEADSHOT_GELD_MULTIPLIER,
   GOLF_MAX_ACTIEF, lampLichten,
   // v0.3 zone-D / werkbank-constanten (Ticket V1):
   DEUR2_HALF, DEUR2_X, PLAATS_BREEDTE, PLAATS_DIEPTE, PLAATS_X_OOST,
@@ -2222,10 +2408,11 @@ window.AmsterdamUndeadDebug = {
   set plaatsBetreden(v) { plaatsBetreden = v; },
   koopSnelspanner, werkbankPunt,
   get snelspannerGekocht() { return snelspannerGekocht; },
-  // v0.5: magazijncapaciteit-upgrade in de voorraadnis:
-  MAGAZIJN_PRIJS, MAGAZIJN_CAPACITEIT_BONUS, MAGAZIJN_X, MAGAZIJN_Z,
-  koopMagazijncapaciteit, magazijnPunt, magazijnMarkering,
-  get magazijncapaciteitGekocht() { return magazijncapaciteitGekocht; },
+  // v0.6: tweede wapen "De Ratelaar" (vervangt de magazijncapaciteit-upgrade):
+  RATELAAR_PRIJS, RATELAAR_X, RATELAAR_Z, WAPEN_DRUKSPUIT, WAPEN_RATELAAR, wapenStaten,
+  koopRatelaar, wisselWapen, ratelaarPunt, ratelaarMarkering,
+  get ratelaarGekocht() { return ratelaarGekocht; },
+  get actiefWapenNaam() { return actiefWapenNaam; },
   // v0.4: atelier (kamer 2) vergroot tot een L-vorm met een voorraadnis:
   KAMER2_DIEPTE, KAMER2_NIS_DIEPTE, KAMER2_NIS_BREEDTE,
   KAMER2_NIS_X_WEST, KAMER2_NIS_Z_ZUID, KAMER2_NIS_CX, KAMER2_NIS_CZ,

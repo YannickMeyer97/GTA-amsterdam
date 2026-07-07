@@ -88,7 +88,8 @@ te gaan naar het hoofdmenu.
 | Rondkijken | Muis (klik eerst in het spel) |
 | Schieten | Linkermuisknop |
 | Herladen | `R` |
-| Kopen / gebruiken | `T` (bij de deur, ammo-kist of upgradepunt) |
+| Kopen / gebruiken | `T` (bij de deur, ammo-kist, upgradepunt of wandkooppunt) |
+| Wissel van wapen | `Q` (pas nadat De Ratelaar gekocht is) |
 | Pauze | `Esc` |
 
 ### Gameplay
@@ -98,8 +99,9 @@ te gaan naar het hoofdmenu.
   (1 treffer), daarna taaier (2 treffers); elke golf komen er meer, en elke
   ontgrendelde zone verhoogt de spawndruk (sneller + meer gelijktijdig).
 - **Trefzones tellen:** een lichaamstreffer doet 1 schade, een **headshot**
-  het dubbele. Je magazijn houdt 8 kogels (reserve 48); `R` herlaadt in 1,2 s
-  (0,7 s na de Snelspanner-upgrade).
+  het dubbele — én een dodelijke headshot levert 2x zoveel geld op als een
+  gewone kill. Je startwapen (de Drukspuit) heeft een magazijn van 8 kogels
+  (reserve 48); `R` herlaadt in 1,2 s (0,7 s na de Snelspanner-upgrade).
 - Kom je te dicht bij een ondode, dan slaat 'ie (15 schade). Je HP (100)
   regenereert vanzelf na een paar seconden zonder klappen; een rode
   schermrand waarschuwt bij schade. Op 0 HP is het **game over** (klik
@@ -113,12 +115,18 @@ te gaan naar het hoofdmenu.
    daarna MAX).
 2. **De gang** — een smal, donker, kaal knelpunt tussen de woonkamer en het
    atelier; puur doorgang, geen interacties.
-3. **Het schildersatelier** (achter deur 1, €750) — koel daglicht via een
-   dakraam, een schildersezel als landmark, en de **Werkbank**: een
-   eenmalige Snelspanner-upgrade (€600, herlaadtijd 1,2s → 0,7s).
-4. **De binnenplaats** (achter deur 2, €1250, vanuit het atelier) — buiten,
-   ommuurd, koud maanlicht op natte klinkers. De **Regenton** geeft eenmalig
-   €400, de **Watertap** is herbruikbaar (€200 → +50 HP, gecapt op je max).
+3. **Het schildersatelier** (achter deur 1, €500) — een L-vormige ruimte met
+   koel daglicht via twee dakramen, een schildersezel als landmark, een
+   voorraadnis met een eigen invalshoek, en de **Werkbank**: een eenmalige
+   Snelspanner-upgrade (€600, herlaadtijd 1,2s → 0,7s).
+4. **De binnenplaats** (achter deur 2, €1000, vanuit het atelier) — een
+   ruime, open buitenruimte, verlicht door vier lantaarnpalen, met koud
+   maanlicht op natte klinkers. De **Regenton** geeft eenmalig €400, de
+   **Watertap** is herbruikbaar (€200 → +50 HP, gecapt op je max), en tegen
+   de oostmuur staat het wandkooppunt van **De Ratelaar** (€750): een
+   tweede, snellere wapen met zo'n dubbele munitiecapaciteit t.o.v. de
+   Drukspuit. Wissel met `Q` tussen beide wapens; elk houdt zijn eigen
+   magazijn en reservemunitie bij.
 
 ### Sfeer & techniek
 
