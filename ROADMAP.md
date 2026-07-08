@@ -69,6 +69,45 @@ weer vervangen door De Ratelaar (zie hieronder).
 - **Deur 2 goedkoper**: €1250 → €1000; startscherm/hulp-tekst bijgewerkt
   (prijzen + `Q`-toets).
 
+## v0.7/v0.8/v0.9 — Perks, barricades en wave-pacing ✅
+Vertaling van een extern conceptplan naar originele namen (géén bestaande
+IP-namen, zie IP-regels in CLAUDE.md) en aangesloten op de bestaande
+systemen. Atelier/binnenplaats zijn in deze ronde bewust NIET nogmaals
+vergroot bovenop v0.6 — dat volgde apart in v0.10 (zie hieronder).
+
+- **v0.7 (V3)** — Buitenverlichting van de binnenplaats iets feller/breder
+  (maanlicht: hogere intensiteit/bereik, lagere decay voor zachtere val-off).
+- **v0.7 (V4)** — Snelspanner omgedoopt tot **Snelheidselixer** (user-facing
+  tekst; interne functienamen ongewijzigd). Prijs/functionaliteit gelijk.
+- **v0.7 (V5)** — **Pantserdrank**: nieuwe eenmalige perk in het atelier
+  (€1000) — verdubbelt de maximale HP (100 → 200); de HP-balk rekent al in
+  percentages, dus die schaalt vanzelf mee.
+- **v0.8** — **Barricades** op alle vensters (3 planken elk, zichtbaar als
+  losse plankmeshes). Een ondode die een gebarricadeerd venster kiest,
+  beukt eerst een plank kapot (`beukBarricade`) i.p.v. meteen te spawnen —
+  pas bij 0 planken spawnt er echt een ondode (`golfSpawnStap`). De speler
+  repareert per plank via `T` (+€20, zelfde weg-splicen-patroon als een
+  MAX-upgrade zodra de barricade weer compleet is).
+- **v0.9** — Wave-pacing: rust tussen golven 4s → 8s. Na elke golf een
+  **"Wave cleared"**-banner met oplopend bonusgeld (€75 + €15 per golf) en
+  auto-heal naar minimaal 75 HP (verlaagt nooit).
+
+## v0.10 — Atelier en binnenplaats alsnog +40% ✅
+Alsnog uitgevoerd (V1/V2 uit het externe conceptplan), bovenop de v0.6-maten.
+
+- **Atelier**: `KAMER2_HALF_B` 3.5→4.5, `KAMER2_DIEPTE` 12→15 (126→177 m²,
+  +40% t.o.v. de v0.6-grootte). Het noordraam-spawnpunt staat nu verder van
+  de ezel/oostraam af ("spawnpunten verder uit elkaar"); twee extra
+  dakramen (noord + zuidoost) houden de nieuwe hoeken leesbaar; wat extra
+  decor vult de nieuwe randen.
+- **Binnenplaats**: `PLAATS_BREEDTE` 14→17, `PLAATS_DIEPTE` 14→16
+  (196→272 m², +39%). `PLAATS_BREEDTE` moest minstens `KAMER2_DIEPTE` zijn
+  — anders overlapt de noord/zuidmuur van de plaats met het (nu diepere)
+  atelier, een echte bug die deze ronde is gevonden en gefixt. Lantaarns
+  staan verder uit elkaar (±5 i.p.v. ±3); een **schuurtje** en een
+  **kratten-obstakel** (met écht collision, in tegenstelling tot de rest
+  van het decor) breken de looproutes een beetje op, zoals gevraagd.
+
 ## Openstaande verbeteringen Defend National Monument (bevroren tot expliciet gevraagd)
 - Performance verbeteren
 - Wave balancing testen

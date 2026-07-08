@@ -94,19 +94,26 @@ te gaan naar het hoofdmenu.
 
 ### Gameplay
 
-- Overleef doorlopende **golven ondoden** die uit de vensters het pand
-  binnendringen en op je afkomen. De eerste twee golven zijn ze fragiel
-  (1 treffer), daarna taaier (2 treffers); elke golf komen er meer, en elke
-  ontgrendelde zone verhoogt de spawndruk (sneller + meer gelijktijdig).
+- Overleef doorlopende **golven ondoden** die de ramen barricaderen en
+  op je afkomen. De eerste twee golven zijn ze fragiel (1 treffer), daarna
+  taaier (2 treffers); elke golf komen er meer, en elke ontgrendelde zone
+  verhoogt de spawndruk (sneller + meer gelijktijdig).
+- **Barricades:** elk venster heeft 3 planken. Een ondode moet ze eerst stuk
+  beuken voordat hij naar binnen kan — dat kost 'm tijd. Sta je dichtbij een
+  beschadigd venster, dan kun je met `T` een plank herstellen: dat levert
+  meteen €20 op, maar maakt je wel even kwetsbaar.
 - **Trefzones tellen:** een lichaamstreffer doet 1 schade, een **headshot**
   het dubbele — én een dodelijke headshot levert 2x zoveel geld op als een
   gewone kill. Je startwapen (de Drukspuit) heeft een magazijn van 8 kogels
-  (reserve 48); `R` herlaadt in 1,2 s (0,7 s na de Snelspanner-upgrade).
-- Kom je te dicht bij een ondode, dan slaat 'ie (15 schade). Je HP (100)
-  regenereert vanzelf na een paar seconden zonder klappen; een rode
-  schermrand waarschuwt bij schade. Op 0 HP is het **game over** (klik
-  "Opnieuw beginnen" om te herstarten).
-- Je verdient **geld** per treffer en per kill.
+  (reserve 48); `R` herlaadt in 1,2 s (0,7 s na de Snelheidselixer).
+- Kom je te dicht bij een ondode, dan slaat 'ie (15 schade). Je HP (100,
+  of 200 met Pantserdrank) regenereert vanzelf na een paar seconden zonder
+  klappen; een rode schermrand waarschuwt bij schade. Op 0 HP is het
+  **game over** (klik "Opnieuw beginnen" om te herstarten).
+- Je verdient **geld** per treffer en per kill. Na elke golf krijg je een
+  **"Wave cleared"**-bonus (die oploopt met het golfnummer) en heel je
+  automatisch aan tot minimaal 75 HP — de rustpauze tussen golven duurt
+  8 seconden, genoeg om te repareren, te kopen en op adem te komen.
 
 ### Drie zones, elk met een eigen doel
 
@@ -115,13 +122,15 @@ te gaan naar het hoofdmenu.
    daarna MAX).
 2. **De gang** — een smal, donker, kaal knelpunt tussen de woonkamer en het
    atelier; puur doorgang, geen interacties.
-3. **Het schildersatelier** (achter deur 1, €500) — een L-vormige ruimte met
-   koel daglicht via twee dakramen, een schildersezel als landmark, een
-   voorraadnis met een eigen invalshoek, en de **Werkbank**: een eenmalige
-   Snelspanner-upgrade (€600, herlaadtijd 1,2s → 0,7s).
+3. **Het schildersatelier** (achter deur 1, €500) — een grote, L-vormige
+   ruimte met koel daglicht via vier dakramen, een schildersezel als
+   landmark, een voorraadnis met een eigen invalshoek, de **Werkbank**
+   (eenmalige Snelheidselixer, €600, herlaadtijd 1,2s → 0,7s) en
+   **Pantserdrank** (€1000, eenmalig, verdubbelt je maximale HP naar 200).
 4. **De binnenplaats** (achter deur 2, €1000, vanuit het atelier) — een
-   ruime, open buitenruimte, verlicht door vier lantaarnpalen, met koud
-   maanlicht op natte klinkers. De **Regenton** geeft eenmalig €400, de
+   grote, open buitenruimte, verlicht door vier lantaarnpalen en zacht
+   maanlicht op natte klinkers, met een schuurtje en een kratten-stapel als
+   tactische obstakels. De **Regenton** geeft eenmalig €400, de
    **Watertap** is herbruikbaar (€200 → +50 HP, gecapt op je max), en tegen
    de oostmuur staat het wandkooppunt van **De Ratelaar** (€750): een
    tweede, snellere wapen met zo'n dubbele munitiecapaciteit t.o.v. de

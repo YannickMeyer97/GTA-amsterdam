@@ -417,8 +417,8 @@ const GANG_LENGTE = 3;
 const GANG_Z_EIND = DEUR_Z - GANG_LENGTE;
 
 // Tweede kamer (v0.3: het schildersatelier, zone C): x ∈ [-KAMER2_HALF_B, KAMER2_HALF_B], z ∈ [KAMER2_Z_NOORD, GANG_Z_EIND].
-const KAMER2_HALF_B = 3.5;
-const KAMER2_DIEPTE = 12;  // v0.4: 5->9 (nis), v0.6: 9->12 (+20% t.o.v. de startkamer, zie kamer2DebugInfo)
+const KAMER2_HALF_B = 4.5;  // v0.10: 3.5->4.5, samen met KAMER2_DIEPTE +40% t.o.v. de v0.6-grootte
+const KAMER2_DIEPTE = 15;   // v0.4: 5->9 (nis), v0.6: 9->12, v0.10: 12->15
 const KAMER2_Z_NOORD = GANG_Z_EIND - KAMER2_DIEPTE;
 
 // v0.4: "de voorraadnis" — een L-vormige uitstulping die alleen aan het
@@ -442,8 +442,11 @@ const KAMER2_NIS_CZ = (KAMER2_Z_NOORD + KAMER2_NIS_Z_ZUID) / 2;
    ---------------------------------------------------------------- */
 const DEUR2_HALF = 1;                                    // halve breedte van deuropening 2
 const DEUR2_X = KAMER2_HALF_B;                            // vlak van de oostmuur van kamer 2
-const PLAATS_BREEDTE = 14;                                // v0.6: 6->14 (was Ticket V5), +56% t.o.v. het vergrote atelier
-const PLAATS_DIEPTE = 14;                                 // v0.6: 5->14, samen met PLAATS_BREEDTE: open binnenplaats voor grote golven
+// v0.10: PLAATS_BREEDTE moet minstens KAMER2_DIEPTE zijn, anders steekt de
+// noord/zuidmuur van de plaats (die corner-sealing tot voorbij DEUR2_X
+// reikt) in het atelier zelf — vandaar de marge t.o.v. de 15m diepe kamer.
+const PLAATS_BREEDTE = 17;                                // v0.6: 6->14, v0.10: 14->17 (+38.8% t.o.v. de v0.6-grootte)
+const PLAATS_DIEPTE = 16;                                 // v0.6: 5->14, v0.10: 14->16
 const PLAATS_X_OOST = DEUR2_X + PLAATS_DIEPTE;            // oostgrens van de binnenplaats
 const PLAATS_CX = (DEUR2_X + PLAATS_X_OOST) / 2;          // midden-x van de binnenplaats
 // Deur 2 zit gecentreerd in de oostmuur van het atelier; hier al berekend
@@ -620,14 +623,17 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
   bouwMuur(PLAATS_CX, PLAATS_Z_ZUID + MUUR_DIKTE / 2, PLAATS_DIEPTE + MUUR_DIKTE * 2, MUUR_DIKTE, GANG_PLEISTER);
   bouwMuur(PLAATS_X_OOST + MUUR_DIKTE / 2, DEUR2_Z, MUUR_DIKTE, PLAATS_BREEDTE + MUUR_DIKTE * 2, GANG_PLEISTER);
 
-  // v0.6: koud maanlicht is nu ambient-vulling — de lantaarns (zie hieronder)
+  // v0.6: koud maanlicht is ambient-vulling — de lantaarns (zie hieronder)
   // zijn de belangrijkste lichtbron op de vergrote binnenplaats.
-  const maanlicht = new THREE.PointLight(0x9fc0e8, 10, 15, 2);
+  // v0.7 (V3): iets sterker/breder en een lagere decay (zachtere val-off),
+  // zodat ondoden ook tussen de lantaarns door goed zichtbaar blijven —
+  // de nachtsfeer blijft door de kleur (koel blauw) intact.
+  const maanlicht = new THREE.PointLight(0x9fc0e8, 15, 19, 1.6);
   maanlicht.position.set(PLAATS_CX, KAMER_HOOGTE + 0.4, DEUR2_Z);
   wereld.add(maanlicht);
   // Tweede, zwakker maanlicht bij de deur zodat je 'm bij binnenkomst
   // meteen ziet i.p.v. eerst een paar meter het donker in te moeten lopen.
-  const maanlichtDeur = new THREE.PointLight(0x9fc0e8, 14, 10, 2);
+  const maanlichtDeur = new THREE.PointLight(0x9fc0e8, 18, 12, 1.6);
   maanlichtDeur.position.set(DEUR2_X + 1.5, KAMER_HOOGTE + 0.2, DEUR2_Z);
   wereld.add(maanlichtDeur);
 
@@ -650,7 +656,8 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
     licht.position.set(x, 2.5, z);
     wereld.add(licht);
   }
-  for (const [dx, dz] of [[-3, -3], [3, -3], [-3, 3], [3, 3]]) {
+  // v0.10: verder uit elkaar (was ±3) — de binnenplaats is groter geworden.
+  for (const [dx, dz] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) {
     bouwLantaarn(PLAATS_CX + dx, DEUR2_Z + dz);
   }
 
@@ -706,12 +713,16 @@ for (const x of [-2, 2]) {
 // verschillende hoeken aan (flankerend) i.p.v. frontaal. Zie VENSTERS_KAMER2
 // voor de bijbehorende spawnpunten.
 const ATELIER_OOSTRAAM_Z = ATELIER_MIDDEN_Z - 1.7;
+// v0.10: verder van het midden (was -1.8) — de hoofdruimte is breder
+// geworden, dus dit raam kan nu verder van de ezel/oostraam af staan
+// ("spawnpunten verder uit elkaar", V1 uit het map-uitbreidingsplan).
+const ATELIER_NOORDRAAM_X = -3.2;
 {
   const kozijnNW = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.6, 0.12), kozijnMateriaal);
-  kozijnNW.position.set(-1.8, 1.9, KAMER2_Z_NOORD + 0.06);
+  kozijnNW.position.set(ATELIER_NOORDRAAM_X, 1.9, KAMER2_Z_NOORD + 0.06);
   wereld.add(kozijnNW);
   const glasNW = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.3, 0.05), glasMateriaal);
-  glasNW.position.set(-1.8, 1.9, KAMER2_Z_NOORD + 0.18);
+  glasNW.position.set(ATELIER_NOORDRAAM_X, 1.9, KAMER2_Z_NOORD + 0.18);
   wereld.add(glasNW);
 
   const kozijnOost = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.6, 1.3), kozijnMateriaal);
@@ -804,19 +815,34 @@ hangLamp(1.8, 2.2);
   dakraamNisLicht.position.set(KAMER2_NIS_CX, KAMER_HOOGTE - 0.3, KAMER2_NIS_CZ);
   wereld.add(dakraamNisLicht);
 
-  // v0.6: de hoofdruimte is 12m diep geworden (was 9m) — het noordelijke
-  // deel valt buiten het bereik van het centrale dakraam. Een derde,
-  // kleiner daklicht (zelfde stijl) houdt ook die hoek leesbaar.
+  // v0.6: de hoofdruimte is dieper geworden dan het centrale dakraam kan
+  // verlichten. Een derde, kleiner daklicht (zelfde stijl) houdt ook die
+  // hoek leesbaar. v0.10: verder naar het noorden geschoven + iets sterker,
+  // want de ruimte werd nog eens 3m dieper (12m -> 15m).
   const dakraamNoord = new THREE.Mesh(
     new THREE.PlaneGeometry(1.4, 1.4),
     new THREE.MeshBasicMaterial({ color: 0xbfe0ff })
   );
   dakraamNoord.rotation.x = Math.PI / 2;
-  dakraamNoord.position.set(0.5, KAMER_HOOGTE - 0.02, ATELIER_MIDDEN_Z - 4);
+  dakraamNoord.position.set(0.5, KAMER_HOOGTE - 0.02, ATELIER_MIDDEN_Z - 6);
   wereld.add(dakraamNoord);
-  const dakraamNoordLicht = new THREE.PointLight(0xaacdf0, 18, 10, 2);
-  dakraamNoordLicht.position.set(0.5, KAMER_HOOGTE - 0.3, ATELIER_MIDDEN_Z - 4);
+  const dakraamNoordLicht = new THREE.PointLight(0xaacdf0, 22, 12, 2);
+  dakraamNoordLicht.position.set(0.5, KAMER_HOOGTE - 0.3, ATELIER_MIDDEN_Z - 6);
   wereld.add(dakraamNoordLicht);
+
+  // v0.10: en de ruimte is ook 2m breder geworden (9m i.p.v. 7m) — een
+  // vierde daklicht aan de zuidoostkant (bij de nieuwe kruk/lijstenstapel)
+  // zodat ook die hoek niet pikdonker blijft.
+  const dakraamZuidoost = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.2, 1.2),
+    new THREE.MeshBasicMaterial({ color: 0xbfe0ff })
+  );
+  dakraamZuidoost.rotation.x = Math.PI / 2;
+  dakraamZuidoost.position.set(3.2, KAMER_HOOGTE - 0.02, ATELIER_MIDDEN_Z - 3);
+  wereld.add(dakraamZuidoost);
+  const dakraamZuidoostLicht = new THREE.PointLight(0xaacdf0, 18, 10, 2);
+  dakraamZuidoostLicht.position.set(3.2, KAMER_HOOGTE - 0.3, ATELIER_MIDDEN_Z - 3);
+  wereld.add(dakraamZuidoostLicht);
 }
 
 // De koopbare deur: een houten paneel dat het deurgat vult, plus een obstakel
@@ -1046,6 +1072,30 @@ function bouwFietsenrek(cx, cz) {
   wereld.add(fiets);
 }
 bouwFietsenrek(PLAATS_CX + 1.6, DEUR2_Z + 2.2);
+
+// v0.10: een schuurtje en een kratten-obstakel MET echte collision (in
+// tegenstelling tot de rest van het decor) — de vergrote binnenplaats is nu
+// ruim genoeg voor een paar tactische obstakels die de looproutes breken
+// zonder de open ruimte te verpesten. Bewust ver van de lantaarns/deur/
+// interactiepunten/spawnankers geplaatst.
+function bouwSchuurtje(cx, cz) {
+  const muurtje = mat(0x4a3c2a, 0.85);
+  const wand = blok(2.0, 1.9, 2.2, muurtje);
+  wand.position.set(cx, 0.95, cz);
+  wereld.add(wand);
+  const dak = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.12, 2.5), mat(0x2a2018, 0.7));
+  dak.position.set(cx, 1.96, cz);
+  wereld.add(dak);
+  registreerRechthoek(cx - 1.0, cx + 1.0, cz - 1.1, cz + 1.1, 0.1);
+}
+bouwSchuurtje(PLAATS_CX + 2.5, DEUR2_Z - 6);
+
+// Kratten-obstakel: hergebruikt het bestaande visuele model, maar krijgt
+// hier (anders dan de decoratieve kratten elders) wél een eigen collision-
+// rechthoek — bewust klein, zodat ondoden er niet structureel op vastlopen.
+bouwKratten(PLAATS_CX - 4.5, DEUR2_Z + 6);
+registreerRechthoek(PLAATS_CX - 4.8, PLAATS_CX - 4.2, DEUR2_Z + 5.7, DEUR2_Z + 6.3, 0.1);
+
 // Decor-ankers op de toekomstige spawnpunten (poort + keldergat), zodat je
 // al ziet waar ondoden straks vandaan komen voordat deur 2 gekocht is.
 {
@@ -1093,6 +1143,12 @@ bouwKruk(-1.0, ATELIER_MIDDEN_Z + 0.7);
 // noorden/zuiden van de hoofdruimte niet kaal aanvoelt.
 bouwVerfplank(2.2, ATELIER_MIDDEN_Z - 4.3, 0.2);           // dieper noordelijk, tegen de oostmuur
 bouwLijstenstapel(-0.6, ATELIER_MIDDEN_Z + 3.8, -0.4);     // dichter bij de gang-doorgang
+// v0.10: extra decor bij de verbreding (9m i.p.v. 7m) en verdere verdieping
+// (15m i.p.v. 12m) — vult de nieuwe randen zonder de bewegingsruimte rond
+// de ezel (blijft op x=-1.6) te verkleinen.
+bouwKruk(3.7, ATELIER_MIDDEN_Z - 0.5);                      // nieuwe oostelijke strook
+bouwLijstenstapel(3.6, ATELIER_MIDDEN_Z - 3.6, 0.6);        // noordoost-hoek
+bouwVerfplank(-3.9, ATELIER_MIDDEN_Z - 5.8, 0.4);           // diep noordwesten, tegen de westmuur
 for (const [x, z, kleur] of [
   [-1.8, ATELIER_MIDDEN_Z - 0.5, 0xb5603a], [-1.3, ATELIER_MIDDEN_Z + 0.3, 0x3a5f8c],
   [-2.0, ATELIER_MIDDEN_Z + 0.6, 0xd8c24a], [0.4, ATELIER_MIDDEN_Z - 1.5, 0x3a6b45],
@@ -1105,6 +1161,24 @@ for (const [x, z, kleur] of [
 // karakter van de nis en geeft 'm een eigen identiteit binnen het atelier.
 bouwKratten(KAMER2_NIS_CX - 1.6, KAMER2_NIS_CZ - 1.5);
 bouwVat(KAMER2_NIS_CX + 1.5, KAMER2_NIS_CZ + 1.3);
+
+// --- Pantserdrank (v0.7): nieuwe eenmalige perk in het atelier -----------
+// Een metalen fust met een gestaalde, koel-witte gloed (i.p.v. de warme
+// verf-props) — visueel meteen herkenbaar als iets anders dan het decor.
+const PANTSERDRANK_X = 2.5;
+const PANTSERDRANK_Z = ATELIER_MIDDEN_Z + 2.5;
+{
+  const fust = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.32, 0.85, 12),
+    new THREE.MeshStandardMaterial({ color: 0x6b7278, roughness: 0.35, metalness: 0.7 }));
+  fust.position.set(PANTSERDRANK_X, 0.42, PANTSERDRANK_Z);
+  fust.castShadow = true;
+  wereld.add(fust);
+  const gloed = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.3, 10),
+    new THREE.MeshStandardMaterial({ color: 0xd8f0ff, emissive: 0x9fd8ff, emissiveIntensity: 1.3 }));
+  gloed.position.set(PANTSERDRANK_X, 1.0, PANTSERDRANK_Z);
+  wereld.add(gloed);
+}
+const pantserdrankMarkering = interactieMarkering(PANTSERDRANK_X, PANTSERDRANK_Z, 0x9fd8ff);
 
 /* ================================================================
    STAP 3 — DE SPELER: first-person besturing met botsingen
@@ -1276,6 +1350,7 @@ function updateSpeler(dt) {
 // al bij het opbouwen van het startwapen — anders een TDZ-ReferenceError.
 let snelspannerGekocht = false;
 let ratelaarGekocht = false;
+let pantserdrankGekocht = false;
 
 /* ================================================================
    STAP 4 — SCHIETEN: wapen, raycast, ammo en herladen
@@ -1552,6 +1627,7 @@ function speelSchot()     { piep('sawtooth', 480, 120, 0.09, 0.1); }
 function speelDroogKlik() { piep('square', 200, 180, 0.04, 0.06); }
 function speelHerlaad()   { piep('sine', 300, 500, 0.15, 0.06); setTimeout(() => piep('sine', 500, 700, 0.12, 0.06), 900); }
 function speelTreffer()   { piep('square', 320, 90, 0.07, 0.08); }
+function speelPlankBreek() { piep('sawtooth', 180, 60, 0.09, 0.09); }
 function speelSpelerAu()  { piep('sawtooth', 160, 60, 0.18, 0.11); }
 // Nieuwe sfeergeluiden (allemaal live via Web Audio, geen bestanden):
 function speelGolfStart() { piep('sawtooth', 130, 260, 0.18, 0.08); setTimeout(() => piep('square', 200, 340, 0.22, 0.06), 130); }
@@ -1608,8 +1684,13 @@ const HEADSHOT_EXTRA = 1;     // extra schade bij een kop-treffer (lichaam = sch
 const GOLF_BASIS_AANTAL   = 5;    // aantal ondoden in golf 1
 const GOLF_AANTAL_GROEI   = 2;    // extra ondoden per volgende golf
 const GOLF_SPAWN_INTERVAL = 1.1;  // s tussen twee spawns binnen dezelfde golf
-const GOLF_RUST_TIJD      = 4;    // s rust tussen golven (en vóór golf 1)
+const GOLF_RUST_TIJD      = 8;    // v0.9: 4->8s rust tussen golven (en vóór golf 1) — tijd om te repareren/kopen
 const GOLF_MAX_ACTIEF     = 18;   // max. gelijktijdig levende ondoden (perf-plafond), bij enkel zone A
+// v0.9: wave-rewards — bonusgeld schaalt mee met het golfnummer, en de
+// speler heelt automatisch op tot minimaal WAVE_HEAL_MIN (verlaagt nooit).
+const WAVE_BONUS_BASIS  = 75;
+const WAVE_BONUS_PER_GOLF = 15;
+const WAVE_HEAL_MIN = 75;
 
 // --- Spawn-pacing per ontgrendelde zone (Ticket V6) -----------------------
 // Elke gekochte deur ontgrendelt een extra zone: het spawn-interval daalt
@@ -1630,9 +1711,12 @@ function effectiefMaxActief() {
 
 // Vensterpunten: dezelfde x-posities als de ramen op de zuidmuur (STAP 2),
 // net binnen de kamer zodat de ondoden meteen op de vloer staan.
+// `spanX`: geeft de oriëntatie van de barricade-planken (v0.8) — true voor
+// ramen in een muur die langs X loopt (planken liggen dus horizontaal
+// gemeten in x), false voor ramen in een muur die langs Z loopt.
 const VENSTERS = [
-  { x: -2, z: HALF_DIEPTE - 0.4, zone: 'A' },
-  { x: 2, z: HALF_DIEPTE - 0.4, zone: 'A' },
+  { x: -2, z: HALF_DIEPTE - 0.4, zone: 'A', spanX: true },
+  { x: 2, z: HALF_DIEPTE - 0.4, zone: 'A', spanX: true },
 ];
 
 function maakOndodeModel() {
@@ -1900,15 +1984,23 @@ function updateGolf(dt) {
     // Perf-plafond + spawn-interval schalen mee met het aantal ontgrendelde
     // zones (Ticket V6): meer open deuren = drukker, tot aan het plafond.
     if (spelStaat.spawnTimer <= 0 && ondoden.length < effectiefMaxActief()) {
-      spawnWillekeurigeOndode();
-      spelStaat.teSpawnen--;
+      // v0.8: een gebarricadeerd venster spawnt niet meteen — golfSpawnStap()
+      // beukt dan alleen een plank kapot en telt niet mee als spawn.
+      const nieuw = golfSpawnStap();
+      if (nieuw) spelStaat.teSpawnen--;
       spelStaat.spawnTimer = effectiefSpawnInterval();
     }
   } else if (ondoden.length === 0) {
     spelStaat.golfActief = false;
+    const golfVoltooid = spelStaat.golf;
     spelStaat.golf++;
     spelStaat.rustTimer = GOLF_RUST_TIJD;
-    toonGolfBanner('GOLF OVERLEEFD', 'koop bij de kist of het upgradepunt');
+    // v0.9: wave-rewards — bonusgeld + auto-heal, zodat de rustperiode ook
+    // echt als beloning voelt i.p.v. alleen een pauze.
+    const bonus = WAVE_BONUS_BASIS + golfVoltooid * WAVE_BONUS_PER_GOLF;
+    spelStaat.geld += bonus;
+    spelerStaat.hp = Math.max(spelerStaat.hp, WAVE_HEAL_MIN);
+    toonGolfBanner('Wave cleared', `+€${bonus} bonus · koop bij de kist of het upgradepunt`);
     speelGolfKlaar();
     updateHUD();
   }
@@ -1937,24 +2029,107 @@ const DEUR2_PRIJS  = 1000;             // v0.6: 1250->1000, opent de binnenplaat
 const REGENTON_GELD = 400;             // eenmalige vondst op de binnenplaats
 const WATERTAP_PRIJS = 200;            // herbruikbaar: geld voor HP
 const WATERTAP_HP    = 50;             // hp per gebruik (gecapt op hpMax)
+const PANTSERDRANK_PRIJS    = 1000;    // v0.7: eenmalige perk in het atelier
+const PANTSERDRANK_HP_BONUS = 100;     // hpMax +100 (100 -> 200), meteen ook zelf bijgevuld
 
 // Nieuwe spawn-vensters die pas actief worden zodra de deur gekocht is.
 // Atelier-spawns matchen de asymmetrische ramen (Ticket V2): één noordwest,
 // één op de oostmuur — flankerende aanval i.p.v. frontaal.
 const VENSTERS_KAMER2 = [
-  { x: -1.8, z: KAMER2_Z_NOORD + 0.4, zone: 'C' },
-  { x: KAMER2_HALF_B - 0.4, z: ATELIER_OOSTRAAM_Z, zone: 'C' },
+  { x: ATELIER_NOORDRAAM_X, z: KAMER2_Z_NOORD + 0.4, zone: 'C', spanX: true },
+  { x: KAMER2_HALF_B - 0.4, z: ATELIER_OOSTRAAM_Z, zone: 'C', spanX: false },
   // v0.4: derde, meest westelijke invalshoek vanuit de nieuwe voorraadnis.
-  { x: KAMER2_NIS_X_WEST + 0.4, z: KAMER2_NIS_CZ, zone: 'C' },
+  { x: KAMER2_NIS_X_WEST + 0.4, z: KAMER2_NIS_CZ, zone: 'C', spanX: false },
 ];
 
 // Binnenplaats-spawns (Ticket V5): een poortdoorgang en een keldergat, pas
 // actief zodra deur 2 gekocht is (zie koopDeur2).
 const VENSTERS_PLAATS = [
-  { x: PLAATS_X_OOST - 0.4, z: PLAATS_Z_NOORD + 0.4, zone: 'D' },   // poortdoorgang, noordoost
-  { x: PLAATS_X_OOST - 0.4, z: PLAATS_Z_ZUID - 0.4, zone: 'D' },    // keldergat, zuidoost
-  { x: PLAATS_CX, z: PLAATS_Z_NOORD + 0.4, zone: 'D' },             // v0.6: poort halverwege de noordmuur
+  { x: PLAATS_X_OOST - 0.4, z: PLAATS_Z_NOORD + 0.4, zone: 'D', spanX: false },   // poortdoorgang, noordoost
+  { x: PLAATS_X_OOST - 0.4, z: PLAATS_Z_ZUID - 0.4, zone: 'D', spanX: false },    // keldergat, zuidoost
+  { x: PLAATS_CX, z: PLAATS_Z_NOORD + 0.4, zone: 'D', spanX: true },              // v0.6: poort halverwege de noordmuur
 ];
+
+// --- Barricades (v0.8): elk venster krijgt 3 planken; ondoden slopen er
+// één per "aanval" (zie golfSpawnStap) voordat ze daadwerkelijk spawnen. De
+// speler repareert via T bij het venster zelf (+€20 per plank, zie
+// repareerBarricade) — het interactiepunt staat alleen in `interactiePunten`
+// zolang de barricade niet compleet is, zelfde weg-splicen-patroon als
+// deurPunt na aankoop.
+const BARRICADE_MAX_PLANKEN = 3;
+const BARRICADE_REPARATIE_GELD = 20;
+
+function bouwBarricade(venster) {
+  venster.maxPlanken = BARRICADE_MAX_PLANKEN;
+  venster.planken = BARRICADE_MAX_PLANKEN;
+  venster.plankMeshes = [];
+  const plankMateriaal = new THREE.MeshStandardMaterial({ color: 0x5a4328, roughness: 0.85 });
+  for (let i = 0; i < BARRICADE_MAX_PLANKEN; i++) {
+    const plank = new THREE.Mesh(
+      venster.spanX ? new THREE.BoxGeometry(1.1, 0.12, 0.05) : new THREE.BoxGeometry(0.05, 0.12, 1.1),
+      plankMateriaal
+    );
+    plank.position.set(venster.x, 1.2 + i * 0.4, venster.z);
+    plank.rotation.z = (Math.random() - 0.5) * 0.12;   // licht scheve, haastig getimmerde look
+    plank.castShadow = true;
+    wereld.add(plank);
+    venster.plankMeshes.push(plank);
+  }
+  venster.interactiePunt = {
+    naam: 'Barricade',
+    positie: new THREE.Vector3(venster.x, 0, venster.z),
+    radius: 1.8,
+    prompt: () => `Druk T: plank repareren (+€${BARRICADE_REPARATIE_GELD}) — ${venster.planken}/${venster.maxPlanken}`,
+    actie: () => repareerBarricade(venster),
+  };
+}
+
+// Een ondode "beukt" tegen een gebarricadeerd venster: geen directe spawn,
+// wel één plank minder. Wordt pas repareerbaar (in interactiePunten) zodra
+// de barricade voor het eerst schade heeft.
+function beukBarricade(venster) {
+  if (venster.planken <= 0) return;   // al helemaal kapot; niets meer te beuken
+  const wasVol = venster.planken >= venster.maxPlanken;
+  venster.planken--;
+  const mesh = venster.plankMeshes[venster.planken];
+  if (mesh) wereld.remove(mesh);
+  speelPlankBreek();
+  if (wasVol) interactiePunten.push(venster.interactiePunt);
+}
+
+// Speler herstelt één plank: +€20, en zodra de barricade weer compleet is
+// verdwijnt het interactiepunt weer (zelfde patroon als een MAX-upgrade).
+function repareerBarricade(venster) {
+  if (venster.planken >= venster.maxPlanken) return;
+  venster.planken++;
+  const mesh = venster.plankMeshes[venster.planken - 1];
+  if (mesh) wereld.add(mesh);
+  spelStaat.geld += BARRICADE_REPARATIE_GELD;
+  speelKoop();
+  toonMelding(`Plank gerepareerd! +€${BARRICADE_REPARATIE_GELD}`);
+  if (venster.planken >= venster.maxPlanken) {
+    const pi = interactiePunten.indexOf(venster.interactiePunt);
+    if (pi !== -1) interactiePunten.splice(pi, 1);
+  }
+  updateHUD();
+}
+
+for (const venster of [...VENSTERS, ...VENSTERS_KAMER2, ...VENSTERS_PLAATS]) bouwBarricade(venster);
+
+// Golf-gestuurde spawn (zie updateGolf): kiest een venster; is die
+// gebarricadeerd, dan wordt er eerst op de planken gebeukt (geen ondode
+// deze tick) i.p.v. direct spawnen. spawnOndode()/spawnWillekeurigeOndode()
+// zelf blijven ongewijzigd (altijd direct spawnen — o.a. gebruikt door
+// debug-tools en bestaande tests).
+function golfSpawnStap() {
+  const idx = kiesVensterIndex();
+  const venster = VENSTERS[idx];
+  if (venster.planken > 0) {
+    beukBarricade(venster);
+    return null;
+  }
+  return spawnOndode(idx);
+}
 
 let deurGekocht = false;
 
@@ -2120,6 +2295,22 @@ function koopAmmo() {
   updateHUD();
 }
 
+// Pantserdrank (v0.7): eenmalige perk in het atelier — verdubbelt de
+// maximale HP. De HP-balk (updateHUD) rekent al met hp/hpMax als
+// percentage, dus die schaalt vanzelf mee zonder verdere aanpassing.
+function koopPantserdrank() {
+  if (pantserdrankGekocht) return;
+  if (spelStaat.geld < PANTSERDRANK_PRIJS) { toonMelding(`Nog €${PANTSERDRANK_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  spelStaat.geld -= PANTSERDRANK_PRIJS;
+  pantserdrankGekocht = true;
+  spelerStaat.hpMax += PANTSERDRANK_HP_BONUS;
+  spelerStaat.hp += PANTSERDRANK_HP_BONUS;
+  speelKoop();
+  toonMelding(`Pantserdrank gedronken! Max HP nu ${spelerStaat.hpMax}`);
+  doofMarkering(pantserdrankMarkering);
+  updateHUD();
+}
+
 function koopUpgrade() {
   if (schadePerTreffer >= WAPEN_SCHADE_MAX) { toonMelding('Schade is al maximaal'); return; }
   if (spelStaat.geld < UPGRADE_PRIJS) { toonMelding(`Nog €${UPGRADE_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
@@ -2143,7 +2334,7 @@ function koopSnelspanner() {
   // dan nog niet gekocht zijn — nieuweWapenStaat() past 'm dan later zelf toe).
   for (const staat of Object.values(wapenStaten)) if (staat) staat.herlaadDuur = staat.definitie.herlaadDuurSnel;
   speelKoop();
-  toonMelding('Snelspanner gemonteerd — sneller herladen (MAX)');
+  toonMelding('Snelheidselixer gedronken — sneller herladen (MAX)');
   doofMarkering(werkbankMarkering);
   updateAmmoUI();
   updateHUD();
@@ -2209,6 +2400,16 @@ function koopWatertap() {
   updateHUD();
 }
 
+const pantserdrankPunt = {
+  naam: 'Pantserdrank',
+  positie: new THREE.Vector3(PANTSERDRANK_X, 0, PANTSERDRANK_Z),
+  radius: 1.4,
+  prompt: () => pantserdrankGekocht
+    ? 'Pantserdrank is al gedronken (MAX)'
+    : `Druk T: Pantserdrank — max HP verdubbelen (€${PANTSERDRANK_PRIJS})`,
+  actie: koopPantserdrank,
+};
+
 // --- Het centrale interactiesysteem -------------------------------
 const deurPunt = {
   naam: 'Deur',
@@ -2238,8 +2439,8 @@ const werkbankPunt = {
   positie: new THREE.Vector3(WERKBANK_X, 0, WERKBANK_Z),
   radius: 1.5,
   prompt: () => snelspannerGekocht
-    ? 'Snelspanner is MAX'
-    : `Druk T: Snelspanner — sneller herladen (€${SNELSPANNER_PRIJS})`,
+    ? 'Snelheidselixer is MAX'
+    : `Druk T: Snelheidselixer — sneller herladen (€${SNELSPANNER_PRIJS})`,
   actie: koopSnelspanner,
 };
 const ratelaarPunt = {
@@ -2274,7 +2475,7 @@ const watertapPunt = {
     : `Druk T: regenwater tappen (€${WATERTAP_PRIJS} -> +${WATERTAP_HP} HP)`,
   actie: koopWatertap,
 };
-const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, deur2Punt, regentonPunt, watertapPunt, ratelaarPunt];
+const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, pantserdrankPunt, deur2Punt, regentonPunt, watertapPunt, ratelaarPunt];
 
 let huidigeInteractie = null;
 
@@ -2381,7 +2582,8 @@ window.AmsterdamUndeadDebug = {
   DEUR_Z, DEUR_HALF, GANG_Z_EIND, KAMER2_Z_NOORD, HALF_DIEPTE, HALF_BREEDTE, KAMER2_HALF_B,
   ONDODE_HP_VROEG, ONDODE_HP_LAAT, ONDODE_HP_GOLFGRENS, HEADSHOT_EXTRA, ondodeStartHP,
   GELD_PER_HIT, GELD_PER_KILL, HEADSHOT_GELD_MULTIPLIER,
-  GOLF_MAX_ACTIEF, lampLichten,
+  GOLF_MAX_ACTIEF, lampLichten, GOLF_RUST_TIJD,
+  WAVE_BONUS_BASIS, WAVE_BONUS_PER_GOLF, WAVE_HEAL_MIN,
   // v0.3 zone-D / werkbank-constanten (Ticket V1):
   DEUR2_HALF, DEUR2_X, PLAATS_BREEDTE, PLAATS_DIEPTE, PLAATS_X_OOST,
   SNELSPANNER_PRIJS, SNELSPANNER_HERLAADDUUR, DEUR2_PRIJS,
@@ -2413,6 +2615,13 @@ window.AmsterdamUndeadDebug = {
   koopRatelaar, wisselWapen, ratelaarPunt, ratelaarMarkering,
   get ratelaarGekocht() { return ratelaarGekocht; },
   get actiefWapenNaam() { return actiefWapenNaam; },
+  // v0.7: Pantserdrank-perk (hpMax-verdubbeling):
+  PANTSERDRANK_PRIJS, PANTSERDRANK_HP_BONUS, PANTSERDRANK_X, PANTSERDRANK_Z,
+  koopPantserdrank, pantserdrankPunt, pantserdrankMarkering,
+  get pantserdrankGekocht() { return pantserdrankGekocht; },
+  // v0.8: barricades op de vensters:
+  BARRICADE_MAX_PLANKEN, BARRICADE_REPARATIE_GELD,
+  beukBarricade, repareerBarricade, golfSpawnStap,
   // v0.4: atelier (kamer 2) vergroot tot een L-vorm met een voorraadnis:
   KAMER2_DIEPTE, KAMER2_NIS_DIEPTE, KAMER2_NIS_BREEDTE,
   KAMER2_NIS_X_WEST, KAMER2_NIS_Z_ZUID, KAMER2_NIS_CX, KAMER2_NIS_CZ,
