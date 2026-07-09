@@ -108,6 +108,51 @@ Alsnog uitgevoerd (V1/V2 uit het externe conceptplan), bovenop de v0.6-maten.
   **kratten-obstakel** (met écht collision, in tegenstelling tot de rest
   van het decor) breken de looproutes een beetje op, zoals gevraagd.
 
+## v0.11 — Binnenplaats levendiger + atelier-decor gefixt ✅
+- Sterker/warmer maanlicht en lantaarnlicht op de binnenplaats.
+- Gevels, nepdoorgangen en balkonnetjes tegen de binnenplaats-muren (geen
+  collision), zodat het niet langer als drie kale rechte muren aanvoelt.
+- Wit blok bij het Ratelaar-kooppunt vervangen door een wapenrek.
+- **Regenton volledig verwijderd** (state, mesh, interactie, debug-exports).
+- `bouwVerfplank`/`bouwLijstenstapel` in het atelier niet langer zwevend.
+- Bugfix: het schuurtje op de binnenplaats rendercte wit door een material
+  die per ongeluk als kleur werd doorgegeven aan `blok()`.
+
+## v0.12 — Ondoden lopen niet meer vast achter muren ✅
+- **Zone-navigatie** (woonkamer → gang → atelier → binnenplaats): een
+  ondode in een andere zone dan de speler mikt eerst op de eerstvolgende
+  deuropening i.p.v. recht op de speler af — puur reactief om-de-hoek-lopen
+  vond een deur een kamer verderop niet betrouwbaar.
+- Binnen dezelfde zone (schuurtje/kratten) een robuustere lokale
+  ontwijk-logica: vaste richting-blend i.p.v. een offset-punt, en een
+  echte test of de rechte weg weer vrij is i.p.v. een heuristiek die net
+  gewonnen terrein steeds weer ongedaan maakte.
+
+## v0.13 — Ondode-varianten, visuele variatie en power-ups ✅
+Vertaling van de volgende ronde van het externe conceptplan (v0.7 t/m v0.9
+op GitHub `main`) naar originele namen — zie IP-regels in CLAUDE.md.
+
+- **Ondode-varianten**: de **Loper** (vanaf golf 2, snel/breekbaar/weinig
+  geld), de **Sjouwer** (vanaf golf 3, traag/zeer taai/veel geld) en de
+  **Brander** (vanaf golf 4, normale stats, ontploft bij overlijden —
+  schade aan speler én andere ondoden in bereik, met kettingreactie tussen
+  meerdere Branders). Elk type heeft een eigen kleur/schaal/oogkleur zodat
+  ze al op afstand herkenbaar zijn. Golf-spawns loten een type
+  (`golfSpawnStap`); directe `spawnOndode()`-aanroepen (tests/debug) blijven
+  standaard 'normaal', zelfde patroon als de barricades in v0.8.
+- **Visuele zombievariatie**: puur cosmetische per-ondode randomisatie
+  (kromme rug, slepend been, verschillende armlengtes, lichte
+  lengtevariatie, een strompelende loop-wiebel) — geen invloed op
+  snelheid/HP/hitbox, enkel om te voorkomen dat een golf uit identieke
+  kloontjes bestaat.
+- **Power-ups**: een dodelijke treffer laat soms (12% kans) een zwevend
+  kristal vallen, opgeraapt door erover te lopen (geen `T`-interactie —
+  moet snel gaan tijdens het gevecht) en anders na 12s vervalt. Vier
+  effecten: **Munitievoorraad** (Max Ammo — vult alle wapens volledig aan),
+  **Dubbele Beloning** (Double Points — 20s 2x geld per hit/kill),
+  **Eliminatiemodus** (Insta Kill — 15s elke treffer is dodelijk) en
+  **Kerninslag** (Nuke — doodt alle levende ondoden nu + geld per stuk).
+
 ## Openstaande verbeteringen Defend National Monument (bevroren tot expliciet gevraagd)
 - Performance verbeteren
 - Wave balancing testen

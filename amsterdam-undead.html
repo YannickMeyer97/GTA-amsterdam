@@ -290,6 +290,7 @@
   <div id="upgradeStatusUI" style="font-size:12px; font-weight:600; opacity:0.85; margin-top:4px;">
     Schade <span id="schadeTekst">1</span> &nbsp;·&nbsp; Herladen <span id="herlaadTekst">1.2s</span> &nbsp;·&nbsp; Wapen <span id="wapenTekst">Drukspuit</span>
   </div>
+  <div id="powerupStatusUI" style="font-size:12px; font-weight:700; margin-top:2px; color:#ffd76a;"></div>
 </div>
 <div id="vignet"></div>
 <div id="gameOverScherm">
@@ -1799,6 +1800,7 @@ function speelDroogKlik() { piep('square', 200, 180, 0.04, 0.06); }
 function speelHerlaad()   { piep('sine', 300, 500, 0.15, 0.06); setTimeout(() => piep('sine', 500, 700, 0.12, 0.06), 900); }
 function speelTreffer()   { piep('square', 320, 90, 0.07, 0.08); }
 function speelPlankBreek() { piep('sawtooth', 180, 60, 0.09, 0.09); }
+function speelExplosie()  { piep('sawtooth', 90, 30, 0.35, 0.16); setTimeout(() => piep('square', 60, 25, 0.25, 0.08), 40); }
 function speelSpelerAu()  { piep('sawtooth', 160, 60, 0.18, 0.11); }
 // Nieuwe sfeergeluiden (allemaal live via Web Audio, geen bestanden):
 function speelGolfStart() { piep('sawtooth', 130, 260, 0.18, 0.08); setTimeout(() => piep('square', 200, 340, 0.22, 0.06), 130); }
@@ -1836,6 +1838,50 @@ function ondodeStartHP() {
   return spelStaat.golf <= ONDODE_HP_GOLFGRENS ? ONDODE_HP_VROEG : ONDODE_HP_LAAT;
 }
 
+// --- v0.7: ondode-varianten ----------------------------------------------
+// Elk type is een multiplier bovenop de normale snelheid/HP/kill-beloning.
+// `normaal` is altijd beschikbaar; de drie varianten komen pas vanaf een
+// bepaalde golf voor (zie ONDODE_TYPE_MIN_GOLF), zodat golf 1 de speler nog
+// gewoon de basis leert. Puur origineel: geen bestaande namen/uiterlijk.
+const ONDODE_TYPES = {
+  normaal: { snelheidMultiplier: 1,    hpMultiplier: 1, geldMultiplier: 1,   kleur: 0x5d7255, oogKleur: 0xd8ff6b, schaal: 1 },
+  // Loper: snel maar breekbaar, lage beloning — dwingt de speler om te kiezen wie eerst.
+  loper:   { snelheidMultiplier: 1.8,  hpMultiplier: 0.5, geldMultiplier: 0.6, kleur: 0x8a9c4a, oogKleur: 0xe8ff9c, schaal: 0.9 },
+  // Sjouwer: erg traag, zeer taai, hoge beloning — een blokkade die de doorgang dichtzet.
+  sjouwer: { snelheidMultiplier: 0.55, hpMultiplier: 4,   geldMultiplier: 2.2, kleur: 0x4a5568, oogKleur: 0x9cc8ff, schaal: 1.35 },
+  // Brander: normale snelheid/HP, ontploft bij overlijden (zie ontploiBrander).
+  brander: { snelheidMultiplier: 1,    hpMultiplier: 1,   geldMultiplier: 1.3, kleur: 0x8a4a2c, oogKleur: 0xffa03d, schaal: 1, explodeert: true },
+};
+const ONDODE_TYPE_MIN_GOLF = { loper: 2, sjouwer: 3, brander: 4 };
+const BRANDER_EXPLOSIE_RADIUS = 3.0;
+const BRANDER_EXPLOSIE_SCHADE_SPELER = 25;
+const BRANDER_EXPLOSIE_SCHADE_ONDODE = 3;
+
+// Gewogen loting voor het type van een NIEUWE golf-spawn (zie golfSpawnStap).
+// spawnOndode()/spawnWillekeurigeOndode() zelf blijven standaard 'normaal'
+// spawnen (zie hun eigen default-parameter) — bestaande tests/debug-tools
+// roepen die rechtstreeks aan en verwachten voorspelbaar 'normaal' gedrag.
+function ondodeTypeGewichten() {
+  const golf = spelStaat.golf;
+  return {
+    normaal: 10,
+    loper: golf >= ONDODE_TYPE_MIN_GOLF.loper ? 4 : 0,
+    sjouwer: golf >= ONDODE_TYPE_MIN_GOLF.sjouwer ? 3 : 0,
+    brander: golf >= ONDODE_TYPE_MIN_GOLF.brander ? 3 : 0,
+  };
+}
+function kiesOndodeType() {
+  const gewichten = ondodeTypeGewichten();
+  const namen = Object.keys(gewichten);
+  const totaal = namen.reduce((som, naam) => som + gewichten[naam], 0);
+  let r = Math.random() * totaal;
+  for (const naam of namen) {
+    r -= gewichten[naam];
+    if (r <= 0) return naam;
+  }
+  return 'normaal';
+}
+
 // --- Balanswaarden speler-HP --------------------------------------
 const SPELER_HP_MAX           = 100;
 const SPELER_REGEN_VERTRAGING = 4;   // s zonder schade voordat regen start
@@ -1857,11 +1903,131 @@ const GOLF_AANTAL_GROEI   = 2;    // extra ondoden per volgende golf
 const GOLF_SPAWN_INTERVAL = 1.1;  // s tussen twee spawns binnen dezelfde golf
 const GOLF_RUST_TIJD      = 8;    // v0.9: 4->8s rust tussen golven (en vóór golf 1) — tijd om te repareren/kopen
 const GOLF_MAX_ACTIEF     = 18;   // max. gelijktijdig levende ondoden (perf-plafond), bij enkel zone A
-// v0.9: wave-rewards — bonusgeld schaalt mee met het golfnummer, en de
+// Wave-rewards — bonusgeld schaalt mee met het golfnummer, en de
 // speler heelt automatisch op tot minimaal WAVE_HEAL_MIN (verlaagt nooit).
 const WAVE_BONUS_BASIS  = 75;
 const WAVE_BONUS_PER_GOLF = 15;
 const WAVE_HEAL_MIN = 75;
+
+/* ================================================================
+   POWER-UPS: kans op een drop bij een dodelijke treffer, opgeraapt door
+   erover te lopen (geen T-interactie — dit moet snel en instinctief gaan
+   tijdens het gevecht). Vier originele effecten, geen bestaande namen.
+   ================================================================ */
+const POWERUP_DROP_KANS = 0.12;      // kans per kill dat er een power-up valt
+const POWERUP_VERVAL_TIJD = 12;      // s voordat een niet-opgeraapte drop verdwijnt
+const POWERUP_PICKUP_RADIUS = 0.9;   // m — vlak overheen lopen is genoeg
+const POWERUP_DUBBELE_BELONING_DUUR = 20;
+const POWERUP_ELIMINATIEMODUS_DUUR  = 15;
+
+const POWERUP_TYPES = {
+  // Max Ammo -> Munitievoorraad: vult beide wapens (indien gekocht) volledig aan.
+  munitievoorraad: { naam: 'Munitievoorraad', kleur: 0xf2c94c, effect: () => geefMunitievoorraad() },
+  // Double Points -> Dubbele Beloning: tijdelijk 2x geld per hit/kill.
+  dubbeleBeloning: { naam: 'Dubbele Beloning', kleur: 0x6ec6ff, effect: () => geefDubbeleBeloning() },
+  // Insta Kill -> Eliminatiemodus: tijdelijk doodt elke treffer de ondode meteen.
+  eliminatiemodus: { naam: 'Eliminatiemodus', kleur: 0xff5c5c, effect: () => geefEliminatiemodus() },
+  // Nuke -> Kerninslag: doodt alle levende ondoden nu meteen + geldbeloning.
+  kerninslag: { naam: 'Kerninslag', kleur: 0xbdf7ff, effect: () => geefKerninslag() },
+};
+function kiesPowerupType() {
+  const namen = Object.keys(POWERUP_TYPES);
+  return namen[Math.floor(Math.random() * namen.length)];
+}
+
+const powerups = [];   // actieve, nog niet opgeraapte drops in de wereld
+let dubbeleBeloningTimer = 0;
+let eliminatiemodusTimer = 0;
+
+function spawnPowerupDrop(x, z, type) {
+  const info = POWERUP_TYPES[type];
+  const groep = new THREE.Group();
+  const kern = new THREE.Mesh(new THREE.OctahedronGeometry(0.18, 0),
+    new THREE.MeshStandardMaterial({ color: info.kleur, emissive: info.kleur, emissiveIntensity: 0.9, roughness: 0.3 }));
+  kern.position.y = 0.55;
+  groep.add(kern);
+  const gloed = new THREE.PointLight(info.kleur, 3, 4, 2);
+  gloed.position.y = 0.55;
+  groep.add(gloed);
+  groep.position.set(x, 0, z);
+  wereld.add(groep);
+  const drop = { groep, type, verval: POWERUP_VERVAL_TIJD, draaiFase: Math.random() * 10 };
+  powerups.push(drop);
+  return drop;
+}
+
+function raapPowerupOp(drop) {
+  wereld.remove(drop.groep);
+  const i = powerups.indexOf(drop);
+  if (i !== -1) powerups.splice(i, 1);
+  POWERUP_TYPES[drop.type].effect();
+  speelKoop();
+  updateHUD();
+}
+
+// Draait/zweeft de drops, telt de buff-timers af, en raapt automatisch op
+// zodra de speler er dichtbij genoeg loopt. Wordt elke frame aangeroepen
+// vanuit de game-loop, net als updateGolf/updateOndoden.
+function updatePowerups(dt) {
+  const buffWasActief = dubbeleBeloningTimer > 0 || eliminatiemodusTimer > 0;
+  if (dubbeleBeloningTimer > 0) dubbeleBeloningTimer = Math.max(0, dubbeleBeloningTimer - dt);
+  if (eliminatiemodusTimer > 0) eliminatiemodusTimer = Math.max(0, eliminatiemodusTimer - dt);
+  // Countdown in de HUD laten meelopen zolang een buff actief is (en één
+  // laatste keer zodra 'ie afloopt, zodat de tekst weer leeg wordt).
+  if (buffWasActief) updateHUD();
+  for (const drop of [...powerups]) {
+    drop.draaiFase += dt * 2;
+    drop.groep.rotation.y = drop.draaiFase;
+    drop.groep.position.y = 0.1 + Math.sin(drop.draaiFase * 1.5) * 0.05;
+    drop.verval -= dt;
+    const dx = drop.groep.position.x - speler.positie.x;
+    const dz = drop.groep.position.z - speler.positie.z;
+    if (Math.hypot(dx, dz) <= POWERUP_PICKUP_RADIUS) {
+      raapPowerupOp(drop);
+    } else if (drop.verval <= 0) {
+      wereld.remove(drop.groep);
+      const j = powerups.indexOf(drop);
+      if (j !== -1) powerups.splice(j, 1);
+    }
+  }
+}
+
+function geefMunitievoorraad() {
+  for (const naam of Object.keys(wapenStaten)) {
+    const staat = wapenStaten[naam];
+    if (!staat) continue;
+    staat.magazijn = staat.magazijnMax;
+    staat.reserve = staat.definitie.reserve;
+  }
+  updateAmmoUI();
+  toonMelding('Munitievoorraad! Alle wapens volledig herladen');
+}
+
+function geefDubbeleBeloning() {
+  dubbeleBeloningTimer = POWERUP_DUBBELE_BELONING_DUUR;
+  toonMelding(`Dubbele Beloning actief! (${POWERUP_DUBBELE_BELONING_DUUR}s)`);
+}
+
+function geefEliminatiemodus() {
+  eliminatiemodusTimer = POWERUP_ELIMINATIEMODUS_DUUR;
+  toonMelding(`Eliminatiemodus actief! (${POWERUP_ELIMINATIEMODUS_DUUR}s)`);
+}
+
+// Doodt alle op dit moment levende ondoden en kent per stuk hetzelfde
+// kill-geld toe als een normale kill (met eventuele Dubbele-Beloning-bonus).
+// Brander-varianten ontploffen daarbij gewoon (doodOndode triggert dat al).
+function geefKerninslag() {
+  const levend = [...ondoden];
+  let bonus = 0;
+  for (const o of levend) {
+    if (!ondoden.includes(o)) continue;   // kan al weg zijn door een Brander-kettingreactie
+    bonus += Math.round(GELD_PER_KILL * o.geldMultiplier * (dubbeleBeloningTimer > 0 ? 2 : 1));
+    doodOndode(o);
+  }
+  spelStaat.geld += bonus;
+  toonGolfBanner('KERNINSLAG', `${levend.length} ondoden geëlimineerd · +€${bonus}`);
+  updateHUD();
+}
 
 // --- Spawn-pacing per ontgrendelde zone (Ticket V6) -----------------------
 // Elke gekochte deur ontgrendelt een extra zone: het spawn-interval daalt
@@ -1890,10 +2056,26 @@ const VENSTERS = [
   { x: 2, z: HALF_DIEPTE - 0.4, zone: 'A', spanX: true },
 ];
 
-function maakOndodeModel() {
+// v0.8: puur cosmetische per-ondode variatie, zodat een golf niet uit
+// identieke kloontjes bestaat. Raakt bewust GEEN snelheid/HP/hitbox — alleen
+// hoe het model eruitziet (en, voor 'strompelt', hoe het tijdens het lopen
+// een beetje wiebelt, zie updateOndoden). Elk trait heeft een eigen,
+// onafhankelijke kans, zodat combinaties natuurlijk aanvoelen.
+function kiesOndodeTraits() {
+  return {
+    kromme: Math.random() < 0.35,                 // kromme rug (torso + hoofd voorover)
+    slepend: Math.random() < 0.3 ? (Math.random() < 0.5 ? -1 : 1) : 0,   // welk been sleept, 0 = geen
+    armVerschil: (Math.random() - 0.5) * 0.5,      // -0.25..+0.25: relatief armlengte-verschil
+    lengte: 0.9 + Math.random() * 0.22,            // extra, onafhankelijke lengtevariatie
+    strompelt: Math.random() < 0.4,                // wiebelt tijdens het lopen (zie updateOndoden)
+  };
+}
+
+function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTraits()) {
   const groep = new THREE.Group();
   const tint = 0.85 + Math.random() * 0.3;   // kleine kleurvariatie per ondode
-  const huidKleur = new THREE.Color(0x5d7255).multiplyScalar(tint);
+  const huidKleur = new THREE.Color(typeInfo.kleur).multiplyScalar(tint);
+  const rugHoek = traits.kromme ? 0.22 + Math.random() * 0.12 : 0;   // kromme rug: voorovergebogen
 
   // Hoogtes zo gekozen dat het hoofd rond de ooghoogte van de speler (1.7m,
   // zie speler.hoogte) uitkomt — anders mist een recht vooruit gericht schot
@@ -1901,24 +2083,38 @@ function maakOndodeModel() {
   const benen = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.8, 0.16),
     new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.9 }));
   benen.position.y = 0.4;
+  if (traits.slepend !== 0) {
+    // Slepend been: geen apart beenmodel nodig — een lichte kanteling +
+    // zijwaartse verschuiving van het enkele beenblok geeft al een
+    // herkenbaar mankende stand.
+    benen.rotation.z = traits.slepend * 0.14;
+    benen.position.x = traits.slepend * 0.05;
+  }
   groep.add(benen);
 
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.6, 0.22),
     new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
-  torso.position.y = 1.1;
+  torso.position.set(0, 1.1, rugHoek * 0.08);
+  torso.rotation.x = rugHoek;
   groep.add(torso);
 
   const hoofd = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8),
     new THREE.MeshStandardMaterial({ color: huidKleur.clone().multiplyScalar(1.15), roughness: 0.8 }));
-  hoofd.position.y = 1.58;
+  hoofd.position.set(0, 1.58 - rugHoek * 0.05, 0.02 + rugHoek * 0.35);   // volgt de kromme rug een beetje mee
   hoofd.rotation.z = (Math.random() - 0.5) * 0.5;   // scheve nek: een eigen, herkenbare "ondode"-houding
+  hoofd.rotation.x = rugHoek * 0.6;
   hoofd.userData.lichaamsdeel = 'kop';   // treffer hier = headshot (dubbele schade)
   groep.add(hoofd);
 
   for (const kant of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.5, 0.09),
+    // Verschillende armlengtes (v0.8): elke arm krijgt een onafhankelijke
+    // lengte-multiplier, met de langere arm ook iets verder naar beneden
+    // hangend zodat het schouder-aanhechtpunt gelijk blijft.
+    const armLengteMultiplier = 1 + (kant === 1 ? traits.armVerschil : -traits.armVerschil);
+    const armLengte = 0.5 * armLengteMultiplier;
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.09, armLengte, 0.09),
       new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
-    arm.position.set(kant * 0.24, 1.13, 0.06);
+    arm.position.set(kant * 0.24, 1.13 - (armLengte - 0.5) * 0.5, 0.06);
     arm.rotation.x = -0.5;   // naar voren uitgestrekt
     groep.add(arm);
   }
@@ -1930,8 +2126,9 @@ function maakOndodeModel() {
   vod.rotation.z = 0.3;
   groep.add(vod);
 
-  // Twee kleine gloeiende oogjes: het enige griezelige lichtaccent.
-  const oogMateriaal = new THREE.MeshStandardMaterial({ color: 0xd8ff6b, emissive: 0xb9ec3f, emissiveIntensity: 1.4 });
+  // Twee kleine gloeiende oogjes: het enige griezelige lichtaccent. Kleur
+  // verschilt per type (v0.7), zodat een variant al op afstand herkenbaar is.
+  const oogMateriaal = new THREE.MeshStandardMaterial({ color: typeInfo.oogKleur, emissive: typeInfo.oogKleur, emissiveIntensity: 1.4 });
   for (const kant of [-1, 1]) {
     const oog = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6), oogMateriaal);
     oog.position.set(kant * 0.06, 1.59, 0.16);
@@ -1939,7 +2136,11 @@ function maakOndodeModel() {
     groep.add(oog);
   }
 
-  groep.scale.setScalar(0.94 + Math.random() * 0.16);
+  groep.scale.set(
+    (0.94 + Math.random() * 0.16) * typeInfo.schaal,
+    (0.94 + Math.random() * 0.16) * typeInfo.schaal * traits.lengte,
+    (0.94 + Math.random() * 0.16) * typeInfo.schaal
+  );
   return groep;
 }
 
@@ -1947,12 +2148,21 @@ const ondodenGroep = new THREE.Group();
 scene.add(ondodenGroep);
 const ondoden = [];
 
-function spawnOndode(vensterIndex) {
+// `type` = 'normaal' tenzij expliciet anders opgegeven: bestaande tests en
+// debug-tools roepen dit rechtstreeks aan en verwachten voorspelbaar
+// 'normaal' gedrag. De echte variatie komt via golfSpawnStap (zie v0.7),
+// die hier zelf een geloot type doorgeeft.
+function spawnOndode(vensterIndex, type = 'normaal') {
   const venster = VENSTERS[vensterIndex % VENSTERS.length];
-  const groep = maakOndodeModel();
+  const typeInfo = ONDODE_TYPES[type] || ONDODE_TYPES.normaal;
+  const traits = kiesOndodeTraits();
+  const groep = maakOndodeModel(typeInfo, traits);
   groep.position.set(venster.x, 0, venster.z);
   const ondode = {
-    groep, hp: ondodeStartHP(), meleeTimer: 0, vastTijd: 0,
+    groep, type, hp: Math.max(1, Math.round(ondodeStartHP() * typeInfo.hpMultiplier)),
+    snelheid: ONDODE_SNELHEID * typeInfo.snelheidMultiplier, geldMultiplier: typeInfo.geldMultiplier,
+    strompelt: traits.strompelt, loopFase: Math.random() * 10,   // (v0.8) willekeurige startfase: niet synchroon
+    meleeTimer: 0, vastTijd: 0,
     ontwijkTimer: 0, ontwijkZijkant: 1, ontwijkStartPos: new THREE.Vector3(),
   };
   groep.userData.ondode = ondode;
@@ -2058,9 +2268,15 @@ function updateOndoden(dt) {
       richting = direct.clone().multiplyScalar(0.3).add(zijwaarts).normalize();
     }
     const voorPos = positie.clone();
-    positie.addScaledVector(richting, ONDODE_SNELHEID * dt);
+    positie.addScaledVector(richting, ondode.snelheid * dt);
     losBotsingenOp(positie, ONDODE_STRAAL);
     ondode.groep.rotation.y = Math.atan2(rechtstreeks.x, rechtstreeks.z);
+    // v0.8: strompelende loop — puur visuele wiebel bovenop de kijkrichting,
+    // raakt positie/collision niet aan.
+    if (ondode.strompelt) {
+      ondode.loopFase += dt * 6;
+      ondode.groep.rotation.z = Math.sin(ondode.loopFase) * 0.12;
+    }
     ondode.meleeTimer = 0;   // meteen kunnen slaan zodra ze bij aankomst in bereik komen
 
     if (ondode.ontwijkTimer > 0) {
@@ -2075,9 +2291,9 @@ function updateOndoden(dt) {
         // want die laatste blijft "ja" geven zolang er ÜBERHAUPT beweging is
         // (ook nadat de hoek al lang om is), en zou het uitwijken dan nooit
         // meer loslaten.
-        const testPos = positie.clone().addScaledVector(direct, ONDODE_SNELHEID * dt);
+        const testPos = positie.clone().addScaledVector(direct, ondode.snelheid * dt);
         losBotsingenOp(testPos, ONDODE_STRAAL);
-        if (testPos.distanceTo(positie) > ONDODE_SNELHEID * dt * 0.3) {
+        if (testPos.distanceTo(positie) > ondode.snelheid * dt * 0.3) {
           ondode.vastTijd = 0;   // obstakel voorbij: terug naar rechtstreeks jagen
         } else {
           const afgelegd = positie.distanceTo(ondode.ontwijkStartPos);
@@ -2094,7 +2310,7 @@ function updateOndoden(dt) {
           }
         }
       }
-    } else if (positie.distanceTo(voorPos) < ONDODE_SNELHEID * dt * 0.3) {
+    } else if (positie.distanceTo(voorPos) < ondode.snelheid * dt * 0.3) {
       ondode.vastTijd += dt;
       if (ondode.vastTijd > 0.5) {
         ondode.ontwijkZijkant = Math.random() < 0.5 ? 1 : -1;
@@ -2112,19 +2328,52 @@ function doodOndode(ondode) {
   ondodenGroep.remove(ondode.groep);
   const i = ondoden.indexOf(ondode);
   if (i !== -1) ondoden.splice(i, 1);
+  // v0.7: een Brander ontploft bij overlijden, ongeacht de doodsoorzaak (dus
+  // ook bij een kettingreactie door een andere explosie in bereik).
+  if (ondode.type === 'brander') ontploiBrander(ondode);
+}
+
+// v0.7: explosie van een Brander bij overlijden — raakt de speler en andere
+// ondoden binnen BRANDER_EXPLOSIE_RADIUS. Kan een kettingreactie geven als
+// er nog een Brander in bereik staat; dat is bedoeld gedrag.
+function ontploiBrander(ondode) {
+  const pos = ondode.groep.position.clone();
+  const flits = new THREE.Mesh(new THREE.SphereGeometry(BRANDER_EXPLOSIE_RADIUS * 0.5, 10, 10),
+    new THREE.MeshBasicMaterial({ color: 0xff8a3d, transparent: true, opacity: 0.55 }));
+  flits.position.set(pos.x, 0.9, pos.z);
+  scene.add(flits);
+  const licht = new THREE.PointLight(0xff8a3d, 12, BRANDER_EXPLOSIE_RADIUS * 2, 2);
+  licht.position.copy(flits.position);
+  scene.add(licht);
+  setTimeout(() => { scene.remove(flits); scene.remove(licht); }, 220);
+  speelExplosie();
+
+  if (pos.distanceTo(speler.positie) <= BRANDER_EXPLOSIE_RADIUS) spelerSchade(BRANDER_EXPLOSIE_SCHADE_SPELER);
+
+  for (const andere of [...ondoden]) {
+    if (andere === ondode || !ondoden.includes(andere)) continue;   // kan al dood zijn door deze zelfde keten
+    if (pos.distanceTo(andere.groep.position) <= BRANDER_EXPLOSIE_RADIUS) {
+      andere.hp -= BRANDER_EXPLOSIE_SCHADE_ONDODE;
+      if (andere.hp <= 0) doodOndode(andere);   // geen speler-treffer: geen geld/kill-bonus
+    }
+  }
 }
 
 // Eén treffer: schade, geld, en bij hp<=0 een kill (met kill-bonus).
 // `kop` = true bij een headshot: lichaam = schadePerTreffer, kop = +HEADSHOT_EXTRA.
 function raakOndode(ondode, punt, kop = false) {
-  const schade = schadePerTreffer + (kop ? HEADSHOT_EXTRA : 0);
+  // Eliminatiemodus (power-up): elke treffer is meteen dodelijk, ongeacht HP.
+  const schade = eliminatiemodusTimer > 0 ? ondode.hp : schadePerTreffer + (kop ? HEADSHOT_EXTRA : 0);
   ondode.hp -= schade;
   speelTreffer();
+  const geldFactor = dubbeleBeloningTimer > 0 ? 2 : 1;   // Dubbele Beloning (power-up)
   if (ondode.hp <= 0) {
-    spelStaat.geld += GELD_PER_KILL * (kop ? HEADSHOT_GELD_MULTIPLIER : 1);
+    spelStaat.geld += Math.round(GELD_PER_KILL * ondode.geldMultiplier * geldFactor * (kop ? HEADSHOT_GELD_MULTIPLIER : 1));
+    const dropPos = ondode.groep.position.clone();
     doodOndode(ondode);
+    if (Math.random() < POWERUP_DROP_KANS) spawnPowerupDrop(dropPos.x, dropPos.z, kiesPowerupType());
   } else {
-    spelStaat.geld += GELD_PER_HIT;
+    spelStaat.geld += GELD_PER_HIT * geldFactor;
   }
   updateHUD();
   // Iets grotere, feller vonk bij een headshot als visuele feedback.
@@ -2194,6 +2443,11 @@ function updateHUD() {
   document.getElementById('schadeTekst').textContent = schadePerTreffer >= WAPEN_SCHADE_MAX ? 'MAX' : schadePerTreffer;
   document.getElementById('herlaadTekst').textContent = snelspannerGekocht ? 'MAX' : `${wapenStaat.herlaadDuur}s`;
   document.getElementById('wapenTekst').textContent = wapenStaat.definitie.naam;
+  // Power-ups: toon actieve tijdelijke buffs (leeg als er geen actief zijn).
+  const buffs = [];
+  if (dubbeleBeloningTimer > 0) buffs.push(`Dubbele Beloning ${Math.ceil(dubbeleBeloningTimer)}s`);
+  if (eliminatiemodusTimer > 0) buffs.push(`Eliminatiemodus ${Math.ceil(eliminatiemodusTimer)}s`);
+  document.getElementById('powerupStatusUI').textContent = buffs.join(' · ');
 }
 
 /* ================================================================
@@ -2387,7 +2641,7 @@ function golfSpawnStap() {
     beukBarricade(venster);
     return null;
   }
-  return spawnOndode(idx);
+  return spawnOndode(idx, kiesOndodeType());   // v0.7: echte golf-spawns loten een type
 }
 
 let deurGekocht = false;
@@ -2750,6 +3004,7 @@ function gameLoop(nu) {
     updateWapen(dt);
     updateOndoden(dt);
     updateGolf(dt);
+    updatePowerups(dt);
     updateSpelerRegen(dt);
     updateInteracties();
 
@@ -2845,6 +3100,19 @@ window.AmsterdamUndeadDebug = {
   koopPantserdrank, pantserdrankPunt, pantserdrankMarkering,
   get pantserdrankGekocht() { return pantserdrankGekocht; },
   // v0.8: barricades op de vensters:
+  // v0.7: ondode-varianten (Loper/Sjouwer/Brander):
+  ONDODE_TYPES, ONDODE_TYPE_MIN_GOLF, kiesOndodeType, ondodeTypeGewichten,
+  kiesOndodeTraits,   // v0.8: cosmetische per-ondode variatie
+  // Power-ups: drop-systeem + effecten (Munitievoorraad/Dubbele Beloning/Eliminatiemodus/Kerninslag)
+  POWERUP_TYPES, POWERUP_DROP_KANS, POWERUP_VERVAL_TIJD, POWERUP_PICKUP_RADIUS,
+  POWERUP_DUBBELE_BELONING_DUUR, POWERUP_ELIMINATIEMODUS_DUUR,
+  powerups, spawnPowerupDrop, raapPowerupOp, updatePowerups, kiesPowerupType,
+  geefMunitievoorraad, geefDubbeleBeloning, geefEliminatiemodus, geefKerninslag,
+  get dubbeleBeloningTimer() { return dubbeleBeloningTimer; },
+  set dubbeleBeloningTimer(v) { dubbeleBeloningTimer = v; },
+  get eliminatiemodusTimer() { return eliminatiemodusTimer; },
+  set eliminatiemodusTimer(v) { eliminatiemodusTimer = v; },
+  BRANDER_EXPLOSIE_RADIUS, BRANDER_EXPLOSIE_SCHADE_SPELER, BRANDER_EXPLOSIE_SCHADE_ONDODE, ontploiBrander,
   BARRICADE_MAX_PLANKEN, BARRICADE_REPARATIE_GELD,
   beukBarricade, repareerBarricade, golfSpawnStap,
   // v0.4: atelier (kamer 2) vergroot tot een L-vorm met een voorraadnis:

@@ -98,6 +98,14 @@ te gaan naar het hoofdmenu.
   op je afkomen. De eerste twee golven zijn ze fragiel (1 treffer), daarna
   taaier (2 treffers); elke golf komen er meer, en elke ontgrendelde zone
   verhoogt de spawndruk (sneller + meer gelijktijdig).
+- **Drie varianten** mengen zich vanaf een bepaalde golf door de gewone
+  ondoden heen: de **Loper** (golf 2+, snel maar breekbaar, weinig geld),
+  de **Sjouwer** (golf 3+, traag maar erg taai, veel geld) en de
+  **Brander** (golf 4+, normale stats, maar ontploft bij overlijden — schade
+  aan jou én aan andere ondoden in de buurt, inclusief kettingreacties).
+  Elke ondode heeft ook een eigen, puur cosmetisch tikje: sommigen
+  strompelen, slepen een been, lopen krom of hebben een net iets andere
+  lengte/armlengte, zodat een golf niet uit identieke kloontjes bestaat.
 - **Barricades:** elk venster heeft 3 planken. Een ondode moet ze eerst stuk
   beuken voordat hij naar binnen kan — dat kost 'm tijd. Sta je dichtbij een
   beschadigd venster, dan kun je met `T` een plank herstellen: dat levert
@@ -114,6 +122,13 @@ te gaan naar het hoofdmenu.
   **"Wave cleared"**-bonus (die oploopt met het golfnummer) en heel je
   automatisch aan tot minimaal 75 HP — de rustpauze tussen golven duurt
   8 seconden, genoeg om te repareren, te kopen en op adem te komen.
+- **Power-ups:** een dodelijke treffer laat soms een gloeiend, zwevend
+  kristal vallen — loop erover heen om 'm meteen te gebruiken (geen `T`
+  nodig, dit moet snel gaan). Vier effecten: **Munitievoorraad** (vult al
+  je wapens volledig aan), **Dubbele Beloning** (tijdelijk 2x geld per
+  hit/kill), **Eliminatiemodus** (tijdelijk doodt elke treffer de ondode
+  meteen) en **Kerninslag** (doodt alle levende ondoden nu meteen + geld
+  per stuk). Raap je 'm niet binnen 12 seconden op, dan verdwijnt-ie weer.
 
 ### Drie zones, elk met een eigen doel
 
@@ -128,11 +143,11 @@ te gaan naar het hoofdmenu.
    (eenmalige Snelheidselixer, €600, herlaadtijd 1,2s → 0,7s) en
    **Pantserdrank** (€1000, eenmalig, verdubbelt je maximale HP naar 200).
 4. **De binnenplaats** (achter deur 2, €1000, vanuit het atelier) — een
-   grote, open buitenruimte, verlicht door vier lantaarnpalen en zacht
-   maanlicht op natte klinkers, met een schuurtje en een kratten-stapel als
-   tactische obstakels. De **Regenton** geeft eenmalig €400, de
-   **Watertap** is herbruikbaar (€200 → +50 HP, gecapt op je max), en tegen
-   de oostmuur staat het wandkooppunt van **De Ratelaar** (€750): een
+   grote, open buitenruimte, verlicht door vier lantaarnpalen en sterk
+   maanlicht op natte klinkers, met gevels/nepdoorgangen/balkonnetjes tegen
+   de muren, een schuurtje en een kratten-stapel als tactische obstakels.
+   De **Watertap** is herbruikbaar (€200 → +50 HP, gecapt op je max), en
+   tegen de oostmuur staat het wandkooppunt van **De Ratelaar** (€750): een
    tweede, snellere wapen met zo'n dubbele munitiecapaciteit t.o.v. de
    Drukspuit. Wissel met `Q` tussen beide wapens; elk houdt zijn eigen
    magazijn en reservemunitie bij.
@@ -158,6 +173,8 @@ AmsterdamUndeadDebug.startGolf();                 // start direct een nieuwe gol
 AmsterdamUndeadDebug.spelStaat;                   // golf, geld, gameOver
 AmsterdamUndeadDebug.spelerStaat;                 // speler-HP
 AmsterdamUndeadDebug.wapenStaat;                  // magazijn / reserve / herladen
+AmsterdamUndeadDebug.spawnOndode(0, 'sjouwer');   // spawn een specifieke variant (loper/sjouwer/brander)
+AmsterdamUndeadDebug.geefKerninslag();            // trigger een power-up-effect direct
 ```
 
 ## Techniek
