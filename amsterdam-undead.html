@@ -336,7 +336,18 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05080b);
 // Subtiele binnenhuis-mist: dichtbij helder, veraf (gang/tweede kamer) dooft
 // alles zacht weg in het donker — geeft diepte en dreiging.
-scene.fog = new THREE.Fog(0x060a0e, 6, 24);
+// Ticket 7: FOG_NORMAAL vangt deze standaardwaarden zodat een Mistgolf
+// (FOG_MIST) later altijd exact terug kan naar de normale sfeer.
+const FOG_NORMAAL = { kleur: 0x060a0e, near: 6, far: 24 };
+// Gebruikersfeedback: 15% dichterbij dan de eerste versie (near 2.5->2.13,
+// far 11->9.35), voor een tastbaardere Mistgolf.
+const FOG_MIST = { kleur: 0x39443f, near: 2.13, far: 9.35 };
+// Zelfde feedback: de mist mag niet in één frame verdwijnen zodra de laatste
+// Sluiper valt — hij trekt nu geleidelijk op over MIST_UITFADE_DUUR seconden.
+const MIST_UITFADE_DUUR = 4;
+let mistUitfaseTimer = 0;
+let mistUitfaseVan = null;   // fog-waarden op het moment dat de uitfade begon
+scene.fog = new THREE.Fog(FOG_NORMAAL.kleur, FOG_NORMAAL.near, FOG_NORMAAL.far);
 
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 50);
 camera.rotation.order = 'YXZ';
@@ -719,7 +730,7 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
   bouwAchterGevel(PLAATS_X_OOST + 1.2, DEUR2_Z + 4.0, 4.2, 3.7, Math.PI / 2, { kleur: 0x17120f, ramen: 3, raamKleur: 0xffb86b, raamOpacity: 0.42 });
 
   // Nepdoorgangen: lijken open, maar blijven geblokkeerd door de randcollision.
-  // Bewust NIET op dezelfde plek als de poort-/keldergat-spawnankers hieronder
+  // Bewust NIET op dezelfde plek als de poort-/kelderdeur-spawnankers hieronder
   // (die markeren echte spawnpunten en moeten los blijven van deze decoratie).
   bouwNepDoorgang(PLAATS_X_OOST - 0.08, DEUR2_Z - 6.5, -Math.PI / 2, 1.1, 1.9);
   bouwNepDoorgang(PLAATS_CX - 4.2, PLAATS_Z_NOORD + 0.08, 0, 1.15, 1.85);
@@ -1255,15 +1266,23 @@ bouwSchuurtje(PLAATS_CX + 2.5, DEUR2_Z - 6);
 bouwKratten(PLAATS_CX - 4.5, DEUR2_Z + 6);
 registreerRechthoek(PLAATS_CX - 4.8, PLAATS_CX - 4.2, DEUR2_Z + 5.7, DEUR2_Z + 6.3, 0.1);
 
-// Decor-ankers op de toekomstige spawnpunten (poort + keldergat), zodat je
+// Decor-ankers op de toekomstige spawnpunten (poort + kelderdeur), zodat je
 // al ziet waar ondoden straks vandaan komen voordat deur 2 gekocht is.
 {
   const poort = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.8, 0.15), mat(0x1f262b, 0.8));
   poort.position.set(PLAATS_X_OOST - 0.1, 0.9, PLAATS_Z_NOORD + 0.4);
   wereld.add(poort);
-  const keldergat = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.06, 0.8), mat(0x14181b, 0.7, 0.3));
-  keldergat.position.set(PLAATS_X_OOST - 0.4, 0.03, PLAATS_Z_ZUID - 0.4);
-  wereld.add(keldergat);
+  // Gebruikersfeedback: het platte 'keldergat' hier zag eruit als ondoden
+  // die uit het niets verschijnen — vervangen door een zichtbare, op een
+  // kier hangende deur in de oostmuur (vlak bij De Ratelaar), met een
+  // kozijn dat wél in het vlak van de muur blijft staan.
+  const kelderdeurKozijn = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.95, 1.0), mat(0x14100a, 0.85));
+  kelderdeurKozijn.position.set(PLAATS_X_OOST - 0.05, 0.95, PLAATS_Z_ZUID - 0.4);
+  wereld.add(kelderdeurKozijn);
+  const kelderdeur = new THREE.Mesh(new THREE.BoxGeometry(0.07, 1.75, 0.85), mat(0x241c14, 0.85));
+  kelderdeur.position.set(PLAATS_X_OOST - 0.35, 0.88, PLAATS_Z_ZUID - 0.15);
+  kelderdeur.rotation.y = 0.5;   // op een kier / uit de hengsels geslagen
+  wereld.add(kelderdeur);
   // v0.6: derde spawn-anker, halverwege de (nu 14m lange) noordmuur — anders
   // komt alles uit de oosthoek en blijft de vergrote plaats tactisch vlak.
   const poortNoord = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.8, 0.15), mat(0x1f262b, 0.8));
@@ -1855,6 +1874,10 @@ const ONDODE_TYPES = {
   sjouwer: { snelheidMultiplier: 0.55, hpMultiplier: 2.5, geldMultiplier: 2.2, kleur: 0x4a5568, oogKleur: 0x9cc8ff, schaal: 1.35 },
   // Brander: normale snelheid/HP, ontploft bij overlijden (zie ontploiBrander).
   brander: { snelheidMultiplier: 1,    hpMultiplier: 1,   geldMultiplier: 1.3, kleur: 0x8a4a2c, oogKleur: 0xffa03d, schaal: 1, explodeert: true },
+  // Ticket 8: Sluiper — uitsluitend tijdens een Mistgolf (gating in
+  // ondodeTypeGewichten(), zie Ticket 9). Klein en snel-ish, weinig HP,
+  // met goed zichtbare ogen zodat hij in de mist eerlijk vindbaar blijft.
+  sluiper: { snelheidMultiplier: 1.35, hpMultiplier: 0.75, geldMultiplier: 1.1, kleur: 0x3c4a41, oogKleur: 0xb8ffc8, schaal: 0.75 },
 };
 const ONDODE_TYPE_MIN_GOLF = { loper: 2, sjouwer: 3, brander: 4 };
 const BRANDER_EXPLOSIE_RADIUS = 3.0;
@@ -1866,6 +1889,9 @@ const BRANDER_EXPLOSIE_SCHADE_ONDODE = 3;
 // spawnen (zie hun eigen default-parameter) — bestaande tests/debug-tools
 // roepen die rechtstreeks aan en verwachten voorspelbaar 'normaal' gedrag.
 function ondodeTypeGewichten() {
+  // Ticket 9: tijdens een Mistgolf bestaat de golf uitsluitend uit
+  // Sluipers — de eventgolf moet ANDERS voelen, niet gewoon voller.
+  if (actieveEventGolf === 'mist') return { sluiper: 1 };
   const golf = spelStaat.golf;
   return {
     normaal: 10,
@@ -1933,6 +1959,10 @@ const STERKE_POWERUP_COOLDOWN_GOLVEN = 2;
 // Open ontwerpvraag (NIET gebouwd): Kerninslag later evt. begrenzen tot
 // max ~8 kills of ~70% van de levende ondoden — eerst data verzamelen.
 const KERNINSLAG_COOLDOWN_GOLVEN = 4;
+// Gebruikersfeedback: Munitievoorraad droppte te vaak (het was de enige
+// niet-sterke, dus altijd-toegestane type). Eigen, kortere cooldown zodat
+// hij niet meer domineert tussen de sterke drops door.
+const MUNITIEVOORRAAD_COOLDOWN_GOLVEN = 2;
 
 const POWERUP_TYPES = {
   // Max Ammo -> Munitievoorraad: vult beide wapens (indien gekocht) volledig aan.
@@ -1947,20 +1977,24 @@ const POWERUP_TYPES = {
 
 let laatsteSterkePowerupGolf = -Infinity;   // golfnummer van de laatste 'sterk'-drop (Ticket 2)
 let laatsteKerninslagGolf = -Infinity;      // golfnummer van de laatste Kerninslag-drop (Ticket 3)
+let laatsteMunitievoorraadGolf = -Infinity; // golfnummer van de laatste Munitievoorraad-drop (feedbackronde)
 
-// Bouwt de lijst toegestane types voor déze golf: utility (niet-sterk) mag
-// altijd, sterk alleen als de cooldown sinds de vorige sterke drop voorbij
-// is, en Kerninslag moet daarbovenop ook aan zijn eigen, langere cooldown
-// voldoen. Registratie van een nieuwe sterke/Kerninslag-drop gebeurt in
-// spawnPowerupDrop().
+// Bouwt de lijst toegestane types voor déze golf: sterk mag alleen als de
+// cooldown sinds de vorige sterke drop voorbij is (Kerninslag heeft
+// daarbovenop nog zijn eigen, langere cooldown), en Munitievoorraad heeft
+// zijn eigen kortere cooldown. Registratie van een nieuwe drop gebeurt in
+// spawnPowerupDrop(). Als alle types tegelijk op cooldown staan (kan
+// voorkomen) geeft dit undefined terug — de aanroeper moet dat afhandelen.
 function kiesPowerupType() {
   const toegestaan = Object.keys(POWERUP_TYPES).filter(naam => {
     const info = POWERUP_TYPES[naam];
+    if (naam === 'munitievoorraad') return spelStaat.golf >= laatsteMunitievoorraadGolf + MUNITIEVOORRAAD_COOLDOWN_GOLVEN;
     if (!info.sterk) return true;
     if (spelStaat.golf < laatsteSterkePowerupGolf + STERKE_POWERUP_COOLDOWN_GOLVEN) return false;
     if (naam === 'kerninslag' && spelStaat.golf < laatsteKerninslagGolf + KERNINSLAG_COOLDOWN_GOLVEN) return false;
     return true;
   });
+  if (toegestaan.length === 0) return undefined;
   return toegestaan[Math.floor(Math.random() * toegestaan.length)];
 }
 
@@ -1969,11 +2003,13 @@ let dubbeleBeloningTimer = 0;
 let eliminatiemodusTimer = 0;
 
 function spawnPowerupDrop(x, z, type) {
+  if (!type) return;   // alle types op cooldown: geen drop deze keer
   const info = POWERUP_TYPES[type];
   // Registratie op DROP-moment (niet bij oprapen): zo omzeilt een genegeerde
   // drop de cooldown niet (Ticket 2/3).
   if (info.sterk) laatsteSterkePowerupGolf = spelStaat.golf;
   if (type === 'kerninslag') laatsteKerninslagGolf = spelStaat.golf;
+  if (type === 'munitievoorraad') laatsteMunitievoorraadGolf = spelStaat.golf;
   const groep = new THREE.Group();
   const kern = new THREE.Mesh(new THREE.OctahedronGeometry(0.18, 0),
     new THREE.MeshStandardMaterial({ color: info.kleur, emissive: info.kleur, emissiveIntensity: 0.9, roughness: 0.3 }));
@@ -2461,6 +2497,7 @@ function gameOver() {
   document.getElementById('gameOverGeld').textContent = spelStaat.geld;
   gameOverScherm.style.display = 'flex';
   speelGameOver();
+  if (actieveEventGolf) eindigEventGolf(true);   // direct: het spel staat stil, dus geen geleidelijke uitfade
   if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
 }
 
@@ -2507,6 +2544,64 @@ function toonGolfBanner(titel, sub = '') {
   golfBannerTimer = setTimeout(() => { golfBannerUI.style.opacity = '0'; }, 2200);
 }
 
+// --- Eventgolven (Ticket 6): elke EVENT_GOLF_INTERVAL-de golf is een eigen
+// eventgolf i.p.v. gewoon meer zombies — variatie via ANDERE regels
+// (zicht, samenstelling, tempo), niet via volume. Vooralsnog is 'mist' het
+// enige type; latere types kunnen aan kiesEventType worden toegevoegd
+// zonder dit framework te raken.
+const EVENT_GOLF_INTERVAL = 5;
+function isEventGolf(golf) {
+  return golf % EVENT_GOLF_INTERVAL === 0;
+}
+function kiesEventType(golf) {
+  return 'mist';
+}
+let actieveEventGolf = null;
+
+// Aangeroepen vanuit startGolf() zodra een golf een eventgolf is.
+function startEventGolf(type) {
+  actieveEventGolf = type;
+  if (type === 'mist') {
+    mistUitfaseTimer = 0;   // een eventueel nog lopende uitfade meteen afbreken
+    scene.fog.color.setHex(FOG_MIST.kleur);
+    scene.fog.near = FOG_MIST.near;
+    scene.fog.far = FOG_MIST.far;
+  }
+}
+
+// Aangeroepen zodra de golf eindigt (of bij game over) om het event weer op
+// te ruimen. `direct` = true bij game over: het spel staat dan stil, dus een
+// geleidelijke uitfade zou nooit afronden — daar zet de fog in één keer terug.
+// Bij een normale golf-afronding trekt de mist geleidelijk op (zie
+// updateMistUitfade), zodat 'ie niet in één frame verdwijnt.
+function eindigEventGolf(direct = false) {
+  if (actieveEventGolf === 'mist') {
+    toonMelding('De mist trekt weg');
+    if (direct) {
+      mistUitfaseTimer = 0;
+      scene.fog.color.setHex(FOG_NORMAAL.kleur);
+      scene.fog.near = FOG_NORMAAL.near;
+      scene.fog.far = FOG_NORMAAL.far;
+    } else {
+      mistUitfaseVan = { kleur: scene.fog.color.getHex(), near: scene.fog.near, far: scene.fog.far };
+      mistUitfaseTimer = MIST_UITFADE_DUUR;
+    }
+  }
+  actieveEventGolf = null;
+}
+
+// Laat de fog geleidelijk terugvloeien naar FOG_NORMAAL nadat een Mistgolf
+// is afgelopen (zie eindigEventGolf). Wordt elke frame aangeroepen vanuit de
+// game-loop, net als updateGolf/updatePowerups.
+function updateMistUitfade(dt) {
+  if (mistUitfaseTimer <= 0) return;
+  mistUitfaseTimer = Math.max(0, mistUitfaseTimer - dt);
+  const t = 1 - (mistUitfaseTimer / MIST_UITFADE_DUUR);
+  scene.fog.near = mistUitfaseVan.near + (FOG_NORMAAL.near - mistUitfaseVan.near) * t;
+  scene.fog.far = mistUitfaseVan.far + (FOG_NORMAAL.far - mistUitfaseVan.far) * t;
+  scene.fog.color.set(mistUitfaseVan.kleur).lerp(new THREE.Color(FOG_NORMAAL.kleur), t);
+}
+
 function startGolf() {
   spelStaat.teSpawnen = GOLF_BASIS_AANTAL + (spelStaat.golf - 1) * GOLF_AANTAL_GROEI;
   spelStaat.spawnTimer = 0;
@@ -2514,7 +2609,16 @@ function startGolf() {
   const taai = spelStaat.golf > ONDODE_HP_GOLFGRENS ? 'de ondoden zijn nu taaier' : 'mik op het hoofd';
   const zones = aantalOntgrendeldeZones();
   const drukte = zones > 1 ? ` · ${zones} zones actief` : '';
-  toonGolfBanner(`GOLF ${spelStaat.golf}`, `${spelStaat.teSpawnen} ondoden · ${taai}${drukte}`);
+  if (isEventGolf(spelStaat.golf)) {
+    startEventGolf(kiesEventType(spelStaat.golf));
+    if (actieveEventGolf === 'mist') {
+      toonGolfBanner('MISTGOLF', 'de mist trekt op…');
+    } else {
+      toonGolfBanner(`GOLF ${spelStaat.golf} — EVENTGOLF`, `${spelStaat.teSpawnen} ondoden · er is iets anders${drukte}`);
+    }
+  } else {
+    toonGolfBanner(`GOLF ${spelStaat.golf}`, `${spelStaat.teSpawnen} ondoden · ${taai}${drukte}`);
+  }
   speelGolfStart();
   updateHUD();
 }
@@ -2549,6 +2653,7 @@ function updateGolf(dt) {
     spelerStaat.hp = Math.max(spelerStaat.hp, WAVE_HEAL_MIN);
     toonGolfBanner('Wave cleared', `+€${bonus} bonus · koop bij de kist of het upgradepunt`);
     speelGolfKlaar();
+    if (actieveEventGolf) eindigEventGolf();
     updateHUD();
   }
 }
@@ -2588,11 +2693,11 @@ const VENSTERS_KAMER2 = [
   { x: KAMER2_NIS_X_WEST + 0.4, z: KAMER2_NIS_CZ, zone: 'C', spanX: false },
 ];
 
-// Binnenplaats-spawns (Ticket V5): een poortdoorgang en een keldergat, pas
+// Binnenplaats-spawns (Ticket V5): een poortdoorgang en een kelderdeur, pas
 // actief zodra deur 2 gekocht is (zie koopDeur2).
 const VENSTERS_PLAATS = [
   { x: PLAATS_X_OOST - 0.4, z: PLAATS_Z_NOORD + 0.4, zone: 'D', spanX: false },   // poortdoorgang, noordoost
-  { x: PLAATS_X_OOST - 0.4, z: PLAATS_Z_ZUID - 0.4, zone: 'D', spanX: false },    // keldergat, zuidoost
+  { x: PLAATS_X_OOST - 0.4, z: PLAATS_Z_ZUID - 0.4, zone: 'D', spanX: false },    // kelderdeur, zuidoost (bij De Ratelaar)
   { x: PLAATS_CX, z: PLAATS_Z_NOORD + 0.4, zone: 'D', spanX: true },              // v0.6: poort halverwege de noordmuur
 ];
 
@@ -3038,6 +3143,7 @@ function gameLoop(nu) {
     updateOndoden(dt);
     updateGolf(dt);
     updatePowerups(dt);
+    updateMistUitfade(dt);
     updateSpelerRegen(dt);
     updateInteracties();
 
@@ -3084,7 +3190,15 @@ window.AmsterdamUndeadDebug = {
   ondoden, ondodenGroep, VENSTERS, spawnOndode, spawnWillekeurigeOndode, kiesVensterIndex,
   updateOndoden, raakOndode, doodOndode,
   spelerStaat, spelerSchade, updateSpelerRegen, updateVignet, updateHUD,
-  spelStaat, startGolf, updateGolf,
+  spelStaat, startGolf, updateGolf, gameOver,
+  // Ticket 6: eventgolf-framework
+  EVENT_GOLF_INTERVAL, isEventGolf, kiesEventType, startEventGolf, eindigEventGolf,
+  get actieveEventGolf() { return actieveEventGolf; },
+  set actieveEventGolf(v) { actieveEventGolf = v; },
+  // Ticket 7: Mistgolf-fog
+  FOG_NORMAAL, FOG_MIST, MIST_UITFADE_DUUR, updateMistUitfade,
+  get mistUitfaseTimer() { return mistUitfaseTimer; },
+  set mistUitfaseTimer(v) { mistUitfaseTimer = v; },
   interactiePunten, updateInteracties, activeerHuidigeInteractie,
   koopDeur, koopAmmo, koopUpgrade,
   get deurGekocht() { return deurGekocht; },
@@ -3147,6 +3261,10 @@ window.AmsterdamUndeadDebug = {
   KERNINSLAG_COOLDOWN_GOLVEN,
   get laatsteKerninslagGolf() { return laatsteKerninslagGolf; },
   set laatsteKerninslagGolf(v) { laatsteKerninslagGolf = v; },
+  // Feedbackronde: eigen cooldown voor Munitievoorraad (droppte te vaak)
+  MUNITIEVOORRAAD_COOLDOWN_GOLVEN,
+  get laatsteMunitievoorraadGolf() { return laatsteMunitievoorraadGolf; },
+  set laatsteMunitievoorraadGolf(v) { laatsteMunitievoorraadGolf = v; },
   powerups, spawnPowerupDrop, raapPowerupOp, updatePowerups, kiesPowerupType,
   geefMunitievoorraad, geefDubbeleBeloning, geefEliminatiemodus, geefKerninslag,
   get dubbeleBeloningTimer() { return dubbeleBeloningTimer; },

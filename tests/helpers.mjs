@@ -1,0 +1,50 @@
+// Gedeelde testhulp voor de Amsterdam Undead headless-tests.
+// Patroon uit CLAUDE.md: lokale Chromium, CDN-intercept die
+// three.module.js lokaal serveert, en een check()/report()-telpaar.
+import { chromium } from 'playwright';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const THREE_SRC = readFileSync(path.join(__dirname, 'node_modules', 'three', 'build', 'three.module.js'), 'utf8');
+const GAME_PATH = path.join(__dirname, '..', 'amsterdam-undead.html');
+
+// Opent amsterdam-undead.html headless en geeft { browser, page, errs } terug.
+// errs verzamelt console errors + pageerrors zodat elk testscript aan het
+// eind kan controleren dat het spel zonder JS-fouten laadt.
+export async function openAmsterdamUndead({ simuleerPointerLock = false } = {}) {
+  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  const page = await browser.newPage({ viewport: { width: 640, height: 400 } });
+  const errs = [];
+  page.on('pageerror', e => errs.push(String(e)));
+  page.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+  await page.route('**/cdn.jsdelivr.net/**', r => r.fulfill({ status: 200, contentType: 'application/javascript', body: THREE_SRC }));
+  await page.goto('file://' + GAME_PATH);
+  await page.waitForTimeout(800);
+  if (simuleerPointerLock) {
+    await page.evaluate(() => {
+      const canvas = document.querySelector('canvas');
+      Object.defineProperty(document, 'pointerLockElement', { configurable: true, get() { return canvas; } });
+      document.dispatchEvent(new Event('pointerlockchange'));
+    });
+  }
+  return { browser, page, errs };
+}
+
+// Eenvoudige pass/fail-teller met dezelfde console-output als de bestaande
+// scratchpad-tests ([OK]/[FAIL] per regel, samenvatting aan het eind).
+export function makeChecker() {
+  let pass = 0, fail = 0;
+  function check(naam, ok, extra) {
+    if (ok) { pass++; console.log(`[OK  ] ${naam}`); }
+    else { fail++; console.log(`[FAIL] ${naam} — ${JSON.stringify(extra)}`); }
+  }
+  // Print de samenvatting en geeft het aantal fails terug (voor process.exit).
+  function report(errs) {
+    console.log(`\n${pass} OK, ${fail} FAIL`);
+    console.log('console errors:', errs.length ? errs : 'geen');
+    return fail;
+  }
+  return { check, report };
+}
