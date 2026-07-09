@@ -598,7 +598,7 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
   // Natte klinkervloer: donker, blauwgrijs, glanzend (lage ruwheid).
   const klinkers = new THREE.Mesh(
     new THREE.PlaneGeometry(PLAATS_DIEPTE, PLAATS_BREEDTE),
-    new THREE.MeshStandardMaterial({ color: 0x2a3138, roughness: 0.35, metalness: 0.15 })
+    new THREE.MeshStandardMaterial({ color: 0x3a4650, roughness: 0.32, metalness: 0.12 })
   );
   klinkers.rotation.x = -Math.PI / 2;
   klinkers.position.set(PLAATS_CX, 0, DEUR2_Z);
@@ -612,30 +612,164 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
     [3.6, 3.2, 1.3, 0.8], [-3.2, -3.6, 1.0, 1.1],
   ]) {
     const plas = new THREE.Mesh(new THREE.PlaneGeometry(pb, pd),
-      new THREE.MeshStandardMaterial({ color: 0x1c2f3a, roughness: 0.08, metalness: 0.4 }));
+      new THREE.MeshStandardMaterial({ color: 0x29495a, roughness: 0.07, metalness: 0.35 }));
     plas.rotation.x = -Math.PI / 2;
     plas.position.set(PLAATS_CX + dx, 0.005, DEUR2_Z + dz);
     wereld.add(plas);
   }
 
-  // Muren (noord/zuid/oost) mét obstakel — géén plafond, géén westmuur.
-  bouwMuur(PLAATS_CX, PLAATS_Z_NOORD - MUUR_DIKTE / 2, PLAATS_DIEPTE + MUUR_DIKTE * 2, MUUR_DIKTE, GANG_PLEISTER);
-  bouwMuur(PLAATS_CX, PLAATS_Z_ZUID + MUUR_DIKTE / 2, PLAATS_DIEPTE + MUUR_DIKTE * 2, MUUR_DIKTE, GANG_PLEISTER);
-  bouwMuur(PLAATS_X_OOST + MUUR_DIKTE / 2, DEUR2_Z, MUUR_DIKTE, PLAATS_BREEDTE + MUUR_DIKTE * 2, GANG_PLEISTER);
+  // v0.11: Muren (noord/zuid/oost) mét obstakel — géén plafond, géén westmuur.
+  // Lager dan de binnenmuren en met wisselende hoogte (i.p.v. drie identieke
+  // rechte muren) zodat de achtergevels erachter (zie hieronder) zichtbaar
+  // boven de rand uitsteken — dat geeft de indruk van een echte Amsterdamse
+  // achterplaats i.p.v. een gesloten doos. Collision blijft exact hetzelfde
+  // (registreerRechthoek), dus de speler kan nergens doorheen.
+  function bouwBinnenplaatsMuur(x, z, breedte, diepte, hoogte = 2.15, kleur = GANG_PLEISTER) {
+    const muur = new THREE.Mesh(new THREE.BoxGeometry(breedte, hoogte, diepte), mat(kleur, 0.92));
+    muur.position.set(x, hoogte / 2, z);
+    muur.castShadow = true;
+    muur.receiveShadow = true;
+    wereld.add(muur);
+    registreerRechthoek(x - breedte / 2, x + breedte / 2, z - diepte / 2, z + diepte / 2);
+    return muur;
+  }
+  bouwBinnenplaatsMuur(PLAATS_CX, PLAATS_Z_NOORD - MUUR_DIKTE / 2, PLAATS_DIEPTE + MUUR_DIKTE * 2, MUUR_DIKTE, 1.85, GANG_PLEISTER);
+  bouwBinnenplaatsMuur(PLAATS_CX, PLAATS_Z_ZUID + MUUR_DIKTE / 2, PLAATS_DIEPTE + MUUR_DIKTE * 2, MUUR_DIKTE, 2.25, GANG_PLEISTER);
+  bouwBinnenplaatsMuur(PLAATS_X_OOST + MUUR_DIKTE / 2, DEUR2_Z, MUUR_DIKTE, PLAATS_BREEDTE + MUUR_DIKTE * 2, 2.55, GANG_PLEISTER);
 
-  // v0.6: koud maanlicht is ambient-vulling — de lantaarns (zie hieronder)
-  // zijn de belangrijkste lichtbron op de vergrote binnenplaats.
-  // v0.7 (V3): iets sterker/breder en een lagere decay (zachtere val-off),
-  // zodat ondoden ook tussen de lantaarns door goed zichtbaar blijven —
-  // de nachtsfeer blijft door de kleur (koel blauw) intact.
-  const maanlicht = new THREE.PointLight(0x9fc0e8, 15, 19, 1.6);
-  maanlicht.position.set(PLAATS_CX, KAMER_HOOGTE + 0.4, DEUR2_Z);
+  // --- Achtergevels, nepdoorgangen en balkonnetjes (v0.11) -----------------
+  // Puur visuele diepte áchter de binnenplaatsmuren: geen collision (de
+  // echte grens is de muur zelf), geen nieuwe doorgangen (de "nepdoorgangen"
+  // zijn een dichte plaat + kozijn, geen gat). Dit maakt de binnenplaats een
+  // Amsterdamse achterplaats i.p.v. drie kale rechte muren.
+  function bouwAchterGevel(cx, cz, breedte, hoogte, rotY = 0, opties = {}) {
+    const groep = new THREE.Group();
+    const gevel = new THREE.Mesh(new THREE.BoxGeometry(breedte, hoogte, 0.18), mat(opties.kleur ?? 0x10151a, 0.96));
+    gevel.position.y = hoogte / 2;
+    gevel.castShadow = true;
+    gevel.receiveShadow = true;
+    groep.add(gevel);
+    const raamMat = new THREE.MeshBasicMaterial({
+      color: opties.raamKleur ?? 0xffb86b, transparent: true, opacity: opties.raamOpacity ?? 0.45, side: THREE.DoubleSide,
+    });
+    const raamAantal = opties.ramen ?? 4;
+    for (let i = 0; i < raamAantal; i++) {
+      const raam = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.42), raamMat);
+      raam.position.set(
+        -breedte / 2 + 0.55 + i * ((breedte - 1.1) / Math.max(1, raamAantal - 1)),
+        1.35 + (i % 3) * 0.55,
+        -0.095
+      );
+      groep.add(raam);
+    }
+    groep.position.set(cx, 0, cz);
+    groep.rotation.y = rotY;
+    wereld.add(groep);
+    return groep;
+  }
+
+  function bouwNepDoorgang(cx, cz, rotY = 0, breedte = 1.15, hoogte = 1.85) {
+    const groep = new THREE.Group();
+    const donker = new THREE.Mesh(new THREE.PlaneGeometry(breedte, hoogte),
+      new THREE.MeshBasicMaterial({ color: 0x04070a, transparent: true, opacity: 0.95, side: THREE.DoubleSide }));
+    donker.position.set(0, hoogte / 2, -0.02);
+    groep.add(donker);
+    const kozijnKleur = 0x1b2024;
+    const links = new THREE.Mesh(new THREE.BoxGeometry(0.12, hoogte + 0.18, 0.12), mat(kozijnKleur, 0.8));
+    const rechts = new THREE.Mesh(new THREE.BoxGeometry(0.12, hoogte + 0.18, 0.12), mat(kozijnKleur, 0.8));
+    const boven = new THREE.Mesh(new THREE.BoxGeometry(breedte + 0.22, 0.12, 0.12), mat(kozijnKleur, 0.8));
+    links.position.set(-breedte / 2, hoogte / 2, 0);
+    rechts.position.set(breedte / 2, hoogte / 2, 0);
+    boven.position.set(0, hoogte + 0.06, 0);
+    groep.add(links, rechts, boven);
+    const gloed = new THREE.Mesh(new THREE.PlaneGeometry(breedte * 0.8, hoogte * 0.8),
+      new THREE.MeshBasicMaterial({ color: 0x7fa8d8, transparent: true, opacity: 0.14, side: THREE.DoubleSide }));
+    gloed.position.set(0, hoogte / 2, -0.03);
+    groep.add(gloed);
+    groep.position.set(cx, 0, cz);
+    groep.rotation.y = rotY;
+    wereld.add(groep);
+    return groep;
+  }
+
+  function bouwBalkon(cx, cz, rotY = 0) {
+    const groep = new THREE.Group();
+    const vloer = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.12, 0.55), mat(0x2b2118, 0.8));
+    vloer.position.set(0, 2.05, 0);
+    groep.add(vloer);
+    const hekVoor = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.38, 0.06), mat(0x15191c, 0.7, 0.3));
+    hekVoor.position.set(0, 2.32, -0.27);
+    groep.add(hekVoor);
+    for (const x of [-0.7, -0.25, 0.25, 0.7]) {
+      const spijl = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.45, 0.04), mat(0x15191c, 0.7, 0.3));
+      spijl.position.set(x, 2.34, -0.3);
+      groep.add(spijl);
+    }
+    groep.position.set(cx, 0, cz);
+    groep.rotation.y = rotY;
+    wereld.add(groep);
+    return groep;
+  }
+
+  bouwAchterGevel(PLAATS_CX - 3.8, PLAATS_Z_NOORD - 0.95, 4.2, 4.0, 0, { kleur: 0x0d1216, ramen: 4, raamKleur: 0xffc06a, raamOpacity: 0.45 });
+  bouwAchterGevel(PLAATS_CX + 2.2, PLAATS_Z_NOORD - 1.15, 5.2, 4.8, 0, { kleur: 0x151016, ramen: 5, raamKleur: 0x9fc0e8, raamOpacity: 0.32 });
+  bouwAchterGevel(PLAATS_CX + 3.5, PLAATS_Z_ZUID + 1.05, 4.6, 3.8, Math.PI, { kleur: 0x12181d, ramen: 4, raamKleur: 0xffd18a, raamOpacity: 0.4 });
+  bouwAchterGevel(PLAATS_X_OOST + 1.0, DEUR2_Z - 3.5, 4.8, 4.5, Math.PI / 2, { kleur: 0x0c1115, ramen: 5, raamKleur: 0xaed3ff, raamOpacity: 0.35 });
+  bouwAchterGevel(PLAATS_X_OOST + 1.2, DEUR2_Z + 4.0, 4.2, 3.7, Math.PI / 2, { kleur: 0x17120f, ramen: 3, raamKleur: 0xffb86b, raamOpacity: 0.42 });
+
+  // Nepdoorgangen: lijken open, maar blijven geblokkeerd door de randcollision.
+  // Bewust NIET op dezelfde plek als de poort-/keldergat-spawnankers hieronder
+  // (die markeren echte spawnpunten en moeten los blijven van deze decoratie).
+  bouwNepDoorgang(PLAATS_X_OOST - 0.08, DEUR2_Z - 6.5, -Math.PI / 2, 1.1, 1.9);
+  bouwNepDoorgang(PLAATS_CX - 4.2, PLAATS_Z_NOORD + 0.08, 0, 1.15, 1.85);
+
+  // Balkonnetjes en verticale landmarks.
+  bouwBalkon(PLAATS_CX - 2.8, PLAATS_Z_NOORD + 0.1, 0);
+  bouwBalkon(PLAATS_X_OOST - 0.1, DEUR2_Z + 2.5, -Math.PI / 2);
+
+  // Kleine details die de rechte muren verder breken (puur decor, geen
+  // collision): een waslijn met doekjes over de lage noordmuur, en een
+  // smalle regenpijp tegen de oostelijke achtergevel.
+  {
+    const paalHoogte = 1.9;
+    const paalL = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, paalHoogte, 6), mat(0x2a2e30, 0.7));
+    paalL.position.set(PLAATS_CX - 5.5, paalHoogte / 2, PLAATS_Z_NOORD + 0.3);
+    wereld.add(paalL);
+    const paalR = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, paalHoogte, 6), mat(0x2a2e30, 0.7));
+    paalR.position.set(PLAATS_CX - 1.5, paalHoogte / 2, PLAATS_Z_NOORD + 0.3);
+    wereld.add(paalR);
+    const lijn = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 4.0, 4),
+      mat(0x3a352c, 0.9));
+    lijn.rotation.z = Math.PI / 2;
+    lijn.position.set(PLAATS_CX - 3.5, paalHoogte, PLAATS_Z_NOORD + 0.3);
+    wereld.add(lijn);
+    for (const [dx, kleur] of [[-1.2, 0xb5603a], [-0.3, 0xe8e2d4], [0.6, 0x3a5f8c], [1.5, 0x8a8370]]) {
+      const doekje = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.4),
+        new THREE.MeshStandardMaterial({ color: kleur, roughness: 0.9, side: THREE.DoubleSide }));
+      doekje.position.set(PLAATS_CX - 3.5 + dx, paalHoogte - 0.28, PLAATS_Z_NOORD + 0.3);
+      doekje.rotation.y = 0.15;
+      wereld.add(doekje);
+    }
+    const regenpijp = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 4.4, 8), mat(0x1c2226, 0.55, 0.4));
+    regenpijp.position.set(PLAATS_X_OOST + 0.85, 2.2, DEUR2_Z - 3.5 - 2.3);
+    wereld.add(regenpijp);
+  }
+
+  // v0.11: binnenplaats duidelijk lichter — sterker, breder maanlicht (nog
+  // steeds koel blauw voor de nachtsfeer) + een zachte vulgloed, zodat de
+  // hele buitenplaats leesbaar is i.p.v. alleen de directe omgeving.
+  const maanlicht = new THREE.PointLight(0xc8ddff, 48, 28, 1.15);
+  maanlicht.position.set(PLAATS_CX, KAMER_HOOGTE + 1.25, DEUR2_Z - 1.0);
   wereld.add(maanlicht);
   // Tweede, zwakker maanlicht bij de deur zodat je 'm bij binnenkomst
   // meteen ziet i.p.v. eerst een paar meter het donker in te moeten lopen.
-  const maanlichtDeur = new THREE.PointLight(0x9fc0e8, 18, 12, 1.6);
-  maanlichtDeur.position.set(DEUR2_X + 1.5, KAMER_HOOGTE + 0.2, DEUR2_Z);
+  const maanlichtDeur = new THREE.PointLight(0xc8ddff, 34, 17, 1.25);
+  maanlichtDeur.position.set(DEUR2_X + 1.8, KAMER_HOOGTE + 0.7, DEUR2_Z);
   wereld.add(maanlichtDeur);
+  // Extra zachte vulgloed op de open plaats. Geen shadows, puur leesbaarheid.
+  const plaatsVulling = new THREE.PointLight(0x8fb8e8, 22, 24, 1.8);
+  plaatsVulling.position.set(PLAATS_CX + 3.0, 2.2, DEUR2_Z + 2.5);
+  wereld.add(plaatsVulling);
 
   // v0.6: vier lantaarnpalen als belangrijkste lichtbron van de vergrote
   // binnenplaats — schaduwloos (perf), warm-wit, duidelijk anders dan het
@@ -648,13 +782,22 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
     const armatuur = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.22), mat(0x1c1f20, 0.5, 0.4));
     armatuur.position.set(x, 2.62, z);
     wereld.add(armatuur);
-    const bol = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 10),
-      new THREE.MeshStandardMaterial({ color: 0xffe6b0, emissive: 0xffb84a, emissiveIntensity: 1.3 }));
+    // v0.11: sterkere, warmere lichtpoel per lantaarn (leesbaarheid), plus
+    // een zachte grondgloed die de lichtpoel zelf zichtbaar maakt.
+    const bol = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 12),
+      new THREE.MeshStandardMaterial({ color: 0xffefd0, emissive: 0xffc36a, emissiveIntensity: 2.2 }));
     bol.position.set(x, 2.5, z);
     wereld.add(bol);
-    const licht = new THREE.PointLight(0xffcf8a, 16, 9, 2);
-    licht.position.set(x, 2.5, z);
+    const licht = new THREE.PointLight(0xffd6a0, 34, 13, 1.65);
+    licht.position.set(x, 2.45, z);
     wereld.add(licht);
+    const lichtvlek = new THREE.Mesh(
+      new THREE.CircleGeometry(1.25, 24),
+      new THREE.MeshBasicMaterial({ color: 0xffd6a0, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false })
+    );
+    lichtvlek.rotation.x = -Math.PI / 2;
+    lichtvlek.position.set(x, 0.012, z);
+    wereld.add(lichtvlek);
   }
   // v0.10: verder uit elkaar (was ±3) — de binnenplaats is groter geworden.
   for (const [dx, dz] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) {
@@ -965,22 +1108,35 @@ function bouwLijstenstapel(cx, cz, rotY = 0) {
   const g = new THREE.Group();
   [0x3a2c17, 0x4a3520, 0x2c2114].forEach((kleur, i) => {
     const lijst = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.85, 0.03), mat(kleur, 0.7));
-    lijst.position.set(i * 0.05, 0.43, i * 0.05);
-    lijst.rotation.x = -0.12;
+    lijst.position.set(i * 0.06, 0.43, i * 0.04);
+    lijst.rotation.x = -0.22;
+    lijst.castShadow = true;
     g.add(lijst);
   });
   g.position.set(cx, 0, cz); g.rotation.y = rotY; wereld.add(g);
 }
 
 // Een plank met verfpotten in felle, originele kleuren.
+// v0.11: was een losse plank op y=0.9 die niet tegen een muur stond en dus
+// leek te zweven — nu een vloerstaande verfkrat, kan nooit meer zweven.
 function bouwVerfplank(cx, cz, rotY = 0) {
   const g = new THREE.Group();
-  const plank = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.05, 0.28), mat(0x6b5a3f, 0.8));
-  plank.position.y = 0.9; g.add(plank);
+  const krat = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.22, 0.42), mat(0x6b5a3f, 0.82));
+  krat.position.y = 0.11;
+  krat.castShadow = true;
+  krat.receiveShadow = true;
+  g.add(krat);
+  const randVoor = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.12, 0.04), mat(0x4a3520, 0.82));
+  randVoor.position.set(0, 0.24, -0.23);
+  g.add(randVoor);
+  const randAchter = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.12, 0.04), mat(0x4a3520, 0.82));
+  randAchter.position.set(0, 0.24, 0.23);
+  g.add(randAchter);
   [0xb5603a, 0x3a5f8c, 0xd8c24a, 0x3a6b45, 0xe8e2d4].forEach((kleur, i) => {
-    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.14, 8),
-      new THREE.MeshStandardMaterial({ color: kleur, roughness: 0.5 }));
-    pot.position.set(-0.4 + i * 0.2, 0.97, 0);
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.18, 8),
+      new THREE.MeshStandardMaterial({ color: kleur, roughness: 0.55 }));
+    pot.position.set(-0.38 + i * 0.19, 0.34, 0);
+    pot.castShadow = true;
     g.add(pot);
   });
   g.position.set(cx, 0, cz); g.rotation.y = rotY; wereld.add(g);
@@ -1079,8 +1235,10 @@ bouwFietsenrek(PLAATS_CX + 1.6, DEUR2_Z + 2.2);
 // zonder de open ruimte te verpesten. Bewust ver van de lantaarns/deur/
 // interactiepunten/spawnankers geplaatst.
 function bouwSchuurtje(cx, cz) {
-  const muurtje = mat(0x4a3c2a, 0.85);
-  const wand = blok(2.0, 1.9, 2.2, muurtje);
+  // Bugfix: blok()'s 4e argument is een kleurgetal (het roept zelf mat()
+  // aan) — hier eerder per ongeluk een kant-en-klaar material doorgegeven,
+  // waardoor mat() 'm niet als kleur kon lezen en op wit terugviel.
+  const wand = blok(2.0, 1.9, 2.2, 0x4a3c2a, 0.85);
   wand.position.set(cx, 0.95, cz);
   wereld.add(wand);
   const dak = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.12, 2.5), mat(0x2a2018, 0.7));
@@ -1118,17 +1276,30 @@ registreerRechthoek(PLAATS_CX - 4.8, PLAATS_CX - 4.2, DEUR2_Z + 5.7, DEUR2_Z + 6
 const RATELAAR_X = PLAATS_X_OOST - 0.6;
 const RATELAAR_Z = DEUR2_Z + 5;
 {
-  const plank = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.3, 1.1), mat(0x3a2c1c, 0.75));
-  plank.position.set(PLAATS_X_OOST - 0.1, 0.9, RATELAAR_Z);
-  wereld.add(plank);
-  const silhouet = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.35),
-    new THREE.MeshBasicMaterial({ color: 0xe8dcc0 }));
-  silhouet.rotation.y = -Math.PI / 2;
-  silhouet.position.set(PLAATS_X_OOST - 0.15, 1.05, RATELAAR_Z);
-  wereld.add(silhouet);
-  const rek = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.9), mat(0x2a2018, 0.7));
-  rek.position.set(RATELAAR_X + 0.3, 0.6, RATELAAR_Z);
-  wereld.add(rek);
+  // v0.11: het lichte silhouet-vlak (0xe8dcc0) was het "rare witte blok" op
+  // de binnenplaats — vervangen door een duidelijk wapenrek zonder groot
+  // licht vlak.
+  const achterplaat = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.2, 1.25), mat(0x2b2118, 0.82));
+  achterplaat.position.set(PLAATS_X_OOST - 0.1, 0.85, RATELAAR_Z);
+  achterplaat.castShadow = true;
+  wereld.add(achterplaat);
+  const loop = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.9, 8), mat(0x1a1d20, 0.55, 0.45));
+  loop.rotation.x = Math.PI / 2;
+  loop.rotation.z = Math.PI / 2;
+  loop.position.set(PLAATS_X_OOST - 0.22, 1.03, RATELAAR_Z);
+  wereld.add(loop);
+  const kolf = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.18, 0.35), mat(0x5a3520, 0.78));
+  kolf.position.set(PLAATS_X_OOST - 0.22, 0.94, RATELAAR_Z + 0.43);
+  wereld.add(kolf);
+  const steunBoven = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.95), mat(0x151515, 0.65, 0.4));
+  steunBoven.position.set(PLAATS_X_OOST - 0.24, 1.18, RATELAAR_Z);
+  wereld.add(steunBoven);
+  const steunOnder = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.95), mat(0x151515, 0.65, 0.4));
+  steunOnder.position.set(PLAATS_X_OOST - 0.24, 0.78, RATELAAR_Z);
+  wereld.add(steunOnder);
+  const bordje = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, 0.7), mat(0xd9a05a, 0.55, 0.15));
+  bordje.position.set(PLAATS_X_OOST - 0.25, 0.45, RATELAAR_Z);
+  wereld.add(bordje);
 }
 const ratelaarMarkering = interactieMarkering(RATELAAR_X, RATELAAR_Z, 0xd9a05a);
 
@@ -2026,7 +2197,6 @@ const RATELAAR_PRIJS   = 750;   // eenmalig: tweede wapen, op de binnenplaats
 const SNELSPANNER_PRIJS       = 600;   // eenmalig: sneller herladen
 const SNELSPANNER_HERLAADDUUR = 0.7;   // vervangt wapenStaat.herlaadDuur (was 1.2)
 const DEUR2_PRIJS  = 1000;             // v0.6: 1250->1000, opent de binnenplaats (zone D)
-const REGENTON_GELD = 400;             // eenmalige vondst op de binnenplaats
 const WATERTAP_PRIJS = 200;            // herbruikbaar: geld voor HP
 const WATERTAP_HP    = 50;             // hp per gebruik (gecapt op hpMax)
 const PANTSERDRANK_PRIJS    = 1000;    // v0.7: eenmalige perk in het atelier
@@ -2214,20 +2384,6 @@ const werkbankMarkering = interactieMarkering(WERKBANK_X, WERKBANK_Z, 0xff9f5a);
 // staat), niet aan de binnenplaats-kant erachter (bugfix na code-review).
 const deur2Markering = interactieMarkering(DEUR2_X - 0.7, DEUR2_Z, 0x9fc0e8);
 
-// --- Regenton (Ticket V5): eenmalige vondst op de binnenplaats -----------
-const REGENTON_X = PLAATS_CX - 0.5;
-const REGENTON_Z = DEUR2_Z + 1.8;
-{
-  const ton = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.34, 0.9, 12), mat(0x2f3a3d, 0.7, 0.2));
-  ton.position.set(REGENTON_X, 0.45, REGENTON_Z);
-  ton.castShadow = true;
-  wereld.add(ton);
-  const kistjeOpTon = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.3), mat(0x4a3a26, 0.8));
-  kistjeOpTon.position.set(REGENTON_X, 1.0, REGENTON_Z);
-  wereld.add(kistjeOpTon);
-}
-const regentonMarkering = interactieMarkering(REGENTON_X, REGENTON_Z, 0xffd75e);
-
 // --- Watertap (Ticket V5): herbruikbaar, geld voor HP (risk/reward) ------
 const WATERTAP_X = PLAATS_CX + 1.5;
 const WATERTAP_Z = DEUR2_Z - 1.6;
@@ -2377,18 +2533,6 @@ function koopDeur2() {
   updateHUD();
 }
 
-// Regenton (Ticket V5): eenmalige vondst.
-let regentonGeopend = false;
-function openRegenton() {
-  if (regentonGeopend) return;
-  regentonGeopend = true;
-  spelStaat.geld += REGENTON_GELD;
-  speelKoop();
-  toonMelding(`Weggestopt spaargeld gevonden: +€${REGENTON_GELD}`);
-  doofMarkering(regentonMarkering);
-  updateHUD();
-}
-
 // Watertap (Ticket V5): herbruikbaar, geld voor HP. Werkt niet als HP al vol is.
 function koopWatertap() {
   if (spelerStaat.hp >= spelerStaat.hpMax) { toonMelding('HP is al vol'); return; }
@@ -2459,13 +2603,6 @@ const deur2Punt = {
   prompt: () => `Druk T: forceer de deur (€${DEUR2_PRIJS})`,
   actie: koopDeur2,
 };
-const regentonPunt = {
-  naam: 'Regenton',
-  positie: new THREE.Vector3(REGENTON_X, 0, REGENTON_Z),
-  radius: 1.4,
-  prompt: () => regentonGeopend ? 'Regenton is al doorzocht' : `Druk T: doorzoek de regenton (€${REGENTON_GELD} gevonden)`,
-  actie: openRegenton,
-};
 const watertapPunt = {
   naam: 'Watertap',
   positie: new THREE.Vector3(WATERTAP_X, 0, WATERTAP_Z),
@@ -2475,7 +2612,7 @@ const watertapPunt = {
     : `Druk T: regenwater tappen (€${WATERTAP_PRIJS} -> +${WATERTAP_HP} HP)`,
   actie: koopWatertap,
 };
-const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, pantserdrankPunt, deur2Punt, regentonPunt, watertapPunt, ratelaarPunt];
+const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, pantserdrankPunt, deur2Punt, watertapPunt, ratelaarPunt];
 
 let huidigeInteractie = null;
 
@@ -2587,22 +2724,21 @@ window.AmsterdamUndeadDebug = {
   // v0.3 zone-D / werkbank-constanten (Ticket V1):
   DEUR2_HALF, DEUR2_X, PLAATS_BREEDTE, PLAATS_DIEPTE, PLAATS_X_OOST,
   SNELSPANNER_PRIJS, SNELSPANNER_HERLAADDUUR, DEUR2_PRIJS,
-  REGENTON_GELD, WATERTAP_PRIJS, WATERTAP_HP,
+  WATERTAP_PRIJS, WATERTAP_HP,
   // Ticket V2/V3: atelier-constanten + werkbank/Snelspanner:
   ATELIER_MIDDEN_Z, ATELIER_OOSTRAAM_Z, WERKBANK_X, WERKBANK_Z,
   // Ticket V4: gang-constanten:
   GANG_Z_MIDDEN, GANG_PLEISTER,
   // Ticket V5: binnenplaats + deur 2:
   DEUR2_Z, PLAATS_Z_NOORD, PLAATS_Z_ZUID, PLAATS_CX, VENSTERS_PLAATS,
-  deur2Mesh, deur2Obstakel, koopDeur2, openRegenton, koopWatertap,
-  deur2Punt, regentonPunt, watertapPunt,
+  deur2Mesh, deur2Obstakel, koopDeur2, koopWatertap,
+  deur2Punt, watertapPunt,
   get deur2Gekocht() { return deur2Gekocht; },
-  get regentonGeopend() { return regentonGeopend; },
   // Ticket V6: spawn-pacing per zone:
   aantalOntgrendeldeZones, effectiefSpawnInterval, effectiefMaxActief,
   ZONE_SPAWN_INTERVAL_FACTOR, ZONE_MAX_ACTIEF_BONUS,
   // Ticket V7: progressie-UI:
-  doofMarkering, upgradeMarkering, werkbankMarkering, regentonMarkering,
+  doofMarkering, upgradeMarkering, werkbankMarkering,
   // Ticket V8: zone-audio (voor tests: booleans + drempel opvraagbaar/instelbaar):
   get gangBetreden() { return gangBetreden; },
   get plaatsBetreden() { return plaatsBetreden; },
