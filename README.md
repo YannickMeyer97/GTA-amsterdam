@@ -120,7 +120,7 @@ te gaan naar het hoofdmenu.
   **game over** (klik "Opnieuw beginnen" om te herstarten).
 - Je verdient **geld** per treffer en per kill. Na elke golf krijg je een
   **"Wave cleared"**-bonus (die oploopt met het golfnummer) en heel je
-  automatisch aan tot minimaal 75 HP — de rustpauze tussen golven duurt
+  automatisch aan tot minimaal 60 HP — de rustpauze tussen golven duurt
   8 seconden, genoeg om te repareren, te kopen en op adem te komen.
 - **Power-ups:** een dodelijke treffer laat soms een gloeiend, zwevend
   kristal vallen — loop erover heen om 'm meteen te gebruiken (geen `T`

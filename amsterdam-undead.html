@@ -1846,9 +1846,13 @@ function ondodeStartHP() {
 const ONDODE_TYPES = {
   normaal: { snelheidMultiplier: 1,    hpMultiplier: 1, geldMultiplier: 1,   kleur: 0x5d7255, oogKleur: 0xd8ff6b, schaal: 1 },
   // Loper: snel maar breekbaar, lage beloning — dwingt de speler om te kiezen wie eerst.
-  loper:   { snelheidMultiplier: 1.8,  hpMultiplier: 0.5, geldMultiplier: 0.6, kleur: 0x8a9c4a, oogKleur: 0xe8ff9c, schaal: 0.9 },
+  // Ticket 4: 1.8->1.47 (1,5x1,47=2,205 m/s) — op 2,7 haalde hij een
+  // achteruit schietende speler te makkelijk in.
+  loper:   { snelheidMultiplier: 1.47, hpMultiplier: 0.5, geldMultiplier: 0.6, kleur: 0x8a9c4a, oogKleur: 0xe8ff9c, schaal: 0.9 },
   // Sjouwer: erg traag, zeer taai, hoge beloning — een blokkade die de doorgang dichtzet.
-  sjouwer: { snelheidMultiplier: 0.55, hpMultiplier: 4,   geldMultiplier: 2.2, kleur: 0x4a5568, oogKleur: 0x9cc8ff, schaal: 1.35 },
+  // Ticket 5: hpMultiplier 4->2.5 (golf 3+ basis-HP 2 -> round(2x2.5)=5) —
+  // op 8 HP was hij wachttijd i.p.v. spanning.
+  sjouwer: { snelheidMultiplier: 0.55, hpMultiplier: 2.5, geldMultiplier: 2.2, kleur: 0x4a5568, oogKleur: 0x9cc8ff, schaal: 1.35 },
   // Brander: normale snelheid/HP, ontploft bij overlijden (zie ontploiBrander).
   brander: { snelheidMultiplier: 1,    hpMultiplier: 1,   geldMultiplier: 1.3, kleur: 0x8a4a2c, oogKleur: 0xffa03d, schaal: 1, explodeert: true },
 };
@@ -1907,7 +1911,7 @@ const GOLF_MAX_ACTIEF     = 18;   // max. gelijktijdig levende ondoden (perf-pla
 // speler heelt automatisch op tot minimaal WAVE_HEAL_MIN (verlaagt nooit).
 const WAVE_BONUS_BASIS  = 75;
 const WAVE_BONUS_PER_GOLF = 15;
-const WAVE_HEAL_MIN = 75;
+const WAVE_HEAL_MIN = 60;   // Ticket 1: 75->60, zodat een slechte golf 2-3 golven voelbaar blijft
 
 /* ================================================================
    POWER-UPS: kans op een drop bij een dodelijke treffer, opgeraapt door
@@ -1919,20 +1923,45 @@ const POWERUP_VERVAL_TIJD = 12;      // s voordat een niet-opgeraapte drop verdw
 const POWERUP_PICKUP_RADIUS = 0.9;   // m — vlak overheen lopen is genoeg
 const POWERUP_DUBBELE_BELONING_DUUR = 20;
 const POWERUP_ELIMINATIEMODUS_DUUR  = 15;
+// Ticket 2: sterke power-ups (alles behalve Munitievoorraad) mogen pas
+// opnieuw droppen na dit aantal golven sinds de vorige sterke drop —
+// anders trivialiseren ze golven/economie (zie ARCHITECTURE_NOTES §2.2).
+const STERKE_POWERUP_COOLDOWN_GOLVEN = 2;
+// Ticket 3: Kerninslag is een onmiddellijke wave-wipe + volledige
+// geldbeloning — categorisch sterker dan de andere twee sterke power-ups,
+// dus een eigen, langere cooldown bovenop STERKE_POWERUP_COOLDOWN_GOLVEN.
+// Open ontwerpvraag (NIET gebouwd): Kerninslag later evt. begrenzen tot
+// max ~8 kills of ~70% van de levende ondoden — eerst data verzamelen.
+const KERNINSLAG_COOLDOWN_GOLVEN = 4;
 
 const POWERUP_TYPES = {
   // Max Ammo -> Munitievoorraad: vult beide wapens (indien gekocht) volledig aan.
   munitievoorraad: { naam: 'Munitievoorraad', kleur: 0xf2c94c, effect: () => geefMunitievoorraad() },
   // Double Points -> Dubbele Beloning: tijdelijk 2x geld per hit/kill.
-  dubbeleBeloning: { naam: 'Dubbele Beloning', kleur: 0x6ec6ff, effect: () => geefDubbeleBeloning() },
+  dubbeleBeloning: { naam: 'Dubbele Beloning', kleur: 0x6ec6ff, effect: () => geefDubbeleBeloning(), sterk: true },
   // Insta Kill -> Eliminatiemodus: tijdelijk doodt elke treffer de ondode meteen.
-  eliminatiemodus: { naam: 'Eliminatiemodus', kleur: 0xff5c5c, effect: () => geefEliminatiemodus() },
+  eliminatiemodus: { naam: 'Eliminatiemodus', kleur: 0xff5c5c, effect: () => geefEliminatiemodus(), sterk: true },
   // Nuke -> Kerninslag: doodt alle levende ondoden nu meteen + geldbeloning.
-  kerninslag: { naam: 'Kerninslag', kleur: 0xbdf7ff, effect: () => geefKerninslag() },
+  kerninslag: { naam: 'Kerninslag', kleur: 0xbdf7ff, effect: () => geefKerninslag(), sterk: true },
 };
+
+let laatsteSterkePowerupGolf = -Infinity;   // golfnummer van de laatste 'sterk'-drop (Ticket 2)
+let laatsteKerninslagGolf = -Infinity;      // golfnummer van de laatste Kerninslag-drop (Ticket 3)
+
+// Bouwt de lijst toegestane types voor déze golf: utility (niet-sterk) mag
+// altijd, sterk alleen als de cooldown sinds de vorige sterke drop voorbij
+// is, en Kerninslag moet daarbovenop ook aan zijn eigen, langere cooldown
+// voldoen. Registratie van een nieuwe sterke/Kerninslag-drop gebeurt in
+// spawnPowerupDrop().
 function kiesPowerupType() {
-  const namen = Object.keys(POWERUP_TYPES);
-  return namen[Math.floor(Math.random() * namen.length)];
+  const toegestaan = Object.keys(POWERUP_TYPES).filter(naam => {
+    const info = POWERUP_TYPES[naam];
+    if (!info.sterk) return true;
+    if (spelStaat.golf < laatsteSterkePowerupGolf + STERKE_POWERUP_COOLDOWN_GOLVEN) return false;
+    if (naam === 'kerninslag' && spelStaat.golf < laatsteKerninslagGolf + KERNINSLAG_COOLDOWN_GOLVEN) return false;
+    return true;
+  });
+  return toegestaan[Math.floor(Math.random() * toegestaan.length)];
 }
 
 const powerups = [];   // actieve, nog niet opgeraapte drops in de wereld
@@ -1941,6 +1970,10 @@ let eliminatiemodusTimer = 0;
 
 function spawnPowerupDrop(x, z, type) {
   const info = POWERUP_TYPES[type];
+  // Registratie op DROP-moment (niet bij oprapen): zo omzeilt een genegeerde
+  // drop de cooldown niet (Ticket 2/3).
+  if (info.sterk) laatsteSterkePowerupGolf = spelStaat.golf;
+  if (type === 'kerninslag') laatsteKerninslagGolf = spelStaat.golf;
   const groep = new THREE.Group();
   const kern = new THREE.Mesh(new THREE.OctahedronGeometry(0.18, 0),
     new THREE.MeshStandardMaterial({ color: info.kleur, emissive: info.kleur, emissiveIntensity: 0.9, roughness: 0.3 }));
@@ -3106,6 +3139,14 @@ window.AmsterdamUndeadDebug = {
   // Power-ups: drop-systeem + effecten (Munitievoorraad/Dubbele Beloning/Eliminatiemodus/Kerninslag)
   POWERUP_TYPES, POWERUP_DROP_KANS, POWERUP_VERVAL_TIJD, POWERUP_PICKUP_RADIUS,
   POWERUP_DUBBELE_BELONING_DUUR, POWERUP_ELIMINATIEMODUS_DUUR,
+  // Ticket 2: cooldown op sterke power-ups
+  STERKE_POWERUP_COOLDOWN_GOLVEN,
+  get laatsteSterkePowerupGolf() { return laatsteSterkePowerupGolf; },
+  set laatsteSterkePowerupGolf(v) { laatsteSterkePowerupGolf = v; },
+  // Ticket 3: aparte, langere cooldown voor Kerninslag
+  KERNINSLAG_COOLDOWN_GOLVEN,
+  get laatsteKerninslagGolf() { return laatsteKerninslagGolf; },
+  set laatsteKerninslagGolf(v) { laatsteKerninslagGolf = v; },
   powerups, spawnPowerupDrop, raapPowerupOp, updatePowerups, kiesPowerupType,
   geefMunitievoorraad, geefDubbeleBeloning, geefEliminatiemodus, geefKerninslag,
   get dubbeleBeloningTimer() { return dubbeleBeloningTimer; },
