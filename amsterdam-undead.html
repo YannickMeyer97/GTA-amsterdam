@@ -1951,7 +1951,10 @@ function spawnOndode(vensterIndex) {
   const venster = VENSTERS[vensterIndex % VENSTERS.length];
   const groep = maakOndodeModel();
   groep.position.set(venster.x, 0, venster.z);
-  const ondode = { groep, hp: ondodeStartHP(), meleeTimer: 0, ontwijkTimer: 0, ontwijkRichting: 1 };
+  const ondode = {
+    groep, hp: ondodeStartHP(), meleeTimer: 0, vastTijd: 0,
+    ontwijkTimer: 0, ontwijkZijkant: 1, ontwijkStartPos: new THREE.Vector3(),
+  };
   groep.userData.ondode = ondode;
   ondodenGroep.add(groep);
   ondoden.push(ondode);
@@ -1982,39 +1985,125 @@ function spawnWillekeurigeOndode() {
   return spawnOndode(kiesVensterIndex());
 }
 
+// Eenvoudige "spine"-navigatie tussen de opeenvolgende zones (woonkamer ->
+// gang -> atelier -> binnenplaats). De lokale ontwijk-logica hieronder loopt
+// prima een obstakel in dezelfde ruimte om (schuurtje, kratten), maar vindt
+// niet betrouwbaar een 2m-brede deuropening een hele kamer verderop als de
+// speler daar voorbij staat — vandaar dat een ondode die in een ANDERE zone
+// zit dan de speler eerst op het eerstvolgende deurpunt mikt i.p.v. recht op
+// de speler af. De nis-opening (atelier) is bewust geen zone-grens: die is
+// breed genoeg dat de lokale ontwijk-logica die al aantoonbaar zelf vindt.
+function zoneVan(x, z) {
+  if (z > DEUR_Z) return 0;        // woonkamer
+  // De binnenplaats steekt net iets noordelijker uit dan GANG_Z_EIND (zijn
+  // eigen breedte is losstaand ingesteld t.o.v. de gang), dus x >= DEUR2_X
+  // moet hier al vóór de gang-check gebeuren — anders valt dat noordpuntje
+  // van de binnenplaats ten onrechte in de gang-band. Puur op x checken kan
+  // ook niet zomaar bij de woonkamer (zie hierboven): DEUR2_X (oostmuur
+  // atelier) en HALF_BREEDTE (oostmuur woonkamer) hebben toevallig dezelfde
+  // waarde, vandaar dat de woonkamer-check op z altijd eerst gaat.
+  if (x >= DEUR2_X) return 3;      // binnenplaats
+  if (z > GANG_Z_EIND) return 1;   // gang
+  return 2;                        // atelier (incl. nis)
+}
+const ZONE_DEURPUNTEN = [
+  new THREE.Vector3(0, 0, DEUR_Z),         // woonkamer <-> gang
+  new THREE.Vector3(0, 0, GANG_Z_EIND),    // gang <-> atelier
+  new THREE.Vector3(DEUR2_X, 0, DEUR2_Z),  // atelier <-> binnenplaats
+];
+
 // Jagen op de speler + melee als ze dichtbij genoeg zijn. Hergebruikt
 // losBotsingenOp() uit STAP 3 zodat ondoden ook niet door muren lopen.
 function updateOndoden(dt) {
   for (const ondode of ondoden) {
-    const richting = new THREE.Vector3().subVectors(speler.positie, ondode.groep.position);
-    const afstand = richting.length();
+    const positie = ondode.groep.position;
+    const rechtstreeks = new THREE.Vector3().subVectors(speler.positie, positie);
+    const afstand = rechtstreeks.length();
+
     if (afstand <= MELEE_BEREIK) {
       ondode.meleeTimer -= dt;
       if (ondode.meleeTimer <= 0) {
         spelerSchade(MELEE_SCHADE);
         ondode.meleeTimer = MELEE_COOLDOWN;
       }
+      ondode.vastTijd = 0;
+      ondode.ontwijkTimer = 0;
+      continue;
+    }
+
+    // Zit de ondode in een andere zone dan de speler? Dan eerst op het
+    // eerstvolgende deurpunt af (zie zoneVan/ZONE_DEURPUNTEN hierboven) i.p.v.
+    // recht op de speler, anders vindt hij een deuropening een kamer verderop
+    // niet betrouwbaar. Binnen dezelfde zone blijft het gewoon rechtstreeks.
+    const eigenZone = zoneVan(positie.x, positie.z);
+    const spelerZone = zoneVan(speler.positie.x, speler.positie.z);
+    const doelPunt = eigenZone < spelerZone ? ZONE_DEURPUNTEN[eigenZone]
+      : eigenZone > spelerZone ? ZONE_DEURPUNTEN[eigenZone - 1]
+      : speler.positie;
+    const naarDoel = new THREE.Vector3().subVectors(doelPunt, positie).setY(0);
+
+    // Bij een lopende ontwijk-burst mengt de ondode een groot, vast aandeel
+    // zijwaarts door zijn looprichting i.p.v. recht op het doel af te gaan —
+    // zo loopt hij een hoek of obstakel (schuurtje, kratten, muurstomp)
+    // daadwerkelijk om. Bewust een VASTE verhouding (niet een offset-punt
+    // ergens ver weg): bij een doel op grote afstand werd een offset-punt
+    // verwaarloosbaar klein t.o.v. de totale richting, waardoor de bocht te
+    // zwak was om echt om een hoek te sturen. Zelfde grondpatroon als de
+    // robots in defend-national-monument.html, hier aangepast naar een
+    // richting-blend die niet met de afstand tot het doel meeschaalt.
+    const direct = naarDoel.clone().normalize();
+    let richting = direct;
+    if (ondode.ontwijkTimer > 0) {
+      const zijwaarts = new THREE.Vector3(-direct.z, 0, direct.x).multiplyScalar(ondode.ontwijkZijkant);
+      richting = direct.clone().multiplyScalar(0.3).add(zijwaarts).normalize();
+    }
+    const voorPos = positie.clone();
+    positie.addScaledVector(richting, ONDODE_SNELHEID * dt);
+    losBotsingenOp(positie, ONDODE_STRAAL);
+    ondode.groep.rotation.y = Math.atan2(rechtstreeks.x, rechtstreeks.z);
+    ondode.meleeTimer = 0;   // meteen kunnen slaan zodra ze bij aankomst in bereik komen
+
+    if (ondode.ontwijkTimer > 0) {
+      // Al aan het uitwijken: pas wanneer de burst AFLOOPT bekijken of het
+      // obstakel inmiddels om is. Elke frame los beoordelen zou langzame-
+      // maar-echte voortgang langs een muur (bv. richting een deuropening)
+      // telkens afbreken door een nieuwe, mogelijk verkeerde worp.
+      ondode.ontwijkTimer -= dt;
+      if (ondode.ontwijkTimer <= 0) {
+        // Test: zou puur rechtstreeks bewegen nu weer lukken (obstakel voorbij)?
+        // Dat is een betrouwbaardere stopconditie dan "hoeveel is er verplaatst",
+        // want die laatste blijft "ja" geven zolang er ÜBERHAUPT beweging is
+        // (ook nadat de hoek al lang om is), en zou het uitwijken dan nooit
+        // meer loslaten.
+        const testPos = positie.clone().addScaledVector(direct, ONDODE_SNELHEID * dt);
+        losBotsingenOp(testPos, ONDODE_STRAAL);
+        if (testPos.distanceTo(positie) > ONDODE_SNELHEID * dt * 0.3) {
+          ondode.vastTijd = 0;   // obstakel voorbij: terug naar rechtstreeks jagen
+        } else {
+          const afgelegd = positie.distanceTo(ondode.ontwijkStartPos);
+          if (afgelegd > 1.0) {
+            // Nog niet vrij, maar deze kant werkt echt: doorzetten.
+            ondode.ontwijkTimer = 1.2;
+            ondode.ontwijkStartPos.copy(positie);
+          } else {
+            // Amper verplaatst: gericht de ANDERE kant proberen i.p.v.
+            // opnieuw loten (anders kan dezelfde mislukte kant terugkomen).
+            ondode.ontwijkZijkant *= -1;
+            ondode.ontwijkTimer = 2.2;
+            ondode.ontwijkStartPos.copy(positie);
+          }
+        }
+      }
+    } else if (positie.distanceTo(voorPos) < ONDODE_SNELHEID * dt * 0.3) {
+      ondode.vastTijd += dt;
+      if (ondode.vastTijd > 0.5) {
+        ondode.ontwijkZijkant = Math.random() < 0.5 ? 1 : -1;
+        ondode.ontwijkTimer = 2.2;
+        ondode.ontwijkStartPos.copy(positie);
+        ondode.vastTijd = 0;
+      }
     } else {
-      richting.normalize();
-      const voorPos = ondode.groep.position.clone();
-      ondode.groep.position.addScaledVector(richting, ONDODE_SNELHEID * dt);
-      // Anti-vast: bij een lopende ontwijk-burst mengt 'ie een zijwaartse stap
-      // erbij om langs een muur/hoek (bv. de deuropening) te glijden.
-      if (ondode.ontwijkTimer > 0) {
-        const zij = new THREE.Vector3(-richting.z, 0, richting.x).multiplyScalar(ondode.ontwijkRichting);
-        ondode.groep.position.addScaledVector(zij, ONDODE_SNELHEID * dt);
-        ondode.ontwijkTimer -= dt;
-      }
-      losBotsingenOp(ondode.groep.position, ONDODE_STRAAL);
-      // Nauwelijks opgeschoten terwijl 'ie niet in meleebereik is => vastgelopen:
-      // start een korte zijwaartse ontwijk-burst (afwisselend links/rechts).
-      if (ondode.ontwijkTimer <= 0 &&
-          ondode.groep.position.distanceTo(voorPos) < ONDODE_SNELHEID * dt * 0.3) {
-        ondode.ontwijkTimer = 0.6;
-        ondode.ontwijkRichting = Math.random() < 0.5 ? -1 : 1;
-      }
-      ondode.groep.rotation.y = Math.atan2(richting.x, richting.z);
-      ondode.meleeTimer = 0;   // meteen kunnen slaan zodra ze bij aankomst in bereik komen
+      ondode.vastTijd = 0;
     }
   }
 }
