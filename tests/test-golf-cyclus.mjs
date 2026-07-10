@@ -17,7 +17,7 @@ const bonusGolf1 = await page.evaluate(() => {
   d.spelStaat.golf = 1;
   d.spelStaat.geld = 0;
   d.spelStaat.golfActief = true;
-  d.spelStaat.teSpawnen = 0;
+  d.spelStaat.budget = 0;
   d.spelerStaat.hp = 100;
   d.updateGolf(0.1);
   return { geld: d.spelStaat.geld, golf: d.spelStaat.golf };
@@ -31,7 +31,7 @@ const bonusGolf5 = await page.evaluate(() => {
   d.spelStaat.golf = 5;
   d.spelStaat.geld = 0;
   d.spelStaat.golfActief = true;
-  d.spelStaat.teSpawnen = 0;
+  d.spelStaat.budget = 0;
   d.updateGolf(0.1);
   return { geld: d.spelStaat.geld };
 });
@@ -43,7 +43,7 @@ const healLaag = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   for (const o of [...d.ondoden]) d.doodOndode(o);
   d.spelStaat.golfActief = true;
-  d.spelStaat.teSpawnen = 0;
+  d.spelStaat.budget = 0;
   d.spelerStaat.hp = 20;
   d.updateGolf(0.1);
   return { hp: d.spelerStaat.hp, min: d.WAVE_HEAL_MIN };
@@ -55,7 +55,7 @@ const healHoog = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   for (const o of [...d.ondoden]) d.doodOndode(o);
   d.spelStaat.golfActief = true;
-  d.spelStaat.teSpawnen = 0;
+  d.spelStaat.budget = 0;
   d.spelerStaat.hp = 90;
   d.updateGolf(0.1);
   return d.spelerStaat.hp;
@@ -68,25 +68,95 @@ const banner = await page.evaluate(() => {
   for (const o of [...d.ondoden]) d.doodOndode(o);
   d.spelStaat.golf = 2;
   d.spelStaat.golfActief = true;
-  d.spelStaat.teSpawnen = 0;
+  d.spelStaat.budget = 0;
   d.updateGolf(0.1);
   const el = document.getElementById('golfBanner');
   return el.textContent;
 });
 check('Banner toont "Wave cleared" met een bonusbedrag', banner.includes('Wave cleared') && banner.includes('€'), { banner });
 
-// --- 5. startGolf() zet teSpawnen en toont de "GOLF X"-banner ------------
+// --- 5. startGolf() zet het dreigingsbudget en toont de "GOLF X"-banner ---
+// Ticket 13: teSpawnen (aantal) is vervangen door spelStaat.budget (dreiging).
 const start = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.spelStaat.golf = 3;
   d.spelStaat.gameOver = false;
   d.startGolf();
   const el = document.getElementById('golfBanner');
-  return { teSpawnen: d.spelStaat.teSpawnen, golfActief: d.spelStaat.golfActief, banner: el.textContent };
+  return { budget: d.spelStaat.budget, golfActief: d.spelStaat.golfActief, banner: el.textContent };
 });
-check('startGolf() op golf 3 zet 9 te spawnen ondoden klaar (5 + 2x2)',
-  start.teSpawnen === 9 && start.golfActief === true, start);
-check('startGolf() toont de "GOLF 3"-banner', start.banner.includes('GOLF 3'), start);
+check('startGolf() op golf 3 zet het budget op 8 (round(5 + 1.7x2))',
+  start.budget === 8 && start.golfActief === true, start);
+check('startGolf() toont de "GOLF 3"-banner met dreiging i.p.v. aantal',
+  start.banner.includes('GOLF 3') && start.banner.includes('dreiging 8'), start);
+
+// --- 6. Ticket 13: volledige golf-cyclus onder budget-semantiek -----------
+// Simuleert golf 1 en golf 9 volledig (spawn-ticks -> uitroeien -> golf++):
+// de kern-acceptatie van het threat-budget.
+async function draaiGolf(golf) {
+  return page.evaluate((golf) => {
+    const d = window.AmsterdamUndeadDebug;
+    for (const o of [...d.ondoden]) d.doodOndode(o);
+    for (const v of d.VENSTERS) v.planken = 0;
+    d.spelStaat.golf = golf;
+    d.spelStaat.gameOver = false;
+    d.spelerStaat.hp = 100;
+    d.startGolf();
+    const perType = {};
+    let totaal = 0, ticks = 0;
+    while (d.spelStaat.golfActief && ticks < 500) {
+      const voor = d.ondoden.length;
+      d.updateGolf(2);   // ruim boven het spawn-interval: elke tick één stap
+      if (d.ondoden.length > voor) {
+        const nieuwste = d.ondoden[d.ondoden.length - 1];
+        perType[nieuwste.type] = (perType[nieuwste.type] || 0) + 1;
+        totaal++;
+      }
+      for (const o of [...d.ondoden]) d.doodOndode(o);
+      ticks++;
+    }
+    return { totaal, perType, golfNa: d.spelStaat.golf, actiefNa: d.spelStaat.golfActief };
+  }, golf);
+}
+
+const cyclus1 = await draaiGolf(1);
+check('Golf 1: budget 5 -> exact 5 normale ondoden, daarna golf++',
+  cyclus1.totaal === 5 && cyclus1.perType.normaal === 5 && cyclus1.golfNa === 2 && cyclus1.actiefNa === false, cyclus1);
+
+const cyclus9 = await draaiGolf(9);
+check('Golf 9: minder ondoden dan het oude lineaire aantal (21), maar met zwaardere types',
+  cyclus9.totaal < 21 && Object.keys(cyclus9.perType).length > 1 && cyclus9.golfNa === 10, cyclus9);
+
+// Budget-uitputting met een duur type: een Sjouwer (3) op restbudget 2 is te
+// duur -> terugval op normaal (1); op restbudget 0.5 stopt de golf.
+const uitputting = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  for (const v of d.VENSTERS) v.planken = 0;
+  d.spelStaat.golf = 6;   // geen event, sjouwer/loper/brander toegestaan
+  d.spelStaat.golfActief = true;
+  d.spelStaat.budget = 0.5;
+  const spawn = d.golfSpawnStap();
+  return { spawn: spawn ? spawn.type : null, budget: d.spelStaat.budget };
+});
+check('Restbudget 0.5: zelfs "normaal" (kosten 1) is te duur -> geen spawn, budget op 0',
+  uitputting.spawn === null && uitputting.budget === 0, uitputting);
+
+// Barricades beuken kost geen budget.
+const barricade = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  for (const v of d.VENSTERS) v.planken = 3;
+  d.spelStaat.golf = 1;
+  d.spelStaat.golfActief = true;
+  d.spelStaat.budget = 5;
+  const spawn = d.golfSpawnStap();   // beukt een plank, spawnt niets
+  const na = { spawn: spawn === null, budget: d.spelStaat.budget };
+  for (const v of d.VENSTERS) v.planken = 0;
+  return na;
+});
+check('Een barricade-beuk spawnt niets en laat het budget onaangetast (5)',
+  barricade.spawn === true && barricade.budget === 5, barricade);
 
 const fails = report(errs);
 await browser.close();

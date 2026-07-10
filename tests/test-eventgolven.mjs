@@ -45,7 +45,7 @@ const golfEinde = await page.evaluate(() => {
   for (const o of [...d.ondoden]) d.doodOndode(o);
   d.spelStaat.golf = 5;
   d.spelStaat.golfActief = true;
-  d.spelStaat.teSpawnen = 0;
+  d.spelStaat.budget = 0;
   d.actieveEventGolf = 'mist';
   d.updateGolf(0.1);
   return d.actieveEventGolf;
@@ -81,7 +81,7 @@ const fogVlakNaGolfEinde = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   for (const o of [...d.ondoden]) d.doodOndode(o);
   d.spelStaat.golfActief = true;
-  d.spelStaat.teSpawnen = 0;
+  d.spelStaat.budget = 0;
   d.updateGolf(0.1);   // golf rondt af -> eindigEventGolf() start de uitfade
   return { near: d.scene.fog.near, far: d.scene.fog.far, uitfaseTimer: d.mistUitfaseTimer };
 });
@@ -160,6 +160,7 @@ const golfSpawnMist = await page.evaluate(() => {
   const types = new Set();
   for (let i = 0; i < 100; i++) {
     for (const o of [...d.ondoden]) d.doodOndode(o);
+    d.spelStaat.budget = 999;   // Ticket 13: golfSpawnStap checkt nu budget
     const o = d.golfSpawnStap();
     if (o) types.add(o.type);
   }
@@ -178,6 +179,7 @@ const golfSpawnNormaal = await page.evaluate(() => {
   const types = new Set();
   for (let i = 0; i < 100; i++) {
     for (const o of [...d.ondoden]) d.doodOndode(o);
+    d.spelStaat.budget = 999;   // Ticket 13: golfSpawnStap checkt nu budget
     const o = d.golfSpawnStap();
     if (o) types.add(o.type);
   }

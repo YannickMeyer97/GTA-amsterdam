@@ -96,7 +96,8 @@ te gaan naar het hoofdmenu.
 
 - Overleef doorlopende **golven ondoden** die de ramen barricaderen en
   op je afkomen. De eerste twee golven zijn ze fragiel (1 treffer), daarna
-  taaier (2 treffers); elke golf komen er meer, en elke ontgrendelde zone
+  taaier (2 treffers); elke golf brengt meer **dreiging** — niet per se méér
+  ondoden, maar zwaardere samenstellingen — en elke ontgrendelde zone
   verhoogt de spawndruk (sneller + meer gelijktijdig).
 - **Drie varianten** mengen zich vanaf een bepaalde golf door de gewone
   ondoden heen: de **Loper** (golf 2+, snel maar breekbaar, weinig geld),

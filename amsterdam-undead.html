@@ -1928,8 +1928,19 @@ let schadePerTreffer = 1;     // huidige lichaams-schade per treffer
 const HEADSHOT_EXTRA = 1;     // extra schade bij een kop-treffer (lichaam = schadePerTreffer, kop = +1)
 
 // --- Balanswaarden golven ------------------------------------------
-const GOLF_BASIS_AANTAL   = 5;    // aantal ondoden in golf 1
-const GOLF_AANTAL_GROEI   = 2;    // extra ondoden per volgende golf
+// Ticket 13: golven hebben een DREIGINGSBUDGET i.p.v. een lineair aantal —
+// zwaardere types kosten meer budget, dus moeilijkheid stijgt via
+// samenstelling in plaats van volume (golf 12 = minder stuks, meer dreiging).
+const GOLF_BUDGET_BASIS   = 5;    // budget van golf 1
+const GOLF_BUDGET_GROEI   = 1.7;  // extra budget per volgende golf
+// Dreigingskosten per type: een Sjouwer "kost" drie normale ondoden.
+// (Latere event-elites: 4-6.)
+const ONDODE_THREAT_KOSTEN = { normaal: 1, loper: 1.4, brander: 1.8, sluiper: 1.5, sjouwer: 3 };
+// Eventgolven (mist) krijgen iets minder budget: het event zelf ís de druk.
+const EVENT_GOLF_BUDGET_FACTOR = 0.9;
+function golfBudget(golf) {
+  return Math.round(GOLF_BUDGET_BASIS + GOLF_BUDGET_GROEI * (golf - 1));
+}
 const GOLF_SPAWN_INTERVAL = 1.1;  // s tussen twee spawns binnen dezelfde golf
 const GOLF_RUST_TIJD      = 8;    // v0.9: 4->8s rust tussen golven (en vóór golf 1) — tijd om te repareren/kopen
 const GOLF_MAX_ACTIEF     = 18;   // max. gelijktijdig levende ondoden (perf-plafond), bij enkel zone A
@@ -2529,7 +2540,7 @@ const spelStaat = {
   geld: 0,
   gameOver: false,
   golfActief: false,
-  teSpawnen: 0,
+  budget: 0,   // Ticket 13: resterend dreigingsbudget van de lopende golf (geen aantal!)
   spawnTimer: 0,
   rustTimer: GOLF_RUST_TIJD,
 };
@@ -2603,21 +2614,22 @@ function updateMistUitfade(dt) {
 }
 
 function startGolf() {
-  spelStaat.teSpawnen = GOLF_BASIS_AANTAL + (spelStaat.golf - 1) * GOLF_AANTAL_GROEI;
+  // Event eerst starten: het budget en de banner hangen ervan af.
+  if (isEventGolf(spelStaat.golf)) startEventGolf(kiesEventType(spelStaat.golf));
+  // Ticket 13: dreigingsbudget i.p.v. een vast aantal — het exacte aantal
+  // ondoden ligt vooraf niet meer vast (hangt af van de gelote types).
+  spelStaat.budget = golfBudget(spelStaat.golf) * (actieveEventGolf ? EVENT_GOLF_BUDGET_FACTOR : 1);
   spelStaat.spawnTimer = 0;
   spelStaat.golfActief = true;
   const taai = spelStaat.golf > ONDODE_HP_GOLFGRENS ? 'de ondoden zijn nu taaier' : 'mik op het hoofd';
   const zones = aantalOntgrendeldeZones();
   const drukte = zones > 1 ? ` · ${zones} zones actief` : '';
-  if (isEventGolf(spelStaat.golf)) {
-    startEventGolf(kiesEventType(spelStaat.golf));
-    if (actieveEventGolf === 'mist') {
-      toonGolfBanner('MISTGOLF', 'de mist trekt op…');
-    } else {
-      toonGolfBanner(`GOLF ${spelStaat.golf} — EVENTGOLF`, `${spelStaat.teSpawnen} ondoden · er is iets anders${drukte}`);
-    }
+  if (actieveEventGolf === 'mist') {
+    toonGolfBanner('MISTGOLF', 'de mist trekt op…');
+  } else if (actieveEventGolf) {
+    toonGolfBanner(`GOLF ${spelStaat.golf} — EVENTGOLF`, `dreiging ${Math.round(spelStaat.budget)} · er is iets anders${drukte}`);
   } else {
-    toonGolfBanner(`GOLF ${spelStaat.golf}`, `${spelStaat.teSpawnen} ondoden · ${taai}${drukte}`);
+    toonGolfBanner(`GOLF ${spelStaat.golf}`, `dreiging ${Math.round(spelStaat.budget)} · ${taai}${drukte}`);
   }
   speelGolfStart();
   updateHUD();
@@ -2630,15 +2642,18 @@ function updateGolf(dt) {
     if (spelStaat.rustTimer <= 0) startGolf();
     return;
   }
-  if (spelStaat.teSpawnen > 0) {
+  // Ticket 13: er is nog spawn-werk zolang het budget minstens het
+  // goedkoopste type (kosten 1) kan betalen — zelfde structuur als de oude
+  // teSpawnen === 0-check, alleen de maat is nu dreiging i.p.v. aantal.
+  if (spelStaat.budget >= 1) {
     spelStaat.spawnTimer -= dt;
     // Perf-plafond + spawn-interval schalen mee met het aantal ontgrendelde
     // zones (Ticket V6): meer open deuren = drukker, tot aan het plafond.
     if (spelStaat.spawnTimer <= 0 && ondoden.length < effectiefMaxActief()) {
       // v0.8: een gebarricadeerd venster spawnt niet meteen — golfSpawnStap()
-      // beukt dan alleen een plank kapot en telt niet mee als spawn.
-      const nieuw = golfSpawnStap();
-      if (nieuw) spelStaat.teSpawnen--;
+      // beukt dan alleen een plank kapot; dat kost geen budget. De budget-
+      // afboeking per echte spawn zit in golfSpawnStap() zelf.
+      golfSpawnStap();
       spelStaat.spawnTimer = effectiefSpawnInterval();
     }
   } else if (ondoden.length === 0) {
@@ -2772,14 +2787,42 @@ for (const venster of [...VENSTERS, ...VENSTERS_KAMER2, ...VENSTERS_PLAATS]) bou
 // deze tick) i.p.v. direct spawnen. spawnOndode()/spawnWillekeurigeOndode()
 // zelf blijven ongewijzigd (altijd direct spawnen — o.a. gebruikt door
 // debug-tools en bestaande tests).
+// Ticket 13: het goedkoopste type dat de huidige golf mág spawnen. Op een
+// gewone golf is dat 'normaal' (kosten 1); tijdens een Mistgolf 'sluiper' —
+// de terugval mag de sluiper-gate van Ticket 9 niet omzeilen.
+function goedkoopsteToegestaneType() {
+  const gewichten = ondodeTypeGewichten();
+  let beste = null;
+  for (const naam of Object.keys(gewichten)) {
+    if (gewichten[naam] <= 0) continue;
+    if (!beste || (ONDODE_THREAT_KOSTEN[naam] ?? 1) < (ONDODE_THREAT_KOSTEN[beste] ?? 1)) beste = naam;
+  }
+  return beste || 'normaal';
+}
+
 function golfSpawnStap() {
   const idx = kiesVensterIndex();
   const venster = VENSTERS[idx];
   if (venster.planken > 0) {
-    beukBarricade(venster);
+    beukBarricade(venster);   // Ticket 13: een plank beuken kost geen budget
     return null;
   }
-  return spawnOndode(idx, kiesOndodeType());   // v0.7: echte golf-spawns loten een type
+  let type = kiesOndodeType();   // v0.7: echte golf-spawns loten een type
+  let kosten = ONDODE_THREAT_KOSTEN[type] ?? 1;
+  if (kosten > spelStaat.budget) {
+    // Gelote type is te duur voor het restbudget: val terug op het
+    // goedkoopste toegestane type; is zelfs dát te duur, dan is de golf
+    // uitgespawnd (budget op 0, einde zodra alles dood is).
+    type = goedkoopsteToegestaneType();
+    kosten = ONDODE_THREAT_KOSTEN[type] ?? 1;
+    if (kosten > spelStaat.budget) {
+      spelStaat.budget = 0;
+      return null;
+    }
+  }
+  const ondode = spawnOndode(idx, type);
+  spelStaat.budget -= kosten;   // afboeken NA de echte spawn
+  return ondode;
 }
 
 let deurGekocht = false;
@@ -3211,6 +3254,12 @@ window.AmsterdamUndeadDebug = {
   ONDODE_HP_VROEG, ONDODE_HP_LAAT, ONDODE_HP_GOLFGRENS, HEADSHOT_EXTRA, ondodeStartHP,
   GELD_PER_HIT, GELD_PER_KILL, HEADSHOT_GELD_MULTIPLIER,
   GOLF_MAX_ACTIEF, lampLichten, GOLF_RUST_TIJD,
+  // Ticket 13: threat-budget (spelStaat.budget is via spelStaat al bereikbaar,
+  // maar de ticket-conventie vraagt ook een directe accessor):
+  GOLF_BUDGET_BASIS, GOLF_BUDGET_GROEI, EVENT_GOLF_BUDGET_FACTOR,
+  ONDODE_THREAT_KOSTEN, golfBudget, goedkoopsteToegestaneType,
+  get budget() { return spelStaat.budget; },
+  set budget(v) { spelStaat.budget = v; },
   WAVE_BONUS_BASIS, WAVE_BONUS_PER_GOLF, WAVE_HEAL_MIN,
   // v0.3 zone-D / werkbank-constanten (Ticket V1):
   DEUR2_HALF, DEUR2_X, PLAATS_BREEDTE, PLAATS_DIEPTE, PLAATS_X_OOST,

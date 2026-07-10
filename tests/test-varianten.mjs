@@ -105,6 +105,7 @@ const golfSpawnType = await page.evaluate(() => {
   const types = new Set();
   for (let i = 0; i < 60; i++) {
     for (const o of [...d.ondoden]) d.doodOndode(o);
+    d.spelStaat.budget = 999;   // Ticket 13: golfSpawnStap checkt nu budget
     const o = d.golfSpawnStap();
     if (o) types.add(o.type);
   }
