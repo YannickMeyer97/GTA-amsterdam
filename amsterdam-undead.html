@@ -1323,6 +1323,33 @@ const RATELAAR_Z = DEUR2_Z + 5;
 }
 const ratelaarMarkering = interactieMarkering(RATELAAR_X, RATELAAR_Z, 0xd9a05a);
 
+// --- Ticket 12: De Smederij — smeedpunt tegen de noordmuur, westelijke
+// helft van de binnenplaats (weg van de Ratelaar, de poort-spawns en het
+// schuurtje/kratten). Klein aambeeld + gloeiend kooltje, geen collision
+// (zelfde patroon als de Ratelaar/Watertap/Pantserdrank hierboven/onder).
+const SMEDERIJ_X = DEUR2_X + 2.5;
+const SMEDERIJ_Z = PLAATS_Z_NOORD + 1.2;
+{
+  const aambeeld = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.4), mat(0x2a2a2c, 0.4, 0.6));
+  aambeeld.position.set(SMEDERIJ_X, 0.25, SMEDERIJ_Z);
+  aambeeld.castShadow = true;
+  wereld.add(aambeeld);
+  const aambeeldPunt = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.12, 0.22), mat(0x1e1e20, 0.35, 0.65));
+  aambeeldPunt.position.set(SMEDERIJ_X, 0.56, SMEDERIJ_Z);
+  wereld.add(aambeeldPunt);
+  const voet = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.28, 10), mat(0x18140f, 0.75));
+  voet.position.set(SMEDERIJ_X, 0.0, SMEDERIJ_Z);
+  wereld.add(voet);
+  const kool = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8),
+    new THREE.MeshStandardMaterial({ color: 0xff6a2e, emissive: 0xff4d1a, emissiveIntensity: 1.4 }));
+  kool.position.set(SMEDERIJ_X, 0.65, SMEDERIJ_Z);
+  wereld.add(kool);
+  const koolLicht = new THREE.PointLight(0xff7a3d, 1.4, 4);
+  koolLicht.position.copy(kool.position);
+  wereld.add(koolLicht);
+}
+const smederijMarkering = interactieMarkering(SMEDERIJ_X, SMEDERIJ_Z, 0xff7a1f);
+
 // --- Atelier-decor (zone C): koel, kaal, met verf-/doek-accenten — bewust
 // géén hergebruik van de warme-woonkamer-props (kratten/vat/tafel). ---
 bouwZeil(-2.3, ATELIER_MIDDEN_Z - 0.3, 1.6, 1.8);
@@ -1559,6 +1586,7 @@ let pantserdrankGekocht = false;
 
 // 1) De "Drukspuit" — het originele startwapen, ongewijzigd model.
 const wapenDrukspuit = new THREE.Group();
+let meterDrukspuit;   // Ticket 12: krijgt een ember-accent zodra de Drukspuit gesmeed is
 {
   const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.044, 0.2, 10),
     new THREE.MeshStandardMaterial({ color: 0x4a6b52, roughness: 0.55, metalness: 0.4 }));
@@ -1576,10 +1604,10 @@ const wapenDrukspuit = new THREE.Group();
   greep.rotation.x = 0.3;
   wapenDrukspuit.add(greep);
   // Klein drukmeter-lampje i.p.v. een oranje speelgoeddop: eigen, herkenbaar detail.
-  const meter = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 8),
+  meterDrukspuit = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 8),
     new THREE.MeshStandardMaterial({ color: 0x8fffb0, emissive: 0x4fdc7a, emissiveIntensity: 0.9 }));
-  meter.position.set(0, 0.065, 0.02);
-  wapenDrukspuit.add(meter);
+  meterDrukspuit.position.set(0, 0.065, 0.02);
+  wapenDrukspuit.add(meterDrukspuit);
 }
 wapenDrukspuit.position.set(0.26, -0.22, -0.5);
 camera.add(wapenDrukspuit);
@@ -1599,6 +1627,7 @@ wapenDrukspuit.add(vlamLichtDrukspuit);
 // Drukspuit: lange loop, blokkerig chassis, een magazijnkast onder de loop
 // en een tandwiel-detail (verwijst naar de naam, geen bestaand wapen).
 const wapenRatelaar = new THREE.Group();
+let tandwielRatelaar;   // Ticket 12: krijgt een ember-accent zodra de Ratelaar gesmeed is
 {
   const loop = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.02, 0.34, 8),
     new THREE.MeshStandardMaterial({ color: 0x24211d, roughness: 0.4, metalness: 0.6 }));
@@ -1624,11 +1653,11 @@ const wapenRatelaar = new THREE.Group();
   kolf.position.set(0, -0.02, 0.24);
   wapenRatelaar.add(kolf);
   // Tandwiel: het herkenbare "ratel"-detail, puur origineel/decoratief.
-  const tandwiel = new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.012, 6, 10),
+  tandwielRatelaar = new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.012, 6, 10),
     new THREE.MeshStandardMaterial({ color: 0x8a8378, roughness: 0.4, metalness: 0.7 }));
-  tandwiel.position.set(0.045, 0.02, 0.04);
-  tandwiel.rotation.y = Math.PI / 2;
-  wapenRatelaar.add(tandwiel);
+  tandwielRatelaar.position.set(0.045, 0.02, 0.04);
+  tandwielRatelaar.rotation.y = Math.PI / 2;
+  wapenRatelaar.add(tandwielRatelaar);
 }
 wapenRatelaar.position.set(0.26, -0.22, -0.5);
 wapenRatelaar.visible = false;
@@ -1655,11 +1684,18 @@ const WAPEN_DRUKSPUIT = {
   naam: 'Drukspuit', magazijnMax: 8, reserve: 48, schotCooldown: 0.2,
   herlaadDuurNormaal: 1.2, herlaadDuurSnel: 0.7,
   groep: wapenDrukspuit, vlam: vlamDrukspuit, vlamLicht: vlamLichtDrukspuit,
+  vlamLichtBasis: 1.1,   // Ticket 12: schiet() vermenigvuldigt dit bij een gesmeed wapen
+  // Ticket 11: De Smederij (per-wapen late-game upgrade) — de Drukspuit is
+  // de precisie-keuze en krijgt daarom de grootste schadebonus.
+  smederijConfig: { schadeBonus: 1.5, magazijnMax: 12 },
 };
 const WAPEN_RATELAAR = {
   naam: 'De Ratelaar', magazijnMax: 16, reserve: 96, schotCooldown: 0.1,
   herlaadDuurNormaal: 1.5, herlaadDuurSnel: 0.9,
   groep: wapenRatelaar, vlam: vlamRatelaar, vlamLicht: vlamLichtRatelaar,
+  vlamLichtBasis: 1.6,   // Ticket 12: schiet() vermenigvuldigt dit bij een gesmeed wapen
+  // Ticket 11: de Ratelaar is de volume-keuze — minder schadebonus, meer magazijn.
+  smederijConfig: { schadeBonus: 1, magazijnMax: 24 },
 };
 
 function nieuweWapenStaat(definitie) {
@@ -1671,6 +1707,7 @@ function nieuweWapenStaat(definitie) {
     herladen: false,
     herlaadTimer: 0,
     herlaadDuur: snelspannerGekocht ? definitie.herlaadDuurSnel : definitie.herlaadDuurNormaal,
+    gesmeed: false,   // Ticket 11: per-wapen Smederij-status (machine volgt in Ticket 12)
   };
 }
 
@@ -1765,6 +1802,8 @@ function schiet() {
   terugslag = 1;
   vlam.visible = true;
   vlamLicht.visible = true;
+  // Ticket 12: een gesmeed wapen krijgt een feller mondingsvuur.
+  vlamLicht.intensity = wapenStaat.definitie.vlamLichtBasis * (wapenStaat.gesmeed ? SMEDERIJ_VLAM_BOOST : 1);
   vlamTimer = 0.05;
   speelSchot();
 
@@ -1933,9 +1972,12 @@ const GELD_PER_KILL = 20;   // bonus bovenop de hit-beloning bij een kill
 const HEADSHOT_GELD_MULTIPLIER = 2;   // een dodelijke headshot geeft 2x het normale kill-geld
 
 // --- Wapenschade (te upgraden via het upgradepunt in Ticket 5) ----
-const WAPEN_SCHADE_MAX = 2;   // basis-lichaamsschade: 1, na upgrade 2 (MAX)
-let schadePerTreffer = 1;     // huidige lichaams-schade per treffer
-const HEADSHOT_EXTRA = 1;     // extra schade bij een kop-treffer (lichaam = schadePerTreffer, kop = +1)
+// Ticket 11: dit blijft het GLOBALE, early-game upgradepad, maar wordt
+// kleiner nu De Smederij (per-wapen, Tickets 11/12) de grotere late-game
+// damage-stap is: 1 -> max 1.5 i.p.v. 1 -> 2.
+const WAPEN_SCHADE_MAX = 1.5;   // basis-lichaamsschade: 1, na upgrade 1.5 (MAX)
+let schadePerTreffer = 1;       // huidige lichaams-schade per treffer
+const HEADSHOT_EXTRA = 1;       // extra schade bij een kop-treffer (lichaam = schadePerTreffer, kop = +1)
 
 // --- Balanswaarden golven ------------------------------------------
 // Ticket 13: golven hebben een DREIGINGSBUDGET i.p.v. een lineair aantal —
@@ -2455,10 +2497,13 @@ function ontploiBrander(ondode) {
 }
 
 // Eén treffer: schade, geld, en bij hp<=0 een kill (met kill-bonus).
-// `kop` = true bij een headshot: lichaam = schadePerTreffer, kop = +HEADSHOT_EXTRA.
+// `kop` = true bij een headshot: lichaam = basisschade, kop = +HEADSHOT_EXTRA.
+// Basisschade = schadePerTreffer (globale upgrade) + Smederij-bonus van het
+// actieve wapen als dat gesmeed is (Ticket 11) — Eliminatiemodus overschrijft dit.
 function raakOndode(ondode, punt, kop = false) {
+  const basisSchade = schadePerTreffer + (wapenStaat.gesmeed ? wapenStaat.definitie.smederijConfig.schadeBonus : 0);
   // Eliminatiemodus (power-up): elke treffer is meteen dodelijk, ongeacht HP.
-  const schade = eliminatiemodusTimer > 0 ? ondode.hp : schadePerTreffer + (kop ? HEADSHOT_EXTRA : 0);
+  const schade = eliminatiemodusTimer > 0 ? ondode.hp : basisSchade + (kop ? HEADSHOT_EXTRA : 0);
   ondode.hp -= schade;
   speelTreffer();
   const geldFactor = dubbeleBeloningTimer > 0 ? 2 : 1;   // Dubbele Beloning (power-up)
@@ -2538,7 +2583,8 @@ function updateHUD() {
   // Upgrade-status (Ticket V7): laat in één oogopslag zien wat al MAX is.
   document.getElementById('schadeTekst').textContent = schadePerTreffer >= WAPEN_SCHADE_MAX ? 'MAX' : schadePerTreffer;
   document.getElementById('herlaadTekst').textContent = snelspannerGekocht ? 'MAX' : `${wapenStaat.herlaadDuur}s`;
-  document.getElementById('wapenTekst').textContent = wapenStaat.definitie.naam;
+  // Ticket 12: ster-merkteken als het actieve wapen gesmeed is.
+  document.getElementById('wapenTekst').textContent = wapenStaat.definitie.naam + (wapenStaat.gesmeed ? ' ★' : '');
   // Power-ups: toon actieve tijdelijke buffs (leeg als er geen actief zijn).
   const buffs = [];
   if (dubbeleBeloningTimer > 0) buffs.push(`Dubbele Beloning ${Math.ceil(dubbeleBeloningTimer)}s`);
@@ -2701,8 +2747,12 @@ function updateGolf(dt) {
 const DEUR_PRIJS       = 500;   // opent gang + atelier (zone C)
 const AMMO_PRIJS       = 300;   // vult reserve-munitie bij
 const AMMO_KIST_KOGELS = 48;    // reserve-kogels per aankoop
-const UPGRADE_PRIJS    = 500;   // schade +1 (daarna MAX)
+const UPGRADE_PRIJS    = 500;   // schade +0.5 (daarna MAX, Ticket 11: WAPEN_SCHADE_MAX 1.5)
 const RATELAAR_PRIJS   = 750;   // eenmalig: tweede wapen, op de binnenplaats
+// Ticket 12: De Smederij — late-game geldsink, per wapen (zie ARCHITECTURE_NOTES §2.7-8).
+const SMEDERIJ_PRIJS   = 3000;  // eenmalig per wapen: Smederij-schadebonus + groter magazijn
+const SMEDERIJ_VLAM_BOOST = 1.5;   // feller mondingsvuur voor een gesmeed wapen (schiet() past dit toe)
+const SMEDERIJ_ACCENT_KLEUR = 0xff7a1f;   // ember-oranje accent op het gesmede wapenonderdeel
 
 // --- v0.3: Werkbank (atelier), tweede deur en binnenplaats-interacties ---
 const SNELSPANNER_PRIJS       = 600;   // eenmalig: sneller herladen
@@ -2956,6 +3006,12 @@ function toonMelding(tekst) {
 
 function speelKoop()    { piep('triangle', 420, 900, 0.1, 0.07); }
 function speelGeenGeld() { piep('square', 220, 120, 0.12, 0.06); }
+// Ticket 12: eigen, zwaardere "smeed-klap" i.p.v. de gewone koop-piep — een
+// dubbele toon (hoog gevolgd door laag) om het gewicht van de aankoop te onderscheiden.
+function speelSmeed() {
+  piep('sawtooth', 180, 60, 0.18, 0.09);
+  setTimeout(() => piep('triangle', 700, 1100, 0.09, 0.08), 90);
+}
 
 // --- De aankopen zelf ---------------------------------------------
 function koopDeur() {
@@ -3010,7 +3066,7 @@ function koopUpgrade() {
   if (schadePerTreffer >= WAPEN_SCHADE_MAX) { toonMelding('Schade is al maximaal'); return; }
   if (spelStaat.geld < UPGRADE_PRIJS) { toonMelding(`Nog €${UPGRADE_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
   spelStaat.geld -= UPGRADE_PRIJS;
-  schadePerTreffer += 1;
+  schadePerTreffer += 0.5;   // Ticket 11: kleinere stap, stopt nu bij WAPEN_SCHADE_MAX (1.5)
   speelKoop();
   toonMelding(schadePerTreffer >= WAPEN_SCHADE_MAX ? 'Schade-upgrade! Nu MAX' : `Schade-upgrade! Nu ${schadePerTreffer}`);
   if (schadePerTreffer >= WAPEN_SCHADE_MAX) doofMarkering(upgradeMarkering);
@@ -3048,6 +3104,27 @@ function koopRatelaar() {
   toonMelding('De Ratelaar is gekocht! Druk Q om te wisselen');
   doofMarkering(ratelaarMarkering);
   if (actiefWapenNaam === 'drukspuit') wisselWapen();
+  updateHUD();
+}
+
+// Ticket 12: De Smederij smeedt het ACTIEVE wapen — eenmalig per wapen
+// (de gesmeed-status zit op de per-wapen wapenStaat, zie Ticket 11). Werkt
+// dus onafhankelijk voor Drukspuit en Ratelaar.
+function koopSmederij() {
+  if (wapenStaat.gesmeed) return;
+  if (spelStaat.geld < SMEDERIJ_PRIJS) { toonMelding(`Nog €${SMEDERIJ_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  spelStaat.geld -= SMEDERIJ_PRIJS;
+  wapenStaat.gesmeed = true;
+  wapenStaat.magazijnMax = wapenStaat.definitie.smederijConfig.magazijnMax;
+  wapenStaat.magazijn = wapenStaat.magazijnMax;   // meteen volledig bijvullen, geen reload nodig
+  // Visueel accent op het gesmede wapenonderdeel (geen nieuwe geometrie).
+  const accent = actiefWapenNaam === 'drukspuit' ? meterDrukspuit : tandwielRatelaar;
+  accent.material.color.setHex(SMEDERIJ_ACCENT_KLEUR);
+  accent.material.emissive.setHex(SMEDERIJ_ACCENT_KLEUR);
+  accent.material.emissiveIntensity = 1.4;
+  speelSmeed();
+  toonMelding(`${wapenStaat.definitie.naam} gesmeed! +${wapenStaat.definitie.smederijConfig.schadeBonus} schade, magazijn ${wapenStaat.magazijnMax}`);
+  updateAmmoUI();
   updateHUD();
 }
 
@@ -3151,7 +3228,17 @@ const watertapPunt = {
     : `Druk T: regenwater tappen (€${WATERTAP_PRIJS} -> +${WATERTAP_HP} HP)`,
   actie: koopWatertap,
 };
-const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, pantserdrankPunt, deur2Punt, watertapPunt, ratelaarPunt];
+// Ticket 12: smeedt het ACTIEVE wapen — de prompt volgt dus mee als je wisselt (Q).
+const smederijPunt = {
+  naam: 'De Smederij',
+  positie: new THREE.Vector3(SMEDERIJ_X, 0, SMEDERIJ_Z),
+  radius: 1.6,
+  prompt: () => wapenStaat.gesmeed
+    ? `${wapenStaat.definitie.naam} is al gesmeed`
+    : `Druk T: smeed ${wapenStaat.definitie.naam} (€${SMEDERIJ_PRIJS})`,
+  actie: koopSmederij,
+};
+const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, pantserdrankPunt, deur2Punt, watertapPunt, ratelaarPunt, smederijPunt];
 
 let huidigeInteractie = null;
 
@@ -3244,6 +3331,9 @@ requestAnimationFrame(gameLoop);
 window.AmsterdamUndeadDebug = {
   scene, camera, speler, obstakels, isVrijePlek, GRENS,
   get wapenStaat() { return wapenStaat; },   // v0.6: wapenStaat wordt herbonden bij wisselen (getter i.p.v. stale referentie)
+  get gesmeedActief() { return wapenStaat.gesmeed; },   // Ticket 11: Smederij-status van het ACTIEVE wapen
+  // Ticket 12: De Smederij-machine (koopbare implementatie):
+  SMEDERIJ_PRIJS, SMEDERIJ_X, SMEDERIJ_Z, koopSmederij, smederijPunt, smederijMarkering,
   herladen, probeerTeSchieten, schiet,
   ondoden, ondodenGroep, VENSTERS, spawnOndode, spawnWillekeurigeOndode, kiesVensterIndex,
   updateOndoden, raakOndode, doodOndode,
@@ -3261,6 +3351,7 @@ window.AmsterdamUndeadDebug = {
   koopDeur, koopAmmo, koopUpgrade,
   get deurGekocht() { return deurGekocht; },
   get schadePerTreffer() { return schadePerTreffer; },
+  set schadePerTreffer(v) { schadePerTreffer = v; },   // Ticket 11: nodig om upgrade-staat x Smederij-bonus te testen
   get huidigeInteractie() { return huidigeInteractie; },
   deurObstakel, deurMesh, VENSTERS_KAMER2,
   DEUR_PRIJS, AMMO_PRIJS, AMMO_KIST_KOGELS, UPGRADE_PRIJS, WAPEN_SCHADE_MAX,
