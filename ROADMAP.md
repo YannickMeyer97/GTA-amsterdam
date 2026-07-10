@@ -621,6 +621,459 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 
 ---
 
+# v0.15+ — Fable-architectuurronde 2: power-ups, Smederij-visuals, zombie-herwerking en map-lus (gepland, nog NIET geïmplementeerd)
+
+Ontworpen door Claude Fable ná de uitvoering van v0.14 (fases 1–5 zijn
+geïmplementeerd); uitvoering later door Claude Sonnet, één ticket per keer.
+Lees eerst `ARCHITECTURE_NOTES.md` §4 (codekaart-aanvullingen, huidige
+plattegrond + lus-voorstel, ontwerpbeslissingen 14–20) en
+`SONNET_EXECUTION_PLAN.md` (fases 6–9 + prompts).
+Fasen: 6 = power-up-droplimieten (T16), 7 = Smederij-visuals (T17),
+8 = zombie-herwerking (T18–T23), 9 = map-lus (T24–T29). Fase 8 komt vóór
+fase 9: beide herschrijven een andere helft van `updateOndoden()`.
+
+## Ticket 16 — Power-ups: één drop-slot per golf (vervangt het cooldown-trio)
+- **Type:** Refactor + balanspatch
+- **Doel:** maximaal één power-up-drop per golf, ongeacht het type;
+  Kerninslag houdt daarbovenop zijn 1-per-4-golven-ritme. Munitievoorraad,
+  Dubbele Beloning en Eliminatiemodus concurreren om dat ene slot en
+  kunnen dus elk hoogstens 1× per golf vallen — en nooit samen.
+- **Waarom:** de drie cooldowns uit T2/T3 + de feedbackronde remden elk
+  type apart, maar een golf kan nog steeds meerdere drops stapelen
+  (ontwerpbeslissing 14). Dit ticket VERVANGT die cooldown-architectuur;
+  T2/T3 blijven historisch geldig maar hun states verdwijnen.
+- **Concrete wijzigingen:**
+  - Nieuwe state `let laatstePowerupDropGolf = -Infinity;` — gezet in
+    `spawnPowerupDrop()` op DROP-moment (beslissing 3 blijft gelden).
+  - `kiesPowerupType()`: eerst
+    `if (spelStaat.golf <= laatstePowerupDropGolf) return undefined;`
+    (deze golf had zijn drop al), daarna de toegestane-lijst =
+    munitievoorraad + dubbeleBeloning + eliminatiemodus + (kerninslag
+    alleen als `spelStaat.golf >= laatsteKerninslagGolf +
+    KERNINSLAG_COOLDOWN_GOLVEN`); uniforme loting.
+  - Verwijderen: `STERKE_POWERUP_COOLDOWN_GOLVEN`,
+    `laatsteSterkePowerupGolf`, `MUNITIEVOORRAAD_COOLDOWN_GOLVEN`,
+    `laatsteMunitievoorraadGolf`, de `sterk: true`-vlaggen (geen lezer
+    meer) — inclusief hun debug-exports.
+  - Blijft: `POWERUP_DROP_KANS = 0.12` (kans en typekeuze blijven
+    gescheiden knoppen), `KERNINSLAG_COOLDOWN_GOLVEN = 4` +
+    `laatsteKerninslagGolf`, de `if (!type) return;`-guard in
+    `spawnPowerupDrop()`.
+  - Debug-export: getter+setter `laatstePowerupDropGolf`.
+- **Codegebieden:** power-up-blok (`kiesPowerupType`, `spawnPowerupDrop`,
+  constanten), debug-export, `tests/test-powerups.mjs`.
+- **Acceptatiecriteria:** 30 geforceerde kills binnen één golf geven max
+  1 drop; de volgende golf kan weer droppen; valt Kerninslag in golf 8,
+  dan pas weer mogelijk vanaf golf 12 én telt hij als dé drop van golf 8;
+  `kiesPowerupType()` geeft `undefined` als het slot op is en
+  `spawnPowerupDrop(undefined)` crasht niet; effecten/verval/pickup
+  ongewijzigd.
+- **Risico's:** de bestaande cooldown-tests in `tests/test-powerups.mjs`
+  asserteren het oude gedrag — in HETZELFDE ticket herschrijven, anders
+  is de suite rood terwijl het spel klopt.
+- **Testplan:** headless: per-golf-slot (geforceerde kills + sampling van
+  `kiesPowerupType()` per golfstand), Kerninslag-ritme over golf 8–13,
+  drop-kans-meting blijft ±0.12 (met slot-reset per poging), volledige
+  regressie.
+- **Rollback:** dit ticket in één commit; revert herstelt het
+  cooldown-trio volledig.
+- **Sonnet solo:** ja, maar nooit combineren met een ander ticket dat
+  `raakOndode()` of het power-up-blok raakt.
+
+## Ticket 17 — Smederij: gesmede wapens visueel herkenbaar
+- **Type:** Feature (puur cosmetisch)
+- **Doel:** een gesmeed wapen is in één oogopslag herkenbaar, maar blijft
+  duidelijk hetzelfde wapen. Geen gameplay-effect bovenop T11/T12.
+- **Waarom:** de huidige accenten (klein onderdeel verkleurt, fellere
+  flits) vallen in het vuur van het gevecht weg; de €3000-aankoop verdient
+  zichtbare trots (ontwerpbeslissing 15).
+- **Concrete wijzigingen:**
+  - Per wapen één vooraf gebouwde `Group` (`smederijVisualsDrukspuit`,
+    `smederijVisualsRatelaar`) als kind van de bestaande wapen-groep,
+    `visible = false`; `koopSmederij()` zet 'm zichtbaar.
+  - **Drukspuit ("smeulende drukketel"):** 2 dunne gloeiringen
+    (`TorusGeometry`, straal ±0.05, buis 0.008, emissive
+    `SMEDERIJ_ACCENT_KLEUR`) om de tank; een ember-`PointLight`
+    (intensiteit ±0.3, distance ±0.9) die zacht flikkert.
+  - **Ratelaar ("gloeiend drijfwerk"):** een tweede klein tandwiel dat
+    langzaam draait (rotatie in de gameLoop), een dunne hitteband-torus
+    om de loop, dezelfde flikkerende ember-light.
+  - Mondingsflits warmer: in `schiet()` bij `wapenStaat.gesmeed` de
+    kleur van `vlam.material` en `vlamLicht` naar een ember-tint zetten
+    (en anders naar de originele kleur — elk schot opnieuw gezet, dus
+    zelfherstellend na een rollback van de status).
+  - Nieuw gameLoop-haakje `updateSmederijVisuals(dt)`: tandwiel-rotatie +
+    licht-flikker (sin op `klok`, V4-lampflikker-patroon), alleen actief
+    op zichtbare sets.
+  - Debug-export: beide visual-Groups (of een
+    `get smederijVisualsZichtbaar()`-samenvatting).
+- **Codegebieden:** wapen-opbouwblok, `koopSmederij`, `schiet`, gameLoop,
+  debug-export.
+- **Acceptatiecriteria:** vóór smeden onzichtbaar; na smeden zichtbaar op
+  het juiste wapen; wisselen (Q) toont/verbergt correct (gratis via de
+  bestaande group-toggle); HUD-ster en visuals zijn nooit strijdig;
+  budget ≤ 5 meshes + 1 light per wapen; geen effect op schade/magazijn.
+- **Risico's:** performance (bewust geen particle-systeem; flikker is één
+  sin per frame); visual-set vergeten te koppelen aan de wapen-groep
+  waardoor wisselen 'm laat zweven.
+- **Testplan:** headless: visible-status per wapen × gesmeed × wissel
+  (8 combinaties); screenshots van beide gesmede wapens (plus één tijdens
+  het schieten voor de ember-flits); volledige regressie.
+- **Rollback:** visual-Groups + haakje verwijderen; T11/T12 blijven inert
+  werken.
+- **Sonnet solo:** ja.
+
+## Ticket 18 — Zombies Z1: modulair model (refactor, geen gedragswijziging)
+- **Type:** Refactor (fundament van de herwerking — VOORZICHTIG)
+- **Doel:** `maakOndodeModel()` bouwt voortaan een deel-hiërarchie met
+  scharnieren: been-pivots (heuphoogte), romp-groep (met torso + vod),
+  arm-pivots (schouder), hoofd-groep (met hoofd + ogen). Referenties op
+  `ondode.delen = { beenL, beenR, romp, armL, armR, hoofd }`. Gedrag,
+  silhouet en hitboxes blijven gelijk.
+- **Waarom:** losse ledematen-animatie (Z3), hitreacties (Z4) en
+  doodsanimaties (Z5) hebben pivots nodig; het huidige één-blok-model kan
+  alleen als geheel wiebelen (ontwerpbeslissing 16).
+- **Concrete wijzigingen:** één blok "benen" wordt twee been-meshes in
+  eigen pivot-Groups; armen/hoofd krijgen pivot-Groups met de mesh op een
+  offset; bestaande traits (kromme → romp-rotatie, slepend →
+  been-pivot-stand, armVerschil → armlengte, scheve nek → hoofd-groep)
+  blijven hetzelfde eindbeeld geven; `userData.lichaamsdeel = 'kop'`
+  UITSLUITEND op hoofd-mesh + ogen (hitbox-contract, beslissing 16);
+  `spawnOndode()` slaat `delen` op; debug-export: geen nieuwe state nodig
+  (delen hangen aan het bestaande ondode-object).
+- **Codegebieden:** `maakOndodeModel`, `spawnOndode`. NIET: `updateOndoden`.
+- **Acceptatiecriteria:** headshot-raycasttest (bestaand patroon uit de
+  balans-tests) identiek; lichaamstreffer op arm/been/romp = gewone
+  schade; alle bestaande varianten-/balans-/golf-tests groen zonder
+  aanpassing; screenshots per type tonen hetzelfde silhouet als vóór de
+  refactor (kleine afwijkingen door pivot-afronding toegestaan).
+- **Risico's:** het riskantste zombie-ticket — een vergeten
+  `'kop'`-markering breekt headshots; een verkeerde pivot-offset
+  verschuift het silhouet en daarmee de raakbaarheid.
+- **Testplan:** headless: raycast op hoofd/torso/arm per type;
+  hoofd-hoogte-assert (±1.58 × schaal); volledige regressie; vóór/na-
+  screenshots van alle vijf types.
+- **Rollback:** dit ticket in één commit; revert herstelt het oude model.
+- **Sonnet solo:** ja, maar NOOIT combineren met een ander ticket.
+
+## Ticket 19 — Zombies Z2: silhouetten per type + variatieprofielen
+- **Type:** Feature (visueel)
+- **Doel:** de vijf types zijn ook zonder kleur herkenbaar aan hun vorm,
+  en binnen een type bestaan duidelijk verschillende verschijningen.
+- **Waarom:** kleur/schaal alleen leest slecht in mist en duisternis;
+  herhaalde identieke silhouetten breken de onderdompeling.
+- **Concrete wijzigingen:** per-type vorm-data in `ONDODE_TYPES`
+  (bv. `vorm: { rompBreedte, schouderBreedte, hoofdVorm, buik }`):
+  Loper dun + voorovergebogen, Sjouwer breed + bochel, Brander buikige
+  romp + gloeiende buik-kern (emissive mesh, GEEN light), Sluiper klein +
+  ingedoken kop; daarnaast `VARIATIE_PROFIELEN` (6–8 stuks: mager, breed,
+  gebocheld, lang, kort, eenarmig, …) geloot in `kiesOndodeTraits()`.
+  Eenarmig mag (arm weglaten is hitbox-veilig); het hoofd wordt NOOIT
+  kleiner dan de huidige sphere (0.18 × schaal) — beslissing 16.
+- **Codegebieden:** `ONDODE_TYPES`, `kiesOndodeTraits`, `maakOndodeModel`.
+- **Acceptatiecriteria:** per type een screenshot die de vorm toont; 100
+  samples `kiesOndodeTraits()` bevatten ≥ 5 verschillende profielen;
+  headshot-raycast blijft op elke variant slagen; stats (HP/snelheid/geld)
+  ongewijzigd.
+- **Risico's:** vorm-overdrijving die hitboxes onbetrouwbaar maakt —
+  profielen schalen alleen binnen marges (±25% op romp, hoofd nooit
+  kleiner).
+- **Testplan:** headless raycast-sweep per type × 3 profielen;
+  screenshotserie; volledige regressie.
+- **Rollback:** vorm-data + profielen verwijderen; Z1-model blijft staan.
+- **Sonnet solo:** ja, na Z1.
+
+## Ticket 20 — Zombies Z3: losse ledematen-animatie
+- **Type:** Feature (visueel)
+- **Doel:** benen stappen, armen zwaaien in tegenfase, de romp bobt en het
+  hoofd kantelt subtiel — i.p.v. het huidige hele-lichaam-gewiebel.
+- **Waarom:** de grootste "low-poly poppetjes"-indruk komt uit het stijve
+  lopen; pivots uit Z1 maken dit goedkoop.
+- **Concrete wijzigingen:** in de animatie-helft van `updateOndoden()`:
+  `loopFase += dt * (4 + snelheid * 2)` voor ALLE ondoden (niet alleen
+  strompelt); been-pivots `rotation.x = ±sin(loopFase) * amplitude`,
+  arm-pivots in tegenfase × 0.6, romp-bob (`root.position.y =
+  |sin| * 0.03`), hoofd-microkantel; `strompelt` maakt de amplitude
+  asymmetrisch en verhuist de bestaande `rotation.z`-wiebel van de root
+  naar de romp-groep. Budget: ≤ 10 transform-writes per ondode per frame,
+  geen allocaties (ARCHITECTURE_NOTES §4.9).
+- **Codegebieden:** `updateOndoden` (animatie-helft), `spawnOndode`
+  (loopFase-init blijft).
+- **Acceptatiecriteria:** screenshots op twee fase-momenten tonen
+  verschillende been/arm-standen; strompelaars bewegen zichtbaar anders;
+  positie/collision/pathing byte-voor-byte gelijk (animatie raakt alleen
+  rotaties/y-bob van delen, nooit `groep.position.x/z`); alle
+  golf-/varianten-tests groen.
+- **Risico's:** per ongeluk de navigatie-helft raken — dit ticket blijft
+  strikt in de animatie-helft; y-bob mag `losBotsingenOp` niet verstoren
+  (bob op een KIND van de root, niet op de root-positie zelf, is het
+  veiligst).
+- **Testplan:** headless: twee `updateOndoden`-ticks met vaste dt →
+  delen-rotaties veranderen, root-x/z alleen door beweging; perf-notitie
+  (frametijd met 14 ondoden); volledige regressie.
+- **Rollback:** animatieblok terug naar de oude wiebel.
+- **Sonnet solo:** ja, na Z1/Z2.
+
+## Ticket 21 — Zombies Z4: hitreacties
+- **Type:** Feature (visueel)
+- **Doel:** een treffer is voelbaar: hoofd-flinch bij headshots,
+  romp-twist bij lichaamstreffers, een korte knockback-stap, en de
+  Brander-kern flitst bij een treffer.
+- **Waarom:** schieten voelt nu als het leeghalen van een HP-balk;
+  reacties geven gratis "impact" zonder gameplay-wijziging.
+- **Concrete wijzigingen:** `raakOndode()` zet
+  `ondode.flinch = { timer: 0.18, soort: kop ? 'kop' : 'lichaam' }` (en
+  bij een Brander: kern-puls); de animatie-helft van `updateOndoden()`
+  lerpt de flinch af (hoofd-pivot naar achteren bij 'kop', romp-twist bij
+  'lichaam') en schuift de positie ±0.12 m van de speler af over de
+  flinch-duur — via de bestaande beweging + `losBotsingenOp`, dus nooit
+  door muren. Eliminatiemodus-kills slaan de flinch over (meteen dood).
+- **Codegebieden:** `raakOndode`, `updateOndoden` (animatie-helft),
+  `spawnOndode` (flinch-veld init).
+- **Acceptatiecriteria:** headshot → hoofd-rotatie wijkt tijdelijk af en
+  herstelt < 0.3 s; lichaamstreffer → romp-twist; knockback verplaatst
+  max 0.15 m en respecteert muren (test tegen een muur); melee-timer en
+  pathing verder ongewijzigd; geen flinch op stervende/dode ondoden.
+- **Risico's:** `raakOndode()` is het drukste risicogebied (schade, geld,
+  drops, buffs) — alleen het flinch-veld toevoegen, niets herordenen.
+- **Testplan:** headless: flinch-state vóór/tijdens/na; knockback-afstand;
+  muurtest; volledige regressie (incl. power-up-drops uit dezelfde
+  functie).
+- **Rollback:** flinch-veld + lerpblok verwijderen.
+- **Sonnet solo:** ja, nooit tegelijk met T16 (zelfde functie).
+
+## Ticket 22 — Zombies Z5: doodsanimaties
+- **Type:** Feature (visueel)
+- **Doel:** ondoden vallen zichtbaar neer (voorover/zijwaarts/achterover/
+  inzakken, geloot) i.p.v. te verdwijnen; de Brander behoudt zijn directe
+  explosie zonder lijk.
+- **Waarom:** het abrupte verdwijnen is de grootste immersie-breker van
+  het huidige gevecht.
+- **Concrete wijzigingen:** nieuwe lijst `stervenden` + eigen
+  scene-`Group`; `doodOndode()` verplaatst de groep uit `ondodenGroep`
+  (raycast-contract!) en het object uit `ondoden` (golf-einde-contract) en
+  duwt `{ groep, timer: ±0.7, stijl }` in `stervenden`; nieuw
+  `updateStervenden(dt)` in de gameLoop lerpt rotatie + zakt de groep en
+  verwijdert 'm daarna definitief; `gameOver()`/restart hoeven niets —
+  stervenden zijn puur visueel. Zie ontwerpbeslissing 17 voor de drie
+  contracten.
+- **Codegebieden:** `doodOndode`, gameLoop, debug-export
+  (`stervenden`-array + `updateStervenden`).
+- **Acceptatiecriteria:** kill → groep blijft ±0.7 s zichtbaar en vangt
+  GEEN kogels meer (raycasttest door een lijk heen); golf eindigt zodra
+  `ondoden` leeg is, ook met lijken in beeld; Kerninslag met 5 ondoden →
+  5 stervenden, golf rondt normaal af; Brander: explosie direct, geen
+  lijk; power-up-drops gebruiken de doodspositie zoals nu.
+- **Risico's:** de drie contracten uit beslissing 17 — elk gemist contract
+  is een gameplay-bug (golf hangt, lijk vangt kogels, lijk slaat).
+- **Testplan:** headless: alle drie contracten expliciet; visuele
+  screenshotserie van de valstijlen; volledige regressie (golf-cyclus!).
+- **Rollback:** `doodOndode` terug naar direct verwijderen; lijst +
+  update-functie weg.
+- **Sonnet solo:** ja, na Z1.
+
+## Ticket 23 — Zombies Z6: wave-variatie-limiter
+- **Type:** Polish
+- **Doel:** binnen een golf spawnen niet drie keer op rij (bijna)
+  identieke verschijningen.
+- **Waarom:** zelfs met profielen (Z2) kan toeval een golf eentonig maken;
+  een kleine geheugenbuffer voorkomt dat goedkoop.
+- **Concrete wijzigingen:** ringbuffer (lengte 4) met recente
+  profiel-indices in het `golfSpawnStap()`-pad; de profiel-loting in
+  `kiesOndodeTraits()` (of een wrapper voor golf-spawns) weigert een
+  profiel dat al in de buffer zit en loot opnieuw (max 3 pogingen,
+  daarna accepteren — nooit blokkeren). Directe `spawnOndode()`-aanroepen
+  blijven buiten de buffer (testbaarheid, zelfde contract als typekeuze).
+- **Codegebieden:** `kiesOndodeTraits`/`golfSpawnStap`, debug-export
+  (buffer inspecteerbaar).
+- **Acceptatiecriteria:** 100 golf-spawns bevatten nooit 3 dezelfde
+  profielen op rij; directe spawns ongewijzigd; verdeling blijft op de
+  lange termijn uniform (±20%).
+- **Risico's:** vrijwel geen — pure lotings-nudge.
+- **Testplan:** headless sampling; volledige regressie.
+- **Rollback:** buffer verwijderen.
+- **Sonnet solo:** ja.
+
+## Ticket 24 — Map-lus M1: geometrie-schil (bijkeuken + kelderhals, nog dicht)
+- **Type:** Feature (geometrie — VOORZICHTIG)
+- **Doel:** de nieuwe ruimtes bestaan fysiek (vloeren, plafonds, muren,
+  eigen sfeer-tinten), maar zijn nog volledig afgesloten: geen deuren,
+  geen spawns, geen interacties. Gedrag van het spel is ongewijzigd.
+- **Waarom:** geometrie los van gameplay uitrollen maakt elke volgende
+  stap klein en reversibel (zelfde aanpak als V5 destijds); zie
+  ARCHITECTURE_NOTES §4.7 voor het volledige ontwerp + plattegrond.
+- **Concrete wijzigingen:** constanten (`BIJKEUKEN_X_OOST = 12`,
+  `BIJKEUKEN_Z_NOORD = -4.5`, `KELDERHALS_X_WEST/OOST = 9/11`,
+  `DEUR3_X = 10`, `DEUR3_HALF = 1`, `DEUR4_Z = 0`, `DEUR4_HALF = 1`);
+  bijkeuken-vloer/plafond/muren (tegeltint, eigen `vlak`-aanroepen) op
+  x ∈ [4.5, 12], z ∈ [−4.5, 4.5]; kelderhals x ∈ [9, 11], z ∈ [−7, −4.5];
+  op de plekken van deur 3/4 komt nu nog gewoon muur (de splitsing is
+  T25/T26). De nepgevel op (16, −5.95) blijft in de restpocket staan —
+  expliciet verifiëren dat hij buiten de bijkeuken valt. `GRENS` wijzigt
+  NIET (de pocket ligt er al binnen).
+- **Codegebieden:** geometrie-blok (na de binnenplaats), constanten.
+- **Acceptatiecriteria:** load-check groen; niets van het nieuwe gebied
+  is bereikbaar (probe: `isVrijePlek` op de deurposities = bezet);
+  obstakel-count-test bijgewerkt; alle bestaande tests groen; screenshot
+  vanaf de binnenplaats toont een ongewijzigd zuidmuur-aanzicht.
+- **Risico's:** muur-naden — de bestaande hoekafdichtingen leunen op
+  botsingsradius-toleranties (ARCHITECTURE_NOTES §4.4); elke naad met
+  probes testen, niet op het oog.
+- **Testplan:** headless probes op alle nieuwe naden + de bestaande
+  reachability-tests; volledige regressie.
+- **Rollback:** geometrie-blok verwijderen (additief).
+- **Sonnet solo:** ja, maar NOOIT combineren met een ander ticket.
+
+## Ticket 25 — Map-lus M2: deur 3 (binnenplaats → kelderhals)
+- **Type:** Feature
+- **Doel:** koopbare deur 3 (€1200) in de binnenplaats-zuidmuur; opent
+  zone E met banner "DE BIJKEUKEN".
+- **Waarom:** de lus wordt in koopvolgorde uitgerold (beslissing 18);
+  deur 3 is de logische eerste opening (je staat al in D).
+- **Concrete wijzigingen:** de éne zuidmuur (`bouwBinnenplaatsMuur` op
+  z = −6.85) wordt twee segmenten met een gat x ∈ [DEUR3_X ± DEUR3_HALF];
+  deur3-mesh + obstakel + `deur3Punt` aan de plaats-kant + markering,
+  exact het `koopDeur2`-patroon (mesh/obstakel/markering weg bij koop,
+  banner, `speelKoop`); `DEUR3_PRIJS = 1200`; `deur3Gekocht`-state;
+  `aantalOntgrendeldeZones()` telt deur 3 mee MAAR de pacing-formules
+  gaan rekenen met `min(zones, 3)` (beslissing 18 — plafond blijft
+  14/16/18); startscherm-/README-tekst bijwerken. Nog geen vensters
+  (T27) en nog geen nav-wijziging (T28) — zone E is even een doodlopend
+  maar veilig gebied; dat is oké voor één ticket.
+- **Codegebieden:** binnenplaats-geometrie (muur-splitsing), kooppunten-
+  blok, `aantalOntgrendeldeZones`/`effectiefSpawnInterval`/
+  `effectiefMaxActief`, debug-export (`deur3Gekocht`, `koopDeur3`,
+  `deur3Punt`, prijzen).
+- **Acceptatiecriteria:** vóór koop: opening geblokkeerd; na koop (€1200
+  afgeschreven): speler loopt plaats → kelderhals → bijkeuken; banner
+  verschijnt éénmalig; pacing-waarden identiek aan de 3-zones-stand
+  (plafond 18, interval-factor 0.85²); dubbele koop doet niets.
+- **Risico's:** de zuidmuur-splitsing raakt de kelderdeur-spawn (20.1,
+  −7.4) NIET (9,4 m verderop) — wel expliciet asserten; pacing per
+  ongeluk laten doorschalen naar 20 is een balansbug.
+- **Testplan:** headless kooppad (patroon deur2-tests), reachability
+  D→E, pacing-asserts op de 4-zones-stand; volledige regressie.
+- **Rollback:** splitsing terug naar één muur + kooppunt weg.
+- **Sonnet solo:** ja, na T24.
+
+## Ticket 26 — Map-lus M3: deur 4 (terugdeur bijkeuken → woonkamer)
+- **Type:** Feature
+- **Doel:** koopbare terugdeur (€800) in de woonkamer-oostmuur, gekocht
+  vanaf de BIJKEUKEN-kant; sluit de lus in beide richtingen.
+- **Waarom:** de terugweg koop je pas als je de lus bijna rond bent — de
+  aankoop voelt dan als de beloning "rondje af" (§4.7).
+- **Concrete wijzigingen:** woonkamer-oostmuur (één `bouwMuur` op
+  x = 4.65) splitsen in twee segmenten met gat z ∈ [DEUR4_Z ± DEUR4_HALF];
+  deur4-mesh + obstakel + `deur4Punt` (positie aan de bijkeuken-kant,
+  x ≈ 5.2) + markering; `DEUR4_PRIJS = 800`; `deur4Gekocht`;
+  ontgrendelt GEEN zone (beslissing 18): `aantalOntgrendeldeZones()`
+  blijft deur 4 negeren; melding "De terugweg is open" i.p.v. een
+  zone-banner.
+- **Codegebieden:** woonkamer-geometrie, kooppuntenblok, debug-export.
+- **Acceptatiecriteria:** vóór koop dicht (ook vanuit de woonkamer);
+  na koop beide richtingen beloopbaar; pacing-waarden veranderen NIET
+  door deur 4; dubbele koop doet niets.
+- **Risico's:** het deurgat mag de A-vensters (zuidmuur) en de ammo-kist
+  (3, −2) niet raken — gat op z ∈ [−1, 1] zit daar ruim vandaan; probes
+  op de nieuwe naden.
+- **Testplan:** headless kooppad + reachability A↔E beide richtingen;
+  volledige regressie.
+- **Rollback:** muur terug, kooppunt weg.
+- **Sonnet solo:** ja, na T25.
+
+## Ticket 27 — Map-lus M4: zone-E-inhoud (venster, Provisiekast, decor, audio)
+- **Type:** Feature
+- **Doel:** de bijkeuken wordt een échte kamer: één spawn-venster met
+  barricade, de Provisiekast (tweede ammo-kist, €350), decor met eigen
+  identiteit en een eenmalig zone-geluid.
+- **Waarom:** een lege verbindingskamer devalueert de lus; de
+  Provisiekast geeft een blijvende reden om er te zijn (§4.8).
+- **Concrete wijzigingen:** `VENSTERS_BIJKEUKEN = [{ x: 11.6, z: 2,
+  zone: 'E', spanX: false }]` + `bouwBarricade` via de bestaande loop +
+  activering in `koopDeur3()` (patroon `koopDeur2`/`VENSTERS_PLAATS`);
+  `provisiekastPunt` (€350, `AMMO_KIST_KOGELS`-hergebruik, eigen
+  markering + decor-kast); bijkeuken-decor (keukenblok/fornuis-blokken,
+  planken met potten — geen collision) en kelderhals-decor (kelderluik,
+  kaal flikkerpeertje via het V4-lampflikker-patroon);
+  `bijkeukenBetreden`-audio (eenmalige kraak, `gangBetreden`-patroon) —
+  en de bestaande `plaatsBetreden`-check aansluiten op de nieuwe
+  zone-indeling zodat de windvlaag niet in de bijkeuken afgaat
+  (ARCHITECTURE_NOTES §4.10).
+- **Codegebieden:** vensters-blok, kooppuntenblok, decor, zone-audio,
+  debug-export (`VENSTERS_BIJKEUKEN`, `provisiekastPunt`,
+  `koopProvisiekast` of hergebruikte `koopAmmo`-variant).
+- **Acceptatiecriteria:** venster spawnt pas na deur 3 (en heeft 3
+  planken); Provisiekast vult reserve zoals de ammo-kist maar kost €350;
+  windvlaag speelt NIET in de bijkeuken; kraak speelt éénmalig; decor
+  heeft geen collision (obstakel-count ongewijzigd behalve bewuste
+  keuzes).
+- **Risico's:** venster te dicht bij de terugdeur = spawn-camping — op
+  (11.6, 2) staat hij 5+ m van deur 4; `kiesVensterIndex` weegt op
+  afstand en heeft geen wijziging nodig.
+- **Testplan:** headless: venster-activering, Provisiekast-kooppad,
+  audio-flags; volledige regressie.
+- **Rollback:** inhoud is additief per onderdeel.
+- **Sonnet solo:** ja, na T25 (deur 3 moet bestaan); T26 niet vereist.
+
+## Ticket 28 — Map-lus M5: zone-navigatie als graaf (VOORZICHTIG)
+- **Type:** Refactor
+- **Doel:** `zoneVan()` kent zone E; de lineaire spine wordt een
+  zone-graaf met next-hop-tabel zodat ondoden de speler door de hele lus
+  en in beide richtingen vinden.
+- **Waarom:** het lineaire model kan geen lus aan (ontwerpbeslissing 19);
+  zonder dit ticket lopen ondoden vanuit E "achteruit" de hele route af.
+- **Concrete wijzigingen:** `zoneVan`: E-tak vóór de woonkamer-check
+  (`if (x >= DEUR2_X) return z > PLAATS_Z_ZUID ? 4 : 3;` — zie §4.7);
+  `ZONE_GRAAF` = kanten A–B, B–C, C–D, D–E, E–A met per kant het
+  deurpunt + de open-conditie (deur 1/2/3/4); `herbouwNavTabel()` (BFS
+  over open kanten) aangeroepen bij elke deuraankoop + bij init;
+  `updateOndoden()` (navigatie-helft) leest
+  `NAV_VOLGENDE[eigenZone][spelerZone]` → deurpunt of rechtstreeks.
+  Regressie-anker: met deur 3/4 dicht is de graaf een lijn en het gedrag
+  per constructie identiek aan vandaag — dat wordt expliciet getest.
+- **Codegebieden:** `zoneVan`, `ZONE_DEURPUNTEN` (vervangen door graaf),
+  `updateOndoden` (navigatie-helft), de vier koopDeur-functies (haakje),
+  debug-export (`zoneVan`, `NAV_VOLGENDE`, `herbouwNavTabel`).
+- **Acceptatiecriteria:** met deur 3/4 dicht: bestaande nav-tests
+  byte-voor-byte groen; lus open: ondode in E bereikt speler in A via de
+  terugdeur (kortste kant), ondode in D bij speler in A kiest de kortste
+  van beide richtingen; `zoneVan` classificeert bijkeuken/kelderhals als
+  4 en het binnenplaats-noordpuntje nog steeds als 3.
+- **Risico's:** het op één na riskantste ticket van de ronde (na T18):
+  `updateOndoden` is al druk; alleen de doelpunt-keuze vervangen, de
+  ontwijk-logica NIET aanraken. Fase 8 moet afgerond zijn (zelfde
+  functie, andere helft).
+- **Testplan:** headless: zoneVan-tabel (10 proefpunten), nav-tabel per
+  deurstand, reachability-sim E→A en D→A beide richtingen (bestaand
+  realistic-wave-patroon); volledige regressie.
+- **Rollback:** dit ticket in één commit; revert herstelt de lineaire
+  spine.
+- **Sonnet solo:** ja, maar NOOIT combineren met een ander ticket.
+
+## Ticket 29 — Map-lus M6: balans, teksten en eindregressie
+- **Type:** Balans + polish
+- **Doel:** de lus is compleet én eerlijk: pacing-plafond blijft 18,
+  beide looprichtingen zijn getest, teksten kloppen.
+- **Waarom:** afronding van fase 9; de kite-analyse uit
+  ARCHITECTURE_NOTES §4.8 moet in het echte spel worden bevestigd.
+- **Concrete wijzigingen:** pacing-asserts (interval/max met 4 zones ==
+  3-zones-waarden); speeltest-notities: rondje linksom en rechtsom op
+  golf 8+ (dreiging vanuit beide richtingen? kelderhals-plug werkt?);
+  startscherm-/README-teksten (vier zones + lus + prijzen); eventuele
+  kleine tuning (DEUR3/4-prijs, Provisiekast-prijs) op basis van de
+  speeltest — binnen ±25%, groter is een nieuw ticket.
+- **Codegebieden:** teksten, hooguit prijsconstanten.
+- **Acceptatiecriteria:** volledige regressie groen (repo-suite +
+  scratchpad-suite); screenshots van de lus (bijkeuken, kelderhals,
+  beide deuren open); README beschrijft de lus.
+- **Risico's:** vrijwel geen — dit ticket verandert bewust geen
+  mechanica.
+- **Testplan:** `tests/run-all.mjs` + reachability + screenshots.
+- **Rollback:** tekstueel.
+- **Sonnet solo:** ja.
+
+---
+
 ## Openstaande verbeteringen Defend National Monument (bevroren tot expliciet gevraagd)
 - Performance verbeteren
 - Wave balancing testen
