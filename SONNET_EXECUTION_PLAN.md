@@ -203,30 +203,53 @@ ticketnummer. Algemene kop voor elke prompt:
   (plafond 14/16/18 per zonestand).
 - **Stappen:** twee constanten + comments; cap-test per zonestand
   bijwerken; speeltest-notitie "vol maar leesbaar".
-
-### Ticket 11 — Smederij-architectuur (ná fase 4)
-- **Doel:** per-wapen `gesmeed`-status + schadeformule
+  
+### Ticket 11, Smederij-architectuur, ná fase 4
+* **Doel:** per-wapen `gesmeed`-status + schadeformule
   `schadePerTreffer + smederijbonus(actief wapen) + headshot`, zonder
-  zichtbare wijziging (nog geen machine).
-- **Stappen:** `smederijConfig` op beide wapendefinities (Drukspuit
-  {1, 12}, Ratelaar {0.5, 24}); `gesmeed: false` in `nieuweWapenStaat`;
-  één extra term in `raakOndode` (Eliminatiemodus-override blijft
-  erboven); debug-exports; 8-combinaties-schadetest + wisselpersistentie
-  + volledige regressie (alles identiek zolang niets gesmeed is).
-- **Niet veranderen:** `koopUpgrade`/`schadePerTreffer` (blijft het
-  early-game pad), `HEADSHOT_EXTRA`.
+  zichtbare machine-wijziging. Tegelijk wordt de bestaande globale
+  schade-upgrade herbalanceerd, zodat die een kleiner early-game pad blijft
+  en De Smederij later de sterkere late-game upgrade wordt.
+* **Stappen:** `smederijConfig` op beide wapendefinities, Drukspuit
+  `{ schadeBonus: 1.5, magazijnMax: 12 }`, Ratelaar
+  `{ schadeBonus: 1, magazijnMax: 24 }`; `gesmeed: false` in
+  `nieuweWapenStaat`; `koopUpgrade` aanpassen naar `+0.5` schade i.p.v.
+  `+1`; `WAPEN_SCHADE_MAX` aanpassen naar `1.5` i.p.v. `2`;
+  HUD-schadeweergave decimal-proof maken; één extra term in `raakOndode`
+  toevoegen, Eliminatiemodus-override blijft erboven; debug-exports;
+  16-combinaties-schadetest + assert dat globale schade stopt bij `1.5` +
+  wisselpersistentie + volledige regressie.
+* **Schadeverwachting:** zonder upgrades blijft bodyshot-schade `1`;
+  globale schade-upgrade maakt dit `1.5`; gesmede Drukspuit krijgt `+1.5`;
+  gesmede Ratelaar krijgt `+1`. Maximale bodyshot-schade wordt dus
+  Drukspuit `3` en Ratelaar `2.5`. Headshots blijven
+  `+HEADSHOT_EXTRA` bovenop bodyshot-schade.
+* **Niet veranderen:** `HEADSHOT_EXTRA`, wapenwissel-logica,
+  Eliminatiemodus-override, bestaande per-wapen ammo-state behalve het
+  nieuwe `gesmeed`-veld.
 
-### Ticket 12 — Smederij-machine
-- **Doel:** interactiepunt op de binnenplaats, €3000 per wapen, smeedt
-  het ACTIEVE wapen éénmalig: schadebonus actief, magazijn 8→12 / 16→24
-  (+ meteen bijvullen), visueel accent + feller vlamlicht + eigen
-  koop-piep, HUD-merkteken.
-- **Stappen:** volg het `ratelaarPunt`-kooppatroon; positioneer via
-  `PLAATS_*`-ankers en verifieer met `isVrijePlek`; decor zonder
-  collision (of mét — dan obstakel-test bijwerken); kooppad-tests per
-  wapen + dubbele-aankoop-guard + onafhankelijkheid van beide wapens +
-  screenshot; balanscheck golf 12–15 zonder smeden haalbaar.
-- **Niet veranderen:** wapenwissel-logica, ammo-kist.
+### Ticket 12, Smederij-machine
+* **Doel:** interactiepunt op de binnenplaats, €3000 per wapen, smeedt
+  het ACTIEVE wapen éénmalig: schadebonus actief, magazijn
+  `8 -> 12` / `16 -> 24` en meteen bijvullen, visueel accent + feller
+  vlamlicht + eigen koop-piep, HUD-merkteken.
+* **Stappen:** volg het `ratelaarPunt`-kooppatroon; positioneer via
+  `PLAATS_*`-ankers en verifieer met `isVrijePlek`; prompt toont actief
+  wapen + prijs of "al gesmeed"; `koopSmederij()` doet geld-check,
+  zet `wapenStaat.gesmeed = true`, past `magazijnMax` aan via
+  `smederijConfig`, vult het magazijn meteen bij en blokkeert dubbele
+  aankoop per wapen; decor zonder collision, of mét collision en dan
+  obstakel-test bijwerken; kooppad-tests per wapen + dubbele-aankoop-guard
+  * onafhankelijkheid van beide wapens + schade-asserts + magazijn-refill
+    assert + screenshot; balanscheck golf 12 tot 15 zonder smeden haalbaar.
+* **Schadeverwachting:** Drukspuit gesmeed zonder globale upgrade doet
+  bodyshot `2.5`, met globale upgrade bodyshot `3`; Ratelaar gesmeed zonder
+  globale upgrade doet bodyshot `2`, met globale upgrade bodyshot `2.5`.
+  Headshots blijven telkens `+HEADSHOT_EXTRA`.
+* **Niet veranderen:** wapenwissel-logica, ammo-kist, bestaande
+  koopinteractie-patronen, bestaande reserve-ammo-regels behalve het direct
+  bijvullen van het actieve magazijn na smeden.
+
 
 ---
 

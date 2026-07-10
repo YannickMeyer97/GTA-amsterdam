@@ -239,22 +239,29 @@ Three.js via CDN-importmap, geen build-stap). Dat blijft zo.
    (fog dichter), één exclusief vijandtype (Sluiper), banner + eindmelding.
 
 7. **Pack-a-Punch als late-game geldsink.** Na Snelheidselixer (600),
-   schade-MAX (500), Pantserdrank (1000), Ratelaar (750) en beide deuren
-   (1500) is alles koopbaar rond golf 7–9 en stapelt geld doelloos op —
-   wave-bonussen en Dubbele Beloning maken dat erger. €3000 per wapen (dus
-   €6000 totaal) geeft de economie weer een horizon voor golf 10–15+,
-   zonder de vroege curve te raken.
+   globale schade-upgrade (500), Pantserdrank (1000), Ratelaar (750) en
+   beide deuren (1500) is alles koopbaar rond golf 7-9 en stapelt geld
+   doelloos op. Wave-bonussen en Dubbele Beloning maken dat erger. €3000 per
+   wapen (dus €6000 totaal) geeft de economie weer een horizon voor golf
+   10-15+, terwijl de vroege curve beheersbaar blijft. De globale
+   schade-upgrade blijft bestaan als early-game pad, maar wordt kleiner:
+   `schadePerTreffer` gaat van `1` naar maximaal `1.5` i.p.v. `2`, zodat de
+   grootste damage-stap naar De Smederij verschuift.
 
 8. **Pack-a-Punch per wapen, niet globaal.** (a) Twee losse aankopen à
    €3000 = een langere sink dan één globale. (b) Per wapen kun je karakter
-   tunen: de Drukspuit (traag, 8 schoten) verdraagt +1 schade; de Ratelaar
-   (0,1s cooldown, 16 schoten) zou met +1 een DPS-monster worden — die
-   krijgt +0,5 en een groter magazijn. (c) Het bewaart de wapenidentiteit:
-   geüpgraded blijft de Drukspuit de precisie-keuze en de Ratelaar de
-   volume-keuze. Fractionele schade (0,5) is veilig: HP-checks zijn
-   `hp <= 0`-vergelijkingen, geen integer-aannames.
+   tunen: de Drukspuit (traag, 8 schoten) mag na smeden harder pieken en
+   krijgt +1.5 schade plus magazijn 8->12; de Ratelaar (0,1s cooldown, 16
+   schoten) krijgt minder schade per kogel maar meer volume, dus +1 schade
+   plus magazijn 16->24. (c) Het bewaart de wapenidentiteit: geüpgraded
+   blijft de Drukspuit de precisie-keuze en de Ratelaar de volume-keuze.
+   Fractionele schade is veilig: HP-checks zijn `hp <= 0`-vergelijkingen,
+   geen integer-aannames. Maximale bodyshot-schade wordt Drukspuit `3`
+   (`1.5` globale schade + `1.5` Smederij) en Ratelaar `2.5` (`1.5` globale
+   schade + `1` Smederij). Headshots blijven daarbovenop `+HEADSHOT_EXTRA`.
+  
 
-9. **Threat budget i.p.v. lineair meer zombies.** Het huidige systeem kan
+10. **Threat budget i.p.v. lineair meer zombies.** Het huidige systeem kan
    alleen "meer" (golf 15 = 33 stuks) — dat loopt tegen het perf-plafond,
    maakt elke golf hetzelfde soort drukte en devalueert de varianten (alles
    verzuipt in aantallen). Een budget waarbij zware types meer "kosten"
@@ -263,25 +270,25 @@ Three.js via CDN-importmap, geen build-stap). Dat blijft zo.
    Bijkomend: de spawn-cap kan omlaag (Ticket 15) zonder dat de
    moeilijkheidscurve afvlakt.
 
-10. **Bullet-sponge-preventie.** Drie borgen: (a) normale HP capt op 4
+11. **Bullet-sponge-preventie.** Drie borgen: (a) normale HP capt op 4
     (Ticket 14) — nooit hoger, druk komt daarna uit budget/samenstelling;
     (b) Pack-a-Punch-schade groeit mee (PaP-Drukspuit doet 3/4 per schot,
     dus zelfs 4-HP-ondoden blijven 1–2 schoten); (c) speciale types krijgen
     caps/afvlakking op hun multipliers i.p.v. mee-explosie met de basis-HP.
 
-11. **Sjouwer × HP-schaling.** Na Ticket 14 zou multiplier 2.5 op basis 3–4
+12. **Sjouwer × HP-schaling.** Na Ticket 14 zou multiplier 2.5 op basis 3–4
     HP → 8–10 HP geven: precies de sponge die we niet willen. Beslissing:
     Sjouwer-HP wordt `min(round(basis * 2.5), 8)` — hard plafond op 8.
     (Alternatief, additief `basis + 3`, mag Sonnet voorstellen als de cap
     raar aanvoelt in tests.)
 
-12. **Pack-a-Punch mag niet verplicht worden.** De HP-cap van 4 (punt 10a)
+13. **Pack-a-Punch mag niet verplicht worden.** De HP-cap van 4 (punt 10a)
     is de garantie: een niet-geüpgradede speler met schade-MAX (2/3) blijft
     elke ondode in max 2 headshots doden. PaP versnelt en verrijkt, maar de
     kill-TTK zonder PaP blijft eindig en constant vanaf golf 16. Balanstest
     in Ticket 12: golf 12–15 uitspelbaar zonder PaP.
 
-13. **Debug-hook-conventie (afwijking van de opdrachttekst).** De opdracht
+14. **Debug-hook-conventie (afwijking van de opdrachttekst).** De opdracht
     noemt `window.__AMSTERDAM_UNDEAD_TEST__`; het project heeft al jaren de
     conventie `window.AmsterdamUndeadDebug` (CLAUDE.md, alle bestaande
     tests). We introduceren GEEN tweede global — Ticket 10 breidt de

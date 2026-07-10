@@ -402,81 +402,120 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 - **Rollback:** exports zijn additief; `tests/` is inert.
 - **Sonnet solo:** ja.
 
-## Ticket 11 — Pack-a-Punch: architectuur (data + schade, nog geen machine)
-- **Type:** Feature (fundament)
-- **Doel:** per-wapen upgrade-status en de nieuwe schadeformule, zonder
-  zichtbare gameplay-wijziging (er is nog niets te koop).
-- **Waarom:** de schadeformule raakt `raakOndode()` — het gevaarlijkste
+## Ticket 11 - Pack-a-Punch: architectuur (data + schade, nog geen machine)
+* **Type:** Feature (fundament + balansaanpassing)
+* **Doel:** per-wapen upgrade-status en de nieuwe schadeformule, zonder
+  zichtbare machine-gameplay. Daarnaast wordt de bestaande globale
+  schade-upgrade herbalanceerd, zodat die een early-game pad blijft en De
+  Smederij later duidelijk als sterkere late-game upgrade voelt.
+* **Waarom:** de schadeformule raakt `raakOndode()`, het gevaarlijkste
   stukje code; dat wil je los testen vóór er een machine aan hangt.
-  Per-wapen i.p.v. globaal: ontwerpbeslissing 8.
-- **Concrete wijzigingen:**
-  - Wapendefinities krijgen een `smederijConfig` (naamgeving: de machine
-    heet in-game **De Smederij** — géén "Pack-a-Punch", zie IP-regels in
+  Per-wapen i.p.v. globaal: ontwerpbeslissing 8. De huidige globale
+  schade-upgrade is nu te goedkoop en te sterk t.o.v. De Smederij, daarom
+  wordt die kleiner gemaakt.
+* **Concrete wijzigingen:**
+  * Wapendefinities krijgen een `smederijConfig` (naamgeving: de machine
+    heet in-game **De Smederij**, géén "Pack-a-Punch", zie IP-regels in
     CLAUDE.md en de eerder afgesproken naamtabel):
-    Drukspuit `{ schadeBonus: 1, magazijnMax: 12 }`,
-    Ratelaar `{ schadeBonus: 0.5, magazijnMax: 24 }`.
-  - `nieuweWapenStaat()` krijgt veld `gesmeed: false`.
-  - Schadeformule in `raakOndode()`:
+    Drukspuit `{ schadeBonus: 1.5, magazijnMax: 12 }`,
+    Ratelaar `{ schadeBonus: 1, magazijnMax: 24 }`.
+  * `nieuweWapenStaat()` krijgt veld `gesmeed: false`.
+  * De globale schade-upgrade (`koopUpgrade`, `schadePerTreffer`) blijft
+    bestaan als early-game pad, maar wordt herbalanceerd:
+    `schadePerTreffer` start op `1`,
+    `koopUpgrade()` verhoogt schade met `0.5` i.p.v. `1`,
+    `WAPEN_SCHADE_MAX` wordt `1.5` i.p.v. `2`.
+  * HUD-weergave van schade moet decimalen netjes tonen, bijvoorbeeld
+    `1.5`.
+  * Schadeformule in `raakOndode()`:
     `basis = schadePerTreffer + (wapenStaat.gesmeed ? wapenStaat.definitie.smederijConfig.schadeBonus : 0)`
     `schade = basis + (kop ? HEADSHOT_EXTRA : 0)` (Eliminatiemodus-override
     blijft erboven staan). Fractioneel (0,5) is veilig: HP-checks zijn
     `<= 0`.
-  - De globale schade-upgrade (`koopUpgrade`, `schadePerTreffer`) blijft
-    exact zoals hij is — early-game pad.
-  - Debug-export: `get gesmeedActief()` (status actief wapen),
+  * De globale schade-upgrade is dus niet meer de grootste damage-spike;
+    De Smederij wordt de late-game wapen-transformatie.
+  * Debug-export: `get gesmeedActief()` (status actief wapen),
     smederijConfigs.
-- **Acceptatiecriteria:** zonder `gesmeed` is alle schade identiek aan nu
-  (volledige regressie groen); met `gesmeed=true` via debug: Drukspuit
-  bodyshot = schadePerTreffer+1, Ratelaar = +0.5; wisselen (Q) behoudt de
-  status per wapen; Drukspuit smeden verandert Ratelaar-schade niet.
-- **Risico's:** `raakOndode` wordt door tests direct aangeroepen met de
-  actieve `wapenStaat` als impliciete context — dat blijft zo (bewust: de
-  schade hoort bij het wapen waarmee geschoten wordt).
-- **Testplan:** headless: schade-asserts per wapen × gesmeed × headshot ×
-  upgrade-staat (8 combinaties); wissel-persistentie; volledige regressie.
-- **Rollback:** `gesmeed`-veld + één term in de formule verwijderen.
-- **Sonnet solo:** ja, maar pas ná Ticket 14 (schadewaarden zijn op de
+* **Schadebalans:** startschade blijft `1`; globale schade-upgrade geeft
+  `+0.5`; De Smederij geeft Drukspuit `+1.5` en Ratelaar `+1`. Daardoor
+  wordt maximale bodyshot-schade:
+  Drukspuit `3` (`1.5 + 1.5`),
+  Ratelaar `2.5` (`1.5 + 1`).
+  Headshots blijven `+HEADSHOT_EXTRA` bovenop de bodyshot-schade.
+* **Acceptatiecriteria:** zonder `gesmeed` en zonder globale upgrade is
+  startschade identiek aan nu; de globale schade-upgrade verhoogt schade met
+  `0.5` en stopt bij `1.5`; met `gesmeed=true` via debug: Drukspuit bodyshot
+  = `schadePerTreffer+1.5`, Ratelaar = `schadePerTreffer+1`; wisselen (Q)
+  behoudt de status per wapen; Drukspuit smeden verandert Ratelaar-schade
+  niet; Ratelaar smeden verandert Drukspuit-schade niet.
+* **Risico's:** `raakOndode` wordt door tests direct aangeroepen met de
+  actieve `wapenStaat` als impliciete context; dat blijft zo (bewust: de
+  schade hoort bij het wapen waarmee geschoten wordt). Bestaande tests die
+  `schadePerTreffer === 2` verwachten moeten worden aangepast naar `1.5`.
+* **Testplan:** headless: schade-asserts per wapen × gesmeed × headshot ×
+  upgrade-staat (16 combinaties); assert dat `koopUpgrade()` schade met
+  `0.5` verhoogt en stopt bij `1.5`; wissel-persistentie; volledige
+  regressie.
+* **Rollback:** `gesmeed`-veld + één term in de formule verwijderen;
+  `koopUpgrade()` terugzetten naar `+1` en `WAPEN_SCHADE_MAX` terugzetten
+  naar `2`.
+* **Sonnet solo:** ja, maar pas ná Ticket 14 (schadewaarden zijn op de
   nieuwe HP-curve gebalanceerd).
 
-## Ticket 12 — Pack-a-Punch: machine "De Smederij" (implementatie)
-- **Type:** Feature
-- **Doel:** koopbare machine (€3000 per wapen) op de binnenplaats die het
-  ACTIEVE wapen smeedt: schadebonus (T11), groter magazijn, aangepast
-  uiterlijk, sterker schoteffect, HUD-status.
-- **Waarom:** late-game geldsink (ontwerpbeslissing 7); binnenplaats is de
-  laatste zone dus de natuurlijke plek.
-- **Concrete wijzigingen:**
-  - `const SMEDERIJ_PRIJS = 3000;`
-  - Interactiepunt volgens het bestaande patroon (`ratelaarPunt` als
+## Ticket 12 - Pack-a-Punch: machine "De Smederij" (implementatie)
+* **Type:** Feature
+* **Doel:** koopbare machine (€3000 per wapen) op de binnenplaats die het
+  ACTIEVE wapen smeedt: sterke per-wapen schadebonus (T11), groter magazijn,
+  aangepast uiterlijk, sterker schoteffect, HUD-status.
+* **Waarom:** late-game geldsink (ontwerpbeslissing 7); binnenplaats is de
+  laatste zone dus de natuurlijke plek. Door de herbalans uit T11 voelt De
+  Smederij duidelijk sterker dan de goedkope globale schade-upgrade.
+* **Concrete wijzigingen:**
+  * `const SMEDERIJ_PRIJS = 3000;`
+  * Interactiepunt volgens het bestaande patroon (`ratelaarPunt` als
     voorbeeld): positie op de binnenplaats via `PLAATS_*`-ankers (bv. tegen
-    de noordmuur, vrij van schuurtje/kratten/spawn-ankers — check met
+    de noordmuur, vrij van schuurtje/kratten/spawn-ankers, check met
     `isVrijePlek`), `interactieMarkering(x, z, kleur)`, prompt toont actief
     wapen + prijs of "al gesmeed".
-  - `koopSmederij()`: geld-check, `wapenStaat.gesmeed = true`,
+  * `koopSmederij()`: geld-check, `wapenStaat.gesmeed = true`,
     `magazijnMax` → smederijConfig-waarde (magazijn meteen bijvullen tot
     het nieuwe max is redelijk), eenmalig per wapen.
-  - Visueel/audio: emissive accentkleur op de wapen-mesh van het gesmede
+  * Visueel/audio: emissive accentkleur op de wapen-mesh van het gesmede
     wapen, feller `vlamLicht`, eigen `speelSmeed()`-piep; simpel houden
     (geen nieuwe geometrie nodig).
-  - HUD: `updateHUD()`/`updateAmmoUI()` tonen een merkteken (bv. ster) bij
+  * HUD: `updateHUD()`/`updateAmmoUI()` tonen een merkteken (bv. ster) bij
     de wapennaam als het actieve wapen gesmeed is.
-  - Machine-decor: klein aambeeld/werkbankje van 2–3 boxen, GEEN collision
-    (of een bewuste `registreerRechthoek` als hij vrij staat — dan ook de
+  * Machine-decor: klein aambeeld/werkbankje van 2-3 boxen, GEEN collision
+    (of een bewuste `registreerRechthoek` als hij vrij staat, dan ook de
     obstakel-count-test bijwerken).
-- **Acceptatiecriteria:** Drukspuit smeden: €-3000, magazijn 8→12, schade
-  +1, HUD-merkteken, tweede keer kopen doet niets; Ratelaar idem
-  (16→24, +0.5) en onafhankelijk van de Drukspuit; met te weinig geld
-  gebeurt niets (bestaand `speelGeenGeld`-patroon); golf 12–15 blijft
-  uitspeelbaar ZONDER smeden (balanscheck, ontwerpbeslissing 12).
-- **Risico's:** interactiepunt-plaatsing op een onvrije plek; vergeten
+* **Acceptatiecriteria:** Drukspuit smeden: €-3000, magazijn 8→12, schade
+  +1.5, HUD-merkteken, tweede keer kopen doet niets; Ratelaar idem
+  (16→24, +1) en onafhankelijk van de Drukspuit; met te weinig geld gebeurt
+  niets (bestaand `speelGeenGeld`-patroon); golf 12-15 blijft uitspeelbaar
+  ZONDER smeden (balanscheck, ontwerpbeslissing 12).
+* **Schadeverwachting:** Drukspuit zonder upgrades: bodyshot `1`, headshot
+  `2`; Drukspuit met globale upgrade: bodyshot `1.5`, headshot `2.5`;
+  Drukspuit gesmeed zonder globale upgrade: bodyshot `2.5`, headshot `3.5`;
+  Drukspuit gesmeed met globale upgrade: bodyshot `3`, headshot `4`.
+  Ratelaar zonder upgrades: bodyshot `1`, headshot `2`; Ratelaar met globale
+  upgrade: bodyshot `1.5`, headshot `2.5`; Ratelaar gesmeed zonder globale
+  upgrade: bodyshot `2`, headshot `3`; Ratelaar gesmeed met globale upgrade:
+  bodyshot `2.5`, headshot `3.5`.
+* **Risico's:** interactiepunt-plaatsing op een onvrije plek; vergeten
   magazijn-refill waardoor het nieuwe max pas na een reload zichtbaar is;
-  obstakel-tests als het decor collision krijgt.
-- **Testplan:** headless kooppad per wapen (zoals de bestaande
-  `koopRatelaar`-tests); dubbele-aankoop-guard; wissel-gedrag; screenshot
-  van machine + gesmeed wapen; volledige regressie.
-- **Rollback:** interactiepunt + `koopSmederij` + decor verwijderen; T11
-  blijft dan inert bestaan.
-- **Sonnet solo:** ja, direct na T11.
+  obstakel-tests als het decor collision krijgt; HUD kan verwarrend worden
+  als globale schade en gesmede wapenstatus niet duidelijk apart worden
+  getoond.
+* **Testplan:** headless kooppad per wapen (zoals de bestaande
+  `koopRatelaar`-tests); dubbele-aankoop-guard; wissel-gedrag;
+  schade-asserts na smeden; magazijn-refill assert; screenshot van machine +
+  gesmeed wapen; volledige regressie.
+* **Rollback:** interactiepunt + `koopSmederij` + decor verwijderen; T11
+  blijft dan inert bestaan. Als ook de balanswijziging terug moet:
+  `koopUpgrade()` terugzetten naar `+1` en `WAPEN_SCHADE_MAX` terugzetten
+  naar `2`.
+* **Sonnet solo:** ja, direct na T11.
+
 
 ## Ticket 13 — Wave redesign: threat-budget-architectuur
 - **Type:** Refactor (RISKANTSTE TICKET — gefaseerd uitvoeren)
