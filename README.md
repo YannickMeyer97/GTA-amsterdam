@@ -95,8 +95,8 @@ te gaan naar het hoofdmenu.
 ### Gameplay
 
 - Overleef doorlopende **golven ondoden** die de ramen barricaderen en
-  op je afkomen. De eerste twee golven zijn ze fragiel (1 treffer), daarna
-  taaier (2 treffers); elke golf brengt meer **dreiging** — niet per se méér
+  op je afkomen. Ze worden trapsgewijs taaier (1 HP in golf 1-4, 2 vanaf
+  golf 5, 3 vanaf golf 11, maximaal 4 vanaf golf 16); elke golf brengt meer **dreiging** — niet per se méér
   ondoden, maar zwaardere samenstellingen — en elke ontgrendelde zone
   verhoogt de spawndruk (sneller + meer gelijktijdig).
 - **Drie varianten** mengen zich vanaf een bepaalde golf door de gewone

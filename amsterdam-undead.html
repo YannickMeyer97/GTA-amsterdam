@@ -1843,10 +1843,16 @@ function speelWindvlaag()  { piep('sine', 200, 260, 1.1, 0.035); setTimeout(() =
 
 // --- Balanswaarden ondoden / melee -------------------------------
 const ONDODE_SNELHEID    = 1.5;   // m/s — trager dan de speler (4.5), zodat ontwijken kan
-// HP per golf: de eerste golven zijn "papieren" ondoden (1 HP), daarna taaier.
-const ONDODE_HP_VROEG     = 1;    // golf 1 t/m ONDODE_HP_GOLFGRENS
-const ONDODE_HP_LAAT      = 2;    // golven daarna
-const ONDODE_HP_GOLFGRENS = 2;    // t/m deze golf geldt ONDODE_HP_VROEG (dus golf 1 en 2)
+// Ticket 14: HP per golf loopt trapsgewijs op met een hard plafond van 4 —
+// de bullet-sponge-borg (ontwerpbeslissing 10): vanaf golf 16 komt verdere
+// moeilijkheid uit budget/samenstelling (Ticket 13), nooit uit meer HP.
+// Golf 1-4 -> 1, 5-10 -> 2, 11-15 -> 3, 16+ -> 4.
+const ONDODE_HP_TRAPPEN = [
+  { vanafGolf: 16, hp: 4 },
+  { vanafGolf: 11, hp: 3 },
+  { vanafGolf: 5,  hp: 2 },
+  { vanafGolf: 1,  hp: 1 },
+];
 const ONDODE_STRAAL      = 0.4;   // botsingsstraal tegen de muren
 const MELEE_BEREIK       = 1.2;   // m — vanaf hier kan een ondode de speler raken
 const MELEE_SCHADE       = 15;    // schade per treffer
@@ -1854,7 +1860,10 @@ const MELEE_COOLDOWN     = 1.0;   // s tussen twee treffers van dezelfde ondode
 
 // Bepaalt de start-HP van een ondode op basis van de huidige golf.
 function ondodeStartHP() {
-  return spelStaat.golf <= ONDODE_HP_GOLFGRENS ? ONDODE_HP_VROEG : ONDODE_HP_LAAT;
+  for (const trap of ONDODE_HP_TRAPPEN) {
+    if (spelStaat.golf >= trap.vanafGolf) return trap.hp;
+  }
+  return 1;
 }
 
 // --- v0.7: ondode-varianten ----------------------------------------------
@@ -1869,9 +1878,10 @@ const ONDODE_TYPES = {
   // achteruit schietende speler te makkelijk in.
   loper:   { snelheidMultiplier: 1.47, hpMultiplier: 0.5, geldMultiplier: 0.6, kleur: 0x8a9c4a, oogKleur: 0xe8ff9c, schaal: 0.9 },
   // Sjouwer: erg traag, zeer taai, hoge beloning — een blokkade die de doorgang dichtzet.
-  // Ticket 5: hpMultiplier 4->2.5 (golf 3+ basis-HP 2 -> round(2x2.5)=5) —
-  // op 8 HP was hij wachttijd i.p.v. spanning.
-  sjouwer: { snelheidMultiplier: 0.55, hpMultiplier: 2.5, geldMultiplier: 2.2, kleur: 0x4a5568, oogKleur: 0x9cc8ff, schaal: 1.35 },
+  // Ticket 5: hpMultiplier 4->2.5 — op 8 HP was hij wachttijd i.p.v. spanning.
+  // Ticket 14: hpMax 8 — zonder plafond zou 2.5x op de late basis-HP (3-4)
+  // weer 8-10 HP geven, precies de sponge die ontwerpbeslissing 11 verbiedt.
+  sjouwer: { snelheidMultiplier: 0.55, hpMultiplier: 2.5, hpMax: 8, geldMultiplier: 2.2, kleur: 0x4a5568, oogKleur: 0x9cc8ff, schaal: 1.35 },
   // Brander: normale snelheid/HP, ontploft bij overlijden (zie ontploiBrander).
   brander: { snelheidMultiplier: 1,    hpMultiplier: 1,   geldMultiplier: 1.3, kleur: 0x8a4a2c, oogKleur: 0xffa03d, schaal: 1, explodeert: true },
   // Ticket 8: Sluiper — uitsluitend tijdens een Mistgolf (gating in
@@ -1943,7 +1953,9 @@ function golfBudget(golf) {
 }
 const GOLF_SPAWN_INTERVAL = 1.1;  // s tussen twee spawns binnen dezelfde golf
 const GOLF_RUST_TIJD      = 8;    // v0.9: 4->8s rust tussen golven (en vóór golf 1) — tijd om te repareren/kopen
-const GOLF_MAX_ACTIEF     = 18;   // max. gelijktijdig levende ondoden (perf-plafond), bij enkel zone A
+// Ticket 15: 18->14 — met het threat-budget (Ticket 13) hoeft het plafond de
+// moeilijkheid niet meer te dragen; lager = leesbaarder en lichter.
+const GOLF_MAX_ACTIEF     = 14;   // max. gelijktijdig levende ondoden (perf-plafond), bij enkel zone A
 // Wave-rewards — bonusgeld schaalt mee met het golfnummer, en de
 // speler heelt automatisch op tot minimaal WAVE_HEAL_MIN (verlaagt nooit).
 const WAVE_BONUS_BASIS  = 75;
@@ -2111,10 +2123,11 @@ function geefKerninslag() {
 
 // --- Spawn-pacing per ontgrendelde zone (Ticket V6) -----------------------
 // Elke gekochte deur ontgrendelt een extra zone: het spawn-interval daalt
-// 15% per extra zone (drukker), en het perf-plafond stijgt met 4 (meer
-// gelijktijdige ondoden toegestaan, want er zijn ook meer vensters actief).
+// 15% per extra zone (drukker), en het perf-plafond stijgt licht mee.
+// Ticket 15: bonus 4->2 — plafond wordt 14/16/18 over 1/2/3 zones; de kaart
+// raakt nooit overspoeld nu de moeilijkheid uit het budget komt.
 const ZONE_SPAWN_INTERVAL_FACTOR = 0.85;
-const ZONE_MAX_ACTIEF_BONUS = 4;
+const ZONE_MAX_ACTIEF_BONUS = 2;
 
 function aantalOntgrendeldeZones() {
   return 1 + (deurGekocht ? 1 : 0) + (deur2Gekocht ? 1 : 0);   // A telt altijd mee
@@ -2239,7 +2252,9 @@ function spawnOndode(vensterIndex, type = 'normaal') {
   const groep = maakOndodeModel(typeInfo, traits);
   groep.position.set(venster.x, 0, venster.z);
   const ondode = {
-    groep, type, hp: Math.max(1, Math.round(ondodeStartHP() * typeInfo.hpMultiplier)),
+    // HP: multiplier op de trap-basis, minimaal 1 (Loper/Sluiper) en gecapt
+    // op het optionele type-plafond (Ticket 14: Sjouwer max 8).
+    groep, type, hp: Math.max(1, Math.min(Math.round(ondodeStartHP() * typeInfo.hpMultiplier), typeInfo.hpMax ?? Infinity)),
     snelheid: ONDODE_SNELHEID * typeInfo.snelheidMultiplier, geldMultiplier: typeInfo.geldMultiplier,
     strompelt: traits.strompelt, loopFase: Math.random() * 10,   // (v0.8) willekeurige startfase: niet synchroon
     meleeTimer: 0, vastTijd: 0,
@@ -2621,7 +2636,7 @@ function startGolf() {
   spelStaat.budget = golfBudget(spelStaat.golf) * (actieveEventGolf ? EVENT_GOLF_BUDGET_FACTOR : 1);
   spelStaat.spawnTimer = 0;
   spelStaat.golfActief = true;
-  const taai = spelStaat.golf > ONDODE_HP_GOLFGRENS ? 'de ondoden zijn nu taaier' : 'mik op het hoofd';
+  const taai = ondodeStartHP() > 1 ? 'de ondoden zijn nu taaier' : 'mik op het hoofd';   // Ticket 14: volgt de HP-trap
   const zones = aantalOntgrendeldeZones();
   const drukte = zones > 1 ? ` · ${zones} zones actief` : '';
   if (actieveEventGolf === 'mist') {
@@ -3251,7 +3266,7 @@ window.AmsterdamUndeadDebug = {
   DEUR_PRIJS, AMMO_PRIJS, AMMO_KIST_KOGELS, UPGRADE_PRIJS, WAPEN_SCHADE_MAX,
   // Geometrie- en balansconstanten (voor tests):
   DEUR_Z, DEUR_HALF, GANG_Z_EIND, KAMER2_Z_NOORD, HALF_DIEPTE, HALF_BREEDTE, KAMER2_HALF_B,
-  ONDODE_HP_VROEG, ONDODE_HP_LAAT, ONDODE_HP_GOLFGRENS, HEADSHOT_EXTRA, ondodeStartHP,
+  ONDODE_HP_TRAPPEN, HEADSHOT_EXTRA, ondodeStartHP,   // Ticket 14: trap i.p.v. VROEG/LAAT/GOLFGRENS
   GELD_PER_HIT, GELD_PER_KILL, HEADSHOT_GELD_MULTIPLIER,
   GOLF_MAX_ACTIEF, lampLichten, GOLF_RUST_TIJD,
   // Ticket 13: threat-budget (spelStaat.budget is via spelStaat al bereikbaar,

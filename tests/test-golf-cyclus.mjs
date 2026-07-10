@@ -158,6 +158,21 @@ const barricade = await page.evaluate(() => {
 check('Een barricade-beuk spawnt niets en laat het budget onaangetast (5)',
   barricade.spawn === true && barricade.budget === 5, barricade);
 
+// --- 7. Ticket 15: spawn-cap 14, +2 per extra ontgrendelde zone -----------
+// LET OP: koopt deuren en hoort daarom als laatste blok in dit bestand.
+const caps = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const zone1 = d.effectiefMaxActief();
+  d.spelStaat.geld = 5000;
+  d.koopDeur();
+  const zone2 = d.effectiefMaxActief();
+  d.koopDeur2();
+  const zone3 = d.effectiefMaxActief();
+  return { zone1, zone2, zone3, max: d.GOLF_MAX_ACTIEF };
+});
+check('Spawn-cap per zonestand is 14/16/18 (GOLF_MAX_ACTIEF 14, bonus 2 per zone)',
+  caps.zone1 === 14 && caps.zone2 === 16 && caps.zone3 === 18 && caps.max === 14, caps);
+
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);

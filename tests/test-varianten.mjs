@@ -41,17 +41,44 @@ check('Loper-snelheid is ~2.205 m/s (±0.01)', Math.abs(loperStats.loperSnelheid
 check('Loper is sneller en heeft minder HP dan normaal',
   loperStats.loperSnelheid > loperStats.normaalSnelheid && loperStats.loperHp < loperStats.normaalHp, loperStats);
 
-// --- 4. Sjouwer: 5 HP op golf >= 3 (Ticket 5), trager, meer geld ---------
+// --- 4. Sjouwer: 5 HP op golf 5-10 (Ticket 5 + 14), trager, meer geld -----
+// Ticket 14: basis-HP is nu een trap (golf 3 -> basis 1 -> sjouwer 3);
+// de klassieke "sjouwer = 5" geldt op de 2-HP-trap (golf 5-10).
 const sjouwerStats = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  d.spelStaat.golf = 3;
+  d.spelStaat.golf = 5;
   const sjouwer = d.spawnOndode(0, 'sjouwer');
   const normaal = d.spawnOndode(0, 'normaal');
   return { hp: sjouwer.hp, snelheid: sjouwer.snelheid, normaalSnelheid: normaal.snelheid, normaalHp: normaal.hp };
 });
-check('Op golf >= 3: sjouwer.hp === 5', sjouwerStats.hp === 5, sjouwerStats);
+check('Op golf 5-10 (basis 2): sjouwer.hp === 5', sjouwerStats.hp === 5, sjouwerStats);
 check('Sjouwer is trager en heeft meer HP dan normaal',
   sjouwerStats.snelheid < sjouwerStats.normaalSnelheid && sjouwerStats.hp > sjouwerStats.normaalHp, sjouwerStats);
+
+// --- 4b. Ticket 14: HP-trap over golf 1-25 + Sjouwer-plafond 8 ------------
+const hpTabel = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const uit = {};
+  for (let golf = 1; golf <= 25; golf++) {
+    d.spelStaat.golf = golf;
+    const normaal = d.spawnOndode(0, 'normaal');
+    const sjouwer = d.spawnOndode(0, 'sjouwer');
+    const loper = d.spawnOndode(0, 'loper');
+    const sluiper = d.spawnOndode(0, 'sluiper');
+    uit[golf] = { basis: d.ondodeStartHP(), normaal: normaal.hp, sjouwer: sjouwer.hp, loper: loper.hp, sluiper: sluiper.hp };
+    for (const o of [...d.ondoden]) d.doodOndode(o);
+  }
+  return uit;
+});
+const trapKlopt = [[1, 1], [4, 1], [5, 2], [10, 2], [11, 3], [15, 3], [16, 4], [25, 4]]
+  .every(([golf, hp]) => hpTabel[golf].normaal === hp);
+check('Normaal-HP volgt de trap: 1(g1-4) 2(g5-10) 3(g11-15) 4(g16+, plafond)', trapKlopt,
+  Object.fromEntries([1, 4, 5, 10, 11, 15, 16, 25].map(g => [g, hpTabel[g].normaal])));
+const sjouwerNooitBoven8 = Object.values(hpTabel).every(rij => rij.sjouwer <= 8);
+check('Sjouwer-HP is nooit hoger dan 8 (golf 16+: min(round(4x2.5), 8) = 8)',
+  sjouwerNooitBoven8 && hpTabel[16].sjouwer === 8 && hpTabel[11].sjouwer === 8, hpTabel[16]);
+const minimum1 = Object.values(hpTabel).every(rij => rij.loper >= 1 && rij.sluiper >= 1);
+check('Loper en Sluiper zakken nooit onder 1 HP', minimum1, { golf1: hpTabel[1] });
 
 // --- 5. Brander: normale HP, ontploft bij overlijden ----------------------
 const branderType = await page.evaluate(() => {
