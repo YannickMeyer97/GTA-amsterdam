@@ -155,7 +155,7 @@ op GitHub `main`) naar originele namen — zie IP-regels in CLAUDE.md.
 
 ---
 
-# v0.14+ — Architectuurronde (gepland, nog NIET geïmplementeerd)
+# v0.14+ — Architectuurronde
 
 Ontworpen door Claude Fable; uitvoering later door Claude Sonnet, één ticket
 per keer. Lees eerst `ARCHITECTURE_NOTES.md` (codekaart + ontwerpbeslissingen)
@@ -163,7 +163,7 @@ en `SONNET_EXECUTION_PLAN.md` (volgorde + kant-en-klare prompts).
 Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 4 = wave-redesign (T13–T15), 5 = Pack-a-Punch (T11–T12, bewust ná fase 4).
 
-## Ticket 1 — Balance: wave-heal naar 60
+## Ticket 1 — Balance: wave-heal naar 60 ✅
 - **Type:** Balanspatch
 - **Doel:** `WAVE_HEAL_MIN` 75 → 60.
 - **Waarom:** op 75 is schade uit de vorige golf zelden voelbaar; op 60
@@ -181,7 +181,7 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 - **Rollback:** constante terugzetten.
 - **Sonnet solo:** ja, veilig.
 
-## Ticket 2 — Power-ups: cooldown op sterke power-ups (2 golven)
+## Ticket 2 — Power-ups: cooldown op sterke power-ups (2 golven) ✅
 - **Type:** Balanspatch
 - **Doel:** Dubbele Beloning, Eliminatiemodus en Kerninslag mogen pas weer
   droppen als er sinds de vorige sterke drop ≥ 2 golven voorbij zijn.
@@ -210,7 +210,7 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
   uniforme loting.
 - **Sonnet solo:** ja.
 
-## Ticket 3 — Power-ups: aparte Kerninslag-cooldown (4 golven)
+## Ticket 3 — Power-ups: aparte Kerninslag-cooldown (4 golven) ✅
 - **Type:** Balanspatch
 - **Doel:** Kerninslag mag pas weer droppen na ≥ 4 golven sinds de vorige
   Kerninslag-drop (bovenop de sterke-cooldown van Ticket 2).
@@ -236,7 +236,7 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 - **Rollback:** gate + state verwijderen.
 - **Sonnet solo:** ja, direct na Ticket 2 (zelfde functie).
 
-## Ticket 4 — Zombie balance: Loper naar 2,2 m/s
+## Ticket 4 — Zombie balance: Loper naar 2,2 m/s ✅
 - **Type:** Balanspatch
 - **Doel:** effectieve Lopersnelheid 2,7 → ±2,2 m/s.
 - **Waarom:** 2,7 haalt een achteruit schietende speler te hard in;
@@ -250,7 +250,7 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 - **Rollback:** multiplier terug naar 1.8.
 - **Sonnet solo:** ja, triviaal.
 
-## Ticket 5 — Zombie balance: Sjouwer naar 5 HP
+## Ticket 5 — Zombie balance: Sjouwer naar 5 HP ✅
 - **Type:** Balanspatch
 - **Doel:** Sjouwer-HP in late golven 8 → 5.
 - **Waarom:** 8 HP is wachttijd, geen spanning (ontwerpbeslissing 5).
@@ -267,7 +267,7 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 - **Rollback:** multiplier terug naar 4.
 - **Sonnet solo:** ja.
 
-## Ticket 6 — Eventgolven: basisframework
+## Ticket 6 — Eventgolven: basisframework ✅
 - **Type:** Feature
 - **Doel:** elke golf met `golf % 5 === 0` kan een eventgolf zijn, met
   eigen banner en state; gewone golven blijven byte-voor-byte hetzelfde
@@ -297,7 +297,7 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 - **Sonnet solo:** ja, mits strikt bij dit framework gebleven (nog geen
   fog, geen Sluiper — dat zijn T7/T8).
 
-## Ticket 7 — Mistgolf: visueel effect
+## Ticket 7 — Mistgolf: visueel effect ✅
 - **Type:** Feature
 - **Doel:** tijdens een Mistgolf wordt de scene-fog tijdelijk veel dichter;
   na afloop gegarandeerd herstel.
@@ -324,7 +324,7 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 - **Rollback:** haakjes leeghalen; fog-constanten kunnen blijven staan.
 - **Sonnet solo:** ja.
 
-## Ticket 8 — Nieuwe zombie: Sluiper
+## Ticket 8 — Nieuwe zombie: Sluiper ✅
 - **Type:** Feature
 - **Doel:** nieuw type `sluiper` dat uitsluitend tijdens Mistgolven kan
   spawnen: klein, snel-ish, breekbaar, met oplichtende ogen zodat hij in de
@@ -350,7 +350,7 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 - **Rollback:** type-entry verwijderen.
 - **Sonnet solo:** ja, samen met of direct na Ticket 9.
 
-## Ticket 9 — Mistgolf: spawngewichten
+## Ticket 9 — Mistgolf: spawngewichten ✅
 - **Type:** Feature
 - **Doel:** tijdens een Mistgolf bestaat de golf uitsluitend uit Sluipers;
   buiten Mistgolven verandert er niets.
@@ -370,7 +370,7 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 - **Rollback:** early-return verwijderen.
 - **Sonnet solo:** ja.
 
-## Ticket 10 — Debug- en testhooks
+## Ticket 10 — Debug- en testhooks ✅
 - **Type:** Debug
 - **Doel:** alle nieuwe state uit deze ronde inspecteerbaar/instelbaar
   maken via de bestaande debug-hook, en de belangrijkste headless tests in
@@ -402,7 +402,7 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 - **Rollback:** exports zijn additief; `tests/` is inert.
 - **Sonnet solo:** ja.
 
-## Ticket 11 - Pack-a-Punch: architectuur (data + schade, nog geen machine)
+## Ticket 11 - Pack-a-Punch: architectuur (data + schade, nog geen machine) ✅
 * **Type:** Feature (fundament + balansaanpassing)
 * **Doel:** per-wapen upgrade-status en de nieuwe schadeformule, zonder
   zichtbare machine-gameplay. Daarnaast wordt de bestaande globale
@@ -462,7 +462,7 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 * **Sonnet solo:** ja, maar pas ná Ticket 14 (schadewaarden zijn op de
   nieuwe HP-curve gebalanceerd).
 
-## Ticket 12 - Pack-a-Punch: machine "De Smederij" (implementatie)
+## Ticket 12 - Pack-a-Punch: machine "De Smederij" (implementatie) ✅
 * **Type:** Feature
 * **Doel:** koopbare machine (€3000 per wapen) op de binnenplaats die het
   ACTIEVE wapen smeedt: sterke per-wapen schadebonus (T11), groter magazijn,
@@ -517,7 +517,7 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 * **Sonnet solo:** ja, direct na T11.
 
 
-## Ticket 13 — Wave redesign: threat-budget-architectuur
+## Ticket 13 — Wave redesign: threat-budget-architectuur ✅
 - **Type:** Refactor (RISKANTSTE TICKET — gefaseerd uitvoeren)
 - **Doel:** golven krijgen een dreigingsbudget i.p.v. een lineair
   zombie-aantal; zwaardere types kosten meer budget.
@@ -563,7 +563,7 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
   tegen het OUDE gedrag, dan refactoren, dan tests bijwerken. Niet
   combineren met andere tickets.
 
-## Ticket 14 — Wave redesign: geleidelijke HP-schaling
+## Ticket 14 — Wave redesign: geleidelijke HP-schaling ✅
 - **Type:** Balanspatch (na T13)
 - **Doel:** normale ondoden worden trapsgewijs taaier i.p.v. één sprong.
 - **Waarom:** samen met het budget vormt dit de moeilijkheidscurve;
@@ -586,7 +586,7 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 - **Rollback:** oude `ondodeStartHP` terugzetten.
 - **Sonnet solo:** ja, na T13.
 
-## Ticket 15 — Wave redesign: spawn-cap en drukcontrole
+## Ticket 15 — Wave redesign: spawn-cap en drukcontrole ✅
 - **Type:** Balanspatch (na T13/T14)
 - **Doel:** maximaal 14–18 gelijktijdig levende ondoden, licht schalend
   met open zones; de kaart raakt nooit overspoeld.
