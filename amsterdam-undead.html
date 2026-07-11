@@ -2279,8 +2279,17 @@ function kiesOndodeTraits() {
   };
 }
 
+// Ticket 18 (Z1): het model is een deel-hiërarchie met scharnier-groepen
+// (been-pivots op heuphoogte, romp-groep, arm-pivots aan de schouder,
+// hoofd-groep met hoofd + ogen) zodat latere tickets losse ledematen kunnen
+// animeren (Z3), laten flinchen (Z4) en laten neervallen (Z5). Het
+// hitbox-contract (ontwerpbeslissing 16) blijft ongewijzigd:
+// userData.lichaamsdeel === 'kop' staat UITSLUITEND op het hoofd-mesh en de
+// twee ogen; elk ander deel is lichaam. Referenties naar de scharnieren
+// komen op groep.userData.delen (spawnOndode zet ze door op ondode.delen).
 function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTraits()) {
   const groep = new THREE.Group();
+  const delen = {};
   const tint = 0.85 + Math.random() * 0.3;   // kleine kleurvariatie per ondode
   const huidKleur = new THREE.Color(typeInfo.kleur).multiplyScalar(tint);
   const rugHoek = traits.kromme ? 0.22 + Math.random() * 0.12 : 0;   // kromme rug: voorovergebogen
@@ -2288,60 +2297,88 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   // Hoogtes zo gekozen dat het hoofd rond de ooghoogte van de speler (1.7m,
   // zie speler.hoogte) uitkomt — anders mist een recht vooruit gericht schot
   // de ondode altijd, ongeacht de afstand.
-  const benen = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.8, 0.16),
-    new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.9 }));
-  benen.position.y = 0.4;
-  if (traits.slepend !== 0) {
-    // Slepend been: geen apart beenmodel nodig — een lichte kanteling +
-    // zijwaartse verschuiving van het enkele beenblok geeft al een
-    // herkenbaar mankende stand.
-    benen.rotation.z = traits.slepend * 0.14;
-    benen.position.x = traits.slepend * 0.05;
-  }
-  groep.add(benen);
 
+  // Benen: twee losse been-meshes in eigen pivot-Groups op heuphoogte
+  // (samen hetzelfde silhouet als het oude ene blok van 0.28 breed). Het
+  // slepend-trait behoudt zijn oude uiterlijk: de kanteling zit op het MESH
+  // (zelfde draaipunt als vroeger, het beencentrum), de zijwaartse
+  // verschuiving op de pivots.
+  for (const [naam, kant] of [['beenL', -1], ['beenR', 1]]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(kant * 0.075 + traits.slepend * 0.05, 0.8, 0);
+    const been = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.8, 0.16),
+      new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.9 }));
+    been.position.y = -0.4;
+    if (traits.slepend !== 0) been.rotation.z = traits.slepend * 0.14;
+    pivot.add(been);
+    groep.add(pivot);
+    delen[naam] = pivot;
+  }
+
+  // Romp-groep: torso + vod. De kromme rug zit nu op de groep i.p.v. op het
+  // torso-mesh (zelfde draaipunt, zelfde eindbeeld); de vod draait daardoor
+  // subtiel mee met een kromme rug — hij hangt aan het middel, dus dat is
+  // eerder een verbetering dan een afwijking.
+  const romp = new THREE.Group();
+  romp.position.set(0, 1.1, rugHoek * 0.08);
+  romp.rotation.x = rugHoek;
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.6, 0.22),
     new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
-  torso.position.set(0, 1.1, rugHoek * 0.08);
-  torso.rotation.x = rugHoek;
-  groep.add(torso);
-
-  const hoofd = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8),
-    new THREE.MeshStandardMaterial({ color: huidKleur.clone().multiplyScalar(1.15), roughness: 0.8 }));
-  hoofd.position.set(0, 1.58 - rugHoek * 0.05, 0.02 + rugHoek * 0.35);   // volgt de kromme rug een beetje mee
-  hoofd.rotation.z = (Math.random() - 0.5) * 0.5;   // scheve nek: een eigen, herkenbare "ondode"-houding
-  hoofd.rotation.x = rugHoek * 0.6;
-  hoofd.userData.lichaamsdeel = 'kop';   // treffer hier = headshot (dubbele schade)
-  groep.add(hoofd);
-
-  for (const kant of [-1, 1]) {
-    // Verschillende armlengtes (v0.8): elke arm krijgt een onafhankelijke
-    // lengte-multiplier, met de langere arm ook iets verder naar beneden
-    // hangend zodat het schouder-aanhechtpunt gelijk blijft.
-    const armLengteMultiplier = 1 + (kant === 1 ? traits.armVerschil : -traits.armVerschil);
-    const armLengte = 0.5 * armLengteMultiplier;
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.09, armLengte, 0.09),
-      new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
-    arm.position.set(kant * 0.24, 1.13 - (armLengte - 0.5) * 0.5, 0.06);
-    arm.rotation.x = -0.5;   // naar voren uitgestrekt
-    groep.add(arm);
-  }
-
+  romp.add(torso);
   // Gerafelde voddenstrook aan het middel — eigen, herkenbaar "tattered" detail.
   const vod = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.32, 0.02),
     new THREE.MeshStandardMaterial({ color: 0x40331f, roughness: 0.95 }));
-  vod.position.set(0.1, 0.78, 0.12);
+  vod.position.set(0.1, -0.32, 0.12);
   vod.rotation.z = 0.3;
-  groep.add(vod);
+  romp.add(vod);
+  groep.add(romp);
+  delen.romp = romp;
 
+  // Hoofd-groep: hoofd-mesh + de twee gloeiende ogen. Scheve nek en de
+  // kromme-rug-kanteling zitten op de groep, zodat de ogen (v0.8: losse
+  // siblings die niet meekantelden) nu netjes het hoofd volgen.
+  const hoofdGroep = new THREE.Group();
+  hoofdGroep.position.set(0, 1.58 - rugHoek * 0.05, 0.02 + rugHoek * 0.35);   // volgt de kromme rug een beetje mee
+  hoofdGroep.rotation.z = (Math.random() - 0.5) * 0.5;   // scheve nek: een eigen, herkenbare "ondode"-houding
+  hoofdGroep.rotation.x = rugHoek * 0.6;
+  const hoofd = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8),
+    new THREE.MeshStandardMaterial({ color: huidKleur.clone().multiplyScalar(1.15), roughness: 0.8 }));
+  hoofd.userData.lichaamsdeel = 'kop';   // treffer hier = headshot (dubbele schade)
+  hoofdGroep.add(hoofd);
   // Twee kleine gloeiende oogjes: het enige griezelige lichtaccent. Kleur
   // verschilt per type (v0.7), zodat een variant al op afstand herkenbaar is.
   const oogMateriaal = new THREE.MeshStandardMaterial({ color: typeInfo.oogKleur, emissive: typeInfo.oogKleur, emissiveIntensity: 1.4 });
   for (const kant of [-1, 1]) {
     const oog = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6), oogMateriaal);
-    oog.position.set(kant * 0.06, 1.59, 0.16);
+    oog.position.set(kant * 0.06, 0.01, 0.14);   // t.o.v. het hoofdcentrum (was wereld 1.59/0.16)
     oog.userData.lichaamsdeel = 'kop';   // ogen horen bij het hoofd -> ook een headshot
-    groep.add(oog);
+    hoofdGroep.add(oog);
+  }
+  groep.add(hoofdGroep);
+  delen.hoofd = hoofdGroep;
+
+  // Arm-pivots aan de schouder. Het oude model roteerde de arm om zijn
+  // eigen centrum; het echte (geroteerde) schouderpunt lag daardoor op
+  // y = 1.13 + 0.25·cos(0.5), z = 0.06 − 0.25·sin(0.5). Door de pivot dáár
+  // te leggen en het mesh een halve lengte naar beneden te hangen, blijft
+  // het silhouet gelijk (afwijking < 0.01 bij armlengte-variatie).
+  const schouderY = 1.13 + 0.25 * Math.cos(0.5);
+  const schouderZ = 0.06 - 0.25 * Math.sin(0.5);
+  for (const [naam, kant] of [['armL', -1], ['armR', 1]]) {
+    // Verschillende armlengtes (v0.8): elke arm krijgt een onafhankelijke
+    // lengte-multiplier; het schouder-aanhechtpunt blijft gelijk doordat
+    // het mesh vanaf de pivot naar beneden hangt.
+    const armLengteMultiplier = 1 + (kant === 1 ? traits.armVerschil : -traits.armVerschil);
+    const armLengte = 0.5 * armLengteMultiplier;
+    const pivot = new THREE.Group();
+    pivot.position.set(kant * 0.24, schouderY, schouderZ);
+    pivot.rotation.x = -0.5;   // naar voren uitgestrekt
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.09, armLengte, 0.09),
+      new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
+    arm.position.y = -armLengte / 2;
+    pivot.add(arm);
+    groep.add(pivot);
+    delen[naam] = pivot;
   }
 
   groep.scale.set(
@@ -2349,6 +2386,7 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
     (0.94 + Math.random() * 0.16) * typeInfo.schaal * traits.lengte,
     (0.94 + Math.random() * 0.16) * typeInfo.schaal
   );
+  groep.userData.delen = delen;
   return groep;
 }
 
@@ -2372,6 +2410,7 @@ function spawnOndode(vensterIndex, type = 'normaal') {
     groep, type, hp: Math.max(1, Math.min(Math.round(ondodeStartHP() * typeInfo.hpMultiplier), typeInfo.hpMax ?? Infinity)),
     snelheid: ONDODE_SNELHEID * typeInfo.snelheidMultiplier, geldMultiplier: typeInfo.geldMultiplier,
     strompelt: traits.strompelt, loopFase: Math.random() * 10,   // (v0.8) willekeurige startfase: niet synchroon
+    delen: groep.userData.delen,   // (Ticket 18) pivot-referenties voor de loop-animatie van fase 8
     meleeTimer: 0, vastTijd: 0,
     ontwijkTimer: 0, ontwijkZijkant: 1, ontwijkStartPos: new THREE.Vector3(),
   };
