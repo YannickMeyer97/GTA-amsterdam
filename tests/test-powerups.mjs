@@ -1,6 +1,7 @@
-// Power-ups: drop/pickup/verval, de vier effecten, en de cooldowns op
-// sterke power-ups (Tickets 2/3). Zie ARCHITECTURE_NOTES.md §1
-// "Power-up drops" / "Power-up effecten".
+// Power-ups: drop/pickup/verval, de vier effecten, en het drop-slot per
+// golf (Ticket 16, vervangt de Ticket 2/feedbackronde-cooldowns) plus de
+// aparte, langere Kerninslag-cooldown (Ticket 3). Zie ARCHITECTURE_NOTES.md
+// §1 "Power-up drops" / "Power-up effecten" en §4.1.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
@@ -26,11 +27,11 @@ const dropKans = await page.evaluate(() => {
   for (let i = 0; i < pogingen; i++) {
     for (const o of [...d.ondoden]) d.doodOndode(o);
     for (const p of [...d.powerups]) { const idx = d.powerups.indexOf(p); if (idx !== -1) d.powerups.splice(idx, 1); }
-    // Cooldowns resetten per poging: dit test alleen POWERUP_DROP_KANS zelf,
-    // niet welk type gekozen wordt (dat wordt hieronder apart getest).
-    d.laatsteSterkePowerupGolf = -Infinity;
+    // Drop-slot en Kerninslag-cooldown resetten per poging: dit test alleen
+    // POWERUP_DROP_KANS zelf, niet welk type gekozen wordt (dat wordt
+    // hieronder apart getest).
+    d.laatstePowerupDropGolf = -Infinity;
     d.laatsteKerninslagGolf = -Infinity;
-    d.laatsteMunitievoorraadGolf = -Infinity;
     const voor = d.powerups.length;
     const o = d.spawnOndode(0, 'normaal');
     o.groep.position.set(999, 0, 999);
@@ -133,110 +134,100 @@ const verval = await page.evaluate(() => {
 });
 check('Een niet-opgeraapte drop verdwijnt vanzelf na POWERUP_VERVAL_TIJD', verval.voorLengte === 1 && verval.naLengte === 0, verval);
 
-// --- 8. Ticket 2: cooldown op sterke power-ups (2 golven) -----------------
-// laatsteMunitie staat standaard ver in het verleden zodat deze checks
-// puur de sterke-cooldown testen (de eigen Munitievoorraad-cooldown wordt
-// hieronder apart getest).
-function sample(golf, laatsteSterke, n = 200, laatsteKerninslag = -Infinity, laatsteMunitie = -Infinity) {
-  return page.evaluate(({ golf, laatsteSterke, laatsteKerninslag, laatsteMunitie, n }) => {
+// --- 8. Ticket 16: max één drop-slot per golf, ongeacht type -------------
+function sample(golf, laatsteDrop, n = 200, laatsteKerninslag = -Infinity) {
+  return page.evaluate(({ golf, laatsteDrop, laatsteKerninslag, n }) => {
     const d = window.AmsterdamUndeadDebug;
     d.spelStaat.golf = golf;
-    d.laatsteSterkePowerupGolf = laatsteSterke;
+    d.laatstePowerupDropGolf = laatsteDrop;
     d.laatsteKerninslagGolf = laatsteKerninslag;
-    d.laatsteMunitievoorraadGolf = laatsteMunitie;
     const gezien = new Set();
     for (let i = 0; i < n; i++) gezien.add(d.kiesPowerupType());
     return [...gezien];
-  }, { golf, laatsteSterke, laatsteKerninslag, laatsteMunitie, n });
+  }, { golf, laatsteDrop, laatsteKerninslag, n });
 }
 
-const golf4 = await sample(4, 4);
-check('Golf 4 (dezelfde golf als een sterke drop): uitsluitend munitievoorraad',
-  golf4.length === 1 && golf4[0] === 'munitievoorraad', { golf4 });
-const golf5 = await sample(5, 4);
-check('Golf 5 (1 golf na sterke drop, cooldown=2): uitsluitend munitievoorraad',
-  golf5.length === 1 && golf5[0] === 'munitievoorraad', { golf5 });
-const golf6 = await sample(6, 4);
-check('Golf 6 (2 golven na sterke drop): weer alle 4 types', golf6.length === 4, { golf6 });
+// 30 geforceerde "kills" binnen dezelfde golf (kiesPowerupType() +
+// spawnPowerupDrop() los van de 0.12-dropkans, die wordt hierboven al
+// apart getest) geven nooit meer dan 1 echte drop.
+const golfSlot = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.spelStaat.golf = 3;
+  d.laatstePowerupDropGolf = -Infinity;
+  d.laatsteKerninslagGolf = -Infinity;
+  let drops = 0;
+  for (let i = 0; i < 30; i++) {
+    const type = d.kiesPowerupType();
+    if (type) { d.spawnPowerupDrop(0, 0, type); drops++; }
+  }
+  for (const p of [...d.powerups]) { const idx = d.powerups.indexOf(p); if (idx !== -1) d.powerups.splice(idx, 1); }
+  return { drops };
+});
+check('30 geforceerde pogingen binnen één golf geven max 1 drop', golfSlot.drops === 1, golfSlot);
 
-// --- 8b. Feedbackronde: eigen cooldown op Munitievoorraad (2 golven) ------
-const golf4Munitie = await sample(4, -Infinity, 200, -Infinity, 4);
-check('Golf 4 (dezelfde golf als een Munitievoorraad-drop): Munitievoorraad niet, sterke types wel',
-  !golf4Munitie.includes('munitievoorraad') && golf4Munitie.includes('kerninslag'), { golf4Munitie });
-const golf5Munitie = await sample(5, -Infinity, 200, -Infinity, 4);
-check('Golf 5 (1 golf na Munitievoorraad-drop, cooldown=2): nog steeds geen Munitievoorraad',
-  !golf5Munitie.includes('munitievoorraad') && golf5Munitie.includes('dubbeleBeloning'), { golf5Munitie });
-const golf6Munitie = await sample(6, -Infinity, 200, -Infinity, 4);
-check('Golf 6 (2 golven na Munitievoorraad-drop): Munitievoorraad weer toegestaan',
-  golf6Munitie.includes('munitievoorraad'), { golf6Munitie });
+const golf3 = await sample(3, 3);
+check('Golf 3 (dezelfde golf als de drop): geen enkel type meer toegestaan',
+  golf3.length === 1 && golf3[0] === undefined, { golf3 });
+const golf4 = await sample(4, 3);
+check('Golf 4 (volgende golf): het slot is weer vrij (alle vier types weer mogelijk)',
+  golf4.length === 4, { golf4 });
 
-// Randgeval: alle vier types tegelijk op cooldown -> kiesPowerupType() geeft
-// undefined, en spawnPowerupDrop() moet dat stilletjes negeren (geen crash).
-const alleOpCooldown = await page.evaluate(() => {
+const registratieSlot = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.spelStaat.golf = 7;
+  d.laatstePowerupDropGolf = -Infinity;
+  const voor = d.laatstePowerupDropGolf;
+  d.spawnPowerupDrop(0, 0, 'eliminatiemodus');
+  const na = d.laatstePowerupDropGolf;
+  for (const p of [...d.powerups]) { const i = d.powerups.indexOf(p); if (i !== -1) d.powerups.splice(i, 1); }
+  return { voor, na };
+});
+check('spawnPowerupDrop() zet laatstePowerupDropGolf op de huidige golf, ongeacht type',
+  registratieSlot.voor === -Infinity && registratieSlot.na === 7, registratieSlot);
+
+// Randgeval: het slot is al gebruikt -> kiesPowerupType() geeft undefined,
+// en spawnPowerupDrop() moet dat stilletjes negeren (geen crash).
+const slotOp = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.spelStaat.golf = 4;
-  d.laatsteSterkePowerupGolf = 4;
-  d.laatsteKerninslagGolf = 4;
-  d.laatsteMunitievoorraadGolf = 4;
+  d.laatstePowerupDropGolf = 4;
   const gekozen = d.kiesPowerupType();
   const voorLengte = d.powerups.length;
   let crashte = false;
   try { d.spawnPowerupDrop(0, 0, gekozen); } catch { crashte = true; }
   const naLengte = d.powerups.length;
-  d.laatsteSterkePowerupGolf = -Infinity;
-  d.laatsteKerninslagGolf = -Infinity;
-  d.laatsteMunitievoorraadGolf = -Infinity;
+  d.laatstePowerupDropGolf = -Infinity;
   return { gekozen, voorLengte, naLengte, crashte };
 });
-check('kiesPowerupType() geeft undefined als alle types op cooldown staan, en spawnPowerupDrop() negeert dat zonder crash',
-  alleOpCooldown.gekozen === undefined && !alleOpCooldown.crashte && alleOpCooldown.voorLengte === alleOpCooldown.naLengte, alleOpCooldown);
-
-const registratieMunitie = await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  d.spelStaat.golf = 8;
-  d.laatsteMunitievoorraadGolf = -Infinity;
-  const voor = d.laatsteMunitievoorraadGolf;
-  d.spawnPowerupDrop(0, 0, 'munitievoorraad');
-  const na = d.laatsteMunitievoorraadGolf;
-  for (const p of [...d.powerups]) { const i = d.powerups.indexOf(p); if (i !== -1) d.powerups.splice(i, 1); }
-  return { voor, na };
-});
-check('spawnPowerupDrop() met munitievoorraad zet laatsteMunitievoorraadGolf op de huidige golf',
-  registratieMunitie.voor === -Infinity && registratieMunitie.na === 8, registratieMunitie);
-
-const registratieSterk = await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  d.spelStaat.golf = 7;
-  d.laatsteSterkePowerupGolf = -Infinity;
-  d.laatsteKerninslagGolf = -Infinity;
-  const voor = d.laatsteSterkePowerupGolf;
-  d.spawnPowerupDrop(0, 0, 'eliminatiemodus');
-  const na = d.laatsteSterkePowerupGolf;
-  for (const p of [...d.powerups]) { const i = d.powerups.indexOf(p); if (i !== -1) d.powerups.splice(i, 1); }
-  return { voor, na };
-});
-check('spawnPowerupDrop() met een sterk type zet laatsteSterkePowerupGolf op de huidige golf',
-  registratieSterk.voor === -Infinity && registratieSterk.na === 7, registratieSterk);
+check('kiesPowerupType() geeft undefined als het slot al gebruikt is, en spawnPowerupDrop() negeert dat zonder crash',
+  slotOp.gekozen === undefined && !slotOp.crashte && slotOp.voorLengte === slotOp.naLengte, slotOp);
 
 // --- 9. Ticket 3: aparte, langere Kerninslag-cooldown (4 golven) ---------
-const golf7Mix = await sample(7, 5, 200, 5);
-check('Golf 7 (sterke-cd verlopen, kerninslag-cd nog actief): andere sterke types wel, kerninslag niet',
-  golf7Mix.includes('dubbeleBeloning') && golf7Mix.includes('eliminatiemodus') && !golf7Mix.includes('kerninslag'), { golf7Mix });
-const golf9Mix = await sample(9, 5, 200, 5);
-check('Golf 9 (4 golven na Kerninslag): alle 4 types weer mogelijk, incl. kerninslag',
-  golf9Mix.length === 4 && golf9Mix.includes('kerninslag'), { golf9Mix });
-
-const registratieKerninslag = await page.evaluate(() => {
+// Valt Kerninslag in golf 8, dan is dat meteen ook dé drop van golf 8
+// (slot) én mag Kerninslag zelf pas weer vanaf golf 12.
+const kerninslagRitme = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  d.spelStaat.golf = 12;
+  d.spelStaat.golf = 8;
+  d.laatstePowerupDropGolf = -Infinity;
   d.laatsteKerninslagGolf = -Infinity;
   d.spawnPowerupDrop(0, 0, 'kerninslag');
-  const na = d.laatsteKerninslagGolf;
+  const golf8NaDrop = d.kiesPowerupType();   // zelfde golf: slot al gebruikt
+  const na = { laatstePowerupDropGolf: d.laatstePowerupDropGolf, laatsteKerninslagGolf: d.laatsteKerninslagGolf };
   for (const p of [...d.powerups]) { const i = d.powerups.indexOf(p); if (i !== -1) d.powerups.splice(i, 1); }
-  return { na };
+  return { golf8NaDrop, na };
 });
-check('spawnPowerupDrop() met kerninslag zet laatsteKerninslagGolf op de huidige golf',
-  registratieKerninslag.na === 12, registratieKerninslag);
+check('Kerninslag-drop in golf 8 registreert zowel het slot als de Kerninslag-cooldown',
+  kerninslagRitme.na.laatstePowerupDropGolf === 8 && kerninslagRitme.na.laatsteKerninslagGolf === 8, kerninslagRitme);
+check('Golf 8 na de Kerninslag-drop: geen enkel type meer (slot al gebruikt)',
+  kerninslagRitme.golf8NaDrop === undefined, kerninslagRitme);
+
+const golf9tot11 = await Promise.all([9, 10, 11].map(golf => sample(golf, golf - 1, 200, 8)));
+check('Golf 9-11 (na Kerninslag in golf 8, cooldown=4): Kerninslag komt niet voor, andere types wel',
+  golf9tot11.every(gezien => !gezien.includes('kerninslag')) &&
+  golf9tot11.every(gezien => gezien.includes('munitievoorraad')), { golf9tot11 });
+const golf12 = await sample(12, 11, 200, 8);
+check('Golf 12 (4 golven na Kerninslag): Kerninslag weer mogelijk',
+  golf12.includes('kerninslag'), { golf12 });
 
 const fails = report(errs);
 await browser.close();

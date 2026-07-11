@@ -1584,6 +1584,11 @@ let pantserdrankGekocht = false;
 // wisselbaar met Q. Elk wapen is een eigen Group met een eigen mondingsflits,
 // zodat schiet()/updateWapen() via wapenStaat.definitie alles vinden.)
 
+// Ticket 17: ember-kleur voor de Smederij-visuals — vooraf hier gedefinieerd
+// (i.p.v. bij de andere Smederij-constanten verderop) omdat de wapen-
+// opbouw hieronder 'm meteen nodig heeft bij het bouwen van de scene.
+const SMEDERIJ_ACCENT_KLEUR = 0xff7a1f;   // ember-oranje accent op het gesmede wapenonderdeel
+
 // 1) De "Drukspuit" — het originele startwapen, ongewijzigd model.
 const wapenDrukspuit = new THREE.Group();
 let meterDrukspuit;   // Ticket 12: krijgt een ember-accent zodra de Drukspuit gesmeed is
@@ -1609,6 +1614,29 @@ let meterDrukspuit;   // Ticket 12: krijgt een ember-accent zodra de Drukspuit g
   meterDrukspuit.position.set(0, 0.065, 0.02);
   wapenDrukspuit.add(meterDrukspuit);
 }
+
+// Ticket 17: Smederij-visuals — "smeulende drukketel". Vooraf gebouwd en
+// onzichtbaar; koopSmederij() zet 'm pas zichtbaar. Twee dunne gloeiringen
+// om de tank (die na tank.rotation.x=PI/2 langs de lokale Z-as ligt — een
+// standaard-georiënteerde Torus omsluit ook de Z-as, dus geen extra
+// rotatie nodig) plus een zacht flikkerend ember-lichtje.
+const smederijVisualsDrukspuit = new THREE.Group();
+{
+  const ringMateriaal = new THREE.MeshStandardMaterial({
+    color: SMEDERIJ_ACCENT_KLEUR, emissive: SMEDERIJ_ACCENT_KLEUR, emissiveIntensity: 1.3, roughness: 0.4,
+  });
+  for (const z of [-0.02, -0.09]) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.008, 8, 16), ringMateriaal);
+    ring.position.set(0, 0.02, z);
+    smederijVisualsDrukspuit.add(ring);
+  }
+  const emberDrukspuit = new THREE.PointLight(SMEDERIJ_ACCENT_KLEUR, 0.3, 0.9, 2);
+  emberDrukspuit.position.set(0, 0.02, -0.05);
+  smederijVisualsDrukspuit.add(emberDrukspuit);
+}
+smederijVisualsDrukspuit.visible = false;
+wapenDrukspuit.add(smederijVisualsDrukspuit);
+
 wapenDrukspuit.position.set(0.26, -0.22, -0.5);
 camera.add(wapenDrukspuit);
 scene.add(camera);   // camera moet in de scene zitten, anders zie je het wapen niet
@@ -1659,6 +1687,37 @@ let tandwielRatelaar;   // Ticket 12: krijgt een ember-accent zodra de Ratelaar 
   tandwielRatelaar.rotation.y = Math.PI / 2;
   wapenRatelaar.add(tandwielRatelaar);
 }
+
+// Ticket 17: Smederij-visuals — "gloeiend drijfwerk". Vooraf gebouwd en
+// onzichtbaar; koopSmederij() zet 'm pas zichtbaar. Een tweede, gloeiend
+// tandwiel dat langzaam draait (updateSmederijVisuals), een dunne
+// hitteband om de loop, plus dezelfde flikkerende ember-light als de
+// Drukspuit-variant.
+const smederijVisualsRatelaar = new THREE.Group();
+let smederijTandwielRatelaar;   // los bewaard: krijgt elke frame een rotatie
+{
+  smederijTandwielRatelaar = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.007, 6, 12),
+    new THREE.MeshStandardMaterial({
+      color: SMEDERIJ_ACCENT_KLEUR, emissive: SMEDERIJ_ACCENT_KLEUR, emissiveIntensity: 1.3, roughness: 0.4,
+    }));
+  smederijTandwielRatelaar.position.set(0.045, 0.02, -0.05);
+  smederijTandwielRatelaar.rotation.y = Math.PI / 2;
+  smederijVisualsRatelaar.add(smederijTandwielRatelaar);
+  // Hitteband om de loop (loop ligt na rotation.x=PI/2 langs de lokale
+  // Z-as — zelfde redenering als de gloeiringen van de Drukspuit).
+  const hitteband = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.007, 8, 16),
+    new THREE.MeshStandardMaterial({
+      color: SMEDERIJ_ACCENT_KLEUR, emissive: SMEDERIJ_ACCENT_KLEUR, emissiveIntensity: 1.3, roughness: 0.4,
+    }));
+  hitteband.position.set(0, 0.03, -0.12);
+  smederijVisualsRatelaar.add(hitteband);
+  const emberRatelaar = new THREE.PointLight(SMEDERIJ_ACCENT_KLEUR, 0.3, 0.9, 2);
+  emberRatelaar.position.set(0, 0.03, -0.18);
+  smederijVisualsRatelaar.add(emberRatelaar);
+}
+smederijVisualsRatelaar.visible = false;
+wapenRatelaar.add(smederijVisualsRatelaar);
+
 wapenRatelaar.position.set(0.26, -0.22, -0.5);
 wapenRatelaar.visible = false;
 camera.add(wapenRatelaar);
@@ -1685,6 +1744,9 @@ const WAPEN_DRUKSPUIT = {
   herlaadDuurNormaal: 1.2, herlaadDuurSnel: 0.7,
   groep: wapenDrukspuit, vlam: vlamDrukspuit, vlamLicht: vlamLichtDrukspuit,
   vlamLichtBasis: 1.1,   // Ticket 12: schiet() vermenigvuldigt dit bij een gesmeed wapen
+  // Ticket 17: originele mondingsvuur-kleuren, zodat schiet() na een
+  // rollback van de gesmeed-status vanzelf weer de normale kleur toont.
+  vlamKleurBasis: vlamDrukspuit.material.color.getHex(), vlamLichtKleurBasis: vlamLichtDrukspuit.color.getHex(),
   // Ticket 11: De Smederij (per-wapen late-game upgrade) — de Drukspuit is
   // de precisie-keuze en krijgt daarom de grootste schadebonus.
   smederijConfig: { schadeBonus: 1.5, magazijnMax: 12 },
@@ -1694,6 +1756,7 @@ const WAPEN_RATELAAR = {
   herlaadDuurNormaal: 1.5, herlaadDuurSnel: 0.9,
   groep: wapenRatelaar, vlam: vlamRatelaar, vlamLicht: vlamLichtRatelaar,
   vlamLichtBasis: 1.6,   // Ticket 12: schiet() vermenigvuldigt dit bij een gesmeed wapen
+  vlamKleurBasis: vlamRatelaar.material.color.getHex(), vlamLichtKleurBasis: vlamLichtRatelaar.color.getHex(),
   // Ticket 11: de Ratelaar is de volume-keuze — minder schadebonus, meer magazijn.
   smederijConfig: { schadeBonus: 1, magazijnMax: 24 },
 };
@@ -1769,6 +1832,21 @@ function updateWapen(dt) {
   }
 }
 
+// Ticket 17: Smederij-visuals — draaiend tandwiel op de Ratelaar + zacht
+// flikkerend ember-licht op beide sets (zelfde sin-patroon als de
+// lampflikker in de gameLoop, maar op de pauzeerbare spel-klok i.p.v. `nu`).
+// Doet niets op een onzichtbare (nog niet gesmede) set.
+function updateSmederijVisuals(dt) {
+  if (smederijVisualsRatelaar.visible) smederijTandwielRatelaar.rotation.z += dt * 1.2;
+  const flikker = 0.75 + 0.25 * Math.sin(klok * 5);
+  for (const visuals of [smederijVisualsDrukspuit, smederijVisualsRatelaar]) {
+    if (!visuals.visible) continue;
+    for (const kind of visuals.children) {
+      if (kind.isPointLight) kind.intensity = 0.3 * flikker;
+    }
+  }
+}
+
 // --- Het schot zelf ------------------------------------------------
 const raycaster = new THREE.Raycaster();
 raycaster.far = 30;   // kamer is klein, verder dan dit hoeft niet
@@ -1804,6 +1882,12 @@ function schiet() {
   vlamLicht.visible = true;
   // Ticket 12: een gesmeed wapen krijgt een feller mondingsvuur.
   vlamLicht.intensity = wapenStaat.definitie.vlamLichtBasis * (wapenStaat.gesmeed ? SMEDERIJ_VLAM_BOOST : 1);
+  // Ticket 17: warmere mondingsflits bij een gesmeed wapen — elk schot
+  // opnieuw expliciet gezet (ook de normale kleur), zodat dit vanzelf
+  // herstelt als de gesmeed-status ooit teruggedraaid wordt.
+  const vlamKleur = wapenStaat.gesmeed ? SMEDERIJ_ACCENT_KLEUR : wapenStaat.definitie.vlamKleurBasis;
+  vlam.material.color.setHex(vlamKleur);
+  vlamLicht.color.setHex(wapenStaat.gesmeed ? SMEDERIJ_ACCENT_KLEUR : wapenStaat.definitie.vlamLichtKleurBasis);
   vlamTimer = 0.05;
   speelSchot();
 
@@ -2014,49 +2098,39 @@ const POWERUP_VERVAL_TIJD = 12;      // s voordat een niet-opgeraapte drop verdw
 const POWERUP_PICKUP_RADIUS = 0.9;   // m — vlak overheen lopen is genoeg
 const POWERUP_DUBBELE_BELONING_DUUR = 20;
 const POWERUP_ELIMINATIEMODUS_DUUR  = 15;
-// Ticket 2: sterke power-ups (alles behalve Munitievoorraad) mogen pas
-// opnieuw droppen na dit aantal golven sinds de vorige sterke drop —
-// anders trivialiseren ze golven/economie (zie ARCHITECTURE_NOTES §2.2).
-const STERKE_POWERUP_COOLDOWN_GOLVEN = 2;
-// Ticket 3: Kerninslag is een onmiddellijke wave-wipe + volledige
-// geldbeloning — categorisch sterker dan de andere twee sterke power-ups,
-// dus een eigen, langere cooldown bovenop STERKE_POWERUP_COOLDOWN_GOLVEN.
+// Ticket 16: max één power-up-drop per golf, ongeacht het type — vervangt
+// de losse cooldowns van Ticket 2/3 en de feedbackronde (die lieten een
+// golf nog steeds meerdere drops stapelen, zie ARCHITECTURE_NOTES
+// ontwerpbeslissing 14). Kerninslag houdt daarbovenop zijn eigen, langere
+// ritme: dat is een onmiddellijke wave-wipe + volledige geldbeloning,
+// categorisch sterker dan de andere drie (ontwerpbeslissing 3).
 // Open ontwerpvraag (NIET gebouwd): Kerninslag later evt. begrenzen tot
 // max ~8 kills of ~70% van de levende ondoden — eerst data verzamelen.
 const KERNINSLAG_COOLDOWN_GOLVEN = 4;
-// Gebruikersfeedback: Munitievoorraad droppte te vaak (het was de enige
-// niet-sterke, dus altijd-toegestane type). Eigen, kortere cooldown zodat
-// hij niet meer domineert tussen de sterke drops door.
-const MUNITIEVOORRAAD_COOLDOWN_GOLVEN = 2;
 
 const POWERUP_TYPES = {
   // Max Ammo -> Munitievoorraad: vult beide wapens (indien gekocht) volledig aan.
   munitievoorraad: { naam: 'Munitievoorraad', kleur: 0xf2c94c, effect: () => geefMunitievoorraad() },
   // Double Points -> Dubbele Beloning: tijdelijk 2x geld per hit/kill.
-  dubbeleBeloning: { naam: 'Dubbele Beloning', kleur: 0x6ec6ff, effect: () => geefDubbeleBeloning(), sterk: true },
+  dubbeleBeloning: { naam: 'Dubbele Beloning', kleur: 0x6ec6ff, effect: () => geefDubbeleBeloning() },
   // Insta Kill -> Eliminatiemodus: tijdelijk doodt elke treffer de ondode meteen.
-  eliminatiemodus: { naam: 'Eliminatiemodus', kleur: 0xff5c5c, effect: () => geefEliminatiemodus(), sterk: true },
+  eliminatiemodus: { naam: 'Eliminatiemodus', kleur: 0xff5c5c, effect: () => geefEliminatiemodus() },
   // Nuke -> Kerninslag: doodt alle levende ondoden nu meteen + geldbeloning.
-  kerninslag: { naam: 'Kerninslag', kleur: 0xbdf7ff, effect: () => geefKerninslag(), sterk: true },
+  kerninslag: { naam: 'Kerninslag', kleur: 0xbdf7ff, effect: () => geefKerninslag() },
 };
 
-let laatsteSterkePowerupGolf = -Infinity;   // golfnummer van de laatste 'sterk'-drop (Ticket 2)
-let laatsteKerninslagGolf = -Infinity;      // golfnummer van de laatste Kerninslag-drop (Ticket 3)
-let laatsteMunitievoorraadGolf = -Infinity; // golfnummer van de laatste Munitievoorraad-drop (feedbackronde)
+let laatstePowerupDropGolf = -Infinity;   // golfnummer van de laatste drop, ongeacht type (Ticket 16)
+let laatsteKerninslagGolf = -Infinity;    // golfnummer van de laatste Kerninslag-drop (Ticket 3)
 
-// Bouwt de lijst toegestane types voor déze golf: sterk mag alleen als de
-// cooldown sinds de vorige sterke drop voorbij is (Kerninslag heeft
-// daarbovenop nog zijn eigen, langere cooldown), en Munitievoorraad heeft
-// zijn eigen kortere cooldown. Registratie van een nieuwe drop gebeurt in
-// spawnPowerupDrop(). Als alle types tegelijk op cooldown staan (kan
-// voorkomen) geeft dit undefined terug — de aanroeper moet dat afhandelen.
+// Bouwt de lijst toegestane types voor déze golf: heeft deze golf al zijn
+// ene drop-slot gehad, dan mag er niets meer vallen. Anders zijn
+// Munitievoorraad/Dubbele Beloning/Eliminatiemodus altijd toegestaan en
+// Kerninslag alleen als zijn eigen, langere cooldown voorbij is.
+// Registratie van een nieuwe drop gebeurt in spawnPowerupDrop().
 function kiesPowerupType() {
+  if (spelStaat.golf <= laatstePowerupDropGolf) return undefined;   // deze golf had al zijn drop
   const toegestaan = Object.keys(POWERUP_TYPES).filter(naam => {
-    const info = POWERUP_TYPES[naam];
-    if (naam === 'munitievoorraad') return spelStaat.golf >= laatsteMunitievoorraadGolf + MUNITIEVOORRAAD_COOLDOWN_GOLVEN;
-    if (!info.sterk) return true;
-    if (spelStaat.golf < laatsteSterkePowerupGolf + STERKE_POWERUP_COOLDOWN_GOLVEN) return false;
-    if (naam === 'kerninslag' && spelStaat.golf < laatsteKerninslagGolf + KERNINSLAG_COOLDOWN_GOLVEN) return false;
+    if (naam === 'kerninslag') return spelStaat.golf >= laatsteKerninslagGolf + KERNINSLAG_COOLDOWN_GOLVEN;
     return true;
   });
   if (toegestaan.length === 0) return undefined;
@@ -2068,13 +2142,12 @@ let dubbeleBeloningTimer = 0;
 let eliminatiemodusTimer = 0;
 
 function spawnPowerupDrop(x, z, type) {
-  if (!type) return;   // alle types op cooldown: geen drop deze keer
+  if (!type) return;   // het slot is al gebruikt (of Kerninslag op cooldown): geen drop deze keer
   const info = POWERUP_TYPES[type];
   // Registratie op DROP-moment (niet bij oprapen): zo omzeilt een genegeerde
-  // drop de cooldown niet (Ticket 2/3).
-  if (info.sterk) laatsteSterkePowerupGolf = spelStaat.golf;
+  // drop het slot niet (Ticket 16, zelfde argument als Ticket 2/3).
+  laatstePowerupDropGolf = spelStaat.golf;
   if (type === 'kerninslag') laatsteKerninslagGolf = spelStaat.golf;
-  if (type === 'munitievoorraad') laatsteMunitievoorraadGolf = spelStaat.golf;
   const groep = new THREE.Group();
   const kern = new THREE.Mesh(new THREE.OctahedronGeometry(0.18, 0),
     new THREE.MeshStandardMaterial({ color: info.kleur, emissive: info.kleur, emissiveIntensity: 0.9, roughness: 0.3 }));
@@ -2752,7 +2825,7 @@ const RATELAAR_PRIJS   = 750;   // eenmalig: tweede wapen, op de binnenplaats
 // Ticket 12: De Smederij — late-game geldsink, per wapen (zie ARCHITECTURE_NOTES §2.7-8).
 const SMEDERIJ_PRIJS   = 3000;  // eenmalig per wapen: Smederij-schadebonus + groter magazijn
 const SMEDERIJ_VLAM_BOOST = 1.5;   // feller mondingsvuur voor een gesmeed wapen (schiet() past dit toe)
-const SMEDERIJ_ACCENT_KLEUR = 0xff7a1f;   // ember-oranje accent op het gesmede wapenonderdeel
+// SMEDERIJ_ACCENT_KLEUR staat bij de wapen-opbouw hierboven (Ticket 17).
 
 // --- v0.3: Werkbank (atelier), tweede deur en binnenplaats-interacties ---
 const SNELSPANNER_PRIJS       = 600;   // eenmalig: sneller herladen
@@ -3122,6 +3195,9 @@ function koopSmederij() {
   accent.material.color.setHex(SMEDERIJ_ACCENT_KLEUR);
   accent.material.emissive.setHex(SMEDERIJ_ACCENT_KLEUR);
   accent.material.emissiveIntensity = 1.4;
+  // Ticket 17: het bijbehorende vooraf gebouwde visual-Group (gloeiringen/
+  // tandwiel + ember-light) zichtbaar maken.
+  (actiefWapenNaam === 'drukspuit' ? smederijVisualsDrukspuit : smederijVisualsRatelaar).visible = true;
   speelSmeed();
   toonMelding(`${wapenStaat.definitie.naam} gesmeed! +${wapenStaat.definitie.smederijConfig.schadeBonus} schade, magazijn ${wapenStaat.magazijnMax}`);
   updateAmmoUI();
@@ -3285,6 +3361,7 @@ function gameLoop(nu) {
     klok += dt;
     if (schietKnopIngedrukt) probeerTeSchieten();
     updateWapen(dt);
+    updateSmederijVisuals(dt);
     updateOndoden(dt);
     updateGolf(dt);
     updatePowerups(dt);
@@ -3334,6 +3411,9 @@ window.AmsterdamUndeadDebug = {
   get gesmeedActief() { return wapenStaat.gesmeed; },   // Ticket 11: Smederij-status van het ACTIEVE wapen
   // Ticket 12: De Smederij-machine (koopbare implementatie):
   SMEDERIJ_PRIJS, SMEDERIJ_X, SMEDERIJ_Z, koopSmederij, smederijPunt, smederijMarkering,
+  // Ticket 17: Smederij-visuals per wapen
+  smederijVisualsDrukspuit, smederijVisualsRatelaar, updateSmederijVisuals,
+  get smederijVisualsZichtbaar() { return { drukspuit: smederijVisualsDrukspuit.visible, ratelaar: smederijVisualsRatelaar.visible }; },
   herladen, probeerTeSchieten, schiet,
   ondoden, ondodenGroep, VENSTERS, spawnOndode, spawnWillekeurigeOndode, kiesVensterIndex,
   updateOndoden, raakOndode, doodOndode,
@@ -3408,18 +3488,14 @@ window.AmsterdamUndeadDebug = {
   // Power-ups: drop-systeem + effecten (Munitievoorraad/Dubbele Beloning/Eliminatiemodus/Kerninslag)
   POWERUP_TYPES, POWERUP_DROP_KANS, POWERUP_VERVAL_TIJD, POWERUP_PICKUP_RADIUS,
   POWERUP_DUBBELE_BELONING_DUUR, POWERUP_ELIMINATIEMODUS_DUUR,
-  // Ticket 2: cooldown op sterke power-ups
-  STERKE_POWERUP_COOLDOWN_GOLVEN,
-  get laatsteSterkePowerupGolf() { return laatsteSterkePowerupGolf; },
-  set laatsteSterkePowerupGolf(v) { laatsteSterkePowerupGolf = v; },
+  // Ticket 16: max één power-up-drop per golf (vervangt Ticket 2 + de
+  // feedbackronde-cooldown op Munitievoorraad)
+  get laatstePowerupDropGolf() { return laatstePowerupDropGolf; },
+  set laatstePowerupDropGolf(v) { laatstePowerupDropGolf = v; },
   // Ticket 3: aparte, langere cooldown voor Kerninslag
   KERNINSLAG_COOLDOWN_GOLVEN,
   get laatsteKerninslagGolf() { return laatsteKerninslagGolf; },
   set laatsteKerninslagGolf(v) { laatsteKerninslagGolf = v; },
-  // Feedbackronde: eigen cooldown voor Munitievoorraad (droppte te vaak)
-  MUNITIEVOORRAAD_COOLDOWN_GOLVEN,
-  get laatsteMunitievoorraadGolf() { return laatsteMunitievoorraadGolf; },
-  set laatsteMunitievoorraadGolf(v) { laatsteMunitievoorraadGolf = v; },
   powerups, spawnPowerupDrop, raapPowerupOp, updatePowerups, kiesPowerupType,
   geefMunitievoorraad, geefDubbeleBeloning, geefEliminatiemodus, geefKerninslag,
   get dubbeleBeloningTimer() { return dubbeleBeloningTimer; },

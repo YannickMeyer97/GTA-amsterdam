@@ -295,6 +295,148 @@ const balansGolf12 = await page.evaluate(() => {
 check('Golf 12 (HP-trap 3): zonder Smederij kost een normale ondode op MAX-schade 2 bodyshots (eindige TTK)',
   balansGolf12.hpBasis === 3 && balansGolf12.naEen.leeft === true && balansGolf12.naTwee.leeft === false, balansGolf12);
 
+// =====================================================================
+// Ticket 17: Smederij-visuals — per wapen een vooraf gebouwde, onzichtbare
+// visual-Group die pas zichtbaar wordt na smeden, plus warmere mondings-
+// vlam en een flikker-/rotatiehaakje in de gameLoop.
+// =====================================================================
+
+// Opruimen: begin met een schone lei (beide wapens ongesmeed). koopSmederij()
+// is bewust eenmalig/onomkeerbaar in het echte spel (geen "ontsmeden"-pad),
+// dus dit test-bestand zet de visual-Groups hier expliciet terug via hun
+// live object-referenties (eerdere Ticket 11/12-tests in dit bestand hebben
+// beide wapens al gesmeed op dezelfde page).
+await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const kiesWapen = (naam) => { if (d.actiefWapenNaam !== naam) d.wisselWapen(); };
+  d.smederijVisualsDrukspuit.visible = false;
+  d.smederijVisualsRatelaar.visible = false;
+  for (const naam of ['drukspuit', 'ratelaar']) {
+    kiesWapen(naam);
+    d.wapenStaat.gesmeed = false;
+    d.wapenStaat.magazijnMax = (naam === 'drukspuit' ? d.WAPEN_DRUKSPUIT : d.WAPEN_RATELAAR).magazijnMax;
+    d.wapenStaat.magazijn = d.wapenStaat.magazijnMax;
+  }
+  kiesWapen('drukspuit');
+  d.schadePerTreffer = 1;
+});
+
+const visueelStart = await page.evaluate(() => window.AmsterdamUndeadDebug.smederijVisualsZichtbaar);
+check('Vóór smeden zijn beide Smederij-visual-sets onzichtbaar',
+  visueelStart.drukspuit === false && visueelStart.ratelaar === false, visueelStart);
+
+// 8-combinaties: wapen (drukspuit/ratelaar) x gesmeed (false/true) x welk
+// wapen actief is op het moment van meten (zelfde/ander) — de zichtbaarheid
+// van een visual-set hoort uitsluitend van de EIGEN gesmeed-status af te
+// hangen, nooit van welk wapen toevallig actief is.
+const combos = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const kiesWapen = (naam) => { if (d.actiefWapenNaam !== naam) d.wisselWapen(); };
+  kiesWapen('drukspuit');
+  d.spelStaat.geld = 3000;
+  d.koopSmederij();   // Drukspuit gesmeed
+  const uit = [];
+  for (const wapenNaam of ['drukspuit', 'ratelaar']) {
+    for (const actiefNaam of ['drukspuit', 'ratelaar']) {
+      kiesWapen(actiefNaam);
+      const zichtbaar = d.smederijVisualsZichtbaar[wapenNaam];
+      const verwachtGesmeed = wapenNaam === 'drukspuit';   // alleen Drukspuit is nu gesmeed
+      uit.push({ wapenNaam, actiefNaam, zichtbaar, verwachtGesmeed });
+    }
+  }
+  kiesWapen('ratelaar');
+  d.spelStaat.geld = 3000;
+  d.koopSmederij();   // Ratelaar ook gesmeed
+  for (const wapenNaam of ['drukspuit', 'ratelaar']) {
+    for (const actiefNaam of ['drukspuit', 'ratelaar']) {
+      kiesWapen(actiefNaam);
+      const zichtbaar = d.smederijVisualsZichtbaar[wapenNaam];
+      uit.push({ wapenNaam, actiefNaam, zichtbaar, verwachtGesmeed: true });
+    }
+  }
+  kiesWapen('drukspuit');
+  return uit;
+});
+check('8-combinaties (wapen x gesmeed-staat x actief wapen): zichtbaarheid volgt uitsluitend de EIGEN gesmeed-status',
+  combos.length === 8 && combos.every(c => c.zichtbaar === c.verwachtGesmeed), combos);
+
+// Wisselen (Q) toont/verbergt via de bestaande group-toggle: beide sets
+// blijven .visible=true (per-wapen status), maar alleen de actieve
+// wapen-Group (en dus zijn visual-kinderen) is echt zichtbaar in de scene.
+const wisselToggle = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const kiesWapen = (naam) => { if (d.actiefWapenNaam !== naam) d.wisselWapen(); };
+  kiesWapen('drukspuit');
+  const drukspuitActief = { eigenGroepZichtbaar: d.WAPEN_DRUKSPUIT.groep.visible, ratelaarGroepZichtbaar: d.WAPEN_RATELAAR.groep.visible };
+  kiesWapen('ratelaar');
+  const ratelaarActief = { eigenGroepZichtbaar: d.WAPEN_RATELAAR.groep.visible, ratelaarNietMeerActief: d.WAPEN_DRUKSPUIT.groep.visible };
+  kiesWapen('drukspuit');
+  return { drukspuitActief, ratelaarActief };
+});
+check('Wisselen togglet de wapen-Group (gratis toon/verberg van de visual-kinderen)',
+  wisselToggle.drukspuitActief.eigenGroepZichtbaar === true && wisselToggle.drukspuitActief.ratelaarGroepZichtbaar === false &&
+  wisselToggle.ratelaarActief.eigenGroepZichtbaar === true && wisselToggle.ratelaarActief.ratelaarNietMeerActief === false, wisselToggle);
+
+// --- HUD-ster en visuele status zijn nooit strijdig -----------------------
+const hudVsVisueel = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.updateHUD();
+  const wapenTekst = document.getElementById('wapenTekst').textContent;
+  return { heeftSter: wapenTekst.includes('★'), visueelZichtbaar: d.smederijVisualsZichtbaar.drukspuit };
+});
+check('HUD-ster en Smederij-visual staan niet los van elkaar (beide gesmeed=true op de actieve Drukspuit)',
+  hudVsVisueel.heeftSter === hudVsVisueel.visueelZichtbaar, hudVsVisueel);
+
+// --- Mondingsflits warmer bij een gesmeed wapen; normale kleur ongesmeed --
+const vlamKleur = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const kiesWapen = (naam) => { if (d.actiefWapenNaam !== naam) d.wisselWapen(); };
+  kiesWapen('drukspuit');   // gesmeed (uit de combo-test hierboven)
+  d.schiet();
+  const gesmeedKleur = d.wapenStaat.definitie.vlam.material.color.getHex();
+  const basisKleur = d.wapenStaat.definitie.vlamKleurBasis;
+  d.wapenStaat.gesmeed = false;
+  d.schiet();
+  const ongesmeedKleur = d.wapenStaat.definitie.vlam.material.color.getHex();
+  d.wapenStaat.gesmeed = true;   // herstellen voor eventuele volgende checks
+  return { gesmeedKleur, basisKleur, ongesmeedKleur };
+});
+check('Mondingsflits is ember-oranje bij een gesmeed wapen en normaal bij een ongesmeed wapen',
+  vlamKleur.gesmeedKleur === 0xff7a1f && vlamKleur.ongesmeedKleur === vlamKleur.basisKleur, vlamKleur);
+
+// --- updateSmederijVisuals(dt): flikker + rotatie doen niets als onzichtbaar ---
+const budgetEnFlikker = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  // Budget-check: max 5 meshes + 1 light per set.
+  const telling = (groep) => {
+    let meshes = 0, lichten = 0;
+    for (const kind of groep.children) { if (kind.isPointLight) lichten++; else meshes++; }
+    return { meshes, lichten };
+  };
+  const budgetDrukspuit = telling(d.smederijVisualsDrukspuit);
+  const budgetRatelaar = telling(d.smederijVisualsRatelaar);
+  // Rotatie/flikker: geen crash, en de tandwiel-rotatie verandert over tijd.
+  const rotatieVoor = d.smederijVisualsRatelaar.children.find(k => !k.isPointLight && k.rotation).rotation.z;
+  for (let i = 0; i < 10; i++) d.updateSmederijVisuals(0.1);
+  const rotatieNa = d.smederijVisualsRatelaar.children.find(k => !k.isPointLight && k.rotation).rotation.z;
+  return { budgetDrukspuit, budgetRatelaar, rotatieVoor, rotatieNa };
+});
+check('Budget: Drukspuit-visuals ≤ 5 meshes + 1 light', budgetEnFlikker.budgetDrukspuit.meshes <= 5 && budgetEnFlikker.budgetDrukspuit.lichten === 1, budgetEnFlikker.budgetDrukspuit);
+check('Budget: Ratelaar-visuals ≤ 5 meshes + 1 light', budgetEnFlikker.budgetRatelaar.meshes <= 5 && budgetEnFlikker.budgetRatelaar.lichten === 1, budgetEnFlikker.budgetRatelaar);
+check('updateSmederijVisuals(dt) draait het tandwiel merkbaar door over tijd',
+  budgetEnFlikker.rotatieNa !== budgetEnFlikker.rotatieVoor, budgetEnFlikker);
+
+// Opruimen voor eventuele volgende testruns op dezelfde page.
+await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const kiesWapen = (naam) => { if (d.actiefWapenNaam !== naam) d.wisselWapen(); };
+  for (const naam of ['drukspuit', 'ratelaar']) {
+    kiesWapen(naam);
+    d.wapenStaat.gesmeed = false;
+  }
+  kiesWapen('drukspuit');
+});
+
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);
