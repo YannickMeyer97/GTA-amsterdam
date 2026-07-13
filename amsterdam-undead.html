@@ -1981,6 +1981,30 @@ const MELEE_BEREIK       = 1.2;   // m — vanaf hier kan een ondode de speler r
 const MELEE_SCHADE       = 15;    // schade per treffer
 const MELEE_COOLDOWN     = 1.0;   // s tussen twee treffers van dezelfde ondode
 
+// Ticket 20 (Z3): ledematen-animatie. Amplitudes in radialen, puur
+// cosmetisch (raakt nooit groep.position/collision). ARM_RUST_ROTATIE_X is
+// dezelfde constante die maakOndodeModel gebruikt voor de rust-houding van
+// de arm-pivots, zodat bouw en animatie nooit uit de pas kunnen lopen.
+const ARM_RUST_ROTATIE_X   = -0.5;   // naar voren uitgestrekt (rust-houding van de arm-pivots)
+const BEEN_LOOP_AMPLITUDE  = 0.42;   // rad — normale beenzwaai
+const ARM_LOOP_FACTOR      = 0.6;    // arm-amplitude = beenamplitude x deze factor (tegenfase)
+const HOOFD_KANTEL_AMPLITUDE = 0.025;   // rad — subtiele hoofd-microkantel
+const ROMP_BOB_HOOGTE      = 0.03;   // m — romp-bob boven de rust-y (1.1)
+// Strompelt: vaste, deterministische beenasymmetrie (geen extra state nodig
+// op het ondode-object) — altijd hetzelfde been verzwakt, zodat elke
+// strompelaar zichtbaar mank loopt.
+const STROMPEL_BEEN_ZWAK   = 0.5;
+const STROMPEL_BEEN_STERK  = 1.3;
+
+// Ticket 21 (Z4): hitreacties. Flinch lerpt lineair af over FLINCH_DUUR;
+// knockback is een vaste totale afstand verspreid over diezelfde duur, altijd
+// via losBotsingenOp geklemd (nooit door een muur).
+const FLINCH_DUUR          = 0.18;   // s — < 0.3s hersteltijd (acceptatiecriterium)
+const FLINCH_HOOFD_HOEK    = 0.35;   // rad — hoofd deint terug bij een headshot
+const FLINCH_ROMP_TWIST    = 0.3;    // rad — romp draait weg bij een lichaamstreffer
+const KNOCKBACK_AFSTAND    = 0.12;   // m — totale verplaatsing over de flinch-duur (max 0.15 uit de ticket)
+const KERNPULS_SCHAAL_BONUS = 0.8;   // Brander-kern zwelt tijdelijk op bij een treffer
+
 // Bepaalt de start-HP van een ondode op basis van de huidige golf.
 function ondodeStartHP() {
   for (const trap of ONDODE_HP_TRAPPEN) {
@@ -1994,23 +2018,35 @@ function ondodeStartHP() {
 // `normaal` is altijd beschikbaar; de drie varianten komen pas vanaf een
 // bepaalde golf voor (zie ONDODE_TYPE_MIN_GOLF), zodat golf 1 de speler nog
 // gewoon de basis leert. Puur origineel: geen bestaande namen/uiterlijk.
+// Ticket 19 (Z2): `vorm` is puur-visuele silhouetdata per type, gelezen in
+// maakOndodeModel() — de types moeten ook ZONDER kleur (mist, duisternis)
+// aan hun vorm herkenbaar zijn. Stats en hitbox-contract raken dit niet.
 const ONDODE_TYPES = {
   normaal: { snelheidMultiplier: 1,    hpMultiplier: 1, geldMultiplier: 1,   kleur: 0x5d7255, oogKleur: 0xd8ff6b, schaal: 1 },
   // Loper: snel maar breekbaar, lage beloning — dwingt de speler om te kiezen wie eerst.
   // Ticket 4: 1.8->1.47 (1,5x1,47=2,205 m/s) — op 2,7 haalde hij een
   // achteruit schietende speler te makkelijk in.
-  loper:   { snelheidMultiplier: 1.47, hpMultiplier: 0.5, geldMultiplier: 0.6, kleur: 0x8a9c4a, oogKleur: 0xe8ff9c, schaal: 0.9 },
+  // Vorm: dun en voorovergebogen — een sprinter in aanzet.
+  loper:   { snelheidMultiplier: 1.47, hpMultiplier: 0.5, geldMultiplier: 0.6, kleur: 0x8a9c4a, oogKleur: 0xe8ff9c, schaal: 0.9,
+             vorm: { rompBreedte: 0.78, voorover: 0.18 } },
   // Sjouwer: erg traag, zeer taai, hoge beloning — een blokkade die de doorgang dichtzet.
   // Ticket 5: hpMultiplier 4->2.5 — op 8 HP was hij wachttijd i.p.v. spanning.
   // Ticket 14: hpMax 8 — zonder plafond zou 2.5x op de late basis-HP (3-4)
   // weer 8-10 HP geven, precies de sponge die ontwerpbeslissing 11 verbiedt.
-  sjouwer: { snelheidMultiplier: 0.55, hpMultiplier: 2.5, hpMax: 8, geldMultiplier: 2.2, kleur: 0x4a5568, oogKleur: 0x9cc8ff, schaal: 1.35 },
+  // Vorm: breed met een bochel — een gedrongen sjouwerslijf.
+  sjouwer: { snelheidMultiplier: 0.55, hpMultiplier: 2.5, hpMax: 8, geldMultiplier: 2.2, kleur: 0x4a5568, oogKleur: 0x9cc8ff, schaal: 1.35,
+             vorm: { rompBreedte: 1.3, bochel: true } },
   // Brander: normale snelheid/HP, ontploft bij overlijden (zie ontploiBrander).
-  brander: { snelheidMultiplier: 1,    hpMultiplier: 1,   geldMultiplier: 1.3, kleur: 0x8a4a2c, oogKleur: 0xffa03d, schaal: 1, explodeert: true },
+  // Vorm: buikige romp met een gloeiende kern (emissive mesh, bewust GEEN
+  // PointLight — 0 lights per ondode, zie ARCHITECTURE_NOTES §4.9).
+  brander: { snelheidMultiplier: 1,    hpMultiplier: 1,   geldMultiplier: 1.3, kleur: 0x8a4a2c, oogKleur: 0xffa03d, schaal: 1, explodeert: true,
+             vorm: { buik: true } },
   // Ticket 8: Sluiper — uitsluitend tijdens een Mistgolf (gating in
   // ondodeTypeGewichten(), zie Ticket 9). Klein en snel-ish, weinig HP,
   // met goed zichtbare ogen zodat hij in de mist eerlijk vindbaar blijft.
-  sluiper: { snelheidMultiplier: 1.35, hpMultiplier: 0.75, geldMultiplier: 1.1, kleur: 0x3c4a41, oogKleur: 0xb8ffc8, schaal: 0.75 },
+  // Vorm: ingedoken kop — hij besluipt je met de nek naar voren.
+  sluiper: { snelheidMultiplier: 1.35, hpMultiplier: 0.75, geldMultiplier: 1.1, kleur: 0x3c4a41, oogKleur: 0xb8ffc8, schaal: 0.75,
+             vorm: { ingedokenKop: true } },
 };
 const ONDODE_TYPE_MIN_GOLF = { loper: 2, sjouwer: 3, brander: 4 };
 const BRANDER_EXPLOSIE_RADIUS = 3.0;
@@ -2269,12 +2305,32 @@ const VENSTERS = [
 // hoe het model eruitziet (en, voor 'strompelt', hoe het tijdens het lopen
 // een beetje wiebelt, zie updateOndoden). Elk trait heeft een eigen,
 // onafhankelijke kans, zodat combinaties natuurlijk aanvoelen.
+// Ticket 19 (Z2): variatieprofielen — elke ondode loot één profiel dat zijn
+// verschijning kleurt bovenop de bestaande losse traits. Puur cosmetisch:
+// stats en het hitbox-contract (ontwerpbeslissing 16) blijven ongewijzigd.
+// Marges bewust klein gehouden (±20% op de romp, lengte 0.82–1.18) zodat
+// raycasts betrouwbaar blijven; het hoofd wordt NOOIT verkleind, en
+// 'eenarmig' laat ALTIJD de linkerarm weg — de raycast-regressietests mikken
+// op de rechterarm (x = +0.24), die moet er dus altijd zijn.
+const VARIATIE_PROFIELEN = {
+  standaard: {},
+  mager:     { rompFactor: 0.8, armDikteFactor: 0.85 },
+  breed:     { rompFactor: 1.2 },
+  gebocheld: { bochel: true, forceerKromme: true },
+  lang:      { lengteMin: 1.08, lengteMax: 1.18 },
+  kort:      { lengteMin: 0.82, lengteMax: 0.9 },
+  eenarmig:  { mistArmL: true },
+};
+const VARIATIE_PROFIEL_NAMEN = Object.keys(VARIATIE_PROFIELEN);
 function kiesOndodeTraits() {
+  const profiel = VARIATIE_PROFIEL_NAMEN[Math.floor(Math.random() * VARIATIE_PROFIEL_NAMEN.length)];
+  const p = VARIATIE_PROFIELEN[profiel];
   return {
-    kromme: Math.random() < 0.35,                 // kromme rug (torso + hoofd voorover)
+    profiel,                                       // Ticket 19: naam uit VARIATIE_PROFIELEN
+    kromme: (p.forceerKromme ?? false) || Math.random() < 0.35,   // kromme rug (torso + hoofd voorover)
     slepend: Math.random() < 0.3 ? (Math.random() < 0.5 ? -1 : 1) : 0,   // welk been sleept, 0 = geen
     armVerschil: (Math.random() - 0.5) * 0.5,      // -0.25..+0.25: relatief armlengte-verschil
-    lengte: 0.9 + Math.random() * 0.22,            // extra, onafhankelijke lengtevariatie
+    lengte: (p.lengteMin ?? 0.9) + Math.random() * ((p.lengteMax ?? 1.12) - (p.lengteMin ?? 0.9)),   // extra, onafhankelijke lengtevariatie
     strompelt: Math.random() < 0.4,                // wiebelt tijdens het lopen (zie updateOndoden)
   };
 }
@@ -2292,7 +2348,13 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   const delen = {};
   const tint = 0.85 + Math.random() * 0.3;   // kleine kleurvariatie per ondode
   const huidKleur = new THREE.Color(typeInfo.kleur).multiplyScalar(tint);
-  const rugHoek = traits.kromme ? 0.22 + Math.random() * 0.12 : 0;   // kromme rug: voorovergebogen
+  // Ticket 19 (Z2): silhouetdata van het type + het gelote variatieprofiel.
+  const vorm = typeInfo.vorm ?? {};
+  const profiel = VARIATIE_PROFIELEN[traits.profiel] ?? {};
+  // Kromme rug: voorovergebogen; vorm.voorover (Loper) komt daar bovenop.
+  // Maximum blijft 0.34 + 0.18 = 0.52 — het hoofd zakt dan 0.026, binnen de
+  // ±0.03-band van het hoofd-hoogte-anker in tests/test-ondode-model.mjs.
+  const rugHoek = (traits.kromme ? 0.22 + Math.random() * 0.12 : 0) + (vorm.voorover ?? 0);
 
   // Hoogtes zo gekozen dat het hoofd rond de ooghoogte van de speler (1.7m,
   // zie speler.hoogte) uitkomt — anders mist een recht vooruit gericht schot
@@ -2321,10 +2383,37 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   // eerder een verbetering dan een afwijking.
   const romp = new THREE.Group();
   romp.position.set(0, 1.1, rugHoek * 0.08);
+  romp.userData.baseY = romp.position.y;   // Ticket 20: rust-y voor de romp-bob
   romp.rotation.x = rugHoek;
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.6, 0.22),
+  // Ticket 19: rompbreedte = type-silhouet x profielfactor (beide 1 als ze
+  // ontbreken). De armen blijven op vaste x = ±0.24 — een brede romp groeit
+  // er desnoods tegenaan (gedrongen schouders), zodat de arm-raycasts op
+  // een vast punt betrouwbaar blijven.
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.36 * (vorm.rompBreedte ?? 1) * (profiel.rompFactor ?? 1), 0.6, 0.22),
     new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
   romp.add(torso);
+  // Bochel (Sjouwer-vorm en/of 'gebocheld'-profiel): één bult hoog op de
+  // rug, in de romp-groep zodat hij met de kromme rug meedraait.
+  if (vorm.bochel || profiel.bochel) {
+    const bochel = new THREE.Mesh(new THREE.SphereGeometry(0.14, 6, 6),
+      new THREE.MeshStandardMaterial({ color: huidKleur.clone().multiplyScalar(0.85), roughness: 0.9 }));
+    bochel.position.set(0, 0.16, -0.13);
+    romp.add(bochel);
+  }
+  // Buikige romp + gloeiende kern (Brander): de kern is een emissive mesh,
+  // bewust GEEN PointLight (budget: 0 lights per ondode, §4.9). Geen
+  // 'kop'-markering, dus een treffer erop is gewoon een lichaamstreffer.
+  if (vorm.buik) {
+    const buik = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8),
+      new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
+    buik.position.set(0, -0.1, 0.06);
+    romp.add(buik);
+    const kern = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6),
+      new THREE.MeshStandardMaterial({ color: 0xff9a3d, emissive: 0xff7a1f, emissiveIntensity: 1.6, roughness: 0.4 }));
+    kern.position.set(0, -0.1, 0.19);
+    romp.add(kern);
+    delen.kern = kern;   // Ticket 21 (Z4): referentie voor de kern-puls bij een treffer
+  }
   // Gerafelde voddenstrook aan het middel — eigen, herkenbaar "tattered" detail.
   const vod = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.32, 0.02),
     new THREE.MeshStandardMaterial({ color: 0x40331f, roughness: 0.95 }));
@@ -2341,6 +2430,16 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   hoofdGroep.position.set(0, 1.58 - rugHoek * 0.05, 0.02 + rugHoek * 0.35);   // volgt de kromme rug een beetje mee
   hoofdGroep.rotation.z = (Math.random() - 0.5) * 0.5;   // scheve nek: een eigen, herkenbare "ondode"-houding
   hoofdGroep.rotation.x = rugHoek * 0.6;
+  // Ticket 19: ingedoken kop (Sluiper) — nek naar voren, blik omlaag. De
+  // hoogte zakt maar 0.01: samen met de kromme rug (max 0.017) blijft het
+  // hoofd binnen de ±0.03-band van het hoofd-hoogte-anker. Het hoofd zelf
+  // wordt NOOIT verkleind (ontwerpbeslissing 16).
+  if (vorm.ingedokenKop) {
+    hoofdGroep.position.y -= 0.01;
+    hoofdGroep.position.z += 0.1;
+    hoofdGroep.rotation.x += 0.3;
+  }
+  hoofdGroep.userData.baseRotX = hoofdGroep.rotation.x;   // Ticket 20: rust-hoek voor de hoofd-microkantel
   const hoofd = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8),
     new THREE.MeshStandardMaterial({ color: huidKleur.clone().multiplyScalar(1.15), roughness: 0.8 }));
   hoofd.userData.lichaamsdeel = 'kop';   // treffer hier = headshot (dubbele schade)
@@ -2365,15 +2464,20 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   const schouderY = 1.13 + 0.25 * Math.cos(0.5);
   const schouderZ = 0.06 - 0.25 * Math.sin(0.5);
   for (const [naam, kant] of [['armL', -1], ['armR', 1]]) {
+    // Ticket 19: het 'eenarmig'-profiel laat ALTIJD de linkerarm weg
+    // (delen.armL blijft dan undefined) — de raycast-regressietests mikken
+    // op de rechterarm, dus die moet er onvoorwaardelijk zijn.
+    if (kant === -1 && profiel.mistArmL) continue;
     // Verschillende armlengtes (v0.8): elke arm krijgt een onafhankelijke
     // lengte-multiplier; het schouder-aanhechtpunt blijft gelijk doordat
     // het mesh vanaf de pivot naar beneden hangt.
     const armLengteMultiplier = 1 + (kant === 1 ? traits.armVerschil : -traits.armVerschil);
     const armLengte = 0.5 * armLengteMultiplier;
+    const armDikte = 0.09 * (profiel.armDikteFactor ?? 1);   // Ticket 19: 'mager' heeft dunnere armen
     const pivot = new THREE.Group();
     pivot.position.set(kant * 0.24, schouderY, schouderZ);
-    pivot.rotation.x = -0.5;   // naar voren uitgestrekt
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.09, armLengte, 0.09),
+    pivot.rotation.x = ARM_RUST_ROTATIE_X;   // naar voren uitgestrekt
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(armDikte, armLengte, armDikte),
       new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
     arm.position.y = -armLengte / 2;
     pivot.add(arm);
@@ -2398,10 +2502,12 @@ const ondoden = [];
 // debug-tools roepen dit rechtstreeks aan en verwachten voorspelbaar
 // 'normaal' gedrag. De echte variatie komt via golfSpawnStap (zie v0.7),
 // die hier zelf een geloot type doorgeeft.
-function spawnOndode(vensterIndex, type = 'normaal') {
+// Ticket 19: `traits` is optioneel injecteerbaar zodat tests een specifiek
+// variatieprofiel kunnen afdwingen; zonder argument blijft het gedrag
+// identiek (willekeurige loting).
+function spawnOndode(vensterIndex, type = 'normaal', traits = kiesOndodeTraits()) {
   const venster = VENSTERS[vensterIndex % VENSTERS.length];
   const typeInfo = ONDODE_TYPES[type] || ONDODE_TYPES.normaal;
-  const traits = kiesOndodeTraits();
   const groep = maakOndodeModel(typeInfo, traits);
   groep.position.set(venster.x, 0, venster.z);
   const ondode = {
@@ -2411,6 +2517,7 @@ function spawnOndode(vensterIndex, type = 'normaal') {
     snelheid: ONDODE_SNELHEID * typeInfo.snelheidMultiplier, geldMultiplier: typeInfo.geldMultiplier,
     strompelt: traits.strompelt, loopFase: Math.random() * 10,   // (v0.8) willekeurige startfase: niet synchroon
     delen: groep.userData.delen,   // (Ticket 18) pivot-referenties voor de loop-animatie van fase 8
+    flinch: null,   // Ticket 21 (Z4): { timer, soort, knokRichting, kernPuls } — gezet in raakOndode()
     meleeTimer: 0, vastTijd: 0,
     ontwijkTimer: 0, ontwijkZijkant: 1, ontwijkStartPos: new THREE.Vector3(),
   };
@@ -2520,11 +2627,49 @@ function updateOndoden(dt) {
     positie.addScaledVector(richting, ondode.snelheid * dt);
     losBotsingenOp(positie, ONDODE_STRAAL);
     ondode.groep.rotation.y = Math.atan2(rechtstreeks.x, rechtstreeks.z);
-    // v0.8: strompelende loop — puur visuele wiebel bovenop de kijkrichting,
-    // raakt positie/collision niet aan.
-    if (ondode.strompelt) {
-      ondode.loopFase += dt * 6;
-      ondode.groep.rotation.z = Math.sin(ondode.loopFase) * 0.12;
+
+    // Ticket 20 (Z3): losse ledematen-animatie. loopFase loopt nu voor ALLE
+    // ondoden (snelheidsgekoppeld), niet meer alleen bij strompelt — puur
+    // visueel, raakt nooit positie/collision (bob zit op de romp-groep, een
+    // KIND van de root, nooit op groep.position zelf). Budget: 8
+    // transform-writes hieronder + rotation.y hierboven = 9, binnen de
+    // ≤ 10/ondode/frame uit ARCHITECTURE_NOTES §4.9.
+    ondode.loopFase += dt * (4 + ondode.snelheid * 2);
+    const delen = ondode.delen;
+    const beenAmpL = ondode.strompelt ? BEEN_LOOP_AMPLITUDE * STROMPEL_BEEN_ZWAK : BEEN_LOOP_AMPLITUDE;
+    const beenAmpR = ondode.strompelt ? BEEN_LOOP_AMPLITUDE * STROMPEL_BEEN_STERK : BEEN_LOOP_AMPLITUDE;
+    const faseL = Math.sin(ondode.loopFase);
+    const faseR = -faseL;   // linker- en rechterbeen wisselen elkaar af
+    delen.beenL.rotation.x = faseL * beenAmpL;
+    delen.beenR.rotation.x = faseR * beenAmpR;
+    // Armen zwaaien in tegenfase t.o.v. het been aan dezelfde kant (Ticket 20).
+    if (delen.armL) delen.armL.rotation.x = ARM_RUST_ROTATIE_X - faseL * BEEN_LOOP_AMPLITUDE * ARM_LOOP_FACTOR;
+    if (delen.armR) delen.armR.rotation.x = ARM_RUST_ROTATIE_X - faseR * BEEN_LOOP_AMPLITUDE * ARM_LOOP_FACTOR;
+    delen.romp.position.y = delen.romp.userData.baseY + Math.abs(faseL) * ROMP_BOB_HOOGTE;
+    delen.hoofd.rotation.x = delen.hoofd.userData.baseRotX + faseL * HOOFD_KANTEL_AMPLITUDE;
+    // v0.8: strompelende loop — de wiebel zat op de hele root (verstoorde
+    // rotation.y-kijkrichting); Ticket 20 verhuist 'm naar de romp-groep.
+    if (ondode.strompelt) delen.romp.rotation.z = faseL * 0.12;
+
+    // Ticket 21 (Z4): flinch afhandelen (gezet in raakOndode() bij een
+    // overlevende treffer) — lerpt lineair af over FLINCH_DUUR en schuift de
+    // positie een beetje van de speler af, via de bestaande losBotsingenOp
+    // (dus nooit door een muur). Raakt melee-timer/pathing niet aan: alleen
+    // een extra positie-offset bovenop de al berekende beweging.
+    delen.romp.rotation.y = 0;
+    if (ondode.flinch) {
+      ondode.flinch.timer -= dt;
+      if (ondode.flinch.timer <= 0) {
+        ondode.flinch = null;
+        if (delen.kern) delen.kern.scale.setScalar(1);
+      } else {
+        const fractie = ondode.flinch.timer / FLINCH_DUUR;
+        if (ondode.flinch.soort === 'kop') delen.hoofd.rotation.x -= FLINCH_HOOFD_HOEK * fractie;
+        else delen.romp.rotation.y = FLINCH_ROMP_TWIST * fractie;
+        if (ondode.flinch.kernPuls && delen.kern) delen.kern.scale.setScalar(1 + fractie * KERNPULS_SCHAAL_BONUS);
+        positie.addScaledVector(ondode.flinch.knokRichting, (KNOCKBACK_AFSTAND / FLINCH_DUUR) * dt);
+        losBotsingenOp(positie, ONDODE_STRAAL);
+      }
     }
     ondode.meleeTimer = 0;   // meteen kunnen slaan zodra ze bij aankomst in bereik komen
 
@@ -2626,6 +2771,13 @@ function raakOndode(ondode, punt, kop = false) {
     if (Math.random() < POWERUP_DROP_KANS) spawnPowerupDrop(dropPos.x, dropPos.z, kiesPowerupType());
   } else {
     spelStaat.geld += GELD_PER_HIT * geldFactor;
+    // Ticket 21 (Z4): flinch-state voor de animatie-helft van updateOndoden().
+    // Alleen bij een OVERLEVENDE treffer — een dodelijke hit (incl. Eliminatiemodus,
+    // die altijd dodelijk is) loopt hierboven al door doodOndode() en verwijdert
+    // de ondode meteen, dus "geen flinch op stervende/dode ondoden" volgt vanzelf.
+    const knokRichting = new THREE.Vector3().subVectors(ondode.groep.position, speler.positie).setY(0);
+    if (knokRichting.lengthSq() < 1e-6) knokRichting.set(1, 0, 0); else knokRichting.normalize();
+    ondode.flinch = { timer: FLINCH_DUUR, soort: kop ? 'kop' : 'lichaam', knokRichting, kernPuls: ondode.type === 'brander' };
   }
   updateHUD();
   // Iets grotere, feller vonk bij een headshot als visuele feedback.
@@ -3524,6 +3676,12 @@ window.AmsterdamUndeadDebug = {
   // v0.7: ondode-varianten (Loper/Sjouwer/Brander):
   ONDODE_TYPES, ONDODE_TYPE_MIN_GOLF, kiesOndodeType, ondodeTypeGewichten,
   kiesOndodeTraits,   // v0.8: cosmetische per-ondode variatie
+  VARIATIE_PROFIELEN, maakOndodeModel,   // Ticket 19: silhouetten + variatieprofielen
+  // Ticket 20: ledematen-animatie-constanten (voor tests)
+  ARM_RUST_ROTATIE_X, BEEN_LOOP_AMPLITUDE, ARM_LOOP_FACTOR, HOOFD_KANTEL_AMPLITUDE,
+  ROMP_BOB_HOOGTE, STROMPEL_BEEN_ZWAK, STROMPEL_BEEN_STERK,
+  // Ticket 21: hitreacties-constanten (voor tests)
+  FLINCH_DUUR, FLINCH_HOOFD_HOEK, FLINCH_ROMP_TWIST, KNOCKBACK_AFSTAND, KERNPULS_SCHAAL_BONUS,
   // Power-ups: drop-systeem + effecten (Munitievoorraad/Dubbele Beloning/Eliminatiemodus/Kerninslag)
   POWERUP_TYPES, POWERUP_DROP_KANS, POWERUP_VERVAL_TIJD, POWERUP_PICKUP_RADIUS,
   POWERUP_DUBBELE_BELONING_DUUR, POWERUP_ELIMINATIEMODUS_DUUR,
