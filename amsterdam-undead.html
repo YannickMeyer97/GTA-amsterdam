@@ -2000,9 +2000,12 @@ const STROMPEL_BEEN_STERK  = 1.3;
 // knockback is een vaste totale afstand verspreid over diezelfde duur, altijd
 // via losBotsingenOp geklemd (nooit door een muur).
 const FLINCH_DUUR          = 0.18;   // s — < 0.3s hersteltijd (acceptatiecriterium)
-const FLINCH_HOOFD_HOEK    = 0.35;   // rad — hoofd deint terug bij een headshot
-const FLINCH_ROMP_TWIST    = 0.3;    // rad — romp draait weg bij een lichaamstreffer
-const KNOCKBACK_AFSTAND    = 0.12;   // m — totale verplaatsing over de flinch-duur (max 0.15 uit de ticket)
+// Feedback: 20% groter dan de oorspronkelijke Ticket 21-waarden (0.35/0.3/0.12)
+// — de reactie was soms nauwelijks te zien. KNOCKBACK_AFSTAND blijft met 0.144
+// ruim onder het 0.15m-plafond uit de ticket.
+const FLINCH_HOOFD_HOEK    = 0.42;   // rad — hoofd deint terug bij een headshot
+const FLINCH_ROMP_TWIST    = 0.36;   // rad — romp draait weg bij een lichaamstreffer
+const KNOCKBACK_AFSTAND    = 0.144;  // m — totale verplaatsing over de flinch-duur (max 0.15 uit de ticket)
 const KERNPULS_SCHAAL_BONUS = 0.8;   // Brander-kern zwelt tijdelijk op bij een treffer
 
 // Bepaalt de start-HP van een ondode op basis van de huidige golf.
@@ -2371,7 +2374,11 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
     const been = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.8, 0.16),
       new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.9 }));
     been.position.y = -0.4;
-    if (traits.slepend !== 0) been.rotation.z = traits.slepend * 0.14;
+    // Feedback: vóór deze fix kregen BEIDE benen dezelfde kanteling zodra
+    // slepend != 0 (in het oude één-blok-model was dat één mesh, dus onschuldig;
+    // na de T18-splitsing in losse benen zag dat er als een compleet scheef,
+    // "vallend" onderlijf uit). Alleen het bedoelde slepende been kantelt nu.
+    if (traits.slepend !== 0 && kant === traits.slepend) been.rotation.z = traits.slepend * 0.14;
     pivot.add(been);
     groep.add(pivot);
     delen[naam] = pivot;
@@ -2844,9 +2851,12 @@ function updateHUD() {
   balk.style.background = percentage > 60 ? '#5fd97a' : (percentage > 30 ? '#e0c34f' : '#e05f5f');
   document.getElementById('geldTekst').textContent = spelStaat.geld;
   document.getElementById('golfTekst').textContent = spelStaat.golf;
-  // Upgrade-status (Ticket V7): laat in één oogopslag zien wat al MAX is.
-  document.getElementById('schadeTekst').textContent = schadePerTreffer >= WAPEN_SCHADE_MAX ? 'MAX' : schadePerTreffer;
-  document.getElementById('herlaadTekst').textContent = snelspannerGekocht ? 'MAX' : `${wapenStaat.herlaadDuur}s`;
+  // Speler-feedback: altijd de werkelijke waarde tonen (incl. de per-wapen
+  // Smederij-bonus bij schade) i.p.v. "MAX" — "MAX" verborg de Smederij-bonus
+  // en gaf geen idee meer van de echte herlaadtijd/schade tijdens het spelen.
+  const weergaveSchade = schadePerTreffer + (wapenStaat.gesmeed ? wapenStaat.definitie.smederijConfig.schadeBonus : 0);
+  document.getElementById('schadeTekst').textContent = weergaveSchade;
+  document.getElementById('herlaadTekst').textContent = `${wapenStaat.herlaadDuur}s`;
   // Ticket 12: ster-merkteken als het actieve wapen gesmeed is.
   document.getElementById('wapenTekst').textContent = wapenStaat.definitie.naam + (wapenStaat.gesmeed ? ' ★' : '');
   // Power-ups: toon actieve tijdelijke buffs (leeg als er geen actief zijn).
