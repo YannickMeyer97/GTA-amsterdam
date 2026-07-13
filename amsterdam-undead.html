@@ -2338,6 +2338,29 @@ function kiesOndodeTraits() {
   };
 }
 
+// Ticket 23 (Z6): wave-variatie-limiter. Een kleine ringbuffer met de
+// laatst geloten profielen bij GOLF-spawns (golfSpawnStap) voorkomt dat
+// toeval een golf eentonig maakt met 3 (bijna) identieke verschijningen op
+// rij. Weigert een profiel dat al in de buffer zit en loot opnieuw, maar
+// blokkeert nooit: na GOLF_PROFIEL_MAX_HERLOTINGEN mislukte pogingen wordt
+// de laatste loting gewoon geaccepteerd. Directe spawnOndode()-aanroepen
+// (tests, debug-tools) roepen kiesOndodeTraits() rechtstreeks aan en blijven
+// dus buiten deze buffer — zelfde contract als de typekeuze (kiesOndodeType).
+const GOLF_PROFIEL_BUFFER_LENGTE = 4;
+const GOLF_PROFIEL_MAX_HERLOTINGEN = 3;
+const golfProfielBuffer = [];
+function kiesOndodeTraitsVoorGolf() {
+  let traits = kiesOndodeTraits();
+  let pogingen = 0;
+  while (golfProfielBuffer.includes(traits.profiel) && pogingen < GOLF_PROFIEL_MAX_HERLOTINGEN) {
+    traits = kiesOndodeTraits();
+    pogingen++;
+  }
+  golfProfielBuffer.push(traits.profiel);
+  if (golfProfielBuffer.length > GOLF_PROFIEL_BUFFER_LENGTE) golfProfielBuffer.shift();
+  return traits;
+}
+
 // Ticket 18 (Z1): het model is een deel-hiërarchie met scharnier-groepen
 // (been-pivots op heuphoogte, romp-groep, arm-pivots aan de schouder,
 // hoofd-groep met hoofd + ogen) zodat latere tickets losse ledematen kunnen
@@ -2504,6 +2527,18 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
 const ondodenGroep = new THREE.Group();
 scene.add(ondodenGroep);
 const ondoden = [];
+
+// Ticket 22 (Z5): doodsanimaties. Een dode ondode verhuist uit ondodenGroep
+// (raycast-contract: schiet() raycast op ondodenGroep, een lijk mag geen
+// kogels meer vangen) naar een eigen scene-Group; hij staat dan ook al niet
+// meer in `ondoden` (golf-einde-contract, ongewijzigd sinds v0.4) en kan dus
+// niet meer slaan (melee itereert `ondoden`). Puur visueel — Brander behoudt
+// zijn directe explosie zonder lijk (ontwerpbeslissing 17).
+const stervendenGroep = new THREE.Group();
+scene.add(stervendenGroep);
+const stervenden = [];
+const VAL_STIJLEN = ['voorover', 'achterover', 'zijwaarts', 'inzakken'];
+const STERVEN_DUUR = 0.7;
 
 // `type` = 'normaal' tenzij expliciet anders opgegeven: bestaande tests en
 // debug-tools roepen dit rechtstreeks aan en verwachten voorspelbaar
@@ -2730,8 +2765,33 @@ function doodOndode(ondode) {
   const i = ondoden.indexOf(ondode);
   if (i !== -1) ondoden.splice(i, 1);
   // v0.7: een Brander ontploft bij overlijden, ongeacht de doodsoorzaak (dus
-  // ook bij een kettingreactie door een andere explosie in bereik).
-  if (ondode.type === 'brander') ontploiBrander(ondode);
+  // ook bij een kettingreactie door een andere explosie in bereik). Geen
+  // lijk (ontwerpbeslissing 17): de groep is hierboven al uit ondodenGroep
+  // gehaald en wordt nergens anders aan toegevoegd, dus verdwijnt gewoon.
+  if (ondode.type === 'brander') { ontploiBrander(ondode); return; }
+  // Ticket 22 (Z5): geen Brander -> zichtbaar neervallen i.p.v. verdwijnen.
+  const stijl = VAL_STIJLEN[Math.floor(Math.random() * VAL_STIJLEN.length)];
+  stervendenGroep.add(ondode.groep);
+  stervenden.push({ groep: ondode.groep, timer: STERVEN_DUUR, stijl });
+}
+
+// Ticket 22 (Z5): lerpt de valanimatie van elk lijk af en verwijdert het
+// daarna definitief. Puur cosmetisch — raakt nooit `ondoden`/geld/HP.
+function updateStervenden(dt) {
+  for (let i = stervenden.length - 1; i >= 0; i--) {
+    const s = stervenden[i];
+    s.timer -= dt;
+    const voortgang = Math.min(1, 1 - Math.max(0, s.timer) / STERVEN_DUUR);
+    const hoek = voortgang * (Math.PI / 2);   // 0 -> 90°, draait om de voeten (root-oorsprong)
+    if (s.stijl === 'voorover') s.groep.rotation.x = hoek;
+    else if (s.stijl === 'achterover') s.groep.rotation.x = -hoek;
+    else if (s.stijl === 'zijwaarts') s.groep.rotation.z = hoek;
+    else s.groep.position.y = -voortgang * 0.9;   // inzakken: zakt weg i.p.v. omvallen
+    if (s.timer <= 0) {
+      stervendenGroep.remove(s.groep);
+      stervenden.splice(i, 1);
+    }
+  }
 }
 
 // v0.7: explosie van een Brander bij overlijden — raakt de speler en andere
@@ -3159,7 +3219,10 @@ function golfSpawnStap() {
       return null;
     }
   }
-  const ondode = spawnOndode(idx, type);
+  // Ticket 23 (Z6): golf-spawns gebruiken de gebufferde profiel-loting i.p.v.
+  // de kale kiesOndodeTraits() (die blijft de default voor directe
+  // spawnOndode()-aanroepen elders/in tests).
+  const ondode = spawnOndode(idx, type, kiesOndodeTraitsVoorGolf());
   spelStaat.budget -= kosten;   // afboeken NA de echte spawn
   return ondode;
 }
@@ -3564,6 +3627,7 @@ function gameLoop(nu) {
     updateWapen(dt);
     updateSmederijVisuals(dt);
     updateOndoden(dt);
+    updateStervenden(dt);
     updateGolf(dt);
     updatePowerups(dt);
     updateMistUitfade(dt);
@@ -3618,6 +3682,10 @@ window.AmsterdamUndeadDebug = {
   herladen, probeerTeSchieten, schiet,
   ondoden, ondodenGroep, VENSTERS, spawnOndode, spawnWillekeurigeOndode, kiesVensterIndex,
   updateOndoden, raakOndode, doodOndode,
+  // Ticket 22: doodsanimaties (Z5)
+  stervenden, stervendenGroep, updateStervenden, VAL_STIJLEN, STERVEN_DUUR,
+  // Ticket 23: wave-variatie-limiter (Z6)
+  golfProfielBuffer, kiesOndodeTraitsVoorGolf, GOLF_PROFIEL_BUFFER_LENGTE, GOLF_PROFIEL_MAX_HERLOTINGEN,
   spelerStaat, spelerSchade, updateSpelerRegen, updateVignet, updateHUD,
   spelStaat, startGolf, updateGolf, gameOver,
   // Ticket 6: eventgolf-framework
