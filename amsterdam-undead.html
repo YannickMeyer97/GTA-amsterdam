@@ -70,6 +70,38 @@
   #richtkruis::before { top: 9px; left: 0; width: 20px; height: 2px; }
   #richtkruis::after  { left: 9px; top: 0; width: 2px; height: 20px; }
 
+  /* --- Hitmarker (Ticket 33): vier streepjes rond het crosshair, drie
+       tiers (lichaam/kop/kill) via een klasse op de container; opacity
+       wordt dt-gedreven in JS gezet (zelfde patroon als #vignet), geen
+       CSS-transition nodig. --- */
+  #hitmarker {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 26px;
+    height: 26px;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 6;
+    opacity: 0;
+  }
+  #hitmarker span {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 9px;
+    height: 2px;
+    background: #eaf2ea;
+    box-shadow: 0 0 3px rgba(0,0,0,0.8);
+    transform-origin: 0 50%;
+  }
+  #hitmarker span:nth-child(1) { transform: rotate(45deg)  translateX(6px); }
+  #hitmarker span:nth-child(2) { transform: rotate(135deg) translateX(6px); }
+  #hitmarker span:nth-child(3) { transform: rotate(225deg) translateX(6px); }
+  #hitmarker span:nth-child(4) { transform: rotate(315deg) translateX(6px); }
+  #hitmarker.kop span  { background: #ffb84f; width: 12px; }
+  #hitmarker.kill span { background: #ff5a3c; width: 15px; }
+
   /* --- Ammo-teller rechtsonder --- */
   #ammoUI {
     position: fixed;
@@ -85,6 +117,13 @@
     z-index: 5;
   }
   #ammoUI.herladen { color: #ffd75e; }
+  /* Leeg-magazijn-knipper (Ticket 33): korte kleurpuls via CSS-animatie,
+     klasse wordt na afloop verwijderd via het animationend-event. */
+  @keyframes ammoLeegKnipper {
+    0%, 100% { color: #eaf2ea; }
+    50% { color: #ff5a3c; }
+  }
+  #ammoUI.leeg { animation: ammoLeegKnipper 0.4s ease; }
 
   /* --- Eén centrale interactieprompt onderin, voor alle interactiepunten
        (deur, ammo-kist, upgradepunt) — zelfde patroon als
@@ -278,6 +317,7 @@
 <a id="menuLink" href="index.html">← Menu</a>
 <div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; klik = schieten &nbsp;·&nbsp; R = herladen &nbsp;·&nbsp; T = kopen/gebruiken &nbsp;·&nbsp; Q = wisselen van wapen &nbsp;·&nbsp; Esc = pauze</div>
 <div id="richtkruis" style="display:none"></div>
+<div id="hitmarker"><span></span><span></span><span></span><span></span></div>
 <div id="interactiePrompt"></div>
 <div id="meldingUI"></div>
 <div id="golfBanner"></div>
@@ -1501,12 +1541,20 @@ const RATELAAR_Z = DEUR2_Z + 5;
 }
 const ratelaarMarkering = interactieMarkering(RATELAAR_X, RATELAAR_Z, 0xd9a05a);
 
-// --- Ticket 12: De Smederij — smeedpunt tegen de noordmuur, westelijke
-// helft van de binnenplaats (weg van de Ratelaar, de poort-spawns en het
-// schuurtje/kratten). Klein aambeeld + gloeiend kooltje, geen collision
-// (zelfde patroon als de Ratelaar/Watertap/Pantserdrank hierboven/onder).
-const SMEDERIJ_X = DEUR2_X + 2.5;
-const SMEDERIJ_Z = PLAATS_Z_NOORD + 1.2;
+// --- Ticket 12: De Smederij — smeedpunt. Klein aambeeld + gloeiend
+// kooltje, geen collision (zelfde patroon als de Ratelaar/Watertap/
+// Pantserdrank hierboven/onder).
+// Ticket 35 (§5.8, ontwerpbeslissing 28): verhuisd van de noordwest-
+// binnenplaats naar de bijkeuken-zuidwand — met de Provisiekast maakt dit
+// de bijkeuken het late-game anker van de map-lus, met de terugdeur
+// (deur 4) als vluchtroute. 2.3 m van de gedeelde west-muur met de
+// woonkamer (zelfde marge als de deur4Punt-bugfix — interactieradius 1.6
+// kan die muur nooit doorreiken), 3.5 m van het deur4-kooppunt (radii
+// overlappen niet), ruim buiten de looproute terugdeur <-> kelderhals.
+// Machine/kool/koolLicht/markering/kooppunt zijn stuk voor stuk
+// SMEDERIJ_X/Z-afgeleiden, dus dit is de volledige verhuizing.
+const SMEDERIJ_X = 6.8;
+const SMEDERIJ_Z = 3.5;
 {
   const aambeeld = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.4), mat(0x2a2a2c, 0.4, 0.6));
   aambeeld.position.set(SMEDERIJ_X, 0.25, SMEDERIJ_Z);
@@ -1617,6 +1665,10 @@ const startscherm = document.getElementById('startscherm');
 const hulpUI = document.getElementById('hulpUI');
 const richtkruis = document.getElementById('richtkruis');
 const ammoUI = document.getElementById('ammoUI');
+const hitmarker = document.getElementById('hitmarker');
+// Leeg-magazijn-knipper (Ticket 33): CSS-animatie ruimt zichzelf op via
+// animationend, geen setTimeout/frame-timer nodig.
+ammoUI.addEventListener('animationend', () => ammoUI.classList.remove('leeg'));
 const hudUI = document.getElementById('hudUI');
 const vignet = document.getElementById('vignet');
 const gameOverScherm = document.getElementById('gameOverScherm');
@@ -1738,7 +1790,10 @@ function updateSpeler(dt) {
     speler.positie.z
   );
   camera.rotation.y = speler.yaw;
-  camera.rotation.x = speler.pitch;
+  // Ticket 34: cameraKick is een visueel-only offset bovenop speler.pitch —
+  // de bron van waarheid (speler.pitch) blijft ongemoeid, dus geen blijvende
+  // aim-drift na een schot.
+  camera.rotation.x = speler.pitch + cameraKick;
 }
 
 // Snelspanner-/Ratelaar-status hier (i.p.v. pas bij hun eigen STAP 9-code)
@@ -1912,6 +1967,18 @@ wapenRatelaar.add(vlamLichtRatelaar);
 
 let terugslag = 0;
 let vlamTimer = 0;
+// Ticket 34: visueel-only camera-kick (recoil). Telt op bij elk schot,
+// vervalt exponentieel in de cosmetische gameLoop-zone (net als terugslag).
+// speler.pitch zelf wordt NOOIT gemuteerd — geen blijvende aim-drift.
+let cameraKick = 0;
+// Ticket 34: wapenwissel-animatie (korte y-dip op de binnenkomende groep,
+// decayt in dezelfde cosmetische zone als terugslag/cameraKick) en de
+// bijbehorende herlaad-dip-amplitude — beide wapens delen dezelfde
+// rust-y (-0.22, zie wapenDrukspuit/wapenRatelaar.position.set hierboven).
+const WAPEN_BASIS_Y = -0.22;
+const WAPEN_HERLAAD_DIP_AMPLITUDE = 0.05;
+const WISSEL_DUUR = 0.16;
+let wisselTimer = 0;
 
 // --- Wapendefinities + actieve wapen-staat --------------------------
 // Elk wapen: naam (HUD), munitiestats, vuursnelheid en de bijbehorende
@@ -1928,6 +1995,10 @@ const WAPEN_DRUKSPUIT = {
   // Ticket 11: De Smederij (per-wapen late-game upgrade) — de Drukspuit is
   // de precisie-keuze en krijgt daarom de grootste schadebonus.
   smederijConfig: { schadeBonus: 1.5, magazijnMax: 12 },
+  // Ticket 34 (§5.6): de Drukspuit is de precisiekeuze — grote enkele kick,
+  // géén spread. Waarden letterlijk overgenomen uit ARCHITECTURE_NOTES.
+  kickSterkte: 0.014, spreadNdc: 0, terugslagSterkte: 1.0,
+  schotToon: { start: 480, eind: 120, duur: 0.09 },
 };
 const WAPEN_RATELAAR = {
   naam: 'De Ratelaar', magazijnMax: 16, reserve: 96, schotCooldown: 0.1,
@@ -1937,6 +2008,10 @@ const WAPEN_RATELAAR = {
   vlamKleurBasis: vlamRatelaar.material.color.getHex(), vlamLichtKleurBasis: vlamLichtRatelaar.color.getHex(),
   // Ticket 11: de Ratelaar is de volume-keuze — minder schadebonus, meer magazijn.
   smederijConfig: { schadeBonus: 1, magazijnMax: 24 },
+  // Ticket 34 (§5.6): de Ratelaar is de volumekeuze — kleine kick per schot,
+  // vaste lichte spread (±0.8°). Waarden letterlijk overgenomen.
+  kickSterkte: 0.006, spreadNdc: 0.012, terugslagSterkte: 0.55,
+  schotToon: { start: 620, eind: 210, duur: 0.06 },
 };
 
 function nieuweWapenStaat(definitie) {
@@ -1990,6 +2065,10 @@ function wisselWapen() {
   wapenStaat = wapenStaten[actiefWapenNaam];
   WAPEN_DRUKSPUIT.groep.visible = actiefWapenNaam === 'drukspuit';
   WAPEN_RATELAAR.groep.visible = actiefWapenNaam === 'ratelaar';
+  // Ticket 34: korte y-dip-animatie op de binnenkomende groep (decayt in de
+  // cosmetische gameLoop-zone) + een eigen wisselgeluidje.
+  wisselTimer = WISSEL_DUUR;
+  speelWissel();
   updateAmmoUI();
   updateHUD();
 }
@@ -1999,13 +2078,19 @@ function wisselWapen() {
 function updateWapen(dt) {
   if (wapenStaat.herladen) {
     wapenStaat.herlaadTimer -= dt;
+    // Ticket 34: herlaad-dip — sinus-boog omlaag/omhoog op herlaadTimer/
+    // herlaadDuur, geen aparte timer/state nodig.
+    const voortgang = 1 - Math.max(0, wapenStaat.herlaadTimer) / wapenStaat.herlaadDuur;
+    wapenStaat.definitie.groep.position.y = WAPEN_BASIS_Y - Math.sin(voortgang * Math.PI) * WAPEN_HERLAAD_DIP_AMPLITUDE;
     if (wapenStaat.herlaadTimer <= 0) {
       wapenStaat.herladen = false;
+      wapenStaat.definitie.groep.position.y = WAPEN_BASIS_Y;   // exact terug naar rust
       const nodig = wapenStaat.magazijnMax - wapenStaat.magazijn;
       const overgeheveld = Math.min(nodig, wapenStaat.reserve);
       wapenStaat.magazijn += overgeheveld;
       wapenStaat.reserve -= overgeheveld;
       updateAmmoUI();
+      speelHerlaadKlaar();
     }
   }
 }
@@ -2032,6 +2117,154 @@ raycaster.far = 30;   // kamer is klein, verder dan dit hoeft niet
 let laatsteSchotTijd = -999;
 let klok = 0;
 
+// --- Ticket 33 (Feedback F2): hitmarker met drie tiers -------------------
+// DOM i.p.v. scene-meshes (kost geen draw-calls); dt-gedreven decay in de
+// cosmetische gameLoop-zone (zelfde patroon als updateVignet — loopt door
+// tijdens pauze, puur cosmetisch). "Hoogste tier wint": twee treffers
+// binnen HITMARKER_SAMENVAL_VENSTER van elkaar downgraden de hitmarker niet
+// (bv. een lichaamstreffer vlak na een kill), maar de decay-timer herstart
+// sowieso op elke treffer.
+const HITMARKER_TIERS = {
+  lichaam: { duur: 0.12 },
+  kop:     { duur: 0.18 },
+  kill:    { duur: 0.30 },
+};
+const HITMARKER_RANG = { lichaam: 0, kop: 1, kill: 2 };
+const HITMARKER_SAMENVAL_VENSTER = 0.06;
+let hitmarkerTimer = 0;
+let hitmarkerDuur = 0;
+let hitmarkerHuidigeTier = null;
+let hitmarkerLaatsteTijd = -999;
+
+function toonHitmarker(tier) {
+  const binnenVenster = klok - hitmarkerLaatsteTijd < HITMARKER_SAMENVAL_VENSTER;
+  if (binnenVenster && hitmarkerHuidigeTier && HITMARKER_RANG[tier] < HITMARKER_RANG[hitmarkerHuidigeTier]) {
+    tier = hitmarkerHuidigeTier;   // hoogste tier binnen het venster wint
+  }
+  hitmarkerHuidigeTier = tier;
+  hitmarkerLaatsteTijd = klok;
+  hitmarker.classList.remove('lichaam', 'kop', 'kill');
+  hitmarker.classList.add(tier);
+  hitmarkerDuur = HITMARKER_TIERS[tier].duur;
+  hitmarkerTimer = hitmarkerDuur;   // timer herstart, ook bij een gelijke/lagere tier
+}
+
+function updateHitmarker(dt) {
+  hitmarkerTimer = Math.max(0, hitmarkerTimer - dt);
+  hitmarker.style.opacity = String(hitmarkerDuur > 0 ? hitmarkerTimer / hitmarkerDuur : 0);
+}
+
+// --- Ticket 32 (Feedback F1): effecten-pool voor tracers en impact-
+// deeltjes (ARCHITECTURE_NOTES §5.5, ontwerpbeslissing 25). Vervangt het
+// oude vonk/bloedvonk-patroon (nieuwe mesh + setTimeout PER schot/treffer)
+// door vooraf gebouwde, hergebruikte meshes: geen allocaties en geen
+// setTimeout meer in de hot paths (schiet()/raakOndode()). Eén gedeelde
+// geometry; elke pool-slot heeft een EIGEN material (i.p.v. één material
+// per kleur) zodat de opacity-fade van gelijktijdige effecten elkaar nooit
+// kan kruisen.
+const TRACER_MAX = 8;
+const IMPACT_MAX = 24;
+const EFFECT_GEOMETRY = new THREE.BoxGeometry(1, 1, 1);
+const TRACER_LEVENSDUUR = 0.08;
+const IMPACT_LEVENSDUUR = 0.3;
+// "Families" komen pas met het materiaal-ticket (T38); tot die tijd bestaat
+// alleen 'steen' (wereld-default) en 'vijand'/'vijandKop' (raakOndode()).
+const MATERIAAL_KLEUREN = { steen: 0xd8ffe0, vijand: 0xb9ec3f, vijandKop: 0xeaffa0 };
+
+function bouwEffectSlot() {
+  const mesh = new THREE.Mesh(EFFECT_GEOMETRY, new THREE.MeshBasicMaterial({ transparent: true }));
+  mesh.visible = false;
+  scene.add(mesh);
+  return { mesh, actief: false, vx: 0, vy: 0, vz: 0 };
+}
+const tracerPool = [];
+for (let i = 0; i < TRACER_MAX; i++) tracerPool.push(bouwEffectSlot());
+const impactPool = [];
+for (let i = 0; i < IMPACT_MAX; i++) impactPool.push(bouwEffectSlot());
+const actieveEffecten = [];   // { slot, timer, duur, soort: 'tracer' | 'impact' }
+
+// Module-scope temp-vectors: _tmpVecA is de "vanWereldPos" die schiet() zelf
+// vasthoudt over de hele functie-aanroep heen; _tmpVecB is UITSLUITEND
+// scratch-ruimte binnen spawnTracer() zelf (nooit naar buiten gelekt, dus
+// geen aliasing met wat de aanroeper nog vasthoudt); _tmpVecC gebruikt
+// schiet() voor het "mis"-eindpunt van de tracer.
+const _tmpVecA = new THREE.Vector3();
+const _tmpVecB = new THREE.Vector3();
+const _tmpVecC = new THREE.Vector3();
+
+// Geeft een vrije slot terug, of recyclet de slot met de kortste resterende
+// levensduur uit `pool` — nooit een nieuw object alloceren.
+function pakEffectSlot(pool) {
+  for (const slot of pool) if (!slot.actief) return slot;
+  let oudsteIndex = -1, oudsteTimer = Infinity;
+  for (let i = 0; i < actieveEffecten.length; i++) {
+    const eff = actieveEffecten[i];
+    if (pool.indexOf(eff.slot) === -1) continue;
+    if (eff.timer < oudsteTimer) { oudsteTimer = eff.timer; oudsteIndex = i; }
+  }
+  if (oudsteIndex !== -1) {
+    const slot = actieveEffecten[oudsteIndex].slot;
+    actieveEffecten.splice(oudsteIndex, 1);
+    return slot;
+  }
+  return pool[0];   // defensief; onbereikbaar bij TRACER_MAX/IMPACT_MAX > 0
+}
+
+// Een korte lichtstreep van vanWereldPos naar naarPunt (0.08s, vervaagt).
+function spawnTracer(vanWereldPos, naarPunt, kleur) {
+  const slot = pakEffectSlot(tracerPool);
+  slot.actief = true;
+  _tmpVecB.subVectors(naarPunt, vanWereldPos);
+  const lengte = Math.max(0.02, _tmpVecB.length());
+  slot.mesh.position.copy(vanWereldPos).addScaledVector(_tmpVecB, 0.5);
+  slot.mesh.scale.set(0.012, 0.012, lengte);
+  slot.mesh.lookAt(naarPunt);
+  slot.mesh.material.color.setHex(kleur);
+  slot.mesh.material.opacity = 1;
+  slot.mesh.visible = true;
+  actieveEffecten.push({ slot, timer: TRACER_LEVENSDUUR, duur: TRACER_LEVENSDUUR, soort: 'tracer' });
+}
+
+// 3-5 kleine deeltjes vanaf `punt`, met een korte val + zwaartekracht (0.3s).
+function spawnImpact(punt, kleur, aantal) {
+  for (let i = 0; i < aantal; i++) {
+    const slot = pakEffectSlot(impactPool);
+    slot.actief = true;
+    slot.mesh.position.copy(punt);
+    slot.mesh.scale.setScalar(0.035);
+    slot.mesh.rotation.set(0, 0, 0);
+    slot.mesh.material.color.setHex(kleur);
+    slot.mesh.material.opacity = 1;
+    slot.mesh.visible = true;
+    slot.vx = (Math.random() - 0.5) * 1.5;
+    slot.vy = Math.random() * 1.5;
+    slot.vz = (Math.random() - 0.5) * 1.5;
+    actieveEffecten.push({ slot, timer: IMPACT_LEVENSDUUR, duur: IMPACT_LEVENSDUUR, soort: 'impact' });
+  }
+}
+
+// Loopt alle actieve effecten af (fade + val voor impacts); geroepen vanuit
+// de `spelActief`-tak van gameLoop, dus bevriest netjes tijdens pauze.
+function updateEffecten(dt) {
+  for (let i = actieveEffecten.length - 1; i >= 0; i--) {
+    const eff = actieveEffecten[i];
+    eff.timer -= dt;
+    if (eff.timer <= 0) {
+      eff.slot.actief = false;
+      eff.slot.mesh.visible = false;
+      actieveEffecten.splice(i, 1);
+      continue;
+    }
+    eff.slot.mesh.material.opacity = eff.timer / eff.duur;
+    if (eff.soort === 'impact') {
+      eff.slot.vy -= 4 * dt;   // lichte zwaartekracht
+      eff.slot.mesh.position.x += eff.slot.vx * dt;
+      eff.slot.mesh.position.y += eff.slot.vy * dt;
+      eff.slot.mesh.position.z += eff.slot.vz * dt;
+    }
+  }
+}
+
 // Zone-sfeergeluiden (Ticket V8): eenmalige triggers + een zeldzame ambient.
 // Eenmalig-per-zone via booleans (geen herhaalde meldingen); de klok-ambient
 // via een steeds opnieuw willekeurig verzette drempel.
@@ -2046,6 +2279,11 @@ function probeerTeSchieten() {
   laatsteSchotTijd = klok;
   if (wapenStaat.magazijn <= 0) {
     speelDroogKlik();
+    // Ticket 33: zichtbare cue naast de droogklik — CSS-animatie i.p.v. een
+    // JS-timer, ruimt zichzelf op via het animationend-event hierboven.
+    ammoUI.classList.remove('leeg');
+    void ammoUI.offsetWidth;   // forceer reflow zodat herhaald leegklikken de animatie herstart
+    ammoUI.classList.add('leeg');
     return;
   }
   schiet();
@@ -2056,7 +2294,8 @@ function schiet() {
   updateAmmoUI();
 
   const { vlam, vlamLicht } = wapenStaat.definitie;
-  terugslag = 1;
+  terugslag = wapenStaat.definitie.terugslagSterkte;
+  cameraKick += wapenStaat.definitie.kickSterkte;   // Ticket 34: visueel-only, decayt in de cosmetische zone
   vlam.visible = true;
   vlamLicht.visible = true;
   // Ticket 12: een gesmeed wapen krijgt een feller mondingsvuur.
@@ -2070,13 +2309,24 @@ function schiet() {
   vlamTimer = 0.05;
   speelSchot();
 
-  // Straal vanuit het midden van het scherm: eerst checken op een ondode-
-  // treffer, en alleen als dat mist een vonkje op muren/vloer/plafond.
-  raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+  // Ticket 32: tracer-oorsprong is de wereldpositie van de vlam-mesh op het
+  // moment van schieten — een momentopname in _tmpVecA, geen live referentie
+  // (een wapenwissel vlak na dit schot raakt de tracer dus niet meer).
+  vlam.getWorldPosition(_tmpVecA);
+
+  // Straal vanuit het midden van het scherm (+ per-wapen spread, Ticket 34 —
+  // §5.6: de Drukspuit heeft spreadNdc 0 dus blijft altijd exact op het
+  // midden): eerst checken op een ondode-treffer, en alleen als dat mist een
+  // tracer + impact op muren/vloer/plafond (of, bij een volledige misser,
+  // een tracer tot raycaster.far). De tracer volgt hierdoor altijd het echte
+  // raakpunt, incl. spread.
+  const spread = wapenStaat.definitie.spreadNdc;
+  raycaster.setFromCamera({ x: (Math.random() - 0.5) * spread, y: (Math.random() - 0.5) * spread }, camera);
   const ondodeRaak = raycaster.intersectObject(ondodenGroep, true);
   if (ondodeRaak.length > 0) {
     const raakObj = ondodeRaak[0].object;
     const kop = raakObj.userData.lichaamsdeel === 'kop';   // headshot?
+    spawnTracer(_tmpVecA, ondodeRaak[0].point, MATERIAAL_KLEUREN.steen);
     let obj = raakObj;
     while (obj && !obj.userData.ondode) obj = obj.parent;
     if (obj) raakOndode(obj.userData.ondode, ondodeRaak[0].point, kop);
@@ -2084,12 +2334,14 @@ function schiet() {
   }
 
   const raak = raycaster.intersectObject(wereld, true);
-  if (raak.length === 0) return;
-  const vonk = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 6),
-    new THREE.MeshBasicMaterial({ color: 0xd8ffe0 }));
-  vonk.position.copy(raak[0].point);
-  scene.add(vonk);
-  setTimeout(() => scene.remove(vonk), 150);
+  if (raak.length === 0) {
+    raycaster.ray.at(raycaster.far, _tmpVecC);
+    spawnTracer(_tmpVecA, _tmpVecC, MATERIAAL_KLEUREN.steen);
+    return;
+  }
+  spawnTracer(_tmpVecA, raak[0].point, MATERIAAL_KLEUREN.steen);
+  const familie = raak[0].object.userData.materiaalFamilie ?? 'steen';
+  spawnImpact(raak[0].point, MATERIAAL_KLEUREN[familie] ?? MATERIAAL_KLEUREN.steen, 3);
 }
 
 /* ================================================================
@@ -2116,13 +2368,52 @@ function piep(type, startHz, eindHz, duur, volume) {
   osc.stop(audio.currentTime + duur);
 }
 
-function speelSchot()     { piep('sawtooth', 480, 120, 0.09, 0.1); }
+// Ticket 34: per-wapen schotgeluid via schotToon (§5.6) i.p.v. één vaste toon
+// voor beide wapens.
+function speelSchot() {
+  const toon = wapenStaat.definitie.schotToon;
+  piep('sawtooth', toon.start, toon.eind, toon.duur, 0.1);
+}
 function speelDroogKlik() { piep('square', 200, 180, 0.04, 0.06); }
-function speelHerlaad()   { piep('sine', 300, 500, 0.15, 0.06); setTimeout(() => piep('sine', 500, 700, 0.12, 0.06), 900); }
-function speelTreffer()   { piep('square', 320, 90, 0.07, 0.08); }
+// Ticket 33: het herlaad-geluid was één functie die zijn tweede piep via een
+// vaste setTimeout(900) afspeelde — dat klopte niet met herlaadDuurSnel en
+// liep door tijdens pauze. Nu twee losse geluiden: het start-geluid hier
+// (aangeroepen vanuit herladen()), het klaar-geluid in speelHerlaadKlaar()
+// (aangeroepen vanuit updateWapen() op het echte voltooiingsmoment). Tellers
+// (zelfde patroon als Ticket 31's aanvalGromTeller) zodat tests de
+// audio-splitsing kunnen verifiëren zonder de Web Audio-output te horen.
+let herlaadStartTeller = 0, herlaadKlaarTeller = 0;
+function speelHerlaad()      { herlaadStartTeller++; piep('sine', 300, 500, 0.15, 0.06); }
+function speelHerlaadKlaar() { herlaadKlaarTeller++; piep('sine', 500, 700, 0.12, 0.06); }
+
+// Ticket 34: kort wisselgeluidje bij wisselWapen().
+let wisselTeller = 0;
+function speelWissel() { wisselTeller++; piep('triangle', 260, 420, 0.08, 0.06); }
+
+// Ticket 33: hitmarker-audio met drie tiers + ±5% pitch-variatie per
+// afspeling, zodat de Ratelaar geen machinegeweer-monotonie wordt.
+function pitchVariatie() { return 0.95 + Math.random() * 0.1; }
+let raakTikTeller = 0, kopTikTeller = 0, killKnakTeller = 0;
+function speelRaakTik()  { raakTikTeller++; const p = pitchVariatie(); piep('square', 320 * p, 90 * p, 0.07, 0.08); }
+function speelKopTik()   { kopTikTeller++; const p = pitchVariatie(); piep('square', 460 * p, 140 * p, 0.08, 0.09); }
+function speelKillKnak() { killKnakTeller++; const p = pitchVariatie(); piep('sawtooth', 200 * p, 40 * p, 0.14, 0.12); }
 function speelPlankBreek() { piep('sawtooth', 180, 60, 0.09, 0.09); }
 function speelExplosie()  { piep('sawtooth', 90, 30, 0.35, 0.16); setTimeout(() => piep('square', 60, 25, 0.25, 0.08), 40); }
 function speelSpelerAu()  { piep('sawtooth', 160, 60, 0.18, 0.11); }
+// Ticket 31 (Aanval A2): hoorbare tells voor de aanvals-state-machine (T30).
+// speelAanvalGrom klinkt bij windup-start, per type een eigen register
+// (Sjouwer laag en lang, Loper/Sluiper kort en schril, normaal ertussenin).
+// De tellers zijn puur voor headless tests (er is geen andere manier om
+// Web Audio-aanroepen van buitenaf te verifiëren) — geen gameplay-effect.
+let aanvalGromTeller = 0, slagRaakTeller = 0, slagMisTeller = 0;
+function speelAanvalGrom(type) {
+  aanvalGromTeller++;
+  if (type === 'sjouwer') piep('sawtooth', 70, 110, 0.5, 0.09);
+  else if (type === 'loper' || type === 'sluiper') piep('sawtooth', 320, 440, 0.16, 0.07);
+  else piep('sawtooth', 150, 220, 0.3, 0.08);
+}
+function speelSlagRaak() { slagRaakTeller++; piep('square', 100, 40, 0.12, 0.1); }   // doffe dreun, bovenop speelSpelerAu()
+function speelSlagMis()  { slagMisTeller++; piep('sine', 240, 90, 0.22, 0.05); }    // whoosh
 // Nieuwe sfeergeluiden (allemaal live via Web Audio, geen bestanden):
 function speelGolfStart() { piep('sawtooth', 130, 260, 0.18, 0.08); setTimeout(() => piep('square', 200, 340, 0.22, 0.06), 130); }
 function speelGolfKlaar() { piep('sine', 520, 780, 0.14, 0.06); setTimeout(() => piep('sine', 780, 1040, 0.16, 0.05), 150); }
@@ -2157,9 +2448,33 @@ const ONDODE_HP_TRAPPEN = [
   { vanafGolf: 1,  hp: 1 },
 ];
 const ONDODE_STRAAL      = 0.4;   // botsingsstraal tegen de muren
-const MELEE_BEREIK       = 1.2;   // m — vanaf hier kan een ondode de speler raken
-const MELEE_SCHADE       = 15;    // schade per treffer
-const MELEE_COOLDOWN     = 1.0;   // s tussen twee treffers van dezelfde ondode
+
+// Ticket 30 (Aanval A1): aanvals-state-machine met wind-up i.p.v.
+// contactschade. 'jaag' -> 'windup' (stilstaan, beperkt bijdraaien) ->
+// discreet slag-moment (afstand + hoek + vrije-middelpunt-check) ->
+// 'herstel' (40% snelheid) -> 'jaag'. Zie ARCHITECTURE_NOTES §5.2 voor
+// de volledige stroom en ontwerpbeslissingen 21-24.
+const AANVAL_START_BEREIK   = 1.4;   // vanaf hier mag een wind-up beginnen
+const AANVAL_DRAAI_SNELHEID = 2.0;   // rad/s bijdraaien tijdens de wind-up
+const MAX_AANVALLERS        = 2;     // gelijktijdige wind-ups (beslissing 23)
+const AANVAL_START_JITTER   = 0.35;  // 0..dit aan willekeurige startvertraging
+const AANVAL_HERSTEL_SNELHEIDSFACTOR = 0.4;   // beweegsnelheid tijdens 'herstel'
+const AANVAL_PROFIELEN = {
+  //           windup  herstel  raakBereik  raakHoek  schade  onderbreekbaarLichaam
+  normaal: { windup: 0.55, herstel: 0.70, raakBereik: 1.6, raakHoek: 1.15, schade: 15, onderbreekbaarLichaam: false },
+  loper:   { windup: 0.40, herstel: 0.90, raakBereik: 1.5, raakHoek: 1.15, schade: 10, onderbreekbaarLichaam: true },
+  sjouwer: { windup: 0.85, herstel: 1.00, raakBereik: 1.8, raakHoek: 1.40, schade: 25, onderbreekbaarLichaam: false },
+  brander: { windup: 0.55, herstel: 0.70, raakBereik: 1.6, raakHoek: 1.15, schade: 15, onderbreekbaarLichaam: false },
+  sluiper: { windup: 0.35, herstel: 0.80, raakBereik: 1.5, raakHoek: 1.15, schade: 12, onderbreekbaarLichaam: true },
+};
+let actieveAanvallers = 0;   // gelijktijdige wind-ups, begrensd door MAX_AANVALLERS
+
+// Ticket 31 (Aanval A2): zichtbare/hoorbare tells bovenop T30's states.
+// Puur presentatie — raakt nooit de state-machine-logica of -timings zelf.
+const AANVAL_ARM_HOEK_WINDUP = -1.9;    // rad — armen hoog geheven tijdens de wind-up
+const AANVAL_HOOFD_KANTEL    = 0.12;    // rad — hoofd kantelt licht achterover tijdens de wind-up
+const OOG_INTENSITEIT_BASIS  = 1.4;     // zelfde basiswaarde als in maakOndodeModel()
+const OOG_INTENSITEIT_AANVAL = 2.6;     // piek tijdens de wind-up
 
 // Ticket 20 (Z3): ledematen-animatie. Amplitudes in radialen, puur
 // cosmetisch (raakt nooit groep.position/collision). ARM_RUST_ROTATIE_X is
@@ -2660,6 +2975,7 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   // Twee kleine gloeiende oogjes: het enige griezelige lichtaccent. Kleur
   // verschilt per type (v0.7), zodat een variant al op afstand herkenbaar is.
   const oogMateriaal = new THREE.MeshStandardMaterial({ color: typeInfo.oogKleur, emissive: typeInfo.oogKleur, emissiveIntensity: 1.4 });
+  delen.oogMateriaal = oogMateriaal;   // Ticket 31 (Aanval A2): windup-oogpuls leest/schrijft dit gedeelde material
   for (const kant of [-1, 1]) {
     const oog = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6), oogMateriaal);
     oog.position.set(kant * 0.06, 0.01, 0.14);   // t.o.v. het hoofdcentrum (was wereld 1.59/0.16)
@@ -2743,7 +3059,10 @@ function spawnOndode(vensterIndex, type = 'normaal', traits = kiesOndodeTraits()
     strompelt: traits.strompelt, loopFase: Math.random() * 10,   // (v0.8) willekeurige startfase: niet synchroon
     delen: groep.userData.delen,   // (Ticket 18) pivot-referenties voor de loop-animatie van fase 8
     flinch: null,   // Ticket 21 (Z4): { timer, soort, knokRichting, kernPuls } — gezet in raakOndode()
-    meleeTimer: 0, vastTijd: 0,
+    // Ticket 30 (Aanval A1): 'jaag' -> 'windup' -> 'herstel' -> 'jaag'.
+    // aanvalVertraging is de anti-synchroon-jitter vóór een windup start.
+    aanvalStaat: 'jaag', aanvalTimer: 0, aanvalVertraging: Math.random() * AANVAL_START_JITTER,
+    vastTijd: 0,
     ontwijkTimer: 0, ontwijkZijkant: 1, ontwijkStartPos: new THREE.Vector3(),
   };
   groep.userData.ondode = ondode;
@@ -2852,23 +3171,82 @@ function herbouwNavTabel() {
   NAV_VOLGENDE = tabel;
 }
 
-// Jagen op de speler + melee als ze dichtbij genoeg zijn. Hergebruikt
+// Kortste hoekverschil a-b, gewrapt naar (-PI, PI]. Gedeeld door de
+// wind-up-bijdraai-limiet en de raakHoek-check op het slag-moment.
+function kortsteHoekVerschil(a, b) {
+  return Math.atan2(Math.sin(a - b), Math.cos(a - b));
+}
+
+// Jagen op de speler + aanvallen als ze dichtbij genoeg zijn. Hergebruikt
 // losBotsingenOp() uit STAP 3 zodat ondoden ook niet door muren lopen.
+// Ticket 30 (Aanval A1): contactschade vervangen door een state machine
+// met wind-up (zie ARCHITECTURE_NOTES §5.2 voor de volledige stroom).
 function updateOndoden(dt) {
   for (const ondode of ondoden) {
     const positie = ondode.groep.position;
     const rechtstreeks = new THREE.Vector3().subVectors(speler.positie, positie);
     const afstand = rechtstreeks.length();
+    const profiel = AANVAL_PROFIELEN[ondode.type] || AANVAL_PROFIELEN.normaal;
 
-    if (afstand <= MELEE_BEREIK) {
-      ondode.meleeTimer -= dt;
-      if (ondode.meleeTimer <= 0) {
-        spelerSchade(MELEE_SCHADE);
-        ondode.meleeTimer = MELEE_COOLDOWN;
+    // 'windup': positie bevroren, alleen beperkt bijdraaien richting de
+    // speler. Op het einde van de timer valt het discrete slag-moment:
+    // raak alleen bij (a) afstand binnen bereik, (b) de speler nog binnen
+    // de raakHoek-kegel (kan door zijwaartse beweging ontwijken, want de
+    // ondode kan zijn kijkrichting maar beperkt bijsturen) en (c) een vrij
+    // middelpunt (nooit door een muur/dichte deur heen slaan).
+    if (ondode.aanvalStaat === 'windup') {
+      const doelHoek = Math.atan2(rechtstreeks.x, rechtstreeks.z);
+      const stap = Math.max(-AANVAL_DRAAI_SNELHEID * dt, Math.min(AANVAL_DRAAI_SNELHEID * dt,
+        kortsteHoekVerschil(doelHoek, ondode.groep.rotation.y)));
+      ondode.groep.rotation.y += stap;
+      ondode.aanvalTimer -= dt;
+      if (ondode.aanvalTimer <= 0) {
+        const hoekVerschil = Math.abs(kortsteHoekVerschil(doelHoek, ondode.groep.rotation.y));
+        const midX = (positie.x + speler.positie.x) / 2, midZ = (positie.z + speler.positie.z) / 2;
+        if (afstand <= profiel.raakBereik && hoekVerschil <= profiel.raakHoek && isVrijePlek(midX, midZ, 0.05)) {
+          spelerSchade(profiel.schade);
+          speelSlagRaak();   // Ticket 31: bovenop de speelSpelerAu() uit spelerSchade()
+        } else {
+          speelSlagMis();    // Ticket 31: whoosh bij een ontweken aanval
+        }
+        ondode.aanvalStaat = 'herstel';
+        ondode.aanvalTimer = profiel.herstel;
+        actieveAanvallers--;
       }
+      // Ticket 31 (Aanval A2): zichtbare tell — armen hoog geheven, hoofd
+      // licht achterover, ogen pulsen fel, met de windup-fractie (0 bij
+      // start, 1 op het slag-moment). Vervangt de loop-zwaai-writes voor
+      // deze ondode (zelfde properties), dus geen extra transform-budget.
+      const windupFractie = Math.min(1, 1 - Math.max(0, ondode.aanvalTimer) / profiel.windup);
+      const delen = ondode.delen;
+      const armNu = ARM_RUST_ROTATIE_X + (AANVAL_ARM_HOEK_WINDUP - ARM_RUST_ROTATIE_X) * windupFractie;
+      if (delen.armL) delen.armL.rotation.x = armNu;
+      if (delen.armR) delen.armR.rotation.x = armNu;
+      delen.hoofd.rotation.x = delen.hoofd.userData.baseRotX - AANVAL_HOOFD_KANTEL * windupFractie;
+      delen.oogMateriaal.emissiveIntensity = OOG_INTENSITEIT_BASIS + (OOG_INTENSITEIT_AANVAL - OOG_INTENSITEIT_BASIS) * windupFractie;
       ondode.vastTijd = 0;
       ondode.ontwijkTimer = 0;
       continue;
+    }
+
+    if (ondode.aanvalStaat === 'herstel') {
+      ondode.aanvalTimer -= dt;
+      if (ondode.aanvalTimer <= 0) ondode.aanvalStaat = 'jaag';
+    } else if (afstand <= AANVAL_START_BEREIK && actieveAanvallers < MAX_AANVALLERS) {
+      // 'jaag' binnen bereik met een vrij aanvalsslot: de startjitter
+      // aftellen (voorkomt dat meerdere ondoden exact synchroon starten).
+      ondode.aanvalVertraging -= dt;
+      if (ondode.aanvalVertraging <= 0) {
+        ondode.aanvalStaat = 'windup';
+        ondode.aanvalTimer = profiel.windup;
+        actieveAanvallers++;
+        speelAanvalGrom(ondode.type);   // Ticket 31: hoorbare tell bij windup-start
+        ondode.vastTijd = 0;
+        ondode.ontwijkTimer = 0;
+        continue;
+      }
+    } else {
+      ondode.aanvalVertraging = Math.random() * AANVAL_START_JITTER;
     }
 
     // Zit de ondode in een andere zone dan de speler? Dan eerst op het
@@ -2897,8 +3275,11 @@ function updateOndoden(dt) {
       const zijwaarts = new THREE.Vector3(-direct.z, 0, direct.x).multiplyScalar(ondode.ontwijkZijkant);
       richting = direct.clone().multiplyScalar(0.3).add(zijwaarts).normalize();
     }
+    // Ticket 30: tijdens 'herstel' (net klaar met een aanval) beweegt de
+    // ondode op verlaagde snelheid mee — "voelt als bijkomen".
+    const snelheidNu = ondode.snelheid * (ondode.aanvalStaat === 'herstel' ? AANVAL_HERSTEL_SNELHEIDSFACTOR : 1);
     const voorPos = positie.clone();
-    positie.addScaledVector(richting, ondode.snelheid * dt);
+    positie.addScaledVector(richting, snelheidNu * dt);
     losBotsingenOp(positie, ONDODE_STRAAL);
     ondode.groep.rotation.y = Math.atan2(rechtstreeks.x, rechtstreeks.z);
 
@@ -2919,6 +3300,21 @@ function updateOndoden(dt) {
     // Armen zwaaien in tegenfase t.o.v. het been aan dezelfde kant (Ticket 20).
     if (delen.armL) delen.armL.rotation.x = ARM_RUST_ROTATIE_X - faseL * BEEN_LOOP_AMPLITUDE * ARM_LOOP_FACTOR;
     if (delen.armR) delen.armR.rotation.x = ARM_RUST_ROTATIE_X - faseR * BEEN_LOOP_AMPLITUDE * ARM_LOOP_FACTOR;
+    // Ticket 31 (Aanval A2): tijdens de eerste helft van 'herstel' zakken de
+    // armen van de windup-houding terug naar rust, en dooft de oogpuls weer
+    // — overschrijft de loop-zwaai-writes hierboven voor deze ondode.
+    if (ondode.aanvalStaat === 'herstel') {
+      const profielHerstel = (AANVAL_PROFIELEN[ondode.type] || AANVAL_PROFIELEN.normaal).herstel;
+      const herstelFractie = Math.min(1, (profielHerstel - ondode.aanvalTimer) / (profielHerstel / 2));
+      if (herstelFractie < 1) {
+        const armNu = AANVAL_ARM_HOEK_WINDUP + (ARM_RUST_ROTATIE_X - AANVAL_ARM_HOEK_WINDUP) * herstelFractie;
+        if (delen.armL) delen.armL.rotation.x = armNu;
+        if (delen.armR) delen.armR.rotation.x = armNu;
+        delen.oogMateriaal.emissiveIntensity = OOG_INTENSITEIT_AANVAL + (OOG_INTENSITEIT_BASIS - OOG_INTENSITEIT_AANVAL) * herstelFractie;
+      } else {
+        delen.oogMateriaal.emissiveIntensity = OOG_INTENSITEIT_BASIS;   // gegarandeerd exact terug op de basiswaarde
+      }
+    }
     delen.romp.position.y = delen.romp.userData.baseY + Math.abs(faseL) * ROMP_BOB_HOOGTE;
     delen.hoofd.rotation.x = delen.hoofd.userData.baseRotX + faseL * HOOFD_KANTEL_AMPLITUDE;
     // v0.8: strompelende loop — de wiebel zat op de hele root (verstoorde
@@ -2945,7 +3341,6 @@ function updateOndoden(dt) {
         losBotsingenOp(positie, ONDODE_STRAAL);
       }
     }
-    ondode.meleeTimer = 0;   // meteen kunnen slaan zodra ze bij aankomst in bereik komen
 
     if (ondode.ontwijkTimer > 0) {
       // Al aan het uitwijken: pas wanneer de burst AFLOOPT bekijken of het
@@ -2959,9 +3354,9 @@ function updateOndoden(dt) {
         // want die laatste blijft "ja" geven zolang er ÜBERHAUPT beweging is
         // (ook nadat de hoek al lang om is), en zou het uitwijken dan nooit
         // meer loslaten.
-        const testPos = positie.clone().addScaledVector(direct, ondode.snelheid * dt);
+        const testPos = positie.clone().addScaledVector(direct, snelheidNu * dt);
         losBotsingenOp(testPos, ONDODE_STRAAL);
-        if (testPos.distanceTo(positie) > ondode.snelheid * dt * 0.3) {
+        if (testPos.distanceTo(positie) > snelheidNu * dt * 0.3) {
           ondode.vastTijd = 0;   // obstakel voorbij: terug naar rechtstreeks jagen
         } else {
           const afgelegd = positie.distanceTo(ondode.ontwijkStartPos);
@@ -2978,7 +3373,7 @@ function updateOndoden(dt) {
           }
         }
       }
-    } else if (positie.distanceTo(voorPos) < ondode.snelheid * dt * 0.3) {
+    } else if (positie.distanceTo(voorPos) < snelheidNu * dt * 0.3) {
       ondode.vastTijd += dt;
       if (ondode.vastTijd > 0.5) {
         ondode.ontwijkZijkant = Math.random() < 0.5 ? 1 : -1;
@@ -2993,6 +3388,9 @@ function updateOndoden(dt) {
 }
 
 function doodOndode(ondode) {
+  // Ticket 30: een dodelijke treffer tijdens de wind-up mag het aanvalsslot
+  // niet laten lekken (anders daalt actieveAanvallers nooit meer terug).
+  if (ondode.aanvalStaat === 'windup') actieveAanvallers--;
   ondodenGroep.remove(ondode.groep);
   const i = ondoden.indexOf(ondode);
   if (i !== -1) ondoden.splice(i, 1);
@@ -3061,14 +3459,19 @@ function raakOndode(ondode, punt, kop = false) {
   // Eliminatiemodus (power-up): elke treffer is meteen dodelijk, ongeacht HP.
   const schade = eliminatiemodusTimer > 0 ? ondode.hp : basisSchade + (kop ? HEADSHOT_EXTRA : 0);
   ondode.hp -= schade;
-  speelTreffer();
   const geldFactor = dubbeleBeloningTimer > 0 ? 2 : 1;   // Dubbele Beloning (power-up)
   if (ondode.hp <= 0) {
+    // Ticket 33: kill is de hoogste hitmarker-/audio-tier, ongeacht kop of lichaam.
+    toonHitmarker('kill');
+    speelKillKnak();
     spelStaat.geld += Math.round(GELD_PER_KILL * ondode.geldMultiplier * geldFactor * (kop ? HEADSHOT_GELD_MULTIPLIER : 1));
     const dropPos = ondode.groep.position.clone();
     doodOndode(ondode);
     if (Math.random() < POWERUP_DROP_KANS) spawnPowerupDrop(dropPos.x, dropPos.z, kiesPowerupType());
   } else {
+    // Ticket 33: een overlevende treffer is 'kop' (headshot) of 'lichaam'.
+    toonHitmarker(kop ? 'kop' : 'lichaam');
+    if (kop) speelKopTik(); else speelRaakTik();
     spelStaat.geld += GELD_PER_HIT * geldFactor;
     // Ticket 21 (Z4): flinch-state voor de animatie-helft van updateOndoden().
     // Alleen bij een OVERLEVENDE treffer — een dodelijke hit (incl. Eliminatiemodus,
@@ -3077,14 +3480,23 @@ function raakOndode(ondode, punt, kop = false) {
     const knokRichting = new THREE.Vector3().subVectors(ondode.groep.position, speler.positie).setY(0);
     if (knokRichting.lengthSq() < 1e-6) knokRichting.set(1, 0, 0); else knokRichting.normalize();
     ondode.flinch = { timer: FLINCH_DUUR, soort: kop ? 'kop' : 'lichaam', knokRichting, kernPuls: ondode.type === 'brander' };
+    // Ticket 30: een overlevende treffer kan een lopende wind-up onderbreken.
+    // Headshot breekt altijd af; een lichaamstreffer alleen bij types die
+    // dat toestaan (onderbreekbaarLichaam) — anders zou de Ratelaar een
+    // Sjouwer-aanval permanent stunlocken en wordt de wind-up nooit gezien.
+    if (ondode.aanvalStaat === 'windup') {
+      const profiel = AANVAL_PROFIELEN[ondode.type] || AANVAL_PROFIELEN.normaal;
+      if (kop || profiel.onderbreekbaarLichaam) {
+        ondode.aanvalStaat = 'herstel';
+        ondode.aanvalTimer = profiel.herstel * 0.5;
+        actieveAanvallers--;
+      }
+    }
   }
   updateHUD();
-  // Iets grotere, feller vonk bij een headshot als visuele feedback.
-  const bloedvonk = new THREE.Mesh(new THREE.SphereGeometry(kop ? 0.075 : 0.05, 6, 6),
-    new THREE.MeshBasicMaterial({ color: kop ? 0xeaffa0 : 0xb9ec3f }));
-  bloedvonk.position.copy(punt);
-  scene.add(bloedvonk);
-  setTimeout(() => scene.remove(bloedvonk), 150);
+  // Ticket 32: impact-deeltjes i.p.v. de oude bloedvonk-mesh — een headshot
+  // krijgt meer deeltjes én een lichtere tint als visuele feedback.
+  spawnImpact(punt, kop ? MATERIAAL_KLEUREN.vijandKop : MATERIAAL_KLEUREN.vijand, kop ? 5 : 3);
 }
 
 /* ================================================================
@@ -3966,6 +4378,7 @@ function gameLoop(nu) {
     updateSmederijVisuals(dt);
     updateOndoden(dt);
     updateStervenden(dt);
+    updateEffecten(dt);   // Ticket 32: tracers + impact-deeltjes, bevriest netjes tijdens pauze
     updateGolf(dt);
     updatePowerups(dt);
     updateMistUitfade(dt);
@@ -3994,6 +4407,7 @@ function gameLoop(nu) {
     if (klok > volgendeKlokGeluid) { speelGrachtklok(); volgendeKlokGeluid = klok + 40 + Math.random() * 40; }
   }
   updateVignet(dt);
+  updateHitmarker(dt);   // Ticket 33: cosmetisch, decayt door tijdens pauze net als het vignet
 
   // Sfeer: lampen zacht laten flikkeren (loopt ook tijdens pauze, want puur
   // cosmetisch). `nu` loopt altijd door, dus onafhankelijk van de spel-klok.
@@ -4006,6 +4420,17 @@ function gameLoop(nu) {
   if (terugslag > 0) {
     terugslag = Math.max(0, terugslag - dt * 6);
     wapenStaat.definitie.groep.position.z = -0.5 + terugslag * 0.08;
+  }
+  // Ticket 34: cameraKick-decay hoort in dezelfde cosmetische zone als
+  // terugslag (loopt door tijdens pauze, puur visueel).
+  if (cameraKick > 0) cameraKick = Math.max(0, cameraKick * Math.exp(-10 * dt));
+  // Ticket 34: wisselanimatie — korte y-dip op de binnenkomende (nu actieve)
+  // wapen-groep, zelfde sinus-boog-idee als de herlaad-dip maar op wisselTimer.
+  if (wisselTimer > 0) {
+    wisselTimer = Math.max(0, wisselTimer - dt);
+    const voortgang = 1 - wisselTimer / WISSEL_DUUR;
+    wapenStaat.definitie.groep.position.y = WAPEN_BASIS_Y - Math.sin(voortgang * Math.PI) * WAPEN_HERLAAD_DIP_AMPLITUDE;
+    if (wisselTimer <= 0) wapenStaat.definitie.groep.position.y = WAPEN_BASIS_Y;   // exact terug naar rust
   }
   if (vlamTimer > 0) {
     vlamTimer -= dt;
@@ -4027,7 +4452,25 @@ window.AmsterdamUndeadDebug = {
   // Ticket 17: Smederij-visuals per wapen
   smederijVisualsDrukspuit, smederijVisualsRatelaar, updateSmederijVisuals,
   get smederijVisualsZichtbaar() { return { drukspuit: smederijVisualsDrukspuit.visible, ratelaar: smederijVisualsRatelaar.visible }; },
-  herladen, probeerTeSchieten, schiet,
+  herladen, probeerTeSchieten, schiet, updateWapen, updateSpeler,
+  // Ticket 33: hitmarker + treffer-/herlaad-audio
+  ammoUI, hitmarker, toonHitmarker, updateHitmarker,
+  HITMARKER_TIERS, HITMARKER_RANG, HITMARKER_SAMENVAL_VENSTER,
+  get hitmarkerTimer() { return hitmarkerTimer; },
+  get hitmarkerDuur() { return hitmarkerDuur; },
+  get hitmarkerHuidigeTier() { return hitmarkerHuidigeTier; },
+  speelRaakTik, speelKopTik, speelKillKnak, speelHerlaad, speelHerlaadKlaar,
+  get raakTikTeller() { return raakTikTeller; },
+  get kopTikTeller() { return kopTikTeller; },
+  get killKnakTeller() { return killKnakTeller; },
+  get herlaadStartTeller() { return herlaadStartTeller; },
+  get herlaadKlaarTeller() { return herlaadKlaarTeller; },
+  // Ticket 34: wapen-identiteit (kick, spread, dip, wissel)
+  WAPEN_BASIS_Y, WAPEN_HERLAAD_DIP_AMPLITUDE, WISSEL_DUUR, speelWissel,
+  get cameraKick() { return cameraKick; },
+  set cameraKick(v) { cameraKick = v; },
+  get wisselTimer() { return wisselTimer; },
+  get wisselTeller() { return wisselTeller; },
   ondoden, ondodenGroep, VENSTERS, spawnOndode, spawnWillekeurigeOndode, kiesVensterIndex,
   updateOndoden, raakOndode, doodOndode,
   // Ticket 22: doodsanimaties (Z5)
@@ -4169,6 +4612,19 @@ window.AmsterdamUndeadDebug = {
   // Ticket 28 (Map-lus M5): zone-navigatie als graaf
   zoneVan, ZONE_GRAAF, herbouwNavTabel,
   get NAV_VOLGENDE() { return NAV_VOLGENDE; },
+  // Ticket 30 (Aanval A1): aanvals-state-machine met wind-up
+  AANVAL_PROFIELEN, AANVAL_START_BEREIK, AANVAL_DRAAI_SNELHEID, AANVAL_START_JITTER,
+  AANVAL_HERSTEL_SNELHEIDSFACTOR, MAX_AANVALLERS,
+  get actieveAanvallers() { return actieveAanvallers; },
+  // Ticket 31 (Aanval A2): zichtbare/hoorbare tells
+  AANVAL_ARM_HOEK_WINDUP, AANVAL_HOOFD_KANTEL, OOG_INTENSITEIT_BASIS, OOG_INTENSITEIT_AANVAL,
+  speelAanvalGrom, speelSlagRaak, speelSlagMis,
+  get aanvalGromTeller() { return aanvalGromTeller; },
+  get slagRaakTeller() { return slagRaakTeller; },
+  get slagMisTeller() { return slagMisTeller; },
+  // Ticket 32 (Feedback F1): effecten-pool (tracers + impact-deeltjes)
+  TRACER_MAX, IMPACT_MAX, MATERIAAL_KLEUREN, spawnTracer, spawnImpact, updateEffecten,
+  tracerPool, impactPool, actieveEffecten,
 };
 </script>
 </body>

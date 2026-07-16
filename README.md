@@ -162,7 +162,9 @@ of achteruit vanuit de bijkeuken zodra je de terugdeur hebt opengemaakt.
    (dezelfde sfeer als de gang) die uitkomt in de bijkeuken: een oude
    achterkeuken met een eigen spawn-venster ("de steegdeur") en de
    **Provisiekast** (€350, herbruikbaar, +48 reserve-munitie — een tweede
-   ammo-kist zodat je niet steeds helemaal terug naar de woonkamer hoeft).
+   ammo-kist zodat je niet steeds helemaal terug naar de woonkamer hoeft) en,
+   tegen de zuidwand, de **Smederij** (€3000, per wapen, late-game
+   schade-upgrade) — samen maken ze de bijkeuken je late-game anker.
    Vanuit de bijkeuken opent de **terugdeur** (€800) een directe kortere
    weg naar de woonkamer — ontgrendelt zelf geen nieuwe zone, maar sluit de
    lus: ondoden vinden je voortaan via de kortste kant, ook al kom je de

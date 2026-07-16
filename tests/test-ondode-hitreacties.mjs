@@ -103,6 +103,13 @@ check('Knockback verplaatst de ondode, maximaal 0.15 m (acceptatiecriterium)',
 // > ONDODE_STRAAL 0.4m), maar de volledige knockback (max 0.12m) zou 'm tot
 // op 0.33m van de muur duwen — minder dan de vereiste 0.4m-klaring. De
 // bestaande losBotsingenOp() moet dat afkappen, ruim vóór de muur.
+// Twee dingen moeten voor deze isolatie tijdelijk opzij: (a) losBotsingenOp()
+// klemt ook op de kaart-GRENS (bestaand, ongewijzigd gedrag) — (500,-500) valt
+// daarbuiten, dus GRENS tijdelijk verruimen; (b) Ticket 30's aanvals-state-
+// machine zou de ondode (0.1m van de "speler") een wind-up laten starten,
+// wat de navigatie/flinch-code een aantal ticks lang overslaat — een torenhoge
+// aanvalVertraging voorkomt dat en houdt de ondode in 'jaag', precies zoals
+// vóór Ticket 30.
 const muurtest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   for (const o of [...d.ondoden]) d.doodOndode(o);
@@ -110,13 +117,17 @@ const muurtest = await page.evaluate(() => {
   const o = d.spawnOndode(0, 'normaal');
   o.hp = 1000;
   o.snelheid = 0;   // navigatie uitschakelen: alleen de knockback-verplaatsing meten
+  o.aanvalVertraging = 999;   // nooit een wind-up starten tijdens deze test
   o.groep.position.set(500, 0, -500);
   d.speler.positie.set(500, 0, -500.1);   // speler net zuidelijk: knockback duwt naar +z
   d.obstakels.push({ minX: 499, maxX: 501, minZ: -499.55, maxZ: -498 });
+  const grensVoor = { ...d.GRENS };
+  Object.assign(d.GRENS, { minX: -600, maxX: 600, minZ: -600, maxZ: 600 });
   d.raakOndode(o, o.groep.position, false);
   let tikken = 0;
   while (o.flinch !== null && tikken < 20) { d.updateOndoden(0.05); tikken++; }
   const eindZ = o.groep.position.z;
+  Object.assign(d.GRENS, grensVoor);
   d.obstakels.pop();
   d.doodOndode(o);
   return { eindZ, klaring: -499.55 - eindZ };
@@ -174,7 +185,9 @@ check('Een dodelijke treffer verwijdert de ondode meteen (geen kans op een hange
 check('Een Eliminatiemodus-kill verwijdert de ondode ook meteen (geen flinch mogelijk)',
   geenFlinchOpDood.nogInLeven2 === false, geenFlinchOpDood);
 
-// --- 7. Melee-timer en pathing blijven ongewijzigd tijdens een flinch -----
+// --- 7. Ticket 30: aanvalStaat-onderbreking + pathing tijdens een flinch --
+// Een treffer op een ondode die nog niet aan het aanvallen was (aanvalStaat
+// 'jaag') mag diens staat niet aanraken; pathing blijft gewoon doorlopen.
 const meleeEnPathing = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   for (const o of [...d.ondoden]) d.doodOndode(o);
@@ -183,19 +196,91 @@ const meleeEnPathing = await page.evaluate(() => {
   o.hp = 1000;
   o.groep.position.set(0, 0, -10);
   d.speler.positie.set(0, 0, 0);
+  const aanvalStaatVoor = o.aanvalStaat;
   d.raakOndode(o, o.groep.position, false);
-  const meleeTimerNaTreffer = o.meleeTimer;
+  const aanvalStaatNaTreffer = o.aanvalStaat;
   const zVoor = o.groep.position.z;
   for (let i = 0; i < 10; i++) d.updateOndoden(0.05);
   const zNa = o.groep.position.z;
-  const uit = { meleeTimerNaTreffer, dichterbij: zNa > zVoor };
+  const uit = { aanvalStaatVoor, aanvalStaatNaTreffer, dichterbij: zNa > zVoor };
   d.doodOndode(o);
   return uit;
 });
-check('meleeTimer wordt nog altijd elk frame gereset (ongewijzigde melee-logica)',
-  meleeEnPathing.meleeTimerNaTreffer === 0, meleeEnPathing);
+check('Een treffer op een jagende (niet-aanvallende) ondode raakt aanvalStaat niet aan',
+  meleeEnPathing.aanvalStaatVoor === 'jaag' && meleeEnPathing.aanvalStaatNaTreffer === 'jaag', meleeEnPathing);
 check('De ondode loopt tijdens een flinch gewoon door richting de speler (pathing ongewijzigd)',
   meleeEnPathing.dichterbij, meleeEnPathing);
+
+// --- 7b. Onderbrekingsregels: headshot breekt een wind-up altijd af; een
+// lichaamstreffer alleen bij onderbreekbaarLichaam-types (Loper/Sluiper) ---
+const onderbreking = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  function windupOndode(type) {
+    for (const o of [...d.ondoden]) d.doodOndode(o);
+    const o = d.spawnOndode(0, type);
+    o.hp = 1000;
+    o.groep.position.set(0, 0, -10);
+    d.speler.positie.set(0, 0, 0);
+    o.aanvalStaat = 'windup';
+    o.aanvalTimer = 5;
+    return o;
+  }
+  const uit = {};
+
+  // Sjouwer (onderbreekbaarLichaam: false): lichaamstreffer breekt NIET af.
+  const sjouwer = windupOndode('sjouwer');
+  d.raakOndode(sjouwer, sjouwer.groep.position, false);
+  uit.sjouwerLichaam = sjouwer.aanvalStaat;
+  d.doodOndode(sjouwer);
+
+  // Sjouwer + headshot: breekt WEL altijd af.
+  const sjouwer2 = windupOndode('sjouwer');
+  d.raakOndode(sjouwer2, sjouwer2.groep.position, true);
+  uit.sjouwerKop = sjouwer2.aanvalStaat;
+  uit.sjouwerKopTimer = sjouwer2.aanvalTimer;
+  uit.sjouwerKopHerstelVerwacht = d.AANVAL_PROFIELEN.sjouwer.herstel * 0.5;
+  d.doodOndode(sjouwer2);
+
+  // Loper (onderbreekbaarLichaam: true): lichaamstreffer breekt WEL af.
+  const loper = windupOndode('loper');
+  d.raakOndode(loper, loper.groep.position, false);
+  uit.loperLichaam = loper.aanvalStaat;
+  d.doodOndode(loper);
+
+  return uit;
+});
+check('Sjouwer-windup: een lichaamstreffer onderbreekt NIET (onderbreekbaarLichaam: false)',
+  onderbreking.sjouwerLichaam === 'windup', onderbreking);
+check('Sjouwer-windup: een headshot onderbreekt ALTIJD (staat -> herstel, halve hersteltijd)',
+  onderbreking.sjouwerKop === 'herstel' &&
+  Math.abs(onderbreking.sjouwerKopTimer - onderbreking.sjouwerKopHerstelVerwacht) < 1e-9, onderbreking);
+check('Loper-windup: een lichaamstreffer onderbreekt WEL (onderbreekbaarLichaam: true)',
+  onderbreking.loperLichaam === 'herstel', onderbreking);
+
+// --- 7c. Dood tijdens een wind-up laat het aanvalsslot niet lekken --------
+// Een ECHTE jaag->windup-overgang (via updateOndoden) zodat actieveAanvallers
+// daadwerkelijk verhoogd wordt, dan een dodelijke treffer tijdens de wind-up.
+const slotVrijgave = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  d.spelStaat.golf = 1;   // 1 hp: sterft op de eerste treffer
+  const voorAlleTests = d.actieveAanvallers;
+  const o = d.spawnOndode(0, 'normaal');
+  o.groep.position.set(0.5, 0, 0);   // binnen AANVAL_START_BEREIK van de speler
+  d.speler.positie.set(0, 0, 0);
+  o.aanvalVertraging = 0;   // start de wind-up meteen, geen jitter-wachttijd
+  d.updateOndoden(0.02);
+  const staatVoorDood = o.aanvalStaat;
+  const aanvallersVoorDood = d.actieveAanvallers;
+  d.raakOndode(o, o.groep.position, true);   // headshot: dodelijk (1 hp op golf 1)
+  const aanvallersNaDood = d.actieveAanvallers;
+  return { voorAlleTests, staatVoorDood, aanvallersVoorDood, aanvallersNaDood };
+});
+check('De testondode start daadwerkelijk een wind-up (echte jaag->windup-overgang)',
+  slotVrijgave.staatVoorDood === 'windup' && slotVrijgave.aanvallersVoorDood === slotVrijgave.voorAlleTests + 1,
+  slotVrijgave);
+check('Een dodelijke treffer tijdens de wind-up geeft het aanvalsslot vrij (actieveAanvallers daalt weer)',
+  slotVrijgave.aanvallersNaDood === slotVrijgave.voorAlleTests, slotVrijgave);
 
 // --- 8. Regressie: power-up-drops uit dezelfde functie blijven werken ----
 const dropsRegressie = await page.evaluate(() => {
