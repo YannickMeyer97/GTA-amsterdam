@@ -131,7 +131,12 @@ te gaan naar het hoofdmenu.
   meteen) en **Kerninslag** (doodt alle levende ondoden nu meteen + geld
   per stuk). Raap je 'm niet binnen 12 seconden op, dan verdwijnt-ie weer.
 
-### Drie zones, elk met een eigen doel
+### Vijf zones in een lus, elk met een eigen doel
+
+Het huis is een rondlopende route: woonkamer → gang → atelier → binnenplaats
+→ kelderhals/bijkeuken → **terugdeur**, terug naar de woonkamer. Je kunt de
+lus dus in beide richtingen bewandelen — vooruit via de gewone koopdeuren,
+of achteruit vanuit de bijkeuken zodra je de terugdeur hebt opengemaakt.
 
 1. **De woonkamer** (start) — warm, veilig, leert je de basis. Ammo-kist
    (€300, +48 reserve-munitie) en het eerste upgradepunt (€500, schade +1,
@@ -152,6 +157,16 @@ te gaan naar het hoofdmenu.
    tweede, snellere wapen met zo'n dubbele munitiecapaciteit t.o.v. de
    Drukspuit. Wissel met `Q` tussen beide wapens; elk houdt zijn eigen
    magazijn en reservemunitie bij.
+5. **De kelderhals en de bijkeuken** (achter deur 3, €1200, vanuit de
+   binnenplaats) — een smalle, kale kelderhals met een kaal flikkerpeertje
+   (dezelfde sfeer als de gang) die uitkomt in de bijkeuken: een oude
+   achterkeuken met een eigen spawn-venster ("de steegdeur") en de
+   **Provisiekast** (€350, herbruikbaar, +48 reserve-munitie — een tweede
+   ammo-kist zodat je niet steeds helemaal terug naar de woonkamer hoeft).
+   Vanuit de bijkeuken opent de **terugdeur** (€800) een directe kortere
+   weg naar de woonkamer — ontgrendelt zelf geen nieuwe zone, maar sluit de
+   lus: ondoden vinden je voortaan via de kortste kant, ook al kom je de
+   andere kant op.
 
 ### Sfeer & techniek
 

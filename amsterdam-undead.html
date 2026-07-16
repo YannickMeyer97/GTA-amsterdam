@@ -306,7 +306,7 @@
     🚶 <b>WASD</b> lopen &nbsp;·&nbsp; 🖱️ <b>muis</b> kijken &nbsp;·&nbsp; <b>klik</b> schieten<br>
     🔫 <b>R</b> herladen &nbsp;·&nbsp; 🛒 <b>T</b> kopen/gebruiken &nbsp;·&nbsp; 🔄 <b>Q</b> wissel wapen &nbsp;·&nbsp; ⏸️ <b>Esc</b> pauze<br>
     <span style="opacity:0.85">🎯 Headshots doen dubbele schade én dubbel kill-geld</span><br>
-    <span style="opacity:0.85">🏠 Woonkamer → 🚪 het atelier (€500) → 🚪 de binnenplaats (€1000)</span><br>
+    <span style="opacity:0.85">🏠 Woonkamer → 🚪 het atelier (€500) → 🚪 de binnenplaats (€1000) → 🚪 de bijkeuken (€1200) → 🚪 de terugweg (€800)</span><br>
     <span style="opacity:0.85">🛠️ Elke zone heeft een eigen upgrade, ammo of beloning</span>
   </div>
   <div class="knop">Klik om te spelen</div>
@@ -418,6 +418,16 @@ const HALF_DIEPTE = 5;      // 10 m diep
 const KAMER_HOOGTE = 3.2;
 const MUUR_DIKTE = 0.3;
 
+// Map-lus (Tickets 24-26): deur 3/4-posities staan hier al vast (pure
+// literals, geen afhankelijkheden) zodat de muur-splitsingen hieronder
+// (woonkamer-oostmuur voor deur 4, binnenplaats-zuidmuur voor deur 3, ver
+// verderop in het bestand) ze zonder TDZ-problemen kunnen gebruiken.
+const DEUR3_X = 10;      // in de binnenplaats-zuidmuur (z = PLAATS_Z_ZUID)
+const DEUR3_HALF = 1;
+const DEUR4_Z = 0;       // in de woonkamer-oostmuur (x = HALF_BREEDTE)
+const DEUR4_HALF = 1;
+const ZUIDMUUR_HOOGTE = 2.25;   // hoogte van de binnenplaats-zuidmuur; deur3Mesh hergebruikt dit
+
 // Deurgat in de noordmuur (z = -HALF_DIEPTE): opening x ∈ [-DEUR_HALF, DEUR_HALF].
 const DEUR_HALF = 1;           // halve breedte van de deuropening
 const DEUR_Z = -HALF_DIEPTE;   // vlak van de noordmuur
@@ -522,7 +532,16 @@ const noordMuurZ = -HALF_DIEPTE - MUUR_DIKTE / 2;
 }
 bouwMuur(0, HALF_DIEPTE + MUUR_DIKTE / 2, HALF_BREEDTE * 2 + MUUR_DIKTE * 2, MUUR_DIKTE);    // zuidmuur (richting gracht)
 bouwMuur(-HALF_BREEDTE - MUUR_DIKTE / 2, 0, MUUR_DIKTE, HALF_DIEPTE * 2);                    // westmuur
-bouwMuur(HALF_BREEDTE + MUUR_DIKTE / 2, 0, MUUR_DIKTE, HALF_DIEPTE * 2);                     // oostmuur
+// Ticket 26 (Map-lus M3): oostmuur splitst in twee segmenten met een
+// deurgat z ∈ [DEUR4_Z ± DEUR4_HALF] voor deur 4 (de terugweg naar de
+// bijkeuken) — zelfde patroon als de noordmuur-splitsing hierboven.
+{
+  const oostMuurX = HALF_BREEDTE + MUUR_DIKTE / 2;
+  const noordDiepte = (DEUR4_Z - DEUR4_HALF) - (-HALF_DIEPTE);
+  const zuidDiepte = HALF_DIEPTE - (DEUR4_Z + DEUR4_HALF);
+  bouwMuur(oostMuurX, -HALF_DIEPTE + noordDiepte / 2, MUUR_DIKTE, noordDiepte);
+  bouwMuur(oostMuurX, HALF_DIEPTE - zuidDiepte / 2, MUUR_DIKTE, zuidDiepte);
+}
 
 /* ---- De gang + tweede kamer (achter de deur) --------------------
    Meteen gebouwd, maar pas bereikbaar zodra de deur gekocht is. Vloer en
@@ -646,7 +665,18 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
     return muur;
   }
   bouwBinnenplaatsMuur(PLAATS_CX, PLAATS_Z_NOORD - MUUR_DIKTE / 2, PLAATS_DIEPTE + MUUR_DIKTE * 2, MUUR_DIKTE, 1.85, GANG_PLEISTER);
-  bouwBinnenplaatsMuur(PLAATS_CX, PLAATS_Z_ZUID + MUUR_DIKTE / 2, PLAATS_DIEPTE + MUUR_DIKTE * 2, MUUR_DIKTE, 2.25, GANG_PLEISTER);
+  // Ticket 25 (Map-lus M2): de zuidmuur splitst in twee segmenten met een
+  // deurgat x ∈ [DEUR3_X ± DEUR3_HALF] voor deur 3 (binnenplaats -> kelderhals).
+  // ZUIDMUUR_HOOGTE gedeeld met deur3Mesh hieronder, zodat de deur-vulling
+  // altijd exact even hoog is als de muur waar hij in staat.
+  const ZUIDMUUR_XWEST = PLAATS_CX - (PLAATS_DIEPTE + MUUR_DIKTE * 2) / 2;   // = 4.2
+  const ZUIDMUUR_XOOST = PLAATS_CX + (PLAATS_DIEPTE + MUUR_DIKTE * 2) / 2;   // = 20.8
+  const zuidmuurWestBreedte = (DEUR3_X - DEUR3_HALF) - ZUIDMUUR_XWEST;
+  const zuidmuurOostBreedte = ZUIDMUUR_XOOST - (DEUR3_X + DEUR3_HALF);
+  bouwBinnenplaatsMuur(ZUIDMUUR_XWEST + zuidmuurWestBreedte / 2, PLAATS_Z_ZUID + MUUR_DIKTE / 2,
+    zuidmuurWestBreedte, MUUR_DIKTE, ZUIDMUUR_HOOGTE, GANG_PLEISTER);
+  bouwBinnenplaatsMuur(ZUIDMUUR_XOOST - zuidmuurOostBreedte / 2, PLAATS_Z_ZUID + MUUR_DIKTE / 2,
+    zuidmuurOostBreedte, MUUR_DIKTE, ZUIDMUUR_HOOGTE, GANG_PLEISTER);
   bouwBinnenplaatsMuur(PLAATS_X_OOST + MUUR_DIKTE / 2, DEUR2_Z, MUUR_DIKTE, PLAATS_BREEDTE + MUUR_DIKTE * 2, 2.55, GANG_PLEISTER);
 
   // --- Achtergevels, nepdoorgangen en balkonnetjes (v0.11) -----------------
@@ -846,6 +876,140 @@ const deur2Klink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), mat(0xb8
 deur2Klink.position.set(DEUR2_X + MUUR_DIKTE / 2 - 0.1, 1.0, DEUR2_Z - (DEUR2_HALF - 0.25));
 wereld.add(deur2Klink);
 const deur2Obstakel = registreerRechthoek(DEUR2_X, DEUR2_X + MUUR_DIKTE, DEUR2_Z - DEUR2_HALF, DEUR2_Z + DEUR2_HALF);
+
+// De koopbare deur 3 (Ticket 25, map-lus M2): zelfde patroon als deur 1/2,
+// maar in een HORIZONTALE muur (de binnenplaats-zuidmuur) — dus net als
+// deur 1 breed in x, dun in z. Vult het deurgat naar de kelderhals.
+const deur3Mesh = new THREE.Mesh(
+  new THREE.BoxGeometry(DEUR3_HALF * 2, ZUIDMUUR_HOOGTE - 0.2, MUUR_DIKTE),
+  mat(0x4a5058, 0.6, 0.2)   // zelfde "verweerd hout"-tint als deur 2
+);
+deur3Mesh.position.set(DEUR3_X, (ZUIDMUUR_HOOGTE - 0.2) / 2, PLAATS_Z_ZUID + MUUR_DIKTE / 2);
+deur3Mesh.castShadow = true;
+wereld.add(deur3Mesh);
+const deur3Klink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), mat(0xd8c47a, 0.4, 0.6));
+deur3Klink.position.set(DEUR3_X + (DEUR3_HALF - 0.25), 1.0, PLAATS_Z_ZUID + MUUR_DIKTE / 2 - 0.1);
+wereld.add(deur3Klink);
+const deur3Obstakel = registreerRechthoek(DEUR3_X - DEUR3_HALF, DEUR3_X + DEUR3_HALF, PLAATS_Z_ZUID, PLAATS_Z_ZUID + MUUR_DIKTE);
+
+// De koopbare deur 4 (Ticket 26, map-lus M3): de terugweg, gekocht vanaf de
+// BIJKEUKEN-kant (klink/kooppunt liggen daarom aan de +x-kant van de muur,
+// i.p.v. de -x-kant zoals bij deur 1/2/3). Zelfde patroon als deur 2 (ook
+// een verticale muur, dus dun in x, breed in z).
+const deur4Mesh = new THREE.Mesh(
+  new THREE.BoxGeometry(0.16, KAMER_HOOGTE - 0.2, DEUR4_HALF * 2),
+  mat(0x4a5058, 0.6, 0.2)   // zelfde "verweerd hout"-tint als deur 2/3
+);
+deur4Mesh.position.set(HALF_BREEDTE + MUUR_DIKTE / 2, (KAMER_HOOGTE - 0.2) / 2, DEUR4_Z);
+deur4Mesh.castShadow = true;
+wereld.add(deur4Mesh);
+const deur4Klink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), mat(0xb8c4cc, 0.4, 0.6));
+deur4Klink.position.set(HALF_BREEDTE + MUUR_DIKTE / 2 + 0.1, 1.0, DEUR4_Z - (DEUR4_HALF - 0.25));
+wereld.add(deur4Klink);
+const deur4Obstakel = registreerRechthoek(HALF_BREEDTE, HALF_BREEDTE + MUUR_DIKTE, DEUR4_Z - DEUR4_HALF, DEUR4_Z + DEUR4_HALF);
+
+// Ticket 24 (Map-lus M1): zone E (bijkeuken + kelderhals) — nieuwe
+// constanten, zie ARCHITECTURE_NOTES §4.7 voor de volledige plattegrond.
+const BIJKEUKEN_X_WEST = HALF_BREEDTE;    // = 4.5, gedeeld met de bestaande woonkamer-oostmuur
+const BIJKEUKEN_X_OOST = 12;
+const BIJKEUKEN_Z_NOORD = -4.5;
+const BIJKEUKEN_Z_ZUID = 4.5;
+const BIJKEUKEN_CX = (BIJKEUKEN_X_WEST + BIJKEUKEN_X_OOST) / 2;
+const BIJKEUKEN_CZ = (BIJKEUKEN_Z_NOORD + BIJKEUKEN_Z_ZUID) / 2;
+const KELDERHALS_X_WEST = 9;
+const KELDERHALS_X_OOST = 11;
+const KELDERHALS_Z_NOORD = PLAATS_Z_ZUID;      // = -7, gedeeld met de bestaande binnenplaats-zuidmuur
+const KELDERHALS_Z_ZUID  = BIJKEUKEN_Z_NOORD;  // = -4.5, open verbinding naar de bijkeuken (geen deur, zelfde zone)
+// DEUR3_X/DEUR3_HALF/DEUR4_Z/DEUR4_HALF staan bovenin het bestand (vóór de
+// woonkamer/binnenplaats-muren die ze splitsen, zie Ticket 25/26).
+
+/* ================================================================
+   ZONE E — DE BIJKEUKEN + KELDERHALS (Ticket 24, map-lus M1): geometrie-
+   schil in de bestaande "vrije pocket" (ARCHITECTURE_NOTES §4.4/4.7).
+   Volledig dicht: geen deuren, geen spawns, geen interacties (dat is
+   Ticket 25-27). Op de toekomstige deur 3/4-posities staat nu gewoon de
+   BESTAANDE muur (binnenplaats-zuidmuur resp. woonkamer-oostmuur) — die
+   wordt hier niet aangeraakt, dus de bijkeuken-westmuur en de
+   kelderhals-noordmuur worden hieronder bewust NIET opnieuw gebouwd.
+   GRENS verandert niet: de pocket lag er al binnen (§4.4).
+   ================================================================ */
+{
+  const BIJKEUKEN_TEGEL = 0x35424a;    // koel tegelblauw-grijs, eigen tint
+  const BIJKEUKEN_PLAFOND = 0x0e1114;
+  const KELDERHALS_TINT = 0x23211f;    // kaal, donker steen
+
+  // Vloer + plafond bijkeuken.
+  vlak(BIJKEUKEN_TEGEL, BIJKEUKEN_X_OOST - BIJKEUKEN_X_WEST, BIJKEUKEN_Z_ZUID - BIJKEUKEN_Z_NOORD,
+    BIJKEUKEN_CX, BIJKEUKEN_CZ, 0, false);
+  vlak(BIJKEUKEN_PLAFOND, BIJKEUKEN_X_OOST - BIJKEUKEN_X_WEST, BIJKEUKEN_Z_ZUID - BIJKEUKEN_Z_NOORD,
+    BIJKEUKEN_CX, BIJKEUKEN_CZ, KAMER_HOOGTE, true);
+
+  // Vloer + plafond kelderhals.
+  const kelderhalsCZ = (KELDERHALS_Z_NOORD + KELDERHALS_Z_ZUID) / 2;
+  vlak(KELDERHALS_TINT, KELDERHALS_X_OOST - KELDERHALS_X_WEST, KELDERHALS_Z_ZUID - KELDERHALS_Z_NOORD,
+    DEUR3_X, kelderhalsCZ, 0, false);
+  vlak(0x0a0908, KELDERHALS_X_OOST - KELDERHALS_X_WEST, KELDERHALS_Z_ZUID - KELDERHALS_Z_NOORD,
+    DEUR3_X, kelderhalsCZ, KAMER_HOOGTE, true);
+
+  // Muren: alleen de randen bouwen die nog nergens door een bestaande muur
+  // worden gedekt.
+  function bouwZoneEMuur(x, z, breedte, diepte, kleur) {
+    const muur = blok(breedte, KAMER_HOOGTE, diepte, kleur, 0.92);
+    muur.position.set(x, KAMER_HOOGTE / 2, z);
+    wereld.add(muur);
+    registreerRechthoek(x - breedte / 2, x + breedte / 2, z - diepte / 2, z + diepte / 2);
+  }
+  // Bijkeuken-noordmuur: twee segmenten met een open doorgang naar de
+  // kelderhals (x ∈ [KELDERHALS_X_WEST, KELDERHALS_X_OOST]) — geen deur,
+  // kelderhals en bijkeuken zijn dezelfde zone (E).
+  const noordZ = BIJKEUKEN_Z_NOORD - MUUR_DIKTE / 2;
+  {
+    const westBreedte = KELDERHALS_X_WEST - BIJKEUKEN_X_WEST;
+    bouwZoneEMuur(BIJKEUKEN_X_WEST + westBreedte / 2, noordZ, westBreedte, MUUR_DIKTE, BIJKEUKEN_TEGEL);
+    const oostBreedte = BIJKEUKEN_X_OOST - KELDERHALS_X_OOST;
+    bouwZoneEMuur(KELDERHALS_X_OOST + oostBreedte / 2, noordZ, oostBreedte, MUUR_DIKTE, BIJKEUKEN_TEGEL);
+  }
+  // Bijkeuken-zuidmuur (nieuw: niets anders dekt deze rand al af).
+  bouwZoneEMuur(BIJKEUKEN_CX, BIJKEUKEN_Z_ZUID + MUUR_DIKTE / 2,
+    BIJKEUKEN_X_OOST - BIJKEUKEN_X_WEST, MUUR_DIKTE, BIJKEUKEN_TEGEL);
+  // Bijkeuken-oostmuur (nieuw: scheidt van de rest-pocket met de nepgevel).
+  bouwZoneEMuur(BIJKEUKEN_X_OOST + MUUR_DIKTE / 2, BIJKEUKEN_CZ,
+    MUUR_DIKTE, BIJKEUKEN_Z_ZUID - BIJKEUKEN_Z_NOORD, BIJKEUKEN_TEGEL);
+  // Kelderhals-west/oostmuur (nieuw). Het noordeinde raakt de bestaande
+  // binnenplaats-zuidmuur — een kleine overlap daar is onschuldig (allebei
+  // muur); het zuideinde is de open verbinding naar de bijkeuken.
+  bouwZoneEMuur(KELDERHALS_X_WEST - MUUR_DIKTE / 2, kelderhalsCZ,
+    MUUR_DIKTE, KELDERHALS_Z_ZUID - KELDERHALS_Z_NOORD, KELDERHALS_TINT);
+  bouwZoneEMuur(KELDERHALS_X_OOST + MUUR_DIKTE / 2, kelderhalsCZ,
+    MUUR_DIKTE, KELDERHALS_Z_ZUID - KELDERHALS_Z_NOORD, KELDERHALS_TINT);
+}
+
+// Ticket 27 (Map-lus M4): zone-E-inhoud — spawn-venster (actief pas na
+// deur 3, zie koopDeur3()), Provisiekast-kooppunt (verderop bij de andere
+// interactiepunten) en decor zonder collision. Kiest bewust ver van deur 4
+// (spawn-camping-risico, zie ARCHITECTURE_NOTES §4.7/4.10).
+const VENSTERS_BIJKEUKEN = [
+  { x: 11.6, z: 2, zone: 'E', spanX: false },   // "de steegdeur" in de bijkeuken-oostmuur
+];
+
+// --- Bijkeuken-decor: keukenblok + fornuis + Provisiekast-planken (geen
+// collision — zelfde "meubelBox zonder registreerRechthoek"-patroon als
+// elders in het pand) --------------------------------------------------
+{
+  const houtK = 0x3f342a;
+  meubelBox(1.6, 0.85, 0.6, houtK, 6, 0.425, BIJKEUKEN_Z_NOORD + 0.5);          // keukenblok tegen de noordmuur
+  meubelBox(0.5, 0.5, 0.5, 0x4a4a4a, 5.2, 0.25, BIJKEUKEN_Z_NOORD + 0.7, 0.7, 0.35);   // fornuisblok ernaast
+  meubelBox(0.9, 0.05, 0.32, houtK, BIJKEUKEN_X_OOST - 1.2, 0.9, -0.5);         // Provisiekast-plank 1 (oostmuur)
+  meubelBox(0.9, 0.05, 0.32, houtK, BIJKEUKEN_X_OOST - 1.2, 1.35, -0.5);        // Provisiekast-plank 2
+  for (const [px, py] of [[BIJKEUKEN_X_OOST - 1.4, 1.0], [BIJKEUKEN_X_OOST - 1.0, 1.02], [BIJKEUKEN_X_OOST - 1.3, 1.45]]) {
+    meubelBox(0.16, 0.2, 0.16, 0x6b7b6f, px, py, -0.5, 0.6);   // potten op de planken
+  }
+}
+
+// Kelderhals-decor (kelderluik) kan hier nog geen hangLamp() gebruiken —
+// lampLichten (const) is pas verderop geïnitialiseerd — dus dat flikker-
+// peertje staat bij de gang-decor hieronder (V4-lampflikker-patroon).
+meubelBox(1.3, 0.06, 1.6, 0x2a241d, DEUR3_X, 0.03, (KELDERHALS_Z_NOORD + KELDERHALS_Z_ZUID) / 2);   // kelderluik
 
 // Ramen richting de gracht: op de zuidmuur, met een koel, donkerblauw
 // gloeiend "buiten"-vlak achter een houten kozijn.
@@ -1202,6 +1366,20 @@ bouwKleed(0, GANG_Z_MIDDEN, DEUR_HALF * 1.7, -HALF_DIEPTE - GANG_Z_EIND - 0.4, 0
 hangLamp(0, GANG_Z_MIDDEN, false, {
   bolKleur: 0x9fd9b0, emissief: 0x6fae82, lichtKleur: 0x7fcf9a,
   intensiteit: 5, amp1: 0.18, amp2: 0.08, minFactor: 0.35,
+});
+// Ticket 27: kelderhals krijgt hetzelfde kale flikkerpeertje-patroon —
+// zwakker en kouder, sluit thematisch aan bij de kelderdeur-spawn op de
+// binnenplaats. Het kelderluik zelf staat al bij het zone-E-decor hierboven.
+hangLamp(DEUR3_X, (KELDERHALS_Z_NOORD + KELDERHALS_Z_ZUID) / 2, false, {
+  bolKleur: 0xc9c2a8, emissief: 0x8a8060, lichtKleur: 0x9a9070,
+  intensiteit: 4, amp1: 0.22, amp2: 0.1, minFactor: 0.3,
+});
+// De bijkeuken zelf heeft geen dakraam (dat is uniek voor het atelier) en
+// zou zonder eigen lamp pikdonker zijn — een praktisch keukenlampje boven
+// het keukenblok, iets kouder/witter dan de warme woonkamerlampen.
+hangLamp(BIJKEUKEN_CX, BIJKEUKEN_Z_NOORD + 1.5, false, {
+  bolKleur: 0xe8e0c8, emissief: 0xd8c89a, lichtKleur: 0xdccca0,
+  intensiteit: 10, amp1: 0.05, amp2: 0.02, minFactor: 0.7,
 });
 // Warme lokgloed bij de atelier-drempel: trekt het oog vanuit de donkere gang
 // naar de volgende zone, zonder de gang zelf warm te maken.
@@ -1859,6 +2037,7 @@ let klok = 0;
 // via een steeds opnieuw willekeurig verzette drempel.
 let gangBetreden = false;
 let plaatsBetreden = false;
+let bijkeukenBetreden = false;   // Ticket 27: eenmalige kraak bij de eerste stap in de bijkeuken
 let volgendeKlokGeluid = 40 + Math.random() * 40;
 
 function probeerTeSchieten() {
@@ -1954,6 +2133,7 @@ function speelGameOver()  { piep('sawtooth', 300, 70, 0.5, 0.12); setTimeout(() 
 function speelGrachtklok() { piep('sine', 440, 380, 0.9, 0.05); setTimeout(() => piep('sine', 660, 560, 0.9, 0.035), 550); }
 function speelGangKraak()  { piep('sawtooth', 90, 40, 0.35, 0.06); }
 function speelWindvlaag()  { piep('sine', 200, 260, 1.1, 0.035); setTimeout(() => piep('sine', 180, 140, 1.3, 0.03), 300); }
+function speelBijkeukenKraak() { piep('sawtooth', 70, 30, 0.4, 0.055); }   // Ticket 27: eigen, iets lagere kraak dan de gang
 
 /* ================================================================
    STAP 6 — ONDODEN: originele low-poly vijanden, spawn + jagen + melee
@@ -2283,14 +2463,17 @@ function geefKerninslag() {
 const ZONE_SPAWN_INTERVAL_FACTOR = 0.85;
 const ZONE_MAX_ACTIEF_BONUS = 2;
 
+// Ticket 25: deur 3 telt hier WEL mee (kan dus 4 worden), maar de
+// pacing-functies hieronder klemmen op min(zones, 3) — ontwerpbeslissing 18:
+// de lus voegt route toe, geen extra dichtheid, plafond blijft 14/16/18.
 function aantalOntgrendeldeZones() {
-  return 1 + (deurGekocht ? 1 : 0) + (deur2Gekocht ? 1 : 0);   // A telt altijd mee
+  return 1 + (deurGekocht ? 1 : 0) + (deur2Gekocht ? 1 : 0) + (deur3Gekocht ? 1 : 0);   // A telt altijd mee
 }
 function effectiefSpawnInterval() {
-  return GOLF_SPAWN_INTERVAL * Math.pow(ZONE_SPAWN_INTERVAL_FACTOR, aantalOntgrendeldeZones() - 1);
+  return GOLF_SPAWN_INTERVAL * Math.pow(ZONE_SPAWN_INTERVAL_FACTOR, Math.min(aantalOntgrendeldeZones(), 3) - 1);
 }
 function effectiefMaxActief() {
-  return GOLF_MAX_ACTIEF + ZONE_MAX_ACTIEF_BONUS * (aantalOntgrendeldeZones() - 1);
+  return GOLF_MAX_ACTIEF + ZONE_MAX_ACTIEF_BONUS * (Math.min(aantalOntgrendeldeZones(), 3) - 1);
 }
 
 // Vensterpunten: dezelfde x-posities als de ramen op de zuidmuur (STAP 2),
@@ -2602,23 +2785,72 @@ function spawnWillekeurigeOndode() {
 // de speler af. De nis-opening (atelier) is bewust geen zone-grens: die is
 // breed genoeg dat de lokale ontwijk-logica die al aantoonbaar zelf vindt.
 function zoneVan(x, z) {
+  // Ticket 28 (map-lus M5): de E-tak (bijkeuken/kelderhals) moet vóór de
+  // woonkamer-check, want zone E ligt op dezelfde z-hoogte als de
+  // woonkamer (z > DEUR_Z) — alleen x >= DEUR2_X onderscheidt ze. Het
+  // binnenplaats-noordpuntje blijft zone 3: dat ligt op z <= PLAATS_Z_ZUID.
+  if (x >= DEUR2_X) return z > PLAATS_Z_ZUID ? 4 : 3;   // bijkeuken/kelderhals (E) of binnenplaats (D)
   if (z > DEUR_Z) return 0;        // woonkamer
-  // De binnenplaats steekt net iets noordelijker uit dan GANG_Z_EIND (zijn
-  // eigen breedte is losstaand ingesteld t.o.v. de gang), dus x >= DEUR2_X
-  // moet hier al vóór de gang-check gebeuren — anders valt dat noordpuntje
-  // van de binnenplaats ten onrechte in de gang-band. Puur op x checken kan
-  // ook niet zomaar bij de woonkamer (zie hierboven): DEUR2_X (oostmuur
-  // atelier) en HALF_BREEDTE (oostmuur woonkamer) hebben toevallig dezelfde
-  // waarde, vandaar dat de woonkamer-check op z altijd eerst gaat.
-  if (x >= DEUR2_X) return 3;      // binnenplaats
   if (z > GANG_Z_EIND) return 1;   // gang
   return 2;                        // atelier (incl. nis)
 }
-const ZONE_DEURPUNTEN = [
-  new THREE.Vector3(0, 0, DEUR_Z),         // woonkamer <-> gang
-  new THREE.Vector3(0, 0, GANG_Z_EIND),    // gang <-> atelier
-  new THREE.Vector3(DEUR2_X, 0, DEUR2_Z),  // atelier <-> binnenplaats
+// Ticket 28 (map-lus M5): zone-graaf A-B-C-D-E-A i.p.v. de lineaire spine.
+// Elke kant heeft een deurpunt (waar een ondode uit de andere zone naartoe
+// loopt) en een open-conditie (de bijbehorende koopbare deur; de gang<->
+// atelier-opening heeft er geen, die staat altijd open). De open-condities
+// zijn arrow-functions die `deurGekocht`/`deur2Gekocht`/`deur3Gekocht`/
+// `deur4Gekocht` pas uitlezen zodra ze AANGEROEPEN worden (in
+// herbouwNavTabel(), altijd ná de `let ...Gekocht`-declaraties verderop in
+// dit bestand) — geen TDZ-probleem, net als de bestaande hangLamp/
+// meubelBox-functies die ook later gedeclareerde consts gebruiken.
+const ZONE_GRAAF = [
+  [ // 0: woonkamer (A)
+    { naar: 1, deurpunt: new THREE.Vector3(0, 0, DEUR_Z), open: () => deurGekocht },
+    { naar: 4, deurpunt: new THREE.Vector3(HALF_BREEDTE, 0, DEUR4_Z), open: () => deur4Gekocht },
+  ],
+  [ // 1: gang (B)
+    { naar: 0, deurpunt: new THREE.Vector3(0, 0, DEUR_Z), open: () => deurGekocht },
+    { naar: 2, deurpunt: new THREE.Vector3(0, 0, GANG_Z_EIND), open: () => true },
+  ],
+  [ // 2: atelier (C)
+    { naar: 1, deurpunt: new THREE.Vector3(0, 0, GANG_Z_EIND), open: () => true },
+    { naar: 3, deurpunt: new THREE.Vector3(DEUR2_X, 0, DEUR2_Z), open: () => deur2Gekocht },
+  ],
+  [ // 3: binnenplaats (D)
+    { naar: 2, deurpunt: new THREE.Vector3(DEUR2_X, 0, DEUR2_Z), open: () => deur2Gekocht },
+    { naar: 4, deurpunt: new THREE.Vector3(DEUR3_X, 0, PLAATS_Z_ZUID), open: () => deur3Gekocht },
+  ],
+  [ // 4: bijkeuken/kelderhals (E)
+    { naar: 3, deurpunt: new THREE.Vector3(DEUR3_X, 0, PLAATS_Z_ZUID), open: () => deur3Gekocht },
+    { naar: 0, deurpunt: new THREE.Vector3(HALF_BREEDTE, 0, DEUR4_Z), open: () => deur4Gekocht },
+  ],
 ];
+// Next-hop-tabel: NAV_VOLGENDE[eigenZone][spelerZone] = het deurpunt waar een
+// ondode in eigenZone als eerste naartoe moet lopen om (kortste kant, BFS
+// over open kanten) bij spelerZone te komen, of null bij dezelfde zone
+// (dan rechtstreeks op de speler af). Herbouwd bij elke deuraankoop.
+let NAV_VOLGENDE = null;
+function herbouwNavTabel() {
+  const n = ZONE_GRAAF.length;
+  const tabel = [];
+  for (let start = 0; start < n; start++) {
+    const bezocht = new Array(n).fill(false);
+    const eersteDeur = new Array(n).fill(null);
+    bezocht[start] = true;
+    const wachtrij = [start];
+    while (wachtrij.length) {
+      const huidige = wachtrij.shift();
+      for (const kant of ZONE_GRAAF[huidige]) {
+        if (!kant.open() || bezocht[kant.naar]) continue;
+        bezocht[kant.naar] = true;
+        eersteDeur[kant.naar] = huidige === start ? kant.deurpunt : eersteDeur[huidige];
+        wachtrij.push(kant.naar);
+      }
+    }
+    tabel.push(eersteDeur);
+  }
+  NAV_VOLGENDE = tabel;
+}
 
 // Jagen op de speler + melee als ze dichtbij genoeg zijn. Hergebruikt
 // losBotsingenOp() uit STAP 3 zodat ondoden ook niet door muren lopen.
@@ -2640,14 +2872,14 @@ function updateOndoden(dt) {
     }
 
     // Zit de ondode in een andere zone dan de speler? Dan eerst op het
-    // eerstvolgende deurpunt af (zie zoneVan/ZONE_DEURPUNTEN hierboven) i.p.v.
-    // recht op de speler, anders vindt hij een deuropening een kamer verderop
-    // niet betrouwbaar. Binnen dezelfde zone blijft het gewoon rechtstreeks.
+    // eerstvolgende deurpunt af (Ticket 28: NAV_VOLGENDE, BFS over de
+    // zone-graaf i.p.v. de oude lineaire spine) i.p.v. recht op de speler,
+    // anders vindt hij een deuropening een kamer verderop niet betrouwbaar.
+    // Binnen dezelfde zone blijft het gewoon rechtstreeks.
     const eigenZone = zoneVan(positie.x, positie.z);
     const spelerZone = zoneVan(speler.positie.x, speler.positie.z);
-    const doelPunt = eigenZone < spelerZone ? ZONE_DEURPUNTEN[eigenZone]
-      : eigenZone > spelerZone ? ZONE_DEURPUNTEN[eigenZone - 1]
-      : speler.positie;
+    const volgendeDeur = eigenZone === spelerZone ? null : NAV_VOLGENDE[eigenZone][spelerZone];
+    const doelPunt = volgendeDeur || speler.positie;
     const naarDoel = new THREE.Vector3().subVectors(doelPunt, positie).setY(0);
 
     // Bij een lopende ontwijk-burst mengt de ondode een groot, vast aandeel
@@ -3092,6 +3324,9 @@ const SMEDERIJ_VLAM_BOOST = 1.5;   // feller mondingsvuur voor een gesmeed wapen
 const SNELSPANNER_PRIJS       = 600;   // eenmalig: sneller herladen
 const SNELSPANNER_HERLAADDUUR = 0.7;   // vervangt wapenStaat.herlaadDuur (was 1.2)
 const DEUR2_PRIJS  = 1000;             // v0.6: 1250->1000, opent de binnenplaats (zone D)
+const DEUR3_PRIJS  = 1200;             // Ticket 25: opent de kelderhals/bijkeuken (zone E)
+const DEUR4_PRIJS  = 800;              // Ticket 26: terugdeur, ontgrendelt geen zone
+const PROVISIEKAST_PRIJS = 350;        // Ticket 27: tweede ammo-kist, in de bijkeuken
 const WATERTAP_PRIJS = 200;            // herbruikbaar: geld voor HP
 const WATERTAP_HP    = 50;             // hp per gebruik (gecapt op hpMax)
 const PANTSERDRANK_PRIJS    = 1000;    // v0.7: eenmalige perk in het atelier
@@ -3179,7 +3414,7 @@ function repareerBarricade(venster) {
   updateHUD();
 }
 
-for (const venster of [...VENSTERS, ...VENSTERS_KAMER2, ...VENSTERS_PLAATS]) bouwBarricade(venster);
+for (const venster of [...VENSTERS, ...VENSTERS_KAMER2, ...VENSTERS_PLAATS, ...VENSTERS_BIJKEUKEN]) bouwBarricade(venster);
 
 // Golf-gestuurde spawn (zie updateGolf): kiest een venster; is die
 // gebarricadeerd, dan wordt er eerst op de planken gebeukt (geen ondode
@@ -3309,6 +3544,20 @@ const werkbankMarkering = interactieMarkering(WERKBANK_X, WERKBANK_Z, 0xff9f5a);
 // Op de atelierkant (net als deurMarkering vóór deur 1 op de kamer-1-kant
 // staat), niet aan de binnenplaats-kant erachter (bugfix na code-review).
 const deur2Markering = interactieMarkering(DEUR2_X - 0.7, DEUR2_Z, 0x9fc0e8);
+// Ticket 25: deur3-markering staat aan de PLAATS-kant (waar je 'm koopt),
+// z-offset i.p.v. x-offset omdat deze deur in een horizontale muur zit.
+const deur3Markering = interactieMarkering(DEUR3_X, PLAATS_Z_ZUID - 0.7, 0x9fc0e8);
+// Ticket 26: deur4-markering staat aan de BIJKEUKEN-kant (x ≈ 6.8, zie
+// ARCHITECTURE_NOTES §4.7) — je koopt de terugweg pas als je de lus
+// (bijna) rond bent, dus vanuit de nieuwe kamer, niet vanuit de woonkamer.
+// Bugfix: op x ≈ 5.2 reikte de radius (1.6) dwars door de 0.3m-dikke muur
+// heen terug de (altijd-open) woonkamer in — x ≈ 6.8 geeft een veilige marge.
+const deur4Markering = interactieMarkering(HALF_BREEDTE + MUUR_DIKTE + 2.0, DEUR4_Z, 0xc9a86b);
+// Ticket 27: Provisiekast staat bij haar eigen decor-planken tegen de
+// bijkeuken-oostmuur (zelfde positie als de meubelBox-planken hierboven).
+const PROVISIEKAST_X = BIJKEUKEN_X_OOST - 1.3;
+const PROVISIEKAST_Z = -0.5;
+const provisiekastMarkering = interactieMarkering(PROVISIEKAST_X, PROVISIEKAST_Z, 0xd8c47a);
 
 // --- Watertap (Ticket V5): herbruikbaar, geld voor HP (risk/reward) ------
 const WATERTAP_X = PLAATS_CX + 1.5;
@@ -3370,12 +3619,27 @@ function koopDeur() {
   speelKoop();
   toonMelding('Deur geforceerd — de tweede kamer is nu open');
   toonGolfBanner('HET ATELIER', 'nieuwe toegang geopend');
+  herbouwNavTabel();
   updateHUD();
 }
 
 function koopAmmo() {
   if (spelStaat.geld < AMMO_PRIJS) { toonMelding(`Nog €${AMMO_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
   spelStaat.geld -= AMMO_PRIJS;
+  wapenStaat.reserve += AMMO_KIST_KOGELS;
+  speelKoop();
+  toonMelding(`+${AMMO_KIST_KOGELS} reserve-munitie`);
+  updateAmmoUI();
+  updateHUD();
+}
+
+// De Provisiekast (Ticket 27): tweede ammo-kist in de bijkeuken, letterlijk
+// hetzelfde AMMO_KIST_KOGELS-effect als koopAmmo() maar een eigen prijs —
+// zodat herbevoorraden vanuit zone E niet altijd een terugtocht naar de
+// woonkamer vergt.
+function koopProvisiekast() {
+  if (spelStaat.geld < PROVISIEKAST_PRIJS) { toonMelding(`Nog €${PROVISIEKAST_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  spelStaat.geld -= PROVISIEKAST_PRIJS;
   wapenStaat.reserve += AMMO_KIST_KOGELS;
   speelKoop();
   toonMelding(`+${AMMO_KIST_KOGELS} reserve-munitie`);
@@ -3486,6 +3750,55 @@ function koopDeur2() {
   speelKoop();
   toonMelding('Deur geforceerd — de binnenplaats is nu open');
   toonGolfBanner('DE BINNENPLAATS', 'nieuwe toegang geopend');
+  herbouwNavTabel();
+  updateHUD();
+}
+
+// Deur 3 (Ticket 25, map-lus M2): opent zone E (kelderhals + bijkeuken).
+// Zelfde patroon als koopDeur2(); herbouwNavTabel() (Ticket 28) zorgt dat
+// ondoden de nieuwe D-E-kant vanaf nu kunnen gebruiken.
+let deur3Gekocht = false;
+function koopDeur3() {
+  if (deur3Gekocht) return;
+  if (spelStaat.geld < DEUR3_PRIJS) { toonMelding(`Nog €${DEUR3_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  spelStaat.geld -= DEUR3_PRIJS;
+  deur3Gekocht = true;
+  wereld.remove(deur3Mesh);
+  wereld.remove(deur3Klink);
+  wereld.remove(deur3Markering);
+  const oi = obstakels.indexOf(deur3Obstakel);
+  if (oi !== -1) obstakels.splice(oi, 1);
+  const pi = interactiePunten.indexOf(deur3Punt);
+  if (pi !== -1) interactiePunten.splice(pi, 1);
+  // Ticket 27: het bijkeuken-venster wordt pas nu een echte spawnplek
+  // (patroon koopDeur2()/VENSTERS_PLAATS) — vóór deur 3 is zone E veilig.
+  for (const v of VENSTERS_BIJKEUKEN) VENSTERS.push(v);
+  speelKoop();
+  toonMelding('Deur geforceerd — de kelderhals is nu open');
+  toonGolfBanner('DE BIJKEUKEN', 'nieuwe toegang geopend');
+  herbouwNavTabel();
+  updateHUD();
+}
+
+// Deur 4 (Ticket 26, map-lus M3): de terugweg, woonkamer <-> bijkeuken.
+// Ontgrendelt GEEN zone (ontwerpbeslissing 18: aantalOntgrendeldeZones()
+// negeert deur 4 bewust) — daarom een gewone melding i.p.v. een zone-banner.
+let deur4Gekocht = false;
+function koopDeur4() {
+  if (deur4Gekocht) return;
+  if (spelStaat.geld < DEUR4_PRIJS) { toonMelding(`Nog €${DEUR4_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  spelStaat.geld -= DEUR4_PRIJS;
+  deur4Gekocht = true;
+  wereld.remove(deur4Mesh);
+  wereld.remove(deur4Klink);
+  wereld.remove(deur4Markering);
+  const oi = obstakels.indexOf(deur4Obstakel);
+  if (oi !== -1) obstakels.splice(oi, 1);
+  const pi = interactiePunten.indexOf(deur4Punt);
+  if (pi !== -1) interactiePunten.splice(pi, 1);
+  speelKoop();
+  toonMelding('De terugweg is open');
+  herbouwNavTabel();
   updateHUD();
 }
 
@@ -3568,6 +3881,31 @@ const watertapPunt = {
     : `Druk T: regenwater tappen (€${WATERTAP_PRIJS} -> +${WATERTAP_HP} HP)`,
   actie: koopWatertap,
 };
+// Ticket 25: deur3Punt staat aan de PLAATS-kant (zelfde kant als de markering).
+const deur3Punt = {
+  naam: 'Deur 3',
+  positie: new THREE.Vector3(DEUR3_X, 0, PLAATS_Z_ZUID - 0.7),
+  radius: 1.6,
+  prompt: () => `Druk T: forceer de deur (€${DEUR3_PRIJS})`,
+  actie: koopDeur3,
+};
+// Ticket 26: deur4Punt staat aan de BIJKEUKEN-kant (zelfde kant als de markering).
+// Bugfix: x ≈ 5.2 liet de radius dwars door de muur heen de woonkamer
+// bereiken; x ≈ 6.8 (2.3m van de muur) voorkomt dat definitief.
+const deur4Punt = {
+  naam: 'Deur 4',
+  positie: new THREE.Vector3(HALF_BREEDTE + MUUR_DIKTE + 2.0, 0, DEUR4_Z),
+  radius: 1.6,
+  prompt: () => `Druk T: open de terugweg (€${DEUR4_PRIJS})`,
+  actie: koopDeur4,
+};
+const provisiekastPunt = {
+  naam: 'Provisiekast',
+  positie: new THREE.Vector3(PROVISIEKAST_X, 0, PROVISIEKAST_Z),
+  radius: 1.5,
+  prompt: () => `Druk T: munitie bijvullen (€${PROVISIEKAST_PRIJS})`,
+  actie: koopProvisiekast,
+};
 // Ticket 12: smeedt het ACTIEVE wapen — de prompt volgt dus mee als je wisselt (Q).
 const smederijPunt = {
   naam: 'De Smederij',
@@ -3578,7 +3916,7 @@ const smederijPunt = {
     : `Druk T: smeed ${wapenStaat.definitie.naam} (€${SMEDERIJ_PRIJS})`,
   actie: koopSmederij,
 };
-const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, pantserdrankPunt, deur2Punt, watertapPunt, ratelaarPunt, smederijPunt];
+const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, pantserdrankPunt, deur2Punt, watertapPunt, ratelaarPunt, smederijPunt, deur3Punt, deur4Punt, provisiekastPunt];
 
 let huidigeInteractie = null;
 
@@ -3644,6 +3982,15 @@ function gameLoop(nu) {
         speler.positie.z > PLAATS_Z_NOORD && speler.positie.z < PLAATS_Z_ZUID) {
       plaatsBetreden = true; speelWindvlaag();
     }
+    // Ticket 27: eenmalige kraak bij de eerste stap in de bijkeuken zelf
+    // (niet de kelderhals — dat blijft stil, net als de gang vóór de deur).
+    // De bijkeuken-z-band (> BIJKEUKEN_Z_NOORD) ligt volledig buiten de
+    // binnenplaats-z-band hierboven (< PLAATS_Z_ZUID), dus de twee triggers
+    // kunnen elkaar nooit overlappen.
+    if (!bijkeukenBetreden && speler.positie.x > BIJKEUKEN_X_WEST && speler.positie.x < BIJKEUKEN_X_OOST &&
+        speler.positie.z > BIJKEUKEN_Z_NOORD && speler.positie.z < BIJKEUKEN_Z_ZUID) {
+      bijkeukenBetreden = true; speelBijkeukenKraak();
+    }
     if (klok > volgendeKlokGeluid) { speelGrachtklok(); volgendeKlokGeluid = klok + 40 + Math.random() * 40; }
   }
   updateVignet(dt);
@@ -3667,6 +4014,7 @@ function gameLoop(nu) {
 
   renderer.render(scene, camera);
 }
+herbouwNavTabel();   // Ticket 28: eenmalige initiële tabel (lijn-graaf, alle deuren dicht)
 requestAnimationFrame(gameLoop);
 
 // Debug-hooks voor Playwright-tests (zelfde patroon als DamChaosDebug).
@@ -3803,6 +4151,24 @@ window.AmsterdamUndeadDebug = {
       ratio: oppervlakteTotaal / oppervlakteStartkamer,
     };
   })(),
+  // Ticket 24 (Map-lus M1): zone E-constanten (geometrie-schil, nog dicht)
+  BIJKEUKEN_X_WEST, BIJKEUKEN_X_OOST, BIJKEUKEN_Z_NOORD, BIJKEUKEN_Z_ZUID,
+  BIJKEUKEN_CX, BIJKEUKEN_CZ,
+  KELDERHALS_X_WEST, KELDERHALS_X_OOST, KELDERHALS_Z_NOORD, KELDERHALS_Z_ZUID,
+  DEUR3_X, DEUR3_HALF, DEUR4_Z, DEUR4_HALF,
+  // Ticket 25 (Map-lus M2): deur 3 — binnenplaats -> kelderhals
+  DEUR3_PRIJS, koopDeur3, deur3Mesh, deur3Obstakel, deur3Punt,
+  get deur3Gekocht() { return deur3Gekocht; },
+  // Ticket 26 (Map-lus M3): deur 4 — terugweg, bijkeuken -> woonkamer
+  DEUR4_PRIJS, koopDeur4, deur4Mesh, deur4Obstakel, deur4Punt,
+  get deur4Gekocht() { return deur4Gekocht; },
+  // Ticket 27 (Map-lus M4): zone-E-inhoud — venster, Provisiekast, audio
+  VENSTERS_BIJKEUKEN, PROVISIEKAST_PRIJS, koopProvisiekast, provisiekastPunt,
+  get bijkeukenBetreden() { return bijkeukenBetreden; },
+  set bijkeukenBetreden(v) { bijkeukenBetreden = v; },
+  // Ticket 28 (Map-lus M5): zone-navigatie als graaf
+  zoneVan, ZONE_GRAAF, herbouwNavTabel,
+  get NAV_VOLGENDE() { return NAV_VOLGENDE; },
 };
 </script>
 </body>
