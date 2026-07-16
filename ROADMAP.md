@@ -621,7 +621,7 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 
 ---
 
-# v0.15+ — Fable-architectuurronde 2: power-ups, Smederij-visuals, zombie-herwerking en map-lus (gepland, nog NIET geïmplementeerd)
+# v0.15+ — Fable-architectuurronde 2: power-ups, Smederij-visuals, zombie-herwerking en map-lus ✅ (Tickets 16-29 uitgevoerd)
 
 Ontworpen door Claude Fable ná de uitvoering van v0.14 (fases 1–5 zijn
 geïmplementeerd); uitvoering later door Claude Sonnet, één ticket per keer.
@@ -1070,6 +1070,607 @@ fase 9: beide herschrijven een andere helft van `updateOndoden()`.
   mechanica.
 - **Testplan:** `tests/run-all.mjs` + reachability + screenshots.
 - **Rollback:** tekstueel.
+- **Sonnet solo:** ja.
+
+---
+
+# v0.16 — Fable-architectuurronde 3: combat-leesbaarheid, schietfeedback, winkel-identiteit en sfeer (gepland, nog NIET geïmplementeerd)
+
+Vijf verbetergebieden in één samenhangende ronde: (1) leesbare en
+ontwijkbare aanvallen, (2) sterkere schietfeedback, (3) de Smederij naar
+de bijkeuken, (4) uniek silhouet + eigen lichtkleur per winkel, (5)
+sfeer, materiaalgevoel en vijandleesbaarheid. Architectuur staat vast in
+`ARCHITECTURE_NOTES.md` §5 + ontwerpbeslissingen 21–32; de tickets
+hieronder zijn implementatie, geen ontwerp. Volgorde: 30 → 41, fases:
+
+- **Fase 10 — aanvalsleesbaarheid**: T30, T31 (verbetergebied 1)
+- **Fase 11 — schietfeedback**: T32, T33, T34 (verbetergebied 2)
+- **Fase 12 — winkel-identiteit**: T35, T36, T37 (verbetergebieden 3+4)
+- **Fase 13 — sfeer & leesbaarheid**: T38, T39, T40 (verbetergebied 5)
+- **Fase 14 — integratie**: T41
+
+## Ticket 30 — Aanval A1: aanvals-state-machine met wind-up (VOORZICHTIG)
+- **Type:** Gameplay-refactor
+- **Verbetergebied:** 1 (leesbare/ontwijkbare aanvallen)
+- **Prioriteit:** hoog — fundament van de ronde
+- **Status:** open
+- **Doel:** een ondode doet nooit meer schade zonder zichtbare aanloop.
+  De speler kan elke aanval ontwijken door afstand, zijwaartse beweging
+  of positionering.
+- **Huidige situatie:** contactschade in de melee-branch van
+  `updateOndoden()` (`afstand <= MELEE_BEREIK` → `spelerSchade(15)`);
+  `ondode.meleeTimer = 0` onderaan de loop maakt de eerste frame binnen
+  1.2 m meteen raak. Geen wind-up, geen hoekcheck, geen muurcheck.
+- **Gewenste situatie:** per ondode `aanvalStaat`
+  ('jaag'/'windup'/'herstel') + `aanvalTimer` + `aanvalVertraging`;
+  raakcheck als discreet slag-moment op de overgang windup→herstel
+  (afstand ≤ raakBereik ∧ hoek ≤ raakHoek ∧ middelpunt vrij via
+  `isVrijePlek`); tijdens windup staat de ondode stil en draait beperkt
+  (`AANVAL_DRAAI_SNELHEID`); herstel op 40% loopsnelheid; maximaal
+  `MAX_AANVALLERS = 2` gelijktijdige wind-ups + startjitter; headshot
+  onderbreekt altijd, lichaamstreffer alleen Loper/Sluiper
+  (`AANVAL_PROFIELEN`, zie ARCHITECTURE_NOTES §5.2 voor de exacte
+  tabel). `MELEE_*`-constanten vervallen.
+- **Codegebieden:** `updateOndoden()` (UITSLUITEND de melee-branch +
+  het frame-einde-blok met de meleeTimer-reset), `spawnOndode()`
+  (nieuwe statevelden), `raakOndode()` (onderbrekingshaakje),
+  `doodOndode()` (aanvaller-slot vrijgeven), nieuw constants-blok,
+  debug-export (`AANVAL_PROFIELEN`, `MAX_AANVALLERS`, per-ondode
+  `aanvalStaat` is al bereikbaar via `d.ondoden[i]`,
+  `get actieveAanvallers()`).
+- **Buiten scope:** elke visuele/audio-tell (T31), navigatie- en
+  animatie-helft van `updateOndoden`, Brander-explosie (ongewijzigd).
+- **Randgevallen:** dood tijdens windup (slot vrijgeven); knockback
+  duwt aanvaller buiten raakbereik (slag mist — gewenst); speler in de
+  kelderhals met dichte deur ertussen (middelpunt-check blokkeert);
+  meerdere ondoden in de 2m-kelderhals (slots begrenzen de stapel);
+  game over tijdens windup (spelerSchade checkt gameOver al); dt-spike
+  (clamp 0.05 + discrete overgang = nooit dubbele schade).
+- **Performancevoorwaarden:** geen allocaties per frame (state op het
+  bestaande ondode-object; jitterloting hergebruikt Math.random);
+  `isVrijePlek` alleen op het slag-moment, niet per frame.
+- **Acceptatiecriteria:**
+  - Een ondode past pas schade toe nadat de wind-up volledig is
+    verstreken; op de eerste frame binnen bereik valt NOOIT schade.
+  - De aanval mist als de speler op het slag-moment buiten
+    `raakBereik` staat of buiten de `raakHoek`-kegel is gestapt.
+  - Een aanval raakt nooit door een muur of dichte deur heen
+    (middelpunt-check).
+  - Nooit meer dan 2 ondoden tegelijk in 'windup'.
+  - Een headshot tijdens de wind-up breekt de aanval af (staat →
+    'herstel'); een lichaamstreffer doet dat alleen bij Loper/Sluiper.
+  - Sjouwer: wind-up ≥ 0.85 s en schade 25; Loper/Sluiper korter maar
+    onderbreekbaar (waarden uit `AANVAL_PROFIELEN`).
+  - `tests/test-ondode-hitreacties.mjs`-check "meleeTimer wordt elk
+    frame gereset" is vervangen door state-machine-checks (zelfde
+    ticket) en de hele suite is groen.
+- **Testplan:** nieuwe `tests/test-aanval-machine.mjs`: (a) ondode op
+  1.0 m + `updateOndoden(dt)`-stappen → geen schade vóór windup-duur,
+  wel daarna; (b) speler verplaatsen vlak vóór het slag-moment → HP
+  ongewijzigd; (c) hoek-ontwijking (zijwaarts) → mis; (d) 4 ondoden
+  aanliggend → hooguit 2 in windup; (e) headshot-onderbreking per type;
+  (f) muur-tussenin → mis; (g) DPS-pariteit: zonder reactie ±15 HP per
+  1.25 s (normaal). Volledige `tests/run-all.mjs` + load-check.
+- **Risico's:** de drukste functie van het spel; alleen de
+  melee-branch aanraken. De oude MELEE-constanten in één keer
+  verwijderen (geen dubbele waarheden).
+- **Rollback:** één commit; revert herstelt contactschade.
+- **Sonnet solo:** ja, maar NOOIT combineren met een ander ticket.
+
+## Ticket 31 — Aanval A2: zichtbare en hoorbare tells
+- **Type:** Presentatie
+- **Verbetergebied:** 1
+- **Prioriteit:** hoog
+- **Status:** open
+- **Afhankelijk van:** T30
+- **Doel:** de wind-up is op afstand en in de mist herkenbaar vóórdat
+  de slag valt; raak en mis klinken verschillend.
+- **Huidige situatie:** T30 levert de states maar de enige "tell" is
+  dat de ondode stilstaat. Armen zwaaien in de loop-animatie
+  (`delen.armL/armR`, `ARM_RUST_ROTATIE_X = -0.5`); het oog-materiaal
+  is één gedeeld material per ondode maar staat niet in `delen`.
+- **Gewenste situatie:** tijdens 'windup' lerpen de arm-pivots naar
+  -1.9 rad (hoog geheven), het hoofd kantelt licht achterover en
+  `delen.oogMateriaal.emissiveIntensity` pulst 1.4 → 2.6; in 'herstel'
+  zakken de armen terug over de halve herstelduur.
+  `maakOndodeModel()` zet het oog-materiaal op `delen.oogMateriaal`.
+  Audio: `speelAanvalGrom(type)` bij windup-start (Sjouwer laag/lang,
+  Loper/Sluiper kort/schril), `speelSlagRaak()` bij raak (bovenop
+  `speelSpelerAu`), `speelSlagMis()` (whoosh) bij mis.
+- **Codegebieden:** `maakOndodeModel()` (delen.oogMateriaal),
+  animatie-helft van `updateOndoden()` (windup/herstel-pose overschrijft
+  de loop-zwaai voor die ondode), audio-functies, T30's
+  slag-moment-code (raak/mis-audio-aanroep), debug-export.
+- **Buiten scope:** de state-machine-logica zelf (T30), per-type
+  gang-ritmes (T39).
+- **Randgevallen:** 'eenarmig'-profiel (geen `armL` — alle arm-writes
+  via `if (delen.armL)`); windup onderbroken (armen zakken via het
+  herstel-pad); pauze tijdens windup (pose bevriest — updates staan in
+  de `spelActief`-tak).
+- **Performancevoorwaarden:** de arm-/hoofd-writes VERVANGEN de
+  loop-zwaai-writes (netto 0 extra); oog-materiaalwrite alleen voor de
+  ≤ 2 actieve aanvallers; geen nieuwe meshes of lights.
+- **Acceptatiecriteria:**
+  - Tijdens 'windup' staan beide aanwezige armen binnen 0.2 s zichtbaar
+    hoger dan `ARM_RUST_ROTATIE_X` en bereiken -1.9 ± 0.1 rad op het
+    slag-moment.
+  - `delen.oogMateriaal.emissiveIntensity` > 2.0 halverwege de wind-up
+    en exact terug op de basiswaarde na herstel.
+  - Windup-start speelt hoorbaar een grom (audio-functie aangeroepen —
+    testbaar via een debug-teller of spy), raak en mis spelen
+    verschillende geluiden.
+  - Een eenarmige ondode werpt geen console-errors tijdens de tell.
+- **Testplan:** `tests/test-aanval-tells.mjs`: pose-waarden op
+  windup-fracties, oog-intensiteit vóór/tijdens/na, eenarmig-profiel
+  geforceerd via traits-injectie, audio-aanroepen via een
+  debug-hook-teller. Regressie: `test-ondode-animatie.mjs` blijft
+  groen (loop-zwaai buiten windup ongewijzigd).
+- **Rollback:** presentatie-only; revert laat T30 kaal maar werkend.
+- **Sonnet solo:** ja.
+
+## Ticket 32 — Feedback F1: effecten-pool, tracers en impact-deeltjes
+- **Type:** Infrastructuur + visueel
+- **Verbetergebied:** 2
+- **Prioriteit:** hoog — fundament voor T33/T34/T38
+- **Status:** open
+- **Doel:** elk schot is traceerbaar (tracer), elke treffer stoffelijk
+  (deeltjes), zonder allocaties of `setTimeout` in het hot path.
+- **Huidige situatie:** `schiet()` bouwt bij een wereld-raak een
+  `vonk`-mesh (nieuwe geometry+material) en ruimt op via
+  `setTimeout(150)`; `raakOndode()` idem met `bloedvonk`. Geen tracers.
+- **Gewenste situatie:** gepoold systeem (ARCHITECTURE_NOTES §5.5):
+  `TRACER_MAX = 8`, `IMPACT_MAX = 24`, gedeelde geometry, gecachete
+  `MeshBasicMaterial`s, `spawnTracer(van, naar, kleur)` +
+  `spawnImpact(punt, kleur, aantal)` + `updateEffecten(dt)` in de
+  `spelActief`-tak. `vonk`/`bloedvonk` vervallen. Elke schot krijgt
+  een tracer van de vlam-wereldpositie naar het raakpunt (of 30 m);
+  vijand-treffer = 3 donkerrode deeltjes, headshot = 5 lichtere,
+  wereld-treffer = 3 deeltjes in `userData.materiaalFamilie`-kleur
+  (default 'steen' zolang T38 nog niet bestaat).
+- **Codegebieden:** nieuw effecten-blok (constanten, pools, spawn- en
+  update-functies, module-temp-vectors), `schiet()`, `raakOndode()`,
+  `gameLoop` (updateEffecten-aanroep), debug-export (`spawnTracer`,
+  `spawnImpact`, `actieveEffecten`, `TRACER_MAX`, `IMPACT_MAX`).
+- **Buiten scope:** hitmarker/audio (T33), camera-kick/spread (T34),
+  materiaal-families zelf (T38), de Brander-flits (gedocumenteerde
+  uitzondering, blijft).
+- **Randgevallen:** poolverzadiging (oudste actieve recyclen, nooit
+  alloceren); pauze midden in een tracer-leven (bevriest); schot zonder
+  raakpunt (tracer naar raycaster.far); wapenwissel direct na schot
+  (tracer-oorsprong is al in wereldruimte — geen koppeling met de
+  camera meer).
+- **Performancevoorwaarden:** 0 allocaties per schot na opwarmen; geen
+  `setTimeout`; ≤ 8 + 24 actieve effect-meshes; gedeelde geometry.
+- **Acceptatiecriteria:**
+  - Na 60 schoten bestaan er hooguit `TRACER_MAX` tracer-meshes en
+    `IMPACT_MAX` impact-meshes in de scene (pool-hergebruik).
+  - `schiet()`/`raakOndode()` bevatten geen `new THREE.`-aanroepen en
+    geen `setTimeout` meer (codecheck in de test via functie-source).
+  - Een headshot toont zichtbaar meer/lichtere deeltjes dan een
+    lichaamstreffer.
+  - Tijdens pauze beweegt geen enkel actief effect.
+- **Testplan:** `tests/test-effecten-pool.mjs`: pool-plafonds na
+  spam, function-source-check op `setTimeout`/`new THREE.` in de hot
+  paths, headshot-vs-body deeltjesaantal, pauze-bevriezing (positie
+  vóór/na met pointer-lock uit), tracer-oorsprong ≈ vlam-wereldpositie.
+  Volledige regressie.
+- **Risico's:** hot-path-refactor; de raycast-logica zelf NIET wijzigen.
+- **Rollback:** één commit; revert herstelt vonk/bloedvonk.
+- **Sonnet solo:** ja.
+
+## Ticket 33 — Feedback F2: hitmarker-tiers en treffer-audio
+- **Type:** HUD + audio
+- **Verbetergebied:** 2
+- **Prioriteit:** hoog
+- **Status:** open
+- **Afhankelijk van:** T32
+- **Doel:** raak, headshot en kill zijn zonder kijken naar de vijand
+  van elkaar te onderscheiden — op het crosshair en op het gehoor.
+- **Huidige situatie:** `speelTreffer()` is identiek voor alles; kill
+  heeft geen eigen geluid; er is geen hitmarker; `speelHerlaad()` speelt
+  zijn tweede piep via een vaste `setTimeout(900)` die niet klopt met
+  `herlaadDuurSnel` en doorloopt tijdens pauze; leeg magazijn heeft wel
+  `speelDroogKlik()` maar geen visuele cue.
+- **Gewenste situatie:** één `#hitmarker`-DOM-element (vier streepjes
+  rond het crosshair) met drie tiers (raak wit 120 ms / headshot amber
+  groter / kill oranjerood grootst+langst), dt-gedreven decay (zelfde
+  patroon als `updateVignet`). Audio-tiers: `speelRaakTik`,
+  `speelKopTik`, `speelKillKnak`, elk met ±5% pitch-variatie.
+  Herlaad-audio gesplitst: start-geluid in `herladen()`, klaar-geluid
+  in `updateWapen()` op het echte voltooiingsmoment (setTimeout weg).
+  Leeg magazijn: ammo-UI knippert kort via een CSS-klasse.
+- **Codegebieden:** HUD-HTML/CSS (hitmarker + ammo-leeg-klasse),
+  `raakOndode()` (tier-keuze), `probeerTeSchieten()` (leeg-cue),
+  `herladen()`/`updateWapen()` (audio-splitsing), `speelHerlaad`
+  vervangen, `gameLoop` (hitmarker-decay in de cosmetische zone),
+  debug-export (hitmarker-state).
+- **Buiten scope:** wapen-specifieke schotgeluiden (T34), deeltjes (T32).
+- **Randgevallen:** twee treffers binnen één hitmarker-leven (timer
+  herstart, hoogste tier wint binnen 60 ms); pauze (decay loopt door —
+  cosmetisch, zelfde keuze als het vignet); herladen onderbroken door
+  game over (klaar-geluid speelt niet: updateWapen draait niet meer).
+- **Performancevoorwaarden:** 1 DOM-element, klasse-toggles, geen
+  per-frame DOM-reads; audio ≤ 1 tik per 40 ms.
+- **Acceptatiecriteria:**
+  - Een headshot toont een andere hitmarker (kleur én grootte) dan een
+    lichaamstreffer; een kill weer een andere.
+  - `speelHerlaad` bevat geen `setTimeout` meer; het klaar-geluid valt
+    binnen 50 ms van het moment dat het magazijn gevuld wordt, óók met
+    Snelheidselixer.
+  - Leeg magazijn: droogklik + zichtbare ammo-UI-knipper.
+  - Hitmarker dooft binnen 0.4 s zonder nieuwe treffer.
+- **Testplan:** `tests/test-hitmarker-audio.mjs`: tier-klasse na
+  body/head/kill (DOM-classcheck), decay-timing, herlaad-audio-splitsing
+  (debug-tellers), leeg-magazijn-cue, geen setTimeout in de
+  herlaad-audio (source-check). Regressie: ammo/reload-tests.
+- **Rollback:** presentatie-only.
+- **Sonnet solo:** ja.
+
+## Ticket 34 — Feedback F3: wapen-identiteit (kick, spread, dip, wissel)
+- **Type:** Game-feel
+- **Verbetergebied:** 2
+- **Prioriteit:** middel
+- **Status:** open
+- **Afhankelijk van:** T33 (zelfde functies; na elkaar, niet tegelijk)
+- **Doel:** de Drukspuit en De Ratelaar VOELEN verschillend: zwaar en
+  precies tegenover snel en rammelend.
+- **Huidige situatie:** beide wapens delen `speelSchot()`, dezelfde
+  `terugslag = 1` en hebben geen camera-kick, spread, herlaad- of
+  wissel-animatie. `wisselWapen()` is een instant toggle.
+- **Gewenste situatie:** per-wapen feedbackvelden op de bestaande
+  definities (`kickSterkte` 0.014/0.006, `spreadNdc` 0/0.012,
+  `terugslagSterkte` 1.0/0.55, `schotToon` per wapen — tabel in
+  ARCHITECTURE_NOTES §5.6). `cameraKick`-offset (visueel-only,
+  exponentieel verval, `speler.pitch` blijft onaangeroerd); spread als
+  NDC-offset op `setFromCamera` (tracer volgt het echte raakpunt);
+  herlaad-dip (sinus-boog op `herlaadTimer/herlaadDuur`);
+  wissel-animatie (0.16 s y-dip) + `speelWissel()`.
+- **Codegebieden:** `WAPEN_DRUKSPUIT`/`WAPEN_RATELAAR`, `schiet()`
+  (kick/spread/schotToon), camera-compose in `updateSpeler()` (kick
+  optellen + decay), `updateWapen()` of de terugslag-zone (dip),
+  `wisselWapen()` (+timer, +geluid), debug-export (`cameraKick`,
+  per-wapen velden).
+- **Buiten scope:** balanswijzigingen aan schade/cooldowns; nieuwe
+  wapens.
+- **Randgevallen:** kick tijdens pauze (decay in de cosmetische zone,
+  net als terugslag); wisselen tijdens de dip (bestaande
+  herladen-blokkade dekt dit); spread mag een headshot op korte afstand
+  niet structureel onmogelijk maken (±0.8° op ≤ 10 m ≈ ≤ 14 cm afwijking
+  — hoofd-diameter 36 cm).
+- **Performancevoorwaarden:** geen allocaties; alleen scalar-state.
+- **Acceptatiecriteria:**
+  - Na één Drukspuit-schot is de camera-pitch tijdelijk ≥ 0.012 rad
+    verschoven en binnen 0.5 s terug binnen 5% van rust — zonder dat
+    `speler.pitch` is gemuteerd.
+  - Ratelaar-schoten raken bij herhaald vuren op 10 m een spreidings-
+    patroon (niet alle raakpunten identiek); Drukspuit-raakpunten zijn
+    identiek.
+  - De twee wapens spelen aantoonbaar verschillende schotgeluiden
+    (verschillende `schotToon`-parameters via debug-spy).
+  - Tijdens herladen kantelt het wapenmodel zichtbaar en keert exact
+    terug naar de rustpositie.
+- **Testplan:** `tests/test-wapen-identiteit.mjs`: kick-decay-curve,
+  pitch-onaangetast-check, spread-spreiding (20 schoten → >1 uniek
+  raakpunt Ratelaar, 1 uniek Drukspuit), dip-rotatie tijdens reload,
+  wisseltimer. Regressie: bestaande schiet-/reload-tests.
+- **Rollback:** velden + kleine functiediffs; makkelijk terug te draaien.
+- **Sonnet solo:** ja.
+
+## Ticket 35 — Winkel W1: Smederij verhuist naar de bijkeuken
+- **Type:** Level-wijziging
+- **Verbetergebied:** 3
+- **Prioriteit:** hoog
+- **Status:** open
+- **Doel:** de Smederij staat in de bijkeuken (zone E) en maakt de lus
+  het late-game anker; op de binnenplaats blijft niets van 'm achter.
+- **Huidige situatie:** `SMEDERIJ_X = DEUR2_X + 2.5` (7.0),
+  `SMEDERIJ_Z = PLAATS_Z_NOORD + 1.2` — noordwest-binnenplaats.
+  Machineblok (aambeeld+punt+voet+kool+koolLicht, ±regel 1510-1528),
+  `smederijMarkering` en `smederijPunt` zijn ALLEMAAL
+  `SMEDERIJ_X/Z`-afgeleiden. Geen collision, geen zonecheck.
+- **Gewenste situatie:** `SMEDERIJ_X = 6.8`, `SMEDERIJ_Z = 3.5`
+  (bijkeuken-zuidwand; onderbouwing en veiligheidsmarges in
+  ontwerpbeslissing 28 en §5.8). Machine, kool-gloed, markering en
+  kooppunt verhuizen automatisch mee. Oude plek: leeg (geen vervangend
+  decor — bewust). README-zin over de Smederij-locatie bijgewerkt.
+- **Codegebieden:** de twee constanten, evt. een comment-update bij het
+  machineblok, README.md (één regel), debug-export ongewijzigd
+  (`SMEDERIJ_X/Z` staan er al in).
+- **Buiten scope:** het nieuwe winkel-icoon (T36), winkelLicht (T37),
+  prijs- of upgrade-wijzigingen.
+- **Randgevallen:** interactie door de west-muur vanuit de woonkamer
+  (marge 2.3 m > radius 1.6 — expliciet testen op (4.4, 3.5));
+  bereikbaarheid met deur 3 én 4 dicht (alleen via debug-teleport —
+  functioneel moet het punt gewoon werken); looproute terugdeur ↔
+  kelderhals blijft vrij; `kiesVensterIndex` en zone-audio ongemoeid.
+- **Performancevoorwaarden:** geen nieuwe lights (koolLicht verhuist
+  mee, werpt geen schaduw — `schaduw === 1` blijft).
+- **Acceptatiecriteria:**
+  - Op de oude positie (7.0, −14.3) is geen Smederij-mesh, -markering
+    of -prompt meer aanwezig; `updateInteracties()` levert daar null.
+  - Op (6.8, 3.5) werkt het volledige smeedpad voor beide wapens
+    (koop, gesmeed-status, visuals) — identiek aan voorheen.
+  - Vanuit de woonkamer op (4.4, 3.5) verschijnt GEEN Smederij-prompt.
+  - `isVrijePlek`-probes op de route (5.5, 0) → (10, −4) blijven vrij.
+  - Precies één schaduwwerpende lamp (bestaande invariant).
+  - Er bestaat op geen enkel moment een tweede Smederij(-punt).
+- **Testplan:** `tests/test-smederij-verhuizing.mjs`: oude-plek-leeg,
+  nieuwe-plek-koop (beide wapens), muur-check, route-probes,
+  interactiepunten-telling ongewijzigd (12), `test-smederij.mjs` blijft
+  volledig groen. Screenshots binnenplaats (oude plek) + bijkeuken
+  (nieuwe plek).
+- **Rollback:** twee constanten terugzetten.
+- **Sonnet solo:** ja.
+
+## Ticket 36 — Winkel W2: winkelstijl-register en iconen per functie
+- **Type:** Visueel systeem
+- **Verbetergebied:** 4
+- **Prioriteit:** middel
+- **Status:** open
+- **Afhankelijk van:** T35 (Smederij staat dan op zijn definitieve plek)
+- **Doel:** iedere winkel is zonder tekst te herkennen aan silhouet +
+  kleur; winkels met dezelfde functie delen bewust hetzelfde silhouet.
+- **Huidige situatie:** `interactieMarkering(x, z, kleur)` geeft elke
+  winkel dezelfde zwevende kubus; kleuren overlappen (deur2 = deur3,
+  pantserdrank ≈ watertap).
+- **Gewenste situatie:** `WINKEL_STIJLEN`-config + nieuwe
+  `winkelMarkering(x, z, stijlNaam)` die de kubus vervangt door een
+  functie-icoon (kogel/pijl/fles/schild/druppel/tandwiel/hamer/sleutel
+  — volledige tabel met kleuren in ARCHITECTURE_NOTES §5.7). Alle 12
+  bestaande markering-aanroepen migreren; exportnamen en
+  `doofMarkering`-compatibiliteit blijven. Pantserdrank-kleur schuift
+  naar `0xb8c8ff` (weg van watertap-blauw).
+- **Codegebieden:** nieuw `WINKEL_STIJLEN`-blok + `winkelMarkering()`,
+  alle `interactieMarkering`-aanroepen, gedeelde icoon-geometry-cache,
+  debug-export (`WINKEL_STIJLEN`).
+- **Buiten scope:** statusanimatie/pulsen (T37), winkelLicht (T37),
+  barricade-reparatiepunten (geen markering — blijft zo).
+- **Randgevallen:** `doofMarkering` traverset alle materials — iconen
+  krijgen EIGEN materials (geen familie-cache!) zodat doven blijft
+  werken; deuren verdwijnen bij aankoop inclusief markering (bestaand
+  pad via `wereld.remove`).
+- **Performancevoorwaarden:** icoon ≤ 3 meshes per winkel, gedeelde
+  geometrieën per vorm; geen extra lights; markering-opbouw eenmalig
+  bij load.
+- **Acceptatiecriteria:**
+  - Elke functiecategorie heeft een uniek icoon-silhouet; ammo-kist en
+    Provisiekast delen exact hetzelfde icoon (bewust).
+  - Geen twee VERSCHILLENDE functiecategorieën delen dezelfde
+    primaire kleur én hetzelfde silhouet.
+  - `doofMarkering(upgradeMarkering)` dooft ring én icoon nog steeds.
+  - Alle 12 punten hebben een markering met icoon; koop-flows werken
+    ongewijzigd.
+- **Testplan:** `tests/test-winkel-stijlen.mjs`: per markering
+  kinderen-inventaris (ring + icoon-meshes), uniciteit van
+  (categorie→icoon)-mapping, doof-gedrag, deur-koop verwijdert de
+  markering. Screenshots van alle winkels.
+- **Rollback:** één commit; `interactieMarkering` blijft als
+  binnenkant bestaan.
+- **Sonnet solo:** ja.
+
+## Ticket 37 — Winkel W3: statusweergave, winkelLicht en koop-feedback
+- **Type:** Visueel systeem
+- **Verbetergebied:** 4
+- **Prioriteit:** middel
+- **Status:** open
+- **Afhankelijk van:** T36
+- **Doel:** de status van een winkel (beschikbaar / te duur / gekocht
+  / tijdelijk n.v.t.) is op afstand leesbaar via beweging en licht —
+  kleur is nooit het enige kanaal.
+- **Huidige situatie:** alleen het statische `doofMarkering`-grijs na
+  eenmalige aankopen; geen puls, geen prijs-status, geen licht.
+- **Gewenste situatie:** `status()`-functie per stijl in
+  `WINKEL_STIJLEN` + `updateWinkelMarkeringen(dt)` in de
+  `spelActief`-tak: beschikbaar = ringpuls + draaiend icoon; te duur =
+  zelfde kleur, stilstand; gekocht/MAX = gedoofd (bestaand); n.v.t.
+  (Watertap bij volle HP) = ontkleurd maar niet gedoofd. Koop-flits
+  (`flitsMarkering`) bij elke succesvolle aankoop. Eén gedeeld
+  `winkelLicht` (PointLight, geen schaduw) hecht zich aan de
+  dichtstbijzijnde niet-gedoofde winkel binnen 6 m, kleur-lerp +
+  zachte puls (ontwerpbeslissing 30).
+- **Codegebieden:** `WINKEL_STIJLEN` (status-functies),
+  `updateWinkelMarkeringen()` (nieuw), `gameLoop`, koop-functies
+  (+`flitsMarkering`-aanroep naast `speelKoop`), `winkelLicht`-blok,
+  debug-export (`winkelLicht`, `updateWinkelMarkeringen`).
+- **Buiten scope:** icoonvormen (T36), HUD-prompt-tekst (bestaat al en
+  toont prijs/„Nog €X nodig").
+- **Randgevallen:** Smederij-status hangt van het ACTIEVE wapen af
+  (gesmeed → 'gekocht'-weergave alleen als beide gesmeed; anders volgt
+  de status het actieve wapen — zelfde logica als de bestaande prompt);
+  Mistgolf (fog): emissive puls blijft binnen fog-far zichtbaar —
+  acceptatiecriterium; alle winkels gedoofd/ver weg → winkelLicht
+  intensiteit 0.
+- **Performancevoorwaarden:** ≤ 2 writes per niet-gedoofde markering
+  per frame; gedoofde markers overslaan; winkelLicht = 1 licht zonder
+  schaduw (totaal schaduwwerpend blijft 1); status-checks zijn goedkope
+  flag/geld-reads.
+- **Acceptatiecriteria:**
+  - Met €0 staat elke koopbare markering stil; met voldoende geld
+    pulst 'ie — zichtbaar verschil zonder kleurverandering.
+  - Watertap bij volle HP toont de n.v.t.-stand en herstelt zodra HP
+    < max.
+  - Na aankoop van de schade-upgrade is de markering gedoofd én doet
+    de update-loop er geen writes meer op.
+  - `winkelLicht` neemt binnen 1 s de kleur aan van de dichtstbijzijnde
+    winkel en dooft (intensiteit < 0.05) zonder winkel binnen 6 m.
+  - Tijdens een Mistgolf is de dichtstbijzijnde winkelmarkering op 6 m
+    herkenbaar (screenshot).
+- **Testplan:** `tests/test-winkel-status.mjs`: statusovergangen per
+  geld/HP/flags, gedoofd-skip, winkelLicht-kleur/intensiteit bij
+  teleports, koop-flits-timer, mist-screenshot. Volledige regressie.
+- **Rollback:** presentatie-only.
+- **Sonnet solo:** ja.
+
+## Ticket 38 — Sfeer S1: materiaal-families en impactkleuren
+- **Type:** Visueel + infrastructuur
+- **Verbetergebied:** 5 (koppelt terug op 2)
+- **Prioriteit:** middel
+- **Status:** open
+- **Afhankelijk van:** T32 (impact-deeltjes bestaan dan)
+- **Doel:** hout, steen, tegel, metaal en natte klinkers zien er
+  verschillend uit en KLINKEN/SPATTEN verschillend bij een treffer.
+- **Huidige situatie:** `mat(kleur, roughness, metalness, extra?)`
+  maakt per aanroep een nieuw material; roughness/metalness zijn per
+  plek gekozen maar zonder families; wereld-impacts (T32) kennen alleen
+  'steen'.
+- **Gewenste situatie:** `matFamilie(naam, kleur)`-cache
+  (hout/steen/tegel/metaal/natSteen, parameters in ontwerpbeslissing
+  31) toegepast op de 6–8 grote oppervlakken (binnenplaats-klinkers →
+  natSteen, bijkeuken-vloer → tegel, gang-vloer → steen, kelderluik →
+  hout, deuren → metaal); die oppervlakken krijgen
+  `userData.materiaalFamilie`; de T32-wereldimpact leest die en kiest
+  de deeltjeskleur (+ optioneel een subtiel ander tik-geluid per
+  familie). Gecachete materialen zijn immutabel.
+- **Codegebieden:** `matFamilie`-blok (nieuw, naast `mat()`), de
+  vloer-/deur-bouwplekken, T32's wereld-impactpad, debug-export
+  (`matFamilie`-cache-grootte).
+- **Buiten scope:** props herschilderen, tone mapping/color space
+  (staat al goed: SRGB + ACESFilmic), ondode-materialen.
+- **Randgevallen:** een oppervlak zonder familie → default 'steen';
+  `doofMarkering`-achtige mutaties mogen NOOIT op familie-materialen
+  (regel: winkelvisuals hebben eigen materials — al geborgd in T36).
+- **Performancevoorwaarden:** cache begrensd (≤ 12 entries — families
+  × gebruikte kleuren); geen per-frame materiaalwijzigingen; geen
+  nieuwe transparantie.
+- **Acceptatiecriteria:**
+  - De binnenplaats-vloer heeft zichtbaar lagere roughness (glans in
+    maanlicht) dan de gang-vloer (screenshotvergelijking).
+  - Een schot op het kelderluik geeft andere deeltjeskleur dan op een
+    stenen muur.
+  - `matFamilie('steen', X) === matFamilie('steen', X)` (cache-hit) en
+    de cache groeit niet bij herhaald aanroepen.
+  - Geen enkel bestaand oppervlak is van kleur veranderd (alleen
+    roughness/metalness/glans).
+- **Testplan:** `tests/test-materiaal-families.mjs`: cache-identiteit,
+  userData op de vijf oppervlakken, impactkleur per familie (debug-spy
+  op spawnImpact), screenshots per zone. Regressie.
+- **Rollback:** `matFamilie`-aanroepen terug naar `mat()`.
+- **Sonnet solo:** ja.
+
+## Ticket 39 — Sfeer S2: vijandleesbaarheid (ritme, geluid, mist-ogen)
+- **Type:** Presentatie
+- **Verbetergebied:** 5
+- **Prioriteit:** middel
+- **Status:** open
+- **Afhankelijk van:** T31 (`delen.oogMateriaal` bestaat dan)
+- **Doel:** elk type is herkenbaar aan beweging en geluid, óók in de
+  mist en op afstand — kleur is de laatste, niet de eerste, aanwijzing.
+- **Huidige situatie:** types verschillen in silhouet (T19), kleur,
+  oogkleur, schaal en snelheid; het loopritme is alleen
+  snelheidsgekoppeld; er zijn geen per-type geluiden; oog-intensiteit
+  is altijd 1.4.
+- **Gewenste situatie:** `ONDODE_TYPES[type].gang = { pasFactor,
+  bobFactor, ampFactor }` toegepast in de bestaande animatie-writes
+  (Sjouwer zwaar/traag, Loper snel, Sluiper kort/laag — waarden in
+  §5.9); per-type grom op een random 4–9s-timer binnen 8 m (Sluiper
+  gromt NOOIT — stilte als tell; globale cap 1 grom/0.6 s); Mistgolf
+  zet `oogMateriaal.emissiveIntensity` op 2.6 voor alle levende en
+  nieuwe ondoden, en herstelt naar 1.4 op golf-einde.
+- **Codegebieden:** `ONDODE_TYPES` (gang-velden), animatie-helft van
+  `updateOndoden()` (factoren in de bestaande formules),
+  `spawnOndode()` (gromTimer, mist-oogboost), `startEventGolf`/
+  `eindigEventGolf` (oog-boost aan/uit), nieuwe grom-audiofuncties,
+  debug-export.
+- **Buiten scope:** hoofdgroep-y-offsets (hoofd-hoogte-anker ±0.03 is
+  onaantastbaar), nieuwe meshes/accessoires, aanvalsgedrag (T30).
+- **Randgevallen:** mist eindigt terwijl een ondode in windup-oogpuls
+  zit (T31-puls rekent vanaf de basiswaarde — gebruik een
+  `oogBasisIntensiteit`-veld i.p.v. hardcoded 1.4); dood tijdens grom
+  (geluid is al gestart — onschuldig); Eliminatiemodus-massakills
+  (grom-cap voorkomt stapeling).
+- **Performancevoorwaarden:** netto 0 extra transform-writes (factoren
+  in bestaande writes); 1 timer-decrement per ondode; oog-boost is
+  event-gedreven.
+- **Acceptatiecriteria:**
+  - `loopFase`-groeisnelheid verschilt meetbaar per type bij gelijke
+    `ONDODE_SNELHEID`-input (pasFactor).
+  - Sjouwer-romp-bob-amplitude ≥ 1.5× die van de normale ondode.
+  - Sluiper roept in 60 gesimuleerde seconden binnen 8 m NOOIT een
+    grom-functie aan; de andere types wél (debug-teller).
+  - Tijdens een Mistgolf is `oogMateriaal.emissiveIntensity` 2.6 op
+    alle levende ondoden en exact terug op de basis na afloop.
+  - Loper en Sjouwer zijn op een mist-screenshot op ±7 m van elkaar te
+    onderscheiden (silhouet + ogen).
+- **Testplan:** `tests/test-vijand-leesbaarheid.mjs`: pasFactor-effect
+  op loopFase, bob-amplitudes, grom-tellers per type, oog-boost
+  aan/uit/spawn-tijdens-mist, mist-screenshot. Regressie:
+  `test-ondode-animatie.mjs` + hoofd-hoogte-anker.
+- **Rollback:** presentatie-only.
+- **Sonnet solo:** ja.
+
+## Ticket 40 — Sfeer S3: omgevingsdetails (stof, druppel, golf-lichtdip)
+- **Type:** Sfeer
+- **Verbetergebied:** 5
+- **Prioriteit:** laag (polish)
+- **Status:** open
+- **Doel:** de zones leven: stof in het atelier-daglicht, een
+  druppelend kelderluik, en lampen die even dippen als een golf start.
+- **Huidige situatie:** sfeer = statisch decor + lampflikker +
+  eenmalige zone-audio + de Mistgolf; geen bewegende
+  omgevingselementen.
+- **Gewenste situatie:** (a) 2 × `THREE.Points`-stofwolk (≤ 30 punten)
+  in de atelier-lichtkolommen, alleen zichtbaar als
+  `zoneVan(speler) === 2`, animatie = trage groepsrotatie + y-sinus;
+  (b) druppel-lek in de kelderhals: één klein mesh valt elke 3–6 s van
+  plafond naar kelderluik + tik-geluid alleen als de speler < 8 m is;
+  (c) golfstart-lichtdip: `lampDipFactor` 0.6 → 1.0 over 0.8 s,
+  vermenigvuldigd in de bestaande lampflikker-loop, getriggerd in
+  `startGolf()`.
+- **Codegebieden:** atelier-decor-blok (stofwolken), kelderhals-decor
+  (druppel + timer in de `spelActief`-tak), `startGolf()` (dip-set),
+  lampflikker-loop in `gameLoop` (×`lampDipFactor`), debug-export
+  (`lampDipFactor`, druppel-timer).
+- **Buiten scope:** regen, nieuwe geluidslagen per zone (bestaan al),
+  Mistgolf-wijzigingen.
+- **Randgevallen:** pauze tijdens een druppel-val (bevriest — update
+  in `spelActief`); game over vlak na golfstart (dip herstelt gewoon —
+  de flikker-loop draait door, cosmetisch); speler wisselt snel van
+  zone (visible-toggle is 1 boolean-write).
+- **Performancevoorwaarden:** ≤ 2 Points-systemen, geen
+  attribute-writes per frame (alleen groepstransform); druppel = 1
+  mesh; dip = 1 module-float.
+- **Acceptatiecriteria:**
+  - De stofwolken zijn onzichtbaar buiten het atelier en zichtbaar
+    erbinnen (zone-toggle testbaar via teleport).
+  - De druppel landt periodiek (3–6 s) en het tikgeluid speelt alleen
+    binnen 8 m (debug-teller).
+  - Op golfstart zakt elke lampintensiteit naar ≤ 0.7× basis en
+    herstelt binnen 1 s (waarde-sampling rond `startGolf`).
+  - Framebudget: geen extra allocaties per frame (source-check op de
+    nieuwe update-paden).
+- **Testplan:** `tests/test-omgeving-sfeer.mjs`: zone-toggle,
+  druppel-cyclus + geluids-teller, dip-curve rond startGolf,
+  Points-count ≤ 2. Screenshots atelier (stof zichtbaar in de
+  lichtkolom) en kelderhals.
+- **Rollback:** puur additief; blok voor blok verwijderbaar.
+- **Sonnet solo:** ja.
+
+## Ticket 41 — Integratie: eindregressie, performance-audit en teksten
+- **Type:** Regressie + polish
+- **Verbetergebied:** alle
+- **Prioriteit:** hoog (afsluiter)
+- **Status:** open
+- **Afhankelijk van:** T30–T40
+- **Doel:** de hele ronde is aantoonbaar heel: alle systemen samen,
+  binnen de performancebudgetten, met kloppende teksten.
+- **Concrete wijzigingen:** performance-asserts als test (lichten
+  totaal ≤ bestaand + 1, precies 1 schaduwwerper, effect-plafonds,
+  pool-hergebruik na een stress-golf); speeltest-notities (golf 8+ met
+  alle deuren open, Mistgolf met winkels + tells + ogen; beide wapens);
+  screenshots van elke zone + mist; startscherm-/README-check
+  (Smederij-locatie, geen verouderde beschrijvingen); eventuele
+  micro-tuning van tell-duren/kick-sterktes binnen ±25% op basis van de
+  speeltest — groter is een nieuw ticket.
+- **Codegebieden:** teksten, hooguit feedback-/tell-constanten.
+- **Acceptatiecriteria:** volledige repo-suite groen (incl. alle
+  nieuwe tests van T30–T40); scratchpad-suite draait met uitsluitend
+  de bekende, gedocumenteerde uitzonderingen; lichttelling en
+  schaduw-invariant kloppen; screenshots tonen tells, hitmarkers,
+  winkel-iconen en zone-sfeer.
+- **Testplan:** `tests/run-all.mjs` + scratchpad-suite + een nieuwe
+  `tests/test-v016-integratie.mjs` met de performance-asserts +
+  screenshotronde.
+- **Rollback:** n.v.t. (verifiërend).
 - **Sonnet solo:** ja.
 
 ---

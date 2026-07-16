@@ -379,6 +379,166 @@ ROADMAP.md sectie v0.15+.)*
     effectief en knijpt de speler in. Events die tijdelijk een route
     blokkeren zijn backlog, geen onderdeel van deze ronde.
 
+21. **Aanvallen krijgen een expliciete state machine met wind-up
+    (ronde 3).** De huidige melee is contactschade: op de eerste frame
+    binnen `MELEE_BEREIK` (1.2 m) valt er 15 schade, zonder enige
+    waarschuwing (`ondode.meleeTimer` wordt buiten bereik zelfs elke frame
+    op 0 gezet — "meteen slaan bij aankomst"). Dat is per definitie niet
+    ontwijkbaar. Vervanging: per ondode een `aanvalStaat`
+    ('jaag' → 'windup' → slag-MOMENT → 'herstel' → 'jaag') met dt-timers.
+    De raakcheck gebeurt discreet, op de overgang windup→herstel, en test
+    drie dingen: afstand ≤ raakBereik, hoek tussen kijkrichting en
+    speler-richting ≤ raakHoek, én het middelpunt tussen ondode en speler
+    is vrij (`isVrijePlek` — nooit door een muur of dichte deur heen
+    slaan). Tijdens de wind-up staat de ondode STIL en draait hij maar
+    beperkt mee (`AANVAL_DRAAI_SNELHEID`) — zijwaarts uitstappen of
+    achteruit sprinten werkt dus echt. Discreet checken (niet "gedurende
+    het actieve venster") is frame-delta-robuust: één overgang per frame,
+    schade kan nooit dubbel of overgeslagen worden, en de bestaande
+    dt-clamp (0.05 s in `gameLoop`) begrenst de rest. DPS-pariteit:
+    oud = 15 HP per 1.0 s contact; nieuw (normaal) = 15 HP per
+    0.55 + 0.7 = 1.25 s als de speler NIET reageert — bewust iets zachter,
+    want de dreiging komt nu uit posities in plaats van aanraking.
+
+22. **Aanvalsprofielen per type, één gedeelde machine.** Geen per-type
+    code-forks in `updateOndoden()`: één `AANVAL_PROFIELEN`-tabel (zelfde
+    patroon als `ONDODE_TYPES`) levert per type windup-duur, herstel-duur,
+    raakbereik/-hoek, schade en onderbreekbaarheid. De Sjouwer wordt de
+    trage dreun (lange wind-up 0.85 s, 25 schade, breed bereik), de
+    Loper/Sluiper snelle prikken (0.4/0.35 s, minder schade, wél door een
+    lichaamstreffer te onderbreken — het zijn de breekbare types), Brander
+    = normaal (zijn echte dreiging is de explosie). Zo blijft het
+    verschil tussen types ook in het GEDRAG leesbaar, niet alleen in het
+    silhouet.
+
+23. **Anti-omsingeling: maximaal 2 gelijktijdige aanvallers.** Een
+    module-teller `actieveAanvallers` (verhoogd bij windup-start, verlaagd
+    bij herstel-einde/dood/onderbreking) laat maar `MAX_AANVALLERS = 2`
+    ondoden tegelijk een wind-up beginnen; de rest blijft gewoon jagen
+    en drukt op. Plus een kleine willekeurige startvertraging (0–0.35 s)
+    per aanvalspoging zodat twee tells nooit exact synchroon vallen.
+    Bewust géén onkwetsbaarheids-frames op de speler: 2 × 15 gestapelde
+    schade is eerlijk zolang beide tells zichtbaar waren, en i-frames
+    zouden de Brander-explosie-balans stilletjes raken.
+
+24. **Onderbrekingsregels: headshot altijd, lichaamstreffer per type.**
+    Een headshot tijdens een wind-up breekt de aanval ALTIJD af (de
+    bestaande flinch uit T21 is de zichtbare reactie; de staat gaat naar
+    'herstel' met halve herstelduur). Een lichaamstreffer onderbreekt
+    alleen types met `onderbreekbaarLichaam: true` (Loper, Sluiper) —
+    anders zou de Ratelaar (0.1 s cooldown) elke Sjouwer-aanval permanent
+    stunlocken en wordt de wind-up nooit gezien. Het slag-moment zelf is
+    één frame en kent geen onderbreking; tijdens 'herstel' start geen
+    nieuwe wind-up. Dit maakt de headshot ook defensief waardevol
+    (aanval afbreken) i.p.v. alleen economisch.
+
+25. **Combat-effecten: gepoold, dt-geklokt, nooit `setTimeout`.** De
+    huidige `vonk`/`bloedvonk` maken per schot/treffer een nieuwe
+    geometry + material aan en ruimen op via `setTimeout` (wall-clock:
+    loopt door tijdens pauze, en alloceert in het heetste pad van het
+    spel). Ronde 3 vervangt dat door één effectenpool: vooraf gebouwde
+    meshes (tracers, impact-deeltjes) die via `visible`-toggles rouleren,
+    geüpdatet met dt in de `spelActief`-tak (bevriest netjes tijdens
+    pauze), met harde plafonds (8 tracers, 24 impact-deeltjes) en
+    oudste-eerst-recycling. Restart is een page-reload (bestaand patroon)
+    — dat blijft de ultieme cleanup. De Brander-explosieflits (zeldzaam,
+    220 ms, 1 licht) mag als gedocumenteerde uitzondering op het oude
+    patroon blijven.
+
+26. **Hitmarker als HUD-DOM met drie tiers.** Treffer-feedback hoort op
+    het vaste aandachtspunt van de speler: het crosshair. Eén herbruikbaar
+    DOM-element (vier streepjes rond het crosshair) met drie
+    CSS-varianten: lichaamstreffer (wit, klein, 120 ms), headshot (amber,
+    groter), kill (oranjerood, grootst, langst zichtbaar). DOM i.p.v.
+    scene-meshes: past bij de bestaande HUD-conventie, kost geen
+    draw-calls, en de lifecycle is een enkele timer. Audio krijgt dezelfde
+    drie tiers via `piep()` met ±5% pitch-variatie per afspeling zodat de
+    Ratelaar geen machinegeweer-monotonie wordt.
+
+27. **Camera-kick is visueel-only; spread hoort bij één wapen.** Recoil
+    gaat naar een aparte `cameraKick`-offset die bij het composeren van de
+    camera bij `speler.pitch` wordt opgeteld en exponentieel naar 0
+    terugvalt — `speler.pitch` zelf blijft onaangeroerd (geen blijvende
+    aim-drift; dit is een arcade-shooter, geen recoil-management-game).
+    Wapenidentiteit: de Drukspuit is de precisiekeuze (grote enkele kick,
+    géén spread), de Ratelaar de volumekeuze (kleine kick per schot, vaste
+    lichte spread van ±0.8°). De nieuwe per-wapen feedbackvelden komen in
+    de bestaande `WAPEN_DRUKSPUIT`/`WAPEN_RATELAAR`-definities — geen
+    nieuwe registry.
+
+28. **De Smederij verhuist naar de bijkeuken-zuidwand (6.8, 3.5).**
+    Waarom: (a) de lus (v0.15 fase 9) gaf zone E een route maar geen
+    blijvende bestemming — met de Smederij (dé late-game geldsink,
+    beslissing 7) náást de Provisiekast wordt de bijkeuken het late-game
+    anker, met de terugdeur als vluchtroute; (b) de binnenplaats had drie
+    winkels (Watertap, Ratelaar, Smederij) en wordt zo evenwichtiger; (c)
+    de machine, markering, het kooppunt én het koollicht zijn allemaal op
+    `SMEDERIJ_X/SMEDERIJ_Z` gebouwd, dus de verhuizing is een
+    constanten-wijziging — er kan geen tweede Smederij ontstaan en er
+    blijft niets actiefs achter. Positie (6.8, 3.5): 2.3 m van de gedeelde
+    west-muur met de woonkamer (zelfde marge als de deur4Punt-bugfix —
+    interactieradius 1.6 kan nooit door de muur heen reiken), 3.5 m van
+    het deur4-kooppunt (radii overlappen niet), ±5.4 m van het
+    E-spawnvenster (geen spawn-camping op een winkelende speler), en
+    ruim buiten de looproute terugdeur ↔ kelderhals.
+
+29. **Winkel-taal: functie bepaalt de vorm, kleur is nooit het enige
+    kanaal.** Elke winkel krijgt een eigen icoon-silhouet boven de
+    bestaande vloerring (vervangt de generieke kubus), maar winkels met
+    DEZELFDE functie delen bewust hetzelfde silhouet: de ammo-kist en de
+    Provisiekast zijn allebei "munitie" en horen er hetzelfde uit te zien
+    — twee verschillende vormen voor identiek gedrag zou de visuele taal
+    juist breken. Uniciteit geldt per functiecategorie: munitie (kogel),
+    schade-upgrade (pijl omhoog), Snelheidselixer (slanke fles),
+    Pantserdrank (schildvorm), Watertap (druppel), Ratelaar-wandrek
+    (tandwiel), Smederij (hamer), deuren (sleutel). Status wordt
+    ANIMATIE, niet alleen kleur: beschikbaar = pulserende ring + draaiend
+    icoon; te duur = zelfde kleur maar stilstaand; gekocht/MAX = gedoofd
+    grijs (bestaand `doofMarkering`-patroon); tijdelijk n.v.t. (Watertap
+    bij volle HP) = ontkleurd maar niet gedoofd. Kleurenblinde spelers
+    lezen vorm + beweging; kleur is de derde laag.
+
+30. **Eén gedeeld winkellicht i.p.v. een licht per winkel.** Twaalf
+    winkels een eigen PointLight geven zou het lichtbudget (nu ±17
+    permanente lichten, waarvan precies 1 met schaduw) bijna verdubbelen.
+    In plaats daarvan: één `winkelLicht` (PointLight zonder schaduw) dat
+    zich hecht aan de dichtstbijzijnde niet-gedoofde winkel binnen 6 m van
+    de speler, met kleur-lerp naar de winkelkleur en zachte puls. Op
+    afstand dragen de emissive ringen/iconen de herkenbaarheid (emissive
+    werkt ook in de Mistgolf); het licht is alleen nabij-feedback. De
+    bestaande kool-/ember-/vlamlichten blijven ongemoeid.
+
+31. **Materiaalgevoel zonder textures.** CLAUDE.md verbiedt textures —
+    ook canvas-gegenereerde blijven uit den boze (de regel is er niet
+    voor de bestandsgrootte maar voor de stijl: simpele geometrie).
+    Materiaalgevoel komt dus uit (a) een kleine `matFamilie`-cache
+    (hout/steen/tegel/metaal/natSteen) met per familie afgestemde
+    roughness/metalness, gedeeld i.p.v. per aanroep een nieuw material;
+    (b) micro-geometrie die er al is (voegen, plinten, kozijnen); (c)
+    `userData.materiaalFamilie` op de grote oppervlakken zodat
+    wereld-impacts (beslissing 25) per ondergrond een eigen
+    deeltjeskleur krijgen. Gecachete familie-materialen zijn immutabel:
+    wie een variant nodig heeft, vraagt een nieuwe cache-key op —
+    muteren zou alle gebruikers tegelijk herschilderen. Renderer staat al
+    op `SRGBColorSpace` + `ACESFilmicToneMapping` (regel 360-362); dat
+    blijft zo.
+
+32. **Vijandleesbaarheid: silhouet eerst, kleur laatst.** Elke variant
+    moet herkenbaar zijn via minstens drie kanalen die óók in de mist
+    en in donkere hoeken werken: (1) silhouet en houding (bestaat sinds
+    T19, wordt aangescherpt met per-type gang-ritmes: pas-frequentie,
+    romp-bob en amplitude als data op `ONDODE_TYPES`); (2) geluid (per
+    type een eigen grom-register op een random timer — en de Sluiper
+    gromt NOOIT: stilte is zíjn tell); (3) oog-emissive (per type al
+    een eigen kleur; tijdens de Mistgolf gaat de intensiteit
+    event-gedreven omhoog zodat ogen het mist-kanaal worden); (4) als
+    laatste pas de lijfkleur. Aanvalsgedrag (beslissing 22) is het
+    vijfde kanaal: de trage dreun van de Sjouwer versus de snelle prik
+    van de Loper leest ook zonder één pixel kleurverschil. Harde grens:
+    het hoofd-hoogte-anker (±0.03) en het hitbox-contract (beslissing
+    16) blijven onaantastbaar — ritme en rotatie zijn de veilige
+    knoppen, posities en schalen niet.
+
 ---
 
 ## 3. Risicogebieden (voor de uitvoerder)
@@ -708,3 +868,383 @@ z=5   └──────s──────────s───────
 | Lus-geometrie | `bouwMuur`/`vlak`/`bouwBinnenplaatsMuur`, deur-kooppatroon (mesh + obstakel + punt + banner, zie `koopDeur2`), `bouwBarricade`, `interactieMarkering` |
 | Lus-navigatie | `zoneVan`-structuur, `ZONE_DEURPUNTEN`-idee (wordt graaf), `losBotsingenOp` |
 | Zone-E-inhoud | ammo-kist-kooppatroon, zone-banners (V8), eenmalige zone-audio (`gangBetreden`-patroon) |
+
+---
+
+## 5. Fable-architectuurronde 3 (v0.16) — combat-leesbaarheid, schietfeedback, winkel-identiteit en sfeer
+
+Geschreven ná de uitvoering van v0.15 (fases 6–9: power-up-slot,
+Smederij-visuals, zombie-herwerking Z1–Z6, map-lus M1–M6 zijn allemaal
+geïmplementeerd; de zone-navigatie is een graaf met `NAV_VOLGENDE`).
+Regelnummers hieronder zijn indicatief voor de huidige staat — zoek altijd
+op symboolnaam. Ontwerpbeslissingen 21–32 in §2 horen bij deze ronde.
+
+### 5.1 Codekaart — melee & speler-schade (huidige staat)
+
+- Balanswaarden: `ONDODE_SNELHEID 1.5`, `MELEE_BEREIK 1.2`,
+  `MELEE_SCHADE 15`, `MELEE_COOLDOWN 1.0` (regel ±2148-2162).
+- `updateOndoden(dt)` (±2857) heeft drie "helften": (1) de MELEE-branch
+  bovenaan (`afstand <= MELEE_BEREIK` → `meleeTimer` aftellen →
+  `spelerSchade(MELEE_SCHADE)` → `continue`), (2) de NAVIGATIE-helft
+  (zone-graaf `NAV_VOLGENDE`, ontwijk-bursts), (3) de ANIMATIE-helft
+  (ledematen, flinch). Cruciale quirk: onderaan de loop staat
+  `ondode.meleeTimer = 0` — buiten bereik wordt de timer elke frame
+  gereset, dus de EERSTE frame binnen bereik doet meteen schade.
+- Eén repo-test verankert dat oude gedrag expliciet:
+  `tests/test-ondode-hitreacties.mjs` ("meleeTimer wordt nog altijd elk
+  frame gereset"). Het aanvals-ticket moet die check in hetzelfde ticket
+  vervangen door state-machine-checks.
+- `spelerSchade(bedrag)` (±3102): HP-af, `vignetFlits = 1`,
+  `speelSpelerAu()`, game over op 0. Aanroepers: de melee-branch en
+  `ontploiBrander()`. Dat blijven de enige twee.
+- Ondode-state op het object (`spawnOndode`, ±2738): `groep, type, hp,
+  snelheid, geldMultiplier, strompelt, loopFase, delen, flinch,
+  meleeTimer, vastTijd, ontwijkTimer, ontwijkZijkant, ontwijkStartPos`.
+  `delen` bevat `beenL/beenR/romp/hoofd/armL?/armR?/kern?` (arm-pivots
+  kunnen ontbreken: 'eenarmig'-profiel heeft geen `armL`).
+- `gameLoop` klemt dt op 0.05 s (regel ±3951) — timers kunnen nooit
+  meer dan 50 ms per frame verspringen.
+
+### 5.2 Aanvals-state-machine (ontwerp — beslissingen 21–24)
+
+Nieuwe state op de ondode: `aanvalStaat` ('jaag' | 'windup' | 'herstel'),
+`aanvalTimer` (s), `aanvalVertraging` (s, de anti-synchroon-jitter).
+`meleeTimer` vervalt volledig. Nieuw constants-blok naast `MELEE_*`
+(de oude drie constanten vervallen of worden hernoemd — geen dubbele
+waarheden laten staan):
+
+```js
+const AANVAL_START_BEREIK   = 1.4;   // vanaf hier mag een wind-up beginnen
+const AANVAL_DRAAI_SNELHEID = 2.0;   // rad/s bijdraaien tijdens de wind-up
+const MAX_AANVALLERS        = 2;     // gelijktijdige wind-ups (beslissing 23)
+const AANVAL_START_JITTER   = 0.35;  // 0..dit aan willekeurige startvertraging
+const AANVAL_PROFIELEN = {
+  //           windup  herstel  raakBereik  raakHoek  schade  onderbreekbaarLichaam
+  normaal: { windup: 0.55, herstel: 0.70, raakBereik: 1.6, raakHoek: 1.15, schade: 15, onderbreekbaarLichaam: false },
+  loper:   { windup: 0.40, herstel: 0.90, raakBereik: 1.5, raakHoek: 1.15, schade: 10, onderbreekbaarLichaam: true },
+  sjouwer: { windup: 0.85, herstel: 1.00, raakBereik: 1.8, raakHoek: 1.40, schade: 25, onderbreekbaarLichaam: false },
+  brander: { windup: 0.55, herstel: 0.70, raakBereik: 1.6, raakHoek: 1.15, schade: 15, onderbreekbaarLichaam: false },
+  sluiper: { windup: 0.35, herstel: 0.80, raakBereik: 1.5, raakHoek: 1.15, schade: 12, onderbreekbaarLichaam: true },
+};
+```
+
+Stroom (vervangt de hele melee-branch; navigatie- en animatie-helft
+blijven onaangeraakt behalve waar hieronder expliciet genoemd):
+
+1. **jaag** — bestaand gedrag. Als afstand ≤ `AANVAL_START_BEREIK` én
+   `actieveAanvallers < MAX_AANVALLERS`: `aanvalVertraging` aftellen
+   (init `Math.random() * AANVAL_START_JITTER`); op 0 → windup starten
+   (`actieveAanvallers++`, timer = profiel.windup). Buiten bereik reset
+   `aanvalVertraging` naar een nieuwe loting.
+2. **windup** — positie bevroren (geen `addScaledVector`), rotatie
+   hooguit `AANVAL_DRAAI_SNELHEID * dt` richting de speler (klem het
+   verschil, geen `atan2`-snap). Timer op 0 → het SLAG-MOMENT: raak als
+   (a) afstand ≤ profiel.raakBereik, (b) hoekverschil ≤ profiel.raakHoek,
+   (c) `isVrijePlek((x+sx)/2, (z+sz)/2, 0.05)` — het middelpunt is niet
+   in een muur/deur-obstakel. Raak → `spelerSchade(profiel.schade)` +
+   raak-audio; mis → mis-audio (whoosh). Beide → 'herstel',
+   `actieveAanvallers--`.
+3. **herstel** — beweegt op 40% snelheid mee (voelt als bijkomen), start
+   geen nieuwe wind-up. Timer op 0 → 'jaag'.
+4. **onderbreking** (in `raakOndode`, na de flinch-set): headshot tijdens
+   'windup' → altijd afbreken; lichaamstreffer alleen bij
+   `onderbreekbaarLichaam`. Afbreken = 'herstel' met `herstel * 0.5`,
+   `actieveAanvallers--`. `doodOndode` op een windup-ondode moet de
+   teller óók verlagen (anders lekt een slot).
+5. **flinch/knockback** (T21) blijft puur cosmetisch bovenop alles; de
+   knockback kan een aanvaller buiten raakbereik schuiven — dan mist de
+   slag vanzelf (gewenst emergent gedrag).
+
+Edge-cases: meerdere ondoden in de kelderhals (2 m breed) — het
+midden-punt-check laat aanvallen door de open doorgang gewoon toe (geen
+obstakel), maar blokkeert slaan door de deur3/deur4-meshes (die staan als
+obstakel-rechthoek geregistreerd zolang niet gekocht). Lage framerate:
+dt-clamp 0.05 + discrete overgangen = hooguit 50 ms vertraging op een
+slag, nooit dubbele schade. Game over: `spelerSchade` checkt al
+`spelStaat.gameOver`; de state-machine hoeft niets extra's.
+
+### 5.3 Aanvals-tells (ontwerp — presentatielaag, apart ticket)
+
+- **Visueel**: tijdens windup lerpen beide arm-pivots van
+  `ARM_RUST_ROTATIE_X` (-0.5) naar -1.9 rad (hoog geheven), het hoofd
+  kantelt licht achterover, en de ogen pulsen fel
+  (`delen.oogMateriaal.emissiveIntensity` van 1.4 → 2.6 met de
+  windup-fractie). Daarvoor moet `maakOndodeModel` het oog-materiaal op
+  `delen.oogMateriaal` zetten (het is al één gedeeld materiaal per
+  ondode voor beide ogen). In 'herstel' zakken de armen over de halve
+  herstelduur terug. De arm-writes VERVANGEN de loop-zwaai-writes voor
+  die ondode (zelfde properties) — netto 0 extra transform-writes;
+  alleen de oog-materiaalwrite en een eventuele romp-kanteling komen
+  erbij, en dat uitsluitend voor de ≤ 2 actieve aanvallers.
+- **Audio**: `speelAanvalGrom(type)` bij windup-start — stijgende grom,
+  per type een eigen register (Sjouwer laag/lang, Loper/Sluiper kort en
+  schril, normaal middenin); `speelSlagRaak()` (doffe dreun) bij raak
+  bovenop het bestaande `speelSpelerAu()`; `speelSlagMis()` (whoosh) bij
+  mis. Allemaal `piep()`-composities, geen bestanden.
+- **Eenarmigen** ('eenarmig'-profiel, geen `armL`): de tell werkt met
+  één arm — alle arm-writes moeten `if (delen.armX)` blijven checken
+  (bestaand patroon in de animatie-helft).
+
+### 5.4 Codekaart — schieten & feedback (huidige staat)
+
+- `probeerTeSchieten()` (±2043): cooldown via `klok`, leeg magazijn →
+  `speelDroogKlik()`. `schiet()` (±2054): magazijn--, `terugslag = 1`,
+  vlam + vlamLicht 0.05 s aan (`vlamTimer`), `speelSchot()` (identiek
+  voor beide wapens), center-raycast → eerst `ondodenGroep` (kop via
+  `userData.lichaamsdeel`), anders `wereld` → `vonk` (nieuwe mesh +
+  `setTimeout` 150 ms — HET te vervangen patroon).
+- `raakOndode(ondode, punt, kop)` (±3059): schade/geld/kill/flinch +
+  `bloedvonk` (zelfde setTimeout-patroon; kop = groter/feller — de enige
+  bestaande headshot-differentiatie naast geld).
+- Terugslag/vlam-afhandeling in `gameLoop` ná de `spelActief`-tak
+  (±4006-4013): decay op wall-frame-dt — cosmetisch, mag zo blijven.
+- Herlaad-audio: `speelHerlaad()` speelt de tweede piep via een VASTE
+  `setTimeout(900)` — klopt niet met `herlaadDuurSnel` (0.7/0.9 s) en
+  loopt door tijdens pauze. Wordt vervangen door twee losse geluiden:
+  start in `herladen()`, klaar in `updateWapen()` op het echte
+  voltooiingsmoment.
+- Wapens: `WAPEN_DRUKSPUIT` (mag 8, cd 0.2 s, herlaad 1.2/0.7) en
+  `WAPEN_RATELAAR` (mag 16, cd 0.1 s, herlaad 1.5/0.9), elk met eigen
+  `vlam`/`vlamLicht`(+basis/kleuren) en `smederijConfig`. `wisselWapen()`
+  is een instant visibility-toggle zonder geluid of animatie.
+- Wat er NIET is: hitmarker, tracers, camera-kick, spread, impact-
+  deeltjes, kill-audio, wissel-/droogklik-visual, materiaalafhankelijke
+  wereld-impacts.
+
+### 5.5 Effecten-architectuur (ontwerp — beslissing 25)
+
+Eén klein systeem, in het bestaand single-file-idioom:
+
+```js
+const TRACER_MAX = 8;
+const IMPACT_MAX = 24;                  // deeltjes totaal, over alle bursts
+const tracerPool = [];                  // vooraf gebouwde meshes, visible=false
+const impactPool = [];
+const actieveEffecten = [];             // { mesh, timer, duur, soort, vx?, vy?, vz? }
+```
+
+- Geometrie/material-cache: één `BoxGeometry(1,1,1)` gedeeld; tracers
+  schalen 'm (`scale.set(0.012, 0.012, lengte)`), impact-deeltjes klein
+  (`0.035`). Materials per kleur gecachet (`MeshBasicMaterial` — geen
+  licht-interactie nodig, goedkoopst).
+- `spawnTracer(vanWereldPos, naarPunt, kleur)`: pak uit pool (of recycle
+  de oudste actieve), positioneer op het midden, `lookAt(naarPunt)`,
+  levensduur 0.08 s, opacity-fade. Oorsprong = wereldpositie van de
+  vlam-mesh (`vlam.getWorldPosition(_tmpVec)`).
+- `spawnImpact(punt, kleur, aantal)`: 3–5 deeltjes met kleine random
+  snelheid + zwaartekracht, levensduur 0.3 s.
+- `updateEffecten(dt)` in de `spelActief`-tak van `gameLoop` (bevriest
+  tijdens pauze); klaar → `visible = false`, terug in de pool.
+- Module-scope temp-vectors (`_tmpVecA/_tmpVecB`) — géén `new
+  THREE.Vector3()` in `schiet()`/`raakOndode()`-hot-paths erbij.
+- `vonk` en `bloedvonk` VERVALLEN (vervangen door `spawnImpact`);
+  headshot = meer deeltjes + lichtere tint, kill = idem + de
+  hitmarker/audio-tier draagt het verschil.
+- Wereld-impactkleur: `raak[0].object.userData.materiaalFamilie ?? 'steen'`
+  → kleurtabel (families komen in het materiaal-ticket; tot die tijd
+  bestaat alleen 'steen' als default en 'vijand').
+
+### 5.6 Wapen-identiteit (ontwerp — beslissing 27)
+
+Nieuwe velden op de bestaande definities (naast `smederijConfig`):
+
+| Veld | Drukspuit | Ratelaar | Gebruik |
+| --- | --- | --- | --- |
+| `kickSterkte` | 0.014 | 0.006 | rad camera-kick per schot |
+| `spreadNdc` | 0 | 0.012 | random offset op `setFromCamera` |
+| `terugslagSterkte` | 1.0 | 0.55 | schaal op de bestaande `terugslag = 1` |
+| `schotToon` | `{start:480, eind:120, duur:0.09}` | `{start:620, eind:210, duur:0.06}` | per-wapen `speelSchot` |
+
+- `cameraKick` (module-let): `schiet()` doet `cameraKick +=
+  kickSterkte`; waar de camera-pitch wordt gecomponeerd (in
+  `updateSpeler`, zoek `camera.rotation` / pitch-toepassing) telt
+  `cameraKick` op; decay `cameraKick *= Math.exp(-10 * dt)` in dezelfde
+  functie. `speler.pitch` zelf NOOIT muteren.
+- Spread: `raycaster.setFromCamera({ x: (Math.random()-0.5) *
+  spreadNdc, y: ... }, camera)` — de tracer volgt het echte raakpunt,
+  dus wat je ziet klopt met wat je raakt.
+- Herlaad-dip: tijdens `wapenStaat.herladen` kantelt de actieve
+  wapen-groep met een sinus-boog omlaag/omhoog op
+  `herlaadTimer/herlaadDuur` — geen aparte timer, geen nieuwe state.
+- Wisselen: `wisselTimer = 0.16` in `wisselWapen()` + korte
+  y-dip-animatie op de binnenkomende groep in de bestaande
+  terugslag-zone van `gameLoop`; `speelWissel()` (nieuw piep-geluidje).
+  De bestaande vlam-doof-fix in `wisselWapen()` blijft.
+
+### 5.7 Winkel-inventaris (huidige staat) en winkelstijl-architectuur
+
+Twaalf interactiepunten in `interactiePunten` (±3919), plus dynamische
+barricade-reparatiepunten (buiten deze ronde). Huidige markering:
+`interactieMarkering(x, z, kleur)` = vloerring + generieke zwevende
+kubus (±3470). Statusweergave beperkt tot `doofMarkering()` (grijs, V7)
+voor upgrade/werkbank/pantserdrank/ratelaar. Kleuren overlappen deels
+(deur2 = deur3 = `0x9fc0e8`, pantserdrank ≈ watertap-blauw).
+
+| Punt | Functie-categorie | Icoon (nieuw) | Primaire kleur (nieuw) |
+| --- | --- | --- | --- |
+| `ammoPunt` (3, −2) | munitie | kogel (cilinder + kop) | `0x6bd0ff` (bestaand) |
+| `provisiekastPunt` (10.7, −0.5) | munitie | kogel (zelfde) | `0xd8c47a` (bestaand) |
+| `upgradePunt` (−3, −2) | schade-upgrade | pijl omhoog (cone op zuiltje) | `0xffd75e` (bestaand) |
+| `werkbankPunt` | Snelheidselixer | slanke fles (cilinder + halsje) | `0xff9f5a` (bestaand) |
+| `pantserdrankPunt` | pantser | schild (afgeplatte box + punt) | `0x9fd8ff` → iets verschuiven naar `0xb8c8ff` (weg van watertap-blauw) |
+| `watertapPunt` | genezing | druppel (bol + omgekeerde cone) | `0x54c8e8` |
+| `ratelaarPunt` | wapen | tandwiel (torus, bestaande vormtaal) | `0xd9a05a` (bestaand) |
+| `smederijPunt` | smeden | hamer (2 boxes) | `0xff7a1f` (= `SMEDERIJ_ACCENT_KLEUR`) |
+| `deurPunt` … `deur4Punt` | doorgang | sleutel (ring + steel) | bestaande per-deur kleuren |
+
+- Centrale config `WINKEL_STIJLEN` (object, key = stijlnaam): `{ kleur,
+  bouwIcoon(groep), status() }`. `status()` retourneert 'beschikbaar' |
+  'teDuur' | 'gekocht' | 'nvt' op basis van de BESTAANDE flags
+  (`spelStaat.geld`, `snelspannerGekocht`, `ratelaarGekocht`,
+  `wapenStaat.gesmeed`, HP-vol-check, …). Deuren verdwijnen bij aankoop
+  (bestaand gedrag) en hebben alleen 'beschikbaar'/'teDuur'.
+- Nieuwe `winkelMarkering(x, z, stijlNaam)` vervangt ALLE
+  `interactieMarkering`-aanroepen; de bestaande exportnamen
+  (`upgradeMarkering`, `werkbankMarkering`, `smederijMarkering`,
+  `deur*Markering`, …) blijven bestaan en blijven `doofMarkering`-
+  compatibel (zelfde Group-structuur: ring + icoon-kinderen).
+- Statusanimatie in een nieuwe `updateWinkelMarkeringen(dt)`
+  (`spelActief`-tak): beschikbaar = ringopacity 0.4–0.7-sinus + icoon
+  `rotation.y += dt * 0.8`; teDuur = stilstand op 0.35; gekocht =
+  `doofMarkering` (eenmalig, geen animatie meer — sla gedoofde markers
+  over in de loop); nvt = kleur naar grijsblauw maar opacity 0.3.
+  Koop-flits: koop-functies roepen naast `speelKoop()` ook
+  `flitsMarkering(markering)` aan (ring kort naar schaal 1.25/opacity
+  0.9, decays in de update-loop).
+- `winkelLicht` (beslissing 30): één PointLight (intensiteit ≤ 3,
+  range 5, decay 2, `castShadow = false`), elke frame: dichtstbijzijnde
+  niet-gedoofde winkel binnen 6 m → positie boven de ring (y 1.2),
+  `color.lerp(doelkleur, dt * 5)`, intensiteit met dezelfde puls als de
+  ring; geen winkel in de buurt → intensiteit naar 0 lerpen.
+- Mistgolf: emissive iconen + ring blijven binnen fog-far (9.35 m)
+  leesbaar; geen extra werk, wél een acceptatiecriterium.
+
+### 5.8 Smederij-verhuizing (ontwerp — beslissing 28)
+
+- Huidig: `SMEDERIJ_X = DEUR2_X + 2.5` (= 7.0), `SMEDERIJ_Z =
+  PLAATS_Z_NOORD + 1.2` — noordwest-binnenplaats. Machineblok
+  (±1510-1528): aambeeld (castShadow), aambeeldpunt, voet, kool
+  (emissive) en `koolLicht` (PointLight 1.4/4) — ALLE posities zijn
+  `SMEDERIJ_X/Z`-afgeleiden; `smederijMarkering` (±1529) en
+  `smederijPunt` (±3910) idem. Geen collision, geen zonecheck.
+- Nieuw: `SMEDERIJ_X = 6.8`, `SMEDERIJ_Z = 3.5` (bijkeuken, tegen de
+  zuidwand). Onderbouwing en marges: zie beslissing 28. De machine
+  hoeft niet te draaien (aambeeld ligt langs de X-as, prima parallel aan
+  de zuidwand); wie wil mag de meshes in een Group zetten, maar
+  constanten-verplaatsing volstaat en is de kleinste diff.
+- Verlichting: de kool + `koolLicht` verhuizen automatisch mee en zijn
+  het lokale accent; het gedeelde `winkelLicht` (5.7) doet de rest.
+  GEEN extra hangLamp — de zuidwand mag schemerig blijven (ember-gloed
+  is het thema van dit punt).
+- Wat te controleren (testplan hoort bij het ticket): oude positie
+  (7.0, −14.3) heeft geen prompt/markering/mesh meer; nieuwe positie
+  werkt met deur 3 dicht (debug-teleport) én open; vanuit de woonkamer
+  op (4.4, 3.5) — 0.1 m van de muur — verschijnt GEEN Smederij-prompt
+  (de deur4Punt-bugles); `isVrijePlek`-probes op de route terugdeur ↔
+  kelderhals blijven vrij; `schaduw === 1`-invariant intact (koolLicht
+  werpt geen schaduw); beide wapens blijven smeedbaar; README-regel over
+  de Smederij-locatie bijgewerkt.
+
+### 5.9 Vijandleesbaarheid & sfeer (ontwerp — beslissingen 31 en 32)
+
+- **Poses (build-time, gratis)**: `ONDODE_TYPES[type].gang = {
+  pasFactor, bobFactor, ampFactor }` — Sjouwer trage zware pas
+  (pasFactor 0.8, bobFactor 1.6), Loper snelle pas (1.25, 0.8), Sluiper
+  korte snelle pasjes met lage bob (1.4, 0.5, amp 0.7). Toegepast in de
+  BESTAANDE animatie-writes (zelfde properties, andere factoren — netto
+  0 extra writes). Het hoofd-hoogte-anker (±0.03-band, zie beslissing
+  16) blijft onaantastbaar: GEEN nieuwe y-offsets op de hoofdgroep.
+- **Geluidsprofiel per type**: `ondode.gromTimer` (init 4–9 s, dt-af);
+  op 0 én afstand tot speler < 8 m → per-type grom (`piep`-compositie),
+  nieuwe timer. Sluiper gromt NOOIT — stilte is zijn tell. Globale cap:
+  max één grom per 0.6 s (module-let `laatsteGromKlok`).
+- **Ogen in de mist**: `startEventGolf('mist')` zet
+  `delen.oogMateriaal.emissiveIntensity` op 2.6 voor alle levende
+  ondoden (en `spawnOndode` doet het bij mist-spawns); `eindigEventGolf`
+  zet terug naar 1.4. Event-gedreven, geen per-frame kosten.
+- **Sfeer-details** (apart ticket): stofdeeltjes in de
+  atelier-daglichtkolommen (2 × `THREE.Points` ±30 punten, alleen
+  zichtbaar als `zoneVan(speler) === 2`, animatie = trage
+  groep-rotatie + y-sinus, géén attribute-writes per frame);
+  druppel-lek in de kelderhals (één mesh, val-timer 3–6 s, tik-geluid
+  alleen < 8 m); golfstart-lichtdip (module-let `lampDipFactor` 0.6 → 1
+  over 0.8 s, vermenigvuldigd in de bestaande lampflikker-loop).
+- **Materiaal-pass**: `matFamilie(naam, kleur)` cache (beslissing 31)
+  toegepast op de 6–8 grote vloeren/oppervlakken (binnenplaats-klinkers
+  → natSteen-glans, bijkeuken → tegel, gang → dof steen, kelderluik →
+  hout) + `userData.materiaalFamilie` voor de impact-koppeling (5.5).
+  Props NIET massaal herschilderen — alleen de grote vlakken.
+
+### 5.10 Performancebudgetten — ronde 3
+
+- **Effecten**: ≤ 8 tracers + ≤ 24 impact-deeltjes actief; pools
+  vooraf gebouwd; 0 nieuwe allocaties per schot/treffer in
+  `schiet()`/`raakOndode()` na opwarmen (geen `new THREE.*`, geen
+  closures-per-schot, temp-vectors hergebruiken). Geen `setTimeout`
+  voor nieuwe effecten.
+- **Lights**: +1 permanent (`winkelLicht`, geen schaduw). De
+  `schaduw === 1`-invariant (precies één schaduwwerpende lamp) blijft
+  keihard. Vlam-/ember-/kool-/brander-lichten ongewijzigd.
+- **Ondode-budget**: ≤ 14 meshes en ≤ 10 transform-writes per ondode
+  per frame blijven gelden; de aanvals-tell mag daar bovenop uitsluitend
+  voor de ≤ 2 actieve aanvallers ≤ 3 extra writes doen (armen vervangen
+  bestaande writes; oog-emissive is een material-write, geen transform).
+- **Winkels**: statusanimatie ≤ 2 writes per niet-gedoofde markering
+  per frame (ringopacity + icoonrotatie); gedoofde markers worden
+  overgeslagen. `winkelLicht` = 1 positie- + 1 kleur- + 1
+  intensiteit-write.
+- **Materialen**: familie-cache voorkomt material-groei; gecachete
+  materialen zijn immutabel. Geen nieuwe transparante full-screen
+  vlakken; `THREE.Points`-wolken ≤ 2 actief, ≤ 30 punten elk.
+- **HUD**: hitmarker = 1 DOM-element met klasse-toggles; geen
+  per-frame DOM-reads.
+
+### 5.11 Risicogebieden — ronde 3
+
+- **`updateOndoden()` wordt voor de DERDE keer aangeraakt** (fase 8 =
+  animatie, fase 9 = navigatie, nu de melee-branch). Het aanvals-ticket
+  raakt UITSLUITEND de melee-branch + nieuwe state-velden; de tell komt
+  in een APART ticket dat uitsluitend de animatie-/audio-kant doet.
+  Nooit die twee combineren.
+- **`tests/test-ondode-hitreacties.mjs`** verankert het oude
+  meleeTimer-gedrag ("wordt elk frame gereset") — die check MOET in het
+  aanvals-ticket mee veranderen, anders is de suite rood terwijl het
+  spel klopt (zelfde les als T16/test-powerups).
+- **`schiet()`/`raakOndode()` zijn hot paths**: elke regel die daar per
+  schot alloceert is een regressie. De effecten-pool moet er eerst
+  staan; daarna pas headshot-/kill-tiers erbovenop.
+- **Gedeelde materialen muteren**: `doofMarkering` muteert
+  material-kleuren — dat mag alleen omdat elke markering eigen
+  materials heeft. De nieuwe familie-cache (5.9) deelt materials wél:
+  daar geldt "nooit muteren". Iconen van winkelMarkering krijgen dus
+  EIGEN materials (ze moeten doofbaar blijven), vloeren gedeelde.
+- **Hoofd-hoogte-anker**: pose-tickets mogen de hoofdgroep-y niet
+  verschuiven (±0.03-band in `tests/test-ondode-model.mjs`); ritme- en
+  amplitudeverschillen zijn de veilige knoppen.
+- **Markering-vervanging**: `winkelMarkering` moet dezelfde
+  Group-structuur teruggeven als `interactieMarkering` (ring als kind 0
+  is nergens gegarandeerd, maar `doofMarkering` traverset — het échte
+  contract is: alle materials doofbaar). Exportnamen behouden.
+- **Smederij-verhuizing raakt drie plekken via twee constanten** —
+  machineblok, markering, kooppunt volgen `SMEDERIJ_X/Z` vanzelf, maar
+  screenshots vóór/na zijn verplicht: een vergeten hard-coded offset
+  (bv. in een later toegevoegd decor-item) valt alleen visueel op.
+- **Audio-overload**: de Ratelaar (10 schoten/s) × hit-tiks × groms kan
+  clippen. Regels: pitch-variatie, korte duur (≤ 0.09 s), globale
+  grom-cap, en GEEN nieuwe geluiden in dezelfde frame stapelen boven de
+  bestaande `piep`-volumes (≤ 0.16).
+
+### 5.12 Herbruikbare systemen — ronde 3
+
+| Nieuw | Hergebruik |
+| --- | --- |
+| Aanvals-state-machine | `ondode`-statevelden-patroon, `isVrijePlek`, dt-clamp, `spelerSchade`, flinch (T21) als onderbrekingsvisual |
+| Aanvals-tells | arm-/hoofd-pivots (T18/T20), `ARM_RUST_ROTATIE_X`, oog-materiaal per ondode, `piep()` |
+| Effecten-pool | `vlam.getWorldPosition`-patroon, `spelActief`-tak van `gameLoop`, bestaande raycast-punten |
+| Hitmarker | HUD-DOM-conventie (`ammoUI`/`vignet`-patroon), CSS-transities, `updateVignet`-achtige decay |
+| Wapen-identiteit | `WAPEN_*`-definities, `terugslag`-zone in `gameLoop`, `wisselWapen`-vlamfix |
+| Winkelstijl | `interactieMarkering`-structuur, `doofMarkering`, koop-functies + `speelKoop`, `updateInteracties` |
+| winkelLicht | lampflikker-patroon (puls), `interactiePunten` als positie-bron |
+| Smederij-verhuizing | `SMEDERIJ_X/Z`-afleiding overal, deur4Punt-marge-les (2.3 m), `isVrijePlek`-probes |
+| Materiaal-families | `mat()`-helper als binnenkant van `matFamilie`, `userData`-conventie |
+| Sfeer-details | `zoneVan()` voor zichtbaarheid, lampflikker-loop voor de dip, zone-audio-patroon voor de druppel-tik |
