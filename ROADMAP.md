@@ -1675,6 +1675,388 @@ hieronder zijn implementatie, geen ontwerp. Volgorde: 30 → 41, fases:
 
 ---
 
+# v0.17 — Fable-architectuurronde 4: een doel om naartoe te spelen (gepland, nog NIET geïmplementeerd)
+
+Vijf verbetergebieden, gekozen door de gebruiker uit de designer-pitch:
+(1) **doel & retentie** — score/statistieken/highscore, de Vluchtroute als
+win-conditie en moeilijkheidsgraden; (2) **golfvariatie** — de
+Stroomuitval-eventgolf naast de Mist; (3) **wapenarsenaal** — De Hagelketel
+als derde wapen; (4) **presentatie** — een dreigingsaudio-laag en
+zone-naambanners; (5) **late-game balans** — een pacing-audit voor golf
+16+. Architectuur staat vast in `ARCHITECTURE_NOTES.md` §6 +
+ontwerpbeslissingen 33–42; de tickets hieronder zijn implementatie, geen
+ontwerp. Volgorde: 42 → 51, fases:
+
+- **Fase 15 — score & moeilijkheid**: T42, T43 (verbetergebied 1)
+- **Fase 16 — de Vluchtroute**: T44, T45 (verbetergebied 1)
+- **Fase 17 — Stroomuitval**: T46 (verbetergebied 2)
+- **Fase 18 — De Hagelketel**: T47, T48 (verbetergebied 3)
+- **Fase 19 — presentatie**: T49, T50 (verbetergebied 4)
+- **Fase 20 — integratie**: T51 (verbetergebied 5 + afsluiter)
+
+## Ticket 42 — Doel D1: run-statistieken, score en highscore
+- **Type:** Feature (fundament van de ronde)
+- **Verbetergebied:** 1 (doel & retentie)
+- **Prioriteit:** hoog — kleinste moeite, grootste retentie-effect; T43/T45 bouwen erop
+- **Status:** open
+- **Afhankelijk van:** —
+- **Doel:** elke run krijgt betekenis: statistieken tijdens de run,
+  een score aan het einde en een blijvend record op het startscherm.
+- **Concrete wijzigingen:** `runStats`-object (kills, headshots
+  (kop-treffers), schoten, treffers, geldTotaal, powerups, doodDoor) met
+  increments op de bestaande plekken: `schiet()` (schoten, per pellet 1x
+  per trekker), `raakOndode()` (treffers/kills/headshots), de
+  geld-uitkeerplekken (kill-geld, wave-bonus, power-ups) en
+  `spelerSchade`-pad (laatste aanvaller-type → doodDoor). Scoreformule
+  ALLEEN bij het einde berekend (geen per-frame kosten):
+  `score = kills×10 + headshots×15 + (golf−1)×100` (T43 voegt de
+  moeilijkheids-multiplier toe). `gameOverScherm` uitgebreid met een
+  stats-tabel, de score en een record-vergelijking ("NIEUW RECORD").
+  Highscore in `localStorage` (key `amsterdamUndeadHighscore`, JSON
+  {score, golf, moeilijkheid, datum}) via twee helpers `leesHighscore()`/
+  `schrijfHighscore()` die ALTIJD in try/catch zitten (localStorage kan
+  ontbreken/geweigerd zijn — het spel mag daar nooit op breken). Het
+  startscherm toont het bestaande record onder de uitleg.
+- **Codegebieden:** `schiet()`/`raakOndode()` (alleen `x++`-regels, geen
+  allocaties — hot-path-regels §5.10 blijven gelden), `gameOver()`
+  (~regel 3995), gameOver-/start-DOM (~336-353), nieuwe helpers, debug-
+  export (`runStats`, `berekenScore`, `leesHighscore`, `schrijfHighscore`).
+- **Acceptatiecriteria:** increments kloppen via ECHTE
+  `schiet()`/`raakOndode()`-aanroepen; score-formule exact; record wordt
+  geschreven bij game over en gelezen op het startscherm; een geweigerde
+  localStorage breekt niets (guard getest); hot-path source-checks
+  (test-effecten-pool) blijven groen.
+- **Testplan:** nieuwe `tests/test-score-stats.mjs` + `check-load` +
+  `run-all`.
+- **Rollback:** runStats + schermuitbreiding verwijderen; er hangt (tot
+  T43/T45) niets anders aan.
+- **Sonnet solo:** ja.
+
+## Ticket 43 — Doel D2: moeilijkheidsgraden (Toerist / Amsterdammer / Nachtwacht)
+- **Type:** Feature
+- **Verbetergebied:** 1 (doel & retentie)
+- **Prioriteit:** middel — goedkope quick win (multipliers op bestaande systemen)
+- **Status:** open
+- **Afhankelijk van:** T42 (score-multiplier + record-veld)
+- **Doel:** drie startkeuzes die de uitdaging schalen zonder nieuwe
+  systemen: makkelijker leren, of juist zwaarder met een hogere score.
+- **Concrete wijzigingen:** `MOEILIJKHEDEN`-register:
+  `toerist {budgetFactor 0.75, regenFactor 1.25, scoreFactor 0.75,
+  startGeld 200}`, `amsterdammer {1, 1, 1, 0}` (exact het huidige
+  gedrag), `nachtwacht {1.3, 0.7, 1.5, 0}`. Ingehaakt op precies drie
+  plekken: `golfBudget()` (×budgetFactor, afgerond),
+  `SPELER_REGEN_PER_SEC` (×regenFactor op de gebruiksplek, de constante
+  zelf blijft) en de T42-scoreformule (×scoreFactor). Startscherm: de
+  ene "Klik om te spelen"-knop wordt drie knoppen (zelfde
+  `.knop`-stijl); een klik kiest de moeilijkheid, kent `startGeld` toe
+  en vraagt pointer lock. De keuze is 1x per run (page-reload = nieuwe
+  run); het pauzescherm toont daarna alleen het bestaande "klik om
+  verder te spelen" — de knoppen zijn alleen zichtbaar zolang er nog
+  geen moeilijkheid gekozen is. Moeilijkheidsnaam mee in het
+  gameOver-/winscherm en het highscore-record (T42-veld).
+- **Codegebieden:** startscherm-DOM + click-handler (~342-353, ~2053),
+  `golfBudget()` (~3027), HP-regen-gebruiksplek (~3000-3001),
+  T42-scoreformule, debug-export (`moeilijkheid` get/set,
+  `MOEILIJKHEDEN`, `kiesMoeilijkheid`).
+- **Acceptatiecriteria:** budget/regen/score schalen exact per graad;
+  amsterdammer = byte-voor-byte het huidige gedrag; toerist start met
+  €200; pauze-hervatting toont GEEN keuzeknoppen meer; de
+  startscherm-guard voor game over (regel ~2065) blijft intact.
+- **Testplan:** nieuwe `tests/test-moeilijkheid.mjs` + `check-load` +
+  `run-all`.
+- **Rollback:** register + knoppen weg, drie inhaakplekken terug naar
+  de constante.
+- **Sonnet solo:** ja.
+
+## Ticket 44 — Doel D3: de Vluchtroute-onderdelen
+- **Type:** Feature
+- **Verbetergebied:** 1 (doel & retentie)
+- **Prioriteit:** hoog — de helft van de win-conditie
+- **Status:** open
+- **Afhankelijk van:** — (T45 bouwt erop)
+- **Doel:** drie verzamelbare ontsnappingsonderdelen die de speler over
+  de golven én over de hele map heen laten spelen.
+- **Concrete wijzigingen:** `VLUCHT_ONDERDELEN`-register: Roeispaan
+  (atelier, vanaf golf 3), Touwbundel (binnenplaats, vanaf golf 6),
+  Scheepslantaarn (bijkeuken, vanaf golf 9) — exacte x/z bij
+  implementatie via `isVrijePlek`-probes. Elk onderdeel: klein origineel
+  mesh uit simpele prims, vooraf gebouwd en onzichtbaar; `startGolf()`
+  zet het zichtbaar zodra de drempelgolf bereikt is en voegt PAS DAN het
+  T-interactiepunt + de markering toe (dynamisch — de laadtijd-telling
+  van 12 interactiepunten, bewaakt door `test-smederij-verhuizing.mjs`,
+  blijft daardoor kloppen). Oppakken is gratis: mesh + punt + markering
+  weg, `toonMelding` + `toonGolfBanner('VLUCHTROUTE n/3')`, nieuw klein
+  HUD-element `Vluchtroute: n/3` (alleen geschreven bij verandering).
+  `WINKEL_STIJLEN` krijgt één gedeelde `vluchtroute`-stijl (zeegroen
+  0x6fe8c0, bestaand icoon-silhouet uit de geo-cache — eigen materials
+  per markering, zoals altijd).
+- **Codegebieden:** nieuw blok bij de winkel-/interactie-secties,
+  `startGolf()` (~4120), `WINKEL_STIJLEN` (~1730), HUD-DOM, debug-export
+  (`VLUCHT_ONDERDELEN`, `vluchtOnderdelenOpgepakt` o.i.d.).
+- **Acceptatiecriteria:** vóór golf 3 bestaat er geen extra
+  interactiepunt; elk onderdeel verschijnt exact op zijn drempelgolf
+  (ook als de zone nog op slot zit — het wacht daar); oppakken werkt in
+  willekeurige volgorde; HUD-teller klopt; telling keert terug naar de
+  basiswaarde na oppakken; alle bestaande winkel-tests blijven groen.
+- **Testplan:** nieuwe `tests/test-vluchtroute.mjs` + `check-load` +
+  `run-all` + screenshot van een verschenen onderdeel + markering.
+- **Rollback:** register + startGolf-hook + HUD-regel verwijderen.
+- **Sonnet solo:** ja.
+
+## Ticket 45 — Doel D4: De Ontsnapping (win-conditie + winscherm)
+- **Type:** Feature (VOORZICHTIG — raakt de scherm-/pauzelogica)
+- **Verbetergebied:** 1 (doel & retentie)
+- **Prioriteit:** hoog — maakt er een échte game van
+- **Status:** open
+- **Afhankelijk van:** T42 (stats/score/record), T44 (onderdelen)
+- **Doel:** met alle drie de onderdelen én genoeg geld kan de speler
+  ontsnappen: een winscherm met score, en de keuze om door te spelen.
+- **Concrete wijzigingen:** `ONTSNAPPING_PRIJS = 2500`;
+  ontsnappingspunt bij het kelderluik (kelderhals), pas aan
+  `interactiePunten` toegevoegd zodra 3/3 onderdelen opgepakt zijn
+  (zelfde dynamische patroon als T44), prompt "Druk T: ontsnap over het
+  water (€2500)". Nieuw `#winScherm`-overlay (opzet als
+  `gameOverScherm`, titel "ONTSNAPT", zeegroen accent): de
+  T42-stats-tabel hergebruikt, score met ontsnappingsbonus (+1000 vóór
+  de multiplier), highscore-save, en twee knoppen: "Speel door
+  (endless)" (overlay dicht, pointer lock opnieuw aanvragen, het
+  ontsnappingspunt verdwijnt definitief voor deze run) en "Opnieuw"
+  (`location.reload()`, het bestaande restart-mechanisme). Winnen is
+  GEEN game over: `spelStaat.gameOver` blijft false; het spel staat
+  stil doordat het winscherm de pointer lock loslaat (bestaande
+  pauze-gate). De startscherm-guard (regel ~2065) wordt uitgebreid
+  zodat het startscherm niet over het winscherm heen popt — één
+  overlay tegelijk (startscherm / gameOverScherm / winScherm).
+- **Codegebieden:** interactie-blok, nieuw DOM/CSS-blok, de
+  pointerlockchange-handler (~2060-2071), `gameOver()` ongemoeid,
+  debug-export (`ontsnappingsPunt`, `winScherm`, `probeerOntsnapping`).
+- **Acceptatiecriteria:** punt verschijnt pas bij 3/3; geld-eis werkt
+  (te weinig geld = bestaande "nog €X nodig"-flow); winscherm toont
+  stats + score + record; "Speel door" hervat de simulatie aantoonbaar;
+  startscherm popt niet over het winscherm; game-over-flow blijft
+  byte-voor-byte hetzelfde.
+- **Testplan:** nieuwe `tests/test-ontsnapping.mjs` + `check-load` +
+  `run-all` + screenshot van het winscherm.
+- **Rollback:** punt + overlay + guard-uitbreiding verwijderen; T44
+  blijft zelfstandig functioneren (verzamelen zonder doel).
+- **Sonnet solo:** ja, met de §6.10-waarschuwing over de schermen-guard.
+
+## Ticket 46 — Golf G1: eventgolf "Stroomuitval"
+- **Type:** Feature
+- **Verbetergebied:** 2 (golfvariatie)
+- **Prioriteit:** middel — goedkoop, het eventgolf-framework ligt er al
+- **Status:** open
+- **Afhankelijk van:** —
+- **Doel:** een tweede eventgolf naast de Mist: alle binnenverlichting
+  valt uit, alleen de ooggloed en het maanlicht van buiten wijzen de weg.
+- **Concrete wijzigingen:** `kiesEventType()` wisselt deterministisch af:
+  golf 5 mist, golf 10 stroomuitval, golf 15 mist, …
+  (`Math.floor(golf / EVENT_GOLF_INTERVAL) % 2`). Nieuwe module-let
+  `stroomFactor = 1` als extra vermenigvuldiger in de bestaande
+  lampflikker-regel (naast `lampDipFactor`); `startEventGolf('stroomuitval')`
+  zet 'm op 0.12, `eindigEventGolf` laat 'm lineair over ~2s herstellen
+  (zelfde ramp-patroon als de lichtdip). `hangLamp()` slaat voortaan ook
+  de bol-mesh op in de `lampLichten`-entry zodat de emissive van de peer
+  mee dimt (anders "branden" de peertjes in het donker); het
+  `winkelLicht` dimt mee (×stroomFactor). De buitenverlichting
+  (binnenplaats-lantaarns, maanlicht) blijft AAN — buiten wordt de
+  vluchtheuvel, binnen het gevaar. Oog-boost via het bestaande
+  `zetOogBasis`-kanaal (zelfde waarde als mist, 2.6), inclusief spawns
+  tijdens het event (de bestaande mist-check in `spawnOndode()` wordt
+  een event-check). Eigen spawngewichten `{normaal 1, loper 2, sluiper 2}`
+  in `eventSpawnGewichten`. Audio: `speelStroomklap()` (korte klik +
+  zakkende zoem, ≤0.16 volume) bij start, herstel-tik bij einde. Banner
+  via het bestaande eventgolf-bannerpad.
+- **Codegebieden:** eventgolf-framework (~4052-4110), `hangLamp()`
+  (~1205-1232), lampflikker-loop (~4893-4896), `spawnOndode()`
+  (~3491), `eventSpawnGewichten` (~2977), audio-blok, debug-export
+  (`stroomFactor` get/set).
+- **Acceptatiecriteria:** afwisseling deterministisch; tijdens het
+  event zijn lampen, peer-emissives én winkelLicht aantoonbaar gedimd;
+  ogen geboost + exact hersteld (ook nieuwe spawns, ook het
+  windup-randgeval — zelfde checks als T39); gewichten kloppen; de
+  Mistgolf blijft byte-voor-byte werken; `schaduw === 1` en de
+  lichttelling ongewijzigd (er komt géén licht bij).
+- **Testplan:** nieuwe `tests/test-stroomuitval.mjs` (incl.
+  mist-regressiechecks) + `check-load` + `run-all` + screenshot.
+- **Rollback:** kiesEventType terug naar `'mist'`; stroomFactor-regels
+  verwijderen.
+- **Sonnet solo:** ja.
+
+## Ticket 47 — Wapen W4: De Hagelketel (data, model, pellet-schot)
+- **Type:** Feature (VOORZICHTIG — raakt het schiet-hot-path)
+- **Verbetergebied:** 3 (wapenarsenaal)
+- **Prioriteit:** middel
+- **Status:** open
+- **Afhankelijk van:** — (T48 maakt 'm koopbaar)
+- **Doel:** een derde wapen met een eigen niche: traag, brede spread,
+  verwoestend van dichtbij (Drukspuit = precisie, Ratelaar = volume,
+  Hagelketel = close range).
+- **Concrete wijzigingen:** `WAPEN_HAGELKETEL`-definitie met exact
+  dezelfde veldenset als de twee bestaande (incl. Ticket 34-velden):
+  magazijnMax 4, reserve 16, herlaadDuur 2.4/1.7, traag vuurtempo
+  (~1.1s), spreadNdc 0.055, kickSterkte 0.03, terugslagSterkte 1.6,
+  lage/zware schotToon, `smederijConfig {schadeBonus 1, magazijnMax 6}`.
+  Nieuw definitieveld `pelletAantal` (1 voor Drukspuit/Ratelaar, 6 voor
+  de Hagelketel): `schiet()` krijgt een pellet-lus om de bestaande
+  enkele raycast heen — zelfde temp-vectoren, GEEN nieuwe allocaties per
+  schot (de pools vangen de tracer-/impact-plafonds al af); munitie: 1
+  magazijn-kogel per TREKKER, volle schade per pellet (balans via
+  tempo/magazijn/prijs). Model: koperen ketelromp (cilinder + brede
+  mondtrechter) met eigen vlam + vlamLicht volgens het bestaande
+  patroon — lichttelling gaat daardoor BEWUST van 23 naar 24; de grens
+  in `test-v016-integratie.mjs` wordt in DIT ticket meeverhoogd (zelfde
+  les als T16/test-powerups). Smederij-visual: gloeiband zonder eigen
+  PointLight (bewust — lichtbudget). `wapenStaten.hagelketel = null` tot
+  aankoop; in dit ticket alléén via de debug-hook activeerbaar (nog
+  geen kooppunt).
+- **Codegebieden:** wapen-definitieblok (~2368-2400), `schiet()`
+  (~2671, hot path!), wapen-modelbouw, `nieuweWapenStaat`, debug-export
+  (`WAPEN_HAGELKETEL`, activatie-helper).
+- **Acceptatiecriteria:** 6 tracers per trekker (via actieveEffecten),
+  spread aantoonbaar breder dan de Ratelaar, magazijn −1 per trekker
+  (niet −6), pools binnen plafond na spam, de source-checks op
+  `schiet()`/`raakOndode()` blijven groen, lichttelling 24 +
+  `schaduw === 1`, beide bestaande wapens schieten byte-voor-byte
+  hetzelfde (pelletAantal 1-pad).
+- **Testplan:** nieuwe `tests/test-hagelketel-wapen.mjs` + `check-load`
+  + `run-all` + screenshot van het model.
+- **Rollback:** definitie + pellet-lus terugdraaien (het 1-pellet-pad
+  is het oude pad).
+- **Sonnet solo:** ja, met de §6.10-hot-path-waarschuwing.
+
+## Ticket 48 — Wapen W5: Hagelketel-winkel + driewapen-wissel
+- **Type:** Feature
+- **Verbetergebied:** 3 (wapenarsenaal)
+- **Prioriteit:** middel
+- **Status:** open
+- **Afhankelijk van:** T47
+- **Doel:** de Hagelketel is in het spel te koop en de Q-wissel werkt
+  met drie wapens.
+- **Concrete wijzigingen:** `HAGELKETEL_PRIJS = 2800`;
+  wandrek-kooppunt in de bijkeuken
+  (noordwand; exacte plek via `isVrijePlek`-probes + screenshot,
+  2.3m-marge-les van deur 4). `koopHagelketel()` volgens het
+  koopRatelaar-patroon (wapenStaat-init, meteen wisselen, markering
+  doven). `WINKEL_STIJLEN` + `hagelketel`-entry (koper 0xd88a3c, eigen
+  ketel-icoon uit bestaande geo-prims, status volgens het
+  ratelaar-patroon). `wisselWapen()` herschreven op een
+  `WAPEN_VOLGORDE = ['drukspuit','ratelaar','hagelketel']`-array:
+  cycle naar het VOLGENDE GEKOCHTE wapen (werkt dus ook als alleen de
+  Hagelketel gekocht is), visibility-loop over alle drie de groepen.
+  De interactiepunten-telling gaat van 12 naar 13: de exacte-tellingscheck
+  in `test-smederij-verhuizing.mjs` wordt in DIT ticket bijgewerkt.
+- **Codegebieden:** winkel-/interactieblok, `wisselWapen()` (~2429),
+  `WINKEL_STIJLEN` (~1730), bijkeuken-decor, debug-export
+  (`koopHagelketel`, `hagelketelGekocht`, `HAGELKETEL_PRIJS`,
+  `hagelketelPunt`, `hagelketelMarkering`, `WAPEN_VOLGORDE`).
+- **Acceptatiecriteria:** koop werkt (geld-eis, doven, meteen actief);
+  cycle-volgorde klopt met 2 én met 3 gekochte wapens en slaat
+  niet-gekochte over; Smederij-status volgt het actieve wapen (bestaand
+  T37-gedrag, nu ook voor wapen 3); `koopAmmo` vult het actieve wapen;
+  telling 13 in de bijgewerkte check; HUD/ammo-UI kloppen na elke wissel.
+- **Testplan:** nieuwe `tests/test-hagelketel-winkel.mjs` + bijgewerkte
+  `test-smederij-verhuizing.mjs` + `check-load` + `run-all` +
+  screenshot van het kooppunt.
+- **Rollback:** punt/markering/koopfunctie weg; wisselWapen-array werkt
+  ook met twee wapens (zelfde codepad).
+- **Sonnet solo:** ja.
+
+## Ticket 49 — Sfeer P1: dreigingsaudio-laag
+- **Type:** Feature
+- **Verbetergebied:** 4 (presentatie)
+- **Prioriteit:** laag-middel
+- **Status:** open
+- **Afhankelijk van:** —
+- **Doel:** een zachte, originele Web Audio-drone die meegroeit met de
+  dreiging — de game is nu stil tussen de actie door.
+- **Concrete wijzigingen:** twee licht gedetuneerde oscillators (sine
+  55 Hz + 57 Hz, zwevingseffect) door één gainNode, gestart in
+  `initGeluid()` met gain 0 en daarna NOOIT gestopt/herstart (klikken) —
+  alleen de gain wordt gestuurd. Pure, testbare helper
+  `berekenDreigingsGain(aantalOndoden, dichtstbijzijnd)`:
+  `min(0.05, 0.008×aantal + (dichtstbijzijnd < 6 ? 0.02 : 0))`. Sturing
+  1x per ~0.25s (throttle-timer) in de `spelActief`-tak van de gameLoop
+  via `gain.setTargetAtTime` (~0.5s glijtijd); de niet-actieve tak
+  (pauze/menu/game over) stuurt doelgain 0. Volumeplafond 0.05 —
+  duidelijk onder de piep-volumes, het mag nooit met de tells
+  concurreren. De bestaande `speelGolfStart()`-sting blijft de
+  golf-opening; er komt geen extra sting.
+- **Codegebieden:** audio-blok (~2730-2810), gameLoop (beide takken),
+  debug-export (`berekenDreigingsGain`, `dreigingsGainDoel` getter).
+- **Acceptatiecriteria:** gain-formule exact (pure functie); throttle
+  aantoonbaar (geen per-frame audio-writes); pauze → doelgain 0;
+  volumeplafond 0.05; geen oscillator-start/stop na init (source-check).
+- **Testplan:** nieuwe `tests/test-dreigingsaudio.mjs` (via de pure
+  helper + debug-getters, niet via echte geluidsmeting) + `check-load` +
+  `run-all`.
+- **Rollback:** oscillators + throttle-blok verwijderen.
+- **Sonnet solo:** ja.
+
+## Ticket 50 — Sfeer P2: zone-naambanners + HUD-zonelabel
+- **Type:** Feature
+- **Verbetergebied:** 4 (presentatie)
+- **Prioriteit:** laag — goedkoopste quick win van de ronde
+- **Status:** open
+- **Afhankelijk van:** —
+- **Doel:** de zones die visueel al een identiteit hebben, krijgen ook
+  een naam: een banner bij het eerste bezoek en een klein HUD-label.
+- **Concrete wijzigingen:** `ZONE_NAMEN = ['De Woonkamer', 'De Gang',
+  'Het Atelier', 'De Binnenplaats', 'De Bijkeuken']` (indices exact
+  volgens `zoneVan()`: 0/1/2/3/4). In de bestaande zone-triggerplek in
+  de gameLoop (waar `gangBetreden`/`plaatsBetreden` al checken):
+  huidige zone bepalen, `laatsteZone` cachen en ALLEEN bij een wissel
+  werk doen — 1 HUD-write per zonewissel, nooit per frame. Eerste
+  bezoek (bezochteZones-Set, start {0}): `toonGolfBanner(zonenaam,
+  korte flavour-ondertitel)` — het bestaande, geteste bannersysteem,
+  geen nieuw overlay. Klein HUD-zonelabel onder `golfTekst`. De
+  bestaande `gangBetreden`/`plaatsBetreden`-audio-triggers blijven
+  onaangeraakt (andere posities, ander doel).
+- **Codegebieden:** gameLoop-triggerplek (~4866-4872), HUD-DOM,
+  `toonGolfBanner` (hergebruik), debug-export (`ZONE_NAMEN`,
+  `bezochteZones`, `laatsteZone` getter).
+- **Acceptatiecriteria:** label wisselt mee met `zoneVan()`; banner
+  exact 1x per zone per run; herbezoek = geen banner; geen per-frame
+  DOM-writes (source-check of write-teller); namen/indices kloppen.
+- **Testplan:** nieuwe `tests/test-zone-banners.mjs` + `check-load` +
+  `run-all`.
+- **Rollback:** triggerblok + label verwijderen.
+- **Sonnet solo:** ja.
+
+## Ticket 51 — Integratie: golf-16+ pacing-audit, eindregressie en teksten
+- **Type:** Regressie + balans
+- **Verbetergebied:** 5 (late-game balans) + afsluiter van de ronde
+- **Prioriteit:** hoog (afsluiter)
+- **Status:** open
+- **Afhankelijk van:** T42–T50
+- **Doel:** de hele ronde is aantoonbaar heel én het late game (dat
+  door score/vluchtroute langer gespeeld gaat worden) klopt.
+- **Concrete wijzigingen:** nieuwe `tests/test-lategame-pacing.mjs`:
+  headless simulatie van golven 12–20 die meet: threat-budget-verloop,
+  HP-trap-verloop, spawn-mix, naleving `GOLF_MAX_ACTIEF`, en de
+  geldstroom afgezet tegen de resterende sinks (incl. Hagelketel en
+  Ontsnapping). Eventuele tuning UITSLUITEND binnen ±25% van bestaande
+  constanten (`GOLF_BUDGET_GROEI`, `WAVE_BONUS_PER_GOLF`,
+  `ONDODE_HP_TRAPPEN`-drempels) op basis van de meting — groter is een
+  nieuw ticket. Teksten-ronde: startscherm-uitleg en `README.md`
+  bijgewerkt met ALLE ronde-4-features (moeilijkheden, vluchtroute,
+  ontsnapping, Hagelketel, stroomuitval). Screenshotronde: winscherm,
+  stroomuitval, Hagelketel, vluchtroute-markering, zone-banner.
+  Volledige `tests/run-all.mjs` + scratchpad-suite (bekende
+  uitzonderingen gedocumenteerd; nieuwe alleen na git-stash-verificatie).
+- **Codegebieden:** teksten; hooguit de drie genoemde balansconstanten.
+- **Acceptatiecriteria:** volledige repo-suite groen (incl. alle nieuwe
+  ronde-4-tests); lichttelling 24 + `schaduw === 1`; pacing-meting
+  gedocumenteerd in het eindrapport; teksten kloppen met het
+  daadwerkelijke spel.
+- **Testplan:** `tests/run-all.mjs` + scratchpad-suite +
+  `test-lategame-pacing.mjs` + screenshotronde.
+- **Rollback:** n.v.t. (verifiërend; tuning is per constante
+  terugdraaibaar).
+- **Sonnet solo:** ja.
+
+---
+
 ## Openstaande verbeteringen Defend National Monument (bevroren tot expliciet gevraagd)
 - Performance verbeteren
 - Wave balancing testen

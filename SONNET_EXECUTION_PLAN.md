@@ -769,3 +769,179 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
     schaduwwerpende lamp in het hele spel (`schaduw === 1` in de
     perf-tests). Het winkelLicht, de kool, de vlammen en de
     Brander-flits werpen GEEN schaduw — nieuwe lichten evenmin.
+
+---
+
+## Sonnet-prompts per ticket — ronde 4 (v0.17)
+
+Zelfde werkwijze als ronde 1-3: één ticket per keer, eerst dit plan +
+het ticket in ROADMAP.md + de relevante §6-secties van
+ARCHITECTURE_NOTES.md lezen, minimale wijziging, load-check + het
+testplan van het ticket, nooit committen zonder expliciete opdracht.
+
+### Ticket 42 — score, runStats en highscore
+- **Context:** `spelStaat` (~4032), `schiet()` (~2671),
+  `raakOndode()` (~3912), `gameOver()` (~3995), start-/gameOver-DOM
+  (~336-353). Spec: §6.2.
+- **Doel:** `runStats`-tellers op de bestaande plekken, `berekenScore()`
+  alleen bij het einde, stats+score+record op het gameOver-scherm,
+  record op het startscherm, `leesHighscore`/`schrijfHighscore` met
+  verplichte try/catch.
+- **Stappen:** runStats + increments; scoreformule; gameOver-scherm
+  uitbreiden; startscherm-recordregel; helpers + guards; debug-export;
+  `tests/test-score-stats.mjs`; regressie.
+- **Niet veranderen:** de geld-uitkeringslogica zelf (alleen tellers
+  ernaast), hot-path-structuur, bestaande scherm-flows.
+
+### Ticket 43 — moeilijkheidsgraden
+- **Context:** startscherm-DOM + click (~342-353, ~2053),
+  `golfBudget()` (~3027), regen-constantes (~3000). Spec: §6.3.
+- **Doel:** `MOEILIJKHEDEN`-register (toerist/amsterdammer/nachtwacht),
+  drie startknoppen, drie inhaakplekken (budget, regen, score) +
+  startGeld; amsterdammer = exact huidig gedrag.
+- **Stappen:** register; knoppen + keuze-flow; inhaakplekken;
+  moeilijkheid in gameOver-/recordweergave; debug-export;
+  `tests/test-moeilijkheid.mjs`; regressie.
+- **Niet veranderen:** prijzen, pauze-flow, de startscherm-guard voor
+  game over.
+
+### Ticket 44 — vluchtroute-onderdelen
+- **Context:** `interactiePunten` (~4804), `WINKEL_STIJLEN` (~1730),
+  `startGolf()` (~4120), HUD. Spec: §6.4-beslissing 35.
+- **Doel:** drie onderdelen (golf 3/6/9, atelier/binnenplaats/bijkeuken)
+  die dynamisch verschijnen (mesh + punt + markering), gratis oppakbaar,
+  met HUD-teller en banner; laadtelling blijft 12.
+- **Stappen:** register + meshes (isVrijePlek-probes); startGolf-hook;
+  oppak-actie; `vluchtroute`-stijl; HUD-element; debug-export;
+  `tests/test-vluchtroute.mjs`; screenshot; regressie.
+- **Niet veranderen:** bestaande winkels/punten, de exacte-telling in
+  test-smederij-verhuizing (die blijft juist kloppen dankzij het
+  dynamische patroon).
+
+### Ticket 45 — De Ontsnapping (VOORZICHTIG: schermen-guard)
+- **Context:** pointerlockchange-handler (~2060-2071), `gameOverScherm`,
+  kelderluik/kelderhals, T42-statsrender, T44-state. Spec: §6.4-
+  beslissing 36 + risico §6.10.
+- **Doel:** ontsnappingspunt (3/3 + €2500) bij het kelderluik, winscherm
+  met stats/score(+1000)/record en "Speel door"/"Opnieuw"; winnen is
+  géén gameOver; guard kent drie overlays.
+- **Stappen:** punt (dynamisch); `#winScherm`-DOM/CSS; win-flow
+  (exitPointerLock, record-save); doorspeel-flow (re-lock, punt weg);
+  guard-uitbreiding; debug-export; `tests/test-ontsnapping.mjs` (incl.
+  pauze-/gameover-regressiechecks); screenshot; regressie.
+- **Niet veranderen:** `gameOver()` zelf, de bestaande
+  restart-via-reload-conventie.
+
+### Ticket 46 — eventgolf Stroomuitval
+- **Context:** eventgolf-framework (~4052-4110), `hangLamp()` (~1205),
+  flikker-loop (~4893), `spawnOndode()`-mistcheck (~3491),
+  `eventSpawnGewichten` (~2977). Spec: §6.5.
+- **Doel:** deterministische afwisseling mist/stroomuitval;
+  `stroomFactor` (0.12, herstel ~2s) op lampen + peer-emissive +
+  winkelLicht; buitenlicht blijft aan; oog-boost via zetOogBasis;
+  gewichten {normaal 1, loper 2, sluiper 2}; start-/eindgeluid.
+- **Stappen:** bol-mesh in lampLichten-entry; stroomFactor + ramp;
+  kiesEventType; start/eindig-takken; spawn-check generaliseren; audio;
+  debug-export; `tests/test-stroomuitval.mjs` (mét mist-regressie);
+  screenshot; regressie.
+- **Niet veranderen:** fog-waarden, `lampDipFactor`-gedrag, de
+  mist-implementatie zelf.
+
+### Ticket 47 — De Hagelketel: data, model, pellets (VOORZICHTIG: hot path)
+- **Context:** wapen-definities (~2368-2400), `schiet()` (~2671),
+  wapen-modelbouw, `test-v016-integratie.mjs` (lichtgrens). Spec: §6.6-
+  beslissing 38.
+- **Doel:** `WAPEN_HAGELKETEL` (volledige veldenset), `pelletAantal`-lus
+  in `schiet()` (1 = exact het oude pad), ketel-model + vlam/vlamLicht
+  (licht 23→24, grens in test-v016-integratie in DIT ticket mee),
+  smederij-gloeiband zonder licht; alleen via debug activeerbaar.
+- **Stappen:** definitie; pellet-lus (allocatievrij!); model + vlam;
+  smederij-visual; wapenStaten-slot; lichtgrens-test bijwerken;
+  debug-export; `tests/test-hagelketel-wapen.mjs`; screenshot; regressie.
+- **Niet veranderen:** gedrag van beide bestaande wapens (regressie-
+  contract), pool-plafonds, `raakOndode()`.
+
+### Ticket 48 — Hagelketel-winkel + driewapen-wissel
+- **Context:** `wisselWapen()` (~2429), koopRatelaar-patroon (~4580),
+  `WINKEL_STIJLEN`, bijkeuken, `test-smederij-verhuizing.mjs`
+  (12-telling). Spec: §6.6-beslissing 39.
+- **Doel:** kooppunt (€2800, bijkeuken-noordwand via isVrijePlek +
+  screenshot), `koopHagelketel`, `hagelketel`-stijl,
+  `WAPEN_VOLGORDE`-cycle die niet-gekochte wapens overslaat; telling
+  12→13 (test in DIT ticket bijwerken).
+- **Stappen:** koopfunctie + punt + markering + wandrek-decor;
+  stijl-entry; wisselWapen-herschrijving; tellingcheck bijwerken;
+  debug-export; `tests/test-hagelketel-winkel.mjs`; screenshot;
+  regressie.
+- **Niet veranderen:** Smederij-/ammo-/HUD-logica (die volgen
+  `wapenStaat` al), gedrag van de cycle bij precies twee wapens.
+
+### Ticket 49 — dreigingsaudio-laag
+- **Context:** `initGeluid()`/`piep()` (~2730), gameLoop-takken. Spec:
+  §6.7.
+- **Doel:** twee nooit-herstartende oscillators + gainNode;
+  `berekenDreigingsGain` (puur, plafond 0.05); ~0.25s-throttle in de
+  spelActief-tak; pauze → 0.
+- **Stappen:** oscillator-init; pure helper; throttle-sturing beide
+  takken; debug-export; `tests/test-dreigingsaudio.mjs` (pure functie +
+  getters); regressie.
+- **Niet veranderen:** bestaande one-shots, `speelGolfStart`.
+
+### Ticket 50 — zone-naambanners + HUD-zonelabel
+- **Context:** zone-triggerplek (~4866-4872), `zoneVan()` (~3536),
+  `toonGolfBanner`, HUD. Spec: §6.8.
+- **Doel:** `ZONE_NAMEN` (indices exact zoneVan: 0-4), banner 1x per
+  zone per run, HUD-label alleen geschreven bij zonewissel.
+- **Stappen:** namen + Set + laatsteZone-cache; banner-aanroep;
+  HUD-element; debug-export; `tests/test-zone-banners.mjs`; regressie.
+- **Niet veranderen:** `gangBetreden`/`plaatsBetreden`-audio,
+  banner-systeem zelf.
+
+### Ticket 51 — integratie: pacing-audit + eindregressie + teksten
+- **Doel:** `tests/test-lategame-pacing.mjs` (sim golf 12-20: budget,
+  HP-trap, mix, max-actief, geldstroom vs sinks); tuning uitsluitend
+  ±25% van GOLF_BUDGET_GROEI / WAVE_BONUS_PER_GOLF /
+  ONDODE_HP_TRAPPEN-drempels; README + startscherm bijwerken met alle
+  ronde-4-features; screenshotronde (winscherm, stroomuitval,
+  Hagelketel, vluchtroute, zone-banner); volledige suites.
+- **Stappen:** pacing-test + meting; evt. tuning; teksten; screenshots;
+  `run-all` + scratchpad-suite (uitzonderingen alleen na
+  git-stash-verificatie documenteren); eindrapport.
+- **Niet veranderen:** mechanica buiten de ±25%-tuning.
+
+### Extra waarschuwingen ronde 4 (v0.17)
+
+21. **Exacte-tellingschecks verhuizen mee met hun ticket.**
+    `test-smederij-verhuizing` (12 punten) wordt ALLEEN in T48
+    bijgewerkt (12→13); `test-v016-integratie` (lichten ≤ 23) ALLEEN in
+    T47 (≤ 24). T44/T45 houden de telling op 12 dankzij het dynamische
+    punten-patroon (beslissing 35) — voeg vluchtroute-punten dus nooit
+    bij laadtijd toe.
+22. **De schermen-guard (~2065) is één handler voor drie overlays.**
+    Volgorde-regel: gameOver- en winscherm winnen van het startscherm;
+    nooit twee overlays tegelijk. Elke wijziging draait de bestaande
+    pauze- en gameover-tests mee.
+23. **`schiet()` wordt voor de derde ronde op rij aangeraakt.** Het
+    `pelletAantal = 1`-pad moet byte-voor-byte het huidige gedrag zijn;
+    de source-checks (geen `new THREE.`/`setTimeout`) én de
+    T34-identiteitstests bewaken dit. Geen array-allocaties in de
+    pellet-lus.
+24. **localStorage altijd via de guard-helpers.** Directe
+    `localStorage.x`-toegang buiten `leesHighscore`/`schrijfHighscore`
+    is verboden; de weiger-flow (mock) is een verplichte testcase.
+25. **Mist en stroomuitval delen kanalen** (ogen, gewichten, budget-
+    factor). Elke stroomuitval-wijziging draait de mist-checks uit
+    `test-vijand-leesbaarheid.mjs`/`test-eventgolven.mjs` mee; het
+    windup-randgeval (T39-patroon) geldt voor beide events.
+26. **Drone-oscillators nooit stoppen of herstarten** — alleen
+    gain-sturing; start/stop klikt hoorbaar en een dubbele start stapelt
+    oscillators. Pauze dempt via doelgain 0, niet via stop.
+27. **wisselWapen-regressiecontract:** met precies twee gekochte wapens
+    moet de nieuwe cycle exact de oude toggle zijn — de bestaande
+    wisseltests draaien ONGEWIJZIGD groen vóór de nieuwe tests erbij
+    komen.
+28. **Klok-vs-dt (drie keer geleerd in ronde 3):** alles wat op de
+    module-`klok` of echte timers draait test je met
+    `waitForTimeout` + de draaiende gameLoop (simuleerPointerLock),
+    nooit met handmatige synchrone ticks; DOM/audio-doelwaarden lees je
+    in dezelfde `evaluate()`-snapshot als hun invoer.

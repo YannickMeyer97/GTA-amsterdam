@@ -1248,3 +1248,209 @@ voor upgrade/werkbank/pantserdrank/ratelaar. Kleuren overlappen deels
 | Smederij-verhuizing | `SMEDERIJ_X/Z`-afleiding overal, deur4Punt-marge-les (2.3 m), `isVrijePlek`-probes |
 | Materiaal-families | `mat()`-helper als binnenkant van `matFamilie`, `userData`-conventie |
 | Sfeer-details | `zoneVan()` voor zichtbaarheid, lampflikker-loop voor de dip, zone-audio-patroon voor de druppel-tik |
+
+## 6. Fable-architectuurronde 4 (v0.17) — doel, score, arsenaal en late game
+
+Gekozen scope (designer-pitch, selectie door de gebruiker): score/stats/
+highscore, moeilijkheidsgraden, de Vluchtroute als win-conditie, de
+Stroomuitval-eventgolf, De Hagelketel als derde wapen, dreigingsaudio,
+zone-naambanners en een golf-16+ pacing-audit. Tickets 42–51 in
+ROADMAP.md; ontwerpbeslissingen 33–42 hieronder.
+
+### 6.1 Codekaart — run-state, schermen en persistentie (huidige staat)
+
+- **`spelStaat`** (~regel 4032): golf/geld/gameOver/golfActief/budget/
+  timers. Er bestaan GEEN statistiektellers en er is GEEN persistentie —
+  localStorage is in het hele bestand ongebruikt.
+- **Schermen**: `startscherm` (~336-353 DOM, ~2053 click → pointer lock),
+  `gameOverScherm` (~336-341, getoond in `gameOver()` ~3995). De
+  pointerlockchange-handler (~2060-2071) bevat de éne guard die bepaalt
+  welk overlay zichtbaar is; elke nieuwe overlay (winscherm, T45) MOET
+  daar door.
+- **HUD**: `updateHUD()` (~4005) schrijft alleen bij events (koop,
+  schade, golfwissel), nooit per frame. Nieuwe HUD-elementen
+  (vluchtroute-teller T44, zonelabel T50) volgen die regel.
+- **Wapens**: definities `WAPEN_DRUKSPUIT`/`WAPEN_RATELAAR` (~2368-2400),
+  `wapenStaten`-map + `actiefWapenNaam` + herbindbare `wapenStaat`
+  (~2406), `wisselWapen()` (~2429) is nu een tweewapen-toggle.
+  `schiet()` (~2671) is een hot path (§5.10-regels blijven keihard).
+- **Eventgolven**: framework ~4052-4110 (`isEventGolf`, `kiesEventType`,
+  `startEventGolf`, `eindigEventGolf`), bewust generiek gehouden ("latere
+  types kunnen aan kiesEventType worden toegevoegd zonder dit framework
+  te raken"). Mist-oogboost via `zetOogBasis` (~3491 in `spawnOndode`).
+- **Verlichting**: `lampLichten` (5 entries: {licht, basis, fase, amp1,
+  amp2, minFactor}, ~1231), flikker-loop + `lampDipFactor`-ramp
+  (~4893-4896). De bol-mesh van de peer zit NIET in de entry (nodig voor
+  T46). Buitenverlichting (lantaarns, maanlicht) staat los van
+  `lampLichten`.
+- **Zones**: `zoneVan()` (~3536): 0 woonkamer, 1 gang, 2 atelier,
+  3 binnenplaats, 4 bijkeuken/kelderhals. Zone-audio-triggers
+  (`gangBetreden`/`plaatsBetreden`) in de gameLoop ~4866-4872.
+- **Audio**: `initGeluid()`/`piep()` (~2730-2749); alle geluiden zijn
+  one-shots — er bestaat nog geen doorlopende laag (T49 introduceert de
+  eerste).
+- **Interactiepunten**: `interactiePunten`-array (~4804) telt bij laden
+  exact 12; `test-smederij-verhuizing.mjs` bewaakt dat getal hard.
+
+### 6.2 Score en runStats (beslissing 33)
+
+`runStats` is een plat object met tellers; increments zijn kale
+`x++`-regels op bestaande plekken (geen helper-refactor van de
+geld-uitkering — te riskant voor het hot path). De score wordt UITSLUITEND
+aan het einde berekend (`berekenScore()`), nooit per frame. Headshots
+tellen als kop-TREFFERS (consistent met de hitmarker-tiers), niet alleen
+kop-kills. Persistentie via `leesHighscore()`/`schrijfHighscore()` die
+localStorage-toegang ALTIJD in try/catch wikkelen: file://-context,
+privacy-modes of testomgevingen mogen het spel nooit breken; bij een
+weigering doet het spel gewoon alsof er geen record is.
+
+### 6.3 Moeilijkheidsgraden (beslissing 34)
+
+Drie graden als data (`MOEILIJKHEDEN`), géén nieuwe systemen: alleen
+budgetFactor (op `golfBudget()`), regenFactor (op de gebruiksplek van
+`SPELER_REGEN_PER_SEC`), scoreFactor (op de T42-formule) en startGeld.
+`amsterdammer` is per definitie {1, 1, 1, 0} = het huidige gedrag —
+regressietests draaien ongewijzigd op die graad. Prijzen worden NIET
+geschaald (12 koopplekken + promptteksten + tests zouden allemaal
+meebewegen — te invasief voor wat het oplevert). De keuze is éénmalig per
+run, op het startscherm vóór de eerste pointer lock; de pauze-flow blijft
+byte-voor-byte bestaand gedrag.
+
+### 6.4 Vluchtroute en Ontsnapping (beslissingen 35 en 36)
+
+**35 — dynamische interactiepunten.** Vluchtroute-onderdelen (en het
+ontsnappingspunt) worden PAS aan `interactiePunten` toegevoegd op het
+moment dat ze in het spel verschijnen, en er weer uit gehaald na gebruik.
+Daardoor blijft de laadtijd-telling van 12 punten intact en hoeft
+`test-smederij-verhuizing.mjs` er niet voor open (alleen T48's statische
+kooppunt verhoogt dat getal). Onderdelen verschijnen op vaste drempelgolven
+(3/6/9), ook als hun zone nog op slot zit — ze wachten daar; dat is
+bewust: de speler ziet ze bij het openen van de zone al staan.
+
+**36 — winnen is geen game over.** Het winscherm pauzeert het spel via
+het bestaande pointer-lock-mechanisme (`exitPointerLock` → pauze-gate),
+NIET via `spelStaat.gameOver` — "Speel door" hoeft dan alleen de lock
+opnieuw aan te vragen. Consequentie: de pointerlockchange-guard (~2065)
+moet drie overlays kennen (start/gameOver/win) met de regel "één overlay
+tegelijk, win- en gameOver-scherm winnen van het startscherm". De
+ontsnappingsbonus (+1000) gaat vóór de moeilijkheids-multiplier.
+
+### 6.5 Eventgolf Stroomuitval (beslissing 37)
+
+Eigen `stroomFactor`-vermenigvuldiger in de bestaande flikker-regel,
+NAAST `lampDipFactor` (niet hergebruiken: de dip is een 0.8s-accent, de
+stroomuitval een golf-lange toestand met eigen herstel-ramp). De
+peer-emissive dimt mee — daarvoor gaat de bol-mesh alsnog de
+`lampLichten`-entry in (kleine, veilige uitbreiding van `hangLamp`). De
+buitenverlichting blijft bewust AAN: buiten = vluchtheuvel, binnen =
+gevaar, en het spaart het hele licht-/schaduwbudget. De oog-boost loopt
+via het bestaande `zetOogBasis`-kanaal met dezelfde waarde als de mist;
+de mist-check in `spawnOndode()` generaliseert naar "actief event boost
+ogen". Er is altijd hooguit ÉÉN actief event (`actieveEventGolf`), dus de
+twee events kunnen elkaars herstel niet doorkruisen.
+`kiesEventType()` wisselt deterministisch (testbaar, gegarandeerde
+variatie): mist op golf 5, stroomuitval op 10, mist op 15, …
+
+### 6.6 De Hagelketel en de driewapen-wissel (beslissingen 38 en 39)
+
+**38 — pelletAantal generaliseert het schot.** Eén nieuw definitieveld;
+`schiet()` krijgt een pellet-lus waarbij `pelletAantal = 1` het EXACT
+bestaande pad is (bestaande wapens byte-voor-byte ongewijzigd — dat is
+het regressiecontract). Volle schade per pellet; balans komt uit
+vuurtempo (~1.1s), magazijn (4), prijs (€2800) en munitieschaarste, niet
+uit een aparte schadeformule. Hot-path-regels: de lus hergebruikt de
+bestaande temp-vectoren en raycaster, nul allocaties per trekker; de
+effect-pools (8/24 + oudste-recycling) vangen de plafonds al af. De
+lichttelling gaat bewust 23 → 24 (eigen vlam-PointLight volgens het
+wapenpatroon; alleen zichtbaar bij een schot); de Hagelketel-smederijvisual
+krijgt GEEN eigen ember-licht (gloeiband, alleen emissive).
+
+**39 — WAPEN_VOLGORDE-cycle.** `wisselWapen()` stapt door een vaste
+array en slaat niet-gekochte wapens over. De toggle-implementatie
+verdwijnt; met twee gekochte wapens gedraagt de cycle zich identiek aan
+de oude toggle (regressiecontract voor de bestaande wisseltests).
+
+### 6.7 Dreigingsaudio (beslissing 40)
+
+Twee licht gedetuneerde oscillators (55/57 Hz, zweving) die bij
+`initGeluid()` starten en daarna nooit meer stoppen — alleen de gain
+beweegt (start/stop klikt hoorbaar). De gain-doelwaarde komt uit een
+pure, exporteerbare functie `berekenDreigingsGain(aantal, afstand)` met
+plafond 0.05 (ver onder de piep-volumes; de drone mag nooit met de
+aanvals-tells concurreren). Sturing met een ~0.25s-throttle in de
+`spelActief`-tak; de niet-actieve tak stuurt 0 (pauze/menu/game over
+zwijgen). Testbaarheid komt uit de pure functie + getters, niet uit
+geluidsmeting.
+
+### 6.8 Zone-presentatie (beslissing 41)
+
+Zone-banners hergebruiken `toonGolfBanner` (bestaand, getest, één
+banner-systeem) met een `bezochteZones`-Set; het HUD-zonelabel schrijft
+alleen bij een zonewissel (cache `laatsteZone`). De bestaande
+`gangBetreden`/`plaatsBetreden`-audio-triggers blijven aparte, ongemoeide
+mechanismen: ze vuren op posities (drempels), niet op zones, en dat
+verschil is bewust.
+
+### 6.9 Performancebudgetten — ronde 4
+
+- **Lights**: 23 → 24, uitsluitend door de Hagelketel-vlam (T47). De
+  `schaduw === 1`-invariant blijft keihard. Stroomuitval voegt NIETS toe
+  (dimmen is een intensity-write). Geen ember-licht op de
+  Hagelketel-smederijvisual.
+- **Hot paths**: `schiet()`/`raakOndode()` blijven allocatievrij — de
+  pellet-lus en de runStats-increments zijn kale writes; de bestaande
+  source-checks bewaken dit en moeten groen blijven.
+- **Effecten**: plafonds ongewijzigd (8 tracers / 24 impacts); 6 pellets
+  × bestaande recycling valt daarbinnen.
+- **HUD/DOM**: vluchtroute-teller en zonelabel schrijven alleen bij een
+  verandering; het winscherm is een event-overlay. Geen per-frame
+  DOM-reads of -writes erbij.
+- **Audio**: drone-gain max 0.05, throttle ~0.25s, nul
+  oscillator-herstarts; alle nieuwe one-shots ≤ 0.16 volume (bestaande
+  regel).
+- **Persistentie**: localStorage alleen bij run-einde
+  (gameover/ontsnapping) en scherm-opbouw — nooit in de loop.
+
+### 6.10 Risicogebieden — ronde 4
+
+- **De schermen-guard (~2065)** is de gevaarlijkste plek van de ronde:
+  drie overlays (start/gameOver/win) delen één pointerlockchange-handler.
+  T45 raakt 'm; elke wijziging vereist de bestaande pauze-/gameover-tests
+  én de nieuwe win-tests groen.
+- **`schiet()` voor de derde ronde op rij** (T32 pool, T34 identiteit, nu
+  T47 pellets). Het 1-pellet-pad moet byte-voor-byte het oude gedrag
+  zijn; de source-checks (geen new THREE./setTimeout) bewaken de rest.
+- **Exacte-tellingschecks in bestaande tests**: `test-smederij-verhuizing`
+  (12 interactiepunten → 13 in T48) en `test-v016-integratie` (lichten
+  ≤ 23 → ≤ 24 in T47) worden in HETZELFDE ticket bijgewerkt als de
+  wijziging — zelfde les als T16/test-powerups en T30/hitreacties.
+- **Eventgolf-symmetrie**: mist en stroomuitval delen het oog-kanaal en
+  het budget-/gewichten-mechanisme. Elke stroomuitval-test hoort
+  mist-regressiechecks te bevatten (boost + exacte reset + windup-
+  randgeval, het T39-patroon).
+- **localStorage in tests**: headless file://-context heeft meestal
+  werkende localStorage, maar de guard (try/catch) is verplicht gedrag
+  en wordt zelf getest (gemockte weigering).
+- **Startscherm-flow (T43/T45)**: de moeilijkheidsknoppen mogen de
+  pauze-hervatting en de game-over-flow niet raken; "klik om verder te
+  spelen" blijft knoppenloos.
+- **wisselWapen-contract**: bestaande tests toggelen tussen twee wapens;
+  de cycle moet met precies twee gekochte wapens identiek gedrag geven.
+- **Klok-vs-dt-testles** (drie keer geleerd in ronde 3): alles wat op de
+  module-`klok` draait (drone-throttle als die zo gebouwd wordt,
+  banners met echte timers) in tests via `waitForTimeout` + draaiende
+  gameLoop meten, niet via handmatige ticks.
+
+### 6.11 Herbruikbare systemen — ronde 4
+
+| Nieuw | Hergebruik |
+| --- | --- |
+| runStats/score | bestaande uitkeer-/trefferplekken, gameOver-DOM-patroon |
+| Moeilijkheid | `.knop`-styling, `golfBudget()`, regen-gebruiksplek |
+| Vluchtroute | `interactiePunten`-mechaniek, `winkelMarkering`+`WINKEL_STIJLEN`, `toonGolfBanner`, `isVrijePlek`-probes |
+| Ontsnapping | `gameOverScherm`-opzet, pointer-lock-pauze-gate, T42-statsrender |
+| Stroomuitval | eventgolf-framework, `zetOogBasis`-kanaal, `lampDipFactor`-ramp-patroon, `eventSpawnGewichten` |
+| Hagelketel | `WAPEN_*`-veldenset (T34 incl.), `nieuweWapenStaat`, effecten-pool, koopRatelaar-patroon, smederijConfig |
+| Dreigingsaudio | `initGeluid()`/`piep()`-init-patroon, `spelActief`-takken van de gameLoop |
+| Zone-banners | `zoneVan()`, `toonGolfBanner`, HUD-write-bij-verandering-conventie |
+| Pacing-audit | threat-budget-simulatiepatroon uit de bestaande golf-tests, scratchpad-perfcount-aanpak |
