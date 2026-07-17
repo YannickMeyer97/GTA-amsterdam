@@ -442,6 +442,35 @@ function mat(kleur, ruwheid = 0.9, metaal = 0, extra = {}) {
   return gedeeld;
 }
 
+// --- Ticket 38 (Sfeer S1, §5.9-materiaal + ontwerpbeslissing 31) --------
+// matFamilie-cache: vijf families met een VASTE, per-familie afgestemde
+// roughness/metalness (geen textures — CLAUDE.md verbiedt ook canvas-
+// gegenereerde) — dat geeft materiaalgevoel zonder de kleuren van bestaande
+// oppervlakken te wijzigen. Losse cache van mat(): daar is de sleutel de
+// exacte roughness/metalness-combinatie, hier de FAMILIENAAM + kleur, zodat
+// alle leden van een familie (ongeacht kleur) hetzelfde "gevoel" delen.
+// Gecachete materialen zijn immutabel (nooit muteren, alleen nieuwe
+// cache-keys opvragen) — zo kan de T32-wereldimpact userData.materiaalFamilie
+// veilig aflezen zonder ooit per ongeluk een gedeeld material te herschilderen.
+const MATERIAAL_FAMILIES = {
+  hout:     { ruwheid: 0.75, metaal: 0.05 },
+  steen:    { ruwheid: 0.9,  metaal: 0 },
+  tegel:    { ruwheid: 0.55, metaal: 0.05 },
+  metaal:   { ruwheid: 0.35, metaal: 0.65 },
+  natSteen: { ruwheid: 0.32, metaal: 0.12 },   // natte klinkers: lage ruwheid = glans in maanlicht
+};
+const matFamilieCache = new Map();
+function matFamilie(naam, kleur) {
+  const sleutel = `${naam}|${kleur}`;
+  let gedeeld = matFamilieCache.get(sleutel);
+  if (!gedeeld) {
+    const { ruwheid, metaal } = MATERIAAL_FAMILIES[naam] ?? MATERIAAL_FAMILIES.steen;
+    gedeeld = new THREE.MeshStandardMaterial({ color: kleur, roughness: ruwheid, metalness: metaal });
+    matFamilieCache.set(sleutel, gedeeld);
+  }
+  return gedeeld;
+}
+
 function blok(breedte, hoogte, diepte, kleur, ruwheid = 0.88, metaal = 0) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(breedte, hoogte, diepte), mat(kleur, ruwheid, metaal));
   m.castShadow = true;
@@ -593,20 +622,26 @@ function vlak(kleur, breedte, diepte, cx, cz, y, omhoog) {
   m.position.set(cx, y, cz);
   m.receiveShadow = !omhoog;
   wereld.add(m);
+  return m;   // Ticket 38: aanroepers kunnen zo desgewenst een matFamilie() overzetten
 }
 // Gang (zone B): donker, kaal knelpunt — bewust ANDER materiaal en veel
 // donkerder dan beide kamers, zodat de overgang meteen voelbaar is.
 const GANG_PLEISTER = 0x2e332c;   // koel, afbladderend grijsgroen i.p.v. baksteen
 const GANG_Z_MIDDEN = (-HALF_DIEPTE + GANG_Z_EIND) / 2;
 // Gang-vloer/plafond (x ∈ [-DEUR_HALF, DEUR_HALF], z ∈ [GANG_Z_EIND, -HALF_DIEPTE]).
+let gangVloerMesh;
 {
   const gangDiepte = -HALF_DIEPTE - GANG_Z_EIND;
-  vlak(0x1c1a16, DEUR_HALF * 2, gangDiepte, 0, GANG_Z_MIDDEN, 0, false);
+  gangVloerMesh = vlak(0x1c1a16, DEUR_HALF * 2, gangDiepte, 0, GANG_Z_MIDDEN, 0, false);
   vlak(0x100e0b, DEUR_HALF * 2, gangDiepte, 0, GANG_Z_MIDDEN, KAMER_HOOGTE, true);
   // Gangmuren west en oost (x = ±DEUR_HALF), eigen pleister i.p.v. baksteen.
   bouwMuur(-(DEUR_HALF + MUUR_DIKTE / 2), GANG_Z_MIDDEN, MUUR_DIKTE, gangDiepte, GANG_PLEISTER);
   bouwMuur(DEUR_HALF + MUUR_DIKTE / 2, GANG_Z_MIDDEN, MUUR_DIKTE, gangDiepte, GANG_PLEISTER);
 }
+// Ticket 38: gang-vloer krijgt de 'steen'-familie (dof, mat) — zelfde kleur
+// (0x1c1a16), alleen roughness/metalness verandert naar de gedeelde familie.
+gangVloerMesh.material = matFamilie('steen', 0x1c1a16);
+gangVloerMesh.userData.materiaalFamilie = 'steen';
 // Het schildersatelier (zone C, tweede kamer): bewust radicaal anders dan de
 // warme woonkamer — koele grijze plankenvloer i.p.v. warm hout.
 // (DEUR2_Z/PLAATS_Z_NOORD/PLAATS_Z_ZUID staan al hierboven, vóór GRENS —
@@ -665,16 +700,22 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
    vormt de gedeelde grens, zelfde patroon als de gang die ook niet de
    noordmuur van de startkamer herbouwt.
    ================================================================ */
+let klinkersMesh;
 {
   // Natte klinkervloer: donker, blauwgrijs, glanzend (lage ruwheid).
+  // Ticket 38: dit was al precies de 'natSteen'-familie in vermomming
+  // (ruwheid 0.32, metaal 0.12) — nu via matFamilie() zodat de T32-
+  // wereldimpact 'm via userData.materiaalFamilie herkent.
   const klinkers = new THREE.Mesh(
     new THREE.PlaneGeometry(PLAATS_DIEPTE, PLAATS_BREEDTE),
-    new THREE.MeshStandardMaterial({ color: 0x3a4650, roughness: 0.32, metalness: 0.12 })
+    matFamilie('natSteen', 0x3a4650)
   );
   klinkers.rotation.x = -Math.PI / 2;
   klinkers.position.set(PLAATS_CX, 0, DEUR2_Z);
   klinkers.receiveShadow = true;
+  klinkers.userData.materiaalFamilie = 'natSteen';
   wereld.add(klinkers);
+  klinkersMesh = klinkers;
   // Een paar ondiepe "plassen": nog glanzender vlakken die het maanlicht/de
   // lantaarns spiegelen. v0.6: offsets t.o.v. PLAATS_CX/DEUR2_Z i.p.v.
   // absolute coördinaten, en twee extra voor de vergrote binnenplaats.
@@ -907,13 +948,15 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
 // bij aankoop verdwijnen). Vult het deurgat in de oostmuur van het atelier.
 const deur2Mesh = new THREE.Mesh(
   new THREE.BoxGeometry(0.16, KAMER_HOOGTE - 0.2, DEUR2_HALF * 2),
-  mat(0x4a5058, 0.6, 0.2)   // grijzer, "verweerd" hout — anders dan de warme deur 1
+  matFamilie('hout', 0x4a5058)   // grijzer, "verweerd" hout — anders dan de warme deur 1
 );
 deur2Mesh.position.set(DEUR2_X + MUUR_DIKTE / 2, (KAMER_HOOGTE - 0.2) / 2, DEUR2_Z);
 deur2Mesh.castShadow = true;
+deur2Mesh.userData.materiaalFamilie = 'hout';
 wereld.add(deur2Mesh);
-const deur2Klink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), mat(0xb8c4cc, 0.4, 0.6));
+const deur2Klink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), matFamilie('metaal', 0xb8c4cc));
 deur2Klink.position.set(DEUR2_X + MUUR_DIKTE / 2 - 0.1, 1.0, DEUR2_Z - (DEUR2_HALF - 0.25));
+deur2Klink.userData.materiaalFamilie = 'metaal';
 wereld.add(deur2Klink);
 const deur2Obstakel = registreerRechthoek(DEUR2_X, DEUR2_X + MUUR_DIKTE, DEUR2_Z - DEUR2_HALF, DEUR2_Z + DEUR2_HALF);
 
@@ -922,13 +965,15 @@ const deur2Obstakel = registreerRechthoek(DEUR2_X, DEUR2_X + MUUR_DIKTE, DEUR2_Z
 // deur 1 breed in x, dun in z. Vult het deurgat naar de kelderhals.
 const deur3Mesh = new THREE.Mesh(
   new THREE.BoxGeometry(DEUR3_HALF * 2, ZUIDMUUR_HOOGTE - 0.2, MUUR_DIKTE),
-  mat(0x4a5058, 0.6, 0.2)   // zelfde "verweerd hout"-tint als deur 2
+  matFamilie('hout', 0x4a5058)   // zelfde "verweerd hout"-tint als deur 2
 );
 deur3Mesh.position.set(DEUR3_X, (ZUIDMUUR_HOOGTE - 0.2) / 2, PLAATS_Z_ZUID + MUUR_DIKTE / 2);
 deur3Mesh.castShadow = true;
+deur3Mesh.userData.materiaalFamilie = 'hout';
 wereld.add(deur3Mesh);
-const deur3Klink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), mat(0xd8c47a, 0.4, 0.6));
+const deur3Klink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), matFamilie('metaal', 0xd8c47a));
 deur3Klink.position.set(DEUR3_X + (DEUR3_HALF - 0.25), 1.0, PLAATS_Z_ZUID + MUUR_DIKTE / 2 - 0.1);
+deur3Klink.userData.materiaalFamilie = 'metaal';
 wereld.add(deur3Klink);
 const deur3Obstakel = registreerRechthoek(DEUR3_X - DEUR3_HALF, DEUR3_X + DEUR3_HALF, PLAATS_Z_ZUID, PLAATS_Z_ZUID + MUUR_DIKTE);
 
@@ -938,13 +983,15 @@ const deur3Obstakel = registreerRechthoek(DEUR3_X - DEUR3_HALF, DEUR3_X + DEUR3_
 // een verticale muur, dus dun in x, breed in z).
 const deur4Mesh = new THREE.Mesh(
   new THREE.BoxGeometry(0.16, KAMER_HOOGTE - 0.2, DEUR4_HALF * 2),
-  mat(0x4a5058, 0.6, 0.2)   // zelfde "verweerd hout"-tint als deur 2/3
+  matFamilie('hout', 0x4a5058)   // zelfde "verweerd hout"-tint als deur 2/3
 );
 deur4Mesh.position.set(HALF_BREEDTE + MUUR_DIKTE / 2, (KAMER_HOOGTE - 0.2) / 2, DEUR4_Z);
 deur4Mesh.castShadow = true;
+deur4Mesh.userData.materiaalFamilie = 'hout';
 wereld.add(deur4Mesh);
-const deur4Klink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), mat(0xb8c4cc, 0.4, 0.6));
+const deur4Klink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), matFamilie('metaal', 0xb8c4cc));
 deur4Klink.position.set(HALF_BREEDTE + MUUR_DIKTE / 2 + 0.1, 1.0, DEUR4_Z - (DEUR4_HALF - 0.25));
+deur4Klink.userData.materiaalFamilie = 'metaal';
 wereld.add(deur4Klink);
 const deur4Obstakel = registreerRechthoek(HALF_BREEDTE, HALF_BREEDTE + MUUR_DIKTE, DEUR4_Z - DEUR4_HALF, DEUR4_Z + DEUR4_HALF);
 
@@ -973,13 +1020,14 @@ const KELDERHALS_Z_ZUID  = BIJKEUKEN_Z_NOORD;  // = -4.5, open verbinding naar d
    kelderhals-noordmuur worden hieronder bewust NIET opnieuw gebouwd.
    GRENS verandert niet: de pocket lag er al binnen (§4.4).
    ================================================================ */
+let bijkeukenVloerMesh;
 {
   const BIJKEUKEN_TEGEL = 0x35424a;    // koel tegelblauw-grijs, eigen tint
   const BIJKEUKEN_PLAFOND = 0x0e1114;
   const KELDERHALS_TINT = 0x23211f;    // kaal, donker steen
 
   // Vloer + plafond bijkeuken.
-  vlak(BIJKEUKEN_TEGEL, BIJKEUKEN_X_OOST - BIJKEUKEN_X_WEST, BIJKEUKEN_Z_ZUID - BIJKEUKEN_Z_NOORD,
+  bijkeukenVloerMesh = vlak(BIJKEUKEN_TEGEL, BIJKEUKEN_X_OOST - BIJKEUKEN_X_WEST, BIJKEUKEN_Z_ZUID - BIJKEUKEN_Z_NOORD,
     BIJKEUKEN_CX, BIJKEUKEN_CZ, 0, false);
   vlak(BIJKEUKEN_PLAFOND, BIJKEUKEN_X_OOST - BIJKEUKEN_X_WEST, BIJKEUKEN_Z_ZUID - BIJKEUKEN_Z_NOORD,
     BIJKEUKEN_CX, BIJKEUKEN_CZ, KAMER_HOOGTE, true);
@@ -1023,6 +1071,10 @@ const KELDERHALS_Z_ZUID  = BIJKEUKEN_Z_NOORD;  // = -4.5, open verbinding naar d
   bouwZoneEMuur(KELDERHALS_X_OOST + MUUR_DIKTE / 2, kelderhalsCZ,
     MUUR_DIKTE, KELDERHALS_Z_ZUID - KELDERHALS_Z_NOORD, KELDERHALS_TINT);
 }
+// Ticket 38: bijkeuken-vloer krijgt de 'tegel'-familie — zelfde kleur
+// (0x35424a), alleen roughness/metalness verandert.
+bijkeukenVloerMesh.material = matFamilie('tegel', 0x35424a);
+bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
 
 // Ticket 27 (Map-lus M4): zone-E-inhoud — spawn-venster (actief pas na
 // deur 3, zie koopDeur3()), Provisiekast-kooppunt (verderop bij de andere
@@ -1049,7 +1101,41 @@ const VENSTERS_BIJKEUKEN = [
 // Kelderhals-decor (kelderluik) kan hier nog geen hangLamp() gebruiken —
 // lampLichten (const) is pas verderop geïnitialiseerd — dus dat flikker-
 // peertje staat bij de gang-decor hieronder (V4-lampflikker-patroon).
-meubelBox(1.3, 0.06, 1.6, 0x2a241d, DEUR3_X, 0.03, (KELDERHALS_Z_NOORD + KELDERHALS_Z_ZUID) / 2);   // kelderluik
+const kelderluikMesh = meubelBox(1.3, 0.06, 1.6, 0x2a241d, DEUR3_X, 0.03, (KELDERHALS_Z_NOORD + KELDERHALS_Z_ZUID) / 2);   // kelderluik
+// Ticket 38: 'hout'-familie — zelfde kleur (0x2a241d), alleen roughness/metalness verandert.
+kelderluikMesh.material = matFamilie('hout', 0x2a241d);
+kelderluikMesh.userData.materiaalFamilie = 'hout';
+
+// Ticket 40 (Sfeer S3, §5.9-sfeer): druppel-lek — één klein mesh valt
+// periodiek (3-6s) van het plafond naar het kelderluik; het tikgeluid speelt
+// alleen als de speler op het landingsmoment < 8m weg staat. `speler` wordt
+// pas veel later in het bestand gedeclareerd (STAP 6) — hier alleen gebruikt
+// binnen functiebodies (updateDruppel), dus TDZ-veilig, zelfde patroon als
+// de bestaande hangLamp/meubelBox-functies elders in dit blok.
+const DRUPPEL_TIK_BEREIK = 8;   // m
+const DRUPPEL_HOOGTE_PLAFOND = KAMER_HOOGTE - 0.15;
+const DRUPPEL_HOOGTE_LANDING = kelderluikMesh.position.y + 0.06;
+const druppelMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(0.025, 6, 6),
+  new THREE.MeshBasicMaterial({ color: 0x8fb8c4, transparent: true, opacity: 0.85 })
+);
+druppelMesh.position.set(kelderluikMesh.position.x, DRUPPEL_HOOGTE_PLAFOND, kelderluikMesh.position.z);
+wereld.add(druppelMesh);
+let druppelTimer = 0;
+let druppelDuur = 3 + Math.random() * 3;
+let druppelTikTeller = 0;   // debug/test: telt elke daadwerkelijk gespeelde tik
+function speelDruppelTik() { druppelTikTeller++; piep('sine', 900, 500, 0.05, 0.03); }
+function updateDruppel(dt) {
+  druppelTimer += dt;
+  const voortgang = Math.min(1, druppelTimer / druppelDuur);
+  druppelMesh.position.y = DRUPPEL_HOOGTE_PLAFOND + (DRUPPEL_HOOGTE_LANDING - DRUPPEL_HOOGTE_PLAFOND) * voortgang;
+  if (druppelTimer >= druppelDuur) {
+    const afstand = Math.hypot(druppelMesh.position.x - speler.positie.x, druppelMesh.position.z - speler.positie.z);
+    if (afstand < DRUPPEL_TIK_BEREIK) speelDruppelTik();
+    druppelTimer = 0;
+    druppelDuur = 3 + Math.random() * 3;
+  }
+}
 
 // Ramen richting de gracht: op de zuidmuur, met een koel, donkerblauw
 // gloeiend "buiten"-vlak achter een houten kozijn.
@@ -1105,6 +1191,11 @@ const ATELIER_NOORDRAAM_X = -3.2;
 // Elk licht wordt geregistreerd zodat de game-loop het zacht kan laten
 // flikkeren (kaars-/olielamp-sfeer).
 const lampLichten = [];
+// Ticket 40 (Sfeer S3): golfstart-lichtdip — startGolf() zet dit terug naar
+// 0.6, waarna het in de bestaande lampflikker-loop (gameLoop) lineair
+// binnen 0.8s weer naar 1 herstelt. Vermenigvuldiger bovenop de bestaande
+// flikker-factor, dus geen nieuwe per-lamp state nodig.
+let lampDipFactor = 1;
 const LAMP_INTENSITEIT = 16;
 // Perf: schaduw-cubemaps van een PointLight zijn duur (6 faces/frame). Daarom
 // werpt maar ÉÉN lamp schaduw; de andere verlichten zonder schaduw.
@@ -1204,19 +1295,62 @@ hangLamp(1.8, 2.2);
   wereld.add(dakraamZuidoostLicht);
 }
 
+// Ticket 40 (Sfeer S3, §5.9-sfeer): 2 stofwolken (THREE.Points, <= 30
+// punten elk) in de twee grootste atelier-lichtkolommen (het centrale
+// dakraam + het noorddakraam) — alleen zichtbaar zolang de speler in het
+// atelier staat (zoneVan() === 2). Animatie = trage groepsrotatie + een
+// y-sinus op de GROEP zelf, nooit op de BufferAttribute-data (geen
+// per-frame attribute-writes, zie ARCHITECTURE_NOTES §5.10).
+function bouwStofwolk(x, z, kolomHoogte) {
+  const aantal = 22;
+  const posities = new Float32Array(aantal * 3);
+  for (let i = 0; i < aantal; i++) {
+    const straal = Math.random() * 0.45;
+    const hoek = Math.random() * Math.PI * 2;
+    posities[i * 3 + 0] = Math.cos(hoek) * straal;
+    posities[i * 3 + 1] = Math.random() * kolomHoogte;
+    posities[i * 3 + 2] = Math.sin(hoek) * straal;
+  }
+  const geometrie = new THREE.BufferGeometry();
+  geometrie.setAttribute('position', new THREE.BufferAttribute(posities, 3));
+  const material = new THREE.PointsMaterial({ color: 0xd8e8f5, size: 0.028, transparent: true, opacity: 0.32, depthWrite: false });
+  const punten = new THREE.Points(geometrie, material);
+  punten.position.set(x, 0.6, z);
+  punten.userData.baseY = 0.6;
+  punten.userData.fase = Math.random() * Math.PI * 2;
+  punten.visible = false;   // getoggled door updateStofwolken() zodra de speler in het atelier staat
+  wereld.add(punten);
+  return punten;
+}
+const stofwolken = [
+  bouwStofwolk(0, ATELIER_MIDDEN_Z, 2.3),
+  bouwStofwolk(0.5, ATELIER_MIDDEN_Z - 6, 2.3),
+];
+function updateStofwolken(dt) {
+  const inAtelier = zoneVan(speler.positie.x, speler.positie.z) === 2;
+  for (const p of stofwolken) {
+    if (p.visible !== inAtelier) p.visible = inAtelier;   // 1 boolean-write bij een zonewissel
+    if (!inAtelier) continue;
+    p.rotation.y += dt * 0.05;
+    p.position.y = p.userData.baseY + Math.sin(klok * 0.3 + p.userData.fase) * 0.15;
+  }
+}
+
 // De koopbare deur: een houten paneel dat het deurgat vult, plus een obstakel
 // zodat de speler er niet doorheen kan tot 'ie gekocht is. Beide worden bij
 // aankoop (koopDeur) verwijderd. Refs worden onderaan geëxporteerd voor tests.
 const deurMesh = new THREE.Mesh(
   new THREE.BoxGeometry(DEUR_HALF * 2, KAMER_HOOGTE - 0.2, 0.16),
-  mat(0x5a3a1e, 0.7, 0.1)
+  matFamilie('hout', 0x5a3a1e)
 );
 deurMesh.position.set(0, (KAMER_HOOGTE - 0.2) / 2, DEUR_Z - MUUR_DIKTE / 2);
 deurMesh.castShadow = true;
+deurMesh.userData.materiaalFamilie = 'hout';
 wereld.add(deurMesh);
 // Klink als klein herkenbaar detail.
-const deurKlink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), mat(0xd8c47a, 0.4, 0.6));
+const deurKlink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), matFamilie('metaal', 0xd8c47a));
 deurKlink.position.set(DEUR_HALF - 0.25, 1.0, DEUR_Z - MUUR_DIKTE / 2 + 0.1);
+deurKlink.userData.materiaalFamilie = 'metaal';
 wereld.add(deurKlink);
 const deurObstakel = registreerRechthoek(-DEUR_HALF, DEUR_HALF, DEUR_Z - MUUR_DIKTE, DEUR_Z);
 
@@ -1508,6 +1642,245 @@ registreerRechthoek(PLAATS_CX - 4.8, PLAATS_CX - 4.2, DEUR2_Z + 5.7, DEUR2_Z + 6
   wereld.add(poortNoord);
 }
 
+// --- Ticket 36 (Winkel W2, ARCHITECTURE_NOTES §5.7 + ontwerpbeslissing 29):
+// winkelstijl-register + functie-iconen. Vervangt de generieke zwevende
+// kubus van interactieMarkering() door een icoon-silhouet per
+// functiecategorie — winkels met DEZELFDE functie delen bewust hetzelfde
+// silhouet (de ammo-kist en de Provisiekast zijn allebei "munitie"; alle
+// vier deuren delen de sleutel). interactieMarkering() zelf blijft
+// ongewijzigd bestaan (rollback-fallback, zie ROADMAP Ticket 36);
+// winkelMarkering() hieronder is een zelfstandige, nieuwe opbouwfunctie die
+// 'm niet aanroept.
+// Moet vóór het eerste gebruik hieronder (ratelaarMarkering) staan: alle
+// winkelMarkering()-aanroepen in dit bestand lopen top-to-bottom, dus het
+// hele register (geometrieën, icoon-bouwers, WINKEL_STIJLEN) moet al
+// bestaan voordat de eerste aanroep uitgevoerd wordt (anders een TDZ-fout
+// op de const hieronder — functies alleen zijn hoisting-veilig, een const-
+// object-literal wordt wél meteen geëvalueerd).
+//
+// Gedeelde geometrieën (één keer gebouwd, hergebruikt per icoon-instantie);
+// elke marking krijgt WEL een eigen material per mesh (geen materiaal-
+// cache), zodat doofMarkering() nog steeds precies één winkel kan doven
+// zonder de andere te raken.
+const ICOON_GEO = {
+  kogelBody: new THREE.CylinderGeometry(0.045, 0.045, 0.16, 8),
+  kogelKop: new THREE.ConeGeometry(0.045, 0.06, 8),
+  pijlZuil: new THREE.CylinderGeometry(0.025, 0.025, 0.14, 6),
+  pijlPunt: new THREE.ConeGeometry(0.07, 0.12, 8),
+  flesBody: new THREE.CylinderGeometry(0.07, 0.08, 0.2, 10),
+  flesHals: new THREE.CylinderGeometry(0.03, 0.045, 0.08, 8),
+  schildPlaat: new THREE.BoxGeometry(0.16, 0.2, 0.05),
+  schildPunt: new THREE.ConeGeometry(0.08, 0.08, 4),
+  druppelBol: new THREE.SphereGeometry(0.09, 10, 8),
+  druppelPunt: new THREE.ConeGeometry(0.06, 0.1, 8),
+  tandwiel: new THREE.TorusGeometry(0.1, 0.035, 8, 12),
+  hamerKop: new THREE.BoxGeometry(0.2, 0.09, 0.09),
+  hamerSteel: new THREE.BoxGeometry(0.045, 0.22, 0.045),
+  sleutelRing: new THREE.TorusGeometry(0.07, 0.022, 8, 12),
+  sleutelSteel: new THREE.BoxGeometry(0.03, 0.16, 0.03),
+};
+function icoonMesh(geometrie, kleur) {
+  return new THREE.Mesh(geometrie, new THREE.MeshStandardMaterial({ color: kleur, emissive: kleur, emissiveIntensity: 0.6 }));
+}
+
+// Acht icoon-silhouetten (één per functiecategorie, ≤ 3 meshes samen met de
+// ring). Meerdere WINKEL_STIJLEN-entries hergebruiken bewust dezelfde
+// bouwer (munitie: ammo + provisiekast; deur: alle vier deuren).
+function bouwIcoonKogel(g, kleur) {
+  const body = icoonMesh(ICOON_GEO.kogelBody, kleur); body.position.y = 1.32; g.add(body);
+  const kop = icoonMesh(ICOON_GEO.kogelKop, kleur); kop.position.y = 1.43; g.add(kop);
+}
+function bouwIcoonPijl(g, kleur) {
+  const zuil = icoonMesh(ICOON_GEO.pijlZuil, kleur); zuil.position.y = 1.28; g.add(zuil);
+  const punt = icoonMesh(ICOON_GEO.pijlPunt, kleur); punt.position.y = 1.41; g.add(punt);
+}
+function bouwIcoonFles(g, kleur) {
+  const body = icoonMesh(ICOON_GEO.flesBody, kleur); body.position.y = 1.33; g.add(body);
+  const hals = icoonMesh(ICOON_GEO.flesHals, kleur); hals.position.y = 1.47; g.add(hals);
+}
+function bouwIcoonSchild(g, kleur) {
+  const plaat = icoonMesh(ICOON_GEO.schildPlaat, kleur); plaat.position.y = 1.37; g.add(plaat);
+  const punt = icoonMesh(ICOON_GEO.schildPunt, kleur);
+  punt.rotation.x = Math.PI; punt.position.y = 1.23; g.add(punt);   // wijst omlaag, als een schildpunt
+}
+function bouwIcoonDruppel(g, kleur) {
+  const bol = icoonMesh(ICOON_GEO.druppelBol, kleur); bol.position.y = 1.38; g.add(bol);
+  const punt = icoonMesh(ICOON_GEO.druppelPunt, kleur);
+  punt.rotation.x = Math.PI; punt.position.y = 1.25; g.add(punt);   // omgekeerde cone, wijst omlaag
+}
+function bouwIcoonTandwiel(g, kleur) {
+  const wiel = icoonMesh(ICOON_GEO.tandwiel, kleur); wiel.position.y = 1.35; g.add(wiel);
+}
+function bouwIcoonHamer(g, kleur) {
+  const kop = icoonMesh(ICOON_GEO.hamerKop, kleur); kop.position.y = 1.4; g.add(kop);
+  const steel = icoonMesh(ICOON_GEO.hamerSteel, kleur); steel.position.y = 1.24; g.add(steel);
+}
+function bouwIcoonSleutel(g, kleur) {
+  const ring = icoonMesh(ICOON_GEO.sleutelRing, kleur); ring.position.y = 1.4; g.add(ring);
+  const steel = icoonMesh(ICOON_GEO.sleutelSteel, kleur); steel.position.y = 1.25; g.add(steel);
+}
+
+// Centrale config (§5.7-tabel): key = stijlnaam, kleur = de per-punt kleur
+// (pantserdrank en watertap krijgen hier hun nieuwe, van elkaar en van de
+// ammo-kist onderscheiden kleur — beslissing 29), bouwIcoon(groep) = een van
+// de acht silhouet-bouwers hierboven, status() = 'beschikbaar' | 'teDuur' |
+// 'gekocht' | 'nvt' (Ticket 37, §5.7-status). SMEDERIJ_ACCENT_KLEUR en alle
+// prijs-/gekocht-constanten hieronder worden pas veel later gedeclareerd —
+// dat mag: status() is een functie-BODY, pas geëvalueerd zodra 'm
+// aangeroepen wordt (in updateWinkelMarkeringen, ver na de volledige
+// module-initialisatie), dus geen TDZ-fout. Voor smederij/kleur hierboven
+// blijft de letterlijke waarde (0xff7a1f) nodig, want dat IS meteen bij
+// object-constructie geëvalueerd.
+const WINKEL_STIJLEN = {
+  ammo:         { kleur: 0x6bd0ff, bouwIcoon: (g) => bouwIcoonKogel(g, 0x6bd0ff),
+    status: () => spelStaat.geld >= AMMO_PRIJS ? 'beschikbaar' : 'teDuur' },
+  provisiekast: { kleur: 0xd8c47a, bouwIcoon: (g) => bouwIcoonKogel(g, 0xd8c47a),
+    status: () => spelStaat.geld >= PROVISIEKAST_PRIJS ? 'beschikbaar' : 'teDuur' },
+  upgrade:      { kleur: 0xffd75e, bouwIcoon: (g) => bouwIcoonPijl(g, 0xffd75e),
+    status: () => schadePerTreffer >= WAPEN_SCHADE_MAX ? 'gekocht' : (spelStaat.geld >= UPGRADE_PRIJS ? 'beschikbaar' : 'teDuur') },
+  werkbank:     { kleur: 0xff9f5a, bouwIcoon: (g) => bouwIcoonFles(g, 0xff9f5a),
+    status: () => snelspannerGekocht ? 'gekocht' : (spelStaat.geld >= SNELSPANNER_PRIJS ? 'beschikbaar' : 'teDuur') },
+  pantserdrank: { kleur: 0xb8c8ff, bouwIcoon: (g) => bouwIcoonSchild(g, 0xb8c8ff),
+    status: () => pantserdrankGekocht ? 'gekocht' : (spelStaat.geld >= PANTSERDRANK_PRIJS ? 'beschikbaar' : 'teDuur') },
+  watertap:     { kleur: 0x54c8e8, bouwIcoon: (g) => bouwIcoonDruppel(g, 0x54c8e8),
+    status: () => spelerStaat.hp >= spelerStaat.hpMax ? 'nvt' : (spelStaat.geld >= WATERTAP_PRIJS ? 'beschikbaar' : 'teDuur') },
+  ratelaar:     { kleur: 0xd9a05a, bouwIcoon: (g) => bouwIcoonTandwiel(g, 0xd9a05a),
+    status: () => ratelaarGekocht ? 'gekocht' : (spelStaat.geld >= RATELAAR_PRIJS ? 'beschikbaar' : 'teDuur') },
+  // Randgeval (ROADMAP Ticket 37): de status volgt het ACTIEVE wapen, exact
+  // dezelfde logica als de bestaande smederijPunt-prompt (wapenStaat.gesmeed)
+  // — staan beide wapens gesmeed, dan blijft dit vanzelf permanent 'gekocht'.
+  smederij:     { kleur: 0xff7a1f, bouwIcoon: (g) => bouwIcoonHamer(g, 0xff7a1f),
+    status: () => wapenStaat.gesmeed ? 'gekocht' : (spelStaat.geld >= SMEDERIJ_PRIJS ? 'beschikbaar' : 'teDuur') },
+  deur1:        { kleur: 0x9fff9f, bouwIcoon: (g) => bouwIcoonSleutel(g, 0x9fff9f),
+    status: () => deurGekocht ? 'gekocht' : (spelStaat.geld >= DEUR_PRIJS ? 'beschikbaar' : 'teDuur') },
+  deur2:        { kleur: 0x9fc0e8, bouwIcoon: (g) => bouwIcoonSleutel(g, 0x9fc0e8),
+    status: () => deur2Gekocht ? 'gekocht' : (spelStaat.geld >= DEUR2_PRIJS ? 'beschikbaar' : 'teDuur') },
+  deur3:        { kleur: 0x9fc0e8, bouwIcoon: (g) => bouwIcoonSleutel(g, 0x9fc0e8),
+    status: () => deur3Gekocht ? 'gekocht' : (spelStaat.geld >= DEUR3_PRIJS ? 'beschikbaar' : 'teDuur') },
+  deur4:        { kleur: 0xc9a86b, bouwIcoon: (g) => bouwIcoonSleutel(g, 0xc9a86b),
+    status: () => deur4Gekocht ? 'gekocht' : (spelStaat.geld >= DEUR4_PRIJS ? 'beschikbaar' : 'teDuur') },
+};
+
+// Alle gebouwde winkelmarkeringen, in aanroepvolgorde — puur voor debug/
+// tests (de bestaande, individueel benoemde const-referenties elders in dit
+// bestand, zoals upgradeMarkering, blijven de manier waarop de spelcode zelf
+// een specifieke markering aanspreekt, bv. voor wereld.remove()).
+const winkelMarkeringen = [];
+
+// Nieuwe opbouwfunctie (Ticket 36): vloerring (zelfde geometrie/material-
+// opzet als interactieMarkering) + het bijbehorende functie-icoon i.p.v. de
+// generieke kubus. Blijft doofMarkering-compatibel (zelfde Group-structuur:
+// ring + icoon-kinderen, allemaal met een material-property). Ticket 37:
+// g.userData.stijlNaam onthoudt welke WINKEL_STIJLEN-entry erbij hoort, zodat
+// updateWinkelMarkeringen() de juiste status() kan opvragen zonder de
+// bestaande winkelMarkeringen-array-vorm (platte Group-lijst) te breken.
+function winkelMarkering(x, z, stijlNaam) {
+  const stijl = WINKEL_STIJLEN[stijlNaam];
+  const g = new THREE.Group();
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.55, 0.72, 32),
+    new THREE.MeshBasicMaterial({ color: stijl.kleur, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false })
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.03;
+  g.add(ring);
+  stijl.bouwIcoon(g);
+  g.position.set(x, 0, z);
+  g.userData.stijlNaam = stijlNaam;
+  wereld.add(g);
+  winkelMarkeringen.push(g);
+  return g;
+}
+
+// --- Ticket 37 (Winkel W3, §5.7-status + ontwerpbeslissing 30) -----------
+// Koop-flits: koop-functies roepen dit naast speelKoop()/speelSmeed() aan.
+// Kort ring-schaal/opacity-boost, decayt vanzelf in updateWinkelMarkeringen.
+const WINKEL_FLITS_DUUR = 0.35;
+function flitsMarkering(g) {
+  g.userData.flitsTimer = WINKEL_FLITS_DUUR;
+}
+
+// Eén gedeeld licht (beslissing 30) i.p.v. een licht per winkel — hecht zich
+// elke frame aan de dichtstbijzijnde niet-gedoofde winkel binnen 6 m.
+const winkelLicht = new THREE.PointLight(0xffffff, 0, 5, 2);
+winkelLicht.castShadow = false;
+wereld.add(winkelLicht);
+const _winkelLichtKleur = new THREE.Color();   // hergebruikte temp, geen allocatie per frame
+
+// Statusanimatie + winkelLicht, één keer per frame (spelActief-tak). Sla
+// stabiel-'gekocht' markeringen over (behalve tijdens hun koop-flits) —
+// dat is de enige write-besparing die hier telt, want de Smederij is de
+// enige stijl die weer UIT 'gekocht' kan komen (bij het wisselen naar het
+// nog niet gesmede wapen), dus alle andere blijven na hun eerste keer
+// permanent overgeslagen.
+function updateWinkelMarkeringen(dt) {
+  let dichtsteAfstand = Infinity, dichtsteMarkering = null;
+  for (const g of winkelMarkeringen) {
+    const flitsActief = (g.userData.flitsTimer ?? 0) > 0;
+    if (g.userData.laatsteStatus === 'gekocht' && !flitsActief) continue;
+
+    const stijl = WINKEL_STIJLEN[g.userData.stijlNaam];
+    const status = stijl.status();
+    const ring = g.children[0];
+    const icoonKinderen = g.children.slice(1);
+
+    // Terug uit 'gekocht' (in de praktijk alleen de Smederij bij het
+    // wisselen naar het nog niet gesmede wapen): eigen kleur herstellen
+    // vóórdat de status-specifieke visuals hieronder 'm weer aansturen.
+    if (g.userData.laatsteStatus === 'gekocht' && status !== 'gekocht') {
+      for (const kind of g.children) {
+        if (kind.material.color) kind.material.color.setHex(stijl.kleur);
+        if (kind.material.emissive) kind.material.emissive.setHex(stijl.kleur);
+      }
+    }
+
+    if (status === 'gekocht') {
+      doofMarkering(g);
+    } else if (status === 'nvt') {
+      const grijsblauw = 0x7a8a9a;
+      ring.material.color.setHex(grijsblauw);
+      ring.material.opacity = 0.3;
+      for (const kind of icoonKinderen) {
+        kind.material.color.setHex(grijsblauw);
+        if (kind.material.emissive) kind.material.emissive.setHex(grijsblauw);
+      }
+    } else if (status === 'teDuur') {
+      ring.material.opacity = 0.35;
+    } else {   // beschikbaar
+      ring.material.opacity = 0.55 + 0.15 * Math.sin(klok * 3);
+      for (const kind of icoonKinderen) kind.rotation.y += dt * 0.8;
+    }
+
+    if (flitsActief) {
+      g.userData.flitsTimer -= dt;
+      const factor = Math.max(0, g.userData.flitsTimer / WINKEL_FLITS_DUUR);
+      ring.scale.setScalar(1 + 0.25 * factor);
+      ring.material.opacity = Math.min(1, ring.material.opacity + 0.35 * factor);
+    } else if (ring.scale.x !== 1) {
+      ring.scale.setScalar(1);
+    }
+
+    g.userData.laatsteStatus = status;
+
+    // Niet-gedoofde winkel binnen 6 m: kandidaat voor het gedeelde licht.
+    if (status !== 'gekocht') {
+      const afstand = Math.hypot(g.position.x - speler.positie.x, g.position.z - speler.positie.z);
+      if (afstand < dichtsteAfstand) { dichtsteAfstand = afstand; dichtsteMarkering = g; }
+    }
+  }
+
+  if (dichtsteMarkering && dichtsteAfstand <= 6) {
+    const stijl = WINKEL_STIJLEN[dichtsteMarkering.userData.stijlNaam];
+    winkelLicht.position.set(dichtsteMarkering.position.x, 1.2, dichtsteMarkering.position.z);
+    _winkelLichtKleur.setHex(stijl.kleur);
+    winkelLicht.color.lerp(_winkelLichtKleur, Math.min(1, dt * 5));
+    const doelIntensiteit = 2 + Math.sin(klok * 3);   // "dezelfde puls" als de ring, blijft <= 3
+    winkelLicht.intensity += (doelIntensiteit - winkelLicht.intensity) * Math.min(1, dt * 5);
+  } else {
+    winkelLicht.intensity += (0 - winkelLicht.intensity) * Math.min(1, dt * 5);
+  }
+}
+
 // --- Wandkooppunt "De Ratelaar" (v0.6): tegen de oostmuur van de
 // binnenplaats, met een geschilderd silhouet als "etalage" plus een houten
 // rek waar het wapen op ligt — geen collision, puur decor + interactiepunt.
@@ -1539,7 +1912,7 @@ const RATELAAR_Z = DEUR2_Z + 5;
   bordje.position.set(PLAATS_X_OOST - 0.25, 0.45, RATELAAR_Z);
   wereld.add(bordje);
 }
-const ratelaarMarkering = interactieMarkering(RATELAAR_X, RATELAAR_Z, 0xd9a05a);
+const ratelaarMarkering = winkelMarkering(RATELAAR_X, RATELAAR_Z, 'ratelaar');
 
 // --- Ticket 12: De Smederij — smeedpunt. Klein aambeeld + gloeiend
 // kooltje, geen collision (zelfde patroon als de Ratelaar/Watertap/
@@ -1574,7 +1947,7 @@ const SMEDERIJ_Z = 3.5;
   koolLicht.position.copy(kool.position);
   wereld.add(koolLicht);
 }
-const smederijMarkering = interactieMarkering(SMEDERIJ_X, SMEDERIJ_Z, 0xff7a1f);
+const smederijMarkering = winkelMarkering(SMEDERIJ_X, SMEDERIJ_Z, 'smederij');
 
 // --- Atelier-decor (zone C): koel, kaal, met verf-/doek-accenten — bewust
 // géén hergebruik van de warme-woonkamer-props (kratten/vat/tafel). ---
@@ -1622,7 +1995,7 @@ const PANTSERDRANK_Z = ATELIER_MIDDEN_Z + 2.5;
   gloed.position.set(PANTSERDRANK_X, 1.0, PANTSERDRANK_Z);
   wereld.add(gloed);
 }
-const pantserdrankMarkering = interactieMarkering(PANTSERDRANK_X, PANTSERDRANK_Z, 0x9fd8ff);
+const pantserdrankMarkering = winkelMarkering(PANTSERDRANK_X, PANTSERDRANK_Z, 'pantserdrank');
 
 /* ================================================================
    STAP 3 — DE SPELER: first-person besturing met botsingen
@@ -2167,9 +2540,15 @@ const IMPACT_MAX = 24;
 const EFFECT_GEOMETRY = new THREE.BoxGeometry(1, 1, 1);
 const TRACER_LEVENSDUUR = 0.08;
 const IMPACT_LEVENSDUUR = 0.3;
-// "Families" komen pas met het materiaal-ticket (T38); tot die tijd bestaat
-// alleen 'steen' (wereld-default) en 'vijand'/'vijandKop' (raakOndode()).
-const MATERIAAL_KLEUREN = { steen: 0xd8ffe0, vijand: 0xb9ec3f, vijandKop: 0xeaffa0 };
+// Ticket 38: per matFamilie() een eigen impact-deeltjeskleur, zodat een
+// schot op hout/tegel/metaal/natSteen anders spat dan op kale steen.
+// schiet()'s wereld-impact leest dit al generiek via
+// MATERIAAL_KLEUREN[familie] ?? MATERIAAL_KLEUREN.steen (Ticket 32) — hier
+// hoeft dus alleen de tabel aangevuld te worden, geen code-wijziging daar.
+const MATERIAAL_KLEUREN = {
+  steen: 0xd8ffe0, vijand: 0xb9ec3f, vijandKop: 0xeaffa0,
+  hout: 0xc9975a, tegel: 0x8fb8c4, metaal: 0xe8f0f5, natSteen: 0xa8d8e8,
+};
 
 function bouwEffectSlot() {
   const mesh = new THREE.Mesh(EFFECT_GEOMETRY, new THREE.MeshBasicMaterial({ transparent: true }));
@@ -2475,6 +2854,30 @@ const AANVAL_ARM_HOEK_WINDUP = -1.9;    // rad — armen hoog geheven tijdens de
 const AANVAL_HOOFD_KANTEL    = 0.12;    // rad — hoofd kantelt licht achterover tijdens de wind-up
 const OOG_INTENSITEIT_BASIS  = 1.4;     // zelfde basiswaarde als in maakOndodeModel()
 const OOG_INTENSITEIT_AANVAL = 2.6;     // piek tijdens de wind-up
+// Ticket 39 (Sfeer S2): dezelfde piekwaarde is ook de Mistgolf-oogboost
+// (beslissing 32) — geen toeval, allebei "dit is het kanaal dat het felst
+// mag gaan"; hergebruik i.p.v. een tweede, identieke constante.
+const OOG_INTENSITEIT_MIST = OOG_INTENSITEIT_AANVAL;
+
+// Ticket 39 (Sfeer S2, §5.9 + beslissing 32): per-type "geluidsprofiel" op
+// een random 4-9s-timer (ondode.gromTimer, gezet in spawnOndode()) — alleen
+// hoorbaar binnen 8m en met een globale cap van 1 grom/0.6s
+// (module-let laatsteGromKlok) zodat een volle golf niet overlapt tot
+// geluidsbrij. De Sluiper gromt NOOIT: stilte is zíjn tell.
+const ONDODE_GROM_MIN_INTERVAL  = 4;      // s
+const ONDODE_GROM_MAX_INTERVAL  = 9;      // s
+const ONDODE_GROM_BEREIK        = 8;      // m — alleen hoorbaar binnen deze afstand
+const ONDODE_GROM_GLOBALE_CAP   = 0.6;    // s — minimale tijd tussen twee groms, ongeacht type
+let laatsteGromKlok = -999;
+let ondodeGromTeller = 0;   // debug/test: telt elke daadwerkelijk gespeelde grom
+function nieuweGromTimer() { return ONDODE_GROM_MIN_INTERVAL + Math.random() * (ONDODE_GROM_MAX_INTERVAL - ONDODE_GROM_MIN_INTERVAL); }
+function speelOndodeGrom(type) {
+  ondodeGromTeller++;
+  if (type === 'sjouwer') piep('sawtooth', 55, 75, 0.4, 0.045);
+  else if (type === 'loper') piep('sawtooth', 260, 340, 0.12, 0.035);
+  else if (type === 'brander') piep('sawtooth', 140, 100, 0.28, 0.045);
+  else piep('sawtooth', 120, 160, 0.22, 0.04);   // normaal
+}
 
 // Ticket 20 (Z3): ledematen-animatie. Amplitudes in radialen, puur
 // cosmetisch (raakt nooit groep.position/collision). ARM_RUST_ROTATIE_X is
@@ -2519,32 +2922,45 @@ function ondodeStartHP() {
 // Ticket 19 (Z2): `vorm` is puur-visuele silhouetdata per type, gelezen in
 // maakOndodeModel() — de types moeten ook ZONDER kleur (mist, duisternis)
 // aan hun vorm herkenbaar zijn. Stats en hitbox-contract raken dit niet.
+// Ticket 39 (Sfeer S2, §5.9 + ontwerpbeslissing 32): elk type.gang =
+// { pasFactor, bobFactor, ampFactor } — vermenigvuldigers op de BESTAANDE
+// loopFase-/romp-bob-/ledemaat-amplitude-writes in updateOndoden() (netto 0
+// extra writes). ampFactor ontbreekt bij de meeste types (default 1, alleen
+// de Sluiper heeft een expliciet afwijkende waarde — "korte" pasjes).
+const ONDODE_GANG_DEFAULT = { pasFactor: 1, bobFactor: 1, ampFactor: 1 };
 const ONDODE_TYPES = {
-  normaal: { snelheidMultiplier: 1,    hpMultiplier: 1, geldMultiplier: 1,   kleur: 0x5d7255, oogKleur: 0xd8ff6b, schaal: 1 },
+  normaal: { snelheidMultiplier: 1,    hpMultiplier: 1, geldMultiplier: 1,   kleur: 0x5d7255, oogKleur: 0xd8ff6b, schaal: 1,
+             gang: ONDODE_GANG_DEFAULT },
   // Loper: snel maar breekbaar, lage beloning — dwingt de speler om te kiezen wie eerst.
   // Ticket 4: 1.8->1.47 (1,5x1,47=2,205 m/s) — op 2,7 haalde hij een
   // achteruit schietende speler te makkelijk in.
   // Vorm: dun en voorovergebogen — een sprinter in aanzet.
   loper:   { snelheidMultiplier: 1.47, hpMultiplier: 0.5, geldMultiplier: 0.6, kleur: 0x8a9c4a, oogKleur: 0xe8ff9c, schaal: 0.9,
-             vorm: { rompBreedte: 0.78, voorover: 0.18 } },
+             vorm: { rompBreedte: 0.78, voorover: 0.18 },
+             gang: { pasFactor: 1.25, bobFactor: 0.8, ampFactor: 1 } },
   // Sjouwer: erg traag, zeer taai, hoge beloning — een blokkade die de doorgang dichtzet.
   // Ticket 5: hpMultiplier 4->2.5 — op 8 HP was hij wachttijd i.p.v. spanning.
   // Ticket 14: hpMax 8 — zonder plafond zou 2.5x op de late basis-HP (3-4)
   // weer 8-10 HP geven, precies de sponge die ontwerpbeslissing 11 verbiedt.
   // Vorm: breed met een bochel — een gedrongen sjouwerslijf.
   sjouwer: { snelheidMultiplier: 0.55, hpMultiplier: 2.5, hpMax: 8, geldMultiplier: 2.2, kleur: 0x4a5568, oogKleur: 0x9cc8ff, schaal: 1.35,
-             vorm: { rompBreedte: 1.3, bochel: true } },
+             vorm: { rompBreedte: 1.3, bochel: true },
+             gang: { pasFactor: 0.8, bobFactor: 1.6, ampFactor: 1 } },
   // Brander: normale snelheid/HP, ontploft bij overlijden (zie ontploiBrander).
   // Vorm: buikige romp met een gloeiende kern (emissive mesh, bewust GEEN
   // PointLight — 0 lights per ondode, zie ARCHITECTURE_NOTES §4.9).
   brander: { snelheidMultiplier: 1,    hpMultiplier: 1,   geldMultiplier: 1.3, kleur: 0x8a4a2c, oogKleur: 0xffa03d, schaal: 1, explodeert: true,
-             vorm: { buik: true } },
+             vorm: { buik: true },
+             gang: ONDODE_GANG_DEFAULT },
   // Ticket 8: Sluiper — uitsluitend tijdens een Mistgolf (gating in
   // ondodeTypeGewichten(), zie Ticket 9). Klein en snel-ish, weinig HP,
   // met goed zichtbare ogen zodat hij in de mist eerlijk vindbaar blijft.
   // Vorm: ingedoken kop — hij besluipt je met de nek naar voren.
   sluiper: { snelheidMultiplier: 1.35, hpMultiplier: 0.75, geldMultiplier: 1.1, kleur: 0x3c4a41, oogKleur: 0xb8ffc8, schaal: 0.75,
-             vorm: { ingedokenKop: true } },
+             vorm: { ingedokenKop: true },
+             // Korte, snelle pasjes met een lage bob (ampFactor < 1 verkleint
+             // ook de ledemaat-zwaai, niet alleen de romp-bob).
+             gang: { pasFactor: 1.4, bobFactor: 0.5, ampFactor: 0.7 } },
 };
 const ONDODE_TYPE_MIN_GOLF = { loper: 2, sjouwer: 3, brander: 4 };
 const BRANDER_EXPLOSIE_RADIUS = 3.0;
@@ -3064,11 +3480,25 @@ function spawnOndode(vensterIndex, type = 'normaal', traits = kiesOndodeTraits()
     aanvalStaat: 'jaag', aanvalTimer: 0, aanvalVertraging: Math.random() * AANVAL_START_JITTER,
     vastTijd: 0,
     ontwijkTimer: 0, ontwijkZijkant: 1, ontwijkStartPos: new THREE.Vector3(),
+    // Ticket 39 (Sfeer S2): willekeurige eerste grom-timer, en de per-ondode
+    // oogbasis (i.p.v. de hardcoded OOG_INTENSITEIT_BASIS-constante) zodat
+    // T31's windup-/herstel-oogpuls tijdens een Mistgolf vanaf de verhoogde
+    // basis rekent — zie het randgeval in ARCHITECTURE_NOTES §5.9.
+    gromTimer: nieuweGromTimer(),
+    oogBasisIntensiteit: OOG_INTENSITEIT_BASIS,
   };
   groep.userData.ondode = ondode;
+  if (actieveEventGolf === 'mist') zetOogBasis(ondode, OOG_INTENSITEIT_MIST);
   ondodenGroep.add(groep);
   ondoden.push(ondode);
   return ondode;
+}
+// Ticket 39: zet zowel het per-ondode basisveld als het material in één
+// keer — gebruikt bij spawn-tijdens-mist én door startEventGolf('mist')/
+// eindigEventGolf() voor alle dan al levende ondoden.
+function zetOogBasis(ondode, waarde) {
+  ondode.oogBasisIntensiteit = waarde;
+  ondode.delen.oogMateriaal.emissiveIntensity = waarde;
 }
 
 // Kiest een venster gewogen naar afstand tot de speler (inverse-kwadraat):
@@ -3223,7 +3653,11 @@ function updateOndoden(dt) {
       if (delen.armL) delen.armL.rotation.x = armNu;
       if (delen.armR) delen.armR.rotation.x = armNu;
       delen.hoofd.rotation.x = delen.hoofd.userData.baseRotX - AANVAL_HOOFD_KANTEL * windupFractie;
-      delen.oogMateriaal.emissiveIntensity = OOG_INTENSITEIT_BASIS + (OOG_INTENSITEIT_AANVAL - OOG_INTENSITEIT_BASIS) * windupFractie;
+      // Ticket 39: oogBasisIntensiteit i.p.v. de hardcoded constante — zo
+      // rekent de puls tijdens een Mistgolf vanaf de verhoogde basis (2.6),
+      // wat "geen zichtbare extra puls" geeft omdat de piek toevallig
+      // dezelfde waarde is — precies het bedoelde randgeval.
+      delen.oogMateriaal.emissiveIntensity = ondode.oogBasisIntensiteit + (OOG_INTENSITEIT_AANVAL - ondode.oogBasisIntensiteit) * windupFractie;
       ondode.vastTijd = 0;
       ondode.ontwijkTimer = 0;
       continue;
@@ -3289,10 +3723,13 @@ function updateOndoden(dt) {
     // KIND van de root, nooit op groep.position zelf). Budget: 8
     // transform-writes hieronder + rotation.y hierboven = 9, binnen de
     // ≤ 10/ondode/frame uit ARCHITECTURE_NOTES §4.9.
-    ondode.loopFase += dt * (4 + ondode.snelheid * 2);
+    // Ticket 39 (Sfeer S2): per-type gang-ritme — vermenigvuldigers op
+    // dezelfde writes hieronder (netto 0 extra transform-writes).
+    const gang = (ONDODE_TYPES[ondode.type] || ONDODE_TYPES.normaal).gang || ONDODE_GANG_DEFAULT;
+    ondode.loopFase += dt * (4 + ondode.snelheid * 2) * gang.pasFactor;
     const delen = ondode.delen;
-    const beenAmpL = ondode.strompelt ? BEEN_LOOP_AMPLITUDE * STROMPEL_BEEN_ZWAK : BEEN_LOOP_AMPLITUDE;
-    const beenAmpR = ondode.strompelt ? BEEN_LOOP_AMPLITUDE * STROMPEL_BEEN_STERK : BEEN_LOOP_AMPLITUDE;
+    const beenAmpL = (ondode.strompelt ? BEEN_LOOP_AMPLITUDE * STROMPEL_BEEN_ZWAK : BEEN_LOOP_AMPLITUDE) * gang.ampFactor;
+    const beenAmpR = (ondode.strompelt ? BEEN_LOOP_AMPLITUDE * STROMPEL_BEEN_STERK : BEEN_LOOP_AMPLITUDE) * gang.ampFactor;
     const faseL = Math.sin(ondode.loopFase);
     const faseR = -faseL;   // linker- en rechterbeen wisselen elkaar af
     delen.beenL.rotation.x = faseL * beenAmpL;
@@ -3310,16 +3747,34 @@ function updateOndoden(dt) {
         const armNu = AANVAL_ARM_HOEK_WINDUP + (ARM_RUST_ROTATIE_X - AANVAL_ARM_HOEK_WINDUP) * herstelFractie;
         if (delen.armL) delen.armL.rotation.x = armNu;
         if (delen.armR) delen.armR.rotation.x = armNu;
-        delen.oogMateriaal.emissiveIntensity = OOG_INTENSITEIT_AANVAL + (OOG_INTENSITEIT_BASIS - OOG_INTENSITEIT_AANVAL) * herstelFractie;
+        // Ticket 39: ondode.oogBasisIntensiteit i.p.v. de hardcoded constante
+        // — als de mist intussen nog actief is, herstelt dit naar 2.6, niet
+        // naar 1.4 (het randgeval uit ARCHITECTURE_NOTES §5.9).
+        delen.oogMateriaal.emissiveIntensity = OOG_INTENSITEIT_AANVAL + (ondode.oogBasisIntensiteit - OOG_INTENSITEIT_AANVAL) * herstelFractie;
       } else {
-        delen.oogMateriaal.emissiveIntensity = OOG_INTENSITEIT_BASIS;   // gegarandeerd exact terug op de basiswaarde
+        delen.oogMateriaal.emissiveIntensity = ondode.oogBasisIntensiteit;   // gegarandeerd exact terug op de basiswaarde
       }
     }
-    delen.romp.position.y = delen.romp.userData.baseY + Math.abs(faseL) * ROMP_BOB_HOOGTE;
+    delen.romp.position.y = delen.romp.userData.baseY + Math.abs(faseL) * ROMP_BOB_HOOGTE * gang.bobFactor;
     delen.hoofd.rotation.x = delen.hoofd.userData.baseRotX + faseL * HOOFD_KANTEL_AMPLITUDE;
     // v0.8: strompelende loop — de wiebel zat op de hele root (verstoorde
     // rotation.y-kijkrichting); Ticket 20 verhuist 'm naar de romp-groep.
     if (ondode.strompelt) delen.romp.rotation.z = faseL * 0.12;
+
+    // Ticket 39 (Sfeer S2): geluidsprofiel op een random timer — 1
+    // decrement per ondode per frame (performancevoorwaarde). De Sluiper
+    // gromt NOOIT (stilte is zijn tell), dus dit hele blok slaat 'm over.
+    if (ondode.type !== 'sluiper') {
+      ondode.gromTimer -= dt;
+      if (ondode.gromTimer <= 0) {
+        ondode.gromTimer = nieuweGromTimer();
+        const afstandSpeler = Math.hypot(ondode.groep.position.x - speler.positie.x, ondode.groep.position.z - speler.positie.z);
+        if (afstandSpeler < ONDODE_GROM_BEREIK && klok - laatsteGromKlok >= ONDODE_GROM_GLOBALE_CAP) {
+          speelOndodeGrom(ondode.type);
+          laatsteGromKlok = klok;
+        }
+      }
+    }
 
     // Ticket 21 (Z4): flinch afhandelen (gezet in raakOndode() bij een
     // overlevende treffer) — lerpt lineair af over FLINCH_DUUR en schuift de
@@ -3616,6 +4071,9 @@ function startEventGolf(type) {
     scene.fog.color.setHex(FOG_MIST.kleur);
     scene.fog.near = FOG_MIST.near;
     scene.fog.far = FOG_MIST.far;
+    // Ticket 39: ogen worden het mist-kanaal — alle NU al levende ondoden
+    // meteen boosten (nieuwe spawns doen dit zelf, zie spawnOndode()).
+    for (const o of ondoden) zetOogBasis(o, OOG_INTENSITEIT_MIST);
   }
 }
 
@@ -3636,6 +4094,10 @@ function eindigEventGolf(direct = false) {
       mistUitfaseVan = { kleur: scene.fog.color.getHex(), near: scene.fog.near, far: scene.fog.far };
       mistUitfaseTimer = MIST_UITFADE_DUUR;
     }
+    // Ticket 39: oogbasis weer exact terug — ook voor een ondode die op dit
+    // moment in een windup-/herstel-oogpuls zit (die rekent voortaan gewoon
+    // weer vanaf de normale basis, zie de T31-formules in updateOndoden()).
+    for (const o of ondoden) zetOogBasis(o, OOG_INTENSITEIT_BASIS);
   }
   actieveEventGolf = null;
 }
@@ -3653,6 +4115,9 @@ function updateMistUitfade(dt) {
 }
 
 function startGolf() {
+  // Ticket 40: golfstart-lichtdip — herstelt binnen 0.8s vanzelf in de
+  // lampflikker-loop (gameLoop), puur cosmetisch.
+  lampDipFactor = 0.6;
   // Event eerst starten: het budget en de banner hangen ervan af.
   if (isEventGolf(spelStaat.golf)) startEventGolf(kiesEventType(spelStaat.golf));
   // Ticket 13: dreigingsbudget i.p.v. een vast aantal — het exacte aantal
@@ -3907,7 +4372,7 @@ wereld.add(ammoKist);
 const ammoBand = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.1, 0.49), mat(0x3a2c17, 0.7));
 ammoBand.position.set(3, 0.32, -2);
 wereld.add(ammoBand);
-interactieMarkering(3, -2, 0x6bd0ff);
+const ammoMarkering = winkelMarkering(3, -2, 'ammo');
 
 const upgradeTafel = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 0.5), mat(0x2f2a24, 0.8, 0.2));
 upgradeTafel.position.set(-3, 0.2, -2);
@@ -3917,9 +4382,9 @@ const upgradeKern = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10),
   new THREE.MeshStandardMaterial({ color: 0xffe08a, emissive: 0xffb63a, emissiveIntensity: 1.1 }));
 upgradeKern.position.set(-3, 0.55, -2);
 wereld.add(upgradeKern);
-const upgradeMarkering = interactieMarkering(-3, -2, 0xffd75e);
+const upgradeMarkering = winkelMarkering(-3, -2, 'upgrade');
 
-const deurMarkering = interactieMarkering(0, DEUR_Z + 0.7, 0x9fff9f);
+const deurMarkering = winkelMarkering(0, DEUR_Z + 0.7, 'deur1');
 
 // Dooft een interactiemarkering naar grijs (Ticket V7): visuele hint dat een
 // eenmalige/MAX-upgrade hier niets meer te doen heeft.
@@ -3951,25 +4416,25 @@ const WERKBANK_Z = ATELIER_MIDDEN_Z - 2;
   g.position.set(WERKBANK_X, 0, WERKBANK_Z);
   wereld.add(g);
 }
-const werkbankMarkering = interactieMarkering(WERKBANK_X, WERKBANK_Z, 0xff9f5a);
+const werkbankMarkering = winkelMarkering(WERKBANK_X, WERKBANK_Z, 'werkbank');
 
 // Op de atelierkant (net als deurMarkering vóór deur 1 op de kamer-1-kant
 // staat), niet aan de binnenplaats-kant erachter (bugfix na code-review).
-const deur2Markering = interactieMarkering(DEUR2_X - 0.7, DEUR2_Z, 0x9fc0e8);
+const deur2Markering = winkelMarkering(DEUR2_X - 0.7, DEUR2_Z, 'deur2');
 // Ticket 25: deur3-markering staat aan de PLAATS-kant (waar je 'm koopt),
 // z-offset i.p.v. x-offset omdat deze deur in een horizontale muur zit.
-const deur3Markering = interactieMarkering(DEUR3_X, PLAATS_Z_ZUID - 0.7, 0x9fc0e8);
+const deur3Markering = winkelMarkering(DEUR3_X, PLAATS_Z_ZUID - 0.7, 'deur3');
 // Ticket 26: deur4-markering staat aan de BIJKEUKEN-kant (x ≈ 6.8, zie
 // ARCHITECTURE_NOTES §4.7) — je koopt de terugweg pas als je de lus
 // (bijna) rond bent, dus vanuit de nieuwe kamer, niet vanuit de woonkamer.
 // Bugfix: op x ≈ 5.2 reikte de radius (1.6) dwars door de 0.3m-dikke muur
 // heen terug de (altijd-open) woonkamer in — x ≈ 6.8 geeft een veilige marge.
-const deur4Markering = interactieMarkering(HALF_BREEDTE + MUUR_DIKTE + 2.0, DEUR4_Z, 0xc9a86b);
+const deur4Markering = winkelMarkering(HALF_BREEDTE + MUUR_DIKTE + 2.0, DEUR4_Z, 'deur4');
 // Ticket 27: Provisiekast staat bij haar eigen decor-planken tegen de
 // bijkeuken-oostmuur (zelfde positie als de meubelBox-planken hierboven).
 const PROVISIEKAST_X = BIJKEUKEN_X_OOST - 1.3;
 const PROVISIEKAST_Z = -0.5;
-const provisiekastMarkering = interactieMarkering(PROVISIEKAST_X, PROVISIEKAST_Z, 0xd8c47a);
+const provisiekastMarkering = winkelMarkering(PROVISIEKAST_X, PROVISIEKAST_Z, 'provisiekast');
 
 // --- Watertap (Ticket V5): herbruikbaar, geld voor HP (risk/reward) ------
 const WATERTAP_X = PLAATS_CX + 1.5;
@@ -3983,7 +4448,7 @@ const WATERTAP_Z = DEUR2_Z - 1.6;
   kraan.position.set(WATERTAP_X + 0.12, 0.85, WATERTAP_Z);
   wereld.add(kraan);
 }
-const watertapMarkering = interactieMarkering(WATERTAP_X, WATERTAP_Z, 0x6bd0ff);
+const watertapMarkering = winkelMarkering(WATERTAP_X, WATERTAP_Z, 'watertap');
 
 // --- UI-helpers ---------------------------------------------------
 function toonInteractiePrompt(tekst) {
@@ -4040,6 +4505,7 @@ function koopAmmo() {
   spelStaat.geld -= AMMO_PRIJS;
   wapenStaat.reserve += AMMO_KIST_KOGELS;
   speelKoop();
+  flitsMarkering(ammoMarkering);
   toonMelding(`+${AMMO_KIST_KOGELS} reserve-munitie`);
   updateAmmoUI();
   updateHUD();
@@ -4054,6 +4520,7 @@ function koopProvisiekast() {
   spelStaat.geld -= PROVISIEKAST_PRIJS;
   wapenStaat.reserve += AMMO_KIST_KOGELS;
   speelKoop();
+  flitsMarkering(provisiekastMarkering);
   toonMelding(`+${AMMO_KIST_KOGELS} reserve-munitie`);
   updateAmmoUI();
   updateHUD();
@@ -4070,6 +4537,7 @@ function koopPantserdrank() {
   spelerStaat.hpMax += PANTSERDRANK_HP_BONUS;
   spelerStaat.hp += PANTSERDRANK_HP_BONUS;
   speelKoop();
+  flitsMarkering(pantserdrankMarkering);
   toonMelding(`Pantserdrank gedronken! Max HP nu ${spelerStaat.hpMax}`);
   doofMarkering(pantserdrankMarkering);
   updateHUD();
@@ -4081,6 +4549,7 @@ function koopUpgrade() {
   spelStaat.geld -= UPGRADE_PRIJS;
   schadePerTreffer += 0.5;   // Ticket 11: kleinere stap, stopt nu bij WAPEN_SCHADE_MAX (1.5)
   speelKoop();
+  flitsMarkering(upgradeMarkering);
   toonMelding(schadePerTreffer >= WAPEN_SCHADE_MAX ? 'Schade-upgrade! Nu MAX' : `Schade-upgrade! Nu ${schadePerTreffer}`);
   if (schadePerTreffer >= WAPEN_SCHADE_MAX) doofMarkering(upgradeMarkering);
   updateHUD();
@@ -4098,6 +4567,7 @@ function koopSnelspanner() {
   // dan nog niet gekocht zijn — nieuweWapenStaat() past 'm dan later zelf toe).
   for (const staat of Object.values(wapenStaten)) if (staat) staat.herlaadDuur = staat.definitie.herlaadDuurSnel;
   speelKoop();
+  flitsMarkering(werkbankMarkering);
   toonMelding('Snelheidselixer gedronken — sneller herladen (MAX)');
   doofMarkering(werkbankMarkering);
   updateAmmoUI();
@@ -4114,6 +4584,7 @@ function koopRatelaar() {
   ratelaarGekocht = true;
   wapenStaten.ratelaar = nieuweWapenStaat(WAPEN_RATELAAR);
   speelKoop();
+  flitsMarkering(ratelaarMarkering);
   toonMelding('De Ratelaar is gekocht! Druk Q om te wisselen');
   doofMarkering(ratelaarMarkering);
   if (actiefWapenNaam === 'drukspuit') wisselWapen();
@@ -4139,6 +4610,7 @@ function koopSmederij() {
   // tandwiel + ember-light) zichtbaar maken.
   (actiefWapenNaam === 'drukspuit' ? smederijVisualsDrukspuit : smederijVisualsRatelaar).visible = true;
   speelSmeed();
+  flitsMarkering(smederijMarkering);
   toonMelding(`${wapenStaat.definitie.naam} gesmeed! +${wapenStaat.definitie.smederijConfig.schadeBonus} schade, magazijn ${wapenStaat.magazijnMax}`);
   updateAmmoUI();
   updateHUD();
@@ -4221,6 +4693,7 @@ function koopWatertap() {
   spelStaat.geld -= WATERTAP_PRIJS;
   spelerStaat.hp = Math.min(spelerStaat.hpMax, spelerStaat.hp + WATERTAP_HP);
   speelKoop();
+  flitsMarkering(watertapMarkering);
   toonMelding(`+${WATERTAP_HP} HP`);
   updateHUD();
 }
@@ -4384,6 +4857,9 @@ function gameLoop(nu) {
     updateMistUitfade(dt);
     updateSpelerRegen(dt);
     updateInteracties();
+    updateWinkelMarkeringen(dt);   // Ticket 37: status-animatie + winkelLicht
+    updateStofwolken(dt);   // Ticket 40: atelier-stof, alleen zichtbaar in zone C
+    updateDruppel(dt);      // Ticket 40: kelderhals-druppel-lek
 
     // Zone-sfeergeluiden (Ticket V8): eenmalige triggers bij de eerste stap
     // in een nieuwe zone, plus een zeldzame gracht-klok op de achtergrond.
@@ -4412,9 +4888,12 @@ function gameLoop(nu) {
   // Sfeer: lampen zacht laten flikkeren (loopt ook tijdens pauze, want puur
   // cosmetisch). `nu` loopt altijd door, dus onafhankelijk van de spel-klok.
   const t = nu * 0.001;
+  // Ticket 40: golfstart-lichtdip — lineair herstel over 0.8s, puur
+  // cosmetisch (dezelfde wall-clock dt als terugslag/cameraKick hieronder).
+  if (lampDipFactor < 1) lampDipFactor = Math.min(1, lampDipFactor + dt / 0.8);
   for (const l of lampLichten) {
     const factor = 1 + l.amp1 * Math.sin(t * 7 + l.fase) + l.amp2 * Math.sin(t * 17 + l.fase * 2);
-    l.licht.intensity = l.basis * Math.max(l.minFactor, factor);
+    l.licht.intensity = l.basis * Math.max(l.minFactor, factor) * lampDipFactor;
   }
 
   if (terugslag > 0) {
@@ -4525,6 +5004,12 @@ window.AmsterdamUndeadDebug = {
   ZONE_SPAWN_INTERVAL_FACTOR, ZONE_MAX_ACTIEF_BONUS,
   // Ticket V7: progressie-UI:
   doofMarkering, upgradeMarkering, werkbankMarkering,
+  // Ticket 36: winkelstijl-register + iconen (W2)
+  WINKEL_STIJLEN, winkelMarkering, winkelMarkeringen, interactieMarkering,
+  deurMarkering, deur2Markering, deur3Markering, deur4Markering,
+  provisiekastMarkering, watertapMarkering, ammoMarkering,
+  // Ticket 37: winkel-status + winkelLicht + koop-flits (W3)
+  updateWinkelMarkeringen, flitsMarkering, winkelLicht, WINKEL_FLITS_DUUR,
   // Ticket V8: zone-audio (voor tests: booleans + drempel opvraagbaar/instelbaar):
   get gangBetreden() { return gangBetreden; },
   get plaatsBetreden() { return plaatsBetreden; },
@@ -4625,6 +5110,27 @@ window.AmsterdamUndeadDebug = {
   // Ticket 32 (Feedback F1): effecten-pool (tracers + impact-deeltjes)
   TRACER_MAX, IMPACT_MAX, MATERIAAL_KLEUREN, spawnTracer, spawnImpact, updateEffecten,
   tracerPool, impactPool, actieveEffecten,
+  // Ticket 38 (Sfeer S1): materiaal-families + impactkleuren
+  matFamilie, MATERIAAL_FAMILIES, matFamilieCache,
+  klinkersMesh, bijkeukenVloerMesh, gangVloerMesh, kelderluikMesh,
+  deurKlink, deur2Klink, deur3Klink, deur4Klink,
+  // Ticket 39 (Sfeer S2): vijandleesbaarheid (gang-ritme, geluid, mist-ogen)
+  ONDODE_GANG_DEFAULT, OOG_INTENSITEIT_MIST,
+  ONDODE_GROM_MIN_INTERVAL, ONDODE_GROM_MAX_INTERVAL, ONDODE_GROM_BEREIK, ONDODE_GROM_GLOBALE_CAP,
+  speelOndodeGrom, nieuweGromTimer, zetOogBasis,
+  get ondodeGromTeller() { return ondodeGromTeller; },
+  get laatsteGromKlok() { return laatsteGromKlok; },
+  set laatsteGromKlok(v) { laatsteGromKlok = v; },
+  // Ticket 40 (Sfeer S3): omgevingsdetails (stof, druppel, golf-lichtdip)
+  KAMER_HOOGTE, stofwolken, updateStofwolken,
+  druppelMesh, updateDruppel, speelDruppelTik, DRUPPEL_TIK_BEREIK,
+  get druppelTimer() { return druppelTimer; },
+  set druppelTimer(v) { druppelTimer = v; },
+  get druppelDuur() { return druppelDuur; },
+  set druppelDuur(v) { druppelDuur = v; },
+  get druppelTikTeller() { return druppelTikTeller; },
+  get lampDipFactor() { return lampDipFactor; },
+  set lampDipFactor(v) { lampDipFactor = v; },
 };
 </script>
 </body>
