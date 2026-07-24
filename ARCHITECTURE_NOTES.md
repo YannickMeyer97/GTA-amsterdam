@@ -1364,6 +1364,23 @@ twee events kunnen elkaars herstel niet doorkruisen.
 `kiesEventType()` wisselt deterministisch (testbaar, gegarandeerde
 variatie): mist op golf 5, stroomuitval op 10, mist op 15, …
 
+**Feedback ná speeltest (2 bugs + 1 aanvulling):** de speler zag amper
+verschil. Bug 1: de flikker-loop paste `stroomFactor` alleen toe op de
+peer-emissive, niet op `l.licht.intensity` zelf — de kamer bleef dus
+even fel verlicht. Bug 2: de ateliers-dakramen (het hoofdlicht van die
+zone) zaten nooit in `lampLichten`, dus deden sowieso niet mee — nieuwe,
+losse `stroomGevoeligeDaklichten`-array (blijft bewust stabiel/niet-
+flikkerend, dimt wel mee met `stroomFactor`). Zelfs met beide bugs
+gefixt bleef de kamer bij een pixel-steekproef maar ~15-20% donkerder:
+het scene-brede `HemisphereLight` (geen afstandsval-off, dus overal
+gelijk) domineerde nog. Aanvulling: `hemisfeerLicht.intensity` en
+`renderer.toneMappingExposure` dimmen nu ook mee, elk met een EIGEN,
+hogere vloer (35% resp. 40%) dan de puntlichten (12%) — bewust nooit
+naar 0, want die twee zijn scene-breed en zouden ook de buitenlichten
+(die zelf ongewijzigd blijven) visueel platdrukken. Gemeten eindresultaat:
+atelier/woonkamer ~38-43% donkerder, binnenplaats ~32% (blijft relatief
+duidelijk lichter dankzij de eigen, sterke, niet-gedimde buitenlichten).
+
 ### 6.6 De Hagelketel en de driewapen-wissel (beslissingen 38 en 39)
 
 **38 — pelletAantal generaliseert het schot.** Eén nieuw definitieveld;
@@ -1389,11 +1406,28 @@ Twee licht gedetuneerde oscillators (55/57 Hz, zweving) die bij
 `initGeluid()` starten en daarna nooit meer stoppen — alleen de gain
 beweegt (start/stop klikt hoorbaar). De gain-doelwaarde komt uit een
 pure, exporteerbare functie `berekenDreigingsGain(aantal, afstand)` met
-plafond 0.05 (ver onder de piep-volumes; de drone mag nooit met de
+plafond 0.1 (ver onder de piep-volumes; de drone mag nooit met de
 aanvals-tells concurreren). Sturing met een ~0.25s-throttle in de
 `spelActief`-tak; de niet-actieve tak stuurt 0 (pauze/menu/game over
 zwijgen). Testbaarheid komt uit de pure functie + getters, niet uit
 geluidsmeting.
+
+**Feedback ná speeltest:** het oorspronkelijke plafond (0.05) bleek in
+de praktijk vrijwel onhoorbaar — bij 1-2 ondoden dichtbij (de meest
+voorkomende situatie) haalt de curve nooit meer dan ~0.03. Plafond +
+curve zijn evenredig verdubbeld (0.008→0.016, 0.02→0.04, 0.05→0.1) zodat
+de drone al bij één nabije ondode duidelijk hoorbaar wordt, met dezelfde
+architectuur en dezelfde relatieve marge onder de piep-volumes.
+
+**Tweede feedbackronde:** de continue formule (elke ondode een beetje
+volume, elke stap dichterbij een beetje meer) verving door een simpele
+drempel — `berekenDreigingsGain(aantalBinnenBereik)`:
+`aantalBinnenBereik >= DREIGINGS_NABIJHEID_MINIMUM (2) ? 0.07 : 0`.
+`updateDreigingsAudio()` telt nu ondoden binnen `DREIGINGS_NABIJHEID_BEREIK`
+(1.5 m), niet meer de dichtstbijzijnde afstand. Puur aan/uit is duidelijker
+te lezen dan een sluipend oplopend volume, en het plafond ging ook iets
+omlaag (0.1 → 0.07) — de drone is een signaal voor "het wordt druk vlak
+bij je", niet een permanente sfeerlaag.
 
 ### 6.8 Zone-presentatie (beslissing 41)
 

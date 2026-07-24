@@ -105,9 +105,12 @@ const fogBuitenMist = await page.evaluate(() => {
 });
 check('Golf 6 (geen event) start met normale fog', fogBuitenMist.near === 6 && fogBuitenMist.far === 24, fogBuitenMist);
 
+// Ticket 46: golf 10 is sinds de Stroomuitval-toevoeging niet meer 'mist'
+// (dat wisselt nu deterministisch af: 5/15/25.. = mist, 10/20/30.. =
+// stroomuitval) — golf 15 gebruikt voor deze mist-specifieke gameOver-check.
 const fogNaGameOverTijdensMist = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  d.spelStaat.golf = 10;
+  d.spelStaat.golf = 15;
   d.spelStaat.gameOver = false;
   d.startGolf();
   const tijdens = { near: d.scene.fog.near, far: d.scene.fog.far };

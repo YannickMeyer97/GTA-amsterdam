@@ -1706,13 +1706,20 @@ Volgorde nu: 42 → 46, dan 52 → 57, dan 49 → 51, fases:
 - **Fase 15 — score & moeilijkheid**: T42, T43 (verbetergebied 1) ✅
 - **Fase 16 — de Vluchtroute (fundament)**: T44, T45 (verbetergebied 1) ✅
 - **Fase 17 — Ontsnapping-feedbackronde**: T52, T53, T54, T55, T56, T57
-  (verbetergebied 1 + kwaliteit, NIEUW — directe speeltest-feedback)
+  (verbetergebied 1 + kwaliteit, NIEUW — directe speeltest-feedback).
+  **Nog niet uitgevoerd** — op expliciet verzoek van de gebruiker
+  overgeslagen bij het uitvoeren van T46/T49/T50/T51 (zie hieronder); staat
+  nog open voor een volgende beurt.
 - **Fase 18 — Stroomuitval**: T46 (verbetergebied 2 — beantwoordt de
   "waar is de stroomuitval?"-vraag: nog nooit geïmplementeerd, alleen
-  gepland, zie het antwoord in de sessie)
-- **Fase 19 — presentatie**: T49, T50 (verbetergebied 4)
-- **Fase 20 — integratie**: T51 (verbetergebied 5 + afsluiter, dekt nu
-  ook T52-57)
+  gepland, zie het antwoord in de sessie) ✅
+- **Fase 19 — presentatie**: T49, T50 (verbetergebied 4) ✅
+- **Fase 20 — integratie**: T51 (verbetergebied 5 + afsluiter) ✅ —
+  **verkleind uitgevoerd**: dekt alleen T42-46 + T49-50 (pacing-audit,
+  teksten, regressie). Dekt T52-57 NIET, want die zijn nog niet
+  uitgevoerd — zodra dat wel gebeurt, moet T51's pacing-test (het
+  ontsnappingsvenster-patroon uit T54) en de teksten (gang-naar-de-gracht,
+  boot, ontsnappingsritme) alsnog worden aangevuld.
 
 ## Ticket 42 — Doel D1: run-statistieken, score en highscore
 - **Type:** Feature (fundament van de ronde)
@@ -1899,6 +1906,23 @@ Volgorde nu: 42 → 46, dan 52 → 57, dan 49 → 51, fases:
   lichttelling ongewijzigd (er komt géén licht bij).
 - **Testplan:** nieuwe `tests/test-stroomuitval.mjs` (incl.
   mist-regressiechecks) + `check-load` + `run-all` + screenshot.
+  **Feedback ná speeltest:** de speler zag nauwelijks verschil tijdens de
+  Stroomuitval. Root-cause (2 bugs): (1) de lampflikker-loop paste
+  `stroomFactor` alleen toe op het gloeipeertje-materiaal, NIET op de echte
+  `PointLight.intensity` die de kamer verlicht — de kamer zelf dimde dus
+  helemaal niet; (2) de ateliers-dakramen (het hoofdlicht van die zone,
+  ~18-22 intensiteit elk) zaten nooit in `lampLichten` en deden dus
+  sowieso niet mee. Beide gefixt (nieuwe `stroomGevoeligeDaklichten`-array
+  voor de vier dakraam-lichten, stabiel maar wel dimbaar). Zelfs daarna
+  bleek een pixel-steekproef op screenshots maar ~15-20% donkerder: het
+  algehele `HemisphereLight` (1.5, scene-breed, geen afstandsval-off)
+  bleef ongewijzigd. Toegevoegd: `hemisfeerLicht` dimt mee tot een vloer
+  van 35% (nooit naar 0, anders wordt buiten ook pikdonker) en
+  `renderer.toneMappingExposure` dimt mee tot een vloer van 40% (de enige
+  hendel die het eindresultaat van ALLE lichtbronnen samen beïnvloedt).
+  Gemeten resultaat: atelier/woonkamer ~38-43% donkerder, binnenplaats
+  ~32% (blijft door de eigen sterke, ongewijzigde buitenlichten duidelijk
+  lichter dan binnen).
 - **Rollback:** kiesEventType terug naar `'mist'`; stroomFactor-regels
   verwijderen.
 - **Sonnet solo:** ja.
@@ -1916,18 +1940,33 @@ Volgorde nu: 42 → 46, dan 52 → 57, dan 49 → 51, fases:
   `initGeluid()` met gain 0 en daarna NOOIT gestopt/herstart (klikken) —
   alleen de gain wordt gestuurd. Pure, testbare helper
   `berekenDreigingsGain(aantalOndoden, dichtstbijzijnd)`:
-  `min(0.05, 0.008×aantal + (dichtstbijzijnd < 6 ? 0.02 : 0))`. Sturing
+  `min(0.1, 0.016×aantal + (dichtstbijzijnd < 6 ? 0.04 : 0))`. Sturing
   1x per ~0.25s (throttle-timer) in de `spelActief`-tak van de gameLoop
   via `gain.setTargetAtTime` (~0.5s glijtijd); de niet-actieve tak
-  (pauze/menu/game over) stuurt doelgain 0. Volumeplafond 0.05 —
+  (pauze/menu/game over) stuurt doelgain 0. Volumeplafond 0.1 —
   duidelijk onder de piep-volumes, het mag nooit met de tells
   concurreren. De bestaande `speelGolfStart()`-sting blijft de
   golf-opening; er komt geen extra sting.
+  **Feedback ná speeltest:** het oorspronkelijke plafond (0.05) en de
+  bijbehorende curve kwamen in normale spelsituaties (1-2 ondoden
+  dichtbij) nooit boven ~0.03 uit en waren op laptop-speakers nauwelijks
+  hoorbaar. Plafond + curve evenredig verdubbeld (0.008→0.016,
+  0.02→0.04, 0.05→0.1) zodat de drone al bij één nabije ondode
+  duidelijker hoorbaar is.
+  **Tweede feedbackronde:** de continue formule verving door een simpele
+  drempel — `berekenDreigingsGain(aantalBinnenBereik)`:
+  `aantalBinnenBereik >= 2 ? 0.07 : 0`. `updateDreigingsAudio()` telt nu
+  ondoden binnen `DREIGINGS_NABIJHEID_BEREIK` (1.5 m) i.p.v. de
+  dichtstbijzijnde afstand bij te houden. Plafond ook iets terug (0.1 →
+  0.07): de drone hoort een subtiel signaal te zijn dat het dringen
+  wordt, niet iets dat al bij het minste geritsel meezoemt.
 - **Codegebieden:** audio-blok (~2730-2810), gameLoop (beide takken),
-  debug-export (`berekenDreigingsGain`, `dreigingsGainDoel` getter).
+  debug-export (`berekenDreigingsGain`, `dreigingsGainDoel` getter,
+  `DREIGINGS_NABIJHEID_BEREIK`, `DREIGINGS_NABIJHEID_MINIMUM`).
 - **Acceptatiecriteria:** gain-formule exact (pure functie); throttle
   aantoonbaar (geen per-frame audio-writes); pauze → doelgain 0;
-  volumeplafond 0.05; geen oscillator-start/stop na init (source-check).
+  volumeplafond 0.07, drempel exact bij 2 ondoden binnen 1.5m; geen
+  oscillator-start/stop na init (source-check).
 - **Testplan:** nieuwe `tests/test-dreigingsaudio.mjs` (via de pure
   helper + debug-getters, niet via echte geluidsmeting) + `check-load` +
   `run-all`.
@@ -2336,6 +2375,12 @@ altijd al onafhankelijk van T42-46/49-56).
   mee). Volledige tekst: zie de git-historie of vraag om 'm opnieuw uit
   te schrijven.
 - **Sonnet solo:** ja.
+
+### Idee (backlog, niet uitgewerkt) — standaard achtergrondmuziek
+Een permanente achtergrondmuziek-track (los van de bestaande
+dreigingsaudio-drone en de eenmalige stings) voor Amsterdam Undead. Puur
+als idee genoteerd op verzoek van de gebruiker — geen ontwerp, geen
+architectuur, geen ticket-uitwerking. Oppakken pas na expliciete opdracht.
 
 ---
 

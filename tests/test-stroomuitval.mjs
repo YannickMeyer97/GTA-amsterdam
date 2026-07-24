@@ -1,0 +1,237 @@
+// Ticket 46: eventgolf Stroomuitval — tweede eventgolf naast de Mist.
+// Bewaakt: deterministische afwisseling (golf 5/15/25.. = mist, golf
+// 10/20/30.. = stroomuitval), stroomFactor op lampen/peer-emissive/
+// winkelLicht (gedimd tijdens, lineair hersteld erna), oogboost (ook voor
+// nieuwe spawns), eigen spawngewichten, audio, en dat de Mistgolf
+// byte-voor-byte blijft werken (regressie t.o.v. Ticket 6-9).
+// Zie ARCHITECTURE_NOTES.md §6.5 en ROADMAP.md Ticket 46.
+import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+
+const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
+const { check, report } = makeChecker();
+
+// --- 1. kiesEventType(): deterministische afwisseling ----------------------
+const afwisseling = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const r = {};
+  for (const golf of [5, 10, 15, 20, 25, 30]) r[golf] = d.kiesEventType(golf);
+  return r;
+});
+check('kiesEventType(): golf 5/15/25 = mist, golf 10/20/30 = stroomuitval',
+  afwisseling[5] === 'mist' && afwisseling[15] === 'mist' && afwisseling[25] === 'mist' &&
+  afwisseling[10] === 'stroomuitval' && afwisseling[20] === 'stroomuitval' && afwisseling[30] === 'stroomuitval',
+  afwisseling);
+
+// --- 2. startGolf() op golf 10 zet actieveEventGolf + eigen banner --------
+const startStroom = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.spelStaat.golf = 10;
+  d.spelStaat.gameOver = false;
+  d.startGolf();
+  const el = document.getElementById('golfBanner');
+  return { actief: d.actieveEventGolf, banner: el.textContent, stroomFactor: d.stroomFactor };
+});
+check("startGolf() op golf 10 zet actieveEventGolf op 'stroomuitval'", startStroom.actief === 'stroomuitval', startStroom);
+check('De banner noemt STROOMUITVAL', startStroom.banner.includes('STROOMUITVAL'), startStroom);
+check('stroomFactor staat meteen op STROOMUITVAL_DIM_FACTOR (0.12)',
+  startStroom.stroomFactor === 0.12, startStroom);
+
+// --- 3. Lampen + peer-emissive + winkelLicht dimmen tijdens de Stroomuitval,
+// het gedeelte buitenlicht (bouwLantaarn, niet in lampLichten) blijft
+// ongemoeid (die staat hier los van, wordt niet aangeraakt) ----------------
+const dimTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const lamp = d.lampLichten[0];
+  return {
+    stroomFactor: d.stroomFactor,
+    bolEmissiefBasis: lamp.bolEmissiefBasis,
+    bolMateriaalAanwezig: !!lamp.bolMateriaal,
+    emissiefVerwacht: lamp.bolEmissiefBasis * d.stroomFactor,
+  };
+});
+check('lampLichten-entries hebben nu een bolMateriaal + bolEmissiefBasis (Ticket 46)',
+  dimTest.bolMateriaalAanwezig && typeof dimTest.bolEmissiefBasis === 'number', dimTest);
+check('De verwachte peer-emissive tijdens de Stroomuitval is duidelijk gedimd (basis * 0.12)',
+  dimTest.emissiefVerwacht < 0.15 && dimTest.emissiefVerwacht > 0, dimTest);
+
+// --- 4. Eén echte gameLoop-tick (wall-clock) dimt de bol-emissive
+// daadwerkelijk, zonder de light-count te wijzigen (pointer lock is al
+// gesimuleerd via openAmsterdamUndead) --------------------------------------
+await page.waitForTimeout(200);   // ruim boven één requestAnimationFrame
+const naEchteTick = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const lamp = d.lampLichten[0];
+  return {
+    bolEmissief: lamp.bolMateriaal.emissiveIntensity,
+    lichttelling: d.lampLichten.length,
+    // Ticket 46-fix: het ECHTE puntlicht (wat de kamer daadwerkelijk
+    // verlicht) moet nu ook merkbaar gedimd zijn, niet alleen het peertje —
+    // dat was de bug die de speler meldde ("geen enkel verschil te zien").
+    lichtIntensiteitFractie: lamp.licht.intensity / lamp.basis,
+    daklichtenFracties: d.stroomGevoeligeDaklichten.map(dl => dl.licht.intensity / dl.basis),
+    hemisfeerFractie: d.hemisfeerLicht.intensity / d.HEMISFEER_BASIS,
+    exposureFractie: d.renderer.toneMappingExposure / d.EXPOSURE_BASIS,
+    buitenFracties: d.buitenLichten.map(bl => bl.licht.intensity / bl.basis),
+    buitenTelling: d.buitenLichten.length,
+  };
+});
+check('Na een echte gameLoop-tick tijdens Stroomuitval is de peer-emissive daadwerkelijk gedimd',
+  naEchteTick.bolEmissief < 0.2, naEchteTick);
+check('Het ECHTE puntlicht van een hanglamp is ook duidelijk gedimd (< 20% van de basis-intensiteit)',
+  naEchteTick.lichtIntensiteitFractie < 0.2, naEchteTick);
+// Ticket 46-fix (feedback 3): de dakramen dimmen sinds de derde
+// feedbackronde nog EXTRA (DAKRAAM_STROOM_EXTRA, bovenop stroomFactor) —
+// het atelier hield door z'n vier eigen dakraam-lichten in absolute
+// wattage nog te veel over t.o.v. de andere binnenruimtes.
+check('Alle vier de ateliers-dakramen volgen exact stroomFactor * DAKRAAM_STROOM_EXTRA (0.12 * 0.55 = 0.066)',
+  naEchteTick.daklichtenFracties.length === 4 &&
+  naEchteTick.daklichtenFracties.every(f => Math.abs(f - 0.12 * 0.55) < 0.005), naEchteTick);
+// Bij STROOMUITVAL_DIM_FACTOR (0.12) is de verwachte fractie de vloer plus
+// het resterende aandeel van stroomFactor: vloer + (1-vloer)*0.12.
+check('Het algehele hemisfeerlicht volgt exact HEMISFEER_STROOM_VLOER + (1-vloer)*stroomFactor (0.35 + 0.65*0.12 = 0.428)',
+  Math.abs(naEchteTick.hemisfeerFractie - (0.35 + 0.65 * 0.12)) < 0.005, naEchteTick);
+check('De camera-belichting (toneMappingExposure) volgt exact EXPOSURE_STROOM_VLOER + (1-vloer)*stroomFactor (0.4 + 0.6*0.12 = 0.472)',
+  Math.abs(naEchteTick.exposureFractie - (0.4 + 0.6 * 0.12)) < 0.005, naEchteTick);
+// Buitenlichten (maanlicht x2 + plaatsVulling + 4 lantaarns = 7) hebben een
+// HOGERE vloer dan binnen (0.12) — buiten blijft net iets lichter, maar
+// gaat wel duidelijk mee de donkere sfeer in. De vloer is twee keer
+// bijgesteld na screenshot-pixelmetingen: eerste gok 0.2 bleek te laag
+// (binnenplaats was dan zelfs donkerder dan het atelier, tegen de
+// bedoeling in), 0.65 bleek weer te hoog ("nog wel licht op de vloer qua
+// weerkaatsing, met name buiten") — uiteindelijk 0.4, samen met
+// DAKRAAM_STROOM_EXTRA hierboven, geeft de door de gebruiker opgegeven
+// doelverhouding (binnenplaats > atelier > woonkamer, elk merkbaar
+// donkerder dan normaal).
+check('buitenLichten bevat de 7 verwachte lichten (maanlicht, maanlichtDeur, plaatsVulling, 4 lantaarns)',
+  naEchteTick.buitenTelling === 7, naEchteTick);
+check('Alle buitenlichten volgen exact BUITEN_STROOM_VLOER + (1-vloer)*stroomFactor (0.4 + 0.6*0.12 = 0.472)',
+  naEchteTick.buitenFracties.every(f => Math.abs(f - (0.4 + 0.6 * 0.12)) < 0.005), naEchteTick);
+check('Buiten blijft merkbaar lichter dan binnen tijdens dezelfde Stroomuitval (buiten-fractie > lamp-fractie)',
+  naEchteTick.buitenFracties[0] > naEchteTick.lichtIntensiteitFractie, naEchteTick);
+check('Buiten blijft ook merkbaar lichter dan het atelier (buiten-fractie > dakraam-fractie)',
+  naEchteTick.buitenFracties[0] > naEchteTick.daklichtenFracties[0], naEchteTick);
+
+// --- 5. Oogboost geldt ook voor Stroomuitval — sinds de feedbackronde met
+// een EIGEN, fellere waarde dan de Mistgolf (OOG_INTENSITEIT_STROOMUITVAL,
+// niet meer OOG_INTENSITEIT_MIST) -------------------------------------------
+const oogboost = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const bestaand = d.spawnOndode(0, 'normaal');
+  const basisVoorEvent = bestaand.oogBasisIntensiteit;
+  // Nieuwe spawn tijdens het al-actieve event:
+  const nieuw = d.spawnOndode(0, 'normaal');
+  return {
+    bestaandGeboost: basisVoorEvent === d.OOG_INTENSITEIT_STROOMUITVAL,
+    nieuwGeboost: nieuw.oogBasisIntensiteit === d.OOG_INTENSITEIT_STROOMUITVAL,
+    fellerDanMist: d.OOG_INTENSITEIT_STROOMUITVAL > d.OOG_INTENSITEIT_MIST,
+  };
+});
+check('Nieuwe spawns tijdens Stroomuitval krijgen de (fellere) OOG_INTENSITEIT_STROOMUITVAL-boost',
+  oogboost.nieuwGeboost, oogboost);
+check('OOG_INTENSITEIT_STROOMUITVAL is feller dan de Mistgolf-boost (feedback: "ogen mogen feller")',
+  oogboost.fellerDanMist, oogboost);
+
+// --- 6. Eigen spawngewichten: uitsluitend normaal/loper/sluiper -----------
+const gewichtenTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const gezien = new Set();
+  for (let i = 0; i < 200; i++) gezien.add(d.kiesOndodeType());
+  return [...gezien].sort();
+});
+check('Tijdens Stroomuitval spawnen uitsluitend normaal/loper/sluiper (geen sjouwer/brander)',
+  gewichtenTest.every(t => ['normaal', 'loper', 'sluiper'].includes(t)), gewichtenTest);
+
+// --- 7. eindigEventGolf(): stroomFactor herstelt NIET direct (geleidelijk),
+// behalve bij direct=true (game over) --------------------------------------
+const eindeGeleidelijk = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  d.spelStaat.golfActief = true;
+  d.spelStaat.budget = 0;
+  d.updateGolf(0.1);   // golf rondt af -> eindigEventGolf(false)
+  return { actief: d.actieveEventGolf, stroomFactorMeteen: d.stroomFactor };
+});
+check('Na golf-einde is actieveEventGolf weer null', eindeGeleidelijk.actief === null, eindeGeleidelijk);
+check('stroomFactor is NIET meteen terug op 1 (geleidelijk herstel, geen directe reset)',
+  eindeGeleidelijk.stroomFactorMeteen < 1, eindeGeleidelijk);
+
+const eindeDirect = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.spelStaat.golf = 10;
+  d.spelStaat.gameOver = false;
+  d.startGolf();
+  const tijdens = d.stroomFactor;
+  d.gameOver();   // direct=true: meteen terug, geen hangende ramp
+  const na = d.stroomFactor;
+  d.spelStaat.gameOver = false;
+  document.getElementById('gameOverScherm').style.display = 'none';
+  return { tijdens, na };
+});
+check('stroomFactor was gedimd vlak vóór game over', eindeDirect.tijdens === 0.12, eindeDirect);
+check('gameOver() midden in een Stroomuitval herstelt stroomFactor meteen naar 1',
+  eindeDirect.na === 1, eindeDirect);
+
+// --- 8. Audio: klap bij start, herstel-tik bij einde -----------------------
+const audioTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const klapVoor = d.stroomklapTeller, herstelVoor = d.stroomHerstelTeller;
+  d.spelStaat.golf = 20;
+  d.spelStaat.gameOver = false;
+  d.startGolf();
+  const klapNa = d.stroomklapTeller;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  d.spelStaat.golfActief = true;
+  d.spelStaat.budget = 0;
+  d.updateGolf(0.1);
+  const herstelNa = d.stroomHerstelTeller;
+  return { klapVoor, klapNa, herstelVoor, herstelNa };
+});
+check('speelStroomklap() wordt precies 1x aangeroepen bij het starten van de Stroomuitval',
+  audioTest.klapNa === audioTest.klapVoor + 1, audioTest);
+check('speelStroomHerstel() wordt precies 1x aangeroepen bij het einde van de Stroomuitval',
+  audioTest.herstelNa === audioTest.herstelVoor + 1, audioTest);
+
+// --- 9. Regressie: de Mistgolf blijft byte-voor-byte werken (fog, sluiper-
+// exclusiviteit) — stroomFactor blijft op 1 tijdens een Mistgolf -----------
+const mistRegressie = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.stroomFactor = 1;
+  d.spelStaat.golf = 5;
+  d.spelStaat.gameOver = false;
+  d.startGolf();
+  const fog = { near: d.scene.fog.near, far: d.scene.fog.far };
+  const gewichten = new Set();
+  for (let i = 0; i < 100; i++) gewichten.add(d.kiesOndodeType());
+  return { fog, gewichten: [...gewichten], stroomFactorTijdensMist: d.stroomFactor };
+});
+check('Mistgolf (golf 5) gebruikt nog steeds FOG_MIST', mistRegressie.fog.near === 2.13 && mistRegressie.fog.far === 9.35, mistRegressie);
+check('Mistgolf spawnt nog steeds uitsluitend Sluipers', mistRegressie.gewichten.length === 1 && mistRegressie.gewichten[0] === 'sluiper', mistRegressie);
+check('stroomFactor blijft op 1 tijdens een Mistgolf (geen kruisbesmetting tussen de twee eventtypes)',
+  mistRegressie.stroomFactorTijdensMist === 1, mistRegressie);
+
+// --- 10. hemisfeerLicht/toneMappingExposure staan tijdens een Mistgolf (en
+// dus stroomFactor === 1) weer op hun normale, volle waarde ----------------
+await page.waitForTimeout(150);   // laat de flikker-loop het echt toepassen
+const hemisfeerNaMist = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  return {
+    hemisfeer: d.hemisfeerLicht.intensity,
+    exposure: d.renderer.toneMappingExposure,
+    buitenFracties: d.buitenLichten.map(bl => bl.licht.intensity / bl.basis),
+  };
+});
+check('hemisfeerLicht staat weer op de volle HEMISFEER_BASIS (1.5) buiten een Stroomuitval',
+  Math.abs(hemisfeerNaMist.hemisfeer - 1.5) < 0.01, hemisfeerNaMist);
+check('toneMappingExposure staat weer op de volle EXPOSURE_BASIS (1.0) buiten een Stroomuitval',
+  Math.abs(hemisfeerNaMist.exposure - 1.0) < 0.01, hemisfeerNaMist);
+check('buitenLichten staan weer op hun volle basis-intensiteit buiten een Stroomuitval',
+  hemisfeerNaMist.buitenFracties.every(f => Math.abs(f - 1) < 0.01), hemisfeerNaMist);
+
+// --- 10. Lichttelling ongewijzigd: er komt géén licht bij (Ticket 46 dimt
+// alleen bestaande lampen/materialen) ---------------------------------------
+const lichttelling = await page.evaluate(() => window.AmsterdamUndeadDebug.lampLichten.length);
+check('lampLichten bevat nog steeds 5 entries (geen nieuw licht toegevoegd)', lichttelling === 5, { lichttelling });
+
+const fails = report(errs);
+await browser.close();
+process.exit(fails > 0 ? 1 : 0);

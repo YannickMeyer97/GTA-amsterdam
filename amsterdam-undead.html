@@ -399,6 +399,7 @@
   <div id="hpBarBuiten"><div id="hpBarBinnen"></div></div>
   <div>€ <span id="geldTekst">0</span></div>
   <div>Golf <span id="golfTekst">1</span></div>
+  <div id="zoneLabelUI" style="font-size:12px; font-weight:700; margin-top:2px; opacity:0.7;"></div>
   <div id="upgradeStatusUI" style="font-size:12px; font-weight:600; opacity:0.85; margin-top:4px;">
     Schade <span id="schadeTekst">1</span> &nbsp;·&nbsp; Herladen <span id="herlaadTekst">1.2s</span> &nbsp;·&nbsp; Wapen <span id="wapenTekst">Drukspuit</span>
   </div>
@@ -433,11 +434,10 @@
   <div class="uitleg">
     🚶 <b>WASD</b> lopen &nbsp;·&nbsp; 🖱️ <b>muis</b> kijken &nbsp;·&nbsp; <b>klik</b> schieten<br>
     🔫 <b>R</b> herladen &nbsp;·&nbsp; 🛒 <b>T</b> kopen/gebruiken &nbsp;·&nbsp; 🔄 <b>Q</b> wissel wapen &nbsp;·&nbsp; ⏸️ <b>Esc</b> pauze<br>
-    <span style="opacity:0.85">🎯 Headshots doen dubbele schade én dubbel kill-geld</span><br>
-    <span style="opacity:0.85">🏠 Woonkamer → 🚪 het atelier (€500) → 🚪 de binnenplaats (€1000) → 🚪 de bijkeuken (€1200) → 🚪 de terugweg (€800)</span><br>
-    <span style="opacity:0.85">🛠️ Elke zone heeft een eigen upgrade, ammo of beloning</span>
+    <span style="opacity:0.85">🎒 Vind de 3 vluchtroute-onderdelen om te ontsnappen</span>
   </div>
   <div id="startschermRecord" style="opacity:0.85; margin-bottom:14px; font-size:14px;"></div>
+  <div style="font-size:19px; font-weight:700; margin-bottom:12px;">Kies je moeilijkheidsgraad</div>
   <div id="moeilijkheidKnoppen" style="display:flex; gap:14px;">
     <div class="knop" data-moeilijkheid="toerist">Toerist</div>
     <div class="knop" data-moeilijkheid="amsterdammer">Amsterdammer</div>
@@ -499,7 +499,9 @@ document.body.appendChild(renderer.domElement);
 // ramen verlicht worden, niet door een felle "zon" zoals op het Dam-plein.
 // Iets opgehoogd t.o.v. het prototype zodat de meubels/hoeken leesbaar zijn
 // zonder de donkere sfeer te verpesten.
-scene.add(new THREE.HemisphereLight(0x2b3a54, 0x201811, 1.5));
+const HEMISFEER_BASIS = 1.5;
+const hemisfeerLicht = new THREE.HemisphereLight(0x2b3a54, 0x201811, HEMISFEER_BASIS);
+scene.add(hemisfeerLicht);
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
@@ -513,6 +515,14 @@ addEventListener('resize', () => {
 
 const wereld = new THREE.Group();
 scene.add(wereld);
+
+// Ticket 46-fix (feedback): buitenlichten (maanlicht + lantaarns op de
+// binnenplaats) — elektrisch, dimmen dus ook mee tijdens een Stroomuitval,
+// maar met een eigen, hogere vloer dan binnen (zie BUITEN_STROOM_VLOER in
+// de gameLoop-flikkerloop): buiten blijft de vluchtheuvel, maar niet meer
+// zo fel als voorheen. Vroeg gedeclareerd (vóór STAP 2 z'n geometrie) omdat
+// bouwLantaarn() en het maanlicht-blok hieronder er al in pushen.
+const buitenLichten = [];
 
 const obstakels = [];
 function registreerRechthoek(minX, maxX, minZ, maxZ, marge = 0) {
@@ -977,15 +987,18 @@ let klinkersMesh;
   const maanlicht = new THREE.PointLight(0xc8ddff, 48, 28, 1.15);
   maanlicht.position.set(PLAATS_CX, KAMER_HOOGTE + 1.25, DEUR2_Z - 1.0);
   wereld.add(maanlicht);
+  buitenLichten.push({ licht: maanlicht, basis: 48 });
   // Tweede, zwakker maanlicht bij de deur zodat je 'm bij binnenkomst
   // meteen ziet i.p.v. eerst een paar meter het donker in te moeten lopen.
   const maanlichtDeur = new THREE.PointLight(0xc8ddff, 34, 17, 1.25);
   maanlichtDeur.position.set(DEUR2_X + 1.8, KAMER_HOOGTE + 0.7, DEUR2_Z);
   wereld.add(maanlichtDeur);
+  buitenLichten.push({ licht: maanlichtDeur, basis: 34 });
   // Extra zachte vulgloed op de open plaats. Geen shadows, puur leesbaarheid.
   const plaatsVulling = new THREE.PointLight(0x8fb8e8, 22, 24, 1.8);
   plaatsVulling.position.set(PLAATS_CX + 3.0, 2.2, DEUR2_Z + 2.5);
   wereld.add(plaatsVulling);
+  buitenLichten.push({ licht: plaatsVulling, basis: 22 });
 
   // v0.6: vier lantaarnpalen als belangrijkste lichtbron van de vergrote
   // binnenplaats — schaduwloos (perf), warm-wit, duidelijk anders dan het
@@ -1000,13 +1013,18 @@ let klinkersMesh;
     wereld.add(armatuur);
     // v0.11: sterkere, warmere lichtpoel per lantaarn (leesbaarheid), plus
     // een zachte grondgloed die de lichtpoel zelf zichtbaar maakt.
+    const lantaarnBolBasis = 2.2;
     const bol = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 12),
-      new THREE.MeshStandardMaterial({ color: 0xffefd0, emissive: 0xffc36a, emissiveIntensity: 2.2 }));
+      new THREE.MeshStandardMaterial({ color: 0xffefd0, emissive: 0xffc36a, emissiveIntensity: lantaarnBolBasis }));
     bol.position.set(x, 2.5, z);
     wereld.add(bol);
     const licht = new THREE.PointLight(0xffd6a0, 34, 13, 1.65);
     licht.position.set(x, 2.45, z);
     wereld.add(licht);
+    // Ticket 46-fix (feedback): de lantaarns zijn elektrisch, dus dimmen
+    // net als de binnenlampen mee tijdens een Stroomuitval — met hun eigen
+    // (hogere) buiten-vloer, zie de gameLoop-flikkerloop.
+    buitenLichten.push({ licht, basis: 34, bolMateriaal: bol.material, bolBasis: lantaarnBolBasis });
     const lichtvlek = new THREE.Mesh(
       new THREE.CircleGeometry(1.25, 24),
       new THREE.MeshBasicMaterial({ color: 0xffd6a0, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false })
@@ -1284,6 +1302,11 @@ const ATELIER_NOORDRAAM_X = -3.2;
 // Elk licht wordt geregistreerd zodat de game-loop het zacht kan laten
 // flikkeren (kaars-/olielamp-sfeer).
 const lampLichten = [];
+// Ticket 46-fix: stabiele (niet-flikkerende) binnenlichten die WEL met
+// stroomFactor mee moeten dimmen tijdens een Stroomuitval, maar geen deel
+// uitmaken van het flikker-/lampDipFactor-systeem hierboven (bv. de
+// ateliers-dakramen — "stabiel hoofdlicht" per ontwerp, zie hieronder).
+const stroomGevoeligeDaklichten = [];
 // Ticket 40 (Sfeer S3): golfstart-lichtdip — startGolf() zet dit terug naar
 // 0.6, waarna het in de bestaande lampflikker-loop (gameLoop) lineair
 // binnen 0.8s weer naar 1 herstelt. Vermenigvuldiger bovenop de bestaande
@@ -1308,9 +1331,10 @@ function hangLamp(x, z, schaduw = false, opties = {}) {
   const koord = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.6, 6), mat(0x1a1410, 0.7));
   koord.position.y = KAMER_HOOGTE - 0.3;
   groep.add(koord);
+  const bolEmissiefBasis = 0.9;
   const bol = new THREE.Mesh(
     new THREE.SphereGeometry(0.16, 12, 10),
-    mat(bolKleur, 0.4, 0, { emissive: emissief, emissiveIntensity: 0.9 })
+    mat(bolKleur, 0.4, 0, { emissive: emissief, emissiveIntensity: bolEmissiefBasis })
   );
   bol.position.y = KAMER_HOOGTE - 0.62;
   groep.add(bol);
@@ -1321,7 +1345,9 @@ function hangLamp(x, z, schaduw = false, opties = {}) {
   groep.add(licht);
   groep.position.set(x, 0, z);
   wereld.add(groep);
-  lampLichten.push({ licht, basis: intensiteit, fase: Math.random() * Math.PI * 2, amp1, amp2, minFactor });
+  // Ticket 46: bol-materiaal apart bewaard zodat de peer-emissive kan meedimmen
+  // met stroomFactor tijdens een Stroomuitval (zie de lampflikker-loop).
+  lampLichten.push({ licht, bolMateriaal: bol.material, bolEmissiefBasis, basis: intensiteit, fase: Math.random() * Math.PI * 2, amp1, amp2, minFactor });
 }
 // Twee lampen gespreid over de diepere startkamer: één richting de deur
 // (noord) en één richting de ramen (zuid), zodat beide uiteinden verlicht zijn.
@@ -1343,6 +1369,7 @@ hangLamp(1.8, 2.2);
   const dakraamLicht = new THREE.PointLight(0xaacdf0, 18, 12, 2);
   dakraamLicht.position.set(0, KAMER_HOOGTE - 0.3, ATELIER_MIDDEN_Z);
   wereld.add(dakraamLicht);
+  stroomGevoeligeDaklichten.push({ licht: dakraamLicht, basis: 18 });
 
   // v0.4: de voorraadnis ligt te ver van het hoofd-dakraam om nog goed
   // verlicht te worden — een eigen, kleiner daklicht (zelfde koele stijl,
@@ -1357,6 +1384,7 @@ hangLamp(1.8, 2.2);
   const dakraamNisLicht = new THREE.PointLight(0xaacdf0, 22, 11, 2);
   dakraamNisLicht.position.set(KAMER2_NIS_CX, KAMER_HOOGTE - 0.3, KAMER2_NIS_CZ);
   wereld.add(dakraamNisLicht);
+  stroomGevoeligeDaklichten.push({ licht: dakraamNisLicht, basis: 22 });
 
   // v0.6: de hoofdruimte is dieper geworden dan het centrale dakraam kan
   // verlichten. Een derde, kleiner daklicht (zelfde stijl) houdt ook die
@@ -1372,6 +1400,7 @@ hangLamp(1.8, 2.2);
   const dakraamNoordLicht = new THREE.PointLight(0xaacdf0, 22, 12, 2);
   dakraamNoordLicht.position.set(0.5, KAMER_HOOGTE - 0.3, ATELIER_MIDDEN_Z - 6);
   wereld.add(dakraamNoordLicht);
+  stroomGevoeligeDaklichten.push({ licht: dakraamNoordLicht, basis: 22 });
 
   // v0.10: en de ruimte is ook 2m breder geworden (9m i.p.v. 7m) — een
   // vierde daklicht aan de zuidoostkant (bij de nieuwe kruk/lijstenstapel)
@@ -1386,6 +1415,7 @@ hangLamp(1.8, 2.2);
   const dakraamZuidoostLicht = new THREE.PointLight(0xaacdf0, 18, 10, 2);
   dakraamZuidoostLicht.position.set(3.2, KAMER_HOOGTE - 0.3, ATELIER_MIDDEN_Z - 3);
   wereld.add(dakraamZuidoostLicht);
+  stroomGevoeligeDaklichten.push({ licht: dakraamZuidoostLicht, basis: 18 });
 }
 
 // Ticket 40 (Sfeer S3, §5.9-sfeer): 2 stofwolken (THREE.Points, <= 30
@@ -1973,7 +2003,8 @@ function updateWinkelMarkeringen(dt) {
     winkelLicht.position.set(dichtsteMarkering.position.x, 1.2, dichtsteMarkering.position.z);
     _winkelLichtKleur.setHex(stijl.kleur);
     winkelLicht.color.lerp(_winkelLichtKleur, Math.min(1, dt * 5));
-    const doelIntensiteit = 2 + Math.sin(klok * 3);   // "dezelfde puls" als de ring, blijft <= 3
+    // Ticket 46: dimt mee tijdens een Stroomuitval (stroomFactor is dan 1).
+    const doelIntensiteit = (2 + Math.sin(klok * 3)) * stroomFactor;   // "dezelfde puls" als de ring, blijft <= 3
     winkelLicht.intensity += (doelIntensiteit - winkelLicht.intensity) * Math.min(1, dt * 5);
   } else {
     winkelLicht.intensity += (0 - winkelLicht.intensity) * Math.min(1, dt * 5);
@@ -2148,6 +2179,7 @@ const winScherm = document.getElementById('winScherm');
 const interactiePromptUI = document.getElementById('interactiePrompt');
 const meldingUI = document.getElementById('meldingUI');
 const golfBannerUI = document.getElementById('golfBanner');
+const zoneLabelUI = document.getElementById('zoneLabelUI');   // Ticket 50: klein HUD-zonelabel
 document.getElementById('opnieuwKnop').addEventListener('click', () => location.reload());
 // Ticket 45: het winscherm heeft zijn eigen "Opnieuw" (identiek aan
 // opnieuwKnop) en "Speel door" (sluit het scherm, ontsnappingspunt
@@ -2878,8 +2910,45 @@ function schiet() {
    ================================================================ */
 
 let audio = null;
+// Ticket 49 (Sfeer P1): dreigingsaudio-laag — twee licht gedetuneerde
+// oscillators (zwevingseffect) door één gainNode, gestart met gain 0 en
+// daarna NOOIT gestopt/herstart (dat zou klikken) — alleen de gain wordt
+// gestuurd, en dat gebeurt gethrottled (zie updateDreigingsAudio) zodat
+// het geen per-frame audio-writes wordt.
+let dreigingsGainNode = null;
+let dreigingsGainDoel = 0;
+let dreigingsThrottleTimer = 0;
+let dreigingsGainSchrijfTeller = 0;   // debug/test: telt elke echte gain-write
+const DREIGINGS_THROTTLE_INTERVAL = 0.25;   // s
+const DREIGINGS_GLIJTIJD = 0.5;             // s (setTargetAtTime-tijdconstante)
+// Tweede feedbackronde: de continue formule (meer ondoden/dichterbij = meer
+// volume) verving door een simpele drempel — pas hoorbaar zodra het écht
+// druk wordt vlak bij de speler, in plaats van al bij het minste of
+// geringste een beetje mee te zoemen. Volume ook iets terug (0.1 -> 0.07).
+const DREIGINGS_VOLUME_PLAFOND = 0.07;
+const DREIGINGS_NABIJHEID_BEREIK = 1.5;   // m
+const DREIGINGS_NABIJHEID_MINIMUM = 2;    // aantal ondoden binnen het bereik
+// Pure functie (geen audio-aanroepen): makkelijk testbaar zonder Web Audio.
+// aantalBinnenBereik = aantal ondoden binnen DREIGINGS_NABIJHEID_BEREIK van
+// de speler — puur aan/uit, geen geleidelijke opbouw meer.
+function berekenDreigingsGain(aantalBinnenBereik) {
+  return aantalBinnenBereik >= DREIGINGS_NABIJHEID_MINIMUM ? DREIGINGS_VOLUME_PLAFOND : 0;
+}
 function initGeluid() {
-  if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+  if (!audio) {
+    audio = new (window.AudioContext || window.webkitAudioContext)();
+    const osc1 = audio.createOscillator();
+    const osc2 = audio.createOscillator();
+    osc1.type = 'sine'; osc1.frequency.value = 55;
+    osc2.type = 'sine'; osc2.frequency.value = 57;   // licht gedetuneerd t.o.v. osc1 -> zweving
+    dreigingsGainNode = audio.createGain();
+    dreigingsGainNode.gain.value = 0;
+    osc1.connect(dreigingsGainNode);
+    osc2.connect(dreigingsGainNode);
+    dreigingsGainNode.connect(audio.destination);
+    osc1.start();
+    osc2.start();
+  }
   if (audio.state === 'suspended') audio.resume();
 }
 
@@ -2954,6 +3023,35 @@ function speelGrachtklok() { piep('sine', 440, 380, 0.9, 0.05); setTimeout(() =>
 function speelGangKraak()  { piep('sawtooth', 90, 40, 0.35, 0.06); }
 function speelWindvlaag()  { piep('sine', 200, 260, 1.1, 0.035); setTimeout(() => piep('sine', 180, 140, 1.3, 0.03), 300); }
 function speelBijkeukenKraak() { piep('sawtooth', 70, 30, 0.4, 0.055); }   // Ticket 27: eigen, iets lagere kraak dan de gang
+// Ticket 46 (eventgolf Stroomuitval): korte klik + zakkende zoem bij het
+// uitvallen van de stroom, een kort herstel-tikje zodra 'ie terugkomt.
+let stroomklapTeller = 0, stroomHerstelTeller = 0;
+function speelStroomklap()    { stroomklapTeller++; piep('square', 700, 380, 0.03, 0.1); setTimeout(() => piep('sawtooth', 120, 40, 0.3, 0.1), 30); }
+function speelStroomHerstel() { stroomHerstelTeller++; piep('sine', 300, 500, 0.1, 0.06); }
+
+// Ticket 49: schrijft de dreigingsgain daadwerkelijk naar de gainNode (of
+// laat 'm ongemoeid als initGeluid() nog niet is aangeroepen — vóór de
+// eerste klik bestaat er nog geen AudioContext). dreigingsGainSchrijfTeller
+// telt elke ECHTE write, zodat tests de throttle kunnen aantonen.
+function schrijfDreigingsGain(doel) {
+  dreigingsGainDoel = doel;
+  dreigingsGainSchrijfTeller++;
+  if (dreigingsGainNode) dreigingsGainNode.gain.setTargetAtTime(doel, audio.currentTime, DREIGINGS_GLIJTIJD);
+}
+// Aangeroepen 1x per frame vanuit de spelActief-tak van de gameLoop; de
+// sturing zelf is gethrottled tot eens per ~DREIGINGS_THROTTLE_INTERVAL
+// (geen per-frame audio-writes).
+function updateDreigingsAudio(dt) {
+  dreigingsThrottleTimer -= dt;
+  if (dreigingsThrottleTimer > 0) return;
+  dreigingsThrottleTimer = DREIGINGS_THROTTLE_INTERVAL;
+  let aantalBinnenBereik = 0;
+  for (const o of ondoden) {
+    const afstand = Math.hypot(o.groep.position.x - speler.positie.x, o.groep.position.z - speler.positie.z);
+    if (afstand < DREIGINGS_NABIJHEID_BEREIK) aantalBinnenBereik++;
+  }
+  schrijfDreigingsGain(berekenDreigingsGain(aantalBinnenBereik));
+}
 
 /* ================================================================
    STAP 6 — ONDODEN: originele low-poly vijanden, spawn + jagen + melee
@@ -3008,6 +3106,15 @@ const OOG_INTENSITEIT_AANVAL = 2.6;     // piek tijdens de wind-up
 // (beslissing 32) — geen toeval, allebei "dit is het kanaal dat het felst
 // mag gaan"; hergebruik i.p.v. een tweede, identieke constante.
 const OOG_INTENSITEIT_MIST = OOG_INTENSITEIT_AANVAL;
+// Ticket 46-fix (feedback): tijdens een Stroomuitval zijn de ogen de
+// BELANGRIJKSTE manier om een ondode te zien (de rest van de kamer is nu
+// echt donker) — feller dan het mist-kanaal, niet hergebruikt.
+const OOG_INTENSITEIT_STROOMUITVAL = 3.4;
+// Welke oogboost-waarde bij het huidige event hoort (mist en stroomuitval
+// hebben allebei een boost, maar niet meer dezelfde sinds de feedbackronde).
+function oogIntensiteitVoorEvent() {
+  return actieveEventGolf === 'stroomuitval' ? OOG_INTENSITEIT_STROOMUITVAL : OOG_INTENSITEIT_MIST;
+}
 
 // Ticket 39 (Sfeer S2, §5.9 + beslissing 32): per-type "geluidsprofiel" op
 // een random 4-9s-timer (ondode.gromTimer, gezet in spawnOndode()) — alleen
@@ -3125,6 +3232,10 @@ function ondodeTypeGewichten() {
   // Ticket 9: tijdens een Mistgolf bestaat de golf uitsluitend uit
   // Sluipers — de eventgolf moet ANDERS voelen, niet gewoon voller.
   if (actieveEventGolf === 'mist') return { sluiper: 1 };
+  // Ticket 46: Stroomuitval heeft een eigen, vaste mix (los van de normale
+  // golf-gebonden ontgrendeling) — donker + Lopers/Sluipers voelt anders
+  // dan gewoon meer normaal-type.
+  if (actieveEventGolf === 'stroomuitval') return { normaal: 1, loper: 2, sluiper: 2 };
   const golf = spelStaat.golf;
   return {
     normaal: 10,
@@ -3654,7 +3765,9 @@ function spawnOndode(vensterIndex, type = 'normaal', traits = kiesOndodeTraits()
     oogBasisIntensiteit: OOG_INTENSITEIT_BASIS,
   };
   groep.userData.ondode = ondode;
-  if (actieveEventGolf === 'mist') zetOogBasis(ondode, OOG_INTENSITEIT_MIST);
+  // Ticket 46: was mist-only, geldt nu voor elke actieve eventgolf. Sinds de
+  // feedbackronde heeft Stroomuitval een eigen (fellere) waarde.
+  if (actieveEventGolf) zetOogBasis(ondode, oogIntensiteitVoorEvent());
   ondodenGroep.add(groep);
   ondoden.push(ondode);
   return ondode;
@@ -3709,6 +3822,22 @@ function zoneVan(x, z) {
   if (z > GANG_Z_EIND) return 1;   // gang
   return 2;                        // atelier (incl. nis)
 }
+// Ticket 50 (Sfeer P2): zone-naambanners + HUD-zonelabel — indices exact
+// volgens zoneVan() hierboven (0-4).
+const ZONE_NAMEN = ['De Woonkamer', 'De Gang', 'Het Atelier', 'De Binnenplaats', 'De Bijkeuken'];
+const ZONE_FLAVOUR = [
+  'waar het begon',
+  'smal en donker',
+  'licht van boven, gevaar van opzij',
+  'buitenlucht, geen dekking',
+  'de weg naar de gracht',
+];
+// De speler start al in zone 0 (woonkamer): die telt meteen als bezocht,
+// zodat er bij de allereerste frame geen overbodige banner verschijnt.
+let laatsteZone = 0;
+const bezochteZones = new Set([0]);
+let zoneLabelSchrijfTeller = 0;   // debug/test: telt elke echte zoneLabelUI-write (nooit per frame)
+zoneLabelUI.textContent = ZONE_NAMEN[0];
 // Ticket 28 (map-lus M5): zone-graaf A-B-C-D-E-A i.p.v. de lineaire spine.
 // Elke kant heeft een deurpunt (waar een ondode uit de andere zone naartoe
 // loopt) en een open-conditie (de bijbehorende koopbare deur; de gang<->
@@ -4300,17 +4429,59 @@ function toonGolfBanner(titel, sub = '') {
 
 // --- Eventgolven (Ticket 6): elke EVENT_GOLF_INTERVAL-de golf is een eigen
 // eventgolf i.p.v. gewoon meer zombies — variatie via ANDERE regels
-// (zicht, samenstelling, tempo), niet via volume. Vooralsnog is 'mist' het
-// enige type; latere types kunnen aan kiesEventType worden toegevoegd
-// zonder dit framework te raken.
+// (zicht, samenstelling, tempo), niet via volume. Ticket 46 voegt een
+// tweede type toe (stroomuitval) dat deterministisch afwisselt met mist.
 const EVENT_GOLF_INTERVAL = 5;
 function isEventGolf(golf) {
   return golf % EVENT_GOLF_INTERVAL === 0;
 }
+// Ticket 46: golf 5 -> mist, golf 10 -> stroomuitval, golf 15 -> mist, ...
 function kiesEventType(golf) {
-  return 'mist';
+  return Math.floor(golf / EVENT_GOLF_INTERVAL) % 2 === 0 ? 'stroomuitval' : 'mist';
 }
 let actieveEventGolf = null;
+// Ticket 46: vermenigvuldiger op lampen/peer-emissive/winkelLicht tijdens
+// een Stroomuitval — 1 = normaal, gedimd tot STROOMUITVAL_DIM_FACTOR zolang
+// het event actief is, herstelt daarna lineair (zelfde ramp-patroon als
+// lampDipFactor) over STROOMUITVAL_HERSTEL_DUUR seconden.
+let stroomFactor = 1;
+const STROOMUITVAL_DIM_FACTOR = 0.12;
+const STROOMUITVAL_HERSTEL_DUUR = 2;   // s
+// Ticket 46-fix: ondergrens voor het algehele hemisfeerlicht tijdens een
+// Stroomuitval — NIET naar 0 (dat zou ook buiten pikdonker maken, en de
+// buitenverlichting moet juist de vluchtheuvel blijven), maar wel duidelijk
+// lager dan normaal zodat binnenruimtes (die verder niets anders overhouden)
+// echt donker aanvoelen.
+const HEMISFEER_STROOM_VLOER = 0.35;
+// Ticket 46-fix (2): zelfs met alle losse lichten gedimd bleek de kamer nog
+// altijd relatief goed leesbaar — meetbaar via een pixel-steekproef op de
+// screenshots (~15-20% donkerder i.p.v. "een stuk donkerder"). De
+// blootcamera-belichting (toneMappingExposure) is de enige hendel die het
+// EINDRESULTAAT van alle lichtbronnen samen naar beneden trekt, dus die dimt
+// nu ook mee — met een eigen, iets hogere vloer dan de puntlichten, zodat
+// buiten (met zijn eigen sterke, NIET-gedimde lichten: maanlicht/lantaarns)
+// nog altijd duidelijk lichter oogt dan binnen.
+const EXPOSURE_BASIS = 1.0;
+const EXPOSURE_STROOM_VLOER = 0.4;
+// Ticket 46-fix (feedback ná speeltest 2): de binnenplaats voelde nog te
+// licht aan tijdens een Stroomuitval. Eigen, HOGERE vloer dan de
+// binnenlampen (STROOMUITVAL_DIM_FACTOR = 0.12) — buiten moet duidelijk
+// sterk richting de donkere sfeer gaan, maar net iets lichter blijven dan
+// binnen (dat heeft na de hemisfeer/exposure-vloeren sowieso al minder over).
+// Eerste gok (0.2) bleek te laag: op de screenshot-pixelmeting was de
+// binnenplaats dan nog altijd DONKERDER dan het atelier (dat z'n eigen
+// dakraam-lichten net als binnen tot 12% dimt, maar in absolute wattage
+// meer overhoudt) — tegen de bedoeling in. Empirisch opgehoogd tot 0.65,
+// waarbij de binnenplaats (gemeten) net iets lichter blijft dan zowel het
+// atelier als de woonkamer tijdens dezelfde Stroomuitval.
+const BUITEN_STROOM_VLOER = 0.4;
+// Ticket 46-fix (feedback 3): de vloerweerkaatsing bleef nog te fel voelen —
+// met name buiten, maar ook in het atelier (dat door z'n vier dakraam-
+// lichten in absolute wattage meer overhoudt dan de andere binnenruimtes,
+// zelfs bij hetzelfde percentage). Eigen, extra dimfactor bovenop
+// stroomFactor, puur voor de dakramen — de woonkamer/gang/bijkeuken-lampen
+// blijven op hun bestaande STROOMUITVAL_DIM_FACTOR (0.12), onaangeraakt.
+const DAKRAAM_STROOM_EXTRA = 0.55;
 
 // Aangeroepen vanuit startGolf() zodra een golf een eventgolf is.
 function startEventGolf(type) {
@@ -4320,17 +4491,25 @@ function startEventGolf(type) {
     scene.fog.color.setHex(FOG_MIST.kleur);
     scene.fog.near = FOG_MIST.near;
     scene.fog.far = FOG_MIST.far;
-    // Ticket 39: ogen worden het mist-kanaal — alle NU al levende ondoden
-    // meteen boosten (nieuwe spawns doen dit zelf, zie spawnOndode()).
-    for (const o of ondoden) zetOogBasis(o, OOG_INTENSITEIT_MIST);
+  } else if (type === 'stroomuitval') {
+    // De daadwerkelijke dimming gebeurt per-frame in de lampflikker-loop
+    // (gameLoop) via stroomFactor — hier alleen de staat zetten.
+    stroomFactor = STROOMUITVAL_DIM_FACTOR;
+    speelStroomklap();
   }
+  // Ticket 39/46: ogen worden het event-kanaal — alle NU al levende ondoden
+  // meteen boosten (nieuwe spawns doen dit zelf, zie spawnOndode()). Sinds
+  // de feedbackronde heeft Stroomuitval een eigen (fellere) waarde.
+  for (const o of ondoden) zetOogBasis(o, oogIntensiteitVoorEvent());
 }
 
 // Aangeroepen zodra de golf eindigt (of bij game over) om het event weer op
 // te ruimen. `direct` = true bij game over: het spel staat dan stil, dus een
-// geleidelijke uitfade zou nooit afronden — daar zet de fog in één keer terug.
-// Bij een normale golf-afronding trekt de mist geleidelijk op (zie
-// updateMistUitfade), zodat 'ie niet in één frame verdwijnt.
+// geleidelijke uitfade zou nooit afronden — daar zet de fog/stroomFactor in
+// één keer terug. Bij een normale golf-afronding trekt de mist geleidelijk
+// op (zie updateMistUitfade) en herstelt stroomFactor lineair over
+// STROOMUITVAL_HERSTEL_DUUR (zie de lampflikker-loop), zodat niets in één
+// frame verspringt.
 function eindigEventGolf(direct = false) {
   if (actieveEventGolf === 'mist') {
     toonMelding('De mist trekt weg');
@@ -4343,11 +4522,17 @@ function eindigEventGolf(direct = false) {
       mistUitfaseVan = { kleur: scene.fog.color.getHex(), near: scene.fog.near, far: scene.fog.far };
       mistUitfaseTimer = MIST_UITFADE_DUUR;
     }
-    // Ticket 39: oogbasis weer exact terug — ook voor een ondode die op dit
-    // moment in een windup-/herstel-oogpuls zit (die rekent voortaan gewoon
-    // weer vanaf de normale basis, zie de T31-formules in updateOndoden()).
-    for (const o of ondoden) zetOogBasis(o, OOG_INTENSITEIT_BASIS);
+  } else if (actieveEventGolf === 'stroomuitval') {
+    toonMelding('De stroom komt terug');
+    if (direct) stroomFactor = 1;
+    // anders: het per-frame herstel in de lampflikker-loop pakt dit vanzelf
+    // op zodra actieveEventGolf hieronder null wordt.
+    speelStroomHerstel();
   }
+  // Ticket 39: oogbasis weer exact terug — ook voor een ondode die op dit
+  // moment in een windup-/herstel-oogpuls zit (die rekent voortaan gewoon
+  // weer vanaf de normale basis, zie de T31-formules in updateOndoden()).
+  for (const o of ondoden) zetOogBasis(o, OOG_INTENSITEIT_BASIS);
   actieveEventGolf = null;
 }
 
@@ -4380,6 +4565,8 @@ function startGolf() {
   const drukte = zones > 1 ? ` · ${zones} zones actief` : '';
   if (actieveEventGolf === 'mist') {
     toonGolfBanner('MISTGOLF', 'de mist trekt op…');
+  } else if (actieveEventGolf === 'stroomuitval') {
+    toonGolfBanner('STROOMUITVAL', 'het licht valt uit…');
   } else if (actieveEventGolf) {
     toonGolfBanner(`GOLF ${spelStaat.golf} — EVENTGOLF`, `dreiging ${Math.round(spelStaat.budget)} · er is iets anders${drukte}`);
   } else {
@@ -5275,6 +5462,22 @@ function gameLoop(nu) {
     updateWinkelMarkeringen(dt);   // Ticket 37: status-animatie + winkelLicht
     updateStofwolken(dt);   // Ticket 40: atelier-stof, alleen zichtbaar in zone C
     updateDruppel(dt);      // Ticket 40: kelderhals-druppel-lek
+    updateDreigingsAudio(dt);   // Ticket 49: zachte dreigingsdrone, gethrottled
+
+    // Ticket 50 (Sfeer P2): zone-naambanners + HUD-zonelabel. ALLEEN bij een
+    // wissel werk doen (1 HUD-write per zonewissel, nooit per frame) — het
+    // bestaande gangBetreden/plaatsBetreden-audiopatroon hieronder is een
+    // apart, ongemoeid systeem (andere posities, ander doel).
+    const zoneNu = zoneVan(speler.positie.x, speler.positie.z);
+    if (zoneNu !== laatsteZone) {
+      laatsteZone = zoneNu;
+      zoneLabelUI.textContent = ZONE_NAMEN[zoneNu];
+      zoneLabelSchrijfTeller++;
+      if (!bezochteZones.has(zoneNu)) {
+        bezochteZones.add(zoneNu);
+        toonGolfBanner(ZONE_NAMEN[zoneNu], ZONE_FLAVOUR[zoneNu]);
+      }
+    }
 
     // Zone-sfeergeluiden (Ticket V8): eenmalige triggers bij de eerste stap
     // in een nieuwe zone, plus een zeldzame gracht-klok op de achtergrond.
@@ -5296,6 +5499,10 @@ function gameLoop(nu) {
       bijkeukenBetreden = true; speelBijkeukenKraak();
     }
     if (klok > volgendeKlokGeluid) { speelGrachtklok(); volgendeKlokGeluid = klok + 40 + Math.random() * 40; }
+  } else if (dreigingsGainDoel !== 0) {
+    // Ticket 49: pauze/menu/game over -> doelgain meteen naar 0 (één write,
+    // geen per-frame writes zolang de gain al op 0 staat).
+    schrijfDreigingsGain(0);
   }
   updateVignet(dt);
   updateHitmarker(dt);   // Ticket 33: cosmetisch, decayt door tijdens pauze net als het vignet
@@ -5306,9 +5513,44 @@ function gameLoop(nu) {
   // Ticket 40: golfstart-lichtdip — lineair herstel over 0.8s, puur
   // cosmetisch (dezelfde wall-clock dt als terugslag/cameraKick hieronder).
   if (lampDipFactor < 1) lampDipFactor = Math.min(1, lampDipFactor + dt / 0.8);
+  // Ticket 46: stroomFactor blijft laag zolang de Stroomuitval actief is —
+  // pas zodra actieveEventGolf niet meer 'stroomuitval' is (eindigEventGolf
+  // heeft 'm al op null gezet) mag het lineair herstellen.
+  if (actieveEventGolf !== 'stroomuitval' && stroomFactor < 1) {
+    stroomFactor = Math.min(1, stroomFactor + dt / STROOMUITVAL_HERSTEL_DUUR);
+  }
   for (const l of lampLichten) {
     const factor = 1 + l.amp1 * Math.sin(t * 7 + l.fase) + l.amp2 * Math.sin(t * 17 + l.fase * 2);
-    l.licht.intensity = l.basis * Math.max(l.minFactor, factor) * lampDipFactor;
+    // Ticket 46-fix: stroomFactor ontbrak hier — het echte puntlicht (wat de
+    // kamer verlicht) dimde niet mee, alleen het kleine gloeipeertje. Dat
+    // maakte een Stroomuitval nauwelijks merkbaar.
+    l.licht.intensity = l.basis * Math.max(l.minFactor, factor) * lampDipFactor * stroomFactor;
+    l.bolMateriaal.emissiveIntensity = l.bolEmissiefBasis * stroomFactor;
+  }
+  // Ticket 46-fix: de ateliers-dakramen ("stabiel hoofdlicht", geen
+  // flikkering) deden tot nu toe helemaal niet mee met de Stroomuitval —
+  // ze zaten niet in lampLichten. Blijven bewust stabiel (geen flikker/dip),
+  // maar dimmen nu wel mee met stroomFactor.
+  for (const dl of stroomGevoeligeDaklichten) {
+    dl.licht.intensity = dl.basis * stroomFactor * DAKRAAM_STROOM_EXTRA;
+  }
+  // Ticket 46-fix: zelfs met alle lampen/dakramen gedimd bleef elke
+  // binnenruimte relatief goed zichtbaar door dit algehele hemisfeerlicht
+  // (het treft alle oppervlakken gelijk, zonder afstandsval-off). Dimt nu
+  // gedeeltelijk mee — bewust met een vloer (HEMISFEER_STROOM_VLOER) i.p.v.
+  // helemaal naar 0, zodat de buitenverlichting (grote, eigen puntlichten:
+  // maanlicht/lantaarns) buiten nog altijd duidelijk de vluchtheuvel blijft,
+  // terwijl binnen — waar verder niets anders overblijft — het verschil wél
+  // drastisch voelbaar is.
+  hemisfeerLicht.intensity = HEMISFEER_BASIS * (HEMISFEER_STROOM_VLOER + (1 - HEMISFEER_STROOM_VLOER) * stroomFactor);
+  renderer.toneMappingExposure = EXPOSURE_BASIS * (EXPOSURE_STROOM_VLOER + (1 - EXPOSURE_STROOM_VLOER) * stroomFactor);
+  // Ticket 46-fix (feedback 2): buitenlichten (maanlicht + lantaarns) dimmen
+  // nu ook mee, met hun eigen, hogere vloer — buiten blijft zo net iets
+  // lichter dan binnen, maar gaat wel duidelijk mee de donkere sfeer in.
+  const buitenFactor = BUITEN_STROOM_VLOER + (1 - BUITEN_STROOM_VLOER) * stroomFactor;
+  for (const bl of buitenLichten) {
+    bl.licht.intensity = bl.basis * buitenFactor;
+    if (bl.bolMateriaal) bl.bolMateriaal.emissiveIntensity = bl.bolBasis * buitenFactor;
   }
 
   if (terugslag > 0) {
@@ -5562,6 +5804,33 @@ window.AmsterdamUndeadDebug = {
   get druppelTikTeller() { return druppelTikTeller; },
   get lampDipFactor() { return lampDipFactor; },
   set lampDipFactor(v) { lampDipFactor = v; },
+  // Ticket 46: eventgolf Stroomuitval
+  STROOMUITVAL_DIM_FACTOR, STROOMUITVAL_HERSTEL_DUUR,
+  speelStroomklap, speelStroomHerstel,
+  get stroomklapTeller() { return stroomklapTeller; },
+  get stroomHerstelTeller() { return stroomHerstelTeller; },
+  get stroomFactor() { return stroomFactor; },
+  set stroomFactor(v) { stroomFactor = v; },
+  stroomGevoeligeDaklichten,   // Ticket 46-fix: ateliers-dakramen, dimmen nu ook mee
+  hemisfeerLicht, HEMISFEER_BASIS, HEMISFEER_STROOM_VLOER,
+  renderer, EXPOSURE_BASIS, EXPOSURE_STROOM_VLOER,
+  buitenLichten, BUITEN_STROOM_VLOER, DAKRAAM_STROOM_EXTRA,
+  OOG_INTENSITEIT_STROOMUITVAL, oogIntensiteitVoorEvent,
+  // Ticket 49: dreigingsaudio-laag (initGeluid was nog niet geëxporteerd —
+  // pre-existing gap, nu nodig voor de source-check-test)
+  berekenDreigingsGain, updateDreigingsAudio, initGeluid, DREIGINGS_VOLUME_PLAFOND,
+  DREIGINGS_THROTTLE_INTERVAL, DREIGINGS_GLIJTIJD,
+  DREIGINGS_NABIJHEID_BEREIK, DREIGINGS_NABIJHEID_MINIMUM,
+  get dreigingsGainDoel() { return dreigingsGainDoel; },
+  get dreigingsGainNode() { return dreigingsGainNode; },
+  get dreigingsGainSchrijfTeller() { return dreigingsGainSchrijfTeller; },
+  get dreigingsThrottleTimer() { return dreigingsThrottleTimer; },
+  set dreigingsThrottleTimer(v) { dreigingsThrottleTimer = v; },
+  // Ticket 50: zone-naambanners + HUD-zonelabel
+  ZONE_NAMEN, ZONE_FLAVOUR, bezochteZones,
+  get laatsteZone() { return laatsteZone; },
+  set laatsteZone(v) { laatsteZone = v; },
+  get zoneLabelSchrijfTeller() { return zoneLabelSchrijfTeller; },
 };
 </script>
 </body>

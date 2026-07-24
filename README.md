@@ -94,6 +94,11 @@ te gaan naar het hoofdmenu.
 
 ### Gameplay
 
+- **Kies een moeilijkheidsgraad** op het startscherm voordat je begint:
+  **Toerist** (makkelijker: minder budget per golf, snellere regen, meer
+  startgeld), **Amsterdammer** (standaard) of **Nachtwacht** (zwaarder
+  budget en regen, maar een hogere score-multiplier). De keuze is verplicht
+  en staat de hele run vast.
 - Overleef doorlopende **golven ondoden** die de ramen barricaderen en
   op je afkomen. Ze worden trapsgewijs taaier (1 HP in golf 1-4, 2 vanaf
   golf 5, 3 vanaf golf 11, maximaal 4 vanaf golf 16); elke golf brengt meer **dreiging** — niet per se méér
@@ -130,6 +135,21 @@ te gaan naar het hoofdmenu.
   hit/kill), **Eliminatiemodus** (tijdelijk doodt elke treffer de ondode
   meteen) en **Kerninslag** (doodt alle levende ondoden nu meteen + geld
   per stuk). Raap je 'm niet binnen 12 seconden op, dan verdwijnt-ie weer.
+- **Eventgolven:** elke 5e golf is anders. Een **Mistgolf** trekt dikke mist
+  door het pand en laat alleen **Sluipers** spawnen (snel, licht, maar met
+  goed zichtbare gloeiende ogen). Een **Stroomuitval** dooft juist alle
+  binnenverlichting — je ziet alleen nog de gloeiende ogen van de ondoden en
+  het licht van buiten — en spawnt een mix van normale ondoden, Lopers en
+  Sluipers. Beide types wisselen elkaar deterministisch af.
+- **Score en record:** elke run bouwt statistieken op (kills, headshots,
+  schoten, geld verdiend, powerups) en eindigt in een score, geschaald met
+  je moeilijkheidsgraad. Je beste run wordt lokaal onthouden en getoond op
+  het startscherm.
+- **De Vluchtroute en De Ontsnapping:** verspreid over drie zones liggen een
+  **Roeispaan**, een **Touwbundel** en een **Scheepslantaarn**, elk pas
+  zichtbaar (en oppakbaar) vanaf een eigen golf. Heb je alle drie
+  verzameld én genoeg geld (€2500), dan verschijnt **De Ontsnapping** — haal
+  'm om de run succesvol af te sluiten met een scorebonus.
 
 ### Vijf zones in een lus, elk met een eigen doel
 
@@ -176,7 +196,12 @@ Warme flikkerende lampen in de woonkamer, een kaal koud-groen gangetje, koel
 daglicht in het atelier en blauw maanlicht op de binnenplaats geven elke zone
 een eigen identiteit. Binnenhuis-mist en decoratieve meubels (bewust zonder
 collision, zodat de pathing er niet op vasthaakt) maken het pand levendig
-zonder de gameplay te verstoren. Net als de andere game draait alles in één zelfstandig
+zonder de gameplay te verstoren. Betreed je een zone voor het eerst, dan zie
+je kort de naam van die zone in beeld; een klein label in de HUD houdt
+bovendien altijd bij waar je nu bent. Onder de actie door speelt een zachte
+drone zodra er 2 of meer ondoden vlak bij je staan (binnen anderhalve
+meter) — een subtiel signaal dat het dringen wordt. Net als
+de andere game draait alles in één zelfstandig
 HTML-bestand met Three.js via CDN, botsingen via rechthoek-obstakels, en
 live gegenereerde Web Audio-geluiden (geen audiobestanden). De meubels zijn
 puur decor en hebben géén collision, zodat de pathing er niet op vasthaakt.
@@ -193,6 +218,9 @@ AmsterdamUndeadDebug.spelerStaat;                 // speler-HP
 AmsterdamUndeadDebug.wapenStaat;                  // magazijn / reserve / herladen
 AmsterdamUndeadDebug.spawnOndode(0, 'sjouwer');   // spawn een specifieke variant (loper/sjouwer/brander)
 AmsterdamUndeadDebug.geefKerninslag();            // trigger een power-up-effect direct
+AmsterdamUndeadDebug.kiesMoeilijkheid('nachtwacht');   // zet de moeilijkheidsgraad (ook vóór het klikken op start)
+AmsterdamUndeadDebug.runStats;                    // kills, headshots, schoten, geldTotaal van de huidige run
+AmsterdamUndeadDebug.startEventGolf('stroomuitval');   // forceer een eventgolf direct
 ```
 
 ## Techniek
