@@ -1685,14 +1685,34 @@ als derde wapen; (4) **presentatie** — een dreigingsaudio-laag en
 zone-naambanners; (5) **late-game balans** — een pacing-audit voor golf
 16+. Architectuur staat vast in `ARCHITECTURE_NOTES.md` §6 +
 ontwerpbeslissingen 33–42; de tickets hieronder zijn implementatie, geen
-ontwerp. Volgorde: 42 → 51, fases:
+ontwerp.
 
-- **Fase 15 — score & moeilijkheid**: T42, T43 (verbetergebied 1)
-- **Fase 16 — de Vluchtroute**: T44, T45 (verbetergebied 1)
-- **Fase 17 — Stroomuitval**: T46 (verbetergebied 2)
-- **Fase 18 — De Hagelketel**: T47, T48 (verbetergebied 3)
+**Update ná speeltest (Tickets 42-45 zijn intussen geïmplementeerd en
+gespeeld):** de gebruiker gaf vier stukken feedback, verwerkt als een
+feedbackronde binnen verbetergebied 1 — Tickets 52-56, zie
+`ARCHITECTURE_NOTES.md` §6.12-§6.15 (ontwerpbeslissingen 43-47). De
+Hagelketel (Tickets 47-48, verbetergebied 3) is op verzoek van de
+gebruiker naar de Backlog verplaatst (zie onderaan dit bestand) —
+verbetergebied 3 vervalt daarmee voorlopig uit deze ronde.
+
+**Tweede feedbackronde (ná T56-ontwerp):** T56 uitgebreid met de eis
+dat item + rustvlak in één keer verdwijnen bij het oprapen (de
+Scheepslantaarn behoudt haar naam); Ticket 57 toegevoegd —
+diezelfde zwevende-planken-fout uit de binnenplaats-fix blijkt zich
+elders ook voor te doen (met screenshots onderbouwd).
+
+Volgorde nu: 42 → 46, dan 52 → 57, dan 49 → 51, fases:
+
+- **Fase 15 — score & moeilijkheid**: T42, T43 (verbetergebied 1) ✅
+- **Fase 16 — de Vluchtroute (fundament)**: T44, T45 (verbetergebied 1) ✅
+- **Fase 17 — Ontsnapping-feedbackronde**: T52, T53, T54, T55, T56, T57
+  (verbetergebied 1 + kwaliteit, NIEUW — directe speeltest-feedback)
+- **Fase 18 — Stroomuitval**: T46 (verbetergebied 2 — beantwoordt de
+  "waar is de stroomuitval?"-vraag: nog nooit geïmplementeerd, alleen
+  gepland, zie het antwoord in de sessie)
 - **Fase 19 — presentatie**: T49, T50 (verbetergebied 4)
-- **Fase 20 — integratie**: T51 (verbetergebied 5 + afsluiter)
+- **Fase 20 — integratie**: T51 (verbetergebied 5 + afsluiter, dekt nu
+  ook T52-57)
 
 ## Ticket 42 — Doel D1: run-statistieken, score en highscore
 - **Type:** Feature (fundament van de ronde)
@@ -1883,85 +1903,6 @@ ontwerp. Volgorde: 42 → 51, fases:
   verwijderen.
 - **Sonnet solo:** ja.
 
-## Ticket 47 — Wapen W4: De Hagelketel (data, model, pellet-schot)
-- **Type:** Feature (VOORZICHTIG — raakt het schiet-hot-path)
-- **Verbetergebied:** 3 (wapenarsenaal)
-- **Prioriteit:** middel
-- **Status:** open
-- **Afhankelijk van:** — (T48 maakt 'm koopbaar)
-- **Doel:** een derde wapen met een eigen niche: traag, brede spread,
-  verwoestend van dichtbij (Drukspuit = precisie, Ratelaar = volume,
-  Hagelketel = close range).
-- **Concrete wijzigingen:** `WAPEN_HAGELKETEL`-definitie met exact
-  dezelfde veldenset als de twee bestaande (incl. Ticket 34-velden):
-  magazijnMax 4, reserve 16, herlaadDuur 2.4/1.7, traag vuurtempo
-  (~1.1s), spreadNdc 0.055, kickSterkte 0.03, terugslagSterkte 1.6,
-  lage/zware schotToon, `smederijConfig {schadeBonus 1, magazijnMax 6}`.
-  Nieuw definitieveld `pelletAantal` (1 voor Drukspuit/Ratelaar, 6 voor
-  de Hagelketel): `schiet()` krijgt een pellet-lus om de bestaande
-  enkele raycast heen — zelfde temp-vectoren, GEEN nieuwe allocaties per
-  schot (de pools vangen de tracer-/impact-plafonds al af); munitie: 1
-  magazijn-kogel per TREKKER, volle schade per pellet (balans via
-  tempo/magazijn/prijs). Model: koperen ketelromp (cilinder + brede
-  mondtrechter) met eigen vlam + vlamLicht volgens het bestaande
-  patroon — lichttelling gaat daardoor BEWUST van 23 naar 24; de grens
-  in `test-v016-integratie.mjs` wordt in DIT ticket meeverhoogd (zelfde
-  les als T16/test-powerups). Smederij-visual: gloeiband zonder eigen
-  PointLight (bewust — lichtbudget). `wapenStaten.hagelketel = null` tot
-  aankoop; in dit ticket alléén via de debug-hook activeerbaar (nog
-  geen kooppunt).
-- **Codegebieden:** wapen-definitieblok (~2368-2400), `schiet()`
-  (~2671, hot path!), wapen-modelbouw, `nieuweWapenStaat`, debug-export
-  (`WAPEN_HAGELKETEL`, activatie-helper).
-- **Acceptatiecriteria:** 6 tracers per trekker (via actieveEffecten),
-  spread aantoonbaar breder dan de Ratelaar, magazijn −1 per trekker
-  (niet −6), pools binnen plafond na spam, de source-checks op
-  `schiet()`/`raakOndode()` blijven groen, lichttelling 24 +
-  `schaduw === 1`, beide bestaande wapens schieten byte-voor-byte
-  hetzelfde (pelletAantal 1-pad).
-- **Testplan:** nieuwe `tests/test-hagelketel-wapen.mjs` + `check-load`
-  + `run-all` + screenshot van het model.
-- **Rollback:** definitie + pellet-lus terugdraaien (het 1-pellet-pad
-  is het oude pad).
-- **Sonnet solo:** ja, met de §6.10-hot-path-waarschuwing.
-
-## Ticket 48 — Wapen W5: Hagelketel-winkel + driewapen-wissel
-- **Type:** Feature
-- **Verbetergebied:** 3 (wapenarsenaal)
-- **Prioriteit:** middel
-- **Status:** open
-- **Afhankelijk van:** T47
-- **Doel:** de Hagelketel is in het spel te koop en de Q-wissel werkt
-  met drie wapens.
-- **Concrete wijzigingen:** `HAGELKETEL_PRIJS = 2800`;
-  wandrek-kooppunt in de bijkeuken
-  (noordwand; exacte plek via `isVrijePlek`-probes + screenshot,
-  2.3m-marge-les van deur 4). `koopHagelketel()` volgens het
-  koopRatelaar-patroon (wapenStaat-init, meteen wisselen, markering
-  doven). `WINKEL_STIJLEN` + `hagelketel`-entry (koper 0xd88a3c, eigen
-  ketel-icoon uit bestaande geo-prims, status volgens het
-  ratelaar-patroon). `wisselWapen()` herschreven op een
-  `WAPEN_VOLGORDE = ['drukspuit','ratelaar','hagelketel']`-array:
-  cycle naar het VOLGENDE GEKOCHTE wapen (werkt dus ook als alleen de
-  Hagelketel gekocht is), visibility-loop over alle drie de groepen.
-  De interactiepunten-telling gaat van 12 naar 13: de exacte-tellingscheck
-  in `test-smederij-verhuizing.mjs` wordt in DIT ticket bijgewerkt.
-- **Codegebieden:** winkel-/interactieblok, `wisselWapen()` (~2429),
-  `WINKEL_STIJLEN` (~1730), bijkeuken-decor, debug-export
-  (`koopHagelketel`, `hagelketelGekocht`, `HAGELKETEL_PRIJS`,
-  `hagelketelPunt`, `hagelketelMarkering`, `WAPEN_VOLGORDE`).
-- **Acceptatiecriteria:** koop werkt (geld-eis, doven, meteen actief);
-  cycle-volgorde klopt met 2 én met 3 gekochte wapens en slaat
-  niet-gekochte over; Smederij-status volgt het actieve wapen (bestaand
-  T37-gedrag, nu ook voor wapen 3); `koopAmmo` vult het actieve wapen;
-  telling 13 in de bijgewerkte check; HUD/ammo-UI kloppen na elke wissel.
-- **Testplan:** nieuwe `tests/test-hagelketel-winkel.mjs` + bijgewerkte
-  `test-smederij-verhuizing.mjs` + `check-load` + `run-all` +
-  screenshot van het kooppunt.
-- **Rollback:** punt/markering/koopfunctie weg; wisselWapen-array werkt
-  ook met twee wapens (zelfde codepad).
-- **Sonnet solo:** ja.
-
 ## Ticket 49 — Sfeer P1: dreigingsaudio-laag
 - **Type:** Feature
 - **Verbetergebied:** 4 (presentatie)
@@ -2028,31 +1969,372 @@ ontwerp. Volgorde: 42 → 51, fases:
 - **Verbetergebied:** 5 (late-game balans) + afsluiter van de ronde
 - **Prioriteit:** hoog (afsluiter)
 - **Status:** open
-- **Afhankelijk van:** T42–T50
+- **Afhankelijk van:** T42–T46, T49–T57 (T47/T48 zitten niet in deze
+  ronde — zie Backlog)
 - **Doel:** de hele ronde is aantoonbaar heel én het late game (dat
-  door score/vluchtroute langer gespeeld gaat worden) klopt.
+  door score/vluchtroute/periodieke ontsnappingsvensters langer
+  gespeeld gaat worden) klopt.
 - **Concrete wijzigingen:** nieuwe `tests/test-lategame-pacing.mjs`:
-  headless simulatie van golven 12–20 die meet: threat-budget-verloop,
-  HP-trap-verloop, spawn-mix, naleving `GOLF_MAX_ACTIEF`, en de
-  geldstroom afgezet tegen de resterende sinks (incl. Hagelketel en
-  Ontsnapping). Eventuele tuning UITSLUITEND binnen ±25% van bestaande
-  constanten (`GOLF_BUDGET_GROEI`, `WAVE_BONUS_PER_GOLF`,
+  headless simulatie van golven 12–24 (ruim voorbij twee
+  ontsnappingsvensters, zie T54) die meet: threat-budget-verloop,
+  HP-trap-verloop, spawn-mix, naleving `GOLF_MAX_ACTIEF`, de geldstroom
+  afgezet tegen de resterende sinks, én dat `isOntsnappingsGolf()` (T54)
+  zich houdt aan het 10/14/18/22-patroon over de hele simulatie.
+  Eventuele tuning UITSLUITEND binnen ±25% van bestaande constanten
+  (`GOLF_BUDGET_GROEI`, `WAVE_BONUS_PER_GOLF`,
   `ONDODE_HP_TRAPPEN`-drempels) op basis van de meting — groter is een
   nieuw ticket. Teksten-ronde: startscherm-uitleg en `README.md`
-  bijgewerkt met ALLE ronde-4-features (moeilijkheden, vluchtroute,
-  ontsnapping, Hagelketel, stroomuitval). Screenshotronde: winscherm,
-  stroomuitval, Hagelketel, vluchtroute-markering, zone-banner.
-  Volledige `tests/run-all.mjs` + scratchpad-suite (bekende
-  uitzonderingen gedocumenteerd; nieuwe alleen na git-stash-verificatie).
+  bijgewerkt met ALLE features van deze ronde (moeilijkheden,
+  vluchtroute, de gang-naar-de-gracht, de boot en het
+  ontsnappingsritme, stroomuitval). Screenshotronde: winscherm,
+  stroomuitval, de vlonder met aangemeerde boot, vluchtroute-onderdelen
+  op hun rustvlak, zone-banner. Volledige `tests/run-all.mjs` +
+  scratchpad-suite (bekende uitzonderingen gedocumenteerd; nieuwe
+  alleen na git-stash-verificatie).
 - **Codegebieden:** teksten; hooguit de drie genoemde balansconstanten.
 - **Acceptatiecriteria:** volledige repo-suite groen (incl. alle nieuwe
-  ronde-4-tests); lichttelling 24 + `schaduw === 1`; pacing-meting
-  gedocumenteerd in het eindrapport; teksten kloppen met het
-  daadwerkelijke spel.
+  ronde-4-tests, ook T52-57); lichttelling 24 (23 + T52's lantaarn) +
+  `schaduw === 1`; pacing-meting gedocumenteerd in het eindrapport;
+  teksten kloppen met het daadwerkelijke spel.
 - **Testplan:** `tests/run-all.mjs` + scratchpad-suite +
   `test-lategame-pacing.mjs` + screenshotronde.
 - **Rollback:** n.v.t. (verifiërend; tuning is per constante
   terugdraaibaar).
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 52 — Doel D5: Gang naar de Gracht (geometrie: vlonder, water, boot, lantaarn)
+- **Type:** Feature (geometrie)
+- **Verbetergebied:** 1 (doel & retentie — ontsnappingslocatie,
+  feedbackronde ná speeltest)
+- **Prioriteit:** hoog — fundament voor T53/T54/T55
+- **Status:** open
+- **Afhankelijk van:** — (T53 bouwt erop)
+- **Doel:** een geloofwaardige, herkenbare ontsnappingslocatie in plaats
+  van een willekeurig punt bij het kelderluik: rechtstreeks antwoord op
+  de feedback "ik vind de locatie nu ook nog wat random". Een nieuwe
+  korte gang vanuit de bijkeuken komt uit op een vlonder aan een
+  gracht, met een zichtbare boot en een lantaarnpaal.
+- **Concrete wijzigingen:** nieuwe doorgang in de bijkeuken-oostmuur
+  (bij `BIJKEUKEN_X_OOST` = 12 — nu de "nepgevel"-scheiding met de
+  onbenutte pocket erachter, zie de Zone-E-comment) naar een nieuwe
+  korte gang (zelfde smalle-gang-patroon als de bestaande `GANG_*`
+  tussen woonkamer en atelier), oostwaarts de bestaande vrije pocket in.
+  Ruim binnen `GRENS.maxX` (= `PLAATS_X_OOST` − 0.05 ≈ 20.45, huidige
+  bijkeuken-oostgrens ligt op 12) — GEEN GRENS-wijziging nodig, mits de
+  exacte breedte/het eindpunt met `isVrijePlek`-probes geverifieerd
+  wordt (de binnenplaats ligt ver noordelijker, rond `DEUR2_Z` ≈ −15.5,
+  dus geen overlaprisico). De gang eindigt in een klein vlonder-plateau
+  (eigen houten vloermateriaal) met: (a) een watervlak — "de gracht",
+  donker blauwgroen, licht transparant, net voorbij de vlonderrand;
+  (b) een boot-mesh uit simpele prims (langwerpige, licht afgeronde
+  romp), vooralsnog puur decor — T53 koppelt 'm aan de interactie;
+  (c) een lantaarnpaal volgens het bestaande `bouwLantaarn`-patroon
+  (regel ~993 — die functie is LOKAAL gescoped, dus kopiëren en
+  aanpassen, niet aanroepen, zelfde regel als CLAUDE.md voorschrijft):
+  warm licht, GEEN schaduw, NIET in `lampLichten` (buitenlicht-
+  precedent, zelfde als de binnenplaats-lantaarns). Lichttelling gaat
+  daardoor bewust van 23 naar 24 (zelfde discipline als eerder: de
+  telling in `test-v016-integratie.mjs`/latere integratietests wordt in
+  DIT ticket meeverhoogd). Een obstakel aan de vlonderrand voorkomt dat
+  de speler het water in loopt.
+- **Codegebieden:** bijkeuken-oostmuur-blok (Zone E, rond de
+  `bouwZoneEMuur`-aanroep voor de oostmuur), nieuw geometrie-blok
+  ernaast (zelfde stijl als het bestaande gang-blok), debug-export
+  (nieuwe vlonder-/boot-/gracht-coördinaten).
+- **Acceptatiecriteria:** de nieuwe ruimte is bereikbaar vanaf de
+  bijkeuken zonder GRENS te wijzigen; `isVrijePlek` bevestigt de
+  vlonder vrij is; geen overlap met bestaande geometrie; precies 1
+  nieuwe permanente lamp (lichttelling 23→24, GEEN schaduw); screenshot
+  toont gang + vlonder + boot + lantaarn duidelijk.
+- **Testplan:** nieuwe `tests/test-gracht-dock.mjs` (bereikbaarheid,
+  `isVrijePlek`, lichttelling) + `check-load` + `run-all` +
+  screenshots (gang, vlonder-overzicht).
+- **Rollback:** nieuwe muurdoorgang + geometrieblok verwijderen;
+  bijkeuken-oostmuur weer dicht.
+- **Sonnet solo:** ja, met de gebruikelijke `isVrijePlek`-/
+  screenshot-discipline van eerdere map-lus-tickets.
+
+## Ticket 53 — Doel D6: De Ontsnapping verhuist naar de vlonder
+- **Type:** Feature (VOORZICHTIG — herpositioneert een bestaand, al
+  getest interactiepunt)
+- **Verbetergebied:** 1
+- **Prioriteit:** hoog
+- **Status:** open
+- **Afhankelijk van:** T52
+- **Doel:** je stapt letterlijk de boot in in plaats van door een
+  willekeurig kelderluik te verdwijnen.
+- **Concrete wijzigingen:** `toonOntsnappingspuntIndienKlaar()`'s
+  `positie` verhuist van `kelderluikMesh.position` naar de nieuwe
+  vlonder-/boot-positie (T52); de prompt-tekst blijft functioneel
+  hetzelfde ("Druk T: ontsnap over het water"), `ONTSNAPPING_PRIJS`
+  ongewijzigd. `toonWinScherm()`/`probeerOntsnapping()` blijven
+  ongemoeid — puur een positie-wijziging. De boot (T52, tot dan puur
+  decor) krijgt hier zijn interactie-koppeling.
+- **Codegebieden:** `toonOntsnappingspuntIndienKlaar()` (§6.4-
+  beslissing 35-plek), `tests/test-ontsnapping.mjs`'s
+  kelderluik-positie-assertie (MOET in dit ticket mee, zelfde
+  discipline als T16/test-powerups en de eerdere T45-bijwerking van
+  `test-vluchtroute.mjs`).
+- **Acceptatiecriteria:** het punt verschijnt nog steeds pas bij 3/3
+  onderdelen (ongewijzigd contract, T54 voegt de golf-voorwaarde pas
+  daarna toe); positie klopt exact met de T52-boot-/vlondercoördinaten;
+  de bestaande win-flow-tests (score, record, `gameOver` blijft false,
+  schermen-guard) blijven ONGEWIJZIGD groen — alleen de
+  positie-assertie verandert.
+- **Testplan:** bijgewerkte `tests/test-ontsnapping.mjs` + `check-load`
+  + `run-all` + screenshot van het punt op de vlonder.
+- **Rollback:** positie terug naar `kelderluikMesh` (één regel).
+- **Sonnet solo:** ja.
+
+## Ticket 54 — Doel D7: Periodieke ontsnappingsvensters (ronde-gating)
+- **Type:** Feature (gameplay-mechaniek)
+- **Verbetergebied:** 1
+- **Prioriteit:** hoog — kernfeedback van de gebruiker
+- **Status:** open
+- **Afhankelijk van:** T53
+- **Doel:** de boot ligt niet permanent klaar zodra je 3/3 onderdelen
+  hebt, maar meert alleen periodiek aan — vanaf golf 10, en daarna elke
+  4 golven (10, 14, 18, 22, …). Beloont plannen: op tijd klaarstaan, of
+  wachten tot de volgende boot.
+- **Concrete wijzigingen:** `ONTSNAPPING_START_GOLF = 10`,
+  `ONTSNAPPING_INTERVAL_GOLVEN = 4`; nieuwe pure helper
+  `isOntsnappingsGolf(golf) => golf >= ONTSNAPPING_START_GOLF &&
+  (golf - ONTSNAPPING_START_GOLF) % ONTSNAPPING_INTERVAL_GOLVEN === 0`
+  (testbaar, zelfde pure-functiestijl als `isEventGolf`/`berekenScore`).
+  `startGolf()` roept (naast de bestaande
+  `toonVluchtOnderdelenIndienDrempel()`-aanroep) een nieuwe
+  `updateOntsnappingsVenster()` aan: bij een ontsnappingsgolf, 3/3
+  onderdelen én nog geen punt → boot "meert aan" (T55 regelt de
+  tell/onthulling; dit ticket regelt de mechaniek: interactiepunt
+  toevoegen). Zodra de golf voorbij is / geen ontsnappingsgolf meer is
+  (in de bestaande wave-complete-tak van `updateGolf()`, naast de
+  bestaande wave-bonus-logica) vaart de boot weer weg: interactiepunt
+  verwijderen (zelfde dynamische-punten-patroon als de
+  Vluchtroute-onderdelen, §6.4-beslissing 35). Zijn de onderdelen nog
+  niet compleet als het venster opent, dan blijft de boot simpelweg
+  afwezig tot de volgende gelegenheid — geen extra state nodig,
+  `updateOntsnappingsVenster()` checkt bij ELKE `startGolf()` opnieuw.
+  Eenmalige "ontgrendeld"-melding bij golf 10 (bestaande
+  `toonGolfBanner`/`toonMelding`) die uitlegt dat de boot vanaf nu
+  periodiek langskomt — ongeacht of de onderdelen al compleet zijn
+  (puur informatief, motiveert om ze te gaan zoeken). HUD-uitbreiding:
+  zonder boot een kleine indicatie van golven-tot-volgende-venster
+  (bv. `Boot over 3 golven`, zelfde stijl als `vluchtrouteUI`); mét
+  boot `Boot ligt aan!`. Zonder 3/3 onderdelen blijft de bestaande
+  T44-vluchtroute-flow (verzamelen, HUD-teller) ongewijzigd — dit
+  ticket VOEGT de golf-gating TOE aan de bestaande 3/3-voorwaarde uit
+  T45, vervangt 'm niet.
+- **Codegebieden:** nieuwe constanten + `isOntsnappingsGolf()` bij de
+  Ontsnapping-sectie, `startGolf()` (haakt
+  `updateOntsnappingsVenster()` aan naast `toonVluchtOnderdelenIndienDrempel()`),
+  `updateGolf()`'s wave-complete-tak (venster-sluiting), nieuw
+  HUD-element, debug-export.
+- **Acceptatiecriteria:** `isOntsnappingsGolf()` klopt exact voor golf
+  9 (false), 10 (true), 11-13 (false), 14 (true), …; met 3/3 onderdelen
+  én een ontsnappingsgolf verschijnt het punt; zonder 3/3 verschijnt
+  het NIET, ook al is het een ontsnappingsgolf; buiten een
+  ontsnappingsgolf (ook mét 3/3) is er GEEN punt; het punt verdwijnt
+  weer zodra de golf voorbij/geen ontsnappingsgolf meer is; de
+  golf-10-melding verschijnt precies 1x; HUD-teller klopt in beide
+  standen.
+- **Testplan:** nieuwe `tests/test-ontsnapping-vensters.mjs` (incl. de
+  pure `isOntsnappingsGolf`-tabeltest) + bijgewerkte
+  `test-ontsnapping.mjs` (de "verschijnt bij 3/3"-check simuleert nu
+  ook een geldige ontsnappingsgolf) + `check-load` + `run-all` +
+  screenshot van beide HUD-standen.
+- **Rollback:** de golf-gate uit `updateOntsnappingsVenster()`
+  verwijderen (terug naar T45's "altijd zichtbaar bij 3/3").
+- **Sonnet solo:** ja, met de waarschuwing dat dit ticket ALLEEN de
+  mechaniek raakt — de tell/onthulling (licht, geluid, banner-timing
+  vóór de prompt) is T55, niet hier (zelfde scheiding als T30/T31).
+
+## Ticket 55 — Doel D8: Boot-aankomst — tell en opbouw
+- **Type:** Feature (presentatie/tell)
+- **Verbetergebied:** 1
+- **Prioriteit:** middel — directe feedback ("niet meteen ontsnapt
+  zien staan")
+- **Status:** open
+- **Afhankelijk van:** T54
+- **Doel:** de boot verschijnt niet abrupt met een volledige
+  "Druk T"-prompt — een korte aankondiging/opbouw eerst, zodat het als
+  een gebeurtenis aanvoelt in plaats van een geruisloze state-flip.
+- **Concrete wijzigingen:** wanneer `updateOntsnappingsVenster()` (T54)
+  een venster opent, volgt NIET meteen het interactiepunt — eerst een
+  korte "nadering"-fase (`ONTSNAPPING_AANKONDIGING_DUUR`, bv. 4-6s):
+  een verre boothoorn-toon (nieuwe, korte, originele Web-Audio-piep
+  volgens het bestaande `piep()`-patroon — een eigen, herkenbaar
+  signaal, geen bestaand geluid hergebruikt) + een banner ("Er nadert
+  iets over het water…", geen bedrag/prompt) + het lantaarnlicht (T52)
+  knippert/pulseert kort feller (hergebruik van het
+  lampflikker-patroon, puur cosmetisch). PAS na de aankondigingsduur
+  verschijnt het echte interactiepunt (T54's logica, nu met een timer
+  ertussen) mét de volledige prompt. Bij het sluiten van het venster
+  (golf voorbij): een kort vertrek-geluid/banner ("De boot vaart weer
+  weg") — symmetrisch met de aankomst.
+- **Codegebieden:** `updateOntsnappingsVenster()` (T54, breidt uit met
+  de aankondigingstimer), audio-blok (nieuwe `speelBootHoorn()`), T52's
+  lantaarnlicht (kort te sturen intensiteit), debug-export
+  (timer-getters).
+- **Acceptatiecriteria:** bij het openen van een venster verschijnt het
+  interactiepunt PAS na `ONTSNAPPING_AANKONDIGING_DUUR`, niet meteen;
+  de aankondigingsbanner verschijnt wél meteen; het geluid speelt exact
+  1x per aankomst en 1x per vertrek; geen nieuwe allocaties/
+  geluidslagen die de bestaande audio-overload-regels (§6.9/§5.10)
+  overschrijden.
+- **Testplan:** nieuwe checks in (of uitbreiding van)
+  `tests/test-ontsnapping-vensters.mjs`: timer-gedrag via
+  `waitForTimeout` + de draaiende gameLoop (klok-vs-dt-les, §6.10) +
+  `check-load` + `run-all`.
+- **Rollback:** de aankondigingstimer weglaten (punt verschijnt weer
+  meteen, T54's gedrag).
+- **Sonnet solo:** ja.
+
+## Ticket 56 — Doel D9: Vluchtroute-onderdelen fysiek prominenter
+- **Type:** Polish
+- **Verbetergebied:** 1
+- **Prioriteit:** middel — directe feedback ("fysiek neerleggen op de
+  oppaklocatie")
+- **Status:** open
+- **Afhankelijk van:** — (raakt T44's meshes, onafhankelijk van
+  T52-55)
+- **Doel:** de Roeispaan/Touwbundel/Scheepslantaarn zijn er al fysiek
+  (T44), maar vallen kennelijk te weinig op — elk onderdeel krijgt een
+  duidelijk rustpunt (in plaats van los in de ruimte) waar het item
+  ZICHTBAAR bovenop ligt, zodat het meteen herkenbaar is als "hier ligt
+  iets"; het hele stukje decor (item + rustvlak) verdwijnt in één keer
+  zodra de speler het opraapt.
+- **Concrete wijzigingen:** elk van de drie `bouw*Mesh()`-functies
+  (Ticket 44, §6.4) krijgt een klein rustvlak (een simpele
+  krat/plank/vensterbank uit bestaande prim-patronen, passend bij de
+  zone — bv. een houten krat in het atelier, een kistrand op de
+  binnenplaats, een plank in de bijkeuken) zodat de Roeispaan, de
+  Touwbundel en de Scheepslantaarn elk zichtbaar OP hun eigen rustvlak
+  liggen in plaats van in de lucht te zweven (zelfde les als de
+  zwevende-barricadeplanken-fix). BELANGRIJK:
+  het rustvlak wordt een KIND van dezelfde group als het item-mesh
+  (`onderdeel.mesh`), niet een los, permanent object ernaast — zo
+  verdwijnt het complete stukje (item + rustvlak) automatisch in één
+  keer via de AL BESTAANDE `wereld.remove(onderdeel.mesh)`-regel in
+  `raapVluchtOnderdeelOp()` (Ticket 44), zonder dat die functie zelf
+  hoeft te veranderen. Iets grotere schaal (binnen het bestaande
+  performance-budget, geen extra lichten) en een subtiele eigen
+  puls/glans op het item zelf (hergebruik van het
+  `flitsMarkering`-idee, maar dan permanent zolang het onderdeel niet
+  is opgeraapt, i.p.v. eenmalig bij aankoop).
+- **Codegebieden:** `bouwRoeispaanMesh()`/`bouwTouwbundelMesh()`/
+  `bouwScheepslantaarnMesh()` (§6.4-blok), evt.
+  `toonVluchtOnderdelenIndienDrempel()` als de puls per-frame gestuurd
+  moet worden (dan een regel in de bestaande spelActief-gameLoop-tak).
+- **Acceptatiecriteria:** elk onderdeel staat aantoonbaar op een
+  rustvlak dat in dezelfde group zit (geen zwevende meshes, geen los
+  achterblijvend rustvlak na het oprapen); mesh-aantal per
+  onderdeel blijft binnen het bestaande perf-budget; screenshots tonen
+  duidelijk herkenbare, niet-zwevende objecten in alle drie de zones,
+  vóór én na het oprapen (na oprapen: helemaal niets meer zichtbaar op
+  die plek).
+- **Testplan:** uitbreiding van `tests/test-vluchtroute.mjs`
+  (mesh-samenstelling/positie-checks + een check dat het rustvlak een
+  kind van `onderdeel.mesh` is en dus meeverdwijnt bij het oprapen) +
+  `check-load` + `run-all` + screenshots van alle drie de locaties,
+  vóór én na het oprapen.
+- **Rollback:** rustvlakken weglaten (T44's oorspronkelijke meshes
+  blijven werken); de naamswijziging is één string terug te draaien.
+- **Sonnet solo:** ja.
+
+## Ticket 57 — Zwevende barricadeplanken: audit overige vensters
+- **Type:** Bugfix (puur visueel, geen mechaniek)
+- **Verbetergebied:** — (kwaliteit/polish, buiten de vijf hoofdgebieden
+  van deze ronde)
+- **Prioriteit:** hoog — directe, met screenshots onderbouwde
+  speeltest-feedback
+- **Status:** open
+- **Afhankelijk van:** —
+- **Doel:** dezelfde zwevende-planken-fout die eerder is opgelost voor
+  de binnenplaats-poorten/-kelderdeur (`VENSTERS_PLAATS`, via een
+  `basisY`-override in `bouwBarricade()`) blijkt zich ELDERS ook voor
+  te doen — twee screenshots (golf 6, Vluchtroute 1/3) tonen planken
+  die duidelijk los/zwevend vóór een deur staan, niet op de
+  binnenplaats.
+- **Concrete wijzigingen:** reproduceer eerst de exacte situatie uit de
+  screenshots (golf 6, ná het oppakken van 1 vluchtroute-onderdeel) en
+  doe daarna een VOLLEDIGE visuele audit van alle overige
+  gebarricadeerde vensters. Twee concrete verdachten, al vooronderzocht:
+  (a) `VENSTERS` (woonkamer, zone A) en `VENSTERS_KAMER2` (atelier,
+  zone C) gebruiken beide hetzelfde kozijn (`BoxGeometry(1.3, 1.6,
+  0.12)` op y=1.9, dus een opening van y≈1.1 tot y≈2.7) — de
+  standaard-plankstapel (y=1.2/1.6/2.0, spant 1.14-2.06) past daar wél
+  BINNEN de opening, maar laat een kier van ~0.6m kozijn/glas ZICHTBAAR
+  boven de planken — kan ook als "niet kloppend" ogen, ook al is het
+  geen letterlijke overshoot; (b) `VENSTERS_BIJKEUKEN` (de
+  "steegdeur") heeft HELEMAAL GEEN eigen kozijn-mesh — de barricade
+  hangt daar dus zonder enig omlijnend referentiepunt, wat het meest
+  waarschijnlijke "zweeft in het niets"-effect geeft en de sterkste
+  kandidaat is voor wat op de screenshots te zien is. Gebruik voor elk
+  gevonden probleem dezelfde, al bestaande `basisY`-override in
+  `bouwBarricade()` (geen nieuwe mechaniek nodig — alleen per-venster
+  tuning, en eventueel een kozijn-mesh voor de steegdeur als een
+  ontbrekend referentiepunt de oorzaak blijkt).
+- **Codegebieden:** `VENSTERS`/`VENSTERS_KAMER2`/`VENSTERS_BIJKEUKEN`-
+  arrays, `bouwBarricade()` (`basisY`, al aanwezig sinds de
+  binnenplaats-fix), evt. een nieuw kozijn-blok voor de steegdeur.
+- **Acceptatiecriteria:** screenshots van ALLE gebarricadeerde
+  vensters (niet alleen het gemelde) tonen planken die overtuigend
+  op/in hun opening liggen; geen zichtbare zwevende planken meer nergens
+  in het spel; geen regressie op de al gefixte binnenplaats-vensters.
+- **Testplan:** nieuw of uitgebreid testbestand (bv.
+  `tests/test-barricade-plaatsing.mjs`) met een positie-check per
+  venster (plank-y's binnen het bereik van de eigen opening) +
+  `check-load` + `run-all` + een screenshotronde van alle
+  gebarricadeerde vensters in het spel.
+- **Rollback:** `basisY`-aanpassingen zijn per venster terug te draaien
+  (zelfde constante-aanpak als de binnenplaats-fix).
+- **Sonnet solo:** ja.
+
+---
+
+## Backlog — bevroren tickets (niet uitvoeren zonder expliciete opdracht)
+
+Op verzoek van de gebruiker: "het nieuwe wapen (ticket 47 en 48) hoef ik
+niet meer". De Hagelketel (verbetergebied 3, wapenarsenaal) staat
+inhoudelijk klaar als ontwerp — ARCHITECTURE_NOTES §6.6 (beslissingen 38
+en 39) blijft ter referentie staan — maar wordt voorlopig NIET
+geïmplementeerd. Als dit ooit weer actueel wordt: gewoon opnieuw oppakken
+zoals hieronder beschreven, er hangt niets anders van af (T47/T48 waren
+altijd al onafhankelijk van T42-46/49-56).
+
+### Ticket 47 (backlog) — Wapen W4: De Hagelketel (data, model, pellet-schot)
+- **Status:** backlog — niet uitvoeren zonder expliciete opdracht
+- **Doel:** een derde wapen met een eigen niche: traag, brede spread,
+  verwoestend van dichtbij (Drukspuit = precisie, Ratelaar = volume,
+  Hagelketel = close range).
+- **Samenvatting:** `WAPEN_HAGELKETEL`-definitie (magazijnMax 4,
+  reserve 16, herlaadDuur 2.4/1.7, vuurtempo ~1.1s, spreadNdc 0.055,
+  kickSterkte 0.03, terugslagSterkte 1.6, `smederijConfig {schadeBonus
+  1, magazijnMax 6}`); nieuw `pelletAantal`-veld (1 bestaand, 6 voor de
+  Hagelketel) met een pellet-lus in `schiet()` (allocatievrij, hergebruik
+  van de bestaande temp-vectoren/pools); model + vlam/vlamLicht
+  (lichttelling +1, grens in de integratietest meeverhogen in DIT
+  ticket); alléén via debug-hook activeerbaar, nog geen kooppunt.
+  Volledige tekst met acceptatiecriteria/testplan: zie de git-historie
+  van dit bestand (commit met "Fable-architectuurronde 4") of vraag om
+  'm opnieuw uit te schrijven.
+- **Sonnet solo:** ja, met de hot-path-waarschuwing (raakt `schiet()`).
+
+### Ticket 48 (backlog) — Wapen W5: Hagelketel-winkel + driewapen-wissel
+- **Status:** backlog — niet uitvoeren zonder expliciete opdracht
+- **Afhankelijk van:** Ticket 47 (backlog)
+- **Doel:** de Hagelketel koopbaar maken en de Q-wissel laten werken
+  met drie wapens.
+- **Samenvatting:** `HAGELKETEL_PRIJS = 2800`, wandrek-kooppunt in de
+  bijkeuken (isVrijePlek-probes), `koopHagelketel()` volgens het
+  koopRatelaar-patroon, `WINKEL_STIJLEN`-entry, `wisselWapen()`
+  herschreven op een `WAPEN_VOLGORDE`-array (cycle naar het volgende
+  GEKOCHTE wapen); interactiepunten-telling 12→13 (de exacte-
+  tellingscheck in `test-smederij-verhuizing.mjs` moet in DIT ticket
+  mee). Volledige tekst: zie de git-historie of vraag om 'm opnieuw uit
+  te schrijven.
 - **Sonnet solo:** ja.
 
 ---

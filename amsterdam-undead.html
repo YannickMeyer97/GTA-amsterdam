@@ -261,6 +261,78 @@
     margin-top: 20px;
     cursor: pointer;
   }
+  #gameOverScherm .statsBlok {
+    margin-top: 14px;
+    font-size: 14px;
+    line-height: 1.7;
+    opacity: 0.9;
+  }
+  #gameOverScherm .scoreRegel {
+    font-size: 24px;
+    font-weight: 700;
+    margin-top: 10px;
+    color: #ffd76a;
+  }
+  #gameOverScherm .recordRegel {
+    font-size: 14px;
+    font-weight: 700;
+    margin-top: 4px;
+    color: #7fd99a;
+  }
+
+  /* --- Winscherm (Ticket 45: De Ontsnapping) — zelfde opzet als het
+     game-over-scherm, zeegroen accent i.p.v. rood, en twee knoppen. --- */
+  #winScherm {
+    position: fixed;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(4, 16, 14, 0.85);
+    color: white;
+    text-align: center;
+    z-index: 11;
+  }
+  #winScherm h1 {
+    font-size: 46px;
+    margin: 0 0 10px;
+    letter-spacing: 2px;
+    color: #6fe8c0;
+    text-shadow: 0 4px 12px rgba(0,0,0,0.6);
+  }
+  #winScherm .statsBlok {
+    margin-top: 14px;
+    font-size: 14px;
+    line-height: 1.7;
+    opacity: 0.9;
+  }
+  #winScherm .scoreRegel {
+    font-size: 24px;
+    font-weight: 700;
+    margin-top: 10px;
+    color: #ffd76a;
+  }
+  #winScherm .recordRegel {
+    font-size: 14px;
+    font-weight: 700;
+    margin-top: 4px;
+    color: #7fd99a;
+  }
+  #winScherm .knoppenRij {
+    display: flex;
+    gap: 14px;
+    margin-top: 20px;
+  }
+  #winScherm .knop {
+    font-size: 18px;
+    font-weight: 700;
+    background: #2f9e78;
+    color: white;
+    padding: 12px 32px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
 
   /* --- Startscherm / pauzescherm --- */
   #startscherm {
@@ -331,12 +403,28 @@
     Schade <span id="schadeTekst">1</span> &nbsp;·&nbsp; Herladen <span id="herlaadTekst">1.2s</span> &nbsp;·&nbsp; Wapen <span id="wapenTekst">Drukspuit</span>
   </div>
   <div id="powerupStatusUI" style="font-size:12px; font-weight:700; margin-top:2px; color:#ffd76a;"></div>
+  <div id="vluchtrouteUI" style="font-size:12px; font-weight:700; margin-top:2px; color:#6fe8c0;">Vluchtroute: 0/3</div>
 </div>
 <div id="vignet"></div>
 <div id="gameOverScherm">
   <h1>JE BENT GEVALLEN</h1>
   <div>Gehaalde golf: <span id="gameOverGolf">1</span> &nbsp;·&nbsp; Geld: € <span id="gameOverGeld">0</span></div>
+  <div class="statsBlok" id="gameOverStats"></div>
+  <div class="scoreRegel">Score: <span id="scoreTekst">0</span></div>
+  <div class="recordRegel" id="gameOverRecord"></div>
   <div class="knop" id="opnieuwKnop">Opnieuw beginnen</div>
+</div>
+
+<div id="winScherm">
+  <h1>ONTSNAPT</h1>
+  <div>Gehaalde golf: <span id="winGolf">1</span> &nbsp;·&nbsp; Geld: € <span id="winGeld">0</span></div>
+  <div class="statsBlok" id="winStats"></div>
+  <div class="scoreRegel">Score: <span id="winScoreTekst">0</span></div>
+  <div class="recordRegel" id="winRecord"></div>
+  <div class="knoppenRij">
+    <div class="knop" id="speelDoorKnop">Speel door (endless)</div>
+    <div class="knop" id="opnieuwKnopWin">Opnieuw</div>
+  </div>
 </div>
 
 <div id="startscherm">
@@ -349,7 +437,12 @@
     <span style="opacity:0.85">🏠 Woonkamer → 🚪 het atelier (€500) → 🚪 de binnenplaats (€1000) → 🚪 de bijkeuken (€1200) → 🚪 de terugweg (€800)</span><br>
     <span style="opacity:0.85">🛠️ Elke zone heeft een eigen upgrade, ammo of beloning</span>
   </div>
-  <div class="knop">Klik om te spelen</div>
+  <div id="startschermRecord" style="opacity:0.85; margin-bottom:14px; font-size:14px;"></div>
+  <div id="moeilijkheidKnoppen" style="display:flex; gap:14px;">
+    <div class="knop" data-moeilijkheid="toerist">Toerist</div>
+    <div class="knop" data-moeilijkheid="amsterdammer">Amsterdammer</div>
+    <div class="knop" data-moeilijkheid="nachtwacht">Nachtwacht</div>
+  </div>
 </div>
 
 <!-- Three.js laden vanaf een CDN, zelfde importmap-patroon als de andere game. -->
@@ -1759,6 +1852,12 @@ const WINKEL_STIJLEN = {
     status: () => deur3Gekocht ? 'gekocht' : (spelStaat.geld >= DEUR3_PRIJS ? 'beschikbaar' : 'teDuur') },
   deur4:        { kleur: 0xc9a86b, bouwIcoon: (g) => bouwIcoonSleutel(g, 0xc9a86b),
     status: () => deur4Gekocht ? 'gekocht' : (spelStaat.geld >= DEUR4_PRIJS ? 'beschikbaar' : 'teDuur') },
+  // Ticket 44: de Vluchtroute — gratis oprapen, dus geen teDuur/gekocht-
+  // status nodig (de markering verdwijnt gewoon bij het oprapen). Gedeeld
+  // pijl-silhouet (bestaand, anders alleen bij 'upgrade'), eigen zeegroene
+  // kleur onderscheidt 'm meteen visueel.
+  vluchtroute:  { kleur: 0x6fe8c0, bouwIcoon: (g) => bouwIcoonPijl(g, 0x6fe8c0),
+    status: () => 'beschikbaar' },
 };
 
 // Alle gebouwde winkelmarkeringen, in aanroepvolgorde — puur voor debug/
@@ -2045,12 +2144,55 @@ ammoUI.addEventListener('animationend', () => ammoUI.classList.remove('leeg'));
 const hudUI = document.getElementById('hudUI');
 const vignet = document.getElementById('vignet');
 const gameOverScherm = document.getElementById('gameOverScherm');
+const winScherm = document.getElementById('winScherm');
 const interactiePromptUI = document.getElementById('interactiePrompt');
 const meldingUI = document.getElementById('meldingUI');
 const golfBannerUI = document.getElementById('golfBanner');
 document.getElementById('opnieuwKnop').addEventListener('click', () => location.reload());
+// Ticket 45: het winscherm heeft zijn eigen "Opnieuw" (identiek aan
+// opnieuwKnop) en "Speel door" (sluit het scherm, ontsnappingspunt
+// verdwijnt definitief voor deze run, vraagt pointer lock opnieuw aan —
+// exact het bestaande start-/hervat-patroon van de startscherm-listener
+// hieronder).
+document.getElementById('opnieuwKnopWin').addEventListener('click', () => location.reload());
+document.getElementById('speelDoorKnop').addEventListener('click', () => {
+  winScherm.style.display = 'none';
+  const pi = interactiePunten.indexOf(ontsnappingsPunt);
+  if (pi !== -1) interactiePunten.splice(pi, 1);
+  ontsnappingsPunt = null;
+  initGeluid();
+  renderer.domElement.requestPointerLock();
+});
+
+// Ticket 43: moeilijkheidsgraden — de keuze is eenmalig per run (een
+// page-reload = een nieuwe run, dus geen reset-logica nodig). MOEILIJKHEDEN
+// en `moeilijkheid` zelf staan pas verderop in het bestand (bij golfBudget,
+// §6.3) — TDZ-veilig, want deze functiebodies worden pas bij een klik
+// aangeroepen, ver na de volledige module-evaluatie (zelfde patroon als
+// winkelMarkering/ZONE_GRAAF elders in dit bestand).
+let moeilijkheidGekozen = false;
+function kiesMoeilijkheid(naam) {
+  moeilijkheid = MOEILIJKHEDEN[naam] ?? MOEILIJKHEDEN.amsterdammer;
+  spelStaat.geld = moeilijkheid.startGeld;
+  document.getElementById('moeilijkheidKnoppen').style.display = 'none';
+  updateHUD();
+}
+document.getElementById('moeilijkheidKnoppen').addEventListener('click', (e) => {
+  const knop = e.target.closest('[data-moeilijkheid]');
+  if (!knop || moeilijkheidGekozen) return;
+  moeilijkheidGekozen = true;
+  kiesMoeilijkheid(knop.dataset.moeilijkheid);
+  // Geen stopPropagation: de klik bubbelt door naar de startscherm-listener
+  // hieronder, die initGeluid()/requestPointerLock() al doet — dat
+  // hergebruikt gewoon de bestaande, geteste start-/resume-flow.
+});
 
 startscherm.addEventListener('click', () => {
+  // Ticket 43: vóór de eerste keuze telt alleen een klik op een specifieke
+  // moeilijkheidsknop (die zet moeilijkheidGekozen al op true vóórdat deze
+  // bubbelt) — een klik ernaast start het spel nog niet. Na de keuze (en
+  // bij elke latere pauze-hervatting) werkt de hele overlay weer als vanouds.
+  if (!moeilijkheidGekozen) return;
   initGeluid();   // geluid mag pas starten na een klik (browserregel)
   renderer.domElement.requestPointerLock();
 });
@@ -2064,6 +2206,13 @@ document.addEventListener('pointerlockchange', () => {
   // Na een game over roept gameOver() zelf exitPointerLock() aan; dit mag
   // het startscherm niet laten terugpoppen over het game-over-scherm heen.
   if (spelStaat.gameOver) return;
+  // Ticket 45: hetzelfde geldt voor het winscherm — toonWinScherm() roept
+  // ook exitPointerLock() aan, maar spelStaat.gameOver blijft bewust false
+  // (winnen is geen game over), dus een eigen guard op de scherm-
+  // zichtbaarheid zelf. Bij "Speel door" verbergt de eigen knop-listener
+  // het scherm AL vóórdat requestPointerLock() opnieuw wordt aangevraagd,
+  // dus deze guard staat dan al weer open.
+  if (winScherm.style.display === 'flex') return;
   startscherm.style.display = actief ? 'none' : 'flex';
   if (actief) {
     startscherm.querySelector('h2').textContent = 'Een verlaten grachtenpand — Amsterdam';
@@ -2670,6 +2819,7 @@ function probeerTeSchieten() {
 
 function schiet() {
   wapenStaat.magazijn -= 1;
+  runStats.schoten++;   // Ticket 42: 1x per trekker, niet per pellet (T47)
   updateAmmoUI();
 
   const { vlam, vlamLicht } = wapenStaat.definitie;
@@ -3024,8 +3174,22 @@ const GOLF_BUDGET_GROEI   = 1.7;  // extra budget per volgende golf
 const ONDODE_THREAT_KOSTEN = { normaal: 1, loper: 1.4, brander: 1.8, sluiper: 1.5, sjouwer: 3 };
 // Eventgolven (mist) krijgen iets minder budget: het event zelf ís de druk.
 const EVENT_GOLF_BUDGET_FACTOR = 0.9;
+
+// Ticket 43: moeilijkheidsgraden — puur data, geen nieuwe systemen. Elke
+// graad is een multiplier bovenop drie bestaande plekken (golfBudget,
+// speler-regen, score) + een startbedrag. 'amsterdammer' is per definitie
+// het huidige, ongewijzigde gedrag (alle factoren 1, startGeld 0) — zowel
+// als default vóórdat de speler kiest (alle bestaande tests/legacy-flows
+// die nooit kiesMoeilijkheid() aanroepen) als na een expliciete keuze.
+const MOEILIJKHEDEN = {
+  toerist:      { naam: 'Toerist',      budgetFactor: 0.75, regenFactor: 1.25, scoreFactor: 0.75, startGeld: 200 },
+  amsterdammer: { naam: 'Amsterdammer', budgetFactor: 1,    regenFactor: 1,    scoreFactor: 1,     startGeld: 0 },
+  nachtwacht:   { naam: 'Nachtwacht',   budgetFactor: 1.3,  regenFactor: 0.7,  scoreFactor: 1.5,   startGeld: 0 },
+};
+let moeilijkheid = MOEILIJKHEDEN.amsterdammer;
+
 function golfBudget(golf) {
-  return Math.round(GOLF_BUDGET_BASIS + GOLF_BUDGET_GROEI * (golf - 1));
+  return Math.round((GOLF_BUDGET_BASIS + GOLF_BUDGET_GROEI * (golf - 1)) * moeilijkheid.budgetFactor);
 }
 const GOLF_SPAWN_INTERVAL = 1.1;  // s tussen twee spawns binnen dezelfde golf
 const GOLF_RUST_TIJD      = 8;    // v0.9: 4->8s rust tussen golven (en vóór golf 1) — tijd om te repareren/kopen
@@ -3117,6 +3281,7 @@ function raapPowerupOp(drop) {
   wereld.remove(drop.groep);
   const i = powerups.indexOf(drop);
   if (i !== -1) powerups.splice(i, 1);
+  runStats.powerups++;
   POWERUP_TYPES[drop.type].effect();
   speelKoop();
   updateHUD();
@@ -3182,6 +3347,7 @@ function geefKerninslag() {
     doodOndode(o);
   }
   spelStaat.geld += bonus;
+  runStats.geldTotaal += bonus;
   toonGolfBanner('KERNINSLAG', `${levend.length} ondoden geëlimineerd · +€${bonus}`);
   updateHUD();
 }
@@ -3634,7 +3800,7 @@ function updateOndoden(dt) {
         const hoekVerschil = Math.abs(kortsteHoekVerschil(doelHoek, ondode.groep.rotation.y));
         const midX = (positie.x + speler.positie.x) / 2, midZ = (positie.z + speler.positie.z) / 2;
         if (afstand <= profiel.raakBereik && hoekVerschil <= profiel.raakHoek && isVrijePlek(midX, midZ, 0.05)) {
-          spelerSchade(profiel.schade);
+          spelerSchade(profiel.schade, ondode.type);
           speelSlagRaak();   // Ticket 31: bovenop de speelSpelerAu() uit spelerSchade()
         } else {
           speelSlagMis();    // Ticket 31: whoosh bij een ontweken aanval
@@ -3894,7 +4060,7 @@ function ontploiBrander(ondode) {
   setTimeout(() => { scene.remove(flits); scene.remove(licht); }, 220);
   speelExplosie();
 
-  if (pos.distanceTo(speler.positie) <= BRANDER_EXPLOSIE_RADIUS) spelerSchade(BRANDER_EXPLOSIE_SCHADE_SPELER);
+  if (pos.distanceTo(speler.positie) <= BRANDER_EXPLOSIE_RADIUS) spelerSchade(BRANDER_EXPLOSIE_SCHADE_SPELER, 'brander');
 
   for (const andere of [...ondoden]) {
     if (andere === ondode || !ondoden.includes(andere)) continue;   // kan al dood zijn door deze zelfde keten
@@ -3910,16 +4076,23 @@ function ontploiBrander(ondode) {
 // Basisschade = schadePerTreffer (globale upgrade) + Smederij-bonus van het
 // actieve wapen als dat gesmeed is (Ticket 11) — Eliminatiemodus overschrijft dit.
 function raakOndode(ondode, punt, kop = false) {
+  // Ticket 42: elke treffer telt, ongeacht dodelijk of niet — headshots zijn
+  // kop-TREFFERS (consistent met de hitmarker-tiers), niet alleen kop-kills.
+  runStats.treffers++;
+  if (kop) runStats.headshots++;
   const basisSchade = schadePerTreffer + (wapenStaat.gesmeed ? wapenStaat.definitie.smederijConfig.schadeBonus : 0);
   // Eliminatiemodus (power-up): elke treffer is meteen dodelijk, ongeacht HP.
   const schade = eliminatiemodusTimer > 0 ? ondode.hp : basisSchade + (kop ? HEADSHOT_EXTRA : 0);
   ondode.hp -= schade;
   const geldFactor = dubbeleBeloningTimer > 0 ? 2 : 1;   // Dubbele Beloning (power-up)
   if (ondode.hp <= 0) {
+    runStats.kills++;
     // Ticket 33: kill is de hoogste hitmarker-/audio-tier, ongeacht kop of lichaam.
     toonHitmarker('kill');
     speelKillKnak();
-    spelStaat.geld += Math.round(GELD_PER_KILL * ondode.geldMultiplier * geldFactor * (kop ? HEADSHOT_GELD_MULTIPLIER : 1));
+    const killGeld = Math.round(GELD_PER_KILL * ondode.geldMultiplier * geldFactor * (kop ? HEADSHOT_GELD_MULTIPLIER : 1));
+    spelStaat.geld += killGeld;
+    runStats.geldTotaal += killGeld;
     const dropPos = ondode.groep.position.clone();
     doodOndode(ondode);
     if (Math.random() < POWERUP_DROP_KANS) spawnPowerupDrop(dropPos.x, dropPos.z, kiesPowerupType());
@@ -3928,6 +4101,7 @@ function raakOndode(ondode, punt, kop = false) {
     toonHitmarker(kop ? 'kop' : 'lichaam');
     if (kop) speelKopTik(); else speelRaakTik();
     spelStaat.geld += GELD_PER_HIT * geldFactor;
+    runStats.geldTotaal += GELD_PER_HIT * geldFactor;
     // Ticket 21 (Z4): flinch-state voor de animatie-helft van updateOndoden().
     // Alleen bij een OVERLEVENDE treffer — een dodelijke hit (incl. Eliminatiemodus,
     // die altijd dodelijk is) loopt hierboven al door doodOndode() en verwijdert
@@ -3966,10 +4140,11 @@ const spelerStaat = {
 
 let vignetFlits = 0;
 
-function spelerSchade(bedrag) {
+function spelerSchade(bedrag, bron = 'onbekend') {
   if (spelStaat.gameOver) return;
   spelerStaat.hp = Math.max(0, spelerStaat.hp - bedrag);
   spelerStaat.laatsteSchadeTijd = klok;
+  runStats.doodDoor = bron;   // Ticket 42: laatste aanvaller, gebruikt op het gameOver-scherm
   vignetFlits = 1;
   speelSpelerAu();
   updateHUD();
@@ -3979,7 +4154,7 @@ function spelerSchade(bedrag) {
 function updateSpelerRegen(dt) {
   if (spelStaat.gameOver) return;
   if (spelerStaat.hp < spelerStaat.hpMax && (klok - spelerStaat.laatsteSchadeTijd) > SPELER_REGEN_VERTRAGING) {
-    spelerStaat.hp = Math.min(spelerStaat.hpMax, spelerStaat.hp + SPELER_REGEN_PER_SEC * dt);
+    spelerStaat.hp = Math.min(spelerStaat.hpMax, spelerStaat.hp + SPELER_REGEN_PER_SEC * moeilijkheid.regenFactor * dt);
     updateHUD();
   }
 }
@@ -3992,10 +4167,70 @@ function updateVignet(dt) {
   vignet.style.opacity = String(Math.min(1, laag + vignetFlits * 0.6));
 }
 
+// Ticket 42/43/45: score + highscore. berekenScore() is een PURE functie
+// (alleen gelezen, nooit per frame aangeroepen); de moeilijkheids-
+// scoreFactor is amsterdammer===1, dus byte-voor-byte hetzelfde resultaat
+// als vóór Ticket 43 zolang er geen andere graad gekozen is. `bonus`
+// (Ticket 45: de ontsnappingsbonus, +1000) telt vóór de scoreFactor mee —
+// vandaar een parameter i.p.v. 'm er in gameOver() achteraf bij op te tellen.
+function berekenScore(bonus = 0) {
+  return Math.round((runStats.kills * 10 + runStats.headshots * 15 + (spelStaat.golf - 1) * 100 + bonus) * moeilijkheid.scoreFactor);
+}
+
+const ONDODE_DOOD_DOOR_NAAM = {
+  normaal: 'een ondode', loper: 'een Loper', sjouwer: 'een Sjouwer',
+  brander: 'een Brander', sluiper: 'een Sluiper',
+};
+
+const HIGHSCORE_KEY = 'amsterdamUndeadHighscore';
+// localStorage kan ontbreken of geweigerd zijn (privacy-modus, file://-
+// context, headless tests) — dat mag het spel nooit breken, dus altijd
+// try/catch en een stille fallback.
+function leesHighscore() {
+  try {
+    const raw = localStorage.getItem(HIGHSCORE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+function schrijfHighscore(record) {
+  try {
+    localStorage.setItem(HIGHSCORE_KEY, JSON.stringify(record));
+  } catch {
+    // Geweigerd of niet beschikbaar: gewoon niets bewaren, geen crash.
+  }
+}
+function toonStartschermRecord() {
+  const record = leesHighscore();
+  const el = document.getElementById('startschermRecord');
+  el.textContent = record
+    ? `🏆 Record: score ${record.score} · golf ${record.golf}${record.moeilijkheid ? ` · ${record.moeilijkheid}` : ''}`
+    : '';
+}
+toonStartschermRecord();
+
 function gameOver() {
   spelStaat.gameOver = true;
   document.getElementById('gameOverGolf').textContent = spelStaat.golf;
   document.getElementById('gameOverGeld').textContent = spelStaat.geld;
+  const score = berekenScore();
+  document.getElementById('scoreTekst').textContent = score;
+  const doodDoorTekst = runStats.doodDoor
+    ? ` &nbsp;·&nbsp; Gevallen door: ${ONDODE_DOOD_DOOR_NAAM[runStats.doodDoor] ?? runStats.doodDoor}` : '';
+  document.getElementById('gameOverStats').innerHTML =
+    `Kills: ${runStats.kills} &nbsp;·&nbsp; Headshots: ${runStats.headshots}<br>` +
+    `Treffers: ${runStats.treffers} / ${runStats.schoten} schoten &nbsp;·&nbsp; Verdiend: €${runStats.geldTotaal}<br>` +
+    `Power-ups: ${runStats.powerups}${doodDoorTekst}<br>` +
+    `Moeilijkheid: ${moeilijkheid.naam}`;
+  const bestaandRecord = leesHighscore();
+  const recordEl = document.getElementById('gameOverRecord');
+  if (!bestaandRecord || score > bestaandRecord.score) {
+    schrijfHighscore({ score, golf: spelStaat.golf, moeilijkheid: moeilijkheid.naam, datum: new Date().toISOString() });
+    recordEl.textContent = 'NIEUW RECORD!';
+  } else {
+    recordEl.textContent = `Record: ${bestaandRecord.score}`;
+  }
   gameOverScherm.style.display = 'flex';
   speelGameOver();
   if (actieveEventGolf) eindigEventGolf(true);   // direct: het spel staat stil, dus geen geleidelijke uitfade
@@ -4039,6 +4274,20 @@ const spelStaat = {
   rustTimer: GOLF_RUST_TIJD,
 };
 updateHUD();
+
+// Ticket 42: run-statistieken, puur voor het eindscherm/score — geen enkel
+// veld hier stuurt gameplay aan. Increments staan op de bestaande
+// geld-/treffer-/schotplekken (zie schiet/raakOndode/spelerSchade en de
+// geld-uitkeerplekken); de score wordt pas bij gameOver() berekend.
+const runStats = {
+  kills: 0,
+  headshots: 0,   // kop-TREFFERS, niet alleen kop-kills
+  schoten: 0,
+  treffers: 0,
+  geldTotaal: 0,  // cumulatief verdiend geld deze run (niet het huidige saldo)
+  powerups: 0,
+  doodDoor: null, // laatste aanvaller-type dat de speler raakte (ondode.type of 'brander')
+};
 
 // Wave-banner: kort groot "GOLF X" in beeld wanneer een golf begint.
 let golfBannerTimer = null;
@@ -4125,6 +4374,7 @@ function startGolf() {
   spelStaat.budget = golfBudget(spelStaat.golf) * (actieveEventGolf ? EVENT_GOLF_BUDGET_FACTOR : 1);
   spelStaat.spawnTimer = 0;
   spelStaat.golfActief = true;
+  toonVluchtOnderdelenIndienDrempel();   // Ticket 44: onthult onderdelen op hun drempelgolf
   const taai = ondodeStartHP() > 1 ? 'de ondoden zijn nu taaier' : 'mik op het hoofd';   // Ticket 14: volgt de HP-trap
   const zones = aantalOntgrendeldeZones();
   const drukte = zones > 1 ? ` · ${zones} zones actief` : '';
@@ -4169,6 +4419,7 @@ function updateGolf(dt) {
     // echt als beloning voelt i.p.v. alleen een pauze.
     const bonus = WAVE_BONUS_BASIS + golfVoltooid * WAVE_BONUS_PER_GOLF;
     spelStaat.geld += bonus;
+    runStats.geldTotaal += bonus;
     spelerStaat.hp = Math.max(spelerStaat.hp, WAVE_HEAL_MIN);
     toonGolfBanner('Wave cleared', `+€${bonus} bonus · koop bij de kist of het upgradepunt`);
     speelGolfKlaar();
@@ -4221,10 +4472,15 @@ const VENSTERS_KAMER2 = [
 
 // Binnenplaats-spawns (Ticket V5): een poortdoorgang en een kelderdeur, pas
 // actief zodra deur 2 gekocht is (zie koopDeur2).
+// basisY: deze drie leunen op de eigen, LAGERE poort-/kelderdeur-decormeshes
+// (~1.8-1.95m hoog, zie de "Decor-ankers"-groep hierboven) i.p.v. een
+// volwaardige raamopening in de 3.2m-muur — zonder eigen basisY stak de
+// standaard-plankstapel (start 1.2) boven die deuren uit (zag eruit als
+// zwevende planken). 0.5 houdt de hele stapel ruim onder de deurtop.
 const VENSTERS_PLAATS = [
-  { x: PLAATS_X_OOST - 0.4, z: PLAATS_Z_NOORD + 0.4, zone: 'D', spanX: false },   // poortdoorgang, noordoost
-  { x: PLAATS_X_OOST - 0.4, z: PLAATS_Z_ZUID - 0.4, zone: 'D', spanX: false },    // kelderdeur, zuidoost (bij De Ratelaar)
-  { x: PLAATS_CX, z: PLAATS_Z_NOORD + 0.4, zone: 'D', spanX: true },              // v0.6: poort halverwege de noordmuur
+  { x: PLAATS_X_OOST - 0.4, z: PLAATS_Z_NOORD + 0.4, zone: 'D', spanX: false, basisY: 0.5 },   // poortdoorgang, noordoost
+  { x: PLAATS_X_OOST - 0.4, z: PLAATS_Z_ZUID - 0.4, zone: 'D', spanX: false, basisY: 0.5 },    // kelderdeur, zuidoost (bij De Ratelaar)
+  { x: PLAATS_CX, z: PLAATS_Z_NOORD + 0.4, zone: 'D', spanX: true, basisY: 0.5 },               // v0.6: poort halverwege de noordmuur
 ];
 
 // --- Barricades (v0.8): elk venster krijgt 3 planken; ondoden slopen er
@@ -4246,7 +4502,13 @@ function bouwBarricade(venster) {
       venster.spanX ? new THREE.BoxGeometry(1.1, 0.12, 0.05) : new THREE.BoxGeometry(0.05, 0.12, 1.1),
       plankMateriaal
     );
-    plank.position.set(venster.x, 1.2 + i * 0.4, venster.z);
+    // Feedback: bij de binnenplaats-poorten/-kelderdeur (eigen, LAGERE
+    // decor-meshes van ~1.8-1.95m, i.p.v. een volwaardige raamopening in
+    // een 3.2m-muur) stak de bovenste plank boven de deur uit en leek
+    // daardoor te zweven. `basisY` laat een venster zijn eigen, lagere
+    // stapel-startpunt opgeven; de standaard-vensters (volle muurhoogte)
+    // blijven op de bestaande 1.2 staan.
+    plank.position.set(venster.x, (venster.basisY ?? 1.2) + i * 0.4, venster.z);
     plank.rotation.z = (Math.random() - 0.5) * 0.12;   // licht scheve, haastig getimmerde look
     plank.castShadow = true;
     wereld.add(plank);
@@ -4801,6 +5063,159 @@ const smederijPunt = {
     : `Druk T: smeed ${wapenStaat.definitie.naam} (€${SMEDERIJ_PRIJS})`,
   actie: koopSmederij,
 };
+// --- Ticket 44: de Vluchtroute — drie verzamelbare, originele onderdelen
+// verspreid over golf én zone. Elke mesh staat vooraf klaar en onzichtbaar
+// (§6.4-beslissing 35); startGolf() onthult 'm op de drempelgolf en voegt
+// PAS DAN het interactiepunt + de winkelMarkering toe — de laadtijd-
+// telling van interactiePunten (12) blijft daardoor ongewijzigd.
+function bouwRoeispaanMesh() {
+  const g = new THREE.Group();
+  const blad = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.46), mat(0x6b4a2a, 0.75));
+  blad.position.y = 0.62;
+  blad.rotation.z = 0.3;
+  g.add(blad);
+  const steel = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 1.15, 8), mat(0x7a5a34, 0.7));
+  steel.position.y = 0.35;
+  steel.rotation.z = 0.3;
+  g.add(steel);
+  g.visible = false;
+  wereld.add(g);
+  return g;
+}
+function bouwTouwbundelMesh() {
+  const g = new THREE.Group();
+  const buiten = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.075, 8, 14), mat(0xc9a86b, 0.85));
+  buiten.rotation.x = Math.PI / 2;
+  buiten.position.y = 0.32;
+  g.add(buiten);
+  const binnen = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.05, 8, 12), mat(0xb5946a, 0.85));
+  binnen.rotation.x = Math.PI / 2;
+  binnen.position.y = 0.32;
+  g.add(binnen);
+  g.visible = false;
+  wereld.add(g);
+  return g;
+}
+function bouwScheepslantaarnMesh() {
+  const g = new THREE.Group();
+  const romp = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.17, 0.34, 8), mat(0x241f1a, 0.55, 0.4));
+  romp.position.y = 0.5;
+  g.add(romp);
+  const glas = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.24, 8),
+    mat(0xffd98a, 0.4, 0, { emissive: 0xffb347, emissiveIntensity: 1.0 }));
+  glas.position.y = 0.5;
+  g.add(glas);
+  const beugel = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.012, 6, 10, Math.PI), mat(0x1a1712, 0.6, 0.5));
+  beugel.position.y = 0.72;
+  g.add(beugel);
+  g.visible = false;
+  wereld.add(g);
+  return g;
+}
+// Posities via isVrijePlek-probes geverifieerd (atelier/binnenplaats/
+// bijkeuken), ruim uit de buurt van bestaande winkelpunten/decor.
+const VLUCHT_ONDERDELEN = [
+  { naam: 'Roeispaan', x: 1.8, z: ATELIER_MIDDEN_Z - 5, drempelGolf: 3, mesh: bouwRoeispaanMesh(), zichtbaar: false, opgehaald: false, punt: null, markering: null },
+  { naam: 'Touwbundel', x: PLAATS_CX - 5, z: PLAATS_Z_ZUID - 1.5, drempelGolf: 6, mesh: bouwTouwbundelMesh(), zichtbaar: false, opgehaald: false, punt: null, markering: null },
+  { naam: 'Scheepslantaarn', x: BIJKEUKEN_X_WEST + 1.2, z: -3, drempelGolf: 9, mesh: bouwScheepslantaarnMesh(), zichtbaar: false, opgehaald: false, punt: null, markering: null },
+];
+let vluchtOnderdelenOpgepakt = 0;
+
+function updateVluchtrouteHUD() {
+  document.getElementById('vluchtrouteUI').textContent = `Vluchtroute: ${vluchtOnderdelenOpgepakt}/3`;
+}
+
+function raapVluchtOnderdeelOp(onderdeel) {
+  wereld.remove(onderdeel.mesh);
+  wereld.remove(onderdeel.markering);
+  const pi = interactiePunten.indexOf(onderdeel.punt);
+  if (pi !== -1) interactiePunten.splice(pi, 1);
+  onderdeel.opgehaald = true;
+  vluchtOnderdelenOpgepakt++;
+  speelKoop();
+  toonMelding(`${onderdeel.naam} gevonden!`);
+  toonGolfBanner(`VLUCHTROUTE ${vluchtOnderdelenOpgepakt}/3`, onderdeel.naam);
+  updateVluchtrouteHUD();
+  toonOntsnappingspuntIndienKlaar();
+}
+
+// --- Ticket 45: De Ontsnapping — win-conditie. Het punt verschijnt pas
+// zodra alle drie de vluchtroute-onderdelen binnen zijn (§6.4-beslissing
+// 35, zelfde dynamische interactiePunten-patroon als hierboven), bij het
+// kelderluik (de fysieke "uitgang" van het pand naar het water).
+const ONTSNAPPING_PRIJS = 2500;
+let ontsnappingsPunt = null;
+
+function toonOntsnappingspuntIndienKlaar() {
+  if (ontsnappingsPunt || vluchtOnderdelenOpgepakt < VLUCHT_ONDERDELEN.length) return;
+  ontsnappingsPunt = {
+    naam: 'De Ontsnapping',
+    positie: new THREE.Vector3(kelderluikMesh.position.x, 0, kelderluikMesh.position.z),
+    radius: 1.4,
+    prompt: () => spelStaat.geld < ONTSNAPPING_PRIJS
+      ? `Nog €${ONTSNAPPING_PRIJS - spelStaat.geld} nodig om te ontsnappen`
+      : `Druk T: ontsnap over het water (€${ONTSNAPPING_PRIJS})`,
+    actie: probeerOntsnapping,
+  };
+  interactiePunten.push(ontsnappingsPunt);
+  toonMelding('De vluchtroute is compleet — zoek het kelderluik op!');
+}
+
+function probeerOntsnapping() {
+  if (spelStaat.geld < ONTSNAPPING_PRIJS) { toonMelding(`Nog €${ONTSNAPPING_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  spelStaat.geld -= ONTSNAPPING_PRIJS;
+  updateHUD();
+  toonWinScherm();
+}
+
+// Winnen is GEEN game over (§6.4-beslissing 36): spelStaat.gameOver blijft
+// false. Het spel pauzeert via exitPointerLock() — dezelfde pauze-gate als
+// altijd — zodat "Speel door" alleen de lock opnieuw hoeft aan te vragen
+// (zie de speelDoorKnop-listener bij de andere schermknoppen).
+function toonWinScherm() {
+  document.getElementById('winGolf').textContent = spelStaat.golf;
+  document.getElementById('winGeld').textContent = spelStaat.geld;
+  const score = berekenScore(1000);   // +1000 ontsnappingsbonus, vóór de moeilijkheids-scoreFactor
+  document.getElementById('winScoreTekst').textContent = score;
+  document.getElementById('winStats').innerHTML =
+    `Kills: ${runStats.kills} &nbsp;·&nbsp; Headshots: ${runStats.headshots}<br>` +
+    `Treffers: ${runStats.treffers} / ${runStats.schoten} schoten &nbsp;·&nbsp; Verdiend: €${runStats.geldTotaal}<br>` +
+    `Power-ups: ${runStats.powerups}<br>` +
+    `Moeilijkheid: ${moeilijkheid.naam}`;
+  const bestaandRecord = leesHighscore();
+  const recordEl = document.getElementById('winRecord');
+  if (!bestaandRecord || score > bestaandRecord.score) {
+    schrijfHighscore({ score, golf: spelStaat.golf, moeilijkheid: moeilijkheid.naam, datum: new Date().toISOString() });
+    recordEl.textContent = 'NIEUW RECORD!';
+  } else {
+    recordEl.textContent = `Record: ${bestaandRecord.score}`;
+  }
+  winScherm.style.display = 'flex';
+  speelGolfKlaar();   // hergebruikt het bestaande "succes"-geluid, geen nieuw geluid nodig
+  if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
+}
+
+// Aangeroepen vanuit startGolf(): onthult onderdelen zodra hun drempelgolf
+// bereikt is, ook als hun zone nog op slot zit (ze wachten daar — de
+// speler ziet ze meteen staan zodra de zone opent).
+function toonVluchtOnderdelenIndienDrempel() {
+  for (const onderdeel of VLUCHT_ONDERDELEN) {
+    if (onderdeel.zichtbaar || onderdeel.opgehaald) continue;
+    if (spelStaat.golf < onderdeel.drempelGolf) continue;
+    onderdeel.zichtbaar = true;
+    onderdeel.mesh.visible = true;
+    onderdeel.markering = winkelMarkering(onderdeel.x, onderdeel.z, 'vluchtroute');
+    onderdeel.punt = {
+      naam: onderdeel.naam,
+      positie: new THREE.Vector3(onderdeel.x, 0, onderdeel.z),
+      radius: 1.2,
+      prompt: () => `Druk T: raap ${onderdeel.naam} op`,
+      actie: () => raapVluchtOnderdeelOp(onderdeel),
+    };
+    interactiePunten.push(onderdeel.punt);
+  }
+}
+
 const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, pantserdrankPunt, deur2Punt, watertapPunt, ratelaarPunt, smederijPunt, deur3Punt, deur4Punt, provisiekastPunt];
 
 let huidigeInteractie = null;
@@ -4958,6 +5373,22 @@ window.AmsterdamUndeadDebug = {
   golfProfielBuffer, kiesOndodeTraitsVoorGolf, GOLF_PROFIEL_BUFFER_LENGTE, GOLF_PROFIEL_MAX_HERLOTINGEN,
   spelerStaat, spelerSchade, updateSpelerRegen, updateVignet, updateHUD,
   spelStaat, startGolf, updateGolf, gameOver,
+  // Ticket 42: run-statistieken, score en highscore
+  runStats, berekenScore, leesHighscore, schrijfHighscore, toonStartschermRecord,
+  HIGHSCORE_KEY, ONDODE_DOOD_DOOR_NAAM,
+  // Ticket 43: moeilijkheidsgraden
+  MOEILIJKHEDEN, kiesMoeilijkheid, SPELER_REGEN_PER_SEC, SPELER_REGEN_VERTRAGING,
+  get moeilijkheid() { return moeilijkheid; },
+  set moeilijkheid(v) { moeilijkheid = v; },
+  get moeilijkheidGekozen() { return moeilijkheidGekozen; },
+  // Ticket 44: de Vluchtroute
+  VLUCHT_ONDERDELEN, raapVluchtOnderdeelOp, toonVluchtOnderdelenIndienDrempel, updateVluchtrouteHUD,
+  get vluchtOnderdelenOpgepakt() { return vluchtOnderdelenOpgepakt; },
+  set vluchtOnderdelenOpgepakt(v) { vluchtOnderdelenOpgepakt = v; },
+  // Ticket 45: De Ontsnapping (winscherm)
+  ONTSNAPPING_PRIJS, toonOntsnappingspuntIndienKlaar, probeerOntsnapping, toonWinScherm, winScherm,
+  get ontsnappingsPunt() { return ontsnappingsPunt; },
+  set ontsnappingsPunt(v) { ontsnappingsPunt = v; },
   // Ticket 6: eventgolf-framework
   EVENT_GOLF_INTERVAL, isEventGolf, kiesEventType, startEventGolf, eindigEventGolf,
   get actieveEventGolf() { return actieveEventGolf; },

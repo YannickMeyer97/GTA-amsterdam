@@ -53,8 +53,8 @@ const stijlInventaris = await page.evaluate(() => {
   return uit;
 });
 const stijlNamen = Object.keys(stijlInventaris);
-check('Er staan 12 stijlen in WINKEL_STIJLEN (één per interactiepunt)',
-  stijlNamen.length === 12, stijlInventaris);
+check('Er staan 13 stijlen in WINKEL_STIJLEN (12 statische interactiepunten + de gedeelde Ticket-44-vluchtroutestijl)',
+  stijlNamen.length === 13, stijlInventaris);
 check('Voor elke stijl is de icoon-geometrie hergebruikt tussen twee bouwIcoon()-aanroepen (gedeelde cache)',
   stijlNamen.every(n => stijlInventaris[n].geometrieHergebruikt), stijlInventaris);
 check('Voor elke stijl krijgt elke bouwIcoon()-aanroep verse materials (geen materiaal-cache, blijft doofbaar)',

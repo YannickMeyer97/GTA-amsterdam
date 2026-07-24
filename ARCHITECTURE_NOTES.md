@@ -1257,6 +1257,19 @@ Stroomuitval-eventgolf, De Hagelketel als derde wapen, dreigingsaudio,
 zone-naambanners en een golf-16+ pacing-audit. Tickets 42–51 in
 ROADMAP.md; ontwerpbeslissingen 33–42 hieronder.
 
+**Feedbackronde ná speeltest (§6.12-6.17, ontwerpbeslissingen 43-48):**
+nadat T42-45 waren geïmplementeerd en gespeeld kwam concrete feedback
+terug — de ontsnappingslocatie voelde random, de vluchtroute-onderdelen
+vielen niet op, en de gebruiker wil een ronde-gebonden ontsnappings-
+ritme in plaats van "altijd beschikbaar zodra 3/3". Verwerkt als
+Tickets 52-56 (§6.12-6.15). Een tweede feedbackronde op het T56-ontwerp
+zelf voegde een "item+rustvlak verdwijnen samen"-eis toe, plus Ticket 57: dezelfde
+zwevende-planken-fout uit de binnenplaats-fix blijkt zich elders ook
+voor te doen (§6.16, beslissing 48). Tegelijk is De Hagelketel (T47/T48)
+op verzoek van de gebruiker naar de Backlog verplaatst (§6.17) — §6.6
+blijft als ontwerpreferentie staan, maar telt niet meer mee in de
+actieve performancebudgetten hieronder.
+
 ### 6.1 Codekaart — run-state, schermen en persistentie (huidige staat)
 
 - **`spelStaat`** (~regel 4032): golf/geld/gameOver/golfActief/budget/
@@ -1393,21 +1406,25 @@ verschil is bewust.
 
 ### 6.9 Performancebudgetten — ronde 4
 
-- **Lights**: 23 → 24, uitsluitend door de Hagelketel-vlam (T47). De
-  `schaduw === 1`-invariant blijft keihard. Stroomuitval voegt NIETS toe
-  (dimmen is een intensity-write). Geen ember-licht op de
-  Hagelketel-smederijvisual.
+- **Lights**: 23 → 24, uitsluitend door de nieuwe vlonder-lantaarn
+  (T52, §6.12) — de Hagelketel-vlam die deze +1 oorspronkelijk zou
+  leveren is naar de Backlog verplaatst (§6.17), dus geen dubbele
+  toevoeging. De `schaduw === 1`-invariant blijft keihard. Stroomuitval
+  voegt NIETS toe (dimmen is een intensity-write). De nieuwe lantaarn
+  is een buitenlicht: geen schaduw, niet in `lampLichten`.
 - **Hot paths**: `schiet()`/`raakOndode()` blijven allocatievrij — de
-  pellet-lus en de runStats-increments zijn kale writes; de bestaande
-  source-checks bewaken dit en moeten groen blijven.
-- **Effecten**: plafonds ongewijzigd (8 tracers / 24 impacts); 6 pellets
-  × bestaande recycling valt daarbinnen.
-- **HUD/DOM**: vluchtroute-teller en zonelabel schrijven alleen bij een
+  runStats-increments zijn kale writes; de bestaande source-checks
+  bewaken dit en moeten groen blijven. Geen van T52-56 raakt deze
+  functies.
+- **Effecten**: plafonds ongewijzigd (8 tracers / 24 impacts).
+- **HUD/DOM**: vluchtroute-teller, zonelabel én het nieuwe
+  boot-/ontsnappingsvenster-label (T54) schrijven alleen bij een
   verandering; het winscherm is een event-overlay. Geen per-frame
   DOM-reads of -writes erbij.
 - **Audio**: drone-gain max 0.05, throttle ~0.25s, nul
-  oscillator-herstarts; alle nieuwe one-shots ≤ 0.16 volume (bestaande
-  regel).
+  oscillator-herstarts; alle nieuwe one-shots (incl. de T55-boothoorn)
+  ≤ 0.16 volume (bestaande regel) en spelen exact 1x per aankomst/
+  vertrek, niet per frame.
 - **Persistentie**: localStorage alleen bij run-einde
   (gameover/ontsnapping) en scherm-opbouw — nooit in de loop.
 
@@ -1417,13 +1434,15 @@ verschil is bewust.
   drie overlays (start/gameOver/win) delen één pointerlockchange-handler.
   T45 raakt 'm; elke wijziging vereist de bestaande pauze-/gameover-tests
   én de nieuwe win-tests groen.
-- **`schiet()` voor de derde ronde op rij** (T32 pool, T34 identiteit, nu
-  T47 pellets). Het 1-pellet-pad moet byte-voor-byte het oude gedrag
-  zijn; de source-checks (geen new THREE./setTimeout) bewaken de rest.
-- **Exacte-tellingschecks in bestaande tests**: `test-smederij-verhuizing`
-  (12 interactiepunten → 13 in T48) en `test-v016-integratie` (lichten
-  ≤ 23 → ≤ 24 in T47) worden in HETZELFDE ticket bijgewerkt als de
-  wijziging — zelfde les als T16/test-powerups en T30/hitreacties.
+- **Exacte-tellingschecks in bestaande tests**: `test-ontsnapping.mjs`'s
+  kelderluik-positie-assertie wordt in T53 zelf bijgewerkt naar de
+  nieuwe vlonder-coördinaten; de lichttelling (≤ 23 → ≤ 24) wordt in T52
+  zelf bijgewerkt — zelfde les als T16/test-powerups en T30/hitreacties,
+  nu ook toegepast op de feedbackronde.
+- **T54/T55-volgorde**: bouw eerst de mechaniek (golf-gating,
+  interactiepunt-toevoegen/-verwijderen) VOLLEDIG en getest, dan pas de
+  tell (aankondigingstimer, geluid, licht) eromheen. Nooit combineren —
+  zelfde les als T30/T31.
 - **Eventgolf-symmetrie**: mist en stroomuitval delen het oog-kanaal en
   het budget-/gewichten-mechanisme. Elke stroomuitval-test hoort
   mist-regressiechecks te bevatten (boost + exacte reset + windup-
@@ -1450,7 +1469,131 @@ verschil is bewust.
 | Vluchtroute | `interactiePunten`-mechaniek, `winkelMarkering`+`WINKEL_STIJLEN`, `toonGolfBanner`, `isVrijePlek`-probes |
 | Ontsnapping | `gameOverScherm`-opzet, pointer-lock-pauze-gate, T42-statsrender |
 | Stroomuitval | eventgolf-framework, `zetOogBasis`-kanaal, `lampDipFactor`-ramp-patroon, `eventSpawnGewichten` |
-| Hagelketel | `WAPEN_*`-veldenset (T34 incl.), `nieuweWapenStaat`, effecten-pool, koopRatelaar-patroon, smederijConfig |
+| Gang naar de Gracht (T52) | `GANG_*`-gangpatroon, `bouwZoneEMuur`, `bouwLantaarn`-patroon (kopiëren), `isVrijePlek`-probes |
+| Ontsnapping-verhuizing (T53) | T45's bestaande `toonOntsnappingspuntIndienKlaar()`-structuur, alleen de bron van `x`/`z` verandert |
+| Periodieke vensters (T54) | `isEventGolf`-pure-functiestijl, T44's dynamische-interactiepunten-patroon, `startGolf()`/`updateGolf()`-haakpunten |
+| Boot-tell (T55) | T31-tell-patroon (zicht+geluid apart van de mechaniek), `piep()`, lampflikker-patroon |
+| Vluchtroute-prominentie (T56) | bestaande prim-decorpatronen (kratten/planken), `flitsMarkering`-puls-idee |
 | Dreigingsaudio | `initGeluid()`/`piep()`-init-patroon, `spelActief`-takken van de gameLoop |
 | Zone-banners | `zoneVan()`, `toonGolfBanner`, HUD-write-bij-verandering-conventie |
 | Pacing-audit | threat-budget-simulatiepatroon uit de bestaande golf-tests, scratchpad-perfcount-aanpak |
+
+### 6.12 Gang naar de Gracht: vlonder, water, boot, lantaarn (beslissing 43)
+
+De bijkeuken-oostmuur (`BIJKEUKEN_X_OOST` = 12) was tot nu toe een
+dichte "nepgevel"-grens naar een onbenutte pocket (zie de
+Zone-E-comment, §6.1). Die pocket ligt volledig binnen de bestaande
+`GRENS` (`GRENS.maxX` = `PLAATS_X_OOST` − 0.05 ≈ 20.45) en ver van
+andere zones — de binnenplaats ligt rond `DEUR2_Z` ≈ −15.5, de nieuwe
+gang/vlonder blijft in het bijkeuken-z-bereik [−4.5, 4.5] — vandaar de
+keuze om de nieuwe ontsnappingslocatie HIER te bouwen in plaats van
+GRENS te vergroten of een bestaande zone te herschikken. Ontwerp: een
+smalle gang (zelfde patroon als de bestaande `GANG_*` tussen
+woonkamer/atelier) die uitkomt op een vlonder met drie nieuwe
+decorlagen — water (plat vlak, geen simulatie, puur silhouet), boot
+(decor tot T53) en een lantaarnpaal (kopie van het
+`bouwLantaarn`-patroon, §6.1 — die functie is lokaal gescoped, dus
+"kopiëren en aanpassen", CLAUDE.md). De lantaarn is bewust een
+BUITENLICHT: geen schaduw, niet in `lampLichten` (geen flikker/dip
+nodig), zelfde categorie als de binnenplaats-lantaarns en de
+Stroomuitval-buitenverlichting (§6.5) — dit houdt het lichtbudget
+voorspelbaar: 23 → 24, één permanente toevoeging voor de hele
+feedbackronde (T52-56 voegt verder GEEN lichten toe).
+
+### 6.13 Ontsnapping verhuist + periodieke vensters (beslissingen 44 en 45)
+
+**44 — verhuizing is een pure positie-wijziging.** T45's
+`toonOntsnappingspuntIndienKlaar()` bouwt het interactiepunt al op een
+expliciete `x`/`z` — T53 vervangt alleen de bron
+(`kelderluikMesh.position` → de T52-vlonder-/bootcoördinaten). Geen
+ander gedrag verandert: prijs, prompt-structuur, winscherm-flow blijven
+identiek. Dit isoleert het risico tot precies één test-assertie (de
+kelderluik-positie-check in `test-ontsnapping.mjs`), dezelfde discipline
+als eerdere positie-/tellingwijzigingen in dit project.
+
+**45 — golf-gating ALS TOEVOEGING, niet als vervanging.** De feedback
+vroeg om een ronde-gebonden ontsnappingsvenster (vanaf golf 10, dan
+elke 4 golven), maar noemde de bestaande 3/3-onderdelen-eis niet.
+Beslissing: BEIDE voorwaarden gelden — de boot moet er zijn (golf-gate,
+T54) ÉN de speler moet klaar zijn (3/3 + geld, bestaand T45-contract).
+Dit is een bewuste ontwerpkeuze (hier expliciet gedocumenteerd zodat
+'m kan worden teruggedraaid als de gebruiker liever alleen golf-gating
+wil, zonder de onderdelen-eis): het beloont vooruitplannen — ben je
+niet op tijd klaar voor golf 10, dan wacht je gewoon tot golf 14. De
+golf-voorwaarde wordt een PURE, tabel-testbare functie
+(`isOntsnappingsGolf`), zelfde stijl als `isEventGolf` — geen state,
+alleen golfnummer in, boolean uit. De venster-open/-dicht-logica hangt
+aan de AL BESTAANDE `startGolf()`/`updateGolf()`-haakpunten (geen
+nieuwe game-loop-tak nodig), zelfde patroon als T44's
+`toonVluchtOnderdelenIndienDrempel()`.
+
+### 6.14 Boot-aankomst: tell vóór mechaniek (beslissing 46)
+
+Zelfde les als T30/T31 (aanvals-state-machine vs. tells): de mechaniek
+(wanneer is het venster open, wanneer verschijnt het interactiepunt) en
+de PRESENTATIE (hoe merkt de speler dat) zijn bewust twee tickets. T55
+introduceert een korte aankondigingsfase VOORDAT het interactiepunt (en
+dus de "Druk T"-prompt) verschijnt — rechtstreeks antwoord op "je niet
+meteen ontsnapt ziet staan". De aankondiging zelf hergebruikt
+uitsluitend bestaande patronen (banner, `piep()`, lampflikker) — geen
+nieuwe presentatie-infrastructuur.
+
+### 6.15 Vluchtroute-onderdelen: rustvlak i.p.v. zwevend, en één group om samen te verdwijnen (beslissing 47)
+
+Dezelfde categorie fout als de zwevende barricadeplanken (eerder deze
+sessie gefixt, zie de git-historie): een los object zonder duidelijk
+draagvlak leest niet als "hier ligt iets om op te rapen". T56 voegt een
+klein rustvlak per onderdeel toe — geen nieuwe systemen, alleen een
+extra mesh per `bouw*Mesh()`-functie (Ticket 44). Blijft binnen het
+bestaande perf-budget (§5.10/§6.9): drie kleine, statische
+toevoegingen, geen nieuwe lichten of per-frame writes buiten de al
+bestaande puls-cyclus.
+
+**Uitbreiding ná tweede feedbackronde:** het rustvlak wordt
+een KIND van dezelfde `THREE.Group` als het item-mesh zelf
+(`onderdeel.mesh`), niet een los, blijvend object ernaast. Dat is
+bewust: `raapVluchtOnderdeelOp()` (Ticket 44) doet nu al
+`wereld.remove(onderdeel.mesh)` — door het rustvlak in diezelfde group
+te hangen, verdwijnt het COMPLETE stukje decor (item + krat/plank/
+vensterbank) automatisch in één keer bij het oprapen, zonder dat die
+functie zelf ook maar één regel hoeft te veranderen. Dit is exact het
+"geen nieuwe mechaniek, alleen de juiste plek in de bestaande
+group-hiërarchie"-principe dat dit project al vaker toepast (bv. de
+winkelMarkering-ring+icoon-group, §5.7).
+
+### 6.16 Zwevende barricadeplanken elders: audit (beslissing 48)
+
+De binnenplaats-fix (`VENSTERS_PLAATS`, `basisY`-override in
+`bouwBarricade()`) loste het probleem alleen daar op. Twee screenshots
+van de gebruiker (golf 6) tonen dat hetzelfde soort visuele mismatch
+zich elders voordoet. Vooronderzoek voor Ticket 57:
+
+- **`VENSTERS`/`VENSTERS_KAMER2`** (woonkamer resp. atelier) delen
+  hetzelfde kozijn (`BoxGeometry(1.3, 1.6, 0.12)` op y=1.9 → opening
+  y≈1.1-2.7). De standaard-plankstapel (y=1.2/1.6/2.0, spant
+  1.14-2.06) past daar wél BINNEN de opening — geen letterlijke
+  overshoot — maar laat ~0.6m kozijn/glas zichtbaar BOVEN de planken,
+  wat ook als "niet kloppend" kan ogen.
+- **`VENSTERS_BIJKEUKEN`** (de "steegdeur") heeft HELEMAAL GEEN eigen
+  kozijn-mesh — de barricade hangt daar zonder enig omlijnend
+  referentiepunt. Dit is de sterkste kandidaat voor een letterlijk
+  "zweeft in het niets"-effect, en dus vermoedelijk wat de screenshots
+  laten zien.
+
+Ticket 57 is bewust een AUDIT-ticket, geen blinde fix: eerst
+reproduceren met de exacte HUD-staat uit de screenshots (golf 6,
+Vluchtroute 1/3), dan alle overgebleven vensters visueel narekenen, en
+per gevonden mismatch dezelfde `basisY`-mechaniek toepassen die de
+binnenplaats-fix al introduceerde — geen nieuwe infrastructuur nodig,
+alleen zorgvuldig per-venster narekenen wat de binnenplaats-ticket
+(destijds) niet deed.
+
+### 6.17 Hagelketel naar de Backlog
+
+Op verzoek van de gebruiker staat de Hagelketel (T47/T48,
+ontwerpbeslissingen 38-39, §6.6) NIET meer in de actieve ronde. §6.6
+blijft ongewijzigd staan als ontwerpreferentie (mocht dit ooit
+terugkomen — zie ROADMAP.md's Backlog-sectie); de
+performance-/risicobudgetten hierboven (§6.9-6.11) zijn bijgewerkt om
+de Hagelketel NIET meer mee te rekenen — de lichttelling 23→24 komt nu
+van T52's lantaarn, niet van een wapenvlam.
