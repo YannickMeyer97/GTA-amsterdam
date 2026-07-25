@@ -405,6 +405,7 @@
   </div>
   <div id="powerupStatusUI" style="font-size:12px; font-weight:700; margin-top:2px; color:#ffd76a;"></div>
   <div id="vluchtrouteUI" style="font-size:12px; font-weight:700; margin-top:2px; color:#6fe8c0;">Vluchtroute: 0/3</div>
+  <div id="ontsnappingVensterUI" style="font-size:12px; font-weight:700; margin-top:2px; color:#9fd4ff;"></div>
 </div>
 <div id="vignet"></div>
 <div id="gameOverScherm">
@@ -437,7 +438,7 @@
     <span style="opacity:0.85">🎒 Vind de 3 vluchtroute-onderdelen om te ontsnappen</span>
   </div>
   <div id="startschermRecord" style="opacity:0.85; margin-bottom:14px; font-size:14px;"></div>
-  <div style="font-size:19px; font-weight:700; margin-bottom:12px;">Kies je moeilijkheidsgraad</div>
+  <div id="moeilijkheidLabel" style="font-size:19px; font-weight:700; margin-bottom:12px;">Kies je moeilijkheidsgraad</div>
   <div id="moeilijkheidKnoppen" style="display:flex; gap:14px;">
     <div class="knop" data-moeilijkheid="toerist">Toerist</div>
     <div class="knop" data-moeilijkheid="amsterdammer">Amsterdammer</div>
@@ -984,21 +985,23 @@ let klinkersMesh;
   // v0.11: binnenplaats duidelijk lichter — sterker, breder maanlicht (nog
   // steeds koel blauw voor de nachtsfeer) + een zachte vulgloed, zodat de
   // hele buitenplaats leesbaar is i.p.v. alleen de directe omgeving.
-  const maanlicht = new THREE.PointLight(0xc8ddff, 48, 28, 1.15);
+  // Feedback: binnenplaats ~20% donkerder (was 48/34/22 hieronder) —
+  // gemeten via pixelhelderheid, niet alleen de PointLight-waarden zelf.
+  const maanlicht = new THREE.PointLight(0xc8ddff, 28.8, 28, 1.15);
   maanlicht.position.set(PLAATS_CX, KAMER_HOOGTE + 1.25, DEUR2_Z - 1.0);
   wereld.add(maanlicht);
-  buitenLichten.push({ licht: maanlicht, basis: 48 });
+  buitenLichten.push({ licht: maanlicht, basis: 28.8 });
   // Tweede, zwakker maanlicht bij de deur zodat je 'm bij binnenkomst
   // meteen ziet i.p.v. eerst een paar meter het donker in te moeten lopen.
-  const maanlichtDeur = new THREE.PointLight(0xc8ddff, 34, 17, 1.25);
+  const maanlichtDeur = new THREE.PointLight(0xc8ddff, 20.4, 17, 1.25);
   maanlichtDeur.position.set(DEUR2_X + 1.8, KAMER_HOOGTE + 0.7, DEUR2_Z);
   wereld.add(maanlichtDeur);
-  buitenLichten.push({ licht: maanlichtDeur, basis: 34 });
+  buitenLichten.push({ licht: maanlichtDeur, basis: 20.4 });
   // Extra zachte vulgloed op de open plaats. Geen shadows, puur leesbaarheid.
-  const plaatsVulling = new THREE.PointLight(0x8fb8e8, 22, 24, 1.8);
+  const plaatsVulling = new THREE.PointLight(0x8fb8e8, 13.2, 24, 1.8);
   plaatsVulling.position.set(PLAATS_CX + 3.0, 2.2, DEUR2_Z + 2.5);
   wereld.add(plaatsVulling);
-  buitenLichten.push({ licht: plaatsVulling, basis: 22 });
+  buitenLichten.push({ licht: plaatsVulling, basis: 13.2 });
 
   // v0.6: vier lantaarnpalen als belangrijkste lichtbron van de vergrote
   // binnenplaats — schaduwloos (perf), warm-wit, duidelijk anders dan het
@@ -1013,18 +1016,21 @@ let klinkersMesh;
     wereld.add(armatuur);
     // v0.11: sterkere, warmere lichtpoel per lantaarn (leesbaarheid), plus
     // een zachte grondgloed die de lichtpoel zelf zichtbaar maakt.
-    const lantaarnBolBasis = 2.2;
+    // Feedback: binnenplaats ~20% donkerder (was 34/2.2) — gemeten via
+    // pixelhelderheid, niet alleen de PointLight-waarde zelf. Raakt bewust
+    // NIET de losstaande gracht-lantaarn (Ticket 52, eigen declaratie).
+    const lantaarnBolBasis = 1.32;
     const bol = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 12),
       new THREE.MeshStandardMaterial({ color: 0xffefd0, emissive: 0xffc36a, emissiveIntensity: lantaarnBolBasis }));
     bol.position.set(x, 2.5, z);
     wereld.add(bol);
-    const licht = new THREE.PointLight(0xffd6a0, 34, 13, 1.65);
+    const licht = new THREE.PointLight(0xffd6a0, 20.4, 13, 1.65);
     licht.position.set(x, 2.45, z);
     wereld.add(licht);
     // Ticket 46-fix (feedback): de lantaarns zijn elektrisch, dus dimmen
     // net als de binnenlampen mee tijdens een Stroomuitval — met hun eigen
     // (hogere) buiten-vloer, zie de gameLoop-flikkerloop.
-    buitenLichten.push({ licht, basis: 34, bolMateriaal: bol.material, bolBasis: lantaarnBolBasis });
+    buitenLichten.push({ licht, basis: 20.4, bolMateriaal: bol.material, bolBasis: lantaarnBolBasis });
     const lichtvlek = new THREE.Mesh(
       new THREE.CircleGeometry(1.25, 24),
       new THREE.MeshBasicMaterial({ color: 0xffd6a0, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false })
@@ -1121,6 +1127,20 @@ const KELDERHALS_Z_ZUID  = BIJKEUKEN_Z_NOORD;  // = -4.5, open verbinding naar d
 // DEUR3_X/DEUR3_HALF/DEUR4_Z/DEUR4_HALF staan bovenin het bestand (vóór de
 // woonkamer/binnenplaats-muren die ze splitsen, zie Ticket 25/26).
 
+// Ticket 52 (Doel D5): korte gang van de bijkeuken naar de vlonder aan de
+// gracht — zelfde smalle-gang-breedte als de bestaande GANG_* (DEUR_HALF),
+// nu oostwaarts vanuit de bijkeuken-oostmuur de vrije pocket in. Ruim
+// binnen GRENS.maxX (= PLAATS_X_OOST - 0.05 ≈ 20.45); de binnenplaats ligt
+// met PLAATS_Z_ZUID (= -7) ver noordelijker dan deze z-band (bijkeuken:
+// z ∈ [-4.5, 4.5]), dus geen overlaprisico (zie de Zone-E-comment hierboven).
+const GRACHTGANG_HALF = 1;                                     // halve breedte (z), zelfde als DEUR_HALF
+const GRACHTGANG_X_WEST = BIJKEUKEN_X_OOST;                     // = 12, vlak van de bijkeuken-oostmuur
+const GRACHTGANG_LENGTE = 3;                                    // zelfde lengte als GANG_LENGTE
+const VLONDER_X_WEST = GRACHTGANG_X_WEST + GRACHTGANG_LENGTE;   // = 15, hier stopt het plafond (buiten begint)
+const VLONDER_DIEPTE = 4.5;
+const VLONDER_X_OOST = VLONDER_X_WEST + VLONDER_DIEPTE;         // = 19.5, ruim binnen GRENS.maxX (20.45)
+let vlonderMesh, waterMesh, bootGroep, grachtLantaarnLicht;   // toegewezen in het geometrie-blok hieronder, debug/test-referenties
+
 /* ================================================================
    ZONE E — DE BIJKEUKEN + KELDERHALS (Ticket 24, map-lus M1): geometrie-
    schil in de bestaande "vrije pocket" (ARCHITECTURE_NOTES §4.4/4.7).
@@ -1171,9 +1191,18 @@ let bijkeukenVloerMesh;
   // Bijkeuken-zuidmuur (nieuw: niets anders dekt deze rand al af).
   bouwZoneEMuur(BIJKEUKEN_CX, BIJKEUKEN_Z_ZUID + MUUR_DIKTE / 2,
     BIJKEUKEN_X_OOST - BIJKEUKEN_X_WEST, MUUR_DIKTE, BIJKEUKEN_TEGEL);
-  // Bijkeuken-oostmuur (nieuw: scheidt van de rest-pocket met de nepgevel).
-  bouwZoneEMuur(BIJKEUKEN_X_OOST + MUUR_DIKTE / 2, BIJKEUKEN_CZ,
-    MUUR_DIKTE, BIJKEUKEN_Z_ZUID - BIJKEUKEN_Z_NOORD, BIJKEUKEN_TEGEL);
+  // Bijkeuken-oostmuur (Ticket 24: scheidde van de rest-pocket met de
+  // nepgevel; Ticket 52 opent 'm met een doorgang naar de nieuwe gang naar
+  // de gracht — twee segmenten met een gat z ∈ [BIJKEUKEN_CZ ±
+  // GRACHTGANG_HALF], zelfde "geen deur, gewoon een gat"-patroon als de
+  // kelderhals-doorgang hierboven).
+  {
+    const oostX = BIJKEUKEN_X_OOST + MUUR_DIKTE / 2;
+    const noordDiepte = (BIJKEUKEN_CZ - GRACHTGANG_HALF) - BIJKEUKEN_Z_NOORD;
+    bouwZoneEMuur(oostX, BIJKEUKEN_Z_NOORD + noordDiepte / 2, MUUR_DIKTE, noordDiepte, BIJKEUKEN_TEGEL);
+    const zuidDiepte = BIJKEUKEN_Z_ZUID - (BIJKEUKEN_CZ + GRACHTGANG_HALF);
+    bouwZoneEMuur(oostX, BIJKEUKEN_Z_ZUID - zuidDiepte / 2, MUUR_DIKTE, zuidDiepte, BIJKEUKEN_TEGEL);
+  }
   // Kelderhals-west/oostmuur (nieuw). Het noordeinde raakt de bestaande
   // binnenplaats-zuidmuur — een kleine overlap daar is onschuldig (allebei
   // muur); het zuideinde is de open verbinding naar de bijkeuken.
@@ -1187,12 +1216,136 @@ let bijkeukenVloerMesh;
 bijkeukenVloerMesh.material = matFamilie('tegel', 0x35424a);
 bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
 
+/* ================================================================
+   TICKET 52 (Doel D5) — DE GRACHT: korte gang vanuit de bijkeuken naar
+   een vlonder aan het water, met een boot (vooralsnog puur decor, T53
+   koppelt de interactie) en een lantaarnpaal. Vanaf VLONDER_X_WEST: geen
+   plafond meer — zelfde "open lucht"-patroon als de binnenplaats (Zone D).
+   Valt al binnen zoneVan()'s bijkeuken/kelderhals-tak (x >= DEUR2_X en
+   z > PLAATS_Z_ZUID), dus geen wijziging aan zoneVan()/ZONE_NAMEN nodig —
+   ZONE_FLAVOUR[4] noemt "de weg naar de gracht" nu al.
+   ================================================================ */
+{
+  const GRACHTGANG_VLOER = 0x1c1a16;   // zelfde donkere gangvloer-tint als GANG_Z_MIDDEN-vloer
+  const VLONDER_HOUT = 0x4a3826;       // verweerd vlonderhout, warmer dan de gangvloer
+  const RAILING_HOUT = 0x392c1f;
+  const gangCZ = BIJKEUKEN_CZ;
+  const gangDiepte = GRACHTGANG_HALF * 2;
+  const gangMidX = (GRACHTGANG_X_WEST + VLONDER_X_WEST) / 2;
+  const vlonderMidX = (VLONDER_X_WEST + VLONDER_X_OOST) / 2;
+
+  function bouwGrachtMuur(x, z, breedte, diepte, kleur) {
+    const muur = blok(breedte, KAMER_HOOGTE, diepte, kleur, 0.92);
+    muur.position.set(x, KAMER_HOOGTE / 2, z);
+    wereld.add(muur);
+    registreerRechthoek(x - breedte / 2, x + breedte / 2, z - diepte / 2, z + diepte / 2);
+  }
+
+  // Gang-vloer/plafond (x ∈ [GRACHTGANG_X_WEST, VLONDER_X_WEST]) — binnen,
+  // zelfde stijl als de bestaande gang tussen woonkamer en atelier.
+  vlak(GRACHTGANG_VLOER, GRACHTGANG_LENGTE, gangDiepte, gangMidX, gangCZ, 0, false);
+  vlak(0x100e0b, GRACHTGANG_LENGTE, gangDiepte, gangMidX, gangCZ, KAMER_HOOGTE, true);
+  bouwGrachtMuur(gangMidX, gangCZ - GRACHTGANG_HALF - MUUR_DIKTE / 2, GRACHTGANG_LENGTE, MUUR_DIKTE, GANG_PLEISTER);
+  bouwGrachtMuur(gangMidX, gangCZ + GRACHTGANG_HALF + MUUR_DIKTE / 2, GRACHTGANG_LENGTE, MUUR_DIKTE, GANG_PLEISTER);
+
+  // Vlonder-vloer (x ∈ [VLONDER_X_WEST, VLONDER_X_OOST]) — buiten, eigen
+  // houten materiaal (Ticket 38: 'hout'-familie), geen plafond.
+  vlonderMesh = vlak(VLONDER_HOUT, VLONDER_DIEPTE, gangDiepte, vlonderMidX, gangCZ, 0.02, false);
+  vlonderMesh.material = matFamilie('hout', VLONDER_HOUT);
+  vlonderMesh.userData.materiaalFamilie = 'hout';
+
+  // Lage railings langs de vlonder (buiten, dus geen volle muren — houdt de
+  // speler wel duidelijk op het houten pad i.p.v. aan de zijkant het beeld
+  // "uit" te lopen).
+  function bouwRailing(z) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(VLONDER_DIEPTE, 0.5, 0.08), matFamilie('hout', RAILING_HOUT));
+    rail.position.set(vlonderMidX, 0.45, z);
+    wereld.add(rail);
+    registreerRechthoek(vlonderMidX - VLONDER_DIEPTE / 2, vlonderMidX + VLONDER_DIEPTE / 2, z - 0.1, z + 0.1);
+  }
+  bouwRailing(gangCZ - GRACHTGANG_HALF);
+  bouwRailing(gangCZ + GRACHTGANG_HALF);
+
+  // Obstakel aan de vlonderrand: voorkomt dat de speler het water in loopt.
+  const vlonderRandX = VLONDER_X_OOST - 0.15;
+  const vlonderRandMesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, gangDiepte + 0.2), matFamilie('hout', RAILING_HOUT));
+  vlonderRandMesh.position.set(vlonderRandX, 0.2, gangCZ);
+  wereld.add(vlonderRandMesh);
+  registreerRechthoek(vlonderRandX - 0.15, vlonderRandX + 0.15, gangCZ - GRACHTGANG_HALF - 0.1, gangCZ + GRACHTGANG_HALF + 0.1);
+
+  // De gracht: donker blauwgroen watervlak, licht transparant, net voorbij
+  // de vlonderrand.
+  waterMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(3, gangDiepte + 2),
+    new THREE.MeshStandardMaterial({ color: 0x1a3a34, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.85 })
+  );
+  waterMesh.rotation.x = -Math.PI / 2;
+  waterMesh.position.set(VLONDER_X_OOST + 1.5, -0.05, gangCZ);
+  wereld.add(waterMesh);
+
+  // De boot: langwerpige, licht afgeronde romp uit simpele prims — puur
+  // decor (Ticket 53 koppelt 'm aan de ontsnappings-interactie).
+  bootGroep = new THREE.Group();
+  bootGroep.position.set(VLONDER_X_OOST + 1.3, 0, gangCZ);
+  const romp = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 2.4, 10), mat(0x3a2a1c, 0.8, 0.05));
+  romp.rotation.z = Math.PI / 2;
+  romp.position.y = 0.05;
+  romp.scale.set(1, 1, 0.7);
+  bootGroep.add(romp);
+  const dek = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.12, 0.55), mat(0x4a3826, 0.75, 0.05));
+  dek.position.y = 0.32;
+  bootGroep.add(dek);
+  const boeg = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.7, 8), mat(0x3a2a1c, 0.8, 0.05));
+  boeg.rotation.z = -Math.PI / 2;
+  boeg.position.set(1.15, 0.1, 0);
+  boeg.scale.set(0.7, 1, 0.5);
+  bootGroep.add(boeg);
+  wereld.add(bootGroep);
+
+  // Lantaarnpaal: bouwLantaarn() (regel ~1006) is LOKAAL gescoped bij de
+  // binnenplaats-geometrie, dus hier gekopieerd en aangepast i.p.v.
+  // aangeroepen (zelfde regel als CLAUDE.md voorschrijft). Warm licht, geen
+  // schaduw, NIET in lampLichten (buitenlicht-precedent, zelfde als de
+  // binnenplaats-lantaarns) — lichttelling gaat hierdoor bewust van 23 naar
+  // 24 (zie de bijgewerkte test-v016-integratie.mjs).
+  const lantaarnX = VLONDER_X_WEST + 0.8;
+  const lantaarnZ = gangCZ + GRACHTGANG_HALF - 0.3;
+  const gPaal = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 2.6, 8), mat(0x2a2e30, 0.6, 0.3));
+  gPaal.position.set(lantaarnX, 1.3, lantaarnZ);
+  gPaal.castShadow = true;
+  wereld.add(gPaal);
+  const gArmatuur = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.22), mat(0x1c1f20, 0.5, 0.4));
+  gArmatuur.position.set(lantaarnX, 2.62, lantaarnZ);
+  wereld.add(gArmatuur);
+  const gBolBasis = 2.2;
+  const gBol = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 12),
+    new THREE.MeshStandardMaterial({ color: 0xffefd0, emissive: 0xffc36a, emissiveIntensity: gBolBasis }));
+  gBol.position.set(lantaarnX, 2.5, lantaarnZ);
+  wereld.add(gBol);
+  grachtLantaarnLicht = new THREE.PointLight(0xffd6a0, 34, 13, 1.65);
+  grachtLantaarnLicht.position.set(lantaarnX, 2.45, lantaarnZ);
+  wereld.add(grachtLantaarnLicht);
+  buitenLichten.push({ licht: grachtLantaarnLicht, basis: 34, bolMateriaal: gBol.material, bolBasis: gBolBasis });
+  const gLichtvlek = new THREE.Mesh(
+    new THREE.CircleGeometry(1.25, 24),
+    new THREE.MeshBasicMaterial({ color: 0xffd6a0, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false })
+  );
+  gLichtvlek.rotation.x = -Math.PI / 2;
+  gLichtvlek.position.set(lantaarnX, 0.012, lantaarnZ);
+  wereld.add(gLichtvlek);
+}
+
 // Ticket 27 (Map-lus M4): zone-E-inhoud — spawn-venster (actief pas na
 // deur 3, zie koopDeur3()), Provisiekast-kooppunt (verderop bij de andere
 // interactiepunten) en decor zonder collision. Kiest bewust ver van deur 4
 // (spawn-camping-risico, zie ARCHITECTURE_NOTES §4.7/4.10).
+// Ticket 57: had HELEMAAL GEEN eigen kozijn-mesh (zie het nieuwe kozijn-
+// blok verderop, ná kozijnMateriaal/glasMateriaal) — de barricade hing dus
+// zonder enig omlijnend referentiepunt, het sterkste "zweeft in het niets"-
+// kandidaat uit de audit. Zelfde basisY/plankSpacing als de andere volwaardige
+// ramen, nu het kozijn er eindelijk is.
 const VENSTERS_BIJKEUKEN = [
-  { x: 11.6, z: 2, zone: 'E', spanX: false },   // "de steegdeur" in de bijkeuken-oostmuur
+  { x: 11.6, z: 2, zone: 'E', spanX: false, basisY: 1.3, plankSpacing: 0.6 },   // "de steegdeur" in de bijkeuken-oostmuur
 ];
 
 // --- Bijkeuken-decor: keukenblok + fornuis + Provisiekast-planken (geen
@@ -1298,6 +1451,21 @@ const ATELIER_NOORDRAAM_X = -3.2;
   wereld.add(glasNis);
 }
 
+// Ticket 57: de "steegdeur" (VENSTERS_BIJKEUKEN) had HELEMAAL GEEN eigen
+// kozijn-mesh — de barricadeplanken hingen daar dus zonder enig omlijnend
+// referentiepunt in de lucht, de sterkste kandidaat uit de zwevende-planken-
+// audit. Zelfde kozijnOost-patroon hierboven (muur loopt langs z, dus
+// kozijn/glas dun in x), gespiegeld voor de bijkeuken-oostmuur.
+let kozijnSteeg, glasSteeg;
+{
+  kozijnSteeg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.6, 1.3), kozijnMateriaal);
+  kozijnSteeg.position.set(BIJKEUKEN_X_OOST - 0.06, 1.9, 2);
+  wereld.add(kozijnSteeg);
+  glasSteeg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.3, 1.0), glasMateriaal);
+  glasSteeg.position.set(BIJKEUKEN_X_OOST - 0.18, 1.9, 2);
+  wereld.add(glasSteeg);
+}
+
 // Warme lampen: een gloeiend bolletje + puntlicht, symmetrisch opgehangen.
 // Elk licht wordt geregistreerd zodat de game-loop het zacht kan laten
 // flikkeren (kaars-/olielamp-sfeer).
@@ -1366,10 +1534,12 @@ hangLamp(1.8, 2.2);
   dakraam.position.set(0, KAMER_HOOGTE - 0.02, ATELIER_MIDDEN_Z);
   wereld.add(dakraam);
   // v0.6: bereik/intensiteit iets opgehoogd — de hoofdruimte is dieper geworden.
-  const dakraamLicht = new THREE.PointLight(0xaacdf0, 18, 12, 2);
+  // Feedback: atelier ~20% donkerder (was 18) — gemeten via pixelhelderheid,
+  // niet alleen de PointLight-waarde zelf.
+  const dakraamLicht = new THREE.PointLight(0xaacdf0, 10.8, 12, 2);
   dakraamLicht.position.set(0, KAMER_HOOGTE - 0.3, ATELIER_MIDDEN_Z);
   wereld.add(dakraamLicht);
-  stroomGevoeligeDaklichten.push({ licht: dakraamLicht, basis: 18 });
+  stroomGevoeligeDaklichten.push({ licht: dakraamLicht, basis: 10.8 });
 
   // v0.4: de voorraadnis ligt te ver van het hoofd-dakraam om nog goed
   // verlicht te worden — een eigen, kleiner daklicht (zelfde koele stijl,
@@ -1381,10 +1551,11 @@ hangLamp(1.8, 2.2);
   dakraamNis.rotation.x = Math.PI / 2;
   dakraamNis.position.set(KAMER2_NIS_CX, KAMER_HOOGTE - 0.02, KAMER2_NIS_CZ);
   wereld.add(dakraamNis);
-  const dakraamNisLicht = new THREE.PointLight(0xaacdf0, 22, 11, 2);
+  // Feedback: atelier ~20% donkerder (was 22).
+  const dakraamNisLicht = new THREE.PointLight(0xaacdf0, 13.2, 11, 2);
   dakraamNisLicht.position.set(KAMER2_NIS_CX, KAMER_HOOGTE - 0.3, KAMER2_NIS_CZ);
   wereld.add(dakraamNisLicht);
-  stroomGevoeligeDaklichten.push({ licht: dakraamNisLicht, basis: 22 });
+  stroomGevoeligeDaklichten.push({ licht: dakraamNisLicht, basis: 13.2 });
 
   // v0.6: de hoofdruimte is dieper geworden dan het centrale dakraam kan
   // verlichten. Een derde, kleiner daklicht (zelfde stijl) houdt ook die
@@ -1397,10 +1568,11 @@ hangLamp(1.8, 2.2);
   dakraamNoord.rotation.x = Math.PI / 2;
   dakraamNoord.position.set(0.5, KAMER_HOOGTE - 0.02, ATELIER_MIDDEN_Z - 6);
   wereld.add(dakraamNoord);
-  const dakraamNoordLicht = new THREE.PointLight(0xaacdf0, 22, 12, 2);
+  // Feedback: atelier ~20% donkerder (was 22).
+  const dakraamNoordLicht = new THREE.PointLight(0xaacdf0, 13.2, 12, 2);
   dakraamNoordLicht.position.set(0.5, KAMER_HOOGTE - 0.3, ATELIER_MIDDEN_Z - 6);
   wereld.add(dakraamNoordLicht);
-  stroomGevoeligeDaklichten.push({ licht: dakraamNoordLicht, basis: 22 });
+  stroomGevoeligeDaklichten.push({ licht: dakraamNoordLicht, basis: 13.2 });
 
   // v0.10: en de ruimte is ook 2m breder geworden (9m i.p.v. 7m) — een
   // vierde daklicht aan de zuidoostkant (bij de nieuwe kruk/lijstenstapel)
@@ -1412,10 +1584,11 @@ hangLamp(1.8, 2.2);
   dakraamZuidoost.rotation.x = Math.PI / 2;
   dakraamZuidoost.position.set(3.2, KAMER_HOOGTE - 0.02, ATELIER_MIDDEN_Z - 3);
   wereld.add(dakraamZuidoost);
-  const dakraamZuidoostLicht = new THREE.PointLight(0xaacdf0, 18, 10, 2);
+  // Feedback: atelier ~20% donkerder (was 18).
+  const dakraamZuidoostLicht = new THREE.PointLight(0xaacdf0, 10.8, 10, 2);
   dakraamZuidoostLicht.position.set(3.2, KAMER_HOOGTE - 0.3, ATELIER_MIDDEN_Z - 3);
   wereld.add(dakraamZuidoostLicht);
-  stroomGevoeligeDaklichten.push({ licht: dakraamZuidoostLicht, basis: 18 });
+  stroomGevoeligeDaklichten.push({ licht: dakraamZuidoostLicht, basis: 10.8 });
 }
 
 // Ticket 40 (Sfeer S3, §5.9-sfeer): 2 stofwolken (THREE.Points, <= 30
@@ -2207,6 +2380,11 @@ function kiesMoeilijkheid(naam) {
   moeilijkheid = MOEILIJKHEDEN[naam] ?? MOEILIJKHEDEN.amsterdammer;
   spelStaat.geld = moeilijkheid.startGeld;
   document.getElementById('moeilijkheidKnoppen').style.display = 'none';
+  // Feedback: "Kies je moeilijkheidsgraad" bleef staan bij elke latere
+  // pauze (Esc), ook nadat de keuze al gemaakt was — dit gebeurt maar 1x
+  // (moeilijkheidGekozen-guard hieronder), dus de nieuwe tekst blijft
+  // daarna permanent staan voor de rest van de run.
+  document.getElementById('moeilijkheidLabel').textContent = 'Klik op het scherm om door te gaan';
   updateHUD();
 }
 document.getElementById('moeilijkheidKnoppen').addEventListener('click', (e) => {
@@ -3489,9 +3667,14 @@ function effectiefMaxActief() {
 // `spanX`: geeft de oriëntatie van de barricade-planken (v0.8) — true voor
 // ramen in een muur die langs X loopt (planken liggen dus horizontaal
 // gemeten in x), false voor ramen in een muur die langs Z loopt.
+// Ticket 57: basisY/plankSpacing getuned op de echte kozijn/glas-afmetingen
+// (kozijn 1.6m hoog rond y=1.9, glas 1.3m hoog dus y ∈ [1.25, 2.55]) — de
+// middelste plank landt daardoor precies op y=1.9 (het kozijn-midden), de
+// buitenste twee net binnen de glasranden, zodat er geen kier meer
+// zichtbaar blijft boven de bovenste plank.
 const VENSTERS = [
-  { x: -2, z: HALF_DIEPTE - 0.4, zone: 'A', spanX: true },
-  { x: 2, z: HALF_DIEPTE - 0.4, zone: 'A', spanX: true },
+  { x: -2, z: HALF_DIEPTE - 0.4, zone: 'A', spanX: true, basisY: 1.3, plankSpacing: 0.6 },
+  { x: 2, z: HALF_DIEPTE - 0.4, zone: 'A', spanX: true, basisY: 1.3, plankSpacing: 0.6 },
 ];
 
 // v0.8: puur cosmetische per-ondode variatie, zodat een golf niet uit
@@ -4560,6 +4743,7 @@ function startGolf() {
   spelStaat.spawnTimer = 0;
   spelStaat.golfActief = true;
   toonVluchtOnderdelenIndienDrempel();   // Ticket 44: onthult onderdelen op hun drempelgolf
+  updateOntsnappingsVenster();           // Ticket 54: opent het periodieke ontsnappingsvenster indien van toepassing
   const taai = ondodeStartHP() > 1 ? 'de ondoden zijn nu taaier' : 'mik op het hoofd';   // Ticket 14: volgt de HP-trap
   const zones = aantalOntgrendeldeZones();
   const drukte = zones > 1 ? ` · ${zones} zones actief` : '';
@@ -4608,6 +4792,23 @@ function updateGolf(dt) {
     spelStaat.geld += bonus;
     runStats.geldTotaal += bonus;
     spelerStaat.hp = Math.max(spelerStaat.hp, WAVE_HEAL_MIN);
+    // Ticket 54: het ontsnappingsvenster sluit zodra de golf niet langer een
+    // ontsnappingsgolf is — de boot vaart weer weg (mechaniek; T55 voegt
+    // hier later de vertrek-tell aan toe).
+    if (ontsnappingsPunt && !isOntsnappingsGolf(spelStaat.golf)) {
+      const pi = interactiePunten.indexOf(ontsnappingsPunt);
+      if (pi !== -1) interactiePunten.splice(pi, 1);
+      ontsnappingsPunt = null;
+      // Ticket 55: vertrek-tell, symmetrisch met de aankomst.
+      speelBootVertrek();
+      toonGolfBanner('De boot vaart weer weg');
+    } else if (ontsnappingAankondigingActief && !isOntsnappingsGolf(spelStaat.golf)) {
+      // Ticket 55: de aankondiging liep nog toen de golf eindigde (zeldzaam,
+      // aankondigingsduur > resterende golftijd) — stil annuleren, er is nog
+      // niets "aangekomen" om te laten vertrekken.
+      ontsnappingAankondigingActief = false;
+    }
+    updateOntsnappingVensterHUD();
     toonGolfBanner('Wave cleared', `+€${bonus} bonus · koop bij de kist of het upgradepunt`);
     speelGolfKlaar();
     if (actieveEventGolf) eindigEventGolf();
@@ -4650,11 +4851,13 @@ const PANTSERDRANK_HP_BONUS = 100;     // hpMax +100 (100 -> 200), meteen ook ze
 // Nieuwe spawn-vensters die pas actief worden zodra de deur gekocht is.
 // Atelier-spawns matchen de asymmetrische ramen (Ticket V2): één noordwest,
 // één op de oostmuur — flankerende aanval i.p.v. frontaal.
+// Ticket 57: zelfde basisY/plankSpacing-tuning als VENSTERS hierboven —
+// dezelfde kozijn/glas-afmetingen, dus dezelfde kier-fix.
 const VENSTERS_KAMER2 = [
-  { x: ATELIER_NOORDRAAM_X, z: KAMER2_Z_NOORD + 0.4, zone: 'C', spanX: true },
-  { x: KAMER2_HALF_B - 0.4, z: ATELIER_OOSTRAAM_Z, zone: 'C', spanX: false },
+  { x: ATELIER_NOORDRAAM_X, z: KAMER2_Z_NOORD + 0.4, zone: 'C', spanX: true, basisY: 1.3, plankSpacing: 0.6 },
+  { x: KAMER2_HALF_B - 0.4, z: ATELIER_OOSTRAAM_Z, zone: 'C', spanX: false, basisY: 1.3, plankSpacing: 0.6 },
   // v0.4: derde, meest westelijke invalshoek vanuit de nieuwe voorraadnis.
-  { x: KAMER2_NIS_X_WEST + 0.4, z: KAMER2_NIS_CZ, zone: 'C', spanX: false },
+  { x: KAMER2_NIS_X_WEST + 0.4, z: KAMER2_NIS_CZ, zone: 'C', spanX: false, basisY: 1.3, plankSpacing: 0.6 },
 ];
 
 // Binnenplaats-spawns (Ticket V5): een poortdoorgang en een kelderdeur, pas
@@ -4695,7 +4898,13 @@ function bouwBarricade(venster) {
     // daardoor te zweven. `basisY` laat een venster zijn eigen, lagere
     // stapel-startpunt opgeven; de standaard-vensters (volle muurhoogte)
     // blijven op de bestaande 1.2 staan.
-    plank.position.set(venster.x, (venster.basisY ?? 1.2) + i * 0.4, venster.z);
+    // Ticket 57: de standaard-drieplankstapel (spant maar ~0.92m) liet bij
+    // de volwaardige ramen (kozijn 1.6m, glas 1.3m hoog) een duidelijke kier
+    // glas/kozijn zichtbaar boven de bovenste plank — geen letterlijke
+    // overshoot, maar wel "niet kloppend" ogend, zelfde familie als de
+    // zwevende-planken-klacht. `plankSpacing` laat de stapel breder uitwaaieren
+    // zodat de 3 planken de volledige glashoogte overtuigend afdekken.
+    plank.position.set(venster.x, (venster.basisY ?? 1.2) + i * (venster.plankSpacing ?? 0.4), venster.z);
     plank.rotation.z = (Math.random() - 0.5) * 0.12;   // licht scheve, haastig getimmerde look
     plank.castShadow = true;
     wereld.add(plank);
@@ -5255,46 +5464,79 @@ const smederijPunt = {
 // (§6.4-beslissing 35); startGolf() onthult 'm op de drempelgolf en voegt
 // PAS DAN het interactiepunt + de winkelMarkering toe — de laadtijd-
 // telling van interactiePunten (12) blijft daardoor ongewijzigd.
-function bouwRoeispaanMesh() {
+// Ticket 56 (Doel D9): elk onderdeel krijgt een duidelijk rustpunt (krat/
+// kistrand/plank, passend bij de zone) waar het item ZICHTBAAR bovenop
+// ligt, i.p.v. los in de lucht te zweven. BELANGRIJK: het rustvlak wordt
+// hier een KIND van dezelfde group als het item — dus verdwijnt het
+// complete stukje (item + rustvlak) automatisch in één keer via de AL
+// BESTAANDE wereld.remove(onderdeel.mesh) in raapVluchtOnderdeelOp()
+// hieronder, zonder die functie te wijzigen. Elke functie kreeg ook (x, z)-
+// parameters: de groups stonden voorheen NOOIT op hun bedoelde plek (bug —
+// mesh.position bleef op de wereld-oorsprong staan, alleen de losse
+// winkelMarkering-ring en het interactiepunt zaten al wél op (onderdeel.x,
+// onderdeel.z)), nu meteen gefixt zodat het rustvlak ook daadwerkelijk zin
+// heeft. g.userData.pulsMesh wijst naar het item zelf (niet het rustvlak) —
+// updateVluchtOnderdelenPuls() hieronder stuurt daar een subtiele,
+// permanente schaalpuls op (hergebruik van het flitsMarkering-idee, maar
+// blijvend zolang het onderdeel niet is opgeraapt i.p.v. eenmalig).
+function bouwRoeispaanMesh(x, z) {
   const g = new THREE.Group();
-  const blad = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.46), mat(0x6b4a2a, 0.75));
-  blad.position.y = 0.62;
+  g.position.set(x, 0, z);
+  const KRAT_HOOGTE = 0.4;
+  const krat = new THREE.Mesh(new THREE.BoxGeometry(0.55, KRAT_HOOGTE, 0.55), matFamilie('hout', 0x4a3826));
+  krat.position.y = KRAT_HOOGTE / 2;
+  g.add(krat);
+  const blad = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.026, 0.56), mat(0x6b4a2a, 0.75));
+  blad.position.y = KRAT_HOOGTE + 0.16;
   blad.rotation.z = 0.3;
   g.add(blad);
-  const steel = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 1.15, 8), mat(0x7a5a34, 0.7));
-  steel.position.y = 0.35;
+  const steel = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.036, 1.4, 8), mat(0x7a5a34, 0.7));
+  steel.position.y = KRAT_HOOGTE + 0.4;
   steel.rotation.z = 0.3;
   g.add(steel);
+  g.userData.pulsMesh = blad;
   g.visible = false;
   wereld.add(g);
   return g;
 }
-function bouwTouwbundelMesh() {
+function bouwTouwbundelMesh(x, z) {
   const g = new THREE.Group();
-  const buiten = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.075, 8, 14), mat(0xc9a86b, 0.85));
+  g.position.set(x, 0, z);
+  const KIST_HOOGTE = 0.36;
+  const kistrand = new THREE.Mesh(new THREE.BoxGeometry(0.62, KIST_HOOGTE, 0.62), matFamilie('hout', 0x3f342a));
+  kistrand.position.y = KIST_HOOGTE / 2;
+  g.add(kistrand);
+  const buiten = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.085, 8, 14), mat(0xc9a86b, 0.85));
   buiten.rotation.x = Math.PI / 2;
-  buiten.position.y = 0.32;
+  buiten.position.y = KIST_HOOGTE + 0.14;
   g.add(buiten);
-  const binnen = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.05, 8, 12), mat(0xb5946a, 0.85));
+  const binnen = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.055, 8, 12), mat(0xb5946a, 0.85));
   binnen.rotation.x = Math.PI / 2;
-  binnen.position.y = 0.32;
+  binnen.position.y = KIST_HOOGTE + 0.14;
   g.add(binnen);
+  g.userData.pulsMesh = buiten;
   g.visible = false;
   wereld.add(g);
   return g;
 }
-function bouwScheepslantaarnMesh() {
+function bouwScheepslantaarnMesh(x, z) {
   const g = new THREE.Group();
-  const romp = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.17, 0.34, 8), mat(0x241f1a, 0.55, 0.4));
-  romp.position.y = 0.5;
+  g.position.set(x, 0, z);
+  const PLANK_HOOGTE = 0.08;
+  const plank = new THREE.Mesh(new THREE.BoxGeometry(0.5, PLANK_HOOGTE, 0.4), matFamilie('hout', 0x3f342a));
+  plank.position.y = PLANK_HOOGTE / 2;
+  g.add(plank);
+  const romp = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.18, 0.36, 8), mat(0x241f1a, 0.55, 0.4));
+  romp.position.y = PLANK_HOOGTE + 0.18;
   g.add(romp);
-  const glas = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.24, 8),
+  const glas = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.26, 8),
     mat(0xffd98a, 0.4, 0, { emissive: 0xffb347, emissiveIntensity: 1.0 }));
-  glas.position.y = 0.5;
+  glas.position.y = PLANK_HOOGTE + 0.18;
   g.add(glas);
   const beugel = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.012, 6, 10, Math.PI), mat(0x1a1712, 0.6, 0.5));
-  beugel.position.y = 0.72;
+  beugel.position.y = PLANK_HOOGTE + 0.41;
   g.add(beugel);
+  g.userData.pulsMesh = glas;
   g.visible = false;
   wereld.add(g);
   return g;
@@ -5302,11 +5544,24 @@ function bouwScheepslantaarnMesh() {
 // Posities via isVrijePlek-probes geverifieerd (atelier/binnenplaats/
 // bijkeuken), ruim uit de buurt van bestaande winkelpunten/decor.
 const VLUCHT_ONDERDELEN = [
-  { naam: 'Roeispaan', x: 1.8, z: ATELIER_MIDDEN_Z - 5, drempelGolf: 3, mesh: bouwRoeispaanMesh(), zichtbaar: false, opgehaald: false, punt: null, markering: null },
-  { naam: 'Touwbundel', x: PLAATS_CX - 5, z: PLAATS_Z_ZUID - 1.5, drempelGolf: 6, mesh: bouwTouwbundelMesh(), zichtbaar: false, opgehaald: false, punt: null, markering: null },
-  { naam: 'Scheepslantaarn', x: BIJKEUKEN_X_WEST + 1.2, z: -3, drempelGolf: 9, mesh: bouwScheepslantaarnMesh(), zichtbaar: false, opgehaald: false, punt: null, markering: null },
+  { naam: 'Roeispaan', x: 1.8, z: ATELIER_MIDDEN_Z - 5, drempelGolf: 3, mesh: bouwRoeispaanMesh(1.8, ATELIER_MIDDEN_Z - 5), zichtbaar: false, opgehaald: false, punt: null, markering: null },
+  { naam: 'Touwbundel', x: PLAATS_CX - 5, z: PLAATS_Z_ZUID - 1.5, drempelGolf: 6, mesh: bouwTouwbundelMesh(PLAATS_CX - 5, PLAATS_Z_ZUID - 1.5), zichtbaar: false, opgehaald: false, punt: null, markering: null },
+  { naam: 'Scheepslantaarn', x: BIJKEUKEN_X_WEST + 1.2, z: -3, drempelGolf: 9, mesh: bouwScheepslantaarnMesh(BIJKEUKEN_X_WEST + 1.2, -3), zichtbaar: false, opgehaald: false, punt: null, markering: null },
 ];
 let vluchtOnderdelenOpgepakt = 0;
+// Ticket 56: subtiele, permanente schaalpuls op elk zichtbaar-maar-nog-niet-
+// opgeraapt onderdeel (via userData.pulsMesh, zie de bouw*Mesh()-functies
+// hierboven) — één gedeelde sinus-fase is voldoende voor dit lichte effect,
+// geen per-onderdeel state nodig.
+let vluchtPulsFase = 0;
+function updateVluchtOnderdelenPuls(dt) {
+  vluchtPulsFase += dt * 3;
+  const schaal = 1 + 0.1 * Math.abs(Math.sin(vluchtPulsFase));
+  for (const onderdeel of VLUCHT_ONDERDELEN) {
+    if (!onderdeel.zichtbaar || onderdeel.opgehaald) continue;
+    onderdeel.mesh.userData.pulsMesh.scale.setScalar(schaal);
+  }
+}
 
 function updateVluchtrouteHUD() {
   document.getElementById('vluchtrouteUI').textContent = `Vluchtroute: ${vluchtOnderdelenOpgepakt}/3`;
@@ -5323,7 +5578,7 @@ function raapVluchtOnderdeelOp(onderdeel) {
   toonMelding(`${onderdeel.naam} gevonden!`);
   toonGolfBanner(`VLUCHTROUTE ${vluchtOnderdelenOpgepakt}/3`, onderdeel.naam);
   updateVluchtrouteHUD();
-  toonOntsnappingspuntIndienKlaar();
+  probeerOntsnappingsVensterTeOpenen();   // Ticket 55: kan mid-golf de aankondigingsfase starten
 }
 
 // --- Ticket 45: De Ontsnapping — win-conditie. Het punt verschijnt pas
@@ -5333,11 +5588,112 @@ function raapVluchtOnderdeelOp(onderdeel) {
 const ONTSNAPPING_PRIJS = 2500;
 let ontsnappingsPunt = null;
 
+// Ticket 54 (Doel D7): de boot ligt niet permanent klaar zodra 3/3 compleet
+// is — hij meert alleen periodiek aan, vanaf golf 10 en daarna elke 4
+// golven (10, 14, 18, 22, …). VOEGT deze golf-gating TOE aan de bestaande
+// 3/3-voorwaarde uit Ticket 45, vervangt 'm niet (zie de guard hieronder).
+const ONTSNAPPING_START_GOLF = 10;
+const ONTSNAPPING_INTERVAL_GOLVEN = 4;
+function isOntsnappingsGolf(golf) {
+  return golf >= ONTSNAPPING_START_GOLF && (golf - ONTSNAPPING_START_GOLF) % ONTSNAPPING_INTERVAL_GOLVEN === 0;
+}
+// Pure helper voor de HUD: hoeveel golven tot het eerstvolgende venster (0
+// als de huidige golf er zelf al een is).
+function golvenTotOntsnappingsVenster(golf) {
+  if (isOntsnappingsGolf(golf)) return 0;
+  if (golf < ONTSNAPPING_START_GOLF) return ONTSNAPPING_START_GOLF - golf;
+  return ONTSNAPPING_INTERVAL_GOLVEN - ((golf - ONTSNAPPING_START_GOLF) % ONTSNAPPING_INTERVAL_GOLVEN);
+}
+let ontsnappingUitgelegd = false;   // debug/test: de golf-10-melding mag maar 1x
+let ontsnappingUitlegTeller = 0;    // debug/test: telt elke daadwerkelijk gevuurde golf-10-melding
+
+// Ticket 55 (Doel D8): boot-aankomst — tell en opbouw. Het venster gaat niet
+// meteen open met het volledige interactiepunt; eerst een korte "nadering"
+// (hoorn + banner + een felle lantaarnpuls), pas na
+// ONTSNAPPING_AANKONDIGING_DUUR verschijnt het echte punt
+// (toonOntsnappingspuntIndienKlaar(), T45/T53/T54 ongewijzigd).
+const ONTSNAPPING_AANKONDIGING_DUUR = 5;   // seconden, binnen de 4-6s marge uit het ticket
+let ontsnappingAankondigingActief = false;
+let ontsnappingAankondigingTimer = 0;
+let bootHoornTeller = 0;     // debug/test: 1x per aankomst
+let bootVertrekTeller = 0;   // debug/test: 1x per vertrek
+function speelBootHoorn() {
+  bootHoornTeller++;
+  piep('sine', 200, 140, 1.1, 0.1);   // verre, lage hoorntoon — eigen, nieuw geluid
+}
+function speelBootVertrek() {
+  bootVertrekTeller++;
+  piep('sine', 150, 100, 0.8, 0.08);   // korter/zachter, symmetrisch met de aankomst
+}
+// Zelfde patroon als updateVluchtrouteHUD() hierboven: een eigen, kleine
+// HUD-updatefunctie i.p.v. inline in updateHUD() — die laatste wordt al
+// bij module-load 1x aangeroepen (regel ~4562), ver vóór ONTSNAPPING_*
+// hieronder gedeclareerd is, dus inline zou een TDZ-ReferenceError geven.
+function updateOntsnappingVensterHUD() {
+  const el = document.getElementById('ontsnappingVensterUI');
+  if (spelStaat.golf < ONTSNAPPING_START_GOLF && !ontsnappingsPunt && !ontsnappingAankondigingActief) {
+    el.textContent = '';
+  } else if (ontsnappingsPunt) {
+    el.textContent = 'Boot ligt aan!';
+  } else if (ontsnappingAankondigingActief) {
+    el.textContent = 'Boot nadert…';
+  } else {
+    el.textContent = `Boot over ${golvenTotOntsnappingsVenster(spelStaat.golf)} golven`;
+  }
+}
+// Start de aankondigingsfase als het venster nu open mag gaan (3/3, geldige
+// ontsnappingsgolf, nog geen punt, nog geen lopende aankondiging). Aangeroepen
+// vanuit zowel updateOntsnappingsVenster() (elke startGolf(), T54) als
+// raapVluchtOnderdeelOp() (het moment dat het 3e onderdeel binnenkomt,
+// mogelijk MIDDEN in een al actieve ontsnappingsgolf).
+function probeerOntsnappingsVensterTeOpenen() {
+  if (ontsnappingsPunt || ontsnappingAankondigingActief) return;
+  if (vluchtOnderdelenOpgepakt < VLUCHT_ONDERDELEN.length) return;
+  if (!isOntsnappingsGolf(spelStaat.golf)) return;
+  ontsnappingAankondigingActief = true;
+  ontsnappingAankondigingTimer = ONTSNAPPING_AANKONDIGING_DUUR;
+  speelBootHoorn();
+  toonGolfBanner('Er nadert iets over het water…');
+  updateOntsnappingVensterHUD();
+}
+// Per-frame getikt vanuit de spelActief-tak van gameLoop (T55's timer moet,
+// net als de rest van het golf-systeem, alleen lopen terwijl er echt
+// gespeeld wordt — zelfde discipline als updateGolf/updateDreigingsAudio).
+// Regelt ALLEEN de timer/resolutie; de lantaarnpuls zelf staat apart in de
+// altijd-lopende cosmetische sectie van gameLoop (NA de buitenLichten-
+// flikkerloop, anders overschrijft die loop de puls meteen weer).
+function updateOntsnappingAankondiging(dt) {
+  if (!ontsnappingAankondigingActief) return;
+  ontsnappingAankondigingTimer -= dt;
+  if (ontsnappingAankondigingTimer <= 0) {
+    ontsnappingAankondigingActief = false;
+    toonOntsnappingspuntIndienKlaar();
+    updateOntsnappingVensterHUD();
+  }
+}
+// Aangeroepen vanuit startGolf() (naast toonVluchtOnderdelenIndienDrempel()):
+// opent het venster als het zover is. Sluiten (incl. de T55-vertrek-tell)
+// gebeurt in updateGolf()'s wave-complete-tak.
+function updateOntsnappingsVenster() {
+  if (spelStaat.golf === ONTSNAPPING_START_GOLF && !ontsnappingUitgelegd) {
+    ontsnappingUitgelegd = true;
+    ontsnappingUitlegTeller++;   // debug/test: bewaakt dat de golf-10-melding echt maar 1x vuurt
+    toonMelding('De boot komt vanaf nu periodiek aanmeren bij de vlonder — zorg dat je vluchtroute compleet is.');
+  }
+  probeerOntsnappingsVensterTeOpenen();
+  updateOntsnappingVensterHUD();
+}
+
 function toonOntsnappingspuntIndienKlaar() {
   if (ontsnappingsPunt || vluchtOnderdelenOpgepakt < VLUCHT_ONDERDELEN.length) return;
+  if (!isOntsnappingsGolf(spelStaat.golf)) return;   // Ticket 54: alleen tijdens een ontsnappingsgolf
   ontsnappingsPunt = {
     naam: 'De Ontsnapping',
-    positie: new THREE.Vector3(kelderluikMesh.position.x, 0, kelderluikMesh.position.z),
+    // Ticket 53: verhuisd van het kelderluik naar de boot bij de vlonder
+    // (Ticket 52) — vlak vóór de boeg, op de rand van het loopbare
+    // vlonderdek (het vlonderrand-obstakel houdt de speler net op
+    // loopafstand, ruim binnen radius).
+    positie: new THREE.Vector3(bootGroep.position.x - 1.5, 0, bootGroep.position.z),
     radius: 1.4,
     prompt: () => spelStaat.geld < ONTSNAPPING_PRIJS
       ? `Nog €${ONTSNAPPING_PRIJS - spelStaat.geld} nodig om te ontsnappen`
@@ -5345,7 +5701,8 @@ function toonOntsnappingspuntIndienKlaar() {
     actie: probeerOntsnapping,
   };
   interactiePunten.push(ontsnappingsPunt);
-  toonMelding('De vluchtroute is compleet — zoek het kelderluik op!');
+  toonMelding('De vluchtroute is compleet — zoek de boot bij de vlonder op!');
+  updateOntsnappingVensterHUD();   // dekt ook het raapVluchtOnderdeelOp()-pad (los van updateOntsnappingsVenster())
 }
 
 function probeerOntsnapping() {
@@ -5455,6 +5812,7 @@ function gameLoop(nu) {
     updateStervenden(dt);
     updateEffecten(dt);   // Ticket 32: tracers + impact-deeltjes, bevriest netjes tijdens pauze
     updateGolf(dt);
+    updateOntsnappingAankondiging(dt);   // Ticket 55: boot-aankomst-timer
     updatePowerups(dt);
     updateMistUitfade(dt);
     updateSpelerRegen(dt);
@@ -5462,6 +5820,7 @@ function gameLoop(nu) {
     updateWinkelMarkeringen(dt);   // Ticket 37: status-animatie + winkelLicht
     updateStofwolken(dt);   // Ticket 40: atelier-stof, alleen zichtbaar in zone C
     updateDruppel(dt);      // Ticket 40: kelderhals-druppel-lek
+    updateVluchtOnderdelenPuls(dt);   // Ticket 56: subtiele puls op nog niet opgeraapte onderdelen
     updateDreigingsAudio(dt);   // Ticket 49: zachte dreigingsdrone, gethrottled
 
     // Ticket 50 (Sfeer P2): zone-naambanners + HUD-zonelabel. ALLEEN bij een
@@ -5552,6 +5911,12 @@ function gameLoop(nu) {
     bl.licht.intensity = bl.basis * buitenFactor;
     if (bl.bolMateriaal) bl.bolMateriaal.emissiveIntensity = bl.bolBasis * buitenFactor;
   }
+  // Ticket 55: tijdens de boot-aankondiging knippert/pulseert de gracht-
+  // lantaarn kort feller — puur cosmetisch, bovenop de zojuist gezette
+  // (al Stroomuitval-correcte) basisintensiteit hierboven.
+  if (ontsnappingAankondigingActief) {
+    grachtLantaarnLicht.intensity *= 1 + 0.8 * Math.abs(Math.sin(klok * 6));
+  }
 
   if (terugslag > 0) {
     terugslag = Math.max(0, terugslag - dt * 6);
@@ -5580,7 +5945,7 @@ requestAnimationFrame(gameLoop);
 
 // Debug-hooks voor Playwright-tests (zelfde patroon als DamChaosDebug).
 window.AmsterdamUndeadDebug = {
-  scene, camera, speler, obstakels, isVrijePlek, GRENS,
+  scene, camera, speler, obstakels, isVrijePlek, GRENS, losBotsingenOp,
   get wapenStaat() { return wapenStaat; },   // v0.6: wapenStaat wordt herbonden bij wisselen (getter i.p.v. stale referentie)
   get gesmeedActief() { return wapenStaat.gesmeed; },   // Ticket 11: Smederij-status van het ACTIEVE wapen
   // Ticket 12: De Smederij-machine (koopbare implementatie):
@@ -5625,12 +5990,28 @@ window.AmsterdamUndeadDebug = {
   get moeilijkheidGekozen() { return moeilijkheidGekozen; },
   // Ticket 44: de Vluchtroute
   VLUCHT_ONDERDELEN, raapVluchtOnderdeelOp, toonVluchtOnderdelenIndienDrempel, updateVluchtrouteHUD,
+  updateVluchtOnderdelenPuls,   // Ticket 56: rustvlakken + permanente puls
   get vluchtOnderdelenOpgepakt() { return vluchtOnderdelenOpgepakt; },
   set vluchtOnderdelenOpgepakt(v) { vluchtOnderdelenOpgepakt = v; },
   // Ticket 45: De Ontsnapping (winscherm)
   ONTSNAPPING_PRIJS, toonOntsnappingspuntIndienKlaar, probeerOntsnapping, toonWinScherm, winScherm,
   get ontsnappingsPunt() { return ontsnappingsPunt; },
   set ontsnappingsPunt(v) { ontsnappingsPunt = v; },
+  // Ticket 54: periodieke ontsnappingsvensters (ronde-gating)
+  ONTSNAPPING_START_GOLF, ONTSNAPPING_INTERVAL_GOLVEN, isOntsnappingsGolf,
+  golvenTotOntsnappingsVenster, updateOntsnappingsVenster, updateOntsnappingVensterHUD,
+  get ontsnappingUitgelegd() { return ontsnappingUitgelegd; },
+  set ontsnappingUitgelegd(v) { ontsnappingUitgelegd = v; },
+  get ontsnappingUitlegTeller() { return ontsnappingUitlegTeller; },
+  // Ticket 55: boot-aankomst — tell en opbouw
+  ONTSNAPPING_AANKONDIGING_DUUR, probeerOntsnappingsVensterTeOpenen, updateOntsnappingAankondiging,
+  speelBootHoorn, speelBootVertrek,
+  get ontsnappingAankondigingActief() { return ontsnappingAankondigingActief; },
+  set ontsnappingAankondigingActief(v) { ontsnappingAankondigingActief = v; },
+  get ontsnappingAankondigingTimer() { return ontsnappingAankondigingTimer; },
+  set ontsnappingAankondigingTimer(v) { ontsnappingAankondigingTimer = v; },
+  get bootHoornTeller() { return bootHoornTeller; },
+  get bootVertrekTeller() { return bootVertrekTeller; },
   // Ticket 6: eventgolf-framework
   EVENT_GOLF_INTERVAL, isEventGolf, kiesEventType, startEventGolf, eindigEventGolf,
   get actieveEventGolf() { return actieveEventGolf; },
@@ -5727,8 +6108,9 @@ window.AmsterdamUndeadDebug = {
   get eliminatiemodusTimer() { return eliminatiemodusTimer; },
   set eliminatiemodusTimer(v) { eliminatiemodusTimer = v; },
   BRANDER_EXPLOSIE_RADIUS, BRANDER_EXPLOSIE_SCHADE_SPELER, BRANDER_EXPLOSIE_SCHADE_ONDODE, ontploiBrander,
-  BARRICADE_MAX_PLANKEN, BARRICADE_REPARATIE_GELD,
+  BARRICADE_MAX_PLANKEN, BARRICADE_REPARATIE_GELD, bouwBarricade,
   beukBarricade, repareerBarricade, golfSpawnStap,
+  kozijnSteeg, glasSteeg,   // Ticket 57: nieuw kozijn voor de steegdeur
   // v0.4: atelier (kamer 2) vergroot tot een L-vorm met een voorraadnis:
   KAMER2_DIEPTE, KAMER2_NIS_DIEPTE, KAMER2_NIS_BREEDTE,
   KAMER2_NIS_X_WEST, KAMER2_NIS_Z_ZUID, KAMER2_NIS_CX, KAMER2_NIS_CZ,
@@ -5826,6 +6208,10 @@ window.AmsterdamUndeadDebug = {
   get dreigingsGainSchrijfTeller() { return dreigingsGainSchrijfTeller; },
   get dreigingsThrottleTimer() { return dreigingsThrottleTimer; },
   set dreigingsThrottleTimer(v) { dreigingsThrottleTimer = v; },
+  // Ticket 52 (Doel D5): gang naar de gracht — vlonder, water, boot, lantaarn
+  GRACHTGANG_HALF, GRACHTGANG_X_WEST, GRACHTGANG_LENGTE,
+  VLONDER_X_WEST, VLONDER_X_OOST, VLONDER_DIEPTE,
+  vlonderMesh, waterMesh, bootGroep, grachtLantaarnLicht,
   // Ticket 50: zone-naambanners + HUD-zonelabel
   ZONE_NAMEN, ZONE_FLAVOUR, bezochteZones,
   get laatsteZone() { return laatsteZone; },

@@ -35,6 +35,66 @@ check('Touwbundel staat op de binnenplaats (zone 3) op een vrije plek',
 check('Scheepslantaarn staat in de bijkeuken (zone 4) op een vrije plek',
   zoneTest[2].zone === 4 && zoneTest[2].vrij, zoneTest);
 
+// --- 2b. Ticket 56: elke mesh-group staat ECHT op (x, 0, z) — vóór dit
+// ticket bleef mesh.position altijd op de wereld-oorsprong staan (bug: alleen
+// de winkelMarkering-ring en het interactiepunt zaten al op de juiste plek).
+// Elk onderdeel heeft nu ook een rustvlak (krat/kistrand/plank) als EERSTE
+// kind van dezelfde group — dat kind verdwijnt zo automatisch mee via de
+// bestaande wereld.remove(onderdeel.mesh) in raapVluchtOnderdeelOp(), zonder
+// die functie te hoeven wijzigen. userData.pulsMesh (de permanente puls,
+// hergebruik van het flitsMarkering-idee) moet ook een kind van de group zijn.
+const rustvlakTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  return d.VLUCHT_ONDERDELEN.map(o => ({
+    naam: o.naam,
+    meshPos: o.mesh.position.toArray(),
+    verwacht: [o.x, 0, o.z],
+    kinderen: o.mesh.children.length,
+    eersteKindIsRustvlak: o.mesh.children[0].geometry.type === 'BoxGeometry',
+    pulsMeshIsKind: o.mesh.children.includes(o.mesh.userData.pulsMesh),
+  }));
+});
+check('Elke groep staat exact op (onderdeel.x, 0, onderdeel.z) — de mesh.position-bug is gefixt',
+  rustvlakTest.every(r => r.meshPos[0] === r.verwacht[0] && r.meshPos[1] === r.verwacht[1] && r.meshPos[2] === r.verwacht[2]),
+  rustvlakTest);
+check('Elk onderdeel heeft een rustvlak (Box-geometrie) als eerste kind van dezelfde group',
+  rustvlakTest.every(r => r.eersteKindIsRustvlak), rustvlakTest);
+check('Elk onderdeel heeft 3 of 4 kinderen (rustvlak + item-onderdelen, binnen het perf-budget)',
+  rustvlakTest.every(r => r.kinderen === 3 || r.kinderen === 4), rustvlakTest);
+check('De permanente puls-mesh (userData.pulsMesh) is een kind van dezelfde group, dus verdwijnt mee bij het oprapen',
+  rustvlakTest.every(r => r.pulsMeshIsKind), rustvlakTest);
+
+// --- 2c. De permanente puls: alleen zichtbare, niet-opgeraapte onderdelen
+// krijgen een schaalpuls; opgehaalde/verborgen onderdelen blijven met rust.
+// Zet bewust ALLEEN de zichtbaar-/mesh.visible-vlaggen direct (i.p.v. via
+// toonVluchtOnderdelenIndienDrempel()/spelStaat.golf), en herstelt ze weer —
+// zodat sectie 3 hierna nog met echt schone staat (golf 1, niets zichtbaar)
+// begint.
+const pulsTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const roeispaan = d.VLUCHT_ONDERDELEN[0];
+  const touwbundel = d.VLUCHT_ONDERDELEN[1];
+  roeispaan.zichtbaar = true;
+  roeispaan.mesh.visible = true;
+  const schaalVoor = roeispaan.mesh.userData.pulsMesh.scale.x;
+  d.updateVluchtOnderdelenPuls(0.3);
+  const schaalNa = roeispaan.mesh.userData.pulsMesh.scale.x;
+  // Touwbundel blijft bewust onzichtbaar: dekt dat de puls een nog niet
+  // getoond onderdeel niet aanraakt.
+  const touwbundelSchaalVoor = touwbundel.mesh.userData.pulsMesh.scale.x;
+  d.updateVluchtOnderdelenPuls(0.3);
+  const touwbundelSchaalNa = touwbundel.mesh.userData.pulsMesh.scale.x;
+  // Opruimen voor sectie 3 hieronder.
+  roeispaan.zichtbaar = false;
+  roeispaan.mesh.visible = false;
+  roeispaan.mesh.userData.pulsMesh.scale.setScalar(1);
+  return { schaalVoor, schaalNa, touwbundelSchaalVoor, touwbundelSchaalNa };
+});
+check('De puls verandert de schaal van een zichtbaar, nog niet opgeraapt onderdeel',
+  pulsTest.schaalNa !== pulsTest.schaalVoor, pulsTest);
+check('De puls raakt een nog onzichtbaar onderdeel (drempelgolf niet bereikt) niet aan',
+  pulsTest.touwbundelSchaalNa === pulsTest.touwbundelSchaalVoor, pulsTest);
+
 // --- 3. Elk onderdeel verschijnt EXACT op zijn drempelgolf, ook als de
 // zone nog op slot zit -------------------------------------------------------
 const drempelTest = await page.evaluate(() => {
@@ -89,11 +149,23 @@ const oppakTest = await page.evaluate(() => {
     hud: document.getElementById('vluchtrouteUI').textContent,
   };
   d.raapVluchtOnderdeelOp(roeispaan);
+  // Ticket 54: het ontsnappingsVENSTER (niet meteen het punt zelf) opent
+  // sinds dit ticket alleen nog tijdens een geldige ontsnappingsgolf (golf
+  // 10, 14, 18, …). Ticket 55 voegt daar bovenop een korte aankondigingsfase
+  // tussen: de laatste pickup hieronder start (via
+  // probeerOntsnappingsVensterTeOpenen()) dus de aankondiging, niet meteen
+  // het interactiepunt zelf — dat verschijnt pas na
+  // ONTSNAPPING_AANKONDIGING_DUUR (zie test-ontsnapping-vensters.mjs voor de
+  // volledige timer-dekking).
+  d.spelStaat.golf = 10;
+  const hoornVoor = d.bootHoornTeller;
   d.raapVluchtOnderdeelOp(scheepslantaarn);
   const naAlle = {
     teller: d.vluchtOnderdelenOpgepakt,
     hud: document.getElementById('vluchtrouteUI').textContent,
     interactiePuntenNa: d.interactiePunten.length,
+    aankondigingActief: d.ontsnappingAankondigingActief,
+    hoornGespeeld: d.bootHoornTeller - hoornVoor === 1,
   };
   return { hudVoor, naEen, naAlle };
 });
@@ -103,14 +175,14 @@ check('Na het oppakken van de Touwbundel (als tweede, niet als eerste): teller o
   oppakTest.naEen.teller === 1 && oppakTest.naEen.touwbundelWeg && oppakTest.naEen.roeispaanNogAanwezig, oppakTest.naEen);
 check('De HUD update meteen mee naar "Vluchtroute: 1/3"',
   oppakTest.naEen.hud === 'Vluchtroute: 1/3', oppakTest.naEen);
-// interactiePunten: 12 basis + de 3 vluchtroute-punten allemaal weer weg,
-// MAAR Ticket 45 voegt bij 3/3 automatisch het ontsnappingspunt toe
-// (toonOntsnappingspuntIndienKlaar(), aangeroepen vanuit raapVluchtOnderdeelOp)
-// — dus 12 + 1 = 13, niet 12. Bewust bijgewerkt in Ticket 45, zelfde
-// discipline als de T16/test-powerups- en T30/hitreacties-precedenten.
-check('Na alle drie: teller op 3, HUD toont 3/3, interactiePunten op 12 + het nieuwe ontsnappingspunt (T45) = 13',
-  oppakTest.naAlle.teller === 3 && oppakTest.naAlle.hud === 'Vluchtroute: 3/3' && oppakTest.naAlle.interactiePuntenNa === 13,
+// interactiePunten: 12 basis + de 3 vluchtroute-punten allemaal weer weg =
+// 12 — het ontsnappingspunt zelf verschijnt (sinds Ticket 55) pas na de
+// aankondigingsduur, dus meteen na de derde pickup is het nog 12, niet 13.
+check('Na alle drie: teller op 3, HUD toont 3/3, interactiePunten blijft op 12 (het ontsnappingspunt verschijnt pas na de T55-aankondiging)',
+  oppakTest.naAlle.teller === 3 && oppakTest.naAlle.hud === 'Vluchtroute: 3/3' && oppakTest.naAlle.interactiePuntenNa === 12,
   oppakTest.naAlle);
+check('De derde pickup start wél meteen de T55-aankondigingsfase (hoorn + actieve timer)',
+  oppakTest.naAlle.aankondigingActief && oppakTest.naAlle.hoornGespeeld, oppakTest.naAlle);
 
 // --- 6. Regressie: bestaande winkelmarkeringen-telling groeit met precies 3
 // (de gedeelde vluchtroute-stijl levert 3 extra markeringen, boven op de

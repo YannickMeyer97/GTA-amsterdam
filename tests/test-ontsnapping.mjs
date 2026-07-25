@@ -1,5 +1,12 @@
-// Ticket 45: De Ontsnapping (win-conditie + winscherm). Bewaakt: het punt
-// verschijnt pas bij 3/3 vluchtroute-onderdelen, bij het kelderluik; de
+// Ticket 45: De Ontsnapping (win-conditie + winscherm). Ticket 53 verhuisde
+// het punt van het kelderluik naar de boot bij de vlonder (Ticket 52) — puur
+// een positie-wijziging, de rest van de flow (geld-eis, winscherm, "Speel
+// door") is ongemoeid gebleven. Ticket 54 voegde golf-gating toe (zie
+// test-ontsnapping-vensters.mjs voor die volledige dekking) — hier wordt
+// bij het testen van het 3/3-punt simpelweg een geldige ontsnappingsgolf
+// gezet, de rest van deze suite draait golf-onafhankelijk. Bewaakt: het punt
+// verschijnt pas bij 3/3 vluchtroute-onderdelen (tijdens een geldige
+// ontsnappingsgolf), exact bij de boot; de
 // geld-eis werkt (te weinig geld = bestaande "nog €X nodig"-flow, geen
 // aftrek); succesvol ontsnappen toont het winscherm met score(+1000 vóór
 // de scoreFactor)/stats/record, ZONDER spelStaat.gameOver te zetten; de
@@ -22,20 +29,25 @@ const voorDrieTest = await page.evaluate(() => {
 check('Bij 2/3 opgepakte onderdelen verschijnt het ontsnappingspunt nog niet',
   voorDrieTest.punt === null && voorDrieTest.interactiePuntenBevat === false, voorDrieTest);
 
-// --- 2. Bij 3/3: het punt verschijnt, exact bij het kelderluik -----------
+// --- 2. Bij 3/3 ÉN een geldige ontsnappingsgolf (Ticket 54): het punt
+// verschijnt, exact bij de boot (Ticket 52/53) -----------------------------
 const drieTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.vluchtOnderdelenOpgepakt = 3;
+  d.spelStaat.golf = 10;   // Ticket 54: het punt verschijnt nu alleen tijdens een ontsnappingsgolf
   d.toonOntsnappingspuntIndienKlaar();
   return {
     puntBestaat: d.ontsnappingsPunt !== null,
     positieX: d.ontsnappingsPunt.positie.x, positieZ: d.ontsnappingsPunt.positie.z,
-    kelderluikX: d.kelderluikMesh.position.x, kelderluikZ: d.kelderluikMesh.position.z,
+    verwachtX: d.bootGroep.position.x - 1.5, verwachtZ: d.bootGroep.position.z,
+    binnenVlonder: d.ontsnappingsPunt.positie.x < d.VLONDER_X_OOST,
     interactiePuntenBevat: d.interactiePunten.includes(d.ontsnappingsPunt),
   };
 });
-check('Bij 3/3 verschijnt het ontsnappingspunt, exact op de positie van het kelderluik',
-  drieTest.puntBestaat && drieTest.positieX === drieTest.kelderluikX && drieTest.positieZ === drieTest.kelderluikZ, drieTest);
+check('Bij 3/3 verschijnt het ontsnappingspunt, exact vóór de boeg van de boot',
+  drieTest.puntBestaat && drieTest.positieX === drieTest.verwachtX && drieTest.positieZ === drieTest.verwachtZ, drieTest);
+check('Het ontsnappingspunt ligt nog binnen de vlonder (loopbaar, niet in het water)',
+  drieTest.binnenVlonder, drieTest);
 check('Het ontsnappingspunt staat in interactiePunten',
   drieTest.interactiePuntenBevat, drieTest);
 

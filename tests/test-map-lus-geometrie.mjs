@@ -4,8 +4,10 @@
 // bereikbaar (de toekomstige deur 3/4-posities zijn nog gewoon bestaande,
 // ongewijzigde muur), (2) alle nieuwe wand-naden sluiten echt af (probes,
 // niet op het oog), (3) de nepgevel valt buiten de bijkeuken, (4) GRENS en de
-// bestaande muren zijn ongewijzigd, (5) de 6 nieuwe muren staan geregistreerd
-// met exact de verwachte bounds.
+// bestaande muren zijn ongewijzigd, (5) de nieuwe muren staan geregistreerd
+// met exact de verwachte bounds (was 6 losse rechthoeken; Ticket 52 splitste
+// de oostmuur in twee segmenten voor de nieuwe doorgang naar de gracht, dus
+// nu 7 — zelfde telling-discipline als elders in de suite).
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
@@ -27,7 +29,12 @@ const probes = await page.evaluate(() => {
     deur3Plek: d.isVrijePlek(d.DEUR3_X, d.PLAATS_Z_ZUID + 0.15, 0.05),   // binnenplaats-zuidmuur, ongewijzigd
     deur4Plek: d.isVrijePlek(d.HALF_BREEDTE + 0.15, d.DEUR4_Z, 0.05),    // woonkamer-oostmuur, ongewijzigd
     // --- Nieuwe muren van de bijkeuken: elke naad geblokkeerd -----------------
-    bijkeukenOost: d.isVrijePlek(d.BIJKEUKEN_X_OOST + 0.15, d.BIJKEUKEN_CZ, 0.05),
+    // Ticket 52 opende de oostmuur exact bij BIJKEUKEN_CZ (de nieuwe gang naar
+    // de gracht) — de oude probe op BIJKEUKEN_CZ zelf zou nu dus per ontwerp
+    // vrij zijn; deze probet een punt duidelijk BINNEN het overgebleven
+    // zuidsegment van de gesplitste muur (z=BIJKEUKEN_CZ+2.5), dat nog steeds
+    // gewoon dicht moet zijn.
+    bijkeukenOost: d.isVrijePlek(d.BIJKEUKEN_X_OOST + 0.15, d.BIJKEUKEN_CZ + 2.5, 0.05),
     bijkeukenZuid: d.isVrijePlek(d.BIJKEUKEN_CX, d.BIJKEUKEN_Z_ZUID + 0.15, 0.05),
     bijkeukenNoordWest: d.isVrijePlek((d.BIJKEUKEN_X_WEST + d.KELDERHALS_X_WEST) / 2, noordZ, 0.05),
     bijkeukenNoordOost: d.isVrijePlek((d.KELDERHALS_X_OOST + d.BIJKEUKEN_X_OOST) / 2, noordZ, 0.05),
@@ -53,7 +60,13 @@ const probes = await page.evaluate(() => {
     GRENS: d.GRENS,
     obstakelAantal: d.obstakels.length,
     // --- De 6 nieuwe muren staan geregistreerd met exact de verwachte bounds -
-    heeftBijkeukenOost: heeftRechthoek(d.BIJKEUKEN_X_OOST, d.BIJKEUKEN_X_OOST + 0.3, d.BIJKEUKEN_Z_NOORD, d.BIJKEUKEN_Z_ZUID),
+    // Ticket 52 splitste de oostmuur (was 1 rechthoek) in twee segmenten rond
+    // de nieuwe doorgang naar de gang-naar-de-gracht (z ∈ [BIJKEUKEN_CZ ±
+    // GRACHTGANG_HALF] is nu open) — zelfde "geen deur, gewoon een gat"-
+    // patroon als de al bestaande kelderhals-opening, dus hier ook als twee
+    // aparte rechthoeken verwacht i.p.v. één.
+    heeftBijkeukenOost: heeftRechthoek(d.BIJKEUKEN_X_OOST, d.BIJKEUKEN_X_OOST + 0.3, d.BIJKEUKEN_Z_NOORD, d.BIJKEUKEN_CZ - d.GRACHTGANG_HALF) &&
+      heeftRechthoek(d.BIJKEUKEN_X_OOST, d.BIJKEUKEN_X_OOST + 0.3, d.BIJKEUKEN_CZ + d.GRACHTGANG_HALF, d.BIJKEUKEN_Z_ZUID),
     heeftBijkeukenZuid: heeftRechthoek(d.BIJKEUKEN_X_WEST, d.BIJKEUKEN_X_OOST, d.BIJKEUKEN_Z_ZUID, d.BIJKEUKEN_Z_ZUID + 0.3),
     heeftBijkeukenNoordWest: heeftRechthoek(d.BIJKEUKEN_X_WEST, d.KELDERHALS_X_WEST, d.BIJKEUKEN_Z_NOORD - 0.3, d.BIJKEUKEN_Z_NOORD),
     heeftBijkeukenNoordOost: heeftRechthoek(d.KELDERHALS_X_OOST, d.BIJKEUKEN_X_OOST, d.BIJKEUKEN_Z_NOORD - 0.3, d.BIJKEUKEN_Z_NOORD),
@@ -85,7 +98,7 @@ check('Woonkamer-oostmuur is inmiddels (Ticket 26) netjes gesplitst rond deur 4,
 check('GRENS is niet gewijzigd (blijft exact de v0.11-waarden)',
   Math.abs(probes.GRENS.minX - (-11.45)) < 1e-9 && Math.abs(probes.GRENS.maxX - 20.45) < 1e-9 &&
   Math.abs(probes.GRENS.minZ - (-23.95)) < 1e-9 && Math.abs(probes.GRENS.maxZ - 4.95) < 1e-9, probes.GRENS);
-check('Alle 6 nieuwe zone-E-muren staan geregistreerd met exact de verwachte bounds',
+check('Alle nieuwe zone-E-muren staan geregistreerd met exact de verwachte bounds (7, sinds Ticket 52 de oostmuur splitste)',
   probes.heeftBijkeukenOost && probes.heeftBijkeukenZuid && probes.heeftBijkeukenNoordWest &&
   probes.heeftBijkeukenNoordOost && probes.heeftKelderhalsWest && probes.heeftKelderhalsOost, probes);
 check('Obstakel-count-test (bijgewerkt voor Ticket 24): totaal blijft in een ruime, verwachte bandbreedte',

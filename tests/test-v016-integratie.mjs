@@ -22,8 +22,8 @@ const lichtenTest = await page.evaluate(() => {
   d.scene.traverse(o => { if (o.isLight) lichten.push({ type: o.type, castShadow: o.castShadow }); });
   return { totaal: lichten.length, schaduw: lichten.filter(l => l.castShadow).length };
 });
-check('Lichttelling blijft binnen budget: bestaand (22, pre-Ticket-30-baseline) + hooguit 1 nieuwe permanente lamp (winkelLicht)',
-  lichtenTest.totaal <= 23, lichtenTest);
+check('Lichttelling blijft binnen budget: bestaand (22, pre-Ticket-30-baseline) + winkelLicht (23) + Ticket 52 gracht-lantaarn (24)',
+  lichtenTest.totaal <= 24, lichtenTest);
 check('Precies 1 schaduwwerpende lamp in de hele scene (de schaduw===1-invariant)',
   lichtenTest.schaduw === 1, lichtenTest);
 

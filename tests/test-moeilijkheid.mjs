@@ -76,6 +76,14 @@ check('berekenScore() schaalt exact met scoreFactor (afgerond) voor alle drie de
   Object.values(scoreTest).every(u => u.echt === u.verwacht), scoreTest);
 
 // --- 5. kiesMoeilijkheid(): kent startGeld toe en verbergt de knoppen ------
+// Feedback: "Kies je moeilijkheidsgraad" bleef staan bij elke latere pauze
+// (Esc), ook nadat de keuze al gemaakt was — het startscherm/pauzescherm is
+// hetzelfde `#startscherm`-element, dus die tekst moet na de eerste keuze
+// permanent vervangen worden door "Klik op het scherm om door te gaan".
+const labelVoor = await page.evaluate(() => document.getElementById('moeilijkheidLabel').textContent);
+check('Vóór de keuze toont het label "Kies je moeilijkheidsgraad"',
+  labelVoor === 'Kies je moeilijkheidsgraad', { labelVoor });
+
 const keuzeTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.moeilijkheid = d.MOEILIJKHEDEN.amsterdammer;
@@ -85,12 +93,15 @@ const keuzeTest = await page.evaluate(() => {
     naam: d.moeilijkheid.naam,
     geld: d.spelStaat.geld,
     knoppenDisplay: document.getElementById('moeilijkheidKnoppen').style.display,
+    label: document.getElementById('moeilijkheidLabel').textContent,
   };
 });
 check('kiesMoeilijkheid("toerist") zet de moeilijkheid en kent startGeld (€200) toe',
   keuzeTest.naam === 'Toerist' && keuzeTest.geld === 200, keuzeTest);
 check('Na de keuze zijn de moeilijkheidsknoppen verborgen',
   keuzeTest.knoppenDisplay === 'none', keuzeTest);
+check('Na de keuze toont het label (dus ook bij elke latere pauze) "Klik op het scherm om door te gaan" i.p.v. "Kies je moeilijkheidsgraad"',
+  keuzeTest.label === 'Klik op het scherm om door te gaan', keuzeTest);
 
 // --- 6. Vóór een klik op een specifieke knop start een klik ernaast het
 // spel niet; een klik op een knop wél (en pauze-hervatting toont daarna

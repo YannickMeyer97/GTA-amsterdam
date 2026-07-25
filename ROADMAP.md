@@ -2048,7 +2048,21 @@ Volgorde nu: 42 → 46, dan 52 → 57, dan 49 → 51, fases:
 - **Verbetergebied:** 1 (doel & retentie — ontsnappingslocatie,
   feedbackronde ná speeltest)
 - **Prioriteit:** hoog — fundament voor T53/T54/T55
-- **Status:** open
+- **Status:** ✅ voltooid — nieuwe doorgang in de bijkeuken-oostmuur (twee
+  segmenten rond een gat van GRACHTGANG_HALF breed, zelfde "geen deur"-
+  patroon als de kelderhals-opening), een 3m gang (GANG_PLEISTER-stijl) naar
+  een 4.5m vlonder-plateau ('hout'-materiaalfamilie) met watervlak, een
+  boot (cilinder-romp + dek + boeg-kegel, puur decor voor T53) en een
+  gekopieerde/aangepaste lantaarnpaal (buitenlicht-precedent, niet in
+  lampLichten, geen schaduw). Lichttelling 23 -> 24, bevestigd via
+  `tests/test-gracht-dock.mjs` (22 checks) + bijgewerkte
+  `test-v016-integratie.mjs`/`test-stroomuitval.mjs`/`test-map-lus-geometrie.mjs`
+  (die laatste kreeg de oostmuur-splitsing verwerkt in zijn bestaande
+  probes). Valt al onder zone 4 (bijkeuken) — geen wijziging aan
+  zoneVan()/ZONE_NAMEN nodig. Volledige regressie groen (36/39 scripts; de
+  ene resterende fail — cameraKick-decay-timing in test-wapen-identiteit.mjs
+  — is via git-stash bevestigd een pre-existing timing-flake, los van dit
+  ticket).
 - **Afhankelijk van:** — (T53 bouwt erop)
 - **Doel:** een geloofwaardige, herkenbare ontsnappingslocatie in plaats
   van een willekeurig punt bij het kelderluik: rechtstreeks antwoord op
@@ -2100,7 +2114,17 @@ Volgorde nu: 42 → 46, dan 52 → 57, dan 49 → 51, fases:
   getest interactiepunt)
 - **Verbetergebied:** 1
 - **Prioriteit:** hoog
-- **Status:** open
+- **Status:** ✅ voltooid — `toonOntsnappingspuntIndienKlaar()`'s positie
+  verwijst nu naar `bootGroep.position` (min 1.5m, vlak vóór de boeg, nog
+  ruim binnen de vlonder en buiten het vlonderrand-obstakel) i.p.v.
+  `kelderluikMesh.position`. De eenmalige "vluchtroute compleet"-melding
+  noemt nu ook de boot/vlonder i.p.v. het kelderluik. Prompt-tekst en
+  `ONTSNAPPING_PRIJS` ongewijzigd (de prompt zei al "over het water", een
+  vooruitziende blik uit Ticket 45). `tests/test-ontsnapping.mjs`'s
+  positie-assertie is bijgewerkt (nu 21 checks) — alle overige win-flow-
+  checks (score, record, gameOver-guard, schermen-guard) ongewijzigd
+  gebleven en nog steeds groen. Volledige regressie: 38/39 scripts groen
+  (dezelfde pre-existing cameraKick-timing-flake als bij Ticket 52).
 - **Afhankelijk van:** T52
 - **Doel:** je stapt letterlijk de boot in in plaats van door een
   willekeurig kelderluik te verdwijnen.
@@ -2131,7 +2155,24 @@ Volgorde nu: 42 → 46, dan 52 → 57, dan 49 → 51, fases:
 - **Type:** Feature (gameplay-mechaniek)
 - **Verbetergebied:** 1
 - **Prioriteit:** hoog — kernfeedback van de gebruiker
-- **Status:** open
+- **Status:** ✅ voltooid — `ONTSNAPPING_START_GOLF`/`ONTSNAPPING_INTERVAL_GOLVEN`
+  + pure `isOntsnappingsGolf()`/`golvenTotOntsnappingsVenster()`;
+  `toonOntsnappingspuntIndienKlaar()` (T45/T53) kreeg één extra guard-regel
+  (`!isOntsnappingsGolf(...)`) — VOEGT de golf-gating toe, vervangt de
+  bestaande 3/3-voorwaarde niet. Nieuwe `updateOntsnappingsVenster()`
+  (aangeroepen vanuit `startGolf()`, naast `toonVluchtOnderdelenIndienDrempel()`)
+  opent het venster + vuurt eenmalig de golf-10-uitleg; de sluiting zit in
+  `updateGolf()`'s wave-complete-tak. Nieuwe HUD-regel (`ontsnappingVensterUI`,
+  eigen `updateOntsnappingVensterHUD()` — bewust GEEN inline code in
+  `updateHUD()`, want die wordt al 1x bij module-load aangeroepen vóór deze
+  constanten bestaan, zelfde TDZ-valkuil als `updateVluchtrouteHUD()`
+  hierboven al oplost). `tests/test-ontsnapping-vensters.mjs` (15 checks,
+  incl. de pure tabeltest) + bijgewerkte `test-ontsnapping.mjs` (golf 10
+  gezet vóór de 3/3-check) + `test-vluchtroute.mjs` (idem, anders verdween
+  het T45-ontsnappingspunt uit die telling). Volledige regressie: 38/40
+  scripts groen (twee pre-existing timing-flakes, bevestigd los van dit
+  ticket: cameraKick-decay in test-wapen-identiteit.mjs en twee losse
+  hitmarker-timingchecks die standalone 3/3 keer schoon groen draaiden).
 - **Afhankelijk van:** T53
 - **Doel:** de boot ligt niet permanent klaar zodra je 3/3 onderdelen
   hebt, maar meert alleen periodiek aan — vanaf golf 10, en daarna elke
@@ -2194,7 +2235,32 @@ Volgorde nu: 42 → 46, dan 52 → 57, dan 49 → 51, fases:
 - **Verbetergebied:** 1
 - **Prioriteit:** middel — directe feedback ("niet meteen ontsnapt
   zien staan")
-- **Status:** open
+- **Status:** ✅ voltooid — `probeerOntsnappingsVensterTeOpenen()` (nieuw,
+  aangeroepen vanuit zowel `updateOntsnappingsVenster()` als
+  `raapVluchtOnderdeelOp()`) start bij het openen van het venster een
+  `ONTSNAPPING_AANKONDIGING_DUUR`-timer (5s) i.p.v. meteen het interactiepunt
+  te tonen: `speelBootHoorn()` (eigen, nieuwe piep()-toon) + een banner
+  ("Er nadert iets over het water…") + de gracht-lantaarn (T52) pulseert
+  feller (toegepast NA de buitenLichten-flikkerloop in gameLoop, anders
+  overschrijft die de puls meteen weer). Pas als
+  `updateOntsnappingAankondiging(dt)` (getikt vanuit de spelActief-tak,
+  zelfde discipline als updateGolf/updateDreigingsAudio) de timer laat
+  aflopen verschijnt het echte punt via het bestaande
+  `toonOntsnappingspuntIndienKlaar()` (T45/T53/T54, ongewijzigd). Bij het
+  sluiten van het venster (updateGolf()'s wave-complete-tak): een
+  vertrek-tell (`speelBootVertrek()` + "De boot vaart weer weg"),
+  symmetrisch met de aankomst; een aankondiging die nog liep wanneer de golf
+  eindigt wordt stil geannuleerd (geen punt, geen vertrek-tell — er is nog
+  niets aangekomen). HUD kreeg een derde stand ("Boot nadert…" naast "Boot
+  ligt aan!"/"Boot over N golven"). `tests/test-ontsnapping-vensters.mjs`
+  volledig herzien voor de aankondigingsfase (26 checks, incl. een
+  wall-clock-gedreven check via de ECHTE gameLoop — ontdekte en documenteerde
+  daarbij dat gameLoop's dt-kap (0.05s/frame) de gesimuleerde tijd in deze
+  headless testomgeving tot ~0.45x wall-clock vertraagt) + bijgewerkte
+  `test-vluchtroute.mjs` (de derde pickup start nu de aankondiging i.p.v.
+  meteen het punt). Volledige regressie: 39/40 scripts groen (de ene
+  resterende fail is de reeds bevestigde pre-existing cameraKick-timing-flake,
+  los van dit ticket).
 - **Afhankelijk van:** T54
 - **Doel:** de boot verschijnt niet abrupt met een volledige
   "Druk T"-prompt — een korte aankondiging/opbouw eerst, zodat het als
@@ -2235,7 +2301,31 @@ Volgorde nu: 42 → 46, dan 52 → 57, dan 49 → 51, fases:
 - **Verbetergebied:** 1
 - **Prioriteit:** middel — directe feedback ("fysiek neerleggen op de
   oppaklocatie")
-- **Status:** open
+- **Status:** ✅ voltooid — bij het onderzoeken bleek `onderdeel.mesh`
+  (de group van `bouwRoeispaanMesh()`/`bouwTouwbundelMesh()`/
+  `bouwScheepslantaarnMesh()`, Ticket 44) NOOIT verplaatst te zijn naar
+  `(onderdeel.x, onderdeel.z)` — alleen de winkelMarkering-ring en het
+  interactiepunt stonden al op de juiste plek; het item zelf hing al sinds
+  Ticket 44 op de wereld-oorsprong (bug, ontdekt via wereldpositie-metingen,
+  geen bestaande test controleerde dit ooit). Meteen meegefixt: elke bouw*-
+  functie kreeg `(x, z)`-parameters + `g.position.set(x, 0, z)`. Elke
+  functie kreeg ook een rustvlak als EERSTE kind van dezelfde group — houten
+  krat (Roeispaan, atelier), kistrand (Touwbundel, binnenplaats), plank
+  (Scheepslantaarn, bijkeuken) — dus verdwijnt het complete stukje (item +
+  rustvlak) automatisch mee via de al bestaande
+  `wereld.remove(onderdeel.mesh)` in `raapVluchtOnderdeelOp()`, zonder die
+  functie te wijzigen. `g.userData.pulsMesh` + nieuwe
+  `updateVluchtOnderdelenPuls(dt)` (getikt vanuit de spelActief-gameLoop-tak)
+  geven elk zichtbaar-en-nog-niet-opgeraapt onderdeel een subtiele,
+  permanente schaalpuls (hergebruik van het flitsMarkering-idee, nu blijvend
+  i.p.v. eenmalig). `tests/test-vluchtroute.mjs` uitgebreid met 6 nieuwe
+  checks (positie-fix, rustvlak-als-kind, mesh-aantal binnen budget,
+  pulsMesh-is-kind, puls-gedrag) — nu 21 checks. Screenshots bevestigen alle
+  drie de items duidelijk rustend op hun rustvlak (vóór het oprapen) en
+  volledig verdwenen (erna). Volledige regressie: 38/40 scripts groen (de
+  twee resterende fails — cameraKick-timing en de probabilistische
+  golf-variatielimiter-"geen 3 op rij"-check — zijn bevestigde pre-existing
+  flakes, los van dit ticket, standalone 3/3 keer groen).
 - **Afhankelijk van:** — (raakt T44's meshes, onafhankelijk van
   T52-55)
 - **Doel:** de Roeispaan/Touwbundel/Scheepslantaarn zijn er al fysiek
@@ -2288,7 +2378,26 @@ Volgorde nu: 42 → 46, dan 52 → 57, dan 49 → 51, fases:
   van deze ronde)
 - **Prioriteit:** hoog — directe, met screenshots onderbouwde
   speeltest-feedback
-- **Status:** open
+- **Status:** ✅ voltooid — beide vooronderzochte verdachten bevestigd en
+  gefixt. (a) `VENSTERS`/`VENSTERS_KAMER2` (kozijn 1.6m/glas 1.3m rond
+  y=1.9): de standaard-drieplankstapel liet een duidelijke kier glas/kozijn
+  zichtbaar boven de bovenste plank — `bouwBarricade()` kreeg een nieuwe
+  optionele `plankSpacing`-parameter (naast de bestaande `basisY`), en beide
+  arrays kregen `basisY: 1.3, plankSpacing: 0.6` zodat de 3 planken de volle
+  glashoogte afdekken (de middelste plank landt zelfs precies op y=1.9, het
+  kozijn-midden). (b) `VENSTERS_BIJKEUKEN` (de "steegdeur") had HELEMAAL
+  GEEN kozijn-mesh — nieuw kozijn+glas toegevoegd (zelfde `kozijnOost`-
+  patroon, gespiegeld voor de bijkeuken-oostmuur) + dezelfde plank-tuning.
+  `VENSTERS_PLAATS` (de eerder-gefixte binnenplaats-poorten/-kelderdeur)
+  bewust ONGEWIJZIGD gelaten — regressie bevestigd. Nieuwe
+  `tests/test-barricade-plaatsing.mjs` (8 checks: tuning-waarden, "kier <
+  0.15m boven én onder" voor alle drie de volwaardige-raam-arrays, het
+  nieuwe kozijn bestaat or staat op de juiste plek, VENSTERS_PLAATS-
+  regressie, en een pure mechaniek-check van `plankSpacing` zelf). Screenshots
+  bevestigen: de drieplankstapel dekt het raam nu overtuigend af, geen
+  zichtbaar glas/kozijn meer erboven. Volledige regressie: 40/41 scripts
+  groen (de ene resterende fail is de reeds bevestigde pre-existing
+  cameraKick-timing-flake).
 - **Afhankelijk van:** —
 - **Doel:** dezelfde zwevende-planken-fout die eerder is opgelost voor
   de binnenplaats-poorten/-kelderdeur (`VENSTERS_PLAATS`, via een
