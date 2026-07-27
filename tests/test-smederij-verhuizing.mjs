@@ -94,10 +94,12 @@ check('De route terugdeur -> kelderhals blijft volledig vrij beloopbaar (geen ni
 check('De Smederij zelf heeft geen collision (net als voorheen) — de plek is vrij beloopbaar',
   route.bijDeSmederijZelf, route);
 
-// --- 6. Interactiepunten-telling blijft 12 (geen nieuwe/verdwenen punten) -
+// --- 6. Interactiepunten-telling blijft 11 (geen nieuwe/verdwenen punten
+// t.o.v. de verhuizing zelf — was 12, maar Feedback verwijderde sindsdien
+// het Provisiekast-punt, zie test-map-lus-zone-e-inhoud.mjs) --------------
 const telling = await page.evaluate(() => window.AmsterdamUndeadDebug.interactiePunten.length);
-check('Er staan nog steeds precies 12 interactiepunten geregistreerd',
-  telling === 12, { telling });
+check('Er staan nog steeds precies 11 interactiepunten geregistreerd',
+  telling === 11, { telling });
 
 // --- 7. Precies één Smederij(-punt) — nooit een tweede --------------------
 const uniciteit = await page.evaluate(() => {

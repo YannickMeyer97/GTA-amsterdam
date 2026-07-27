@@ -106,35 +106,55 @@ check('De vlonder valt onder zone 4 (De Bijkeuken)', zoneCheck.zone === 4, zoneC
 check('ZONE_FLAVOUR[4] beschrijft dit al als "de weg naar de gracht"',
   zoneCheck.flavour === 'de weg naar de gracht', zoneCheck);
 
-// --- 6. Lichttelling: precies 1 nieuwe permanente lamp (23 -> 24), geen
-// schaduw, niet in lampLichten (buitenlicht-precedent) ----------------------
+// --- 6. Lichttelling: 2 nieuwe permanente lampen (23 -> 25), geen schaduw,
+// niet in lampLichten (buitenlicht-precedent) --------------------------------
+// Feedback: naast de gracht-lantaarn (Ticket 52) kreeg de boot zelf ook een
+// klein lichtje ("een lichtje erop") — zelfde buitenlicht-precedent, maar nu
+// een KIND van bootGroep (vaart automatisch mee met de aan-/wegvaar-animatie).
 const lichten = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const alleLichten = [];
   d.scene.traverse(o => { if (o.isLight) alleLichten.push({ type: o.type, castShadow: o.castShadow }); });
+  const bootLichtEntry = d.buitenLichten.find(bl => bl.licht.parent === d.bootGroep);
   return {
     totaal: alleLichten.length,
     buitenLichtenLengte: d.buitenLichten.length,
     lantaarnInBuitenLichten: d.buitenLichten.some(bl => bl.licht === d.grachtLantaarnLicht),
     lantaarnHeeftSchaduw: d.grachtLantaarnLicht.castShadow,
     lantaarnInLampLichten: d.lampLichten.some(l => l.licht === d.grachtLantaarnLicht),
+    bootLichtBestaat: !!bootLichtEntry,
+    bootLichtHeeftSchaduw: bootLichtEntry ? bootLichtEntry.licht.castShadow : null,
+    bootLichtInLampLichten: d.lampLichten.some(l => l.licht === bootLichtEntry?.licht),
   };
 });
-check('Lichttelling gaat van 23 naar 24 (precies 1 nieuwe permanente lamp)', lichten.totaal === 24, lichten);
+check('Lichttelling gaat van 23 naar 25 (gracht-lantaarn + boot-lichtje, twee nieuwe permanente lampen)',
+  lichten.totaal === 25, lichten);
 check('De nieuwe gracht-lantaarn zit in buitenLichten (dimt mee tijdens Stroomuitval, buiten-vloer)',
   lichten.lantaarnInBuitenLichten === true, lichten);
 check('De gracht-lantaarn werpt GEEN schaduw (schaduw===1-invariant blijft bij de bestaande lamp)',
   lichten.lantaarnHeeftSchaduw === false, lichten);
 check('De gracht-lantaarn zit NIET in lampLichten (buitenlicht-precedent, zelfde als de binnenplaats-lantaarns)',
   lichten.lantaarnInLampLichten === false, lichten);
+check('Het boot-lichtje is een KIND van bootGroep (vaart automatisch mee met de aan-/wegvaar-animatie) en zit in buitenLichten',
+  lichten.bootLichtBestaat === true, lichten);
+check('Het boot-lichtje werpt GEEN schaduw (zelfde lichte-buitenlamp-patroon)',
+  lichten.bootLichtHeeftSchaduw === false, lichten);
+check('Het boot-lichtje zit NIET in lampLichten (buitenlicht-precedent)',
+  lichten.bootLichtInLampLichten === false, lichten);
 
 // --- 7. Nieuwe meshes bestaan en staan op de verwachte plek -----------------
 const meshes = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
+  const waterWestrand = d.waterMesh.position.x - d.waterMesh.geometry.parameters.width / 2;
+  const waterOostrand = d.waterMesh.position.x + d.waterMesh.geometry.parameters.width / 2;
   return {
     vlonderMesh: !!d.vlonderMesh,
     waterMesh: !!d.waterMesh,
     waterVoorbijVlonder: d.waterMesh.position.x > d.VLONDER_X_OOST,
+    waterWestrand,
+    waterOostrand,
+    VLONDER_X_OOST: d.VLONDER_X_OOST,
+    BOOT_VERTREK_X: d.BOOT_VERTREK_X,
     bootGroep: !!d.bootGroep,
     bootVoorbijVlonder: d.bootGroep.position.x > d.VLONDER_X_OOST,
     vlonderMeshFamilie: d.vlonderMesh.userData.materiaalFamilie,
@@ -144,6 +164,110 @@ check('vlonderMesh bestaat', meshes.vlonderMesh === true, meshes);
 check('waterMesh bestaat en ligt voorbij de vlonderrand', meshes.waterMesh && meshes.waterVoorbijVlonder, meshes);
 check('bootGroep bestaat en ligt voorbij de vlonderrand (bij het water)', meshes.bootGroep && meshes.bootVoorbijVlonder, meshes);
 check("vlonderMesh gebruikt de 'hout'-materiaalfamilie (Ticket 38)", meshes.vlonderMeshFamilie === 'hout', meshes);
+// Feedback: WATER_BREEDTE verbreed zodat de boot zichtbaar vaarwater heeft —
+// de westrand (bij de vlonder) blijft ONGEWIJZIGD op VLONDER_X_OOST, alleen
+// de oostrand (verweg) is verder opgeschoven om BOOT_VERTREK_X te bevatten.
+check('De westrand van het (verbrede) water staat nog steeds precies op VLONDER_X_OOST (ongewijzigde vlonderrand-overgang)',
+  Math.abs(meshes.waterWestrand - meshes.VLONDER_X_OOST) < 1e-9, meshes);
+check('De oostrand van het water reikt voorbij BOOT_VERTREK_X (de boot past met marge in het verweg-vaarwater)',
+  meshes.waterOostrand > meshes.BOOT_VERTREK_X + 1, meshes);
+
+// --- 8. Feedback: ondoden liepen "raar aangeschoven" tegen de muur naast de
+// gang-opening i.p.v. de hoek goed om te lopen. De gang+vlonder telt voor
+// zoneVan() bewust als DEEL van zone 4 (check 5 hierboven), dus NAV_VOLGENDE
+// (dat alleen tussen zones routeert) liet een ondode in de open bijkeuken
+// rechtstreeks op een speler in de smalle gang/vlonder afgaan. De fix stuurt
+// zo'n ondode eerst naar GRACHTGANG_DREMPEL (het midden van de opening) i.p.v.
+// rechtstreeks, maar ALLEEN als ondode en speler aan weerszijden van de
+// opening staan — blijft het rechtstreeks gedrag ongewijzigd wanneer ze al
+// aan dezelfde kant zijn. ---------------------------------------------------
+const chokepoint = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+
+  function eersteStap(ondodePos, spelerPos) {
+    d.ondoden.length = 0;
+    d.spawnWillekeurigeOndode();
+    const ondode = d.ondoden[0];
+    ondode.groep.position.set(ondodePos.x, 0, ondodePos.z);
+    d.speler.positie.set(spelerPos.x, 0, spelerPos.z);
+    const voor = { x: ondode.groep.position.x, z: ondode.groep.position.z };
+    d.updateOndoden(0.01);   // kleine dt: alleen de richting van de eerste stap telt, geen botsingsruis
+    const na = { x: ondode.groep.position.x, z: ondode.groep.position.z };
+    return {
+      zelfdeZone: d.zoneVan(voor.x, voor.z) === d.zoneVan(spelerPos.x, spelerPos.z),
+      hoekBeweging: Math.atan2(na.x - voor.x, na.z - voor.z),
+      hoekNaarDrempel: Math.atan2(d.GRACHTGANG_DREMPEL.x - voor.x, d.GRACHTGANG_DREMPEL.z - voor.z),
+      hoekNaarSpeler: Math.atan2(spelerPos.x - voor.x, spelerPos.z - voor.z),
+    };
+  }
+
+  return {
+    // Ondode in de open bijkeuken (ver van de gang-z-band), speler op de vlonder.
+    overDeDrempel: eersteStap(
+      { x: d.BIJKEUKEN_CX, z: d.BIJKEUKEN_Z_NOORD + 1 },
+      { x: (d.VLONDER_X_WEST + d.VLONDER_X_OOST) / 2, z: d.BIJKEUKEN_CZ }
+    ),
+    // Beide al in de open bijkeuken: geen drempel-omweg nodig.
+    zelfdeKantBijkeuken: eersteStap(
+      { x: d.BIJKEUKEN_CX, z: d.BIJKEUKEN_Z_NOORD + 1 },
+      { x: d.BIJKEUKEN_CX + 1, z: d.BIJKEUKEN_Z_ZUID - 1 }
+    ),
+    // Beide al op de vlonder: ook geen drempel-omweg nodig.
+    zelfdeKantVlonder: eersteStap(
+      { x: d.VLONDER_X_WEST + 0.3, z: -0.5 },
+      { x: d.VLONDER_X_OOST - 0.3, z: 0.5 }
+    ),
+    // Bugfix-regressie (Feedback): de binnenplaats (zone 3) loopt van
+    // DEUR2_X tot PLAATS_X_OOST, ruim over x=GRACHTGANG_X_WEST (12) heen —
+    // dus een ondode aan de westkant (x<12) van de binnenplaats met een
+    // speler aan de oostkant (x>=12) van DEZELFDE binnenplaats MOET gewoon
+    // rechtstreeks op de speler af blijven gaan, niet naar GRACHTGANG_DREMPEL
+    // (dat hoort alleen bij zone 4). Zonder de zone-guard liepen ondoden op
+    // de binnenplaats naar de zuidwesthoek i.p.v. naar de speler.
+    binnenplaatsOverDeTwaalf: eersteStap(
+      { x: d.DEUR2_X + 1, z: d.DEUR2_Z },
+      { x: d.PLAATS_CX, z: d.DEUR2_Z }
+    ),
+  };
+});
+check('Chokepoint-testopzet: alle drie de gracht-gevallen blijven binnen dezelfde zone (4, bijkeuken) — dit bewaakt de intra-zone-fix, niet NAV_VOLGENDE',
+  chokepoint.overDeDrempel.zelfdeZone && chokepoint.zelfdeKantBijkeuken.zelfdeZone && chokepoint.zelfdeKantVlonder.zelfdeZone,
+  chokepoint);
+check('Bugfix-testopzet: het binnenplaats-scenario blijft in dezelfde zone (3, binnenplaats), NIET zone 4',
+  chokepoint.binnenplaatsOverDeTwaalf.zelfdeZone === true, chokepoint.binnenplaatsOverDeTwaalf);
+check('Bugfix: een ondode op de binnenplaats (x<12) met de speler verderop op dezelfde binnenplaats (x>=12) loopt rechtstreeks op de speler af, niet naar GRACHTGANG_DREMPEL',
+  Math.abs(chokepoint.binnenplaatsOverDeTwaalf.hoekBeweging - chokepoint.binnenplaatsOverDeTwaalf.hoekNaarSpeler) < 0.01,
+  chokepoint.binnenplaatsOverDeTwaalf);
+check('Ondode in de open bijkeuken met speler op de vlonder loopt eerst naar de gang-drempel, niet rechtstreeks naar de speler',
+  Math.abs(chokepoint.overDeDrempel.hoekBeweging - chokepoint.overDeDrempel.hoekNaarDrempel) < 0.01 &&
+  Math.abs(chokepoint.overDeDrempel.hoekBeweging - chokepoint.overDeDrempel.hoekNaarSpeler) > 0.1,
+  chokepoint.overDeDrempel);
+check('Ondode en speler allebei in de open bijkeuken: onveranderd rechtstreeks gedrag (geen drempel-omweg)',
+  Math.abs(chokepoint.zelfdeKantBijkeuken.hoekBeweging - chokepoint.zelfdeKantBijkeuken.hoekNaarSpeler) < 0.01,
+  chokepoint.zelfdeKantBijkeuken);
+check('Ondode en speler allebei op de vlonder: onveranderd rechtstreeks gedrag (geen drempel-omweg)',
+  Math.abs(chokepoint.zelfdeKantVlonder.hoekBeweging - chokepoint.zelfdeKantVlonder.hoekNaarSpeler) < 0.01,
+  chokepoint.zelfdeKantVlonder);
+
+// --- 9. Reachability: een ondode in de open bijkeuken bereikt daadwerkelijk
+// de gang/vlonder (rondt de hoek) als de speler op de vlonder staat, i.p.v.
+// permanent tegen de muur naast de opening te blijven hangen ---------------
+const rondom = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.ondoden.length = 0;
+  d.spawnWillekeurigeOndode();
+  const ondode = d.ondoden[0];
+  ondode.groep.position.set(d.BIJKEUKEN_CX, 0, d.BIJKEUKEN_Z_NOORD + 1);
+  d.speler.positie.set((d.VLONDER_X_WEST + d.VLONDER_X_OOST) / 2, 0, d.BIJKEUKEN_CZ);
+  for (let i = 0; i < 300; i++) d.updateOndoden(1 / 60);   // 5s
+  return {
+    eindX: ondode.groep.position.x,
+    eindZ: ondode.groep.position.z,
+    inGracht: ondode.groep.position.x >= d.GRACHTGANG_X_WEST,
+  };
+});
+check('Na 5s simulatie is de ondode daadwerkelijk de gang/vlonder in gelopen (rondde de hoek i.p.v. tegen de muur te blijven hangen)',
+  rondom.inGracht === true, rondom);
 
 const fails = report(errs);
 await browser.close();

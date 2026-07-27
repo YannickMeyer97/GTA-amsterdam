@@ -1,8 +1,11 @@
-// Map-lus M4 (Ticket 27): zone-E-inhoud — spawn-venster, Provisiekast,
-// decor en zone-audio. Bewaakt: venster spawnt pas na deur 3 (met 3
-// planken), Provisiekast vult reserve zoals de ammo-kist maar kost €350,
+// Map-lus M4 (Ticket 27): zone-E-inhoud — spawn-venster, decor en
+// zone-audio. Bewaakt: venster spawnt pas na deur 3 (met 3 planken),
 // windvlaag speelt NIET in zone E, de bijkeuken-kraak speelt éénmalig, en
 // het decor voegt geen extra obstakels toe.
+// Feedback: het Provisiekast-munitiepunt (tweede ammo-kist, hier ooit
+// getest in sectie 3) is verwijderd — munitie is nu alleen nog te koop bij
+// de ammo-kist in de woonkamer, zie test-winkel-status.mjs/test-winkel-
+// stijlen.mjs voor de bijgewerkte interactiepunten-/markeringen-tellingen.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
@@ -41,41 +44,45 @@ const naDeur3 = await page.evaluate(() => {
 check('Na koopDeur3(): het bijkeuken-venster staat nu in de actieve VENSTERS[]',
   naDeur3.inActieveVensters === true, naDeur3);
 
-// --- 3. Provisiekast-kooppad: zelfde AMMO_KIST_KOGELS-effect, eigen prijs -
-const teWeinigProvisiekast = await page.evaluate(() => {
+// --- 2b. Feedback: de Provisiekast (tweede ammo-kist, in de bijkeuken) is
+// volledig verwijderd — geen kooppunt, geen prijs, geen munitie-koopfunctie
+// meer, en de gewone ammo-kist in de woonkamer blijft de enige plek om
+// munitie bij te kopen. ------------------------------------------------
+const provisiekastWeg = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  d.spelStaat.geld = 100;   // minder dan PROVISIEKAST_PRIJS (350)
-  d.wapenStaat.reserve = 0;
-  d.koopProvisiekast();
-  return { geld: d.spelStaat.geld, reserve: d.wapenStaat.reserve };
+  return {
+    functieWeg: typeof d.koopProvisiekast === 'undefined',
+    prijsWeg: typeof d.PROVISIEKAST_PRIJS === 'undefined',
+    puntWeg: typeof d.provisiekastPunt === 'undefined',
+    markeringWeg: typeof d.provisiekastMarkering === 'undefined',
+    geenProvisiekastInPunten: !d.interactiePunten.some(p => p.naam === 'Provisiekast'),
+    stijlWeg: !('provisiekast' in d.WINKEL_STIJLEN),
+  };
 });
-check('koopProvisiekast() met te weinig geld doet niets',
-  teWeinigProvisiekast.geld === 100 && teWeinigProvisiekast.reserve === 0, teWeinigProvisiekast);
+check('koopProvisiekast()/PROVISIEKAST_PRIJS/provisiekastPunt/provisiekastMarkering bestaan niet meer',
+  provisiekastWeg.functieWeg && provisiekastWeg.prijsWeg && provisiekastWeg.puntWeg && provisiekastWeg.markeringWeg,
+  provisiekastWeg);
+check('Geen enkel interactiepunt heet nog "Provisiekast"', provisiekastWeg.geenProvisiekastInPunten, provisiekastWeg);
+check("WINKEL_STIJLEN bevat geen 'provisiekast'-entry meer", provisiekastWeg.stijlWeg, provisiekastWeg);
 
-const provisiekast = await page.evaluate(() => {
+// De ammo-kist in de woonkamer blijft de enige plek om munitie bij te kopen
+// en werkt onveranderd (regressie-anker).
+const woonkamerAmmoWerkt = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.spelStaat.geld = 1000;
   d.wapenStaat.reserve = 0;
-  d.koopProvisiekast();
-  return { geld: d.spelStaat.geld, reserve: d.wapenStaat.reserve, prijs: d.PROVISIEKAST_PRIJS, kogels: d.AMMO_KIST_KOGELS };
+  d.koopAmmo();
+  return {
+    reserve: d.wapenStaat.reserve, kogels: d.AMMO_KIST_KOGELS,
+    ammoPuntAanwezig: d.interactiePunten.some(p => p.naam === 'Ammo-kist'),
+  };
 });
-check('koopProvisiekast() kost €350 (PROVISIEKAST_PRIJS) i.p.v. de ammo-kist-prijs',
-  provisiekast.prijs === 350 && provisiekast.geld === 1000 - 350, provisiekast);
-check('koopProvisiekast() vult de reserve met exact AMMO_KIST_KOGELS (zelfde als de ammo-kist)',
-  provisiekast.reserve === provisiekast.kogels, provisiekast);
-// Herbruikbaar (net als de ammo-kist): een tweede aankoop werkt gewoon door.
-const provisiekastTweedeKeer = await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  d.spelStaat.geld = 1000;
-  d.wapenStaat.reserve = 0;
-  d.koopProvisiekast();
-  d.koopProvisiekast();
-  return { reserve: d.wapenStaat.reserve, kogels: d.AMMO_KIST_KOGELS };
-});
-check('Provisiekast is herbruikbaar (geen eenmalige "gekocht"-vlag, net als de ammo-kist)',
-  provisiekastTweedeKeer.reserve === provisiekastTweedeKeer.kogels * 2, provisiekastTweedeKeer);
+check('De ammo-kist in de woonkamer werkt nog gewoon (koopAmmo() vult de reserve met AMMO_KIST_KOGELS)',
+  woonkamerAmmoWerkt.reserve === woonkamerAmmoWerkt.kogels, woonkamerAmmoWerkt);
+check('De Ammo-kist (woonkamer) staat nog gewoon in interactiePunten',
+  woonkamerAmmoWerkt.ammoPuntAanwezig, woonkamerAmmoWerkt);
 
-// --- 4. Zone-audio: windvlaag speelt NIET in zone E, de bijkeuken-kraak
+// --- 3. Zone-audio: windvlaag speelt NIET in zone E, de bijkeuken-kraak
 // speelt éénmalig; de kelderhals blijft stil (zelfde als de gang vóór de
 // deur) --------------------------------------------------------------------
 const audioBijkeuken = await page.evaluate(() => {
@@ -122,14 +129,14 @@ const eenmaligheid = await page.evaluate(() => {
 check('bijkeukenBetreden gaat van false naar true (eenmalige vlag, zelfde patroon als gangBetreden)',
   eenmaligheid.voor === false && eenmaligheid.naEersteStap === true, eenmaligheid);
 
-// --- 5. Decor voegt geen collision toe (obstakel-count blijft binnen de
+// --- 4. Decor voegt geen collision toe (obstakel-count blijft binnen de
 // verwachte bandbreedte uit Ticket 24 — dit ticket voegt alleen meubelBox-
 // decor toe, geen registreerRechthoek) --------------------------------------
 const obstakelCount = await page.evaluate(() => window.AmsterdamUndeadDebug.obstakels.length);
 check('Obstakel-count blijft in de door Ticket 24 vastgestelde bandbreedte (20-40): geen collision-decor toegevoegd',
   obstakelCount >= 20 && obstakelCount <= 40, { obstakelCount });
 
-// --- 6. Spawn-camping-risico: het venster (11.6, 2) staat ruim (>5m) van
+// --- 5. Spawn-camping-risico: het venster (11.6, 2) staat ruim (>5m) van
 // het deur4-kooppunt (bijkeuken-kant, x ≈ 5.2) vandaan ---------------------
 const afstandTotDeur4 = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;

@@ -1,5 +1,6 @@
 // Ticket 44: de Vluchtroute-onderdelen. Bewaakt: vóór de drempelgolf bestaat
-// er geen extra interactiepunt (laadtijd-telling blijft 12), elk onderdeel
+// er geen extra interactiepunt (laadtijd-telling blijft 11 — was 12 vóór
+// Feedback het Provisiekast-punt verwijderde), elk onderdeel
 // verschijnt exact op zijn drempelgolf (ook als de zone nog op slot zit),
 // oppakken werkt in willekeurige volgorde en verwijdert mesh + punt +
 // markering, de HUD-teller klopt, en alle drie de posities liggen in hun
@@ -9,7 +10,7 @@ import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 const { browser, page, errs } = await openAmsterdamUndead();
 const { check, report } = makeChecker();
 
-// --- 1. Bij het laden: exact 12 interactiepunten, geen vluchtroute-punten -
+// --- 1. Bij het laden: exact 11 interactiepunten, geen vluchtroute-punten -
 const laadTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   return {
@@ -18,8 +19,8 @@ const laadTest = await page.evaluate(() => {
     meshesOnzichtbaar: d.VLUCHT_ONDERDELEN.map(o => o.mesh.visible),
   };
 });
-check('Bij het laden zijn er nog steeds precies 12 interactiepunten (laadtijd-telling ongewijzigd)',
-  laadTest.interactiePuntenLengte === 12, laadTest);
+check('Bij het laden zijn er nog steeds precies 11 interactiepunten (laadtijd-telling ongewijzigd t.o.v. Ticket 44 zelf)',
+  laadTest.interactiePuntenLengte === 11, laadTest);
 check('Bij het laden is geen enkel vluchtroute-onderdeel al zichtbaar',
   laadTest.onderdelenZichtbaar.every(v => v === false) && laadTest.meshesOnzichtbaar.every(v => v === false), laadTest);
 
@@ -117,8 +118,8 @@ check('Vóór de drempelgolf is geen enkel onderdeel zichtbaar of aanwezig als i
 check('Op de drempelgolf zelf wordt elk onderdeel zichtbaar én krijgt het een interactiepunt',
   drempelTest.resultaten.every(r => r.opDrempel.zichtbaar === true && r.opDrempel.meshZichtbaar === true && r.opDrempel.puntAanwezig === true),
   drempelTest);
-check('interactiePunten is nu 12 + 3 = 15 (alle drie tegelijk aanwezig)',
-  drempelTest.interactiePuntenNa === 15, drempelTest);
+check('interactiePunten is nu 11 + 3 = 14 (alle drie tegelijk aanwezig)',
+  drempelTest.interactiePuntenNa === 14, drempelTest);
 
 // --- 4. Herhaald aanroepen van toonVluchtOnderdelenIndienDrempel() creëert
 // GEEN dubbele punten/markeringen (idempotent zodra al zichtbaar) ----------
@@ -175,11 +176,11 @@ check('Na het oppakken van de Touwbundel (als tweede, niet als eerste): teller o
   oppakTest.naEen.teller === 1 && oppakTest.naEen.touwbundelWeg && oppakTest.naEen.roeispaanNogAanwezig, oppakTest.naEen);
 check('De HUD update meteen mee naar "Vluchtroute: 1/3"',
   oppakTest.naEen.hud === 'Vluchtroute: 1/3', oppakTest.naEen);
-// interactiePunten: 12 basis + de 3 vluchtroute-punten allemaal weer weg =
-// 12 — het ontsnappingspunt zelf verschijnt (sinds Ticket 55) pas na de
-// aankondigingsduur, dus meteen na de derde pickup is het nog 12, niet 13.
-check('Na alle drie: teller op 3, HUD toont 3/3, interactiePunten blijft op 12 (het ontsnappingspunt verschijnt pas na de T55-aankondiging)',
-  oppakTest.naAlle.teller === 3 && oppakTest.naAlle.hud === 'Vluchtroute: 3/3' && oppakTest.naAlle.interactiePuntenNa === 12,
+// interactiePunten: 11 basis + de 3 vluchtroute-punten allemaal weer weg =
+// 11 — het ontsnappingspunt zelf verschijnt (sinds Ticket 55) pas na de
+// aankondigingsduur, dus meteen na de derde pickup is het nog 11, niet 12.
+check('Na alle drie: teller op 3, HUD toont 3/3, interactiePunten blijft op 11 (het ontsnappingspunt verschijnt pas na de T55-aankondiging)',
+  oppakTest.naAlle.teller === 3 && oppakTest.naAlle.hud === 'Vluchtroute: 3/3' && oppakTest.naAlle.interactiePuntenNa === 11,
   oppakTest.naAlle);
 check('De derde pickup start wél meteen de T55-aankondigingsfase (hoorn + actieve timer)',
   oppakTest.naAlle.aankondigingActief && oppakTest.naAlle.hoornGespeeld, oppakTest.naAlle);
@@ -191,8 +192,8 @@ const winkelRegressie = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   return { winkelMarkeringenLengte: d.winkelMarkeringen.length };
 });
-check('winkelMarkeringen bevat de 12 bestaande + 3 (inmiddels opgepakte, dus nog wel gebouwde) vluchtroute-markeringen = 15',
-  winkelRegressie.winkelMarkeringenLengte === 15, winkelRegressie);
+check('winkelMarkeringen bevat de 11 bestaande + 3 (inmiddels opgepakte, dus nog wel gebouwde) vluchtroute-markeringen = 14',
+  winkelRegressie.winkelMarkeringenLengte === 14, winkelRegressie);
 
 const fails = report(errs);
 await browser.close();

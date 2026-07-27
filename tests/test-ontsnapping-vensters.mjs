@@ -43,6 +43,28 @@ const verwachtResterend = { 1: 9, 9: 1, 10: 0, 11: 3, 13: 1, 14: 0 };
 check('golvenTotOntsnappingsVenster() telt exact af naar het eerstvolgende venster (0 tijdens het venster zelf)',
   golvenTabel.every(r => r.resterend === verwachtResterend[r.golf]), golvenTabel);
 
+// --- 2b. Feedback: de boot fysiek zien aankomen — bij het laden (nog nooit
+// een aankondiging gehad) ligt de boot NIET al aangemeerd, maar weg op
+// BOOT_VERTREK_X. Vóórdat check 3 hieronder de eerste aankondiging start. --
+const bootBijLadenTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  return {
+    x: d.bootGroep.position.x,
+    BOOT_VERTREK_X: d.BOOT_VERTREK_X,
+    BOOT_DOK_X: d.BOOT_DOK_X,
+    aankondigingActief: d.ontsnappingAankondigingActief,
+    uitvarenActief: d.bootUitvarenActief,
+    puntBestaat: d.ontsnappingsPunt !== null,
+  };
+});
+check('Bij het laden (nog geen enkele aankondiging gehad) ligt de boot NIET al aangemeerd',
+  bootBijLadenTest.x !== bootBijLadenTest.BOOT_DOK_X, bootBijLadenTest);
+check('...maar staat precies op BOOT_VERTREK_X (weg, wacht op de eerste aankondiging)',
+  bootBijLadenTest.x === bootBijLadenTest.BOOT_VERTREK_X, bootBijLadenTest);
+check('Er loopt bij het laden geen aankondiging of uitvaren-animatie, en er is nog geen punt',
+  bootBijLadenTest.aankondigingActief === false && bootBijLadenTest.uitvarenActief === false && !bootBijLadenTest.puntBestaat,
+  bootBijLadenTest);
+
 // Kleine opruimhelper: verwijdert een eventueel bestaand ontsnappingspunt
 // ECHT uit interactiePunten (i.p.v. alleen de losse variabele te nullen) en
 // annuleert een eventuele lopende aankondiging, zodat elke check met schone
@@ -102,6 +124,60 @@ check('...en verschijnt PAS DAN het echte interactiepunt',
 check('De HUD toont nu "Boot ligt aan!"',
   naAankondigingTest.hud === 'Boot ligt aan!', naAankondigingTest);
 
+// --- 3c. Feedback: de boot vaart fysiek aan i.p.v. altijd al statisch
+// aangemeerd te liggen. updateBootPositie() draait normaliter in de
+// altijd-lopende cosmetische sectie van gameLoop; hier direct aangeroepen
+// (zelfde discipline als updateOntsnappingAankondiging() hierboven) om de
+// positielogica puur en deterministisch te testen. Bouwt voort op
+// naAankondigingTest hierboven: de aankondiging is daar al volledig
+// afgerond, dus ontsnappingsPunt bestaat nu — precies de "aangemeerd"-staat.
+const bootAangemeerdTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.updateBootPositie();
+  return {
+    x: d.bootGroep.position.x,
+    BOOT_DOK_X: d.BOOT_DOK_X,
+    puntX: d.ontsnappingsPunt.positie.x,
+  };
+});
+check('Zodra de boot is aangemeerd (punt bestaat) staat bootGroep.position.x EXACT op BOOT_DOK_X',
+  bootAangemeerdTest.x === bootAangemeerdTest.BOOT_DOK_X, bootAangemeerdTest);
+check('Het interactiepunt staat exact 1.5 vóór de boeg (BOOT_DOK_X - 1.5), ongeacht het live-transform-timing',
+  bootAangemeerdTest.puntX === bootAangemeerdTest.BOOT_DOK_X - 1.5, bootAangemeerdTest);
+
+// --- 3d. De positie tijdens de aankondiging zelf: lineair van BOOT_VERTREK_X
+// naar BOOT_DOK_X, gekoppeld aan ontsnappingAankondigingTimer (op 0%, 50% en
+// 100% van de duur) -----------------------------------------------------
+await opruimOntsnapping();
+const bootVaartAanTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.vluchtOnderdelenOpgepakt = 3;
+  d.spelStaat.golf = 10;
+  d.updateOntsnappingsVenster();   // start de aankondiging (timer op volle duur)
+  d.updateBootPositie();
+  const xBijStart = d.bootGroep.position.x;   // 0% verstreken -> nog bij BOOT_VERTREK_X
+  d.updateOntsnappingAankondiging(d.ONTSNAPPING_AANKONDIGING_DUUR / 2);   // 50% verstreken
+  d.updateBootPositie();
+  const xOpHalverwege = d.bootGroep.position.x;
+  const verwachtHalverwege = (d.BOOT_VERTREK_X + d.BOOT_DOK_X) / 2;
+  d.updateOntsnappingAankondiging(d.ONTSNAPPING_AANKONDIGING_DUUR / 2 + 0.1);   // ruim voorbij 100%
+  d.updateBootPositie();
+  const xBijAankomst = d.bootGroep.position.x;
+  return {
+    xBijStart, BOOT_VERTREK_X: d.BOOT_VERTREK_X, BOOT_DOK_X: d.BOOT_DOK_X,
+    xOpHalverwege, verwachtHalverwege, xBijAankomst,
+  };
+});
+check('Bij het starten van de aankondiging (0% verstreken) staat de boot nog op BOOT_VERTREK_X',
+  bootVaartAanTest.xBijStart === bootVaartAanTest.BOOT_VERTREK_X, bootVaartAanTest);
+check('Op de helft van de aankondigingsduur staat de boot precies halverwege BOOT_VERTREK_X en BOOT_DOK_X',
+  Math.abs(bootVaartAanTest.xOpHalverwege - bootVaartAanTest.verwachtHalverwege) < 1e-9, bootVaartAanTest);
+check('De boot is dan duidelijk dichter bij BOOT_DOK_X gekomen (BOOT_DOK_X < BOOT_VERTREK_X, dus x neemt af)',
+  Math.abs(bootVaartAanTest.xOpHalverwege - bootVaartAanTest.BOOT_DOK_X) <
+  Math.abs(bootVaartAanTest.xBijStart - bootVaartAanTest.BOOT_DOK_X), bootVaartAanTest);
+check('Zodra de aankondiging voorbij is, staat de boot exact aangemeerd op BOOT_DOK_X',
+  bootVaartAanTest.xBijAankomst === bootVaartAanTest.BOOT_DOK_X, bootVaartAanTest);
+
 // --- 4. Zonder 3/3 (ook al is het een ontsnappingsgolf): geen aankondiging,
 // geen punt -------------------------------------------------------------
 await opruimOntsnapping();
@@ -157,7 +233,9 @@ const sluitTest = await page.evaluate(() => {
   // aankondiging — die is al gedekt in check 3/3b hierboven; dit blok focust
   // puur op de sluit-/vertreklogica in updateGolf()).
   d.toonOntsnappingspuntIndienKlaar();
+  d.updateBootPositie();   // fysiek aangemeerd vóór de wave-complete-transitie
   const puntVoorWave = d.ontsnappingsPunt;
+  const bootXVoor = d.bootGroep.position.x;
   const vertrekVoor = d.bootVertrekTeller;
   // Wave-complete-conditie forceren: geen ondoden meer, budget op, golf actief.
   for (const o of [...d.ondoden]) d.doodOndode(o);
@@ -167,14 +245,19 @@ const sluitTest = await page.evaluate(() => {
   d.updateGolf(0.016);
   return {
     puntVoorWaveBestond: puntVoorWave !== null,
+    bootXVoor, BOOT_DOK_X: d.BOOT_DOK_X,
     golfNa: d.spelStaat.golf,
     puntNa: d.ontsnappingsPunt,
     interactiePuntenBevatNietMeer: !d.interactiePunten.includes(puntVoorWave),
     hudNa: document.getElementById('ontsnappingVensterUI').textContent,
     vertrekGespeeld: d.bootVertrekTeller - vertrekVoor === 1,
+    // Feedback: de boot moet ook fysiek weer wegvaren i.p.v. meteen te "verdwijnen".
+    uitvarenActiefNa: d.bootUitvarenActief,
+    uitvarenTimerOpVolleDuur: d.bootUitvarenTimer === d.ONTSNAPPING_AANKONDIGING_DUUR,
   };
 });
 check('Vóór de wave-complete-transitie bestond het punt (golf 10)', sluitTest.puntVoorWaveBestond, sluitTest);
+check('...en de boot lag toen al fysiek aangemeerd op BOOT_DOK_X', sluitTest.bootXVoor === sluitTest.BOOT_DOK_X, sluitTest);
 check('Na de wave-complete-transitie is golf 11 bereikt (geen ontsnappingsgolf meer)',
   sluitTest.golfNa === 11, sluitTest);
 check('De boot vaart weer weg: het punt is verwijderd (ontsnappingsPunt === null, uit interactiePunten)',
@@ -183,6 +266,33 @@ check('De HUD volgt mee: weer "Boot over N golven" i.p.v. "Boot ligt aan!"',
   sluitTest.hudNa === 'Boot over 3 golven', sluitTest);
 check('Het vertrek-geluid speelt precies 1x, symmetrisch met de aankomst',
   sluitTest.vertrekGespeeld, sluitTest);
+check('De fysieke uitvaren-animatie start (bootUitvarenActief true, timer op volle duur)',
+  sluitTest.uitvarenActiefNa === true && sluitTest.uitvarenTimerOpVolleDuur === true, sluitTest);
+
+// --- 7c. De uitvaren-animatie zelf: lineair terug van BOOT_DOK_X naar
+// BOOT_VERTREK_X, symmetrisch met de aankomst (3d hierboven). Bouwt voort op
+// sluitTest: bootUitvarenActief staat daar al op true met de volle duur. ---
+const bootVaartUitTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.updateBootUitvaren(d.ONTSNAPPING_AANKONDIGING_DUUR / 2);   // 50% verstreken
+  d.updateBootPositie();
+  const xOpHalverwege = d.bootGroep.position.x;
+  const verwachtHalverwege = (d.BOOT_DOK_X + d.BOOT_VERTREK_X) / 2;
+  d.updateBootUitvaren(d.ONTSNAPPING_AANKONDIGING_DUUR / 2 + 0.1);   // ruim voorbij 100%
+  d.updateBootPositie();
+  return {
+    xOpHalverwege, verwachtHalverwege,
+    uitvarenActiefNa: d.bootUitvarenActief,
+    xBijVertrokken: d.bootGroep.position.x,
+    BOOT_VERTREK_X: d.BOOT_VERTREK_X,
+  };
+});
+check('Op de helft van de uitvaren-duur staat de boot precies halverwege BOOT_DOK_X en BOOT_VERTREK_X',
+  Math.abs(bootVaartUitTest.xOpHalverwege - bootVaartUitTest.verwachtHalverwege) < 1e-9, bootVaartUitTest);
+check('Na afloop van de uitvaren-duur is bootUitvarenActief weer false',
+  bootVaartUitTest.uitvarenActiefNa === false, bootVaartUitTest);
+check('...en staat de boot weer volledig terug op BOOT_VERTREK_X (weg, klaar voor de volgende aankomst)',
+  bootVaartUitTest.xBijVertrokken === bootVaartUitTest.BOOT_VERTREK_X, bootVaartUitTest);
 
 // --- 7b. Een aankondiging die nog loopt wanneer de golf eindigt wordt stil
 // geannuleerd (geen punt, geen vertrek-tell — er is nog niets aangekomen) --
@@ -204,11 +314,17 @@ const annuleerTest = await page.evaluate(() => {
     aankondigingNa: d.ontsnappingAankondigingActief,
     puntNa: d.ontsnappingsPunt,
     geenVertrekGespeeld: d.bootVertrekTeller === vertrekVoor,
+    // Feedback: er is nog niets aangekomen, dus ook geen fysieke uitvaren-
+    // animatie nodig — updateBootPositie() valt vanzelf terug op
+    // BOOT_VERTREK_X zodra ontsnappingAankondigingActief false wordt.
+    geenUitvarenGestart: d.bootUitvarenActief === false,
   };
 });
 check('De aankondiging was actief vóór de wave-complete-transitie', annuleerTest.aankondigingVoor, annuleerTest);
 check('Een nog lopende aankondiging wordt stil geannuleerd als de golf eindigt (geen punt, geen vertrek-geluid)',
   annuleerTest.aankondigingNa === false && annuleerTest.puntNa === null && annuleerTest.geenVertrekGespeeld, annuleerTest);
+check('...en er start ook GEEN fysieke uitvaren-animatie (er is nooit iets aangekomen om te laten vertrekken)',
+  annuleerTest.geenUitvarenGestart, annuleerTest);
 
 // --- 8. De golf-10-melding vuurt precies 1x, ook bij herhaalde
 // startGolf()-achtige aanroepen op dezelfde en latere ontsnappingsgolven ---

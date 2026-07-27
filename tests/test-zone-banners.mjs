@@ -2,6 +2,9 @@
 // wisselt mee met zoneVan(), een banner verschijnt precies 1x per zone per
 // run (bij het eerste bezoek), een herbezoek toont GEEN nieuwe banner, en er
 // wordt geen per-frame DOM-write gedaan (schrijfteller i.p.v. per-frame).
+// Feedback: De Gang (zone 1) is een bewuste uitzondering — daar blijft het
+// HUD-label wel meewisselen, maar de grote aankondigingsbanner verschijnt
+// nooit (ook niet bij het allereerste bezoek).
 // Zie ARCHITECTURE_NOTES.md §6.8 en ROADMAP.md Ticket 50.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
@@ -45,7 +48,8 @@ check('Het HUD-label toont meteen "De Woonkamer"', laadTest.label === 'De Woonka
 check('De schrijfteller staat bij het laden nog op 0 (de initiële zet gebeurt buiten de gameLoop-write-plek)',
   laadTest.schrijfteller === 0, laadTest);
 
-// --- 3. Eerste bezoek aan de gang: label wisselt, banner verschijnt 1x ----
+// --- 3. Eerste bezoek aan de gang: label wisselt mee, maar de banner blijft
+// bewust ONDERDRUKT (Feedback: "ik hoef in de gang geen melding") ----------
 await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.speler.positie.x = 0;
@@ -64,9 +68,9 @@ const naGang = await page.evaluate(() => {
 });
 check('Na de eerste stap in de gang: laatsteZone === 1', naGang.laatsteZone === 1, naGang);
 check('Het HUD-label toont nu "De Gang"', naGang.label === 'De Gang', naGang);
-check('De banner noemt "De Gang" + de bijbehorende flavour-tekst',
-  naGang.banner.includes('De Gang') && naGang.banner.includes('smal en donker'), naGang);
-check('Zone 1 (gang) staat nu ook in bezochteZones (naast de startzone 0)',
+check('De grote banner verschijnt NIET voor De Gang, ook niet bij dit allereerste bezoek (blijft leeg)',
+  naGang.banner === '', naGang);
+check('Zone 1 (gang) staat nu wél in bezochteZones (naast de startzone 0) — alleen de banner is onderdrukt, niet de bezocht-markering',
   naGang.bezocht.includes(0) && naGang.bezocht.includes(1), naGang);
 check('De schrijfteller staat na deze ene zonewissel op exact 1', naGang.schrijfteller === 1, naGang);
 

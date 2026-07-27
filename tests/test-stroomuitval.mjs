@@ -93,7 +93,8 @@ check('Het algehele hemisfeerlicht volgt exact HEMISFEER_STROOM_VLOER + (1-vloer
 check('De camera-belichting (toneMappingExposure) volgt exact EXPOSURE_STROOM_VLOER + (1-vloer)*stroomFactor (0.4 + 0.6*0.12 = 0.472)',
   Math.abs(naEchteTick.exposureFractie - (0.4 + 0.6 * 0.12)) < 0.005, naEchteTick);
 // Buitenlichten (maanlicht x2 + plaatsVulling + 4 binnenplaats-lantaarns +
-// 1 gracht-lantaarn (Ticket 52) = 8) hebben een
+// 1 gracht-lantaarn (Ticket 52) + 1 boot-lichtje (Feedback: fysieke
+// aankomst) = 9) hebben een
 // HOGERE vloer dan binnen (0.12) — buiten blijft net iets lichter, maar
 // gaat wel duidelijk mee de donkere sfeer in. De vloer is twee keer
 // bijgesteld na screenshot-pixelmetingen: eerste gok 0.2 bleek te laag
@@ -103,10 +104,12 @@ check('De camera-belichting (toneMappingExposure) volgt exact EXPOSURE_STROOM_VL
 // DAKRAAM_STROOM_EXTRA hierboven, geeft de door de gebruiker opgegeven
 // doelverhouding (binnenplaats > atelier > woonkamer, elk merkbaar
 // donkerder dan normaal).
-check('buitenLichten bevat de 8 verwachte lichten (maanlicht, maanlichtDeur, plaatsVulling, 4 binnenplaats-lantaarns, 1 gracht-lantaarn)',
-  naEchteTick.buitenTelling === 8, naEchteTick);
-check('Alle buitenlichten volgen exact BUITEN_STROOM_VLOER + (1-vloer)*stroomFactor (0.4 + 0.6*0.12 = 0.472)',
-  naEchteTick.buitenFracties.every(f => Math.abs(f - (0.4 + 0.6 * 0.12)) < 0.005), naEchteTick);
+check('buitenLichten bevat de 9 verwachte lichten (maanlicht, maanlichtDeur, plaatsVulling, 4 binnenplaats-lantaarns, 1 gracht-lantaarn, 1 boot-lichtje)',
+  naEchteTick.buitenTelling === 9, naEchteTick);
+// Feedback: binnenplaats tijdens Stroomuitval ~5% helderder — BUITEN_STROOM_
+// VLOER 0.4 -> 0.5 (empirisch geverifieerd via pixelhelderheid: +5.0%).
+check('Alle buitenlichten volgen exact BUITEN_STROOM_VLOER + (1-vloer)*stroomFactor (0.5 + 0.5*0.12 = 0.56)',
+  naEchteTick.buitenFracties.every(f => Math.abs(f - (0.5 + 0.5 * 0.12)) < 0.005), naEchteTick);
 check('Buiten blijft merkbaar lichter dan binnen tijdens dezelfde Stroomuitval (buiten-fractie > lamp-fractie)',
   naEchteTick.buitenFracties[0] > naEchteTick.lichtIntensiteitFractie, naEchteTick);
 check('Buiten blijft ook merkbaar lichter dan het atelier (buiten-fractie > dakraam-fractie)',

@@ -39,7 +39,12 @@ const drieTest = await page.evaluate(() => {
   return {
     puntBestaat: d.ontsnappingsPunt !== null,
     positieX: d.ontsnappingsPunt.positie.x, positieZ: d.ontsnappingsPunt.positie.z,
-    verwachtX: d.bootGroep.position.x - 1.5, verwachtZ: d.bootGroep.position.z,
+    // Feedback (fysieke boot-aankomst): het punt rekent nu vanaf de vaste
+    // BOOT_DOK_X-constante, niet meer vanaf het live bootGroep.position.x —
+    // die staat hier nog op BOOT_VERTREK_X, want deze test roept
+    // updateBootPositie() bewust niet aan (dat hoort bij de aankomst-
+    // animatie, niet bij de 3/3-verschijnlogica die dit blok bewaakt).
+    verwachtX: d.BOOT_DOK_X - 1.5, verwachtZ: d.bootGroep.position.z,
     binnenVlonder: d.ontsnappingsPunt.positie.x < d.VLONDER_X_OOST,
     interactiePuntenBevat: d.interactiePunten.includes(d.ontsnappingsPunt),
   };

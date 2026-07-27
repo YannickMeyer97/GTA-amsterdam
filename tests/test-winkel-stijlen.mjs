@@ -1,9 +1,12 @@
 // Winkel W2 (Ticket 36): winkelstijl-register + functie-iconen. Bewaakt:
-// alle 12 markeringen bestaan met de juiste kinderen-inventaris (ring +
+// alle 11 markeringen bestaan met de juiste kinderen-inventaris (ring +
 // icoon-meshes), gedeelde geometrie-cache met EIGEN materials per instantie,
-// uniciteit van de (categorie->icoon+kleur)-mapping (behalve de bewust
-// gedeelde munitie- en deur-silhouetten), doofMarkering() blijft ring+icoon
-// doven, en het kopen van deur 1 verwijdert zijn markering nog steeds.
+// uniciteit van de (categorie->icoon+kleur)-mapping (behalve het bewust
+// gedeelde deur-silhouet), doofMarkering() blijft ring+icoon doven, en het
+// kopen van deur 1 verwijdert zijn markering nog steeds.
+// Feedback: het Provisiekast-munitiepunt (dat het ammo-silhouet bewust
+// deelde) is verwijderd — 12 markeringen/13 stijlen -> 11/12, en de
+// munitie-categorie is nu een gewone singleton, net als de meeste andere.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
@@ -21,8 +24,8 @@ const opbouw = await page.evaluate(() => {
     })),
   };
 });
-check('Er zijn precies 12 winkelmarkeringen gebouwd (één per interactiepunt)',
-  opbouw.aantal === 12, opbouw);
+check('Er zijn precies 11 winkelmarkeringen gebouwd (één per interactiepunt)',
+  opbouw.aantal === 11, opbouw);
 check('Elke markering heeft 2 of 3 kinderen: 1 ring + 1-2 icoon-meshes (budget <= 3 meshes)',
   opbouw.perGroep.every(g => g.totaalKinderen === 2 || g.totaalKinderen === 3), opbouw);
 check('Bij elke markering is het eerste kind de vloerring',
@@ -53,8 +56,8 @@ const stijlInventaris = await page.evaluate(() => {
   return uit;
 });
 const stijlNamen = Object.keys(stijlInventaris);
-check('Er staan 13 stijlen in WINKEL_STIJLEN (12 statische interactiepunten + de gedeelde Ticket-44-vluchtroutestijl)',
-  stijlNamen.length === 13, stijlInventaris);
+check('Er staan 12 stijlen in WINKEL_STIJLEN (11 statische interactiepunten + de gedeelde Ticket-44-vluchtroutestijl)',
+  stijlNamen.length === 12, stijlInventaris);
 check('Voor elke stijl is de icoon-geometrie hergebruikt tussen twee bouwIcoon()-aanroepen (gedeelde cache)',
   stijlNamen.every(n => stijlInventaris[n].geometrieHergebruikt), stijlInventaris);
 check('Voor elke stijl krijgt elke bouwIcoon()-aanroep verse materials (geen materiaal-cache, blijft doofbaar)',
@@ -62,9 +65,10 @@ check('Voor elke stijl krijgt elke bouwIcoon()-aanroep verse materials (geen mat
 
 // --- 3. Uniciteit: geen twee VERSCHILLENDE functiecategorieën delen zowel
 // hetzelfde silhouet als dezelfde kleur (ontwerpbeslissing 29) -------------
-const munitieGroep = ['ammo', 'provisiekast'];
+// Feedback: de munitieGroep (ammo + provisiekast) is vervallen — ammo is nu
+// een gewone singleton-categorie, net als upgrade/werkbank/etc.
 const deurGroep = ['deur1', 'deur2', 'deur3', 'deur4'];
-const verwachteGedeeldeSets = [munitieGroep, deurGroep];
+const verwachteGedeeldeSets = [deurGroep];
 const signatuurGroepen = {};
 for (const naam of stijlNamen) {
   const sig = stijlInventaris[naam].geometrieSignatuur + '|' + stijlInventaris[naam].kleur;
@@ -80,9 +84,6 @@ const onverwachteOverlap = Object.values(signatuurGroepen).filter(groep => {
   if (groep.length <= 1) return false;
   return !verwachteGedeeldeSets.some(verwacht => groep.every(n => verwacht.includes(n)));
 });
-check('Munitie (ammo + provisiekast) deelt bewust hetzelfde icoon-silhouet (verschillende kleur)',
-  stijlInventaris.ammo.geometrieSignatuur === stijlInventaris.provisiekast.geometrieSignatuur &&
-  stijlInventaris.ammo.kleur !== stijlInventaris.provisiekast.kleur, stijlInventaris);
 check('Alle vier de deuren delen bewust hetzelfde sleutel-silhouet',
   deurGroep.every(n => stijlInventaris[n].geometrieSignatuur === stijlInventaris.deur1.geometrieSignatuur), stijlInventaris);
 check('Geen enkele ONVERWACHTE overlap: geen twee andere stijlen delen zowel silhouet als kleur',
