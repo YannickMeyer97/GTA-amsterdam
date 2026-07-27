@@ -9,6 +9,13 @@ import path from 'path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const THREE_SRC = readFileSync(path.join(__dirname, 'node_modules', 'three', 'build', 'three.module.js'), 'utf8');
 const GAME_PATH = path.join(__dirname, '..', 'amsterdam-undead.html');
+// Ticket 60: naast de kern-module onderscheppen we ook de
+// examples/jsm/**-submodules (postprocessing + hun eigen relatieve imports
+// zoals shaders/CopyShader.js) en serveren die uit hetzelfde lokale
+// node_modules/three-pakket — zelfde CDN-intercept-patroon, nu pad-bewust
+// i.p.v. altijd dezelfde THREE_SRC terug te geven.
+const JSM_MARKER = '/examples/jsm/';
+const JSM_ROOT = path.join(__dirname, 'node_modules', 'three', 'examples', 'jsm');
 
 // Opent amsterdam-undead.html headless en geeft { browser, page, errs } terug.
 // errs verzamelt console errors + pageerrors zodat elk testscript aan het
@@ -19,7 +26,20 @@ export async function openAmsterdamUndead({ simuleerPointerLock = false } = {}) 
   const errs = [];
   page.on('pageerror', e => errs.push(String(e)));
   page.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
-  await page.route('**/cdn.jsdelivr.net/**', r => r.fulfill({ status: 200, contentType: 'application/javascript', body: THREE_SRC }));
+  await page.route('**/cdn.jsdelivr.net/**', r => {
+    const pathname = new URL(r.request().url()).pathname;
+    const idx = pathname.indexOf(JSM_MARKER);
+    if (idx !== -1) {
+      const rel = pathname.slice(idx + JSM_MARKER.length);
+      try {
+        const src = readFileSync(path.join(JSM_ROOT, rel), 'utf8');
+        return r.fulfill({ status: 200, contentType: 'application/javascript', body: src });
+      } catch {
+        return r.fulfill({ status: 404, body: `lokaal jsm-bestand niet gevonden: ${rel}` });
+      }
+    }
+    return r.fulfill({ status: 200, contentType: 'application/javascript', body: THREE_SRC });
+  });
   await page.goto('file://' + GAME_PATH);
   await page.waitForTimeout(800);
   if (simuleerPointerLock) {

@@ -205,6 +205,12 @@ de andere game draait alles in één zelfstandig
 HTML-bestand met Three.js via CDN, botsingen via rechthoek-obstakels, en
 live gegenereerde Web Audio-geluiden (geen audiobestanden). De meubels zijn
 puur decor en hebben géén collision, zodat de pathing er niet op vasthaakt.
+Een subtiele post-processing-laag (bloom) laat lantaarns, winkelaccenten
+en ogen in het donker zachtjes gloeien; steen/hout/metaal-oppervlakken
+hebben een beetje procedureel getekende materiaaldiepte i.p.v. vlakke
+kleur — beide 100% Three.js/canvas, zonder externe afbeeldingen.
+
+
 
 ### Zelf experimenteren
 

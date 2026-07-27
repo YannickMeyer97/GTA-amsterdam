@@ -450,13 +450,22 @@
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
   }
 }
 </script>
 
 <script type="module">
 import * as THREE from 'three';
+// Ticket 60 (v0.19, §7.4.3-beslissing 52): post-processing via Three.js'
+// eigen postprocessing-submodules (onderdeel van hetzelfde three@0.160.0-
+// pakket, dezelfde CDN-host als de kern-import hierboven) — geen
+// derde-partij-framework, geen los asset.
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 /* ================================================================
    STAP 1 — DE BASIS: scene, camera, renderer en licht
@@ -496,6 +505,24 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 document.body.appendChild(renderer.domElement);
 
+// Ticket 60 (v0.19, §7.4.3-beslissing 52): minimale post-processing-pipeline.
+// RenderPass (kale scene) + één subtiele UnrealBloomPass (alleen de fel-
+// emissieve elementen — lantaarns, ogen, winkelaccenten — beginnen licht te
+// gloeien; de rest van de scene blijft ongewijzigd door de hoge threshold) +
+// OutputPass (herstelt de sRGB/ACES-uitvoer die de composer anders zou
+// overslaan). Exact 1 shadow-castende light blijft ongewijzigd (§7.9) — deze
+// pipeline voegt geen licht toe, alleen een schermvullend nabewerkingseffect.
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+// Interne bloom-resolutie bewust LAAG (256x256, de eigen default van de
+// pass) i.p.v. schermresolutie: de blur-mipchain (5 niveaus, dus tot ~10
+// extra full-screen passes) wordt anders onnodig zwaar — een gloed-effect
+// heeft geen scherpe resolutie nodig, en composer.render() schaalt het
+// resultaat automatisch terug naar volledig scherm.
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.35, 0.4, 0.82);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
+
 // Zwak, koel algeheel licht — de kamer moet vooral door de lampen en de
 // ramen verlicht worden, niet door een felle "zon" zoals op het Dam-plein.
 // Iets opgehoogd t.o.v. het prototype zodat de meubels/hoeken leesbaar zijn
@@ -508,6 +535,7 @@ addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
 });
 
 /* ================================================================
@@ -546,21 +574,111 @@ function mat(kleur, ruwheid = 0.9, metaal = 0, extra = {}) {
   return gedeeld;
 }
 
+// Ticket 58 (v0.19, §7.4.1-beslissing 50): centraal PALET-object voor
+// consistente art direction. Groepeert kleuren die al in de scene zaten
+// (bestaande hexwaarden, dus geen visuele sprong) onder benoemde,
+// semantische groepen, zodat toekomstige content dezelfde "stem" hergebruikt
+// i.p.v. een nieuwe losse hex te verzinnen. Bewust beperkt tot de
+// gevel-/straatdecor-call-sites van dit ticket (zie ROADMAP.md T58) — geen
+// volledige omzetting van elke kleur in het bestand. De drie bijna-
+// identieke warme raamtinten van vóór deze ronde (0xffc06a/0xffd18a/
+// 0xffb86b) zijn samengevoegd tot twee duidelijk onderscheidbare tinten.
+const PALET = {
+  // Gevelbasis (achtergevels binnenplaats): bijna-zwart, koel of warm
+  // ondertoon — dezelfde 5 hexwaarden als voorheen, nu benoemd.
+  gevelKoud: [0x0d1216, 0x12181d, 0x0c1115],
+  gevelWarm: [0x151016, 0x17120f],
+  // Raamgloed: warm (kaars/gloeilamp) of koel (TL/maanlicht).
+  raamWarmAmber: 0xffc06a,
+  raamWarmZacht: 0xffd18a,
+  raamKoelBlauw: 0x9fc0e8,
+  raamKoelLicht: 0xaed3ff,
+  // Straat: natte, blauwgrijze klinkers + plassen.
+  straatNat: 0x3a4650,
+  straatPlas: 0x29495a,
+};
+
 // --- Ticket 38 (Sfeer S1, §5.9-materiaal + ontwerpbeslissing 31) --------
 // matFamilie-cache: vijf families met een VASTE, per-familie afgestemde
-// roughness/metalness (geen textures — CLAUDE.md verbiedt ook canvas-
-// gegenereerde) — dat geeft materiaalgevoel zonder de kleuren van bestaande
-// oppervlakken te wijzigen. Losse cache van mat(): daar is de sleutel de
-// exacte roughness/metalness-combinatie, hier de FAMILIENAAM + kleur, zodat
-// alle leden van een familie (ongeacht kleur) hetzelfde "gevoel" delen.
-// Gecachete materialen zijn immutabel (nooit muteren, alleen nieuwe
-// cache-keys opvragen) — zo kan de T32-wereldimpact userData.materiaalFamilie
-// veilig aflezen zonder ooit per ongeluk een gedeeld material te herschilderen.
+// roughness/metalness — dat geeft materiaalgevoel zonder de kleuren van
+// bestaande oppervlakken te wijzigen. Losse cache van mat(): daar is de
+// sleutel de exacte roughness/metalness-combinatie, hier de FAMILIENAAM +
+// kleur, zodat alle leden van een familie (ongeacht kleur) hetzelfde
+// "gevoel" delen. Gecachete materialen zijn immutabel (nooit muteren,
+// alleen nieuwe cache-keys opvragen) — zo kan de T32-wereldimpact
+// userData.materiaalFamilie veilig aflezen zonder ooit per ongeluk een
+// gedeeld material te herschilderen.
+//
+// Ticket 59 (v0.19, §7.3 + §7.4.2-beslissing 51): drie van de vijf
+// families krijgen nu ook een gedeelde, procedureel getekende
+// `roughnessMap` (steen-ruis/houtnerf/geborsteld-metaal) voor
+// materiaaldiepte. Dit HERZIET de aanname hierboven (Ticket 38: "CLAUDE.md
+// verbiedt ook canvas-gegenereerde textures") — zie ARCHITECTURE_NOTES.md
+// §7.3 voor de volledige redenering: "geen textures/modellen" leest deze
+// ronde als "geen extern geladen bestanden, geen derde-partij-frameworks",
+// niet als "geen enkele texture-map". De texture is 100% runtime getekend
+// met de 2D Canvas-API (geen bestand, geen netwerkverzoek) en wordt als
+// `roughnessMap` (niet `map`) toegepast zodat de BASISKLEUR van elk
+// oppervlak exact hetzelfde blijft — alleen de subtiele lokale
+// ruwheidsvariatie (rond wit getekend, dus roughness*textuur blijft dicht
+// bij de oorspronkelijke waarde) is nieuw.
+const canvasTextuurCache = new Map();
+function bouwCanvasTextuur(patroon, tekenFn, grootte = 128) {
+  let textuur = canvasTextuurCache.get(patroon);
+  if (textuur) return textuur;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = grootte;
+  tekenFn(canvas.getContext('2d'), grootte);
+  textuur = new THREE.CanvasTexture(canvas);
+  textuur.wrapS = textuur.wrapT = THREE.RepeatWrapping;
+  textuur.repeat.set(4, 4);
+  canvasTextuurCache.set(patroon, textuur);
+  return textuur;
+}
+// Elke tekenaar vult eerst bijna-wit (subtiel effect, zie hierboven) en
+// tekent daarna een laag-contrast, per-familie herkenbaar patroon.
+const CANVAS_TEXTUUR_TEKENAARS = {
+  steen(ctx, n) {
+    ctx.fillStyle = '#e8e8e8';
+    ctx.fillRect(0, 0, n, n);
+    for (let i = 0; i < n * n * 0.5; i++) {
+      const x = Math.random() * n, y = Math.random() * n;
+      const g = 205 + Math.floor(Math.random() * 45);   // 205-250: korrelige steenruis
+      ctx.fillStyle = `rgb(${g},${g},${g})`;
+      ctx.fillRect(x, y, 1.4, 1.4);
+    }
+  },
+  hout(ctx, n) {
+    ctx.fillStyle = '#e8e8e8';
+    ctx.fillRect(0, 0, n, n);
+    ctx.lineWidth = 1.1;
+    for (let y = 3; y < n; y += 6 + Math.random() * 4) {
+      const g = 210 + Math.floor(Math.random() * 30);
+      ctx.strokeStyle = `rgb(${g},${g},${g})`;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      for (let x = 0; x <= n; x += 8) ctx.lineTo(x, y + Math.sin(x * 0.09 + y) * 2.2);
+      ctx.stroke();
+    }
+  },
+  metaal(ctx, n) {
+    ctx.fillStyle = '#e4e4e4';
+    ctx.fillRect(0, 0, n, n);
+    for (let x = 0; x < n; x += 1.5) {
+      const g = 215 + Math.floor(Math.random() * 30);   // fijne verticale geborsteld-metaal-strepen
+      ctx.strokeStyle = `rgb(${g},${g},${g})`;
+      ctx.beginPath();
+      ctx.moveTo(x + (Math.random() - 0.5) * 1.5, 0);
+      ctx.lineTo(x + (Math.random() - 0.5) * 1.5, n);
+      ctx.stroke();
+    }
+  },
+};
 const MATERIAAL_FAMILIES = {
-  hout:     { ruwheid: 0.75, metaal: 0.05 },
-  steen:    { ruwheid: 0.9,  metaal: 0 },
+  hout:     { ruwheid: 0.75, metaal: 0.05, textuur: 'hout' },
+  steen:    { ruwheid: 0.9,  metaal: 0,    textuur: 'steen' },
   tegel:    { ruwheid: 0.55, metaal: 0.05 },
-  metaal:   { ruwheid: 0.35, metaal: 0.65 },
+  metaal:   { ruwheid: 0.35, metaal: 0.65, textuur: 'metaal' },
   natSteen: { ruwheid: 0.32, metaal: 0.12 },   // natte klinkers: lage ruwheid = glans in maanlicht
 };
 const matFamilieCache = new Map();
@@ -568,8 +686,10 @@ function matFamilie(naam, kleur) {
   const sleutel = `${naam}|${kleur}`;
   let gedeeld = matFamilieCache.get(sleutel);
   if (!gedeeld) {
-    const { ruwheid, metaal } = MATERIAAL_FAMILIES[naam] ?? MATERIAAL_FAMILIES.steen;
-    gedeeld = new THREE.MeshStandardMaterial({ color: kleur, roughness: ruwheid, metalness: metaal });
+    const info = MATERIAAL_FAMILIES[naam] ?? MATERIAAL_FAMILIES.steen;
+    const opties = { color: kleur, roughness: info.ruwheid, metalness: info.metaal };
+    if (info.textuur) opties.roughnessMap = bouwCanvasTextuur(info.textuur, CANVAS_TEXTUUR_TEKENAARS[info.textuur]);
+    gedeeld = new THREE.MeshStandardMaterial(opties);
     matFamilieCache.set(sleutel, gedeeld);
   }
   return gedeeld;
@@ -812,7 +932,7 @@ let klinkersMesh;
   // wereldimpact 'm via userData.materiaalFamilie herkent.
   const klinkers = new THREE.Mesh(
     new THREE.PlaneGeometry(PLAATS_DIEPTE, PLAATS_BREEDTE),
-    matFamilie('natSteen', 0x3a4650)
+    matFamilie('natSteen', PALET.straatNat)
   );
   klinkers.rotation.x = -Math.PI / 2;
   klinkers.position.set(PLAATS_CX, 0, DEUR2_Z);
@@ -828,7 +948,7 @@ let klinkersMesh;
     [3.6, 3.2, 1.3, 0.8], [-3.2, -3.6, 1.0, 1.1],
   ]) {
     const plas = new THREE.Mesh(new THREE.PlaneGeometry(pb, pd),
-      new THREE.MeshStandardMaterial({ color: 0x29495a, roughness: 0.07, metalness: 0.35 }));
+      new THREE.MeshStandardMaterial({ color: PALET.straatPlas, roughness: 0.07, metalness: 0.35 }));
     plas.rotation.x = -Math.PI / 2;
     plas.position.set(PLAATS_CX + dx, 0.005, DEUR2_Z + dz);
     wereld.add(plas);
@@ -938,11 +1058,11 @@ let klinkersMesh;
     return groep;
   }
 
-  bouwAchterGevel(PLAATS_CX - 3.8, PLAATS_Z_NOORD - 0.95, 4.2, 4.0, 0, { kleur: 0x0d1216, ramen: 4, raamKleur: 0xffc06a, raamOpacity: 0.45 });
-  bouwAchterGevel(PLAATS_CX + 2.2, PLAATS_Z_NOORD - 1.15, 5.2, 4.8, 0, { kleur: 0x151016, ramen: 5, raamKleur: 0x9fc0e8, raamOpacity: 0.32 });
-  bouwAchterGevel(PLAATS_CX + 3.5, PLAATS_Z_ZUID + 1.05, 4.6, 3.8, Math.PI, { kleur: 0x12181d, ramen: 4, raamKleur: 0xffd18a, raamOpacity: 0.4 });
-  bouwAchterGevel(PLAATS_X_OOST + 1.0, DEUR2_Z - 3.5, 4.8, 4.5, Math.PI / 2, { kleur: 0x0c1115, ramen: 5, raamKleur: 0xaed3ff, raamOpacity: 0.35 });
-  bouwAchterGevel(PLAATS_X_OOST + 1.2, DEUR2_Z + 4.0, 4.2, 3.7, Math.PI / 2, { kleur: 0x17120f, ramen: 3, raamKleur: 0xffb86b, raamOpacity: 0.42 });
+  bouwAchterGevel(PLAATS_CX - 3.8, PLAATS_Z_NOORD - 0.95, 4.2, 4.0, 0, { kleur: PALET.gevelKoud[0], ramen: 4, raamKleur: PALET.raamWarmAmber, raamOpacity: 0.45 });
+  bouwAchterGevel(PLAATS_CX + 2.2, PLAATS_Z_NOORD - 1.15, 5.2, 4.8, 0, { kleur: PALET.gevelWarm[0], ramen: 5, raamKleur: PALET.raamKoelBlauw, raamOpacity: 0.32 });
+  bouwAchterGevel(PLAATS_CX + 3.5, PLAATS_Z_ZUID + 1.05, 4.6, 3.8, Math.PI, { kleur: PALET.gevelKoud[1], ramen: 4, raamKleur: PALET.raamWarmZacht, raamOpacity: 0.4 });
+  bouwAchterGevel(PLAATS_X_OOST + 1.0, DEUR2_Z - 3.5, 4.8, 4.5, Math.PI / 2, { kleur: PALET.gevelKoud[2], ramen: 5, raamKleur: PALET.raamKoelLicht, raamOpacity: 0.35 });
+  bouwAchterGevel(PLAATS_X_OOST + 1.2, DEUR2_Z + 4.0, 4.2, 3.7, Math.PI / 2, { kleur: PALET.gevelWarm[1], ramen: 3, raamKleur: PALET.raamWarmAmber, raamOpacity: 0.42 });
 
   // Nepdoorgangen: lijken open, maar blijven geblokkeerd door de randcollision.
   // Bewust NIET op dezelfde plek als de poort-/kelderdeur-spawnankers hieronder
@@ -6034,7 +6154,7 @@ function gameLoop(nu) {
     if (vlamTimer <= 0) { wapenStaat.definitie.vlam.visible = false; wapenStaat.definitie.vlamLicht.visible = false; }
   }
 
-  renderer.render(scene, camera);
+  composer.render();
 }
 herbouwNavTabel();   // Ticket 28: eenmalige initiële tabel (lijn-graaf, alle deuren dicht)
 requestAnimationFrame(gameLoop);
@@ -6042,6 +6162,9 @@ requestAnimationFrame(gameLoop);
 // Debug-hooks voor Playwright-tests (zelfde patroon als DamChaosDebug).
 window.AmsterdamUndeadDebug = {
   scene, camera, speler, obstakels, isVrijePlek, GRENS, losBotsingenOp,
+  // Ticket 60: post-processing-pipeline (voor tests: composer/bloomPass bestaan
+  // en composer.render() wordt daadwerkelijk gebruikt i.p.v. renderer.render()).
+  composer, bloomPass,
   get wapenStaat() { return wapenStaat; },   // v0.6: wapenStaat wordt herbonden bij wisselen (getter i.p.v. stale referentie)
   get gesmeedActief() { return wapenStaat.gesmeed; },   // Ticket 11: Smederij-status van het ACTIEVE wapen
   // Ticket 12: De Smederij-machine (koopbare implementatie):
@@ -6270,6 +6393,9 @@ window.AmsterdamUndeadDebug = {
   tracerPool, impactPool, actieveEffecten,
   // Ticket 38 (Sfeer S1): materiaal-families + impactkleuren
   matFamilie, MATERIAAL_FAMILIES, matFamilieCache,
+  // Ticket 58 (v0.19): PALET-systeem; Ticket 59 (v0.19): procedurele
+  // roughnessMap-texturen per materiaalfamilie
+  PALET, canvasTextuurCache, bouwCanvasTextuur, CANVAS_TEXTUUR_TEKENAARS,
   klinkersMesh, bijkeukenVloerMesh, gangVloerMesh, kelderluikMesh,
   deurKlink, deur2Klink, deur3Klink, deur4Klink,
   // Ticket 39 (Sfeer S2): vijandleesbaarheid (gang-ritme, geluid, mist-ogen)

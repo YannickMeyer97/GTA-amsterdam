@@ -49,7 +49,12 @@ check('Eén Drukspuit-schot verhoogt cameraKick direct naar exact kickSterkte (0
 check('speler.pitch is door het schot niet gemuteerd (blijft 0.2)',
   kickVoor.pitch === 0.2, kickVoor);
 
-await page.waitForTimeout(500);   // ruim boven de exponentiële-vervaltijd (echte klok)
+// Ticket 60 (v0.19): composer.render() (post-processing) is iets duurder dan
+// renderer.render(), dus in dit headless/software-gerenderde testklimaat
+// daalt de fps merkbaar en blijft de gameLoop's gecapte dt (max 0.05s/frame,
+// zie gameLoop) verder achter op de echte klok — vandaar een ruimere marge
+// dan voorheen (was 500ms) om de vervaltijd zeker te halen.
+await page.waitForTimeout(1500);   // ruim boven de exponentiële-vervaltijd (echte klok)
 
 const kickNa = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
@@ -146,7 +151,9 @@ check('wisselWapen() zet wisselTimer meteen op WISSEL_DUUR (0.16)',
 check('wisselWapen() roept speelWissel() precies 1x aan',
   wissel.tellerNa === wissel.tellerVoor + 1, wissel);
 
-await page.waitForTimeout(400);   // ruim boven WISSEL_DUUR (echte klok, cosmetische zone)
+// Ticket 60 (v0.19): zelfde reden als hierboven — ruimere marge dan het
+// oorspronkelijke 400ms i.v.m. de iets lagere fps door composer.render().
+await page.waitForTimeout(900);   // ruim boven WISSEL_DUUR (echte klok, cosmetische zone)
 
 const wisselNa = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;

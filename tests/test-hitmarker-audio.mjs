@@ -53,7 +53,12 @@ check('Direct na toonHitmarker("kill") is de tier "kill"', samenval.directNa ===
 check('Een "lichaam"-treffer vlak daarna (binnen het samenval-venster) downgradet de tier niet',
   samenval.naDowngradePoging === 'kill', samenval);
 
-await page.waitForTimeout(120);   // ruim buiten HITMARKER_SAMENVAL_VENSTER (60 ms), echte klok-tijd
+// Ticket 60 (v0.19): composer.render() (post-processing) kost iets meer dan
+// renderer.render(), waardoor de fps in dit headless/software-gerenderde
+// testklimaat daalt en de gameLoop's gecapte dt (max 0.05s/frame) verder
+// achterblijft bij de echte klok — vandaar een ruimere marge dan voorheen
+// (was 120ms) om zeker buiten het venster te komen.
+await page.waitForTimeout(350);   // ruim buiten HITMARKER_SAMENVAL_VENSTER (60 ms), echte klok-tijd
 
 const naVenster = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
@@ -83,7 +88,9 @@ await page.evaluate(() => {
   Object.defineProperty(document, 'pointerLockElement', { configurable: true, get() { return null; } });
   document.dispatchEvent(new Event('pointerlockchange'));
 });
-await page.waitForTimeout(300);   // ruim boven de 0.18s tier-duur, tijdens pauze
+// Ticket 60 (v0.19): zelfde reden als hierboven — ruimere marge dan het
+// oorspronkelijke 300ms i.v.m. de iets lagere fps door composer.render().
+await page.waitForTimeout(800);   // ruim boven de 0.18s tier-duur, tijdens pauze
 const decayNaPauze = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   return { opacity: d.hitmarker.style.opacity, timer: d.hitmarkerTimer };

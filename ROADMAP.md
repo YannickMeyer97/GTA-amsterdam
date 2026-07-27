@@ -2442,13 +2442,15 @@ Volgorde nu: 42 → 46, dan 52 → 57, dan 49 → 51, fases:
 
 ---
 
-## v0.19 — Fable-architectuurronde 5: Visuele/ruimtelijke diepte, AI en oriëntatie (gepland, nog NIET geïmplementeerd)
+## v0.19 — Fable-architectuurronde 5: Visuele/ruimtelijke diepte, AI en oriëntatie (T58-60 ✅ geïmplementeerd, T61-68 gepland)
 
 Architectuur: zie ARCHITECTURE_NOTES.md §7 (beslissingen 49-61).
 Sonnet-prompts: zie SONNET_EXECUTION_PLAN.md, "ronde 5 (v0.19)".
-Deze hele sectie is **gepland, niet uitgevoerd** — elk ticket wacht op
-een aparte, expliciete opdracht om daadwerkelijk geïmplementeerd te
-worden.
+**Tickets 58-60 (PALET, procedurele texturen, post-processing) zijn
+geïmplementeerd, getest (41/41 regressiescripts groen) en met
+voor/na-screenshots opgeleverd** — zie de Status-velden hieronder voor
+implementatiedetails en afwijkingen t.o.v. het oorspronkelijke ontwerp.
+Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
 
 **Verbetergebieden deze ronde** (nummering per-ronde):
 1. Visuele kwaliteit (T58-T61)
@@ -2464,7 +2466,17 @@ worden.
 - **Type:** visuele verbetering
 - **Verbetergebied:** 1 (Visuele kwaliteit)
 - **Prioriteit:** middel
-- **Status:** open (gepland)
+- **Status:** ✅ voltooid — nieuw `PALET`-object toegevoegd (nabij
+  `MATERIAAL_FAMILIES`) met 8 benoemde kleurgroepen (`gevelKoud`/
+  `gevelWarm` als arrays van 3/2 tinten, `raamWarmAmber`/`raamWarmZacht`/
+  `raamKoelBlauw`/`raamKoelLicht`, `straatNat`, `straatPlas`). De 5
+  `bouwAchterGevel()`-aanroepen, de klinkers (`matFamilie('natSteen', ...)`)
+  en de plassen-materialen gebruiken nu `PALET.*`. De drie bijna-identieke
+  warme raamtinten van vóór deze ronde (0xffc06a/0xffd18a/0xffb86b) zijn
+  bewust samengevoegd tot twee tinten (`raamWarmAmber`/`raamWarmZacht`) —
+  gevel 5's raamkleur verschoof daardoor van 0xffb86b naar 0xffc06a
+  (verschil ~1% per kanaal, niet zichtbaar). Alle overige hexwaarden
+  identiek aan voorheen. Debug-export: `PALET`.
 - **Afhankelijk van:** —
 - **Doel:** een centraal, benoemd kleurenpalet (`PALET`) invoeren zodat
   gevel-/straat-/decorkleuren consistenter ogen, zonder de hele scene
@@ -2507,7 +2519,27 @@ worden.
 - **Type:** visuele verbetering
 - **Verbetergebied:** 1 (Visuele kwaliteit)
 - **Prioriteit:** middel
-- **Status:** open (gepland)
+- **Status:** ✅ voltooid, met één bewuste afwijking van de oorspronkelijke
+  regelinterpretatie in Ticket 38 (zie hieronder) en één technische
+  afwijking van het ontwerp: de canvas-texturen zijn toegepast als
+  `roughnessMap` (niet `map`/albedo). Reden: een `map` vermenigvuldigt de
+  basiskleur van het materiaal met de textuurwaarde per pixel — bij een
+  gemiddeld-grijze textuur zou dat de bestaande kleuren van alle scenes
+  merkbaar verdonkeren (regressie op alle al goedgekeurde screenshots).
+  `roughnessMap` raakt de kleur niet en is met een bijna-witte textuur
+  (waardes 205-250 van 255) een subtiele, veilige manier om lokale
+  ruwheidsvariatie (en dus specular-detail) toe te voegen zonder de
+  basiskleur te wijzigen — dezelfde geest als het ticket, andere
+  materiaal-slot. `hout`/`steen`/`metaal` kregen elk hun eigen procedureel
+  getekende patroon (128×128 canvas, `repeat.set(4,4)`); `tegel`/
+  `natSteen` blijven zoals gepland buiten scope. Nieuwe symbolen:
+  `canvasTextuurCache`, `bouwCanvasTextuur()`, `CANVAS_TEXTUUR_TEKENAARS`
+  — alle drie debug-geëxporteerd.
+  **Regel-interpretatie (belangrijk):** dit ticket herziet expliciet de
+  aanname uit Ticket 38 ("CLAUDE.md verbiedt ook canvas-gegenereerde
+  textures") — zie ARCHITECTURE_NOTES.md §7.3 voor de volledige
+  redenering. Dit was een bewuste, aan de gebruiker voorgelegde keuze
+  (niet stilzwijgend overschreven).
 - **Afhankelijk van:** T58 (voor consistente kleurbasis; niet strikt
   blokkerend maar wel logisch eerst)
 - **Doel:** materialen visuele diepte geven zonder externe
@@ -2554,7 +2586,35 @@ worden.
 - **Type:** visuele verbetering / infrastructuur
 - **Verbetergebied:** 1 (Visuele kwaliteit)
 - **Prioriteit:** middel
-- **Status:** open (gepland)
+- **Status:** ✅ voltooid, met twee tuning-aanpassingen t.o.v. het
+  oorspronkelijke ontwerp. CDN-verificatie: de live CDN was vanuit deze
+  ontwikkelomgeving niet direct bereikbaar (netwerkbeleid blokkeert
+  `cdn.jsdelivr.net` voor rechtstreekse curl/fetch-checks), maar het lokale
+  `three@0.160.0`-npm-pakket (dat de bestaande tests al gebruiken om de
+  CDN te onderscheppen) bevat `examples/jsm/postprocessing/*` 1-op-1 voor
+  exact de gepinde versie — jsdelivr serveert npm-pakketten direct, dus
+  dit is sterke indirecte verificatie dat de echte CDN-URL bestaat.
+  `tests/helpers.mjs` is uitgebreid om deze submodules (en hun eigen
+  relatieve imports) ook lokaal te onderscheppen, zodat de headless-tests
+  de ECHTE postprocessing-code draaien, niet een mock.
+  Toegevoegd: `EffectComposer` + `RenderPass` + `UnrealBloomPass`
+  (strength 0.35, radius 0.4, threshold 0.82 — alleen fel-emissieve
+  elementen als lantaarns/winkelaccenten/ogen gloeien) + `OutputPass`
+  (herstelt sRGB/ACES-uitvoer). Importmap kreeg één nieuwe entry
+  (`three/addons/` → dezelfde CDN-host se `examples/jsm/`).
+  **Tuning-aanpassing:** de bloom-pass is geïnitialiseerd met een KLEINE
+  vaste interne resolutie (256×256, de eigen default van de pass) i.p.v.
+  de volledige schermresolutie — bij volledige resolutie bleek de
+  blur-mipchain (5 niveaus) in een headless/software-gerenderde
+  testomgeving de framerate merkbaar te verlagen, wat twee bestaande
+  wall-clock-timinggevoelige tests (`test-wapen-identiteit.mjs`,
+  `test-hitmarker-audio.mjs`) deed haperen — de gameLoop's dt-cap
+  (`Math.min(dt, 0.05)`) laat gesimuleerde tijd achterlopen bij de echte
+  klok zodra de fps te veel daalt. Met 256×256-resolutie is de
+  performance-impact in een echte (hardware-versnelde) browser
+  verwaarloosbaar. De vier wall-clock-marges in die twee testbestanden
+  zijn desondanks iets ruimer gezet (zie git-diff) om ademruimte te
+  houden t.o.v. dit al-marginale headless-testklimaat.
 - **Afhankelijk van:** —
 - **Doel:** de kale `renderer.render()`-call vervangen door een
   minimale post-processing-pipeline voor meer visuele diepte (subtiele

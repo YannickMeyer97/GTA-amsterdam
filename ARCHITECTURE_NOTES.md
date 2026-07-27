@@ -1736,6 +1736,17 @@ zo uitvoeren — is:
   "geen assets" = geen extern geladen binaire bestanden, niet "geen
   enkele visuele verrijking".
 
+**Uitvoeringsnotitie (T58-60, geïmplementeerd):** deze interpretatie
+botste in de praktijk met een EERDERE, expliciete beslissing in de code
+zelf: Ticket 38's commentaar bij `MATERIAAL_FAMILIES` stelde destijds
+letterlijk "geen textures — CLAUDE.md verbiedt ook canvas-gegenereerde".
+Dit is dus niet stilzwijgend overschreven — de gebruiker is hierover
+expliciet geraadpleegd (drie opties voorgelegd: strikte lezing
+aanhouden, losse lezing gebruiken zoals hierboven, of T59 on hold
+zetten) en koos voor de losse lezing uit deze sectie. Dat is nu de
+geldende interpretatie voor het hele project, niet alleen voor deze
+ronde.
+
 ### 7.4 Verbetergebied 1 — Visuele kwaliteit
 
 #### 7.4.1 PALET-systeem en art direction (beslissing 50)
@@ -1752,6 +1763,12 @@ alleen de nieuwe/gewijzigde call-sites die het ticket zelf aanwijst
 volledige omzetting is expliciet buiten scope om regressierisico op
 bestaande, al goedgekeurde scenes te vermijden.
 
+**Geïmplementeerd als:** `gevelKoud`/`gevelWarm` (arrays van resp. 3/2
+bijna-zwarte gevelbasistinten), `raamWarmAmber`/`raamWarmZacht`/
+`raamKoelBlauw`/`raamKoelLicht` (de 3 bijna-identieke warme raamtinten
+van vóór deze ronde samengevoegd tot 2), `straatNat`/`straatPlas`.
+Toegepast op de 5 `bouwAchterGevel()`-aanroepen + klinkers + plassen.
+
 #### 7.4.2 Procedurele texturen (beslissing 51)
 
 Materiaaldiepte komt van een kleine set **runtime-getekende
@@ -1763,6 +1780,16 @@ worden gekoppeld aan de bestaande `MATERIAAL_FAMILIES`-varianten via
 een nieuw `map`/`roughnessMap`-veld, dus bestaande call-sites van
 `matFamilie()` hoeven niet te wijzigen. Zie §7.3 voor de
 regel-interpretatie.
+
+**Geïmplementeerd als `roughnessMap`, niet `map`:** een `map` (albedo)
+vermenigvuldigt de basiskleur per pixel met de textuurwaarde — bij een
+gemiddeld-grijze textuur zou dat alle bestaande, al goedgekeurde scenes
+merkbaar verdonkeren. Een `roughnessMap` raakt de kleur niet; met een
+bijna-witte textuur (205-250 van 255) blijft `roughness * textuur.g`
+dicht bij de oorspronkelijke waarde, met alleen een subtiele lokale
+variatie. `hout`/`steen`/`metaal` kregen elk een eigen 128×128-patroon
+(`repeat.set(4,4)`); `tegel`/`natSteen` blijven ongewijzigd (buiten
+scope, zoals gepland).
 
 #### 7.4.3 Post-processing-pipeline (beslissing 52)
 
@@ -1778,6 +1805,26 @@ dezelfde CDN-host als de kern-Three.js-versie geladen worden;
 bestaat die combinatie niet, dan is dit ticket geblokkeerd tot een
 werkende importmap-entry gevonden is (zie SONNET_EXECUTION_PLAN.md-
 waarschuwing 32).
+
+**Uitvoeringsnotitie:** de live CDN was vanuit de ontwikkelomgeving niet
+direct bereikbaar (netwerkbeleid blokkeert directe curl/fetch-checks
+naar `cdn.jsdelivr.net`); geverifieerd is in plaats daarvan dat het
+lokale `three@0.160.0`-npm-pakket (dat de tests al gebruiken om de CDN
+te onderscheppen) `examples/jsm/postprocessing/*` 1-op-1 bevat voor
+exact de gepinde versie — jsdelivr serveert npm-pakketten direct, dus
+dit is sterke indirecte bevestiging. `EffectComposer` + `RenderPass` +
+`UnrealBloomPass` + `OutputPass` zijn toegevoegd via een nieuwe
+`three/addons/` → `.../examples/jsm/`-importmap-entry.
+**Belangrijke tuning-correctie:** `UnrealBloomPass` werd eerst
+geïnitialiseerd met de volledige schermresolutie als interne
+bloom-resolutie — dat bleek de blur-mipchain (5 niveaus) onnodig zwaar
+te maken en verlaagde de framerate merkbaar in het headless/software-
+gerenderde testklimaat, genoeg om twee wall-clock-timinggevoelige
+bestaande tests te doen haperen (de gameLoop's dt-cap van 0.05s/frame
+laat gesimuleerde tijd sneller achterlopen bij lagere fps). Gefixt door
+een kleine VASTE interne resolutie (256×256, de eigen default van de
+pass) te gebruiken — in een echte, hardware-versnelde browser is het
+verschil verwaarloosbaar, maar dit is nu wel de vaste, bewuste keuze.
 
 #### 7.4.4 Vloeiendere silhouetten (beslissing 53) — VOORZICHTIG
 
