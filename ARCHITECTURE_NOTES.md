@@ -1631,3 +1631,334 @@ terugkomen — zie ROADMAP.md's Backlog-sectie); de
 performance-/risicobudgetten hierboven (§6.9-6.11) zijn bijgewerkt om
 de Hagelketel NIET meer mee te rekenen — de lichttelling 23→24 komt nu
 van T52's lantaarn, niet van een wapenvlam.
+
+## 7. Fable-architectuurronde 5 (v0.19) — Visuele/ruimtelijke diepte, AI en oriëntatie
+
+### 7.1 Scope en aanleiding
+
+Deze ronde is een reactie op een expliciete gebruikersopdracht met 9
+verbeterpunten uit 5 categorieën (Graphics, Ruimtes & leveldesign,
+Vijanden & AI, Audio & sfeer, UI/UX & feedback). Dit is een
+**architectuur-/ticketronde, GEEN implementatieronde**: er wordt in
+deze stap geen regel code in `amsterdam-undead.html` aangeraakt. De
+tickets (58-68, ROADMAP.md) en Sonnet-prompts (ronde 5,
+SONNET_EXECUTION_PLAN.md) staan klaar om — één voor één, op
+toekomstige expliciete opdracht — uitgevoerd te worden.
+
+De 9 punten zijn vertaald naar 5 "Verbetergebieden" voor deze ronde
+(nummering per-ronde, net als in rondes 2-4):
+
+1. **Visuele kwaliteit** — art direction, materiaaldiepte,
+   post-processing, silhouetten (Graphics-categorie, T58-T61).
+2. **Ruimtelijke diepte** — verticaliteit via een nieuwe kelderzone
+   (T62-T63).
+3. **Vijandintelligentie** — waypoint-navigatiegraaf i.p.v. de
+   ad-hoc chokepoint-code van ronde 4 (T64-T65).
+4. **Sfeer/audio** — achtergrondmuziek (T66).
+5. **Spelerfeedback & oriëntatie** — minimap + richtingsfeedback bij
+   schade (T67-T68).
+
+Ticketrange: **T58-T68** (ROADMAP.md). Beslissingrange: **49-60**
+(deze sectie). Sonnet-promptrange: SONNET_EXECUTION_PLAN.md,
+"ronde 5 (v0.19)", waarschuwingen **32 e.v.**
+
+### 7.2 Codekaart — nieuw relevante gebieden voor deze ronde
+
+- **Materialen**: `MATERIAAL_FAMILIES`/`matFamilie(naam, kleur)`
+  (regel ~559-575) — een klein aantal gedeelde, immutable
+  `MeshStandardMaterial`-varianten (o.a. `steen` als fallback) met
+  vaste ruwheid/metaalwaarden per familie, gecachet via
+  `matFamilieCache`. T58/T59 bouwen hier bovenop, niet omheen.
+- **Renderer/scene-opzet**: de huidige render-loop gebruikt een kale
+  `renderer.render(scene, camera)` (geen composer). T60 introduceert
+  hier de enige plek waar dat verandert.
+- **Speler/beweging**: `speler.positie` (regel ~2348 e.v.) heeft in
+  de bestaande code uitsluitend x/z-mutaties tijdens normale
+  gameplay; `speler.hoogte = 1.7` is een vaste oog-hoogte-offset bij
+  het renderen, geen echte Y-positie. Botsingen
+  (`registreerRechthoek`, `losBotsingenOp`, `isVrijePlek`) zijn
+  volledig 2D (X/Z-rechthoeken, Y-onwetend). T62 moet hiermee
+  rekenen.
+- **Zone-navigatie**: `zoneVan()` (regel 4037), `ZONE_GRAAF` (4072),
+  `NAV_VOLGENDE`/`herbouwNavTabel()` (4094-4118) — een kleine
+  handgeschreven BFS-graaf die uitsluitend CROSS-zone routing regelt;
+  binnen een zone loopt een ondode altijd in een rechte lijn naar de
+  speler. Dat "rechte lijn binnen een zone"-gedrag is precies wat de
+  twee bugs van deze sessie veroorzaakte (`GRACHTGANG_DREMPEL`,
+  `eigenInGracht`/`spelerInGracht`/`inZoneVier`, regel 4204-4228).
+  T64/T65 vervangen dit ad-hoc lappendeken door een generieke
+  intra-zone waypointgraaf.
+- **Audio-graaf**: de "dreigingsaudio"-drone (regel 3135-3172,
+  `dreigingsGainNode`/`zetDreigingsGain()`) is een permanente
+  oscillator/gain-laag die NOOIT gestopt of herstart wordt, alleen
+  via `gain.setTargetAtTime()` aangestuurd. Dit is het architecturale
+  sjabloon voor T66's achtergrondmuziek.
+- **Effecten-pools**: `tracerPool`/`impactPool` (regel 2957-2959)
+  zijn vooraf aangemaakte, vaste-grootte object-pools, hergebruikt
+  per hit i.p.v. `new` per frame. Sjabloon voor T68's DOM-wedge-pool.
+- **HUD-structuur**: alle HUD-elementen zijn losse, vooraf in de HTML
+  gedeclareerde `<div>`'s (regel 390-410, bv. `hudUI`, `vignet`,
+  `zoneLabelUI`) die via `style.display`/tekst worden aangestuurd —
+  geen canvas-UI, geen framework. T67 (minimap) en T68
+  (richtingsfeedback) volgen dit patroon (een nieuwe `<div>`/
+  `<canvas>` erbij, geen nieuwe renderlaag).
+
+### 7.3 Verhouding tot de "geen frameworks/assets/textures"-regel (beslissing 49)
+
+CLAUDE.md en SONNET_EXECUTION_PLAN.md's architectuurregels verbieden
+letterlijk "textures/modellen" en "nieuwe dependencies, textures,
+modellen of audio-bestanden". Twee van de gevraagde punten
+(materiaaldiepte, post-processing) lijken daarmee op gespannen voet
+te staan. De interpretatie voor deze ronde — die T58-T60 letterlijk
+zo uitvoeren — is:
+
+- De regel is bedoeld om **extern geladen, netwerk-afhankelijke
+  binaire assets** (afbeeldingsbestanden, 3D-modellen, audiobestanden
+  van een CDN/bestandssysteem) en **derde-partij-frameworks** buiten
+  de deur te houden — niet om Three.js' eigen, in de bestaande
+  importmap al aanwezige bouwstenen te verbieden.
+- **Textures/materiaaldiepte (T59)** wordt dus NIET met
+  `TextureLoader`+een PNG/JPG gedaan, maar met **procedureel
+  gegenereerde `THREE.CanvasTexture`** — getekend met de 2D Canvas
+  API, at runtime, zonder enig bestand op schijf of CDN. Dit blijft
+  single-file en zelfstandig, exact zoals de bestaande
+  `matFamilie()`-aanpak.
+- **Post-processing (T60)** wordt gedaan met Three.js' eigen
+  `examples/jsm/postprocessing/*`-submodules (`EffectComposer`,
+  `RenderPass`, `UnrealBloomPass` of een vergelijkbare ingebouwde
+  pass), geladen via **dezelfde bestaande CDN-importmap-host** als de
+  kern-`three.module.js` (géén nieuwe CDN, géén nieuwe dependency-
+  registratie, wél een nieuwe importmap-entry naar een module die al
+  onderdeel is van hetzelfde Three.js-pakket). Dit is bewust GEEN
+  derde-partij-postprocessing-library.
+- Beide beslissingen worden hier expliciet vastgelegd zodat dit geen
+  stille regelovertreding is maar een beargumenteerde uitzondering:
+  "geen assets" = geen extern geladen binaire bestanden, niet "geen
+  enkele visuele verrijking".
+
+### 7.4 Verbetergebied 1 — Visuele kwaliteit
+
+#### 7.4.1 PALET-systeem en art direction (beslissing 50)
+
+Een consistente art direction wordt vormgegeven als een klein,
+centraal **PALET**-object (vergelijkbaar met `MATERIAAL_FAMILIES` qua
+opzet): een handvol benoemde kleurgroepen (bv. `PALET.steenwarm`,
+`PALET.metaalkoud`, `PALET.hout`, `PALET.accentDreiging`,
+`PALET.accentVeilig`) die de bestaande losse hex-kleuren in
+bouwfuncties (`bouwAchterGevel`, `bouwLantaarn`, etc.) geleidelijk
+vervangen. Dit is een **opt-in refactor, geen big-bang**: T58 raakt
+alleen de nieuwe/gewijzigde call-sites die het ticket zelf aanwijst
+(gevel- en straatkleuren), niet elke kleur in het bestand — een
+volledige omzetting is expliciet buiten scope om regressierisico op
+bestaande, al goedgekeurde scenes te vermijden.
+
+#### 7.4.2 Procedurele texturen (beslissing 51)
+
+Materiaaldiepte komt van een kleine set **runtime-getekende
+`CanvasTexture`s** (bv. een subtiel steen-ruis-patroon, een
+houtnerf-patroon, een geborsteld-metaal-gradient), elk eenmalig
+getekend op een klein canvas (max ~128×128) bij scene-opbouw en
+daarna gecachet — zelfde cachingfilosofie als `matFamilieCache`. Ze
+worden gekoppeld aan de bestaande `MATERIAAL_FAMILIES`-varianten via
+een nieuw `map`/`roughnessMap`-veld, dus bestaande call-sites van
+`matFamilie()` hoeven niet te wijzigen. Zie §7.3 voor de
+regel-interpretatie.
+
+#### 7.4.3 Post-processing-pipeline (beslissing 52)
+
+Eén `EffectComposer` met een klein, vast aantal passes (RenderPass +
+maximaal één subtiele bloom/vignet-achtige pass) vervangt de kale
+`renderer.render()`-call in de hoofdloop. Belangrijk
+architectuurpunt: de composer moet **resize-bewust** zijn (huidige
+`onresize`-handler moet ook `composer.setSize()` aanroepen) en mag
+**geen tweede shadow-pass** introduceren — het bestaande
+`schaduw === 1`-invariant (1 shadow-castende light in de hele scene)
+verandert niet. CDN-risico: de postprocessing-submodules moeten via
+dezelfde CDN-host als de kern-Three.js-versie geladen worden;
+bestaat die combinatie niet, dan is dit ticket geblokkeerd tot een
+werkende importmap-entry gevonden is (zie SONNET_EXECUTION_PLAN.md-
+waarschuwing 32).
+
+#### 7.4.4 Vloeiendere silhouetten (beslissing 53) — VOORZICHTIG
+
+Ondode- en wapenmodellen bestaan uit simpele primitieve geometrieën
+(boxen/cilinders/cones). "Vloeiender" wordt hier NIET bereikt met
+nieuwe geometrie-types of hogere polycount an sich, maar met:
+gestapelde/afgeschuinde vormen (bv. `THREE.CylinderGeometry` met
+meer radiale segmenten op zichtbare randen, kleine
+`bevelSegments`-achtige overgangen via extra tussen-primitieven) en
+zachtere materiaal-shading. **Hard contract**: de
+hoofd-hoogte-anker (beslissing 16) — de Y-positie van de
+head-group — en alle hitbox-mesh-schalen mogen NIET veranderen. Elke
+silhouet-wijziging is dus puur cosmetisch, nooit een
+transform-wijziging op een object dat ook hitbox-detectie draagt. Dit
+ticket wordt gemarkeerd VOORZICHTIG en moet los van elk ander ticket
+worden uitgevoerd, met een voor/na-screenshot én een
+hitbox-regressietest.
+
+### 7.5 Verbetergebied 2 — Ruimtelijke diepte
+
+#### 7.5.1 Kelder: geometrie en Y-beweging (beslissing 54)
+
+Een nieuwe kelderzone krijgt een **eigen, disjuncte X/Z-footprint**
+buiten de bestaande `GRENS`-rechthoek (dus geen overlap met bestaande
+kamers/binnenplaats), bereikbaar via een vaste trap-corridor met een
+**deterministische Y-ramp**: binnen een smal, vooraf vastgelegd
+X/Z-band interpoleert `speler.positie.y` lineair tussen 0 (begane
+grond) en een vaste kelderdiepte (bv. -2.6), puur als functie van de
+positie langs de trap-as — geen zwaartekracht, geen sprong-fysica,
+geen algemene 3D-collision. Buiten die band blijft `positie.y` exact
+zoals nu: ongebruikt/impliciet 0. Dit is bewust de MINIMALE ingreep
+in de 2D-collision-architectuur, niet een generieke Y-physics-laag.
+`GRENS` zelf wordt niet aangepast; de kelder-footprint krijgt een
+eigen lokale grenscontrole binnen de trap-/kelderfuncties.
+
+#### 7.5.2 Kelder als permanente veilige zone (beslissing 55)
+
+De kelder wordt bewust **buiten `ZONE_GRAAF` gehouden** en krijgt
+**geen spawn-vensters**: geen ondode kan er ooit spawnen of
+binnenkomen. Dit is een expliciete architecturale keuze om de exacte
+bugklasse van deze sessie (cross-zone-pathing-aannames die niet
+kloppen voor een net-toegevoegde zone) NIET opnieuw te introduceren —
+in plaats van de kelder als "nog een zone die overal in de
+pathing-logica moet worden meegenomen", is het een permanente
+safe-room die de bestaande AI/zone-code helemaal niet hoeft te weten.
+`zoneVan()` mag een kelder-coördinaat herkennen (voor HUD/label-
+doeleinden), maar niets in `ZONE_GRAAF`/`NAV_VOLGENDE`/
+`updateOndoden()` mag ooit naar de kelder verwijzen.
+
+#### 7.5.3 Kelderinhoud (beslissing 56)
+
+De kelder krijgt een klein, eigen setje decor/interactie passend bij
+het Amsterdamse-grachtenhuis-thema (bv. een wijnrek, kratten, een
+tweede munitie- of upgradepunt) — geen nieuwe gameplaymechaniek, puur
+ruimtelijke/visuele verrijking plus optioneel één bestaand
+interactiepunt-type (zoals een bestaand koop/upgrade-punt) herplaatst
+in de nieuwe ruimte. Geen nieuwe itemtypes in dit ticket.
+
+### 7.6 Verbetergebied 3 — Vijandintelligentie
+
+#### 7.6.1 Waypoint-navigatiegraaf — architectuur (beslissing 57)
+
+Een generieke, data-gedreven **intra-zone waypointgraaf** vervangt op
+termijn de ad-hoc chokepoint-code
+(`GRACHTGANG_DREMPEL`/`eigenInGracht`/`spelerInGracht`/`inZoneVier`,
+regel 4204-4228 e.o.). Ontwerp: per zone een kleine, hand-geplaatste
+lijst waypoints (net als `ZONE_GRAAF` nu al hand-geauteurd is, maar
+dan één niveau dieper); een ondode kiest bij het betreden van een
+zone het dichtstbijzijnde waypoint op een rechte-lijn-naar-speler pad
+(eenvoudige zichtlijn-achtige heuristiek, geen volledig A*) en
+loopt via de waypointketen richting de speler in plaats van altijd
+in een kaarsrechte lijn. Dit generaliseert zowel het bestaande
+cross-zone-graaf-idee als de ad-hoc gang-chokepoint-fix tot **één**
+mechanisme.
+
+#### 7.6.2 Waypoint-integratie vervangt ad-hoc code (beslissing 58)
+
+Ticket T65 moet, in dezelfde diff die de waypointgraaf invoert, de
+oude `GRACHTGANG_DREMPEL`/`eigenInGracht`/`spelerInGracht`/
+`inZoneVier`-special-case **verwijderen** (niet ernaast laten staan)
+— exact het "verwijder de oude code in hetzelfde ticket als het
+nieuwe systeem"-principe dat dit project al op andere plekken
+hanteert (zie ROADMAP.md's Regels-sectie). De volledige
+regressiesuite (met name `test-gracht-dock.mjs`, dat de twee bugs van
+deze sessie afdekt) moet na T65 nog steeds slagen — dat is het
+belangrijkste acceptatiecriterium van dit ticket.
+
+### 7.7 Verbetergebied 4 — Sfeer/audio
+
+#### 7.7.1 Achtergrondmuziek-architectuur (beslissing 59)
+
+Achtergrondmuziek volgt letterlijk het bestaande
+dreigingsaudio-drone-patroon (regel 3135-3172): een permanente,
+eenmalig aangemaakte oscillator/gain-laag (of een klein setje
+oscillators voor een simpel origineel motief/akkoordbed), die **nooit
+gestopt of herstart wordt**, alleen via `gain.setTargetAtTime()`
+omhoog/omlaag gestuurd — bijvoorbeeld zachter tijdens golf-aankondi-
+gingen, iets voller tijdens combat, zonder ooit de oscillator zelf te
+raken. Volumeplafond expliciet laag en apart van de bestaande
+dreigings-drone (bv. muziekgain-plafond 0.05, drone blijft op zijn
+bestaande 0.07-plafond) zodat de twee lagen samen niet over de
+algehele audio-discipline heen stapelen. 100% Web Audio, eigen
+compositie/motief — geen samples, geen bestaande herkenbare
+game-muziek of -motieven (IP-regel, CLAUDE.md).
+
+### 7.8 Verbetergebied 5 — Spelerfeedback & oriëntatie
+
+#### 7.8.1 Minimap (beslissing 60)
+
+De minimap is een klein, vast gepositioneerd 2D-`<canvas>`-element
+bovenop de bestaande HUD (zelfde plaatsingspatroon als `hudUI` c.s.),
+elke frame (of licht doorbelast, bv. elke 2-3 frames) opnieuw
+getekend met de 2D Canvas-API: een top-down projectie van de
+speler-positie/-richting, bekende zone-omtrekken (statische lijnen,
+afgeleid van de bestaande zone-/muurconstantes, dus geen nieuwe
+geometrie-tracking) en nabije ondoden als stippen. Geen 3D-rendering,
+geen extra Three.js-camera/render-target — puur 2D Canvas, dezelfde
+bouwsteen als T59's procedurele texturen, dus geen nieuwe
+technologie in het project.
+
+#### 7.8.2 Richtingsfeedback bij schade (beslissing 61)
+
+Bij het oplopen van schade verschijnt een korte, richtinggevoelige
+DOM-indicator (een "wedge"/pijl-vormig element aan de rand van het
+beeld, georiënteerd op de hoek tussen de kijkrichting van de speler
+en de richting waar de schade vandaan kwam) die kort oplicht en
+uitfaded. Implementatie volgt het bestaande effects-pool-patroon
+(`tracerPool`/`impactPool`, regel 2957-2959): een klein, vast aantal
+vooraf aangemaakte DOM-wedge-elementen die hergebruikt worden per
+hit, nooit `document.createElement` in de hot path
+(`raakOndode()`/schade-afhandeling). Puur CSS/DOM-transform-gestuurd,
+geen nieuwe canvas-laag nodig.
+
+### 7.9 Performancebudgetten en risicogebieden (ronde 5)
+
+- **Shadow-invariant blijft ongewijzigd**: exact 1 shadow-castende
+  light in de hele scene, ook na T60 (post-processing) en T62
+  (kelder) — geen van beide tickets voegt een tweede shadow-light
+  toe.
+- **Hot-path-verboden blijven gelden**: T61 (silhouetten), T64/T65
+  (waypointgraaf) en T68 (richtingsfeedback-pool) raken code die
+  potentieel per-frame/per-ondode draait (`schiet()`, `raakOndode()`,
+  `updateOndoden()`) — geen allocaties, geen `setTimeout`, geen
+  closures per aanroep in die functies. De waypointgraaf-lookup moet
+  een simpele array-/object-indexering zijn, geen graaf-traversal
+  die per frame opnieuw wordt opgebouwd.
+- **CDN-risico (T60)**: de postprocessing-submodules zijn een nieuwe
+  importmap-entry op een bestaande host. Dit MOET eerst geverifieerd
+  worden (bestaat de module op die CDN, in de juiste Three.js-
+  versie?) vóór er code tegenaan geschreven wordt — zie
+  SONNET_EXECUTION_PLAN.md-waarschuwing 32.
+- **2D-collision-risico (T62)**: de kelder-Y-ramp is de EERSTE plek
+  in het hele project waar `positie.y` structureel gebruikt wordt.
+  Elke andere plek die met `speler.positie` rekent
+  (schietrichting, botsingen, zone-lookup) moet expliciet
+  gecontroleerd worden op impliciete "Y is altijd 0"-aannames vóór
+  dit ticket als afgerond geldt.
+- **Materiaal-mutatiediscipline (T58/T59)**: `matFamilie`-materialen
+  zijn gedeeld/immutable; texture-toevoeging via T59 moet per-familie
+  gebeuren (nieuwe gedeelde texture-referentie in
+  `MATERIAAL_FAMILIES`), nooit per-instantie gemuteerd — anders breekt
+  de bestaande cache-aanname stilzwijgend voor alle gebruikers van die
+  familie.
+- **Audio-volumeplafond (T66)**: nieuwe muziekgain moet apart
+  begrensd worden van de bestaande dreigings-drone (zie 7.7.1) —
+  gecombineerd volume mag het gevoel van de bestaande sfeer-audio niet
+  overstemmen.
+
+### 7.10 Herbruikbare systemen uit deze ronde
+
+- **PALET** (7.4.1) is bedoeld als groeiend systeem — latere rondes
+  kunnen er nieuwe kleurgroepen aan toevoegen zonder opnieuw een
+  hele art-direction-discussie te voeren.
+- **Procedurele CanvasTexture-cache** (7.4.2) kan later hergebruikt
+  worden voor andere materiaaldiepte-wensen (bv. vloertexturen) zonder
+  nieuw ontwerpwerk.
+- **Waypointgraaf** (7.6.1) is de generieke opvolger van zowel
+  `ZONE_GRAAF` als alle toekomstige ad-hoc intra-zone-fixes — nieuwe
+  zones met complexe interne geometrie hoeven geen eigen
+  chokepoint-special-case meer te krijgen, alleen een eigen
+  waypoint-lijst.
+- **DOM-wedge-pool** (7.8.2) is een direct herbruikbaar patroon voor
+  toekomstige korte, richtinggevoelige HUD-indicatoren (bv. een
+  toekomstig "item hier"-pijltje).

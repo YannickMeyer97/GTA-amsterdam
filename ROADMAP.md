@@ -2442,6 +2442,533 @@ Volgorde nu: 42 → 46, dan 52 → 57, dan 49 → 51, fases:
 
 ---
 
+## v0.19 — Fable-architectuurronde 5: Visuele/ruimtelijke diepte, AI en oriëntatie (gepland, nog NIET geïmplementeerd)
+
+Architectuur: zie ARCHITECTURE_NOTES.md §7 (beslissingen 49-61).
+Sonnet-prompts: zie SONNET_EXECUTION_PLAN.md, "ronde 5 (v0.19)".
+Deze hele sectie is **gepland, niet uitgevoerd** — elk ticket wacht op
+een aparte, expliciete opdracht om daadwerkelijk geïmplementeerd te
+worden.
+
+**Verbetergebieden deze ronde** (nummering per-ronde):
+1. Visuele kwaliteit (T58-T61)
+2. Ruimtelijke diepte (T62-T63)
+3. Vijandintelligentie (T64-T65)
+4. Sfeer/audio (T66)
+5. Spelerfeedback & oriëntatie (T67-T68)
+
+---
+
+## Ticket 58 — PALET-systeem voor consistente art direction
+
+- **Type:** visuele verbetering
+- **Verbetergebied:** 1 (Visuele kwaliteit)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** een centraal, benoemd kleurenpalet (`PALET`) invoeren zodat
+  gevel-/straat-/decorkleuren consistenter ogen, zonder de hele scene
+  in één keer om te bouwen.
+- **Huidige situatie:** kleuren zijn losse hex-literals verspreid over
+  bouwfuncties (`bouwAchterGevel`, `bouwLantaarn`, straatdecor, etc.);
+  geen centrale plek die "dit is de art direction" vastlegt.
+- **Gewenste situatie:** een nieuw `PALET`-object (zelfde stijl als
+  `MATERIAAL_FAMILIES`) met een klein aantal benoemde kleurgroepen
+  (bv. `steenwarm`, `metaalkoud`, `hout`, `accentDreiging`,
+  `accentVeilig`); de gevel-/straat-call-sites die dit ticket aanwijst
+  gebruiken `PALET.*` in plaats van eigen hex-literals.
+- **Codegebieden:** nieuw `PALET`-object (nabij
+  `MATERIAAL_FAMILIES`), `bouwAchterGevel()`-aanroepen, straatdecor-
+  kleuren.
+- **Buiten scope:** een volledige omzetting van ELKE kleur in het
+  bestand — alleen de gevel-/straat-call-sites die dit ticket expliciet
+  noemt.
+- **Randgevallen:** bestaande scenes die al goedgekeurd zijn
+  (screenshots uit eerdere rondes) mogen niet zichtbaar "kapot" ogen
+  na de PALET-omzetting — kleurwaarden moeten dicht bij de originelen
+  blijven, dit is consistentie, geen redesign.
+- **Performancevoorwaarden:** geen — puur data/constanten, geen
+  runtime-kosten.
+- **Acceptatiecriteria:**
+  - `PALET` bestaat en wordt door de aangewezen call-sites gebruikt.
+  - Voor/na-screenshots van gevel-/straatzichten tonen geen onbedoelde
+    kleursprong.
+  - Volledige regressie blijft groen.
+- **Testplan:** `check-load` + bestaande visuele regressietests +
+  screenshotvergelijking vóór/na op minstens 2 buitenzichten.
+- **Rollback:** call-sites terugzetten naar hun oude hex-literals; geen
+  gedeelde state om op te ruimen.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 59 — Procedurele texturen voor materiaaldiepte
+
+- **Type:** visuele verbetering
+- **Verbetergebied:** 1 (Visuele kwaliteit)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** T58 (voor consistente kleurbasis; niet strikt
+  blokkerend maar wel logisch eerst)
+- **Doel:** materialen visuele diepte geven zonder externe
+  afbeeldingsbestanden te gebruiken (zie ARCHITECTURE_NOTES.md §7.3
+  voor de regel-interpretatie).
+- **Huidige situatie:** `matFamilie()` levert vlakke,
+  kleur-plus-ruwheid `MeshStandardMaterial`s zonder enige
+  oppervlaktetekening.
+- **Gewenste situatie:** een klein setje runtime-getekende
+  `THREE.CanvasTexture`s (steen-ruis, houtnerf, geborsteld metaal),
+  eenmalig getekend en gecachet, gekoppeld aan de bestaande
+  `MATERIAAL_FAMILIES`-varianten via een nieuw `map`-veld.
+- **Codegebieden:** `matFamilie()`/`MATERIAAL_FAMILIES` (regel
+  ~559-575), nieuwe `bouwCanvasTexture()`-achtige helper + eigen
+  texture-cache (zelfde patroon als `matFamilieCache`).
+- **Buiten scope:** per-instantie texture-variatie (elke familie deelt
+  precies één texture-set, net zoals materialen nu al gedeeld zijn);
+  UV-mapping-correcties op bestaande geometrie die nu geen zinnige
+  UV's heeft (die geometrie krijgt gewoon een neutrale/herhalende
+  texture, geen op-maat-UV-project).
+- **Randgevallen:** geometrie zonder correcte UV's mag niet zichtbaar
+  "stuk" ogen (uitgerekte/verkeerd geschaalde texture) — kies een
+  subtiel, laag-contrast patroon dat vergevingsgezind is voor slechte
+  UV's.
+- **Performancevoorwaarden:** canvas-texturen max ~128×128, eenmalig
+  getekend bij scene-opbouw (niet per frame), gedeeld via cache — geen
+  toename van draw calls, geen materiaal-mutatie in de hot path.
+- **Acceptatiecriteria:**
+  - Elke `MATERIAAL_FAMILIES`-variant die dit ticket aanwijst heeft een
+    `map` met een subtiel, passend patroon.
+  - Geen zichtbare UV-artefacten in de bestaande scenes.
+  - Materiaal-mutatiediscipline blijft intact: texturen zijn
+    per-familie gedeeld, nooit per-instantie.
+- **Testplan:** `check-load` + screenshotronde van representatieve
+  oppervlakken (muur, vloer, meubel) vóór/na + volledige regressie.
+- **Rollback:** `map`-veld verwijderen uit de betrokken
+  `MATERIAAL_FAMILIES`-entries.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 60 — Post-processing-pipeline (EffectComposer)
+
+- **Type:** visuele verbetering / infrastructuur
+- **Verbetergebied:** 1 (Visuele kwaliteit)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** de kale `renderer.render()`-call vervangen door een
+  minimale post-processing-pipeline voor meer visuele diepte (subtiele
+  bloom/vignet-achtige pass).
+- **Huidige situatie:** hoofdloop doet `renderer.render(scene,
+  camera)` zonder enige composer.
+- **Gewenste situatie:** één `EffectComposer` met RenderPass + maximaal
+  één extra subtiele pass, resize-bewust (`onresize` roept ook
+  `composer.setSize()` aan), geladen via Three.js' eigen
+  `examples/jsm/postprocessing/*`-submodules op dezelfde bestaande
+  CDN-host als de kern-`three.module.js` (zie ARCHITECTURE_NOTES.md
+  §7.3/§7.4.3).
+- **Codegebieden:** importmap (`<script type="importmap">`),
+  render-loop, `onresize`-handler.
+- **Buiten scope:** meerdere passes/complexe effectenketens; elke pass
+  die met shadows interfereert.
+- **Randgevallen:** de CDN moet daadwerkelijk de
+  postprocessing-submodules voor de gebruikte Three.js-versie serveren
+  — dit MOET eerst geverifieerd worden vóór er code tegenaan
+  geschreven wordt (zie SONNET_EXECUTION_PLAN.md-waarschuwing 32); als
+  dat niet lukt, ticket blokkeren en terugmelden, niet improviseren met
+  een ander CDN of een losse copy-paste van de module-broncode.
+- **Performancevoorwaarden:** exact 1 shadow-castende light blijft
+  behouden (`schaduw === 1`-invariant, ook na deze pipeline); geen
+  waarneembare framerate-terugval op de bestaande perf-tests.
+- **Acceptatiecriteria:**
+  - Composer rendert de scene zichtbaar identiek qua compositie, met
+    een subtiele visuele verbetering (bloom/vignet).
+  - Resize (window resize tijdens spel) blijft correct werken.
+  - `schaduw === 1`-check blijft groen.
+  - Volledige regressie blijft groen.
+- **Testplan:** `check-load` + bestaande perf-/schaduw-tests + een
+  resize-test + screenshotvergelijking vóór/na.
+- **Risico's:** CDN-beschikbaarheid van de submodule is de grootste
+  onzekere factor van deze hele ronde.
+- **Rollback:** terug naar kale `renderer.render()`-call, importmap-
+  entry verwijderen.
+- **Sonnet solo:** ja, mits de CDN-verificatiestap eerst slaagt.
+
+---
+
+## Ticket 61 — Vloeiendere silhouetten voor vijanden/wapens
+
+- **Type:** visuele verbetering — VOORZICHTIG
+- **Verbetergebied:** 1 (Visuele kwaliteit)
+- **Prioriteit:** laag
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** ondode- en wapenmodellen een minder "blokkerig" silhouet
+  geven zonder de hitbox-/animatie-architectuur te breken.
+- **Huidige situatie:** modellen bestaan uit simpele primitieve
+  geometrieën (boxen/cilinders/cones) met scherpe randen.
+- **Gewenste situatie:** zachtere overgangen via meer radiale segmenten
+  op zichtbare randen en kleine tussen-primitieven voor
+  afschuinings-illusie, plus zachtere shading — puur cosmetisch.
+- **Codegebieden:** ondode-modelopbouw (Z1-modulaire structuur,
+  Ticket 18-22), wapenmodel-opbouw.
+- **Buiten scope:** nieuwe geometrie-types, hogere polycount als
+  doel-op-zich, animatie-systeem-wijzigingen.
+- **Randgevallen:** de hoofd-hoogte-anker (beslissing 16) en alle
+  hitbox-mesh-schalen mogen NIET veranderen — elke wijziging is puur
+  visueel, nooit een transform op een hitbox-dragend object.
+- **Performancevoorwaarden:** geen toename van vertex-aantal die de
+  bestaande perf-budgetten (aantal ondoden × complexiteit) merkbaar
+  raakt — extra segmenten alleen op de meest zichtbare randen, niet
+  overal.
+- **Acceptatiecriteria:**
+  - Voor/na-screenshots tonen een merkbaar vloeiender silhouet.
+  - Hitbox-regressietest bevestigt: geen wijziging in hitbox-posities/
+    -schalen.
+  - Head-anchor-positie ongewijzigd (regressietest).
+  - Volledige regressie blijft groen.
+- **Testplan:** `check-load` + nieuwe/bestaande hitbox-regressietest +
+  screenshotronde van elk ondode-type + volledige regressie. Los van
+  elk ander ticket uitvoeren (niet combineren).
+- **Risico's:** grootste risico is per ongeluk een hitbox- of
+  head-anchor-transform aanraken — vandaar VOORZICHTIG.
+- **Rollback:** modelopbouw-functies terug naar hun huidige vorm.
+- **Sonnet solo:** ja, met verplichte hitbox-regressietest vóór/na.
+
+---
+
+## Ticket 62 — Kelder: geometrie, trap en Y-beweging
+
+- **Type:** nieuwe ruimte / infrastructuur — VOORZICHTIG
+- **Verbetergebied:** 2 (Ruimtelijke diepte)
+- **Prioriteit:** hoog
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** een eerste stuk echte verticaliteit toevoegen: een kelder
+  onder een bestaand deel van het huis, bereikbaar via een trap met een
+  deterministische Y-beweging.
+- **Huidige situatie:** `speler.positie` heeft uitsluitend x/z-mutaties
+  tijdens gameplay; alle botsingslogica (`registreerRechthoek`,
+  `losBotsingenOp`, `isVrijePlek`) is volledig 2D en Y-onwetend.
+- **Gewenste situatie:** een nieuwe kelder-footprint, disjunct van de
+  bestaande `GRENS`-rechthoek, bereikbaar via een vaste
+  trap-corridor waarin `speler.positie.y` lineair interpoleert tussen 0
+  en een vaste kelderdiepte puur als functie van positie langs de
+  trap-as (zie ARCHITECTURE_NOTES.md §7.5.1). Buiten die band blijft
+  `positie.y` exact zoals nu.
+- **Codegebieden:** nieuwe kelder-/trapconstantes, `speler.positie`
+  (Y-veld toevoegen/gebruiken), render-/camera-hoogtecode
+  (`speler.hoogte`-toepassing), lokale kelder-grenscontrole.
+- **Buiten scope:** algemene 3D-physics/zwaartekracht/sprong; een
+  Y-aware herschrijving van `registreerRechthoek`/`losBotsingenOp`/
+  `isVrijePlek` (die blijven 2D, de trap is een uitzonderingsband).
+- **Randgevallen:** elke bestaande plek die met `speler.positie` rekent
+  (schietrichting, botsingen, zone-lookup) moet expliciet
+  gecontroleerd worden op impliciete "Y is altijd 0"-aannames vóór dit
+  ticket als afgerond geldt (zie ARCHITECTURE_NOTES.md §7.9).
+- **Performancevoorwaarden:** trap-Y-interpolatie is een simpele
+  per-frame lineaire berekening binnen een smalle band — geen
+  allocaties, geen zware per-frame lookup.
+- **Acceptatiecriteria:**
+  - Speler kan via de trap soepel af- en oplopen, camera-hoogte volgt
+    correct.
+  - Buiten de trapband blijft bestaand 2D-gedrag 100% ongewijzigd
+    (regressie).
+  - `GRENS` zelf is ongewijzigd; kelder heeft eigen lokale
+    grenscontrole.
+  - Geen enkele bestaande test faalt door de nieuwe Y-aanname-audit.
+- **Testplan:** `check-load` + nieuwe trap-/Y-bewegingstest + volledige
+  regressie (met bijzondere aandacht voor elke test die
+  `speler.positie` leest/schrijft) + screenshotronde trap op/af. Niet
+  combineren met T63.
+- **Risico's:** eerste keer dat `positie.y` structureel gebruikt wordt
+  in dit project — hoogste regressierisico van de hele ronde, vandaar
+  VOORZICHTIG.
+- **Rollback:** kelder-/trapconstantes en Y-interpolatiecode
+  verwijderen; `speler.positie.y` blijft impliciet 0 zoals voorheen.
+- **Sonnet solo:** ja, met verplichte Y-aanname-audit als onderdeel van
+  het ticket (niet optioneel).
+
+---
+
+## Ticket 63 — Kelder als permanente veilige zone + inhoud
+
+- **Type:** nieuwe ruimte / content
+- **Verbetergebied:** 2 (Ruimtelijke diepte)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** T62
+- **Doel:** de kelder vullen met passend decor/een interactiepunt en
+  hem architecturaal borgen als permanente zombie-vrije zone.
+- **Huidige situatie:** na T62 bestaat de kelder-geometrie, maar is hij
+  leeg en nog niet expliciet uitgesloten van de AI-/spawn-systemen.
+- **Gewenste situatie:** de kelder staat NIET in `ZONE_GRAAF`, heeft
+  geen spawn-vensters (geen ondode kan er ooit spawnen of binnenkomen),
+  en bevat een klein setje passend decor (wijnrek, kratten) plus
+  optioneel één bestaand interactiepunt-type herplaatst in de nieuwe
+  ruimte (zie ARCHITECTURE_NOTES.md §7.5.2-7.5.3).
+- **Codegebieden:** `ZONE_GRAAF`, spawn-vensterdefinities,
+  `zoneVan()` (mag kelder herkennen voor HUD/label, niet voor
+  AI-routing), nieuwe kelder-decorfuncties.
+- **Buiten scope:** nieuwe gameplaymechanieken/itemtypes; elke wijziging
+  aan `updateOndoden()`/`NAV_VOLGENDE` die de kelder zou meenemen.
+- **Randgevallen:** een speler die in de kelder staat mag NOOIT een
+  ondode zien spawnen of binnenkomen — expliciete test hiervoor
+  verplicht.
+- **Performancevoorwaarden:** geen — puur statisch decor plus eventueel
+  één interactiepunt, geen nieuwe per-frame logica.
+- **Acceptatiecriteria:**
+  - `ZONE_GRAAF`/`NAV_VOLGENDE` bevatten geen kelder-referentie.
+  - Geen enkel spawn-venster wijst naar de kelder.
+  - Screenshot toont passend, niet-zwevend decor.
+  - Volledige regressie (met name `test-gracht-dock.mjs`) blijft groen.
+- **Testplan:** `check-load` + nieuwe "kelder blijft leeg tijdens
+  golven"-test (simuleer meerdere golven, tel ondoden in kelder-
+  footprint = altijd 0) + screenshotronde + volledige regressie.
+- **Rollback:** decorfuncties + eventueel interactiepunt verwijderen;
+  kelder blijft leeg maar toegankelijk (of T62 in zijn geheel
+  terugdraaien indien nodig).
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 64 — Waypoint-navigatiegraaf: architectuur en dataset
+
+- **Type:** AI-infrastructuur
+- **Verbetergebied:** 3 (Vijandintelligentie)
+- **Prioriteit:** hoog
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** een generieke, data-gedreven intra-zone waypointgraaf
+  opzetten als fundament voor slimmere pathfinding (zie
+  ARCHITECTURE_NOTES.md §7.6.1).
+- **Huidige situatie:** binnen een zone loopt een ondode altijd in een
+  kaarsrechte lijn naar de speler (`updateOndoden()`, regel
+  ~4204-4228); cross-zone routing gebruikt wél al een BFS-graaf
+  (`ZONE_GRAAF`/`NAV_VOLGENDE`), maar dat dekt geen intra-zone-obstakels.
+- **Gewenste situatie:** per zone een kleine, hand-geplaatste lijst
+  waypoints (data, geen algoritmische generatie); een nieuwe
+  lookup-functie die het dichtstbijzijnde bruikbare waypoint richting
+  de speler bepaalt.
+- **Codegebieden:** nieuw waypoint-datastructuur (nabij
+  `ZONE_GRAAF`), nieuwe lookup-/route-helperfunctie. Dit ticket bouwt
+  ALLEEN de dataset + lookup, koppelt nog NIET aan `updateOndoden()`
+  (dat is T65).
+- **Buiten scope:** volledige A*/dynamische graafgeneratie; koppeling
+  aan de daadwerkelijke beweging (T65).
+- **Randgevallen:** waypoints moeten de bestaande, al gefixte
+  chokepoints (gang-naar-de-gracht) dekken — expliciet nagerekend
+  tegen de coördinaten uit `test-gracht-dock.mjs`.
+- **Performancevoorwaarden:** lookup moet een simpele array-/
+  object-indexering zijn (O(waypoints-per-zone), niet een per-frame
+  graaf-traversal); geen allocaties in de lookup-hot-path.
+- **Acceptatiecriteria:**
+  - Waypoint-dataset dekt alle zones met een niet-triviale interne
+    geometrie (in elk geval de gang-naar-de-gracht-zone).
+  - Lookup-functie geeft voor bekende testposities het verwachte
+    waypoint terug (unit-achtige test, geen visuele check nodig voor
+    dit ticket).
+  - Nog geen enkele gedragswijziging in het spel zelf (dit ticket is
+    puur additief/dataset, `updateOndoden()` gebruikt het nog niet).
+- **Testplan:** nieuw testbestand met lookup-checks per zone +
+  `check-load` + volledige regressie (moet ongewijzigd blijven, want
+  er is nog geen gedragskoppeling).
+- **Rollback:** nieuw bestand/blok volledig verwijderen, geen
+  bestaande code aangeraakt.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 65 — Waypoint-integratie: ad-hoc chokepoint-code vervangen
+
+- **Type:** AI-verbetering — VOORZICHTIG
+- **Verbetergebied:** 3 (Vijandintelligentie)
+- **Prioriteit:** hoog
+- **Status:** open (gepland)
+- **Afhankelijk van:** T64
+- **Doel:** `updateOndoden()` laten routeren via de nieuwe
+  waypointgraaf, én de oude ad-hoc chokepoint-special-case
+  verwijderen (zie ARCHITECTURE_NOTES.md §7.6.2).
+- **Huidige situatie:** `updateOndoden()` gebruikt
+  `GRACHTGANG_DREMPEL`/`eigenInGracht`/`spelerInGracht`/`inZoneVier`
+  (regel ~4204-4228) als eenmalige, zone-4-specifieke lap voor het
+  gang-naar-de-gracht-chokepoint-probleem.
+- **Gewenste situatie:** dezelfde routing-uitkomst (en beter, voor
+  andere zones met obstakels) via de generieke T64-waypointgraaf; de
+  oude special-case-variabelen en -logica zijn VOLLEDIG verwijderd, in
+  DEZELFDE diff.
+- **Codegebieden:** `updateOndoden()` (regel ~4204-4228),
+  `GRACHTGANG_DREMPEL`-gerelateerde code, debug-exports die deze
+  variabelen blootleggen.
+- **Buiten scope:** wijzigingen aan `ZONE_GRAAF`/cross-zone-routing
+  zelf (die blijft ongewijzigd, alleen de intra-zone-laag verandert).
+- **Randgevallen:** de twee bugs die deze sessie zijn gefixt (zombies
+  op de binnenplaats die niet naar het noordoosten volgen; de eerdere
+  gang-chokepoint-bug) mogen NIET terugkeren — dit is het primaire
+  regressierisico van dit ticket.
+- **Performancevoorwaarden:** zelfde als T64 — geen per-frame
+  allocaties/graaf-traversal in `updateOndoden()`.
+- **Acceptatiecriteria:**
+  - Oude `GRACHTGANG_DREMPEL`/`eigenInGracht`/`spelerInGracht`/
+    `inZoneVier`-code bestaat niet meer.
+  - `test-gracht-dock.mjs` (dekt beide sessie-bugs) blijft volledig
+    groen.
+  - Nieuwe/uitgebreide trajectory-trace-test bevestigt correcte
+    pursuit-gedrag in minstens 2 andere zones met obstakels.
+  - Volledige regressie blijft groen.
+- **Testplan:** volledige `test-gracht-dock.mjs`-suite + trajectory-
+  trace-tests (zelfde patroon als de sessie-fix) voor meerdere
+  zones/hoeken + `check-load` + volledige regressie.
+- **Risico's:** hoogste AI-regressierisico van de ronde — twee bugs in
+  dit exacte codegebied zijn deze sessie al gefixt, vandaar
+  VOORZICHTIG.
+- **Rollback:** terug naar de oude ad-hoc special-case-code (git-
+  historie), waypoint-koppeling verwijderen.
+- **Sonnet solo:** ja, met verplichte volledige `test-gracht-dock.mjs`-
+  regressie vóór het ticket als afgerond geldt.
+
+---
+
+## Ticket 66 — Achtergrondmuziek
+
+- **Type:** audio/sfeer
+- **Verbetergebied:** 4 (Sfeer/audio)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** een permanente, originele achtergrondmuziek-laag toevoegen
+  zonder de bestaande dreigingsaudio-drone te verstoren (zie
+  ARCHITECTURE_NOTES.md §7.7.1).
+- **Huidige situatie:** enige continue audio-laag is de
+  dreigingsaudio-drone (regel 3135-3172,
+  `dreigingsGainNode`/`zetDreigingsGain()`), plafond 0.07 gain; verder
+  alleen eenmalige `piep()`-stings.
+- **Gewenste situatie:** een tweede, permanente oscillator/gain-laag
+  (eigen, origineel motief/akkoordbed) die exact het drone-patroon
+  volgt — nooit gestopt/herstart, alleen via
+  `gain.setTargetAtTime()` aangestuurd (bv. zachter tijdens
+  golf-aankondigingen, iets voller tijdens combat); eigen
+  volumeplafond (bv. 0.05) apart van de drone (0.07).
+- **Codegebieden:** audio-opbouw nabij regel 3135-3172, nieuwe
+  muziekgain-node + aansturingsfunctie, wave-/combat-state-hooks die de
+  gain-doelwaarde bijwerken.
+- **Buiten scope:** samples/audiobestanden; herkenbare bestaande
+  game-muziek of -motieven (IP-regel, CLAUDE.md); dynamische
+  instrumentatie-lagen die meer dan één extra oscillator-groep vergen.
+- **Randgevallen:** gecombineerd volume (drone + muziek) mag de
+  bestaande sfeer-audio niet overstemmen — expliciete gain-som-check
+  in de test.
+- **Performancevoorwaarden:** oscillator-nodes eenmalig aangemaakt bij
+  eerste gebruikersinteractie (zelfde patroon als de bestaande
+  AudioContext-opstart), nooit per-frame ge(her)alloceerd.
+- **Acceptatiecriteria:**
+  - Muziek-oscillator wordt na opstart nooit gestopt/herstart
+    (debug-teller zoals `dreigingsGainSchrijfTeller` bevestigt alleen
+    gain-writes, geen node-hercreaties).
+  - Volumeplafond wordt nooit overschreden, ook niet gecombineerd met
+    de drone op zijn piek.
+  - Golf-aankondiging/combat-overgangen sturen de gain hoorbaar (in
+    test: gain-doelwaarde) aan.
+  - Volledige regressie blijft groen.
+- **Testplan:** nieuw testbestand met gain-doelwaarde-checks per
+  spelfase + node-identiteitscheck (zelfde node-referentie vóór/na een
+  golf) + `check-load` + volledige regressie.
+- **Rollback:** nieuwe audio-node-opbouw en aansturingscode
+  verwijderen; bestaande dreigingsaudio-drone blijft ongewijzigd.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 67 — Minimap
+
+- **Type:** UI/UX
+- **Verbetergebied:** 5 (Spelerfeedback & oriëntatie)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** spelers een 2D-topdown-oriëntatiehulp geven (positie,
+  richting, bekende zone-omtrekken, nabije ondoden).
+- **Huidige situatie:** geen enkele vorm van kaart/oriëntatiehulp;
+  spelers navigeren puur op de 3D-scene en de bestaande
+  zone-naambanners/HUD-zonelabel (Ticket 50).
+- **Gewenste situatie:** een klein, vast gepositioneerd 2D-`<canvas>`
+  bovenop de bestaande HUD, elke frame (of licht doorbelast) opnieuw
+  getekend: speler-positie/-richting, statische zone-omtreklijnen
+  (afgeleid van bestaande zone-/muurconstantes) en nabije ondoden als
+  stippen (zie ARCHITECTURE_NOTES.md §7.8.1).
+- **Codegebieden:** nieuw `<canvas id="minimapUI">`-element (HTML,
+  zelfde patroon als andere HUD-`<div>`'s), nieuwe
+  `tekenMinimap()`-functie aangeroepen vanuit de render-/update-loop.
+- **Buiten scope:** een 3D-render-target-gebaseerde minimap (geen
+  extra Three.js-camera); fog-of-war/verkenning-geheugen; interactieve
+  minimap (klikbaar, zoombaar).
+- **Randgevallen:** kelder (T62/T63) is een aparte Y-laag — de minimap
+  toont in eerste instantie alleen de begane-grond-laag; als de speler
+  in de kelder staat, toont de minimap dat via een simpel label/icoon,
+  geen aparte kelder-sublaag-tekening.
+- **Performancevoorwaarden:** canvas-tekenwerk mag niet elke frame vol
+  gebeuren als dat merkbaar kost — throttle naar elke 2-3 frames indien
+  nodig; geen allocaties per tekenbeurt (hergebruik dezelfde
+  canvas-context-state).
+- **Acceptatiecriteria:**
+  - Minimap toont correcte relatieve positie/richting van de speler in
+    minstens 3 verschillende zones (screenshotcheck).
+  - Nabije ondoden verschijnen als stippen binnen een vaste radius.
+  - Geen waarneembare framerate-terugval (perf-test).
+  - Volledige regressie blijft groen.
+- **Testplan:** `check-load` + nieuwe minimap-render-test (canvas-
+  pixel-/state-check op bekende posities) + screenshotronde + perf-test.
+- **Rollback:** `<canvas id="minimapUI">` en `tekenMinimap()`-aanroep
+  verwijderen.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 68 — Duidelijkere richtingsfeedback bij schade
+
+- **Type:** UI/UX
+- **Verbetergebied:** 5 (Spelerfeedback & oriëntatie)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** spelers direct laten zien uit welke richting schade komt.
+- **Huidige situatie:** schade toont alleen het bestaande vignet-
+  /hp-bar-effect, zonder richtinginformatie.
+- **Gewenste situatie:** een kort, richtinggevoelig DOM-"wedge"-element
+  aan de rand van het beeld, georiënteerd op de hoek tussen
+  kijkrichting en schaderichting, dat kort oplicht en uitfaded; een
+  vast, klein aantal vooraf aangemaakte wedge-elementen wordt
+  hergebruikt (zelfde effects-pool-patroon als `tracerPool`/
+  `impactPool`, regel 2957-2959) — zie ARCHITECTURE_NOTES.md §7.8.2.
+- **Codegebieden:** nieuwe DOM-wedge-pool (HTML/CSS + JS-pool,
+  vergelijkbaar met bestaande effect-pools), schade-afhandeling
+  (`raakOndode()`/speler-schadepad) roept de pool aan.
+- **Buiten scope:** een nieuwe canvas-laag (puur CSS/DOM-transform);
+  schade-types verder categoriseren (elke schadebron gebruikt dezelfde
+  wedge-stijl).
+- **Randgevallen:** meerdere gelijktijdige treffers uit verschillende
+  richtingen moeten allemaal een eigen wedge tonen (pool moet meerdere
+  actieve wedges tegelijk aankunnen tot de pool-grootte).
+- **Performancevoorwaarden:** geen `document.createElement`/allocaties
+  in de schade-hot-path (`raakOndode()`/schade-afhandeling) — alleen
+  hergebruik van vooraf aangemaakte pool-elementen, exact zoals
+  `tracerPool`/`impactPool` nu al werken.
+- **Acceptatiecriteria:**
+  - Bij schade van een bekende hoek verschijnt de wedge op de
+    verwachte rand-positie (test met bekende speler-/schade-hoeken).
+  - Pool-elementen worden hergebruikt, geen DOM-groei tijdens een lange
+    speelsessie (regressietest: element-aantal blijft constant na N
+    treffers).
+  - Volledige regressie blijft groen.
+- **Testplan:** nieuw testbestand met hoek-naar-positie-checks +
+  pool-hergebruik-check (DOM-node-aantal vóór/na veel treffers) +
+  `check-load` + volledige regressie.
+- **Rollback:** DOM-wedge-pool en de aanroep in de schade-afhandeling
+  verwijderen.
+- **Sonnet solo:** ja.
+
+---
+
 ## Backlog — bevroren tickets (niet uitvoeren zonder expliciete opdracht)
 
 Op verzoek van de gebruiker: "het nieuwe wapen (ticket 47 en 48) hoef ik
@@ -2486,10 +3013,15 @@ altijd al onafhankelijk van T42-46/49-56).
 - **Sonnet solo:** ja.
 
 ### Idee (backlog, niet uitgewerkt) — standaard achtergrondmuziek
-Een permanente achtergrondmuziek-track (los van de bestaande
+~~Een permanente achtergrondmuziek-track (los van de bestaande
 dreigingsaudio-drone en de eenmalige stings) voor Amsterdam Undead. Puur
 als idee genoteerd op verzoek van de gebruiker — geen ontwerp, geen
-architectuur, geen ticket-uitwerking. Oppakken pas na expliciete opdracht.
+architectuur, geen ticket-uitwerking. Oppakken pas na expliciete opdracht.~~
+**Bijgewerkt in v0.19 (Fable-architectuurronde 5):** dit idee is nu volledig
+uitgewerkt als **Ticket 66** (zie hierboven, sectie "v0.19"), met
+architectuur in ARCHITECTURE_NOTES.md §7.7.1 (beslissing 59, volgt het
+bestaande dreigingsaudio-drone-patroon). Nog steeds NIET geïmplementeerd —
+oppakken pas na expliciete opdracht.
 
 ---
 

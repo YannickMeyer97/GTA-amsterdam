@@ -136,6 +136,36 @@ dezelfde commit als de pool; T36 vervangt ALLE
 `interactieMarkering`-aanroepen in één commit. Documentatiestatus
 (ROADMAP-vinkje) mag in dezelfde commit mee.
 
+### Ronde 5 (v0.19 — visuele/ruimtelijke diepte, AI en oriëntatie)
+
+Tickets 58–68 staan in `ROADMAP.md` sectie **v0.19**; de architectuur in
+`ARCHITECTURE_NOTES.md` **§7** + **ontwerpbeslissingen 49–61**. Alles is
+ontworpen — jij implementeert; neem GEEN nieuwe architectuurbeslissingen.
+Deze hele ronde is **gepland, nog niet uitgevoerd**: elk ticket wacht op
+een aparte, expliciete opdracht.
+
+| Fase | Tickets | Waarom deze volgorde |
+| --- | --- | --- |
+| 15. Visuele kwaliteit | 58 → 59 → 60 → 61 | Palet eerst (kleurbasis), dan texturen (bouwt op het palet), dan post-processing (onafhankelijke renderlaag), dan silhouetten (puur cosmetisch, los van de rest) |
+| 16. Verticaliteit | 62 → 63 | Geometrie/Y-beweging eerst (VOORZICHTIG, hoogste regressierisico), dan pas inhoud + het "permanent veilig"-contract erbovenop |
+| 17. Pathfinding | 64 → 65 | Eerst de waypoint-dataset + lookup (puur additief), dan de integratie die de oude ad-hoc code verwijdert (VOORZICHTIG) |
+| 18. Sfeer | 66 | Onafhankelijk, volgt het bestaande drone-patroon |
+| 19. Oriëntatie & feedback | 67 → 68 | Minimap en richtingsfeedback raken andere code-gebieden en kunnen in willekeurige volgorde, maar niet gecombineerd met elkaar |
+
+**T58 vóór T59/T61** (palet-consistentie), **T62 vóór T63** (geometrie
+vóór inhoud/contract), **T64 vóór T65** (dataset vóór integratie) zijn
+harde volgordes; de overige fases zijn onderling onafhankelijk.
+
+**Nooit combineren met een ander ticket (ronde 5):**
+- **T61** (silhouetten) — het hitbox-/head-anchor-contract mag maar
+  door één wijziging tegelijk bewegen, zelfde discipline als T18/T30.
+- **T62** (kelder-geometrie/Y-beweging) — eerste structurele gebruik
+  van `positie.y` in het hele project; nooit combineren met T63 of
+  enig ander ticket dat `speler.positie` aanraakt.
+- **T65** (waypoint-integratie) — herschrijft de navigatie-helft van
+  `updateOndoden()` en verwijdert bestaande code in dezelfde diff;
+  zelfde discipline als T18/T28/T30.
+
 ---
 
 ## Sonnet-prompts per ticket
@@ -1056,3 +1086,234 @@ gebruiker dit expliciet weer vraagt.
     overgebleven venster met een screenshot, inclusief de al gefixte
     binnenplaats-vensters (regressie: die mogen niet per ongeluk
     terugveranderen als `bouwBarricade()` wordt aangeraakt).
+
+---
+
+## Sonnet-prompts per ticket — ronde 5 (v0.19)
+
+Zelfde werkwijze als ronde 1-4: één ticket per keer, eerst dit plan +
+het ticket in ROADMAP.md (sectie v0.19) + de relevante §7-secties van
+ARCHITECTURE_NOTES.md lezen, minimale wijziging, load-check + het
+testplan van het ticket, nooit committen zonder expliciete opdracht.
+
+### Ticket 58 — PALET-systeem voor consistente art direction
+- **Context:** `MATERIAAL_FAMILIES`/`matFamilie()` (~559-575) als
+  bestaand stijlvoorbeeld; gevel-/straatdecor-aanroepen
+  (`bouwAchterGevel()` e.a.). Spec: §7.4.1-beslissing 50.
+- **Doel:** nieuw `PALET`-object met een klein aantal benoemde
+  kleurgroepen; de aangewezen gevel-/straat-call-sites gebruiken
+  `PALET.*` i.p.v. eigen hex-literals.
+- **Stappen:** `PALET`-object nabij `MATERIAAL_FAMILIES`; call-sites
+  één voor één omzetten; debug-export; screenshotvergelijking vóór/na;
+  regressie.
+- **Niet veranderen:** kleuren buiten de aangewezen call-sites;
+  materiaal-families zelf.
+
+### Ticket 59 — Procedurele texturen voor materiaaldiepte
+- **Context:** `matFamilie()`/`MATERIAAL_FAMILIES` (~559-575),
+  `matFamilieCache`. Spec: §7.3 (regel-interpretatie) + §7.4.2-
+  beslissing 51.
+- **Doel:** kleine set runtime-getekende `THREE.CanvasTexture`s
+  (steen/hout/metaal), gecachet, gekoppeld via een nieuw `map`-veld
+  aan de betrokken `MATERIAAL_FAMILIES`-varianten.
+- **Stappen:** `bouwCanvasTexture()`-helper + eigen cache; `map`
+  toevoegen aan de aangewezen families; screenshotronde van
+  representatieve oppervlakken; regressie.
+- **Niet veranderen:** materiaal-mutatiediscipline (per-familie
+  gedeeld, nooit per-instantie); geometrie-UV's.
+
+### Ticket 60 — Post-processing-pipeline (EffectComposer)
+- **Context:** render-loop (`renderer.render(scene, camera)`),
+  `onresize`-handler, `<script type="importmap">`. Spec: §7.3 + §7.4.3-
+  beslissing 52.
+- **Doel:** `EffectComposer` (RenderPass + max één subtiele extra
+  pass) via Three.js' eigen `examples/jsm/postprocessing/*`-submodules
+  op dezelfde CDN-host als de kern-`three.module.js`.
+- **Stappen:** EERST verifiëren dat de CDN de submodule voor de
+  gebruikte Three.js-versie serveert (blokkeer het ticket en meld
+  terug als dat niet lukt — niet improviseren); importmap-entry;
+  composer-opzet; resize-koppeling; `schaduw === 1`-check; regressie +
+  perf-test.
+- **Niet veranderen:** shadow-lichttelling; bestaande materiaal-
+  instellingen.
+
+### Ticket 61 — Vloeiendere silhouetten (VOORZICHTIG)
+- **Context:** ondode-modelopbouw (Z1-modulaire structuur, Tickets
+  18-22), wapenmodel-opbouw, hoofd-hoogte-anker (beslissing 16). Spec:
+  §7.4.4-beslissing 53.
+- **Doel:** zachtere overgangen/segmenten op zichtbare randen, puur
+  cosmetisch, zonder head-anchor- of hitbox-transforms te raken.
+- **Stappen:** modelopbouw-functies aanpassen; hitbox-regressietest
+  vóór/na; head-anchor-regressietest; screenshotronde per ondode-type;
+  regressie. Los van elk ander ticket uitvoeren.
+- **Niet veranderen:** hitbox-mesh-schalen, head-group-Y-positie,
+  animatie-systeem.
+
+### Ticket 62 — Kelder: geometrie, trap en Y-beweging (VOORZICHTIG)
+- **Context:** `speler.positie` (~2348), `GRENS` (~659),
+  `registreerRechthoek`/`losBotsingenOp`/`isVrijePlek` (2D-botsing),
+  `speler.hoogte`-toepassing bij het renderen. Spec: §7.5.1-
+  beslissing 54.
+- **Doel:** nieuwe, disjuncte kelder-footprint + trap-corridor waarin
+  `speler.positie.y` lineair interpoleert tussen 0 en een vaste
+  kelderdiepte, puur als functie van positie langs de trap-as; buiten
+  die band blijft `positie.y` exact zoals nu.
+- **Stappen:** kelder-/trapconstantes; Y-interpolatie in de
+  trapband; camera-hoogtekoppeling; lokale kelder-grenscontrole
+  (GEEN wijziging aan `GRENS` zelf); **Y-aanname-audit**: elke plek die
+  `speler.positie` leest (schietrichting, botsingen, zone-lookup)
+  narekenen op impliciete "Y is altijd 0"-aannames; nieuwe trap-/
+  Y-bewegingstest; screenshotronde; volledige regressie. Niet
+  combineren met T63.
+- **Niet veranderen:** `registreerRechthoek`/`losBotsingenOp`/
+  `isVrijePlek` zelf (blijven 2D); `GRENS`.
+
+### Ticket 63 — Kelder als permanente veilige zone + inhoud
+- **Context:** `ZONE_GRAAF` (~4072), spawn-vensterdefinities,
+  `zoneVan()` (~4037). Spec: §7.5.2-beslissing 55, §7.5.3-
+  beslissing 56.
+- **Doel:** kelder NIET in `ZONE_GRAAF`, geen spawn-vensters, klein
+  setje passend decor + optioneel één bestaand interactiepunt-type
+  herplaatst.
+- **Stappen:** decorfuncties; expliciet NIET toevoegen aan
+  `ZONE_GRAAF`/spawn-registratie; `zoneVan()` mag kelder herkennen voor
+  HUD/label alleen; nieuwe "kelder blijft leeg tijdens golven"-test
+  (meerdere golven simuleren, tel = altijd 0); screenshotronde;
+  volledige regressie (met name `test-gracht-dock.mjs`).
+- **Niet veranderen:** `updateOndoden()`/`NAV_VOLGENDE`.
+
+### Ticket 64 — Waypoint-navigatiegraaf: dataset + lookup
+- **Context:** `ZONE_GRAAF` (~4072) als stijlvoorbeeld,
+  `test-gracht-dock.mjs`-coördinaten voor de bekende chokepoints. Spec:
+  §7.6.1-beslissing 57.
+- **Doel:** nieuwe, hand-geplaatste waypoint-dataset per zone + een
+  lookup-functie (dichtstbijzijnde bruikbare waypoint richting de
+  speler). Puur additief — nog GEEN koppeling aan `updateOndoden()`.
+- **Stappen:** waypoint-dataset (dekt in elk geval de gang-naar-de-
+  gracht-zone); lookup-functie (simpele array-/object-indexering, geen
+  per-frame graaf-traversal); nieuw testbestand met lookup-checks;
+  bevestig dat de volledige bestaande regressie ONGEWIJZIGD blijft
+  (geen gedragskoppeling in dit ticket).
+- **Niet veranderen:** `updateOndoden()` zelf; `ZONE_GRAAF`/
+  `NAV_VOLGENDE`.
+
+### Ticket 65 — Waypoint-integratie: ad-hoc code vervangen (VOORZICHTIG)
+- **Context:** `updateOndoden()` (~4204-4228),
+  `GRACHTGANG_DREMPEL`/`eigenInGracht`/`spelerInGracht`/`inZoneVier`,
+  T64's waypointgraaf. Spec: §7.6.2-beslissing 58.
+- **Doel:** `updateOndoden()` routeert via de T64-waypointgraaf; de
+  oude ad-hoc special-case-code wordt VOLLEDIG verwijderd in dezelfde
+  diff.
+- **Stappen:** koppeling waypointgraaf → beweging; verwijder
+  `GRACHTGANG_DREMPEL`/`eigenInGracht`/`spelerInGracht`/`inZoneVier`
+  + hun debug-exports; volledige `test-gracht-dock.mjs`-regressie
+  (dekt beide sessie-bugs); nieuwe trajectory-trace-tests voor
+  minstens 2 andere zones met obstakels; volledige regressie.
+- **Niet veranderen:** `ZONE_GRAAF`/cross-zone-routing zelf.
+
+### Ticket 66 — Achtergrondmuziek
+- **Context:** dreigingsaudio-drone (~3135-3172,
+  `dreigingsGainNode`/`zetDreigingsGain()`, plafond 0.07) als exact
+  sjabloon. Spec: §7.7.1-beslissing 59.
+- **Doel:** tweede, permanente oscillator/gain-laag (eigen origineel
+  motief), nooit gestopt/herstart, alleen via
+  `gain.setTargetAtTime()` aangestuurd; eigen volumeplafond (bv. 0.05)
+  apart van de drone.
+- **Stappen:** oscillator-groep + gainNode, eenmalig aangemaakt bij
+  eerste gebruikersinteractie; aansturingsfunctie gekoppeld aan
+  golf-aankondiging/combat-state; debug-export (incl. een
+  schrijf-teller zoals `dreigingsGainSchrijfTeller`); nieuw
+  testbestand (gain-doelwaarden per spelfase + node-identiteitscheck);
+  regressie.
+- **Niet veranderen:** de bestaande dreigingsaudio-drone zelf; diens
+  volumeplafond (0.07).
+
+### Ticket 67 — Minimap
+- **Context:** bestaande HUD-`<div>`'s (~390-410), zone-/
+  muurconstantes voor omtreklijnen. Spec: §7.8.1-beslissing 60.
+- **Doel:** klein, vast gepositioneerd 2D-`<canvas>` bovenop de HUD:
+  speler-positie/-richting, statische zone-omtreklijnen, nabije
+  ondoden als stippen.
+- **Stappen:** `<canvas id="minimapUI">` (HTML, HUD-patroon);
+  `tekenMinimap()`-functie vanuit de render-/update-loop (throttle
+  indien nodig); kelder-laag toont alleen een simpel label/icoon, geen
+  aparte sublaag-tekening; nieuwe render-/state-test; screenshotronde;
+  perf-test; regressie.
+- **Niet veranderen:** geen extra Three.js-camera/render-target; geen
+  fog-of-war.
+
+### Ticket 68 — Duidelijkere richtingsfeedback bij schade
+- **Context:** `tracerPool`/`impactPool` (~2957-2959) als exact
+  poolsjabloon, `raakOndode()`/speler-schadepad. Spec: §7.8.2-
+  beslissing 61.
+- **Doel:** kort, richtinggevoelig DOM-"wedge"-element aan de
+  beeldrand, georiënteerd op de hoek kijkrichting/schaderichting, via
+  een vast, klein aantal vooraf aangemaakte, hergebruikte
+  pool-elementen.
+- **Stappen:** DOM-wedge-pool (HTML/CSS + JS, poolgrootte vast);
+  aanroep vanuit de schade-afhandeling (geen
+  `document.createElement`/allocatie in de hot path); hoek-naar-
+  positie-mapping; nieuw testbestand (hoek-checks + pool-hergebruik-
+  check: DOM-node-aantal blijft constant na veel treffers); regressie.
+- **Niet veranderen:** geen nieuwe canvas-laag; schade-berekening
+  zelf.
+---
+
+### Extra waarschuwingen ronde 5 (v0.19)
+
+32. **T60's CDN-afhankelijkheid is de grootste onzekere factor van deze
+    ronde.** Verifieer EERST dat de gebruikte CDN-host de
+    `examples/jsm/postprocessing/*`-submodules voor de actieve
+    Three.js-versie daadwerkelijk serveert (via een expliciete
+    importmap-testload), vóórdat er ook maar één regel
+    `EffectComposer`-code geschreven wordt. Lukt dat niet: ticket
+    blokkeren en terugmelden, niet uitwijken naar een ander CDN of een
+    losse copy-paste van de module-broncode het bestand in — dat zou de
+    "geen nieuwe dependency"-regel wél echt breken.
+33. **T62 is de eerste plek in het hele project waar `positie.y`
+    structureel gebruikt wordt.** Elke bestaande functie die met
+    `speler.positie` rekent (schietrichting, `losBotsingenOp`,
+    `isVrijePlek`, `zoneVan`, elke debug-export die de positie
+    blootlegt) moet EXPLICIET nagelopen worden op een impliciete "Y is
+    altijd 0"-aanname vóór T62 als afgerond geldt — dit is geen
+    optionele opmerking maar een verplicht onderdeel van het ticket
+    (zie ROADMAP.md T62, Randgevallen).
+34. **De kelder (T62/T63) blijft BUITEN `ZONE_GRAAF` en krijgt GEEN
+    spawn-vensters.** Dit is een architecturale keuze, geen gat dat
+    "later" nog moet worden dichtgemaakt — een toekomstig ticket dat de
+    kelder alsnog aan de AI-/spawn-systemen koppelt is een NIEUW
+    ontwerpbesluit, geen bugfix op T62/T63.
+35. **T65 verwijdert oude code in DEZELFDE diff als de nieuwe code.**
+    `GRACHTGANG_DREMPEL`/`eigenInGracht`/`spelerInGracht`/
+    `inZoneVier` mogen na T65 niet meer bestaan — exact hetzelfde
+    principe als T30 (MELEE_*-constanten), T32 (vonk/bloedvonk) en T36
+    (interactieMarkering) in eerdere rondes. Draai vóór het ticket als
+    afgerond geldt de VOLLEDIGE `test-gracht-dock.mjs`-suite (die dekt
+    letterlijk de twee bugs die deze sessie in dit exacte codegebied
+    zijn gefixt).
+36. **T61 (silhouetten) raakt nooit de hoofd-hoogte-anker (beslissing
+    16) of een hitbox-mesh-schaal.** Verplichte hitbox-regressietest
+    vóór/na, los van elk ander ticket uitgevoerd — derde keer dat dit
+    exacte contract relevant is (na T18 en T30), zelfde discipline.
+37. **T66's muziekgain en de bestaande dreigingsaudio-drone hebben
+    APARTE volumeplafonds** (bv. 0.05 vs. het bestaande 0.07) — en
+    dezelfde "nooit stoppen/herstarten, alleen gain-sturing"-regel als
+    beslissing 25 (ronde 4, warning 25) geldt onverkort ook voor de
+    nieuwe muziek-oscillator(en).
+38. **T68's DOM-wedge-pool volgt het `tracerPool`/`impactPool`-patroon
+    letterlijk:** vaste poolgrootte, vooraf aangemaakt, geen
+    `document.createElement` in `raakOndode()`/de schade-hot-path. Test
+    expliciet dat het DOM-node-aantal na veel treffers constant blijft
+    (zelfde "pool groeit niet stiekem"-discipline als T32 destijds).
+39. **T67 (minimap) en T68 (richtingsfeedback) raken verschillende
+    codegebieden en kunnen in willekeurige volgorde, maar niet in
+    dezelfde sessie/diff gecombineerd worden** — zelfde
+    één-ticket-per-keer-discipline als de rest van het project, ook al
+    is er geen harde technische afhankelijkheid tussen de twee.
+40. **Alle nieuwe permanente audio-/canvas-/DOM-lagen uit deze ronde
+    (T60's composer, T66's muziek, T67's minimap-canvas, T68's
+    wedge-pool) moeten hun eigen resize-/pauze-gedrag correct afhandelen**
+    — dezelfde pauze-gate (`document.pointerLockElement ===
+    renderer.domElement`) die de bestaande game-loop bepaalt, geldt ook
+    voor deze nieuwe lagen (geen doorlopende animatie/audio-opbouw
+    tijdens pauze).
