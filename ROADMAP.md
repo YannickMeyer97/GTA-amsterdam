@@ -2661,7 +2661,30 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
 - **Type:** visuele verbetering — VOORZICHTIG
 - **Verbetergebied:** 1 (Visuele kwaliteit)
 - **Prioriteit:** laag
-- **Status:** open (gepland)
+- **Status:** ✅ voltooid, met een aangepaste scope voor de wapens en één
+  bugfix die tijdens implementatie nodig bleek.
+  **Ondoden** (voorzichtig, alleen tessellatie): hoofd
+  `SphereGeometry(0.18, 8, 8)` → `(0.18, 20, 16)` (straal/positie
+  ongewijzigd); ogen, bochel, buik en de gloeiende kern kregen ook meer
+  segmenten (radii ongewijzigd). **Bugfix tijdens implementatie:** met
+  het nieuwe, veel vloeiendere hoofd bleken de ogen (voorheen op
+  afstand 0.153 van het hoofdcentrum, tegen straal 0.18) volledig
+  verzwolgen te worden door het oppervlak — bij het oude 8×8-hoofd
+  waren ze zichtbaar via een facet-deuk, maar dat gaatje verdween met
+  de vloeiendere tessellatie. Eyes-z aangepast van 0.14 naar 0.165
+  (afstand ≈0.171, net onder straal 0.18) zodat ze weer zichtbaar op
+  het oppervlak liggen — dit is de ENIGE positie-wijziging in dit
+  ticket en raakt uitsluitend de (zeer kleine, straal 0.02) oog-
+  hitbox-region, niet het hoofd zelf of het hoofd-hoogte-anker.
+  **Wapens** (geen hitbox-risico, dus ruimere scope): Drukspuit-tank/
+  mondstuk en Ratelaar-loop kregen meer radiale segmenten; beide
+  muzzle-flash-bollen en het drukmeter-lampje ook. De grepen
+  (`greep`/`greepRatelaar`) zijn van `BoxGeometry` omgezet naar
+  `CapsuleGeometry` (zelfde totale lengte) — een natuurlijker rond
+  handvat. De Ratelaar's identiteitsbepalende blokkerige chassis/
+  magazijnkast/kolf (Ticket 34: wapen-identiteit) zijn BEWUST
+  ongewijzigd gelaten om het silhouet-onderscheid met de Drukspuit niet
+  te verwateren.
 - **Afhankelijk van:** —
 - **Doel:** ondode- en wapenmodellen een minder "blokkerig" silhouet
   geven zonder de hitbox-/animatie-architectuur te breken.

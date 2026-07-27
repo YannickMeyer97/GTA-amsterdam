@@ -1843,6 +1843,32 @@ ticket wordt gemarkeerd VOORZICHTIG en moet los van elk ander ticket
 worden uitgevoerd, met een voor/na-screenshot én een
 hitbox-regressietest.
 
+**Geïmplementeerd als:** voor de ondoden uitsluitend hogere
+segment-aantallen op bestaande `SphereGeometry`s (hoofd, ogen, bochel,
+buik, kern) — straal/positie van elk deel ongewijzigd. Voor de wapens
+(die GEEN hitbox dragen — nooit geraycast als treffer-doel, zie
+`schiet()`) is de scope bewust ruimer: cilinders kregen meer segmenten
+en de twee grepen zijn van `BoxGeometry` naar `CapsuleGeometry`
+omgezet (zelfde lengte, natuurlijker rond handvat). De Ratelaar's
+identiteitsbepalende blokkerige chassis/magazijnkast/kolf (Ticket 34)
+zijn bewust ongewijzigd gelaten — die "boxy"-vorm is zelf een
+ontwerpkeuze, geen toevallige hoekigheid om weg te polijsten.
+
+**Bugfix ontdekt tijdens implementatie:** met het hoofd op 20×16
+segmenten (was 8×8) bleken de twee oogbolletjes — die op hun oude
+positie al net binnen de bolstraal lagen (afstand 0.153 tegen straal
+0.18) — volledig onder het gladdere oppervlak te verdwijnen. Bij het
+oude lage-poly-hoofd waren ze zichtbaar dankzij een facet-deuk in het
+oppervlak op precies die plek; die deuk verdween met de vloeiendere
+tessellatie. Opgelost door de oog-z (lokaal, t.o.v. het hoofdcentrum)
+van 0.14 naar 0.165 te verplaatsen (nieuwe afstand ≈0.171, net onder
+de straal) zodat de ogen weer zichtbaar op het oppervlak liggen. Dit
+is de enige positie-wijziging in dit ticket; ze raakt uitsluitend de
+zeer kleine (straal 0.02) oog-hitbox-regio, niet het hoofd zelf of het
+hoofd-hoogte-anker, en is dus geen schending van het hard contract
+hierboven — wel een bewuste, hier gedocumenteerde afwijking van het
+"alleen segmenten aanpassen"-plan.
+
 ### 7.5 Verbetergebied 2 — Ruimtelijke diepte
 
 #### 7.5.1 Kelder: geometrie en Y-beweging (beslissing 54)

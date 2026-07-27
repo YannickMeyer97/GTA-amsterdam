@@ -208,7 +208,10 @@ puur decor en hebben géén collision, zodat de pathing er niet op vasthaakt.
 Een subtiele post-processing-laag (bloom) laat lantaarns, winkelaccenten
 en ogen in het donker zachtjes gloeien; steen/hout/metaal-oppervlakken
 hebben een beetje procedureel getekende materiaaldiepte i.p.v. vlakke
-kleur — beide 100% Three.js/canvas, zonder externe afbeeldingen.
+kleur — beide 100% Three.js/canvas, zonder externe afbeeldingen. De
+koppen van de ondoden en de wapenmodellen zijn vloeiender afgerond
+i.p.v. hoekig-blokkerig, zonder dat dit ook maar iets aan de
+speelbepalende hitboxen verandert.
 
 
 

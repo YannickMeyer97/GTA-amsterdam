@@ -2713,27 +2713,33 @@ let pantserdrankGekocht = false;
 // opbouw hieronder 'm meteen nodig heeft bij het bouwen van de scene.
 const SMEDERIJ_ACCENT_KLEUR = 0xff7a1f;   // ember-oranje accent op het gesmede wapenonderdeel
 
-// 1) De "Drukspuit" — het originele startwapen, ongewijzigd model.
+// 1) De "Drukspuit" — het originele startwapen.
+// Ticket 61 (v0.19, §7.4.4-beslissing 53): wapens dragen geen hitbox (nooit
+// geraycast als treffer-doel), dus hier is meer ruimte dan bij de ondoden —
+// cilinders/bollen kregen meer segmenten en de greep is een CapsuleGeometry
+// geworden (zelfde lengte, natuurlijker rond handvat i.p.v. een scherpe box).
 const wapenDrukspuit = new THREE.Group();
 let meterDrukspuit;   // Ticket 12: krijgt een ember-accent zodra de Drukspuit gesmeed is
 {
-  const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.044, 0.2, 10),
+  const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.044, 0.2, 20),
     new THREE.MeshStandardMaterial({ color: 0x4a6b52, roughness: 0.55, metalness: 0.4 }));
   tank.rotation.x = Math.PI / 2;   // cilinder ligt standaard langs Y; dit wijst 'm naar voren (Z)
   tank.position.set(0, 0.02, -0.05);
   wapenDrukspuit.add(tank);
-  const mondstuk = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.017, 0.18, 8),
+  const mondstuk = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.017, 0.18, 16),
     new THREE.MeshStandardMaterial({ color: 0x2e3a33, roughness: 0.5, metalness: 0.5 }));
   mondstuk.rotation.x = Math.PI / 2;
   mondstuk.position.set(0, 0.02, -0.24);
   wapenDrukspuit.add(mondstuk);
-  const greep = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.12, 0.06),
+  // Was BoxGeometry(0.05, 0.12, 0.06); capsule-hoogte (length + 2*radius)
+  // komt uit op dezelfde 0.12 als voorheen.
+  const greep = new THREE.Mesh(new THREE.CapsuleGeometry(0.028, 0.064, 4, 10),
     new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.8 }));
   greep.position.set(0, -0.09, 0.02);
   greep.rotation.x = 0.3;
   wapenDrukspuit.add(greep);
   // Klein drukmeter-lampje i.p.v. een oranje speelgoeddop: eigen, herkenbaar detail.
-  meterDrukspuit = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 8),
+  meterDrukspuit = new THREE.Mesh(new THREE.SphereGeometry(0.014, 12, 8),
     new THREE.MeshStandardMaterial({ color: 0x8fffb0, emissive: 0x4fdc7a, emissiveIntensity: 0.9 }));
   meterDrukspuit.position.set(0, 0.065, 0.02);
   wapenDrukspuit.add(meterDrukspuit);
@@ -2765,7 +2771,7 @@ wapenDrukspuit.position.set(0.26, -0.22, -0.5);
 camera.add(wapenDrukspuit);
 scene.add(camera);   // camera moet in de scene zitten, anders zie je het wapen niet
 
-const vlamDrukspuit = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8),
+const vlamDrukspuit = new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 8),
   new THREE.MeshBasicMaterial({ color: 0xbfffcf }));
 vlamDrukspuit.position.set(0, 0.02, -0.33);
 vlamDrukspuit.visible = false;
@@ -2778,10 +2784,15 @@ wapenDrukspuit.add(vlamLichtDrukspuit);
 // 2) "De Ratelaar" — groter, boxy, duidelijk ander silhouet dan de
 // Drukspuit: lange loop, blokkerig chassis, een magazijnkast onder de loop
 // en een tandwiel-detail (verwijst naar de naam, geen bestaand wapen).
+// Ticket 61 (v0.19): het blokkerige chassis/magazijnkast/kolf-silhouet is
+// een BEWUSTE identiteitskeuze (Ticket 34: wapen-identiteit — de Ratelaar
+// moet juist "boxy" ogen naast de rondere Drukspuit) en blijft daarom
+// ongewijzigd; alleen de loop (rond, geen identiteitsdrager) en de greep
+// (klein, secundair) zijn vloeiender gemaakt.
 const wapenRatelaar = new THREE.Group();
 let tandwielRatelaar;   // Ticket 12: krijgt een ember-accent zodra de Ratelaar gesmeed is
 {
-  const loop = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.02, 0.34, 8),
+  const loop = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.02, 0.34, 16),
     new THREE.MeshStandardMaterial({ color: 0x24211d, roughness: 0.4, metalness: 0.6 }));
   loop.rotation.x = Math.PI / 2;
   loop.position.set(0, 0.03, -0.18);
@@ -2795,7 +2806,9 @@ let tandwielRatelaar;   // Ticket 12: krijgt een ember-accent zodra de Ratelaar 
   magazijnkast.position.set(0, -0.09, -0.02);
   magazijnkast.rotation.x = -0.15;
   wapenRatelaar.add(magazijnkast);
-  const greepRatelaar = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.13, 0.07),
+  // Was BoxGeometry(0.055, 0.13, 0.07); capsule-hoogte (length + 2*radius)
+  // komt uit op dezelfde 0.13 als voorheen.
+  const greepRatelaar = new THREE.Mesh(new THREE.CapsuleGeometry(0.03, 0.07, 4, 10),
     new THREE.MeshStandardMaterial({ color: 0x2a2018, roughness: 0.8 }));
   greepRatelaar.position.set(0, -0.1, 0.14);
   greepRatelaar.rotation.x = 0.3;
@@ -2846,7 +2859,7 @@ wapenRatelaar.position.set(0.26, -0.22, -0.5);
 wapenRatelaar.visible = false;
 camera.add(wapenRatelaar);
 
-const vlamRatelaar = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8),
+const vlamRatelaar = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 8),
   new THREE.MeshBasicMaterial({ color: 0xffd9a0 }));
 vlamRatelaar.position.set(0, 0.03, -0.36);
 vlamRatelaar.visible = false;
@@ -3957,8 +3970,10 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   romp.add(torso);
   // Bochel (Sjouwer-vorm en/of 'gebocheld'-profiel): één bult hoog op de
   // rug, in de romp-groep zodat hij met de kromme rug meedraait.
+  // Ticket 61 (v0.19, §7.4.4-beslissing 53): meer segmenten voor een
+  // vloeiender bolvorm — straal/positie ongewijzigd, puur tessellatie.
   if (vorm.bochel || profiel.bochel) {
-    const bochel = new THREE.Mesh(new THREE.SphereGeometry(0.14, 6, 6),
+    const bochel = new THREE.Mesh(new THREE.SphereGeometry(0.14, 14, 10),
       new THREE.MeshStandardMaterial({ color: huidKleur.clone().multiplyScalar(0.85), roughness: 0.9 }));
     bochel.position.set(0, 0.16, -0.13);
     romp.add(bochel);
@@ -3967,11 +3982,11 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   // bewust GEEN PointLight (budget: 0 lights per ondode, §4.9). Geen
   // 'kop'-markering, dus een treffer erop is gewoon een lichaamstreffer.
   if (vorm.buik) {
-    const buik = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8),
+    const buik = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 12),
       new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
     buik.position.set(0, -0.1, 0.06);
     romp.add(buik);
-    const kern = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6),
+    const kern = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 10),
       new THREE.MeshStandardMaterial({ color: 0xff9a3d, emissive: 0xff7a1f, emissiveIntensity: 1.6, roughness: 0.4 }));
     kern.position.set(0, -0.1, 0.19);
     romp.add(kern);
@@ -4003,7 +4018,11 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
     hoofdGroep.rotation.x += 0.3;
   }
   hoofdGroep.userData.baseRotX = hoofdGroep.rotation.x;   // Ticket 20: rust-hoek voor de hoofd-microkantel
-  const hoofd = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8),
+  // Ticket 61 (v0.19, §7.4.4-beslissing 53): 20x16 i.p.v. 8x8 segmenten —
+  // straal (0.18) en positie ONGEWIJZIGD, dus het hoofd-hoogte-anker
+  // (ontwerpbeslissing 16) en de headshot-hitbox blijven exact hetzelfde;
+  // alleen de tessellatie is vloeiender.
+  const hoofd = new THREE.Mesh(new THREE.SphereGeometry(0.18, 20, 16),
     new THREE.MeshStandardMaterial({ color: huidKleur.clone().multiplyScalar(1.15), roughness: 0.8 }));
   hoofd.userData.lichaamsdeel = 'kop';   // treffer hier = headshot (dubbele schade)
   hoofdGroep.add(hoofd);
@@ -4012,8 +4031,15 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   const oogMateriaal = new THREE.MeshStandardMaterial({ color: typeInfo.oogKleur, emissive: typeInfo.oogKleur, emissiveIntensity: 1.4 });
   delen.oogMateriaal = oogMateriaal;   // Ticket 31 (Aanval A2): windup-oogpuls leest/schrijft dit gedeelde material
   for (const kant of [-1, 1]) {
-    const oog = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6), oogMateriaal);
-    oog.position.set(kant * 0.06, 0.01, 0.14);   // t.o.v. het hoofdcentrum (was wereld 1.59/0.16)
+    const oog = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 8), oogMateriaal);
+    // Ticket 61: z 0.14->0.165. Bij het oude 8x8-hoofd staken de ogen door
+    // een facet-deuk in het lage-poly-oppervlak heen zichtbaar naar buiten;
+    // het nieuwe, vloeiende 20x16-hoofd volgt de wiskundige bolvorm overal
+    // nauwkeurig, waardoor de ogen op hun oude positie (afstand 0.153 tot
+    // het hoofdcentrum, ruim binnen straal 0.18) volledig verzwolgen raakten
+    // en onzichtbaar werden. Nieuwe afstand ≈0.171 — net onder de straal,
+    // dus de ogen liggen weer zichtbaar op het oppervlak.
+    oog.position.set(kant * 0.06, 0.01, 0.165);   // t.o.v. het hoofdcentrum (was wereld 1.59/0.16)
     oog.userData.lichaamsdeel = 'kop';   // ogen horen bij het hoofd -> ook een headshot
     hoofdGroep.add(oog);
   }
