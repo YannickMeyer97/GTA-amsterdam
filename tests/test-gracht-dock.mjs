@@ -127,8 +127,8 @@ const lichten = await page.evaluate(() => {
     bootLichtInLampLichten: d.lampLichten.some(l => l.licht === bootLichtEntry?.licht),
   };
 });
-check('Lichttelling gaat van 23 naar 25 (gracht-lantaarn + boot-lichtje, twee nieuwe permanente lampen)',
-  lichten.totaal === 25, lichten);
+check('Lichttelling gaat van 23 naar 25 (gracht-lantaarn + boot-lichtje) + Ticket 62 kelder (trap + 2 kamerlampen, 28)',
+  lichten.totaal === 28, lichten);
 check('De nieuwe gracht-lantaarn zit in buitenLichten (dimt mee tijdens Stroomuitval, buiten-vloer)',
   lichten.lantaarnInBuitenLichten === true, lichten);
 check('De gracht-lantaarn werpt GEEN schaduw (schaduw===1-invariant blijft bij de bestaande lamp)',

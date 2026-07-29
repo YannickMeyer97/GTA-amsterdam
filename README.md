@@ -165,9 +165,22 @@ of achteruit vanuit de bijkeuken zodra je de terugdeur hebt opengemaakt.
    atelier; puur doorgang, geen interacties.
 3. **Het schildersatelier** (achter deur 1, €500) — een grote, L-vormige
    ruimte met koel daglicht via vier dakramen, een schildersezel als
-   landmark, een voorraadnis met een eigen invalshoek, de **Werkbank**
-   (eenmalige Snelheidselixer, €600, herlaadtijd 1,2s → 0,7s) en
-   **Pantserdrank** (€1000, eenmalig, verdubbelt je maximale HP naar 200).
+   landmark, een voorraadnis met een eigen invalshoek en de **Werkbank**
+   (eenmalige Snelheidselixer, €600, herlaadtijd 1,2s → 0,7s).
+   In de westmuur van de voorraadnis zit een tweede koopbare deur:
+   **deur 5** (€900). Daarachter daalt een verlichte trap van tien treden
+   af naar **de kelder** — het eerste stukje echte verticaliteit in het
+   spel, en de enige plek waar je omhoog of omlaag kunt. De kelder zelf
+   is een ruime, lage gewelfkelder (iets groter dan het atelier, met een
+   even hoog plafond), ongeveer even licht als de woonkamer waar je
+   begint, met een wijnrek en een kratten-/vatstapel als decor. Zombies
+   kunnen er spawnen noch vanuit een spawn-venster binnenkomen, maar wie
+   al vlak bij het deurgat stond op het moment dat jij afdaalt, komt wél
+   achter je aan — de rest blijft boven en dwaalt door het huis in plaats
+   van voor de deur te wachten. De kelder is ook de plek van
+   **Pantserdrank** (€1000, eenmalig, verdubbelt je maximale HP naar
+   200). Vroeg in het spel is dit een echte keuze naast deur 2: eerst de
+   binnenplaats openen, of eerst de kelder?
 4. **De binnenplaats** (achter deur 2, €1000, vanuit het atelier) — een
    grote, open buitenruimte, verlicht door vier lantaarnpalen en sterk
    maanlicht op natte klinkers, met gevels/nepdoorgangen/balkonnetjes tegen

@@ -22,8 +22,8 @@ const lichtenTest = await page.evaluate(() => {
   d.scene.traverse(o => { if (o.isLight) lichten.push({ type: o.type, castShadow: o.castShadow }); });
   return { totaal: lichten.length, schaduw: lichten.filter(l => l.castShadow).length };
 });
-check('Lichttelling blijft binnen budget: bestaand (22, pre-Ticket-30-baseline) + winkelLicht (23) + Ticket 52 gracht-lantaarn (24) + boot-lichtje (25, Feedback: fysieke aankomst)',
-  lichtenTest.totaal <= 25, lichtenTest);
+check('Lichttelling blijft binnen budget: bestaand (22, pre-Ticket-30-baseline) + winkelLicht (23) + Ticket 52 gracht-lantaarn (24) + boot-lichtje (25, Feedback: fysieke aankomst) + Ticket 62 kelder (trap + 2 kamerlampen, 28)',
+  lichtenTest.totaal <= 28, lichtenTest);
 check('Precies 1 schaduwwerpende lamp in de hele scene (de schaduw===1-invariant)',
   lichtenTest.schaduw === 1, lichtenTest);
 
@@ -80,10 +80,10 @@ check('Actieve tracers blijven binnen TRACER_MAX, ook na de stress-golf',
   stressTest.tracersActief <= stressTest.tracerMax, stressTest);
 check('Actieve impact-deeltjes blijven binnen IMPACT_MAX, ook na de stress-golf',
   stressTest.impactsActief <= stressTest.impactMax, stressTest);
-check('Winkelmarkeringen groeien niet mee met combat-stress (blijft 11)',
-  stressTest.winkelMarkeringenLengte === 11, stressTest);
-check('lampLichten groeit niet mee met combat-stress (blijft 5)',
-  stressTest.lampLichtenLengte === 5, stressTest);
+check('Winkelmarkeringen groeien niet mee met combat-stress (blijft 12, incl. Ticket 62 deur5)',
+  stressTest.winkelMarkeringenLengte === 12, stressTest);
+check('lampLichten groeit niet mee met combat-stress (blijft 8, incl. Ticket 62 kelder (3 lampen))',
+  stressTest.lampLichtenLengte === 8, stressTest);
 check('stofwolken groeit niet mee met combat-stress (blijft 2)',
   stressTest.stofwolkenLengte === 2, stressTest);
 

@@ -24,8 +24,8 @@ const opbouw = await page.evaluate(() => {
     })),
   };
 });
-check('Er zijn precies 11 winkelmarkeringen gebouwd (één per interactiepunt)',
-  opbouw.aantal === 11, opbouw);
+check('Er zijn precies 12 winkelmarkeringen gebouwd (één per interactiepunt, incl. Ticket 62 deur5)',
+  opbouw.aantal === 12, opbouw);
 check('Elke markering heeft 2 of 3 kinderen: 1 ring + 1-2 icoon-meshes (budget <= 3 meshes)',
   opbouw.perGroep.every(g => g.totaalKinderen === 2 || g.totaalKinderen === 3), opbouw);
 check('Bij elke markering is het eerste kind de vloerring',
@@ -56,8 +56,8 @@ const stijlInventaris = await page.evaluate(() => {
   return uit;
 });
 const stijlNamen = Object.keys(stijlInventaris);
-check('Er staan 12 stijlen in WINKEL_STIJLEN (11 statische interactiepunten + de gedeelde Ticket-44-vluchtroutestijl)',
-  stijlNamen.length === 12, stijlInventaris);
+check('Er staan 13 stijlen in WINKEL_STIJLEN (12 statische interactiepunten, incl. Ticket 62 deur5, + de gedeelde Ticket-44-vluchtroutestijl)',
+  stijlNamen.length === 13, stijlInventaris);
 check('Voor elke stijl is de icoon-geometrie hergebruikt tussen twee bouwIcoon()-aanroepen (gedeelde cache)',
   stijlNamen.every(n => stijlInventaris[n].geometrieHergebruikt), stijlInventaris);
 check('Voor elke stijl krijgt elke bouwIcoon()-aanroep verse materials (geen materiaal-cache, blijft doofbaar)',
@@ -67,7 +67,7 @@ check('Voor elke stijl krijgt elke bouwIcoon()-aanroep verse materials (geen mat
 // hetzelfde silhouet als dezelfde kleur (ontwerpbeslissing 29) -------------
 // Feedback: de munitieGroep (ammo + provisiekast) is vervallen — ammo is nu
 // een gewone singleton-categorie, net als upgrade/werkbank/etc.
-const deurGroep = ['deur1', 'deur2', 'deur3', 'deur4'];
+const deurGroep = ['deur1', 'deur2', 'deur3', 'deur4', 'deur5'];   // Ticket 62: deur5 hergebruikt bewust hetzelfde sleutel-silhouet
 const verwachteGedeeldeSets = [deurGroep];
 const signatuurGroepen = {};
 for (const naam of stijlNamen) {
@@ -84,7 +84,7 @@ const onverwachteOverlap = Object.values(signatuurGroepen).filter(groep => {
   if (groep.length <= 1) return false;
   return !verwachteGedeeldeSets.some(verwacht => groep.every(n => verwacht.includes(n)));
 });
-check('Alle vier de deuren delen bewust hetzelfde sleutel-silhouet',
+check('Alle vijf de deuren delen bewust hetzelfde sleutel-silhouet',
   deurGroep.every(n => stijlInventaris[n].geometrieSignatuur === stijlInventaris.deur1.geometrieSignatuur), stijlInventaris);
 check('Geen enkele ONVERWACHTE overlap: geen twee andere stijlen delen zowel silhouet als kleur',
   onverwachteOverlap.length === 0, { onverwachteOverlap, signatuurGroepen });

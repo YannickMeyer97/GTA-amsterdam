@@ -2725,7 +2725,187 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
 - **Type:** nieuwe ruimte / infrastructuur — VOORZICHTIG
 - **Verbetergebied:** 2 (Ruimtelijke diepte)
 - **Prioriteit:** hoog
-- **Status:** open (gepland)
+- **Status:** ✅ voltooid, met een locatiecorrectie tijdens implementatie
+  en een scope-uitbreiding op expliciet verzoek van de gebruiker.
+  **Locatiecorrectie:** de eerste implementatie plaatste de trap/kelder
+  op de binnenplaats (x=9, z=−17.5…−22.3) en deelde bewust de
+  X/Z-footprint met de bestaande vloer daar ("geen nieuwe obstakels
+  nodig"). Dat bleek in directe strijd met de expliciete eis in
+  §7.5.1 hieronder: "disjuncte footprint BUITEN de bestaande
+  GRENS-rechthoek". Scene-traversal bevestigde bovendien dat die plek
+  al dicht bezet was (Smederij, kratten, een lantaarn) — precies de
+  reden waarom de nieuwe geometrie in schermafbeeldingen onzichtbaar
+  bleef (verscholen onder/tussen bestaande vloer en decor). **Fix:**
+  volledig verplaatst naar de west-nis van het atelier (op verzoek van
+  de gebruiker, i.p.v. de bijkeuken die eerst overwogen werd) — de trap
+  loopt vanaf een nieuw deurgat in de nis-westmuur verder naar het
+  westen, ruim voorbij `GRENS.minX` (−11.45), een echt lege plek
+  (geverifieerd via scene-traversal). Nu terecht GEEN nieuwe
+  Y-blinde-obstakel-risico's meer: de wanden van de trap/kelder zijn
+  gewone `registreerRechthoek()`-obstakels, want dit stuk kaart deelt
+  zijn X/Z met niets anders.
+  **Scope-uitbreiding (op verzoek):** de gebruiker vroeg tijdens
+  implementatie expliciet om een koopbare "deur 5" (zelfde
+  mesh/klink/obstakel/interactiePunt/WINKEL_STIJLEN-patroon als deur
+  1-4, prijs €900) die de trap/kelder ontgrendelt, naast de bestaande
+  deur 2 (binnenplaats) — een echte strategische keuze vroeg in het
+  spel. Dit stond niet in de oorspronkelijke ticket-tekst maar is een
+  natuurlijke, minimale toepassing van het bestaande deur-patroon.
+  Bewust GEEN `herbouwNavTabel()`/`VENSTERS`-uitbreiding bij het kopen
+  (zie §7.5.2 hieronder — de kelder blijft volledig buiten
+  ZONE_GRAAF). **Veiligheid (vooruitlopend op §7.5.2/Ticket 63):**
+  `losBotsingenOp()` kreeg een nieuwe, optionele derde parameter
+  `magKelderBinnen` (default `false`); alleen de speler-aanroep in
+  `updateSpeler()` geeft `true` door. Geen van de drie ondode-aanroepen
+  in `updateOndoden()` doet dat, dus geen ondode kan ooit voorbij
+  `GRENS.minX` de trapband in, zelfs niet als hij de speler daar recht
+  zou volgen. `isVrijePlek()` is bewust ongewijzigd gelaten (blijft de
+  kelder als niet-vrij zien), zodat spawn-/pathing-checks daar sowieso
+  nooit induiken.
+  **Y-aanname-audit:** uitgevoerd en numeriek geverifieerd
+  (`berekenKelderY()`-randgevallen + camera-Y-koppeling via
+  `updateSpeler()`, zie `tests/test-kelder-trap.mjs`); de twee eerder
+  gevonden 3D-afstand-gevoelige plekken (meleebereik in
+  `updateOndoden()`, explosieradius in `ontploiBrander()`) blijven
+  ongewijzigd correct, precies zoals al beargumenteerd (voordelig +
+  praktisch onbereikbaar, want geen ondode komt ooit in de kelder).
+  **Testresultaat:** nieuwe `tests/test-kelder-trap.mjs` (25 checks:
+  deur-koop-patroon, alle `berekenKelderY()`-randgevallen,
+  camera-Y-koppeling, 2D-gedrag elders ongewijzigd, en de
+  speler-only-GRENS-bypass expliciet getest). Lichttelling 25→26
+  (`kelderLicht`, meegenomen in het bestaande flikker-/
+  Stroomuitval-systeem via `lampLichten`); een half-dozijn bestaande
+  tests met hard-coded totaaltellingen (interactiePunten,
+  winkelMarkeringen, lampLichten, obstakel-bandbreedtes) zijn met de
+  verwachte +1/+6 bijgewerkt, net als bij elke eerdere deur-ticket.
+  Volledige regressie: 42/42 groen.
+
+  **Herziening v3 (op verzoek, meteen na oplevering):** de gebruiker
+  vroeg om een veel grotere kelder — "onder het atelier", ongeveer
+  atelier-formaat (of +10% groter), met een plafondhoogte ≈
+  `KAMER_HOOGTE`. Een letterlijke +10%-schaling rond hetzelfde midden
+  bleek bij verificatie (obstakel-/mesh-overlapcheck) overal te botsen
+  op bestaande muren (atelier-noord/oost/zuid, gang-zijmuren) of gewoon
+  al de nis zelf te zijn — dus is gekozen voor exact het bestaande
+  nis+atelier-L-vorm-grondplan (135 + 42 = 177 m², ruim groter dan het
+  atelier alleen) als de veilige, conflictvrije invulling van "onder
+  het atelier, ongeveer dezelfde grootte". De trap draait 180°: vanaf
+  dezelfde deur 5 daalt hij niet meer wég van de nis (naar het lege
+  westen van v2), maar juist ín de nis (oostwaarts), tot de vloer het
+  hele grondplan beslaat — `KELDERTRAP_X_OOST`/`_WEST`/`KELDER_X_WEST`
+  zijn vervangen door `KELDERTRAP_X_BOVEN`/`_ONDER`. `KELDER_DIEPTE`
+  ging van 2,6 naar 3,3 m (moest > `KELDER_HOOGTE` blijven, anders
+  steekt het plafond door de atelier-vloer heen); `KELDER_HOOGTE` van
+  2,3 naar 3,2 m (= `KAMER_HOOGTE`). Dit is wéér een gedeelde X/Z-
+  footprint met een bestaande ruimte (net als de foute v1!) — ditmaal
+  bewust en correct, want (a) de vloer van nis/atelier zelf blijft
+  volledig intact, de trap in de nis-westmuur blijft de ENIGE
+  verbinding, dus geen zichtbaarheidsrisico; (b) de bestaande
+  nis/atelier-muren (al geregistreerd, Y-blind) begrenzen de kelder nu
+  "gratis" op elke Y, dus de drie oude `kelderWand()`-obstakels zijn
+  weg (obstakel-totaal 43 → 40) — vervangen door zuiver zichtbare
+  "huid"-muren (`kelderVisueleWand()`, geen `registreerRechthoek()`) op
+  de exacte plek van de zes echte wand-segmenten.
+  **Y-aanname-audit, ronde 2:** deze herziening onthulde een échte bug
+  die v2 nog niet raakte: `updateInteracties()` en
+  `updateWinkelMarkeringen()` waren altijd al X/Z-only (Y was overal
+  impliciet 0) — onschuldig zolang niets underground lag. Nu de kelder
+  dezelfde X/Z deelt met het atelier, zou een kelder-interactiepunt
+  zonder correctie ook vanaf de begane grond bruikbaar zijn geweest.
+  Fix: beide functies negeren nu kandidaten waarvan `|Δy|` de nieuwe
+  `KELDER_Y_MARGE` (1 m) overschrijdt — 100% no-op voor alle bestaande
+  (boven-grond) punten, en precies de eigenschap die nodig is voor de
+  hierna verplaatste Pantserdrank.
+  **Pantserdrank verplaatst naar de kelder** (op verzoek, "dan kan je
+  daarna de extra health upgrade in de kelder plaatsen"): `PANTSERDRANK_
+  X`/`_Z` blijven ONGEWIJZIGD (die waren toch al relatief aan het
+  atelier, dus vallen nu vanzelf binnen de kelder); alleen de Y van de
+  mesh/markering/interactiePunt verschuift naar `-KELDER_DIEPTE`.
+  Geverifieerd (nieuwe test + scratch-check): vanaf dezelfde X/Z op de
+  begane grond reageert het punt niet meer, alleen op de kelderdiepte
+  zelf.
+  **Lichten:** de kleine kelder had genoeg aan 1 lamp; de ~4× grotere
+  ruimte kreeg er een tweede bij (nis-deel + atelier-deel) —
+  lichttelling 26 → 27, opnieuw meegenomen in `lampLichten` (flikker-/
+  Stroomuitval-systeem). Alle betrokken tests (`test-kelder-trap.mjs`
+  volledig herschreven voor de omgedraaide trap-as en het L-vorm-
+  grondplan; lichttelling-/obstakel-tellingen in de overige suites
+  bijgewerkt) — volledige regressie opnieuw 42/42 groen.
+
+  **Bugfix v4 (gemeld door de gebruiker): vanuit de startkamer weglopen
+  liet je in de kelder "vallen".** Oorzaak: `berekenKelderY(x,z)` was
+  nog steeds een PURE functie van positie — dat kán principieel niet
+  meer sinds v3, want dezelfde `(x,z)` bestaat nu op twee geldige Y's
+  (atelier-vloer op 0, keldervloer op `-KELDER_DIEPTE`). Elk punt
+  binnen het atelier voldeed toch al aan `x >= KELDERTRAP_X_ONDER`, dus
+  wie via de gewone gang (niets met de trap te maken) het atelier
+  binnenliep, zakte meteen naar de kelderdiepte. Fix: een nieuwe
+  `spelerInKelder`-state (module-scoped) onthoudt of de speler
+  daadwerkelijk via de trap is afgedaald; die state wordt UITSLUITEND
+  bijgewerkt binnen de smalle trapband zelf (de enige plek die nog wél
+  ondubbelzinnig is — niets anders in het spel deelt die band). Overal
+  buiten de trapband levert `berekenKelderY()` puur de laatst bekende
+  state terug, of expliciet `false` zodra de speler het hele
+  nis+atelier-grondplan verlaat. Geverifieerd met een gesimuleerde
+  speelsessie (startkamer → gang → atelier/nis, zonder ooit de trap aan
+  te raken: Y blijft overal exact 0) én een volledige heen-en-terug-
+  reis via de trap zelf (0 → -3,3 → weer 0, state klopt bij elke stap).
+  `tests/test-kelder-trap.mjs` kreeg hiervoor specifieke
+  regressietests. Volledige regressie: opnieuw 42/42 groen.
+
+  **Herziening v5 (na een tweede bugmelding): gedeelde footprint
+  definitief losgelaten.** De v4-fix loste het "vallen via de gang"-geval
+  op, maar de gebruiker meldde daarna dat hij nog stééds naar beneden viel
+  vóór het kopen van de deur. Terecht: de trapkoker liep in v3/v4 vanaf de
+  nis-westmuur OOSTWAARTS de nis in, en de nis is vrij beloopbaar — dus
+  wandelde je gewoon de trap op zonder ooit deur 5 te kopen. Elke verdere
+  pleister zou Y-bewuste obstakels vereisen (obstakels die alleen op een
+  bepaalde verdieping gelden), precies de generieke 3D-collisionlaag die
+  dit ticket expliciet buiten scope houdt.
+  **Conclusie:** een kelder die zijn X/Z deelt met een ruimte erboven is
+  in deze 2D/Y-blinde codebase niet veilig te maken. Daarom nu weer een
+  echt disjuncte footprint (zoals §7.5.1 vanaf het begin voorschreef),
+  maar op de gevraagde schaal: de hele kelder — trapkoker én ruimte —
+  ligt ten westen van de nis-westmuur, volledig buiten GRENS, waar niets
+  anders staat. De kelderruimte is 15 x 9,9 m = **148,5 m² = het atelier
+  (135 m²) + exact 10%**, met `KELDER_HOOGTE = KAMER_HOOGTE` (3,2 m).
+  `berekenKelderY()` is daardoor weer volledig puur (geen state meer);
+  `spelerInKelder` is verwijderd.
+  **De drie gebruikerseisen zijn nu structureel gegarandeerd:**
+  (1) *je moet de deur kopen* — `deur5Obstakel` blokkeert het deurgat, en
+  vóór aankoop komt de speler niet westelijker dan x ≈ −11,15;
+  (2) *alleen de trap* — `berekenKelderY()` geeft per constructie 0 terug
+  voor élke x ≥ `KAMER2_NIS_X_WEST`, dus in de startkamer, gang, atelier,
+  nis, binnenplaats en bijkeuken kan Y nooit veranderen; geverifieerd met
+  een raster van 15.327 punten over de hele bovengrondse kaart;
+  (3) *geen ondode* — ondode-aanroepen van `losBotsingenOp()` geven
+  `magKelderBinnen` niet door en blijven dus altijd op `GRENS.minX`
+  geklemd, ook ná aankoop.
+  **Trap zelf** (op verzoek "een duidelijke trap met klein beetje
+  verlichting"): 10 zichtbare treden over 4 m, omsloten door twee
+  kokermuren (echte obstakels) en een aflopend plafond dat per trede
+  2,4 m hoofdruimte houdt, plus één zwak peertje halverwege de koker.
+  De kelderruimte zelf heeft twee peertjes — lichttelling 27 → 28.
+  **Pantserdrank** staat nu midden in die kelderruimte. Volledige
+  regressie: 42/42 groen, met `tests/test-kelder-trap.mjs` uitgebreid tot
+  30 checks waaronder het volledige bovengrondse raster en een
+  "duw 200 frames tegen de dichte deur"-regressietest.
+
+  **Feedbackronde (verlichting): kelder ongeveer even licht als de
+  startkamer.** De twee kamerlampen gingen van intensiteit/bereik 12/8
+  naar 18/10 (de startkamer heeft 2 lampen op 16/10, maar de keldervloer
+  is ~1,65x groter). Dat alleen bleek niet genoeg: een screenshot-
+  vergelijking (speler vlak bij een lamp, kijkend naar de vloer) liet
+  zien dat de STENEN BASISKLEUREN zelf te donker waren om ooit goed op
+  te lichten, ongeacht lichtsterkte — `KELDER_TINT` (muren) ging van
+  `0x1c1a17` naar `0x4a443c`, de keldervloer van `0x141210` naar
+  `0x3d352c` (beide ~2,5-3x lichter, nog steeds koel/stenig i.p.v. het
+  warme hout van de startkamer — alleen de HELDERHEID trekt gelijk). Het
+  plafond blijft bewust bijna zwart (`0x08090a`), net als het
+  woonkamerplafond (`0x14100c`) — plafonds zijn overal donker "opzettelijk
+  gesloten" per ontwerp, dat draagt niet bij aan de gepercipieerde
+  kamerhelderheid. Volledige regressie: 42/42 groen (lichttelling
+  ongewijzigd op 28, alleen kleur-/intensiteitswaarden pasten).
 - **Afhankelijk van:** —
 - **Doel:** een eerste stuk echte verticaliteit toevoegen: een kelder
   onder een bestaand deel van het huis, bereikbaar via een trap met een
@@ -2779,7 +2959,70 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
 - **Type:** nieuwe ruimte / content
 - **Verbetergebied:** 2 (Ruimtelijke diepte)
 - **Prioriteit:** middel
-- **Status:** open (gepland)
+- **Status:** ✅ voltooid. De veiligheidsgaranties (geen kelder-referentie
+  in `ZONE_GRAAF`/`NAV_VOLGENDE`/spawn-vensters) bestonden al structureel
+  sinds T62 v5 (de kelder heeft nooit een eigen zone-id of spawnvenster
+  gekregen — dat is precies de architecturale keuze uit §7.5.2). Dit
+  ticket voegde de nog ontbrekende stukken toe: (1) een klein, eigen
+  setje decor in de kelderruimte — een wijnrek (rugpaneel + 3 planken met
+  flessen) tegen de westmuur, en een kratten-/vatstapel in de
+  zuidwesthoek, beide met ruime afstand tot de trap-uitgang en de
+  Pantserdrank-marker; puur sfeer, geen collision (zelfde patroon als de
+  bestaande `bouwKratten()`/`bouwVat()` elders in het bestand — de kelder
+  kreeg een eigen `kelderMeubel()`-helper omdat de bestaande helpers een
+  vloer op y=0 aannemen). Het optionele "bestaand interactiepunt herplaatst"
+  telt al als gedaan: Pantserdrank staat sinds T62b al in de kelder. (2)
+  Een expliciete integratietest (`tests/test-kelder-trap.mjs`, sectie 10):
+  alle vijf deuren kopen (worstcasescenario — elke `VENSTERS_*`-array
+  actief, de hele `ZONE_GRAAF` open), 27 ondoden spawnen over alle
+  vensters, en 600 simulatieframes draaien met een speler die steeds van
+  zone wisselt (zodat elke ondode een cross-zone-navigatiepad probeert).
+  Bij elke tick geteld: nul ondoden ooit in de kelder-footprint of
+  -trapband, en geen enkele ondode ooit voorbij `GRENS.minX` — bevestigt
+  numeriek wat de architectuur al garandeerde. `zoneVan()` HUD-herkenning
+  van de kelder is bewust NIET toegevoegd (optioneel volgens de
+  ticket-tekst; het risico van een extra zone-id die overal
+  (spawn-weging, banners, `ZONE_NAMEN`) moet worden meegenomen weegt niet
+  op tegen een cosmetisch HUD-label — de kelder toont voorlopig gewoon
+  "Het Atelier"). Volledige regressie: 42/42 groen (geen nieuwe
+  obstakels/lichten, dus geen bestaande teltest hoefde te wijzigen).
+
+  **Feedbackronde 1 (visueel): zwevende trap gefixt.** Het aflopende
+  kokerplafond (één plafondsegment per trede, elk op vaste hoofdruimte
+  boven díe trede) zakte bij de onderste treden tot ONDER het
+  kelderplafond zelf — vanuit de kelderruimte keek je via de
+  trapopening dus recht tegen een tweede, in de lucht zwevende trap aan.
+  Fix: één vlak kokerdak over de hele koker (`KOKER_PLAFOND_Y`,
+  constant) + twee sluitpanelen (boven bij het deurgat, onder waar de
+  koker de kelderruimte in gaat) zodat er nergens een kijkgat open
+  blijft. Het trap-peertje hangt nu aan een langer koord vanaf dat vaste
+  dak i.p.v. per-trede mee te zakken. Geverifieerd met screenshots vanaf
+  drie standpunten (in de kelder terugkijkend — exact het gemelde
+  standpunt —, onderaan de trap omhoogkijkend, en vanuit de nis naar
+  beneden): geen zwevende geometrie meer. Volledige regressie: 42/42
+  groen (de 2 losse testfails die soms voorkomen bleken al voor deze
+  wijziging te bestaan — bevestigd door dezelfde tests op de
+  ongewijzigde code te draaien).
+
+  **Feedbackronde 2 (gameplay): kelder niet langer permanent veilig.** Op
+  verzoek herroepen: zombies mogen nu wél de kelder in, maar niet
+  allemaal tegelijk. Zie ARCHITECTURE_NOTES.md §7.5.4 voor de volledige
+  onderbouwing en code; samengevat: (1) alleen een ondode die al
+  dichtbij het deurgat stond op het moment dat de speler afdaalt, krijgt
+  (permanent) toestemming om de trap te gebruiken (`ondode.magKelderBinnen`,
+  dezelfde GRENS-bypass en `berekenKelderY()`-koppeling als de speler);
+  (2) wie niet dichtbij stond, blijft boven en dwaalt rond binnen zijn
+  eigen zone (`kiesWanderDoel()`) i.p.v. voor de dichte deur te blijven
+  opstapelen; (3) dit geldt al vanaf golf 1, geen aparte veilige periode.
+  Deze drie keuzes zijn expliciet met de gebruiker afgestemd via
+  `AskUserQuestion` vóór implementatie. `tests/test-kelder-trap.mjs`
+  sectie 11: 7 nieuwe checks (dichtbij → toegang + daadwerkelijk
+  gebruik van de trap; ver weg → geen toegang, blijft geklemd, dwaalt
+  merkbaar, blijft in eigen zone; permanentie van de toestemming ook
+  nadat de speler weer boven is). Sectie 10 (de oude "kelder blijft
+  altijd leeg"-test, voor het scenario waarin de speler nooit afdaalt)
+  bleef ongewijzigd en slaagt nog steeds. Volledige regressie: 42/42
+  groen.
 - **Afhankelijk van:** T62
 - **Doel:** de kelder vullen met passend decor/een interactiepunt en
   hem architecturaal borgen als permanente zombie-vrije zone.

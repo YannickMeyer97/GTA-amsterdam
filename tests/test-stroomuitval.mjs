@@ -231,10 +231,13 @@ check('toneMappingExposure staat weer op de volle EXPOSURE_BASIS (1.0) buiten ee
 check('buitenLichten staan weer op hun volle basis-intensiteit buiten een Stroomuitval',
   hemisfeerNaMist.buitenFracties.every(f => Math.abs(f - 1) < 0.01), hemisfeerNaMist);
 
-// --- 10. Lichttelling ongewijzigd: er komt géén licht bij (Ticket 46 dimt
-// alleen bestaande lampen/materialen) ---------------------------------------
+// --- 10. Lichttelling ongewijzigd t.o.v. Ticket 46 zelf: dat ticket dimt
+// alleen bestaande lampen/materialen. Ticket 62 voegt daarna bewust twee
+// nieuwe lampen toe (kelder, handmatig in lampLichten geregistreerd, zie
+// amsterdam-undead.html) zodat de kelder hetzelfde flikker-/Stroomuitval-
+// dimgedrag krijgt als elke andere lamp — vandaar 5+2=7, niet meer 5. -------
 const lichttelling = await page.evaluate(() => window.AmsterdamUndeadDebug.lampLichten.length);
-check('lampLichten bevat nog steeds 5 entries (geen nieuw licht toegevoegd)', lichttelling === 5, { lichttelling });
+check('lampLichten bevat 8 entries (5 pre-Ticket-62-baseline + Ticket 62 kelder (3 lampen))', lichttelling === 8, { lichttelling });
 
 const fails = report(errs);
 await browser.close();

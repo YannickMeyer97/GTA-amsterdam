@@ -1886,6 +1886,185 @@ in de 2D-collision-architectuur, niet een generieke Y-physics-laag.
 `GRENS` zelf wordt niet aangepast; de kelder-footprint krijgt een
 eigen lokale grenscontrole binnen de trap-/kelderfuncties.
 
+**Geïmplementeerd als:** een trapband op vaste Z (`KELDERTRAP_CZ =
+−21.8`, breedte 1,2 m) die vanaf een nieuw deurgat in de westmuur van
+de atelier-nis (`KAMER2_NIS_X_WEST`) verder naar het westen loopt
+(`KELDERTRAP_X_OOST` → `KELDERTRAP_X_WEST` → `KELDER_X_WEST`), ruim
+voorbij `GRENS.minX` (−11.45). De locatie is bewust gekozen op verzoek
+van de gebruiker (atelier-westhoek, niet de bijkeuken) en omdat de
+nis-westmuur toch al de smalste afstand tot een GRENS-rand heeft —
+een korte, natuurlijke oversteek naar disjuncte kaartruimte.
+**Herziening tijdens implementatie:** de eerste versie deelde de
+footprint bewust met de binnenplaats-vloer (zie het rollback-relaas
+in ROADMAP.md Ticket 62) — dat bleek een directe schending van de
+"buiten GRENS"-eis hierboven én de reden dat de nieuwe geometrie
+onzichtbaar bleef (verscholen onder/tussen bestaande binnenplaats-
+vloer en -decor). Na verplaatsing naar de echt disjuncte nis-westkant
+kregen de trap-/kelderwanden gewone `registreerRechthoek()`-obstakels
+(in plaats van "bewust geen nieuwe obstakels" uit de eerste versie) —
+correct, want dit stuk kaart deelt zijn X/Z nu met niets anders.
+**Lokale grenscontrole, speler-only:** `losBotsingenOp(positie,
+straal, magKelderBinnen = false)` kreeg een derde, optionele
+parameter. Alleen de speler-aanroep in `updateSpeler()` geeft
+`magKelderBinnen = true` door; alle drie de ondode-aanroepen in
+`updateOndoden()` laten dit weg (blijft `false`), dus `GRENS.minX`
+blijft voor ondoden altijd hard — geen enkele kan de trapband ooit in,
+ook niet direct achter de speler aan. Dit loopt vooruit op de
+"geen ondode kan er ooit binnenkomen"-eis van beslissing 55 hieronder,
+al is de formele veilige-zone-status zelf pas Ticket 63.
+**Toegang via deur 5 (scope-uitbreiding op verzoek):** de trap is
+niet vanaf het begin open — een nieuwe koopbare deur (`deur5`, €900,
+zelfde mesh/klink/obstakel/interactiePunt/WINKEL_STIJLEN-patroon als
+deuren 1-4) blokkeert de opening tot aankoop, naast de bestaande
+deur 2 (binnenplaats) als vroege strategische keuze.
+
+**Herziening v3 (op verzoek): grondplan = nis+atelier, i.p.v. een eigen
+disjuncte footprint.** De gebruiker vroeg direct na oplevering om een
+veel grotere kelder ("onder het atelier", ongeveer atelier-formaat of
++10% groter, plafondhoogte ≈ `KAMER_HOOGTE`). Een letterlijke
++10%-schaling rond hetzelfde midden bleek bij verificatie overal
+bestaande muren te raken (atelier-noord/oost/zuid, gang-zijmuren) —
+dus is het bestaande, al-ommuurde nis+atelier-L-vorm-grondplan zelf
+hergebruikt (177 m², ruim groter dan het atelier alleen) als de
+veilige invulling. De trap draait 180°: vanaf dezelfde deur 5 daalt hij
+niet meer wég van de nis (het lege westen van v2), maar juist ín de
+nis (oostwaarts) — `berekenKelderY(x,z)` checkt nu eerst of `(x,z)`
+binnen het nis- óf atelier-grondplan valt (anders altijd 0), en past
+daarbinnen dezelfde lineaire X-interpolatie toe tussen
+`KELDERTRAP_X_BOVEN` (bij de deur, Y=0) en `KELDERTRAP_X_ONDER`
+(Y=-`KELDER_DIEPTE`, ruim binnen de nis). `KELDER_DIEPTE` ging van 2,6
+naar 3,3 m (moet > `KELDER_HOOGTE` blijven, anders steekt het plafond
+door de atelier-vloer heen); `KELDER_HOOGTE` van 2,3 naar 3,2 m.
+
+Dit deelt wéér bewust de X/Z-footprint met een bestaande ruimte — net
+als de foute v1, maar ditmaal correct, om twee redenen die v1 allebei
+miste: (a) de vloer van nis/atelier zelf blijft volledig intact — de
+trap in de nis-westmuur is de ENIGE verbinding tussen boven- en
+ondergronds, dus geen enkel zichtbaarheidsrisico (je kunt de kelder
+nooit "erdoorheen" zien vanaf de begane grond, alleen bereiken via de
+trap); (b) de bestaande, al-geregistreerde nis/atelier-muren zijn
+Y-blind en begrenzen de kelder dus "gratis" op elke Y — de drie oude
+`kelderWand()`-obstakels (west/noord/zuid van de kleine v2-kelder) zijn
+daarom verwijderd (obstakel-totaal 43 → 40); wat overblijft is zuiver
+zichtbare "huid" (`kelderVisueleWand()`, geen `registreerRechthoek()`)
+op de exacte plek van de zes echte wand-segmenten (nis-west, nis-zuid,
+atelier-noord, -oost, -zuid, en de binnenhoek tussen nis en atelier).
+
+**Y-aanname-audit, ronde 2 — een échte bug ditmaal.** Deze herziening
+onthulde iets wat v2 nog niet raakte: `updateInteracties()` en
+`updateWinkelMarkeringen()` (winkelLicht-nabijheid) waren altijd al
+X/Z-only — Y was overal impliciet 0, dus onschuldig zolang niets
+underground lag. Zodra de kelder dezelfde X/Z deelt met het atelier
+erboven, zou een kelder-interactiepunt zonder correctie ook vanaf de
+begane grond bruikbaar zijn — precies de bugklasse die §7.9 al als
+risicogebied benoemde. Fix: een nieuwe `KELDER_Y_MARGE`-constante
+(1 m, ruim minder dan `KELDER_DIEPTE`) laat beide functies kandidaten
+overslaan waarvan `|puntY − spelerY|` die marge overschrijdt — 100%
+no-op voor elk bestaand (boven-grond) punt, en exact de eigenschap die
+nodig is voor de Pantserdrank-verplaatsing hieronder.
+
+**Pantserdrank verplaatst naar de kelder** (op verzoek, §7.5.3-achtige
+inhoud vooruitgehaald uit Ticket 63): `PANTSERDRANK_X`/`_Z` blijven
+ongewijzigd (die waren toch al relatief aan het atelier, en vallen nu
+vanzelf binnen de kelder-footprint); alleen de Y van mesh, markering en
+interactiePunt verschuift naar `-KELDER_DIEPTE`. Geverifieerd: vanaf
+dezelfde X/Z op de begane grond reageert het punt niet meer (dankzij
+`KELDER_Y_MARGE`), alleen op de kelderdiepte zelf.
+
+**Lichten:** de kleine v2-kelder had genoeg aan 1 lamp; de ~4× grotere
+v3-ruimte kreeg er een tweede bij (nis-deel + atelier-deel) —
+lichttelling 26 → 27.
+
+**Bugfix v4: `berekenKelderY()` kan sinds v3 principieel niet meer puur
+functioneel zijn — dat werd pas ná oplevering, via een gebruikersmelding,
+duidelijk.** Zolang de kelder-footprint disjunct was (v1-v3-ontwerp,
+vóór de v3-herziening hierboven), was "puur functie van (x,z)" een
+correcte aanname: die footprint bestond nergens anders, dus elke
+`(x,z)` had precies één geldige Y. Zodra v3 het hele nis+atelier-
+grondplan hergebruikte, werd die aanname stilzwijgend ongeldig: dezelfde
+`(x,z)` bestaat nu op TWEE geldige Y's (atelier-vloer=0 vanaf de gang,
+keldervloer=`-KELDER_DIEPTE` vanaf de trap) — en een pure functie van
+alleen de huidige positie kan die twee per definitie niet uit elkaar
+houden. Het concrete symptoom: elk punt binnen het atelier voldeed toch
+al aan `x >= KELDERTRAP_X_ONDER` (de nis-brede trap-drempel), dus wie
+via de normale route (startkamer → gang → atelier, niets met deur 5 of
+de trap te maken) het atelier binnenliep, "viel" meteen naar de
+kelderdiepte.
+
+**Fix: `spelerInKelder`-state**, module-scoped, bijgewerkt UITSLUITEND
+binnen de smalle trapband zelf (`z` binnen `KELDERTRAP_CZ ±
+KELDERTRAP_HALF_BREEDTE`, de enige plek die nog wél ondubbelzinnig is —
+niets anders in het spel deelt die band). Binnen de trapband: bij
+`x <= KELDERTRAP_X_BOVEN` wordt de state `false` (en Y=0); bij
+`x >= KELDERTRAP_X_ONDER` wordt de state `true` (en Y=`-KELDER_DIEPTE`);
+daartussen interpoleert Y lineair en volgt de state de dichtstbijzijnde
+kant (`fractie >= 0.5`). Buiten de trapband — de rest van nis+atelier,
+waar de ambiguïteit optreedt — levert de functie puur de laatst bekende
+state terug; verlaat de speler het hele nis+atelier-grondplan (kan
+alleen via de gang-opening, Y-blind net als alle obstakels), dan wordt
+de state expliciet `false` geforceerd, zodat een latere herintrede via
+diezelfde gang nooit een "vastzittende" kelder-state kan meenemen.
+
+Dit is een bewuste afwijking van de oorspronkelijke "puur functioneel,
+geen state"-eis uit de allereerste §7.5.1-tekst — die eis was correct
+voor het toen bedoelde ontwerp (disjuncte footprint), maar is
+principieel onhaalbaar geworden zodra een latere herziening (op
+verzoek) de footprint met een bestaande ruimte liet delen. Geverifieerd
+met een gesimuleerde speelsessie (startkamer → gang → atelier/nis,
+zonder de trap aan te raken: Y blijft overal exact 0) en een volledige
+heen-en-terug-reis via de trap (0 → `-KELDER_DIEPTE` → weer 0, state
+klopt bij elke stap) — zie de nieuwe checks in `tests/test-kelder-trap.mjs`.
+
+**Herziening v5 — de gedeelde footprint is definitief losgelaten; dit is
+de blijvende conclusie van dit ticket.** De v4-state-fix loste het
+"vallen via de gang"-geval op, maar niet het onderliggende probleem: de
+trapkoker liep in v3/v4 vanaf de nis-westmuur oostwaarts de nis ín, en de
+nis is vrij beloopbaar — dus liep je zonder deur 5 te kopen gewoon de
+trap op. Om dát te repareren zou de koker op de begane grond ommuurd
+moeten worden, maar de bodem ervan moet juist open zijn naar de kelder,
+op precies dezelfde X/Z. Dat vraagt obstakels die per verdieping
+verschillen (Y-bewuste collision) — exact de generieke 3D-laag die dit
+ticket expliciet buiten scope houdt.
+
+**De generaliseerbare les:** in deze codebase kan een ruimte alleen
+onder een andere ruimte liggen als je bereid bent de complete
+collisionlaag Y-bewust te maken. Zolang obstakels, `GRENS`,
+`losBotsingenOp()` en `isVrijePlek()` 2D zijn, moet elke nieuwe
+verdieping een **disjuncte X/Z-footprint** hebben — niet als voorkeur,
+maar als harde randvoorwaarde. De oorspronkelijke §7.5.1-eis was dus
+correct; de twee bugs kwamen allebei voort uit het loslaten ervan.
+
+**Definitieve opzet:** trapkoker én kelderruimte liggen ten westen van
+`KAMER2_NIS_X_WEST`, volledig buiten `GRENS`, waar geen enkele andere
+geometrie staat. De ruimte is 15 x 9,9 m = 148,5 m² (= atelier + 10%,
+de gevraagde schaal) met `KELDER_HOOGTE = KAMER_HOOGTE`.
+`berekenKelderY()` is weer volledig puur; `spelerInKelder` is verwijderd.
+De eerste regel van die functie (`if (x >= KELDERTRAP_X_BOVEN) return 0`)
+is meteen de structurele garantie dat Y nergens in het huis kan
+veranderen — geverifieerd met een raster van 15.327 punten over de hele
+bovengrondse kaart, zie `tests/test-kelder-trap.mjs`.
+
+`KELDER_Z_NOORD` (−23,9) ligt bewust net binnen `GRENS.minZ` (−23,95):
+de z-klem in `losBotsingenOp()` is NIET versoepeld, dus de ruimte moet
+binnen die band passen. Alleen de x-klem kent een uitzondering, en die
+geldt uitsluitend voor de speler (`magKelderBinnen`) binnen de
+kelder-z-band — ondoden blijven altijd op `GRENS.minX` staan, ook na
+aankoop van deur 5.
+
+**Feedbackronde — helderheid ongeveer gelijk aan de startkamer.** Een
+eerste poging verhoogde alleen de twee kamerlampen (12/8 → 18/10,
+intensiteit/bereik). Een screenshot-vergelijking (speler naast een lamp,
+kijkend naar de vloer) liet zien dat dit niet volstond: de stenen
+basiskleuren (`KELDER_TINT` voor de muren, een aparte kleur voor de
+vloer) waren zo donker (albedo bijna zwart) dat geen enkele
+lichtsterkte ze zichtbaar liet oplichten — diffuse reflectie schaalt
+met de albedo, dus een bijna-zwart oppervlak blijft bijna zwart onder
+elke lichtsterkte. Fix: `KELDER_TINT` van `0x1c1a17` naar `0x4a443c`,
+de keldervloer van `0x141210` naar `0x3d352c` (beide ~2,5-3x lichter).
+Het plafond (`0x08090a`) bleef bewust ongewijzigd — plafonds zijn
+overal in het spel opzettelijk bijna zwart (ook de startkamer:
+`0x14100c`), dat is stijl, geen helderheidsbron waar de speler op let.
+
 #### 7.5.2 Kelder als permanente veilige zone (beslissing 55)
 
 De kelder wordt bewust **buiten `ZONE_GRAAF` gehouden** en krijgt
@@ -1900,14 +2079,134 @@ safe-room die de bestaande AI/zone-code helemaal niet hoeft te weten.
 doeleinden), maar niets in `ZONE_GRAAF`/`NAV_VOLGENDE`/
 `updateOndoden()` mag ooit naar de kelder verwijzen.
 
+**Ticket 63 bevestigde dit numeriek** in plaats van er iets aan te
+wijzigen: alle vijf deuren kopen (worstcasescenario — elke
+`VENSTERS_*`-array actief, de hele `ZONE_GRAAF` open), 27 ondoden
+spawnen over alle vensters, en 600 simulatieframes draaien met een
+speler die van zone wisselt (zodat elke ondode een cross-zone-
+navigatiepad probeert, zie `tests/test-kelder-trap.mjs` sectie 10). Bij
+elke tick geteld: nul ondoden ooit in de kelder-footprint/-trapband, en
+geen enkele ondode ooit voorbij `GRENS.minX`. `zoneVan()`-herkenning van
+de kelder is bewust NIET toegevoegd: de kelder toont voorlopig gewoon
+"Het Atelier" in de HUD (§7.5.1's gedeelde-footprint-erfenis — de kelder
+ligt weliswaar zelf disjunct, maar `zoneVan()` classificeert puur op
+x/z-rechthoeken zonder Y, en de kelder-x/z valt toevallig nog niet onder
+een eigen check). Een 6e zone-id toevoegen puur voor het HUD-label zou
+`ZONE_NAMEN`/`ZONE_FLAVOUR`/spawn-weging/banner-logica moeten raken voor
+een zuiver cosmetisch effect — dat woog niet op tegen het risico,
+vandaar expliciet ongedaan gelaten (de ticket-tekst noemt dit "mag",
+niet "moet").
+
 #### 7.5.3 Kelderinhoud (beslissing 56)
 
-De kelder krijgt een klein, eigen setje decor/interactie passend bij
-het Amsterdamse-grachtenhuis-thema (bv. een wijnrek, kratten, een
-tweede munitie- of upgradepunt) — geen nieuwe gameplaymechaniek, puur
-ruimtelijke/visuele verrijking plus optioneel één bestaand
-interactiepunt-type (zoals een bestaand koop/upgrade-punt) herplaatst
-in de nieuwe ruimte. Geen nieuwe itemtypes in dit ticket.
+De kelder kreeg een klein, eigen setje decor, passend bij het
+Amsterdamse-grachtenhuis-thema: een wijnrek (rugpaneel + 3 planken met
+flessen) tegen de westmuur, en een kratten-/vatstapel in de
+zuidwesthoek — beide met ruime afstand tot de trap-uitgang en de
+Pantserdrank-marker. Puur ruimtelijke/visuele verrijking, geen nieuwe
+gameplaymechaniek: net als de bestaande `bouwKratten()`/`bouwVat()`
+elders in het bestand hebben deze meshes geen collision (`kelderMeubel()`
+is een eigen kleine helper, omdat de bestaande meubel-helpers een vloer
+op y=0 aannemen — dezelfde reden waarom de kelder al een eigen
+`kelderLamp()` had in plaats van `hangLamp()` te hergebruiken). Het
+"optioneel één bestaand interactiepunt herplaatst"-deel van de
+acceptatiecriteria was al vervuld: Pantserdrank staat sinds T62b al
+midden in de kelderruimte. Geen nieuwe itemtypes.
+
+#### 7.5.4 Herziening (feedback): gedeeltelijke instroom i.p.v. permanente
+veiligheid (beslissing 55 herroepen)
+
+**§7.5.2's "permanente veilige zone" is op expliciet verzoek weer
+losgelaten** — de speler wilde dat zombies wél de kelder in kunnen
+komen, maar niet allemaal tegelijk, en dat wie boven blijft door de
+kaart loopt i.p.v. voor de deur te wachten. Gevraagd en gekozen (via
+`AskUserQuestion`): (1) instroom = alleen ondoden die al dichtbij de
+trap-ingang staan op het moment dat de speler afdaalt, (2) wie boven
+blijft dwaalt rond in zijn eigen zone, (3) dit geldt al vanaf golf 1
+(geen aparte veilige periode).
+
+**Waarom dit niet vanzelf werkte door simpelweg de GRENS-bypass te
+verruimen.** `zoneVan()` kent de kelder zelf geen eigen zone-id toe
+(die deelt x/z met zone 2, het atelier — een blijvend gevolg van
+§7.5.1's ontwerp). Zodra de speler ondergronds is, is `zoneVan(speler)`
+dus nog steeds `2`. Voor een ondode die toevallig al in zone 2 staat,
+was `eigenZone === spelerZone` dan `true`, en de bestaande
+"rechtstreeks op de speler af"-tak stuurt zo'n ondode simpelweg naar
+`speler.positie` — d.w.z. naar de dichte deuropening, waar hij door de
+bestaande GRENS-klem blijft steken. Alle ondoden in zone 2 zouden dus
+gelijktijdig naar diezelfde plek lopen en daar opstapelen: precies het
+"niet direct wachten boven de trap"-probleem dat vermeden moest worden.
+
+**Oplossing: een permanente per-ondode vlag i.p.v. een globale teller
+of percentage.** Elke `ondode` kreeg drie nieuwe velden:
+`magKelderBinnen` (bool, start `false`), `wanderDoel`/`wanderTimer`
+(voor het dwaalgedrag). In `updateOndoden()`, vlak vóór de bestaande
+`volgendeDeur`-berekening:
+
+```js
+const spelerInKelder = speler.positie.y < -0.05;
+if (!ondode.magKelderBinnen && spelerInKelder) {
+  const dx = positie.x - KAMER2_NIS_X_WEST, dz = positie.z - KELDERTRAP_CZ;
+  if (dx * dx + dz * dz <= KELDER_NABIJ_AFSTAND * KELDER_NABIJ_AFSTAND) ondode.magKelderBinnen = true;
+}
+const wachtBoven = eigenZone === 2 && spelerInKelder && !ondode.magKelderBinnen;
+```
+
+`speler.positie.y < -0.05` is het enige signaal dat nodig is — Y is
+verder overal exact 0, dus dit is ondubbelzinnig "de speler staat op de
+trap of in de kelder" zonder enige nieuwe globale state. Zodra
+`magKelderBinnen` eenmaal `true` is, blijft het dat **permanent** (geen
+enkele plek zet het terug op `false`) — de ondode "kent" de trap dan
+voorgoed, ook als hij later weer ver van de deur afdwaalt of de speler
+weer boven komt. Dit is bewust een sticky per-ondode vlag en geen
+per-frame herberekening: een herberekening zou een ondode die al
+halverwege de trap staat plotseling weer kunnen uitsluiten zodra hij
+toevallig niet meer "dichtbij" is volgens de afstandstest.
+
+Voor `magKelderBinnen`-ondoden werkt de trap-mechaniek daarna exact als
+bij de speler: `losBotsingenOp(positie, ONDODE_STRAAL, ondode.magKelderBinnen)`
+geeft dezelfde GRENS-bypass door, en `positie.y = berekenKelderY(positie.x, positie.z)`
+laat hem even soepel af-/opdalen (puur functioneel, geen state — zelfde
+garantie als bij de speler, zie §7.5.1). De bestaande 3D-afstandscheck
+voor windup/melee (`rechtstreeks = speler.positie - positie`, volledige
+x/y/z) zorgt er *vanzelf* voor dat een boven-blijvende ondode nooit een
+aanval tegen een ondergrondse speler kan starten: het Y-verschil alleen
+al (≥ 1,65 m) ligt ruim boven `AANVAL_START_BEREIK` (1,4 m) — geen
+aparte guard nodig.
+
+**Dwalen i.p.v. wachten.** Voor `wachtBoven`-ondoden wordt `doelPunt`
+niet `speler.positie` maar `ondode.wanderDoel`: een willekeurig punt
+binnen dezelfde zone, gekozen door de nieuwe `kiesWanderDoel(positie, zone)`
+(een punt op 2-6 m in een willekeurige richting, geaccepteerd als
+`zoneVan(...) === zone && isVrijePlek(...)`, anders een nieuwe poging —
+max. 6 keer). Geen aparte per-zone grensrechthoeken nodig: `zoneVan()`
+en `isVrijePlek()` bestonden al en garanderen samen dat het doel zowel
+bereikbaar als in dezelfde zone blijft. Het doel wordt om de 3-6
+seconden (of zodra het bereikt is) opnieuw geloot. Cross-zone-verkeer
+(ondoden die van een ANDERE zone naar zone 2 onderweg zijn omdat de
+speler daar "is") blijft ongewijzigd via de bestaande
+`NAV_VOLGENDE`-route lopen — dat is precies het gevraagde "boven
+blijven lopen door de kaart" i.p.v. star op één plek te blijven staan.
+
+**Waarom geen vaste cap/percentage/tijdklok** (de andere opties uit de
+`AskUserQuestion`-ronde): die zouden een aparte teller of cooldown-state
+nodig hebben gehad, los van waar ondoden al toevallig stonden — een
+mooie balans, maar niet wat gevraagd werd. De gekozen aanpak is volledig
+emergent: hoeveel ondoden er meekomen hangt puur af van hoeveel er
+toevallig al bij de deur stonden op het moment van afdalen, precies
+zoals gevraagd.
+
+**Testresultaat:** `tests/test-kelder-trap.mjs` sectie 11 (7 nieuwe
+checks): een dichtbij-ondode krijgt `magKelderBinnen` en gebruikt de
+trap daadwerkelijk (komt voorbij het deurgat, `y < 0`); een
+ver-weg-ondode krijgt het niet, blijft voor altijd geklemd op
+`GRENS.minX`, beweegt merkbaar (dwaalt) en blijft daarbij altijd in zijn
+eigen zone; en de permanentie van `magKelderBinnen` is expliciet
+getest (blijft `true` nadat de speler weer boven is). Sectie 10 (de
+oude "kelder blijft altijd leeg"-test) is qua code ongewijzigd gebleven
+en slaagt nog steeds: die simuleert een speler die nooit ondergronds
+komt, en voor dat scenario is er inderdaad niets veranderd. Volledige
+regressie: 42/42 groen.
 
 ### 7.6 Verbetergebied 3 — Vijandintelligentie
 
