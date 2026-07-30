@@ -127,8 +127,12 @@ const lichten = await page.evaluate(() => {
     bootLichtInLampLichten: d.lampLichten.some(l => l.licht === bootLichtEntry?.licht),
   };
 });
-check('Lichttelling gaat van 23 naar 25 (gracht-lantaarn + boot-lichtje) + Ticket 62 kelder (trap + 2 kamerlampen, 28)',
-  lichten.totaal === 28, lichten);
+// Performance-audit (feedback): de 28 hierboven was correct tot de twee
+// Smederij-ember-lichtjes (bereik 0,9m, visueel niet te onderscheiden van
+// alleen het emissive materiaal — zie ARCHITECTURE_NOTES.md §7.9) zijn
+// verwijderd: 28 -> 26.
+check('Lichttelling gaat van 23 naar 25 (gracht-lantaarn + boot-lichtje) + Ticket 62 kelder (trap + 2 kamerlampen, 28) - 2 verwijderde Smederij-emberlichtjes (26)',
+  lichten.totaal === 26, lichten);
 check('De nieuwe gracht-lantaarn zit in buitenLichten (dimt mee tijdens Stroomuitval, buiten-vloer)',
   lichten.lantaarnInBuitenLichten === true, lichten);
 check('De gracht-lantaarn werpt GEEN schaduw (schaduw===1-invariant blijft bij de bestaande lamp)',

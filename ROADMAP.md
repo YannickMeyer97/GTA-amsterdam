@@ -3424,6 +3424,30 @@ oppakken pas na expliciete opdracht.
 
 ---
 
+## Feedbackronde — Performance-audit doorgevoerd
+Op verzoek ("de game kan soms wat haperig worden") is een performance-audit
+gedaan (voor/na-screenshots + render-attributiemeting) en zijn de drie
+gevonden optimalisaties doorgevoerd:
+1. Schaduw-resolutie van de ene schaduwwerpende hanglamp: 512 -> 256
+   (`schaduw===1`-invariant blijft intact — alleen de resolutie verlaagd).
+2. De twee ember-lichtjes (bereik 0,9m) in de Smederij-visuals (Drukspuit +
+   Ratelaar) verwijderd — de gloed komt vrijwel volledig van het emissive
+   ringmateriaal, niet van deze lichten. Lichttelling 28 -> 26.
+3. Zeven `new THREE.Vector3()`/`.clone()`-allocaties per ondode per frame
+   in `updateOndoden()` vervangen door hergebruikte module-scope
+   temp-vectors — vermoedelijke daadwerkelijke oorzaak van het gemelde
+   haperen (garbage-collector-pauzes bij ~5.900 allocaties/s met 14
+   ondoden op 60fps), zonder enig gameplay- of visueel verschil.
+
+Zie ARCHITECTURE_NOTES.md §7.9.1 voor de volledige onderbouwing
+(inclusief de pixelmetingen per punt) en waarom castShadow NIET van
+decor-meshes is afgehaald (bewust buiten scope — raakt gedeelde
+helperfuncties door de hele kaart heen voor een onzekere aanvullende
+winst). `test-gracht-dock.mjs` en `test-smederij.mjs` bijgewerkt naar de
+nieuwe lichttelling. Volledige regressie: 42/42 groen (3x herhaald).
+
+---
+
 ## Openstaande verbeteringen Defend National Monument (bevroren tot expliciet gevraagd)
 - Performance verbeteren
 - Wave balancing testen

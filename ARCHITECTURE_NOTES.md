@@ -2611,6 +2611,63 @@ geen nieuwe canvas-laag nodig.
   gecombineerd volume mag het gevoel van de bestaande sfeer-audio niet
   overstemmen.
 
+#### 7.9.1 Herziening (feedback): performance-audit doorgevoerd
+
+**Feedback:** "de game kan soms wat haperig worden, is de game al te
+zwaar?" gevolgd door een audit-verzoek, daarna "voer door" op de drie
+gevonden optimalisaties. Het audit-rapport (voor/na-screenshots, zie de
+gesprekshistorie) vond drie onafhankelijke ingrepen; alle drie zijn nu
+doorgevoerd.
+
+**1) Schaduw-resolutie 512 → 256.** `hangLamp()`'s
+`shadow.mapSize.set(512, 512)` is verkleind naar 256×256. De
+`schaduw===1`-invariant (§7.9 hierboven) blijft volledig intact — dit
+raakt alleen de resolutie van de ÉÉN bestaande schaduwwerpende lamp, geen
+enkele tweede shadow-light toegevoegd of verwijderd. Onderbouwing:
+voor/na-pixelmeting (dezelfde scene, mét de overige 26 lichten erbovenop)
+liet al zien dat deze schaduw sowieso wegvalt tegen de rest van de
+verlichting (max. 12/255 pixelverschil bij schaduw volledig UIT) — een
+kwart van de pixels renderen kost dus geen zichtbare kwaliteit.
+
+**2) Twee ember-lichtjes met bereik 0,9m verwijderd.** De Smederij-visuals
+(Drukspuit- én Ratelaar-variant, Ticket 17) hadden elk een eigen
+`PointLight(SMEDERIJ_ACCENT_KLEUR, 0.3, 0.9, 2)` naast het emissive
+ringmateriaal. Voor/na-pixelmeting (banner-vrije crop, zelfde standpunt)
+liet een verschil van max. 36/255 zien — de gloed komt vrijwel volledig
+van het emissive materiaal zelf, dat onafhankelijk van scene-lichten
+blijft stralen. Beide `PointLight`-objecten zijn verwijderd; de
+`ringMateriaal`/tandwiel/hitteband-emissive bleef ongewijzigd. Dit brengt
+de totale lichttelling van 28 naar 26 (test-gracht-dock.mjs sectie 6 en
+test-smederij.mjs's budget-check zijn bijgewerkt naar de nieuwe telling).
+
+**3) Vector3-allocaties in `updateOndoden()` vervangen door hergebruikte
+temp-vectors.** Zeven `new THREE.Vector3()`/`.clone()`-aanroepen per
+ondode per frame (`rechtstreeks`, `naarDoel`, `direct`, `zijwaarts`,
+`richting`, `voorPos`, `testPos`) zijn vervangen door zeven module-scope
+`const _tmpX = new THREE.Vector3();`-instanties, hergebruikt via
+`.subVectors()`/`.copy()`/`.set()` in plaats van `new`/`.clone()`. Bij 14
+ondoden op 60fps was dit ~5.900 allocaties/seconde voor de garbage
+collector — de vermoedelijke daadwerkelijke oorzaak van het gemelde
+haperen (GC-pauzes voelen als incidentele schokjes, niet als een
+structureel lagere framerate, precies het gemelde symptoom). Puur een
+geheugenbeheer-wijziging: geen enkele waarde of volgorde van berekeningen
+veranderde, dus geen visueel of gameplay-verschil mogelijk — bevestigd
+door de volledige regressie (zie hieronder), niet door een screenshot
+(die zou toch identiek zijn).
+
+**Waarom niet ook castShadow van decor-meshes afhalen.** De audit
+overwoog ook het aantal schaduwcasters (146 meshes) te verlagen door
+`castShadow` van kleine decorstukken (tafels, kratten, vaten) te
+verwijderen. Dat raakt gedeelde helperfuncties
+(`bouwTafel`/`bouwKratten`/`bouwVat`/etc.) die door de hele kaart heen
+worden hergebruikt — een grotere, risicovollere ingreep dan de
+mapSize-verlaging voor een onzekere aanvullende winst (WebGLShadowMap
+frustum-cult objecten buiten het bereik van het licht toch al vóór de
+render-pass). Bewust buiten scope gehouden voor deze ronde.
+
+**Volledige regressie:** twee testbestanden bijgewerkt (zie hierboven),
+verder ongewijzigde tests. 42/42 groen, 3x herhaald voor stabiliteit.
+
 ### 7.10 Herbruikbare systemen uit deze ronde
 
 - **PALET** (7.4.1) is bedoeld als groeiend systeem — latere rondes

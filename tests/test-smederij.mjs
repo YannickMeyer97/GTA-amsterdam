@@ -421,8 +421,14 @@ const budgetEnFlikker = await page.evaluate(() => {
   const rotatieNa = d.smederijVisualsRatelaar.children.find(k => !k.isPointLight && k.rotation).rotation.z;
   return { budgetDrukspuit, budgetRatelaar, rotatieVoor, rotatieNa };
 });
-check('Budget: Drukspuit-visuals ≤ 5 meshes + 1 light', budgetEnFlikker.budgetDrukspuit.meshes <= 5 && budgetEnFlikker.budgetDrukspuit.lichten === 1, budgetEnFlikker.budgetDrukspuit);
-check('Budget: Ratelaar-visuals ≤ 5 meshes + 1 light', budgetEnFlikker.budgetRatelaar.meshes <= 5 && budgetEnFlikker.budgetRatelaar.lichten === 1, budgetEnFlikker.budgetRatelaar);
+// Performance-audit (feedback): het ember-lichtje (bereik 0,9m) is uit beide
+// sets verwijderd — pixelmeting liet zien dat het niets waarneembaars
+// toevoegde bovenop het emissive ringmateriaal (zie ARCHITECTURE_NOTES.md
+// §7.9). Budget dus 0 lichten, niet 1.
+check('Budget: Drukspuit-visuals ≤ 5 meshes + 0 lichten (ember-licht verwijderd, alleen emissive materiaal)',
+  budgetEnFlikker.budgetDrukspuit.meshes <= 5 && budgetEnFlikker.budgetDrukspuit.lichten === 0, budgetEnFlikker.budgetDrukspuit);
+check('Budget: Ratelaar-visuals ≤ 5 meshes + 0 lichten (ember-licht verwijderd, alleen emissive materiaal)',
+  budgetEnFlikker.budgetRatelaar.meshes <= 5 && budgetEnFlikker.budgetRatelaar.lichten === 0, budgetEnFlikker.budgetRatelaar);
 check('updateSmederijVisuals(dt) draait het tandwiel merkbaar door over tijd',
   budgetEnFlikker.rotatieNa !== budgetEnFlikker.rotatieVoor, budgetEnFlikker);
 

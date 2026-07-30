@@ -1806,7 +1806,12 @@ function hangLamp(x, z, schaduw = false, opties = {}) {
   const licht = new THREE.PointLight(lichtKleur, intensiteit, 10, 2);
   licht.position.y = KAMER_HOOGTE - 0.62;
   licht.castShadow = schaduw;
-  if (schaduw) licht.shadow.mapSize.set(512, 512);
+  // Performance-audit (feedback): 512 -> 256. Pixelmeting (voor/na, dezelfde
+  // scene mét de overige 26 lichten) liet zien dat deze schaduw sowieso al
+  // wegvalt tegen de rest van de verlichting (max. 12/255 pixelverschil) —
+  // de resolutie kwart maken kost dus geen zichtbare kwaliteit, wel reële
+  // rendertijd (minder pixels per cube-face, 6x per frame voor deze lamp).
+  if (schaduw) licht.shadow.mapSize.set(256, 256);
   groep.add(licht);
   groep.position.set(x, 0, z);
   wereld.add(groep);
@@ -3188,9 +3193,11 @@ const smederijVisualsDrukspuit = new THREE.Group();
     ring.position.set(0, 0.02, z);
     smederijVisualsDrukspuit.add(ring);
   }
-  const emberDrukspuit = new THREE.PointLight(SMEDERIJ_ACCENT_KLEUR, 0.3, 0.9, 2);
-  emberDrukspuit.position.set(0, 0.02, -0.05);
-  smederijVisualsDrukspuit.add(emberDrukspuit);
+  // Performance-audit (feedback): het ember-lichtje hier (bereik 0,9 m) is
+  // verwijderd. Voor/na-pixelmeting liet zien dat de gloed vrijwel volledig
+  // van het emissive ringmateriaal hierboven komt, niet van dit puntlicht —
+  // een licht met zo'n klein bereik kost de fragment-shader evenveel als een
+  // lamp die een hele kamer verlicht, voor een niet-waarneembaar effect.
 }
 smederijVisualsDrukspuit.visible = false;
 wapenDrukspuit.add(smederijVisualsDrukspuit);
@@ -3276,9 +3283,10 @@ let smederijTandwielRatelaar;   // los bewaard: krijgt elke frame een rotatie
     }));
   hitteband.position.set(0, 0.03, -0.12);
   smederijVisualsRatelaar.add(hitteband);
-  const emberRatelaar = new THREE.PointLight(SMEDERIJ_ACCENT_KLEUR, 0.3, 0.9, 2);
-  emberRatelaar.position.set(0, 0.03, -0.18);
-  smederijVisualsRatelaar.add(emberRatelaar);
+  // Performance-audit (feedback): zelfde verwijdering als de Drukspuit-
+  // variant hierboven — het ember-lichtje (bereik 0,9 m) voegde niets
+  // waarneembaars toe bovenop het emissive materiaal van het tandwiel/de
+  // hitteband.
 }
 smederijVisualsRatelaar.visible = false;
 wapenRatelaar.add(smederijVisualsRatelaar);
@@ -4692,6 +4700,22 @@ function herbouwNavTabel() {
   NAV_VOLGENDE = tabel;
 }
 
+// Performance-audit (feedback): hergebruikte temp-vectors voor
+// updateOndoden() hieronder, i.p.v. 7 `new THREE.Vector3()`-allocaties per
+// ondode per frame (bij 14 ondoden op 60fps ~5.900 objecten/s voor de
+// garbage collector — de vermoedelijke oorzaak van het gemelde haperen: GC-
+// pauzes voelen als incidentele schokjes, niet als een structureel lagere
+// framerate). Module-scope, dus geen enkele ondode-iteratie deelt er een
+// binnen hetzelfde frame (elke temp wordt per ondode opnieuw beschreven
+// vóór gebruik, nooit tussen twee ondoden gedeeld terwijl hij nog "leeft").
+const _tmpRechtstreeks = new THREE.Vector3();
+const _tmpNaarDoel = new THREE.Vector3();
+const _tmpDirect = new THREE.Vector3();
+const _tmpZijwaarts = new THREE.Vector3();
+const _tmpRichting = new THREE.Vector3();
+const _tmpVoorPos = new THREE.Vector3();
+const _tmpTestPos = new THREE.Vector3();
+
 // Kortste hoekverschil a-b, gewrapt naar (-PI, PI]. Gedeeld door de
 // wind-up-bijdraai-limiet en de raakHoek-check op het slag-moment.
 function kortsteHoekVerschil(a, b) {
@@ -4705,7 +4729,7 @@ function kortsteHoekVerschil(a, b) {
 function updateOndoden(dt) {
   for (const ondode of ondoden) {
     const positie = ondode.groep.position;
-    const rechtstreeks = new THREE.Vector3().subVectors(speler.positie, positie);
+    const rechtstreeks = _tmpRechtstreeks.subVectors(speler.positie, positie);
     const afstand = rechtstreeks.length();
     const profiel = AANVAL_PROFIELEN[ondode.type] || AANVAL_PROFIELEN.normaal;
 
@@ -4809,7 +4833,7 @@ function updateOndoden(dt) {
     const eigenInGracht = inZoneVier && positie.x >= GRACHTGANG_X_WEST;
     const spelerInGracht = inZoneVier && speler.positie.x >= GRACHTGANG_X_WEST;
     const doelPunt = volgendeDeur || (eigenInGracht !== spelerInGracht ? GRACHTGANG_DREMPEL : speler.positie);
-    const naarDoel = new THREE.Vector3().subVectors(doelPunt, positie).setY(0);
+    const naarDoel = _tmpNaarDoel.subVectors(doelPunt, positie).setY(0);
 
     // Bij een lopende ontwijk-burst mengt de ondode een groot, vast aandeel
     // zijwaarts door zijn looprichting i.p.v. recht op het doel af te gaan —
@@ -4820,16 +4844,16 @@ function updateOndoden(dt) {
     // zwak was om echt om een hoek te sturen. Zelfde grondpatroon als de
     // robots in defend-national-monument.html, hier aangepast naar een
     // richting-blend die niet met de afstand tot het doel meeschaalt.
-    const direct = naarDoel.clone().normalize();
+    const direct = _tmpDirect.copy(naarDoel).normalize();
     let richting = direct;
     if (ondode.ontwijkTimer > 0) {
-      const zijwaarts = new THREE.Vector3(-direct.z, 0, direct.x).multiplyScalar(ondode.ontwijkZijkant);
-      richting = direct.clone().multiplyScalar(0.3).add(zijwaarts).normalize();
+      const zijwaarts = _tmpZijwaarts.set(-direct.z, 0, direct.x).multiplyScalar(ondode.ontwijkZijkant);
+      richting = _tmpRichting.copy(direct).multiplyScalar(0.3).add(zijwaarts).normalize();
     }
     // Ticket 30: tijdens 'herstel' (net klaar met een aanval) beweegt de
     // ondode op verlaagde snelheid mee — "voelt als bijkomen".
     const snelheidNu = ondode.snelheid * (ondode.aanvalStaat === 'herstel' ? AANVAL_HERSTEL_SNELHEIDSFACTOR : 1);
-    const voorPos = positie.clone();
+    const voorPos = _tmpVoorPos.copy(positie);
     positie.addScaledVector(richting, snelheidNu * dt);
     losBotsingenOp(positie, ONDODE_STRAAL, true);
     // Feedback: net als de speler (zie updateSpeler) volgt de hoogte van elke
@@ -4932,7 +4956,7 @@ function updateOndoden(dt) {
         // want die laatste blijft "ja" geven zolang er ÜBERHAUPT beweging is
         // (ook nadat de hoek al lang om is), en zou het uitwijken dan nooit
         // meer loslaten.
-        const testPos = positie.clone().addScaledVector(direct, snelheidNu * dt);
+        const testPos = _tmpTestPos.copy(positie).addScaledVector(direct, snelheidNu * dt);
         losBotsingenOp(testPos, ONDODE_STRAAL);
         if (testPos.distanceTo(positie) > snelheidNu * dt * 0.3) {
           ondode.vastTijd = 0;   // obstakel voorbij: terug naar rechtstreeks jagen
