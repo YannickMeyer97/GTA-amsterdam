@@ -3131,7 +3131,7 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
 
 ---
 
-## Ticket 64 — Waypoint-navigatiegraaf: architectuur en dataset
+## Ticket 64 — Waypoint-navigatiegraaf: architectuur en dataset ✅
 
 - **Type:** AI-infrastructuur
 - **Verbetergebied:** 3 (Vijandintelligentie)
@@ -3178,7 +3178,7 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
 
 ---
 
-## Ticket 65 — Waypoint-integratie: ad-hoc chokepoint-code vervangen
+## Ticket 65 — Waypoint-integratie: ad-hoc chokepoint-code vervangen ✅
 
 - **Type:** AI-verbetering — VOORZICHTIG
 - **Verbetergebied:** 3 (Vijandintelligentie)
@@ -3225,6 +3225,20 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
   historie), waypoint-koppeling verwijderen.
 - **Sonnet solo:** ja, met verplichte volledige `test-gracht-dock.mjs`-
   regressie vóór het ticket als afgerond geldt.
+
+**Uitvoering (T64+T65 in één diff):** zie ARCHITECTURE_NOTES.md §7.6.3
+voor het volledige verslag. Samengevat: `ZONE_WAYPOINTS`/`zoekWaypoint()`
+(nieuw, module-scope bij `ZONE_GRAAF`) vervangen de oude
+`eigenInGracht`/`spelerInGracht`/`inZoneVier`-lokale variabelen in
+`updateOndoden()`; `GRACHTGANG_DREMPEL` blijft bestaan en wordt nu als
+data hergebruikt (`ZONE_WAYPOINTS[4][0].punt`). Alleen zone 4 heeft een
+waypoint-entry — de atelier-nis en de binnenplaats-obstakels lost de
+bestaande lokale ontwijk-logica al zelf op (nieuw vastgelegd als
+regressie-anker). `test-gracht-dock.mjs` bleef **ongewijzigd** groen (het
+sterkste bewijs van gedragsgelijkheid); nieuw testbestand
+`tests/test-waypoint-navigatie.mjs` dekt de T64-dataset/lookup plus twee
+trajectory-trace-tests in de andere obstakel-zones. Volledige regressie:
+zie hieronder.
 
 ---
 
@@ -3445,6 +3459,45 @@ decor-meshes is afgehaald (bewust buiten scope — raakt gedeelde
 helperfuncties door de hele kaart heen voor een onzekere aanvullende
 winst). `test-gracht-dock.mjs` en `test-smederij.mjs` bijgewerkt naar de
 nieuwe lichttelling. Volledige regressie: 42/42 groen (3x herhaald).
+
+---
+
+## Tickets 64/65 — Waypoint-navigatiegraaf ✅
+Uitgevoerd in één diff (zie de tickets zelf hierboven in de v0.19-sectie
+voor de volledige ticketbeschrijving). `ZONE_WAYPOINTS`/`zoekWaypoint()`
+vervangen de oude `eigenInGracht`/`spelerInGracht`/`inZoneVier`-special-
+case voor de bijkeuken/gracht-gang-opening (zone 4). `test-gracht-dock.mjs`
+bleef ongewijzigd groen; nieuw testbestand `tests/test-waypoint-navigatie.mjs`
+dekt de dataset/lookup plus trajectory-traces. Zie ARCHITECTURE_NOTES.md
+§7.6.3 voor het volledige verslag. Volledige regressie: 43/43 groen.
+
+## Feedbackronde — Kelder-trap chokepoint (na T64/T65)
+Op verzoek ("ze kunnen niet altijd goed de kelder in lopen") is de
+waypointgraaf uit T64/T65 uitgebreid naar de kelder-trap (zone 2): een
+smalle (1,2m), lange (4m) koker tussen de open nis en de kelderruimte,
+met TWEE muuropeningen na elkaar. Gesimuleerd: een ondode die van opzij
+nadert, bleef vóór de fix ~9s tegen de muur naast de opening hangen
+voordat de lokale ontwijk-logica de opening bij toeval vond.
+
+`ZONE_WAYPOINTS[2]` kreeg twee entries (boven- en onderkant van de
+trap-koker), en `zoekWaypoint()` is gegeneraliseerd van "de eerste
+toepasselijke entry in de lijst" naar "de toepasselijke entry wiens punt
+het dichtst bij de huidige positie ligt" — nodig omdat de trap-koker per
+richting een ander eerste tussenpunt vereist (zone 4, met maar één
+waypoint, verandert niet van gedrag). Resultaat: de oversteek duurt nu
+~2,5s i.p.v. ~9s, en de totale reistijd naar een speler diep in de
+kelder daalt van ~20s naar ~12s.
+
+Zie ARCHITECTURE_NOTES.md §7.6.4 voor het volledige verslag.
+`tests/test-waypoint-navigatie.mjs` uitgebreid met dataset-checks voor
+zone 2, richtingsafhankelijke lookup-checks en een trajectory-trace die
+het 3s-plafond bewaakt. `test-kelder-trap.mjs` bleef ongewijzigd groen.
+Volledige regressie: 43/43 groen.
+
+Daarnaast een bijgewerkte plattegrond van de volledige huidige kaart
+(topologie-diagram + coördinatentabel) toegevoegd als ARCHITECTURE_NOTES.md
+§7.11 — vervangt het verouderde §4.6 (dat dateert van vóór de
+map-lus/kelder/gracht-ronde en blijft staan als historisch document).
 
 ---
 

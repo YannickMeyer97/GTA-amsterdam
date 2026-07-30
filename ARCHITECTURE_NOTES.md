@@ -697,6 +697,10 @@ Alle waarden komen uit de constanten in `amsterdam-undead.html`:
 
 ### 4.6 ASCII-plattegrond — huidige map
 
+**(Historisch — deze plattegrond is vóór de map-lus/kelder/gracht-ronde.
+Zie §7.11 voor de bijgewerkte plattegrond met alle 5 zones, de kelder en
+de gracht-gang.)**
+
 ```
                         NOORD (−z)
    x=−11.5   x=−4.5           x=4.5              x=20.5
@@ -2530,6 +2534,112 @@ regressiesuite (met name `test-gracht-dock.mjs`, dat de twee bugs van
 deze sessie afdekt) moet na T65 nog steeds slagen — dat is het
 belangrijkste acceptatiecriterium van dit ticket.
 
+#### 7.6.3 Uitvoering T64/T65 (beslissing 62)
+
+T64 en T65 zijn in één diff uitgevoerd (de dataset zou zonder de
+integratie toch geen enkel waarneembaar effect hebben, en het risico
+zit vooral in de integratie-stap zelf). Het uiteindelijke ontwerp is
+lichter dan de oorspronkelijke "zichtlijn-heuristiek + waypointketen"
+uit §7.6.1: in de praktijk was er maar één zone (4, de bijkeuken/
+gracht-gang) waar de lokale reactieve ontwijk-logica (`ondode.
+ontwijkTimer`) het chokepoint niet zelf oplost — de atelier-nis en de
+binnenplaats-obstakels (schuurtje/kratten) zijn vrijstaande
+hindernissen in een verder open ruimte, en die vond de bestaande
+lokale logica al aantoonbaar zelf (nu vastgelegd als regressie-anker,
+zie hieronder). Een generieke ketting van meerdere waypoints per zone
+zou dus ongebruikte complexiteit zijn geweest voor precies nul extra
+gedekte gevallen.
+
+**Dataset (T64):** `ZONE_WAYPOINTS` is een `{ [zoneId]: [{ punt,
+zijde(x,z) }] }`-object; `zijde()` bucket een positie in een kant-id
+(net als de oude `eigenInGracht`/`spelerInGracht`-booleans, maar nu
+als herbruikbare functie i.p.v. inline logica). `zoekWaypoint(zone,
+vanPos, naarPos)` itereert de lijst voor `zone` en geeft het eerste
+waypoint terug waarvan `vanPos` en `naarPos` aan verschillende kanten
+zitten, of `null`. Zone 4 heeft precies één entry, met `punt` =
+dezelfde `GRACHTGANG_DREMPEL`-Vector3-instantie als voorheen (data
+hergebruikt, geen kopie) — zo blijft de doelpositie voor de bestaande
+chokepoint-scenario's exact identiek.
+
+**Integratie (T65):** in `updateOndoden()` is
+`eigenInGracht !== spelerInGracht ? GRACHTGANG_DREMPEL : speler.positie`
+vervangen door `zoekWaypoint(eigenZone, positie, speler.positie) ||
+speler.positie`, met dezelfde `volgendeDeur`-precedentie als voorheen
+(cross-zone-routing via `NAV_VOLGENDE` gaat altijd voor). De
+`eigenInGracht`/`spelerInGracht`/`inZoneVier`-lokale variabelen bestaan
+niet meer. Omdat `zoekWaypoint` zelf op `eigenZone` filtert (alleen
+zone 4 heeft een entry), is het eerder gefixte randgeval — een ondode
+op de binnenplaats (zone 3, x < `GRACHTGANG_X_WEST`) mag NOOIT naar
+`GRACHTGANG_DREMPEL` gestuurd worden ook al ligt de speler op x ≥
+`GRACHTGANG_X_WEST` van diezelfde binnenplaats — automatisch nog
+steeds gedekt: zone 3 heeft simpelweg geen `ZONE_WAYPOINTS`-entry.
+
+**Performance:** `zoekWaypoint` is een lineaire scan over een array
+van lengte 1 (voor de enige zone die er een heeft) zonder allocaties —
+ruim binnen de hot-path-voorwaarde uit §7.9.
+
+**Testdekking:** `test-gracht-dock.mjs` bleef **ongewijzigd** groen
+(zelfde asserties, `GRACHTGANG_DREMPEL` blijft gewoon geëxporteerd als
+herbruikte waypoint-data) — het sterkste bewijs dat de vervanging
+gedragsneutraal was. Nieuw: `tests/test-waypoint-navigatie.mjs` dekt
+de T64-dataset/lookup als unit-achtige checks, en twee trajectory-trace-
+tests (atelier-nis-hoek, binnenplaats-schuurtje) die bevestigen dat
+pursuit-gedrag in de twee andere obstakel-zones ongewijzigd correct
+blijft (het regressierisico dat T65 expliciet als hoogste van de ronde
+noemde).
+
+#### 7.6.4 Kelder-trap chokepoint (feedback, na T64/T65)
+
+**Feedback:** "ze kunnen niet altijd goed de kelder in lopen." De
+kelder-trap (`KELDERTRAP_*`, zie §7.5.1/§7.5.2) is een smalle (1,2m
+brede), lange (4m) koker tussen de open nis (6m breed) en de
+kelderruimte — een muur-chokepoint dat qua vorm sterk lijkt op de
+gracht-gang-opening uit §7.6.3, maar met een extra complicatie: er zijn
+TWEE muuropeningen na elkaar (boven bij de nis, onder bij de
+kelderruimte), niet één.
+
+**Diagnose:** een gesimuleerde ondode die van opzij (niet uitgelijnd met
+de 1,2m-brede opening) de trap nadert, blijft ~9 seconden tegen de muur
+naast de opening "hangen" voordat de lokale reactieve ontwijk-logica
+(`ondode.ontwijkTimer`, een reeks willekeurige zijwaartse pogingen) bij
+toeval de opening vindt — precies het gemelde symptoom, en precies het
+soort chokepoint waarvoor T64/T65 de waypointgraaf bouwden.
+
+**Waarom één waypoint niet volstaat.** De gracht-opening (§7.6.3) heeft
+maar één muur om — een enkel waypoint op de opening lost het symmetrisch
+op, ongeacht de looprichting. De kelder-trap heeft een 4m-lange koker
+tussen twee openingen: vanuit de nis moet een ondode eerst naar de
+BOVENkant van de koker mikken (anders schampt hij de muur naast de
+opening), en pas ná het betreden van de koker naar de ONDERkant — het
+omgekeerde geldt vanuit de kelderruimte. Eén symmetrisch waypoint zou in
+de ene richting goed werken en in de andere richting alsnog een
+diagonale lijn dwars door de smalle koker sturen.
+
+**Oplossing: twee waypoints + een "dichtstbijzijnde"-regel.**
+`ZONE_WAYPOINTS[2]` kreeg twee entries (`KELDERTRAP_BOVEN_PUNT` op
+`(KELDERTRAP_X_BOVEN, KELDERTRAP_CZ)`, `KELDERTRAP_ONDER_PUNT` op
+`(KELDERTRAP_X_ONDER, KELDERTRAP_CZ)`), en `zoekWaypoint()` is
+gegeneraliseerd: in plaats van de EERSTE entry in de lijst waarvan
+`vanPos`/`naarPos` aan verschillende kanten staan, geeft de functie nu de
+entry terug wiens `punt` het DICHTST bij `vanPos` ligt, onder alle
+entries die van toepassing zijn. Voor zone 4 (met maar één waypoint)
+verandert dit niets — voor zone 2 zorgt het ervoor dat een ondode vanuit
+de nis eerst de bovenkant kiest, en vanuit de kelder eerst de onderkant,
+zonder dat er een aparte "welke kant kom ik vandaan"-vertakking nodig
+is. Nog steeds O(waypoints-per-zone), nog steeds geen allocaties (alleen
+een paar aftrekkingen voor de kwadratische afstand, geen `Math.sqrt`
+nodig omdat alleen de RELATIEVE afstand telt).
+
+**Resultaat:** dezelfde simulatie die vóór de fix ~9s vastzat, steekt de
+opening nu binnen ~2,5s over (gemeten), en de totale reistijd naar een
+speler diep in de kelderruimte daalt van ~20s naar ~12s. Zie
+`tests/test-waypoint-navigatie.mjs` secties 6-7 voor de lookup-checks per
+richting en de trajectory-trace die het 3s-plafond bewaakt.
+`test-kelder-trap.mjs` (Y-beweging, deur 5, sectie 11 "vrije toegang")
+bleef ongewijzigd groen — dezelfde ~9s-vertraging zat daar al binnen de
+ruime 60s-simulatiemarge van die test verstopt, vandaar dat de bug pas
+via speeltest-feedback aan het licht kwam, niet via de bestaande suite.
+
 ### 7.7 Verbetergebied 4 — Sfeer/audio
 
 #### 7.7.1 Achtergrondmuziek-architectuur (beslissing 59)
@@ -2684,3 +2794,69 @@ verder ongewijzigde tests. 42/42 groen, 3x herhaald voor stabiliteit.
 - **DOM-wedge-pool** (7.8.2) is een direct herbruikbaar patroon voor
   toekomstige korte, richtinggevoelige HUD-indicatoren (bv. een
   toekomstig "item hier"-pijltje).
+
+### 7.11 Plattegrond (bijgewerkt) — de volledige huidige kaart
+
+Vervangt §4.6 als de actuele plattegrond (§4.6 blijft staan als
+historisch document van de kaart vóór de map-lus/kelder/gracht-ronde).
+Bron van waarheid blijft altijd de code (`amsterdam-undead.html`); zie
+§4.4 voor de oorspronkelijke coördinatentabel-conventie, hieronder
+uitgebreid met alle zones die sindsdien zijn toegevoegd.
+
+**Topologie** (de zone-lus zoals `ZONE_GRAAF`/`NAV_VOLGENDE` 'm ook
+kennen — dit is een graaf-diagram, geen schaaltekening):
+
+```
+┌────────────────┐           ┌────────────────┐           ┌────────────────┐           ┌────────────────┐           ┌────────────────┐
+│ WOONKAMER (A)  │───deur1───│    GANG (B)    │───open────│ATELIER+NIS (C) │───deur2───│BINNENPLAATS (D)│───deur3───│ BIJKEUKEN (E)  │
+└────────────────┘           └────────────────┘           └────────────────┘           └────────────────┘           └────────────────┘
+         │                                                                                                                   │
+         ▲───────────────────────────────────────── deur4 — terugweg, sluit de lus ──────────────────────────────────────────┘
+```
+
+Twee aftakkingen die niet in de lus zelf liggen:
+
+- **Vanuit C (via de nis):** open → NIS → trap/**deur5** (koop, €900,
+  eenmalig, forceert de deur) → **KELDER (-Y)**, met Pantserdrank.
+  Permanente veilige zone qua gameplay-restricties (§7.5.7: geen enkele
+  ondode-restrictie meer, elke ondode volgt de speler er gewoon naartoe)
+  — maar sinds §7.6.4 ook een eigen intra-zone-waypointpaar
+  (`ZONE_WAYPOINTS[2]`) zodat ondoden de smalle trap-koker vlot vinden
+  i.p.v. er minutenlang tegen de muur naast te hangen.
+- **Vanuit E (bijkeuken):** open → gracht-gang → vlonder → water → boot
+  (met een gracht-lantaarn en een boot-lichtje). De vlonder is de plek
+  van De Ontsnapping (het winscherm, periodieke ontsnappingsvensters).
+
+**Coördinatentabel** (alle waarden uit de constanten in
+`amsterdam-undead.html`; oriëntatie **+x = oost, −z = noord**):
+
+| Ruimte | Zone | x-bereik | z-bereik | Sleutelconstanten |
+| --- | --- | --- | --- | --- |
+| Woonkamer | A (0) | −4.5 … 4.5 | −5 … 5 | `HALF_BREEDTE`, `HALF_DIEPTE`, `DEUR_Z` |
+| Gang | B (1) | −1 … 1 | −8 … −5 | `DEUR_HALF`, `GANG_Z_EIND` |
+| Atelier | C (2) | −4.5 … 4.5 | −23 … −8 | `KAMER2_HALF_B`, `KAMER2_Z_NOORD` |
+| Voorraadnis (deel van C) | C | −11.5 … −4.5 | −23 … −17 | `KAMER2_NIS_X_WEST`, `KAMER2_NIS_Z_ZUID` |
+| Kelder-trap (koker, deel van C qua `zoneVan`) | C | −15.5 … −11.5 | trapband rond −21.8 | `KELDERTRAP_X_BOVEN/-ONDER`, `KELDERTRAP_CZ`, `KELDERTRAP_HALF_BREEDTE` |
+| Kelder (−Y, disjuncte footprint) | C | −23 … −15.5 | −23.9 … −14 | `KELDER_X_WEST`, `KELDER_Z_NOORD/ZUID`, `KELDER_DIEPTE = 3.3` |
+| Binnenplaats | D (3) | 4.5 … 20.5 | −24 … −7 | `DEUR2_X`, `PLAATS_X_OOST`, `PLAATS_Z_NOORD/ZUID`, `PLAATS_CX` |
+| Kelderhals (deel van E, verbindt D↔bijkeuken) | E | 9 … 11 | −7 … −4.5 | `KELDERHALS_X_WEST/OOST`, `KELDERHALS_Z_NOORD/ZUID` |
+| Bijkeuken | E (4) | 4.5 … 12 | −4.5 … 4.5 | `BIJKEUKEN_X_WEST/OOST`, `BIJKEUKEN_Z_NOORD/ZUID` |
+| Gracht-gang | E | 12 … 15 | smalle band rond z=0 | `GRACHTGANG_X_WEST`, `GRACHTGANG_LENGTE`, `GRACHTGANG_HALF` |
+| Vlonder | E | 15 … 19.5 | idem | `VLONDER_X_WEST/OOST`, `VLONDER_DIEPTE` |
+| Water/boot | E | 19.5 … ~24.3 | idem | `BOOT_DOK_X`, `BOOT_VERTREK_X`, `WATER_BREEDTE` |
+
+**Deuren** (alle koopbaar/forceerbaar via `T`, zie de bijbehorende
+`koopDeurN()`-functies): deur1 (A↔B, noordmuur woonkamer), deur2 (C↔D,
+oostmuur atelier), deur3 (D↔E, zuidmuur binnenplaats → kelderhals),
+deur4 (E↔A, "terugweg", sluit de lus), deur5 (nis → kelder, geen
+zone-overgang, eenmalig €900).
+
+**Belangrijkste interactiepunten:** upgrade + ammo-kist (woonkamer),
+werkbank/Snelheidselixer (atelier), Pantserdrank (in de kelder, sinds
+§7.5.6), Watertap + Ratelaar (binnenplaats), Smederij (bijkeuken, sinds
+Ticket 35 — niet meer op de binnenplaats), De Ontsnapping (vlonder).
+
+**Objecten met echte collision** (naast muren/deuren): schuurtje
+(binnenplaats) en kratten (binnenplaats) — zie §7.6.1 voor waarom deze
+GEEN eigen waypoint-entry hebben (vrijstaande obstakels, geen
+muur-chokepoint).

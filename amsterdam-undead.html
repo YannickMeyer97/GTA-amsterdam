@@ -1400,8 +1400,9 @@ const VLONDER_X_OOST = VLONDER_X_WEST + VLONDER_DIEPTE;         // = 19.5, ruim 
 // alleen tussen zones routeert) liet een ondode in de open bijkeuken
 // rechtstreeks op een speler in de smalle gang/vlonder afgaan, dwars tegen
 // de muur aan. Dit tussenpunt (het midden van de gang-opening) lost dat
-// lokale chokepoint op, zie de eigenInGracht/spelerInGracht-check in
-// updateOndoden().
+// lokale chokepoint op — sinds Ticket 64/65 als data hergebruikt in
+// ZONE_WAYPOINTS[4] (zie zoekWaypoint() en updateOndoden(), verderop in dit
+// bestand), niet meer via een ad-hoc eigenInGracht/spelerInGracht-check.
 const GRACHTGANG_DREMPEL = new THREE.Vector3(GRACHTGANG_X_WEST, 0, BIJKEUKEN_CZ);
 // Feedback: de boot lag de hele run al statisch aangemeerd — je zag 'm nooit
 // echt aankomen. BOOT_DOK_X is de al bestaande, ongewijzigde aangemeerde
@@ -4700,6 +4701,75 @@ function herbouwNavTabel() {
   NAV_VOLGENDE = tabel;
 }
 
+// Ticket 64 — Waypoint-navigatiegraaf: architectuur en dataset (zie
+// ARCHITECTURE_NOTES.md §7.6.1). Generieke, data-gedreven INTRA-zone-laag,
+// naast de bestaande cross-zone NAV_VOLGENDE hierboven: per zone een kleine,
+// hand-geplaatste lijst waypoints, alleen voor zones waar de lokale
+// reactieve ontwijk-logica (ondode.ontwijkTimer, verderop in updateOndoden)
+// een chokepoint aantoonbaar niet zelf oplost. Dat zijn de
+// bijkeuken/gracht-gang-opening (zone 4, was de ad-hoc
+// GRACHTGANG_DREMPEL/eigenInGracht/spelerInGracht-special-case, sinds Ticket
+// 65 vervangen) en de kelder-trap (zone 2, Ticket 62 e.o. — feedback: "ze
+// kunnen niet altijd goed de kelder in lopen", zie hieronder). De
+// atelier-nis (het open deel van zone 2) en de binnenplaats-obstakels (zone
+// 3, schuurtje/kratten) hebben BEWUST geen eigen entry: dat zijn vrijstaande
+// obstakels in een verder open ruimte, geen muur-chokepoint die een groot
+// deel van de zonebreedte afsluit, en de bestaande lokale ontwijk-logica
+// vindt daar zelf al betrouwbaar omheen (zie ook de zoneVan()-comment
+// hierboven over de nis-opening, en de regressie-dekking in
+// tests/test-waypoint-navigatie.mjs).
+//
+// Elke entry is { punt: Vector3, zijde(x,z): geeft een kant-id terug }. Van
+// alle entries in een zone waarvan `vanPos`/`naarPos` aan verschillende
+// kanten staan, wint de entry wiens `punt` het DICHTST bij `vanPos` ligt
+// (niet zomaar de eerste in de lijst) — nodig voor de kelder-trap
+// hieronder, die twee waypoints na elkaar nodig heeft (boven- én
+// onderkant), en die dus per richting een ander eerste tussenpunt moet
+// kiezen. Voor zone 4 (met maar één waypoint) verandert dit niets.
+//
+// Kelder-trap (feedback): de trap is een smalle (1,2m), lange (4m) koker
+// tussen de open nis (6m breed) en de kelderruimte. Een ondode die van
+// ergens in de nis (of de kelder) rechtstreeks op een doel aan de andere
+// kant afgaat, mikt bijna nooit precies op de 1,2m-brede opening en blijft
+// dan minutenlang tegen de muur naast de trap "hangen" (bevestigd met een
+// simulatie: ~9s stilstand vóór de lokale ontwijk-logica de opening bij
+// toeval vindt) — precies het gemelde "komen er soms niet goed in".
+// KELDERTRAP_BOVEN/-ONDER routeren via de twee muuropeningen van de koker
+// (boven bij de nis, onder bij de kelderruimte); de "nearest"-regel
+// hierboven zorgt dat de juiste kant als eerste gekozen wordt.
+const KELDERTRAP_BOVEN_PUNT = new THREE.Vector3(KELDERTRAP_X_BOVEN, 0, KELDERTRAP_CZ);
+const KELDERTRAP_ONDER_PUNT = new THREE.Vector3(KELDERTRAP_X_ONDER, 0, KELDERTRAP_CZ);
+const ZONE_WAYPOINTS = {
+  2: [
+    { punt: KELDERTRAP_BOVEN_PUNT, zijde: (x, z) => (x >= KELDERTRAP_X_BOVEN ? 1 : 0) },
+    { punt: KELDERTRAP_ONDER_PUNT, zijde: (x, z) => (x <= KELDERTRAP_X_ONDER ? 1 : 0) },
+  ],
+  4: [
+    { punt: GRACHTGANG_DREMPEL, zijde: (x, z) => (x >= GRACHTGANG_X_WEST ? 1 : 0) },
+  ],
+};
+
+// Geeft het (dichtstbijzijnde toepasselijke) waypoint terug waarlangs een
+// positie in `zone` naar `naarPos` moet lopen, of null als er geen
+// tussenstap nodig is (zone heeft geen waypoints, of geen enkele entry
+// scheidt `vanPos` van `naarPos`). Performance-voorwaarde (T64/T65, zie
+// ARCHITECTURE_NOTES §7.9): simpele object-/array-indexering + een paar
+// aftrekkingen, geen graaf-traversal, geen allocaties — veilig om elke
+// ondode elke frame aan te roepen vanuit updateOndoden().
+function zoekWaypoint(zone, vanPos, naarPos) {
+  const lijst = ZONE_WAYPOINTS[zone];
+  if (!lijst) return null;
+  let beste = null, besteAfstandKw = Infinity;
+  for (let i = 0; i < lijst.length; i++) {
+    const wp = lijst[i];
+    if (wp.zijde(vanPos.x, vanPos.z) === wp.zijde(naarPos.x, naarPos.z)) continue;
+    const dx = wp.punt.x - vanPos.x, dz = wp.punt.z - vanPos.z;
+    const afstandKw = dx * dx + dz * dz;
+    if (afstandKw < besteAfstandKw) { beste = wp.punt; besteAfstandKw = afstandKw; }
+  }
+  return beste;
+}
+
 // Performance-audit (feedback): hergebruikte temp-vectors voor
 // updateOndoden() hieronder, i.p.v. 7 `new THREE.Vector3()`-allocaties per
 // ondode per frame (bij 14 ondoden op 60fps ~5.900 objecten/s voor de
@@ -4815,24 +4885,17 @@ function updateOndoden(dt) {
     // speler ondergronds is en de ondode ergens in het atelier staat: het
     // doel is dan al meteen speler.positie zelf (zie doelPunt hieronder),
     // geen aparte gating- of dwaal-logica nodig.
-    // Feedback: binnen zone 4 zelf zit nog een eigen chokepoint — de smalle
-    // gang-opening naar de gracht (Ticket 52). Staat de ondode en de speler
-    // aan weerszijden daarvan (één in de open bijkeuken, de ander in de
-    // smalle gang/vlonder), stuur dan eerst naar de opening i.p.v.
-    // rechtstreeks (dat liep dwars tegen de muur naast de opening aan).
-    // Bugfix (feedback): GRACHTGANG_X_WEST (x=12) alleen is GEEN betrouwbare
-    // "in de gracht"-test — een groot deel van zone 3 (binnenplaats, x loopt
-    // van DEUR2_X tot PLAATS_X_OOST, ruim over de 12 heen) ligt OOK op
-    // x >= 12. Zonder de zone-guard hieronder werd een ondode op de
-    // binnenplaats (zone 3, aan de x<12-kant) foutief naar GRACHTGANG_DREMPEL
-    // gestuurd zodra de speler ergens op x>=12 van diezelfde binnenplaats
-    // stond — i.p.v. rechtstreeks op de speler af, precies het gemelde
-    // "zombies lopen naar de zuidwesthoek i.p.v. naar mij"-symptoom. Deze
-    // chokepoint-logica hoort dus ALLEEN te gelden binnen zone 4 zelf.
-    const inZoneVier = eigenZone === 4;
-    const eigenInGracht = inZoneVier && positie.x >= GRACHTGANG_X_WEST;
-    const spelerInGracht = inZoneVier && speler.positie.x >= GRACHTGANG_X_WEST;
-    const doelPunt = volgendeDeur || (eigenInGracht !== spelerInGracht ? GRACHTGANG_DREMPEL : speler.positie);
+    // Ticket 65: binnen dezelfde zone kan er nog een intra-zone-chokepoint
+    // zitten (bv. de smalle gang-opening naar de gracht in zone 4) — de
+    // generieke ZONE_WAYPOINTS/zoekWaypoint-laag (Ticket 64) vervangt hier de
+    // oude ad-hoc eigenInGracht/spelerInGracht/inZoneVier-special-case.
+    // zoekWaypoint kijkt zelf naar `eigenZone` (de zone van de ondode zelf,
+    // niet spelerZone) en heeft alleen een entry voor zone 4 — exact hetzelfde
+    // gedrag als voorheen, inclusief de eerder gefixte bug dat dit NOOIT mag
+    // gelden voor zone 3 (binnenplaats), ook al ligt een deel daarvan ook op
+    // x >= GRACHTGANG_X_WEST (zie de zijde-check op ZONE_WAYPOINTS[4]).
+    const tussenWaypoint = volgendeDeur ? null : zoekWaypoint(eigenZone, positie, speler.positie);
+    const doelPunt = volgendeDeur || tussenWaypoint || speler.positie;
     const naarDoel = _tmpNaarDoel.subVectors(doelPunt, positie).setY(0);
 
     // Bij een lopende ontwijk-burst mengt de ondode een groot, vast aandeel
@@ -6934,6 +6997,9 @@ window.AmsterdamUndeadDebug = {
   // Ticket 28 (Map-lus M5): zone-navigatie als graaf
   zoneVan, ZONE_GRAAF, herbouwNavTabel,
   get NAV_VOLGENDE() { return NAV_VOLGENDE; },
+  // Ticket 64/65: intra-zone waypointgraaf (vervangt de oude ad-hoc
+  // gracht-chokepoint-special-case, zie ARCHITECTURE_NOTES.md §7.6)
+  ZONE_WAYPOINTS, zoekWaypoint,
   // Ticket 30 (Aanval A1): aanvals-state-machine met wind-up
   AANVAL_PROFIELEN, AANVAL_START_BEREIK, AANVAL_DRAAI_SNELHEID, AANVAL_START_JITTER,
   AANVAL_HERSTEL_SNELHEIDSFACTOR, MAX_AANVALLERS,
