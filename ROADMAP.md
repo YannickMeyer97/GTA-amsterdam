@@ -3023,6 +3023,79 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
   altijd leeg"-test, voor het scenario waarin de speler nooit afdaalt)
   bleef ongewijzigd en slaagt nog steeds. Volledige regressie: 42/42
   groen.
+
+  **Feedbackronde 3a (balans): "dichtbij de deur"-afstand van 3,5 naar
+  6 meter.** `KELDER_NABIJ_AFSTAND` op verzoek verhoogd, zodat meer
+  ondoden die rond de trap staan meekomen. Neveneffect: bij de grotere
+  straal kon het willekeurige dwaalgedrag (`kiesWanderDoel()`, 2-6 m per
+  stap) een "ver weg"-testondode tijdens een 10 s-simulatie legitiem
+  binnen de nieuwe 6 m-cirkel laten drijven — correct spelgedrag, maar
+  het maakte `tests/test-kelder-trap.mjs` sectie 11 flaky. Opgelost door
+  de teststartpositie te verplaatsen naar de zuidoosthoek van het
+  atelier (~20 m van de deur i.p.v. ~11,6 m), ruim buiten bereik van elke
+  realistische dwaal-drift. Stabiel bevestigd over meerdere herhaalde
+  runs; volledige regressie: 42/42 groen.
+
+  **Feedbackronde 3b (verlichting): kelder-helderheid t.o.v. de
+  woonkamer, ook tijdens Stroomuitval.** Zie ARCHITECTURE_NOTES.md
+  §7.5.5 voor de volledige onderbouwing. Samengevat: de kelder was in
+  beide standen merkbaar donkerder dan de woonkamer (beginruimte); op
+  verzoek ("allebei, met kleinere stappen in elk") zowel de
+  wand-/vloerkleur iets opgelicht als de kamerlampen iets sterker
+  gemaakt, plús een nieuw per-lamp `stroomVloer`-mechanisme (zelfde
+  vloer-patroon als `HEMISFEER_STROOM_VLOER`) dat de twee
+  kelder-kamerlampen tijdens Stroomuitval een hogere dim-vloer geeft
+  zonder de normale-stand-helderheid te raken. Resultaat: normale stand
+  ~89% zo licht als de woonkamer (ratio 0,89), Stroomuitval ~101% (ratio
+  1,01) — beide dicht bij pariteit. `tests/test-stroomuitval.mjs`
+  uitgebreid met een neutraliteitscheck (vóór Stroomuitval) en een
+  vloer-formule-check (tijdens Stroomuitval). Volledige regressie:
+  42/42 groen.
+
+  **Feedbackronde 3c (formaat + balans): kelder gehalveerd, volgafstand
+  naar 12 m.** Op verzoek ("veel te groot"): de kelderbreedte (richting
+  het westen) gehalveerd van 15 naar 7,5 m, de lengte (noord-zuid, 9,9 m)
+  ongewijzigd — 74,25 m² i.p.v. 148,5 m². Pantserdrank verschoven van
+  `KELDER_X_WEST + 6` naar `+4` zodat hij goed gecentreerd blijft (4 m van
+  de westmuur, 3,5 m van de oostmuur/trapkoker) i.p.v. te dicht tegen de
+  oostmuur van de nu kleinere kamer aan te staan; de twee kamerlampen kregen om
+  dezelfde reden nieuwe, kleinere offsets (anders vielen ze exact samen).
+  `KELDER_NABIJ_AFSTAND` nogmaals verhoogd, 6 -> 12 m. Zie
+  ARCHITECTURE_NOTES.md §7.5.6 voor de volledige onderbouwing, inclusief
+  waarom de "ver weg"-test in `test-kelder-trap.mjs` sectie 11 een kortere
+  simulatieduur (30 i.p.v. 100 ticks) nodig had om deterministisch te
+  blijven bij de kleinere veiligheidsmarge van de grotere straal.
+  Volledige regressie: 42/42 groen in `test-kelder-trap.mjs` (4x herhaald),
+  41/42 in de volledige suite — de ene overgebleven fail
+  (`test-ontsnapping-vensters.mjs`) is bevestigd pre-existing en
+  losstaand van deze wijziging (faalt identiek op de ongewijzigde code).
+
+  **Feedbackronde 3d (balans + verlichting): kelder-restrictie volledig
+  verwijderd, 20% donkerder.** Twee onafhankelijke wijzigingen op
+  verzoek. (1) De hele gedeeltelijke-toegangsmechaniek uit
+  Feedbackronde 2 en 3c — `KELDER_NABIJ_AFSTAND`, `kiesWanderDoel()`,
+  het "boven blijven dwalen"-gedrag (`wachtBoven`/`wanderDoel`/
+  `wanderTimer`) — is volledig verwijderd: elke ondode krijgt nu simpelweg
+  altijd dezelfde `magKelderBinnen=true`-doorgifte als de speler, zonder
+  afstandsdrempel. (2) De kelderkleuren (`KELDER_TINT` en de vloerkleur)
+  zijn verdonkerd tot ~20% lagere gemeten pixelhelderheid. Zie
+  ARCHITECTURE_NOTES.md §7.5.7 voor de volledige onderbouwing, inclusief
+  waarom sectie 11 van `test-kelder-trap.mjs` is herschreven (test nu het
+  NIEUWE onbeperkte gedrag i.p.v. de oude afstandsgating) en waarom
+  `test-stroomuitval.mjs` ongewijzigd groen blijft (test alleen
+  lichtintensiteit-fracties, niet renderkleur). Volledige regressie:
+  `test-kelder-trap.mjs` 37/37 groen (3x herhaald), `test-stroomuitval.mjs`
+  36/36 groen, volledige suite 41/42 — de ene overgebleven fail is
+  opnieuw de pre-existing `test-ontsnapping-vensters.mjs`-timing-flake.
+
+  **Feedbackronde 3e (verlichting): kelder nog eens ~18% donkerder.** Op
+  verzoek ("nog 15-20% donkerder") bovenop de kleuren uit Feedbackronde
+  3d: `KELDER_TINT`/vloerkleur nogmaals verlaagd, iteratief getuned met
+  dezelfde pixelmeting (3 metingen om de niet-lineaire albedo/helderheid-
+  relatie te compenseren, zie ARCHITECTURE_NOTES.md §7.5.8), uitkomend op
+  ~18,1% donkerder dan de vorige ronde — binnen de gevraagde 15-20%.
+  Volledige regressie: `test-kelder-trap.mjs` 37/37, `test-stroomuitval.mjs`
+  36/36, volledige suite 42/42 groen.
 - **Afhankelijk van:** T62
 - **Doel:** de kelder vullen met passend decor/een interactiepunt en
   hem architecturaal borgen als permanente zombie-vrije zone.

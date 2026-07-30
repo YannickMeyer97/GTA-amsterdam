@@ -2208,6 +2208,299 @@ en slaagt nog steeds: die simuleert een speler die nooit ondergronds
 komt, en voor dat scenario is er inderdaad niets veranderd. Volledige
 regressie: 42/42 groen.
 
+#### 7.5.5 Herziening (feedback): kelder-helderheid t.o.v. de woonkamer
+
+**Feedback:** "Hoe fel is het licht in de kelder tijdens Stroomuitval?
+ik wil dat dit ongeveer 5-10% donkerder is dan het atelier." Meting met
+Playwright + pixel-helderheid (zelfde methode als elders in dit
+document: schermafbeelding → gemiddelde luminantie van een
+vloer-steekproef, `0.2126*r + 0.7152*g + 0.0722*b`) liet zien dat de
+kelder tijdens een Stroomuitval destijds ~93% donkerder was dan het
+atelier — geen 5-10%, een orde van grootte mis. Na deze meting is
+gevraagd om in plaats daarvan te vergelijken met de **woonkamer** (de
+beginruimte): "Ik wil dat de kelder ongeveer even licht is als de
+beginruimte in normale en lichtuitval stand. is dat nu al zo? bekijk
+dit en geef me dan opties." Ook dat bleek niet zo (kelder fors donkerder
+in beide standen). Van de aangeboden opties (kleuren verder ophogen /
+lampen sterker maken / gecombineerde aanpak) is gekozen: "Allebei, met
+kleinere stappen in elk."
+
+**Grondoorzaak:** materiaalkleur (albedo) is een harde bovengrens voor
+haalbare helderheid — diffuse reflectie is multiplicatief met de
+basiskleur, dus een donkere steenkleur kan nooit even licht ogen als
+een lichte kleur bij gelijke belichting. De kelder-wanden (`KELDER_TINT`)
+en -vloer waren aanzienlijk donkerder gekozen dan de woonkamer-kleuren,
+wat samen met de al bestaande, per-lamp gedimde `stroomFactor`-vloer
+(die kelderlampen precies zo hard liet dimmen als elke andere hanglamp)
+de dubbele oorzaak was.
+
+**Aanpak, in kleine stappen zoals gevraagd:** drie hefbomen tegelijk,
+elk met een bescheiden stap, iteratief gemeten en bijgesteld:
+1. `KELDER_TINT` (wanden) en de kelder-vloerkleur geleidelijk
+   opgelicht: `0x4a443c → 0x7d7366 → 0x8c8171` (wanden),
+   `0x3d352c → 0x6b5d4d → 0x7d6d5a` (vloer).
+2. De twee kamer-hanglampen in de kelder iets sterker en met iets meer
+   bereik: `intensiteit 18 → 22`, `bereik 10 → 10.5`.
+3. Een nieuw, per-lamp mechanisme specifiek voor Stroomuitval-gedrag:
+   `stroomVloer`.
+
+**`stroomVloer`: dezelfde vloer-aanpak als `HEMISFEER_STROOM_VLOER` e.a.,
+nu ook per lamp.** In plaats van kelderlampen tijdens een Stroomuitval
+even hard te laten dimmen als alle andere lampen, krijgen de twee
+kamerlampen een eigen, hogere dim-vloer:
+
+```js
+const stroomFactorVoorLamp = l.stroomVloer === undefined
+  ? stroomFactor
+  : l.stroomVloer + (1 - l.stroomVloer) * stroomFactor;
+l.licht.intensity = l.basis * Math.max(l.minFactor, factor) * lampDipFactor * stroomFactorVoorLamp;
+```
+
+Dit is exact hetzelfde patroon als het bestaande
+`HEMISFEER_STROOM_VLOER`/`EXPOSURE_STROOM_VLOER`/`BUITEN_STROOM_VLOER`
+(`VLOER + (1-VLOER)*stroomFactor`), nu toegepast per lamp via een
+optioneel veld op het `lampLichten`-item (`undefined` = geen effect,
+bestaand gedrag ongewijzigd). Het cruciale voordeel van dit
+vloer-patroon: het is wiskundig neutraal (`=1`) zolang `stroomFactor=1`
+(normale stand), en heeft alléén effect zodra `stroomFactor` richting
+zijn gedimde minimum zakt. `kelderLamp()` kreeg een optioneel
+`stroomVloer`-argument dat wordt doorgegeven aan het `lampLichten`-item;
+de trap-lamp laat dit argument weg (blijft bewust net zo dof als
+voorheen — "klein beetje verlichting" bij de trap, zie §7.5.3).
+
+**Eerdere misstap, zelf ontdekt en gecorrigeerd:** de eerste
+implementatie gebruikte een onvoorwaardelijke `stroomExtra`-vermenigvuldiger
+(`* (l.stroomExtra ?? 1)`) die **altijd** meetelde, ook in de normale
+stand. Gecombineerd met de opgehoogde lampintensiteit en lichtere
+kleuren schoot de normale-stand-helderheid daardoor fors door (kelder
+werd ~35% líchter dan de woonkamer i.p.v. gelijk). Dit is bij de eigen
+meting opgevallen vóórdat het aan de gebruiker werd voorgelegd, en
+opgelost door over te stappen op de vloer-gebaseerde `stroomVloer` —
+consistent met het bestaande codebase-patroon in plaats van een nieuw,
+niet-neutraal mechanisme te verzinnen.
+
+**Iteratieve afstelling** (kleine stappen, telkens opnieuw gemeten):
+na meerdere rondes van bijstellen van kleur, lampintensiteit/-bereik en
+`stroomVloer` (eindwaarde `0.36`, na tussenstappen `0.55` en `0.48`)
+kwamen beide verhoudingen (kelder-luminantie / woonkamer-luminantie)
+dicht bij 1,0 uit:
+- **Normale stand:** kelder ~50,1 vs. woonkamer ~56,2 → ratio ~0,89
+  (kelder ca. 11% donkerder — een redelijke "ongeveer" match).
+- **Stroomuitval:** kelder ~10,3 vs. woonkamer ~10,3 → ratio ~1,01
+  (nagenoeg exacte pariteit).
+
+**Testresultaat:** `tests/test-stroomuitval.mjs` uitgebreid met:
+sectie 1b (vóór elke Stroomuitval-activatie) bevestigt dat
+`stroomVloer` geen enkel effect heeft zolang `stroomFactor === 1` (de
+kelder-lampfractie en een gewone-lampfractie liggen binnen 0,15 van
+elkaar — ruimer dan de `<0,02` van de niet-flikkerende
+hemisfeer/exposure/buiten-checks, omdat kelderlampen wél een eigen
+per-lamp flikker-fase hebben); sectie 4 bevestigt tijdens een actieve
+Stroomuitval-tick dat er precies twee kelder-kamerlampen met
+`stroomVloer === 0.36` zijn, dat hun fractie rond
+`0,36 + 0,64×0,12 = 0,4368` ligt (`<0,1` tolerantie, zelfde
+flikker-reden) en dat ze merkbaar minder hard dimmen dan een gewone
+hanglamp. Volledige regressie: 42/42 groen.
+
+#### 7.5.6 Herziening (feedback): kelder gehalveerd + volgafstand naar 12m
+
+**Feedback:** "De kelder is veel te groot, maar de kelder ongeveer de helft
+zo diep naar het westen (breedte). De lengte mag hetzelfde blijven.
+Verplaats de pantserdrank iets naar het oosten zodat deze goed in de
+kelder blijft. De zombies mogen me tot 12 meter volgen in de kelder, pas
+dit aan." Drie aparte, met elkaar samenhangende wijzigingen.
+
+**1) Breedte gehalveerd, lengte ongewijzigd.** `KELDER_X_WEST` (de
+westmuur, het enige punt dat de X-breedte van de kamer bepaalt — de
+oostmuur ligt vast bij `KELDERTRAP_X_ONDER`, aan de trap) ging van
+`KELDERTRAP_X_ONDER - 15` naar `KELDERTRAP_X_ONDER - 7.5`: de westmuur
+schuift 7,5 m naar het oosten, de kamer krimpt dus uitsluitend aan de
+westkant. `KELDER_Z_NOORD`/`KELDER_Z_ZUID` (de noord-zuidlengte, 9,9 m)
+zijn niet aangeraakt. Omdat `kamerCX`/`kamerBreedteX`/`kelderVloer`/
+`kelderPlafond`/`kelderWand(...)` allemaal afgeleid zijn van
+`KELDER_X_WEST` in plaats van een losse hardcoded breedte, volgde de hele
+geometrie automatisch mee — geen enkele meshdefinitie hoefde apart te
+worden aangepast. Resultaat: 7,5 x 9,9 = 74,25 m² (exact de helft van de
+vorige 148,5 m²).
+
+**2) Decor herpositioneren — waarom dat NIET vanzelf ging.** Twee stukken
+decor waren met een vaste offset gedefinieerd (`KELDER_X_WEST + N` of
+`KELDERTRAP_X_ONDER - N`), gecalibreerd op de oude 15m-breedte:
+- De twee kamerlampen stonden op `KELDERTRAP_X_ONDER - 3.5` en
+  `KELDER_X_WEST + 4`. Bij de nieuwe 7,5m-breedte zijn dat *exact dezelfde
+  absolute positie* (`KELDER_X_WEST + 4 === KELDERTRAP_X_ONDER - 3.5`
+  wanneer breedte = 7,5) — de twee lampen zouden op elkaar vallen. Fix:
+  offsets herschaald naar `KELDERTRAP_X_ONDER - 2` en `KELDER_X_WEST + 2`
+  (elk 2 m van de dichtstbijzijnde muur, 3,5 m van elkaar) — bewust een
+  kleinere, symmetrische afstand die past bij de kleinere kamer, in
+  plaats van de oude (te grote) offsets te laten staan.
+- **Pantserdrank** stond op `KELDER_X_WEST + 6` (6 m van de westmuur, dus
+  9 m van de oostmuur/trapkoker in de oude kamer). Met de nieuwe, dichter-
+  bij-de-trap-liggende westmuur zou diezelfde offset (`+6`) hem nog maar
+  3,5 m van de oostmuur zetten — te krap, en in absolute coördinaten een
+  significante sprong. Op verzoek is de offset verkleind naar `+4`: nu
+  4 m van de westmuur en 3,5 m van de oostmuur/trapkoker, goed
+  gecentreerd in de kleinere kamer. Genummerd geverifieerd via
+  Playwright (`d.KELDERTRAP_X_ONDER - d.PANTSERDRANK_X` = 3,5;
+  `d.PANTSERDRANK_X - d.KELDER_X_WEST` = 4) en visueel via een
+  screenshot vanaf de westmuur: de fust staat duidelijk vrij van beide
+  muren.
+- De wijnrek/kratten (`KELDER_X_WEST + 0.5`/`+1.3`) stonden altijd al
+  vlak tegen de westmuur aan en zijn ongemoeid gelaten — die blijven met
+  de muur meeschuiven, precies zoals bedoeld.
+
+**3) `KELDER_NABIJ_AFSTAND` 6 → 12 m.** Zelfde constante als de eerdere
+herziening in §7.5.4 (toen van 3,5 naar 6 m gezet); nu nogmaals verhoogd
+op verzoek. Geen codewijziging nodig buiten de constante zelf — de
+grant-logica in `updateOndoden()` gebruikt hem al puur als
+straal-vergelijking.
+
+**Testgevolg: de "ver weg"-test in sectie 11 moest opnieuw worden
+aangescherpt.** Deze test (zie ook §7.5.4's flakiness-fix) plaatst een
+ondode in de fysieke zuidoosthoek van het atelier — de verst haalbare
+plek binnen zone 2, zo'n 20,1 m hemelsbreed van het deurgat — en simuleert
+daarna een aantal ticks om te bevestigen dat hij nooit `magKelderBinnen`
+krijgt. Met de straal nu op 12 m (was 6 m) slinkt de marge tussen
+"startafstand" en "stralen" van 14,1 m naar 8,1 m. Omdat dit al de
+fysieke hoek van de zone is, kan de teststartpositie niet verder weg
+gezet worden om de marge te herstellen. In plaats daarvan is de
+simulatieduur verkort van 100 naar 30 ticks (10 s → 3 s): bij
+`ONDODE_SNELHEID` (1,5 m/s) is de theoretisch maximale verplaatsing in
+3 s slechts 4,5 m, ruim onder de 8,1 m marge — het willekeurige
+dwaalgedrag (`kiesWanderDoel`, 2-6 m per stap) kan de ondode dus
+onmogelijk binnen bereik van de deur brengen binnen het testvenster,
+ook al zou de RNG daarbij precies meewerken. De kortere simulatieduur is
+nog steeds ruim voldoende voor de overige checks in die sectie (de
+"dichtbij"-ondode krijgt binnen 1 tick al toegang, aangezien hij al bij
+het deurgat gespawnd wordt; "beweegt merkbaar" (>0,3 m) wordt in 3 s bij
+1,5 m/s makkelijk gehaald). Stabiel bevestigd over 4 herhaalde runs.
+
+**Overige testaanpassingen:** sectie 7 (kelderafmetingen) checkt nu
+expliciet dat de breedte 7,5 m is, de lengte 9,9 m (ongewijzigd) en het
+oppervlak 74,25 m² — in plaats van de oude "atelier + 10%"-vergelijking,
+die na deze herziening niet meer klopt (de kamer is niet langer
+schaalgebonden aan het atelier).
+
+**Volledige regressie:** 42/42 groen in `test-kelder-trap.mjs` (4x
+herhaald voor stabiliteit) en 41/42 in de volledige suite — de ene
+overgebleven fail (`test-ontsnapping-vensters.mjs`, een wall-clock-
+gevoelige timing-check rond `ONTSNAPPING_AANKONDIGING_DUUR`) is
+geverifieerd **pre-existing en losstaand** van deze wijziging: dezelfde
+test faalt identiek op de ongewijzigde, reeds gecommitte code (bevestigd
+via `git stash`).
+
+#### 7.5.7 Herziening (feedback): kelder-restrictie volledig verwijderd + 20% donkerder
+
+**Feedback:** "1. Laat alle zombies gewoon de kelder inlopen, verwijder de
+code om ze boven te laten of binnen x meter te laten volgen. 2. de kelder
+is nu redelijk licht, maak de kelder ongeveer 20% donkerder." Twee
+onafhankelijke wijzigingen.
+
+**1) Geen restrictie meer — de hele §7.5.2/§7.5.4/§7.5.6-mechaniek
+verwijderd.** Sinds T63 (§7.5.2) kon geen ondode ooit de kelder in; sinds
+de eerste herziening (§7.5.4) mocht een ondode die al dichtbij het
+deurgat stond mee naar beneden (`KELDER_NABIJ_AFSTAND`, later opgehoogd
+in §7.5.6), terwijl wie verder weg stond boven bleef dwalen
+(`wachtBoven`/`kiesWanderDoel`/`wanderDoel`/`wanderTimer`). Op expliciet
+verzoek is dit hele systeem nu verwijderd: `updateOndoden()` geeft voor
+elke ondode gewoon **altijd** `magKelderBinnen=true` door aan
+`losBotsingenOp()` en werkt `positie.y` altijd bij via
+`berekenKelderY()` — exact hetzelfde patroon als de speler in
+`updateSpeler()`, zonder enige uitzondering. Verwijderd: de
+`KELDER_NABIJ_AFSTAND`-constante, de `kiesWanderDoel()`-functie, en de
+`magKelderBinnen`/`wanderDoel`/`wanderTimer`-velden op het
+`ondode`-object (die bestaan niet meer — een ondode heeft simpelweg geen
+per-instance kelder-state meer nodig, precies zoals vóór T63's
+gedeeltelijke-toegang-herziening).
+
+**Waarom dit veilig is zonder extra guards.** `losBotsingenOp()` behoudt
+zijn `magKelderBinnen = false`-default als verdedigingslinie voor de
+primitive zelf (getest in `test-kelder-trap.mjs` sectie 8), maar de
+productiecode roept hem nooit meer zonder het param aan. Vóór de aankoop
+van deur 5 blokkeert `deur5Obstakel` het deurgat nog steeds fysiek — dat
+obstakel-mechanisme is volledig los van `magKelderBinnen` — dus ondoden
+kunnen ook nu niet naar binnen vóórdat de speler de deur heeft gekocht.
+Na aankoop volgen ondoden gewoon `speler.positie` (binnen dezelfde zone,
+zie `doelPunt`), en `zoneVan()` kent de kelder geen eigen zone-id toe,
+dus zodra de speler er is, is dat automatisch ook het navigatiedoel van
+elke ondode in zone 2 — geen aparte "ga naar de kelder"-logica nodig.
+
+**Testgevolg:** sectie 11 van `test-kelder-trap.mjs` (voorheen
+"kelder-balans": dichtbij kreeg toegang, ver weg dwaalde rond) is
+vervangen door een test die precies het NIEUWE gedrag bevestigt: zowel
+een ondode vlak bij de deur als een ondode in de fysieke zuidoosthoek van
+het atelier (~20 m hemelsbreed, exact de positie die voorheen juist
+NOOIT toegang kreeg) bereiken nu allebei de kelder en dalen af, binnen
+een ruim bemeten simulatievenster (600 ticks / 60 sim-seconden — bij
+`ONDODE_SNELHEID` 1,5 m/s ruim voldoende voor de ~20 m plus de trap).
+Sectie 8 is hernoemd/herschreven om te verduidelijken dat hij nu de
+`losBotsingenOp()`-primitive test (default-veiligheid), niet meer
+"exact zoals de productiecode het doet" (want dat doet de productiecode
+niet meer — die geeft altijd expliciet `true` door). Sectie 10 (de oude
+"kelder blijft leeg tijdens golven"-test, voor het scenario waarin de
+speler nooit afdaalt) bleef ONGEWIJZIGD en slaagt nog steeds: die test
+zet de speler nooit onder y=0, dus ondoden die gewoon `speler.positie`
+volgen, komen ook nooit in de buurt van de trap — geen aparte guard
+nodig om dat te garanderen, het volgt vanzelf uit "ze lopen naar de
+speler, en de speler is er niet."
+
+**2) Kelder ~20% donkerder.** Kleuren zijn de hefboom (niet de
+lampintensiteit): `KELDER_TINT` (wanden) `0x8c8171 -> 0x776e60`, de
+keldervloer `0x7d6d5a -> 0x6a5d4d`. Empirisch getuned met dezelfde
+pixelmeting-methode als eerder in dit document (screenshot vanuit het
+midden van de kelderruimte, luminantie `0.2126r+0.7152g+0.0722b`
+gemiddeld over het onderste deel van het beeld): een eerste gok van
+factor 0,8 op alle RGB-kanalen bleek 27% donkerder op te leveren
+(overshoot — de resulterende helderheid schaalt niet lineair met de
+albedo-factor, vermoedelijk doordat de kamerlampen zelf een
+factor-onafhankelijke lichtbijdrage toevoegen). Teruggerekend naar
+factor ≈0,851 kwam de meting op ~21% donkerder uit (61,4 -> 48,2),
+binnen de gevraagde "ongeveer 20%". De Stroomuitval-`stroomVloer`-
+mechaniek (§7.5.5) en de lampintensiteit/-bereik zijn ongemoeid gebleven
+— dit is puur een albedo-aanpassing, dus zowel de normale als de
+Stroomuitval-stand worden proportioneel donkerder (bevestigd doordat
+`test-stroomuitval.mjs` — die uitsluitend de lichtintensiteit-fracties
+test, niet de renderkleur — ongewijzigd 36/36 groen blijft).
+
+**Volledige regressie:** `test-kelder-trap.mjs` 37/37 groen (3x herhaald
+voor stabiliteit), `test-stroomuitval.mjs` 36/36 groen, volledige suite
+41/42 — de ene overgebleven fail is opnieuw `test-ontsnapping-
+vensters.mjs`, dezelfde pre-existing timing-flake als in §7.5.6 (een
+losse herhaling liet ook `test-golf-variatielimiter.mjs` ooit falen: een
+bekende kansafhankelijke assertie over 300 willekeurige golf-profielen
+die op zichzelf, in isolatie, 3x op rij foutloos slaagde — eveneens
+losstaand van deze wijziging).
+
+#### 7.5.8 Herziening (feedback): kelder nog eens 15-20% donkerder
+
+**Feedback:** "maak de kelder nog 15-20% donkerder" — bovenop de
+20%-verdonkering uit §7.5.7. Zelfde hefboom (wand-/vloerkleur), zelfde
+pixelmeting-methode (screenshot vanuit het midden van de kelderruimte,
+luminantie gemiddeld over het onderste deel van het beeld).
+
+**Iteratieve tuning (3 metingen):**
+1. Baseline (kleuren uit §7.5.7, `0x776e60`/`0x6a5d4d`): 47,39.
+2. Eerste gok, kleurfactor 0,87 (`0x686054`/`0x5c5143`): 41,93 — slechts
+   11,5% donkerder, te weinig.
+3. Tweede gok, kleurfactor 0,87² ≈0,757 vanaf de baseline
+   (`0x635b50`/`0x574d40`): 37,36 — 21,2% donkerder, net iets te veel.
+4. Lineair geïnterpoleerd tussen meting 2 en 3 naar het midden van de
+   gevraagde 15-20%-range (18%): `0x655d51`/`0x594e41`, uitkomend op
+   **38,83 — 18,1% donkerder dan de §7.5.7-kleuren**, binnen de gevraagde
+   marge.
+
+Zelfde niet-lineariteit als in §7.5.7 (een kleurfactor van bv. 0,87 geeft
+NIET automatisch 13% minder helderheid — de kamerlampen zelf dragen een
+factor-onafhankelijk deel bij), dus ook hier was directe berekening
+onvoldoende en was een tweede meetronde nodig.
+
+**Volledige regressie:** `test-kelder-trap.mjs` 37/37 groen,
+`test-stroomuitval.mjs` 36/36 groen (bevestigt opnieuw dat de
+Stroomuitval-lichtfracties ongemoeid blijven — puur een albedo-aanpassing),
+volledige suite 42/42 groen (de eerder bekende `test-ontsnapping-
+vensters.mjs`-timing-flake trad deze run niet op, consistent met een
+wall-clock-gevoelige flake i.p.v. een structurele regressie).
+
 ### 7.6 Verbetergebied 3 — Vijandintelligentie
 
 #### 7.6.1 Waypoint-navigatiegraaf — architectuur (beslissing 57)

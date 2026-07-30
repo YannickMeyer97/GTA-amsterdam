@@ -22,6 +22,30 @@ check('kiesEventType(): golf 5/15/25 = mist, golf 10/20/30 = stroomuitval',
   afwisseling[10] === 'stroomuitval' && afwisseling[20] === 'stroomuitval' && afwisseling[30] === 'stroomuitval',
   afwisseling);
 
+// --- 1b. Feedback: `stroomVloer` (kelder-kamerlampen) moet NEUTRAAL zijn
+// buiten een Stroomuitval — vóórdat sectie 2 hieronder stroomFactor dimt,
+// moet de kelder-lamp-fractie hetzelfde zijn als een gewone hanglamp
+// (beide gestuurd door dezelfde stroomFactor=1, dus geen enkel effect van
+// stroomVloer op de normale stand). -----------------------------------------
+const voorStroomuitval = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const kelderLamp = d.lampLichten.find(l => l.stroomVloer !== undefined);
+  const gewoneLamp = d.lampLichten.find(l => l.stroomVloer === undefined);
+  return {
+    stroomFactor: d.stroomFactor,
+    kelderFractie: kelderLamp.licht.intensity / kelderLamp.basis,
+    gewoneFractie: gewoneLamp.licht.intensity / gewoneLamp.basis,
+  };
+});
+check('Vóór elke Stroomuitval is stroomFactor nog 1',
+  voorStroomuitval.stroomFactor === 1, voorStroomuitval);
+// Ruimere tolerantie: beide lampen hebben een eigen willekeurige flikkerfase
+// (amp1/amp2 op de sinus), dus een klein verschil op een willekeurig moment
+// is normaal — het gaat hier puur om "geen structurele afwijking van
+// stroomVloer", niet om identieke waarden.
+check('stroomVloer heeft GEEN effect in de normale stand: kelder-lampfractie ≈ gewone-lampfractie',
+  Math.abs(voorStroomuitval.kelderFractie - voorStroomuitval.gewoneFractie) < 0.15, voorStroomuitval);
+
 // --- 2. startGolf() op golf 10 zet actieveEventGolf + eigen banner --------
 const startStroom = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
@@ -86,6 +110,33 @@ check('Het ECHTE puntlicht van een hanglamp is ook duidelijk gedimd (< 20% van d
 check('Alle vier de ateliers-dakramen volgen exact stroomFactor * DAKRAAM_STROOM_EXTRA (0.12 * 0.55 = 0.066)',
   naEchteTick.daklichtenFracties.length === 4 &&
   naEchteTick.daklichtenFracties.every(f => Math.abs(f - 0.12 * 0.55) < 0.005), naEchteTick);
+// Feedback: de kelder moet ongeveer even licht als de startkamer blijven,
+// óók tijdens een Stroomuitval — pixelmeting liet zien dat de generieke
+// 12%-vloer (net als de startkamer-lampen) de kelder véél te donker liet
+// worden t.o.v. het atelier/de startkamer (materiaalverschil, zie
+// ARCHITECTURE_NOTES.md §7.5.1-addendum). De twee kelder-kamerlampen kregen
+// daarom een eigen `stroomVloer` (0,36) — zelfde formulepatroon als
+// HEMISFEER_STROOM_VLOER, dus NEUTRAAL (fractie 1) bij stroomFactor=1, en
+// een hogere fractie dan de generieke 12% zodra een Stroomuitval actief is.
+const kelderLampenTick = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const kelderLampen = d.lampLichten.filter(l => l.stroomVloer !== undefined);
+  return {
+    aantal: kelderLampen.length,
+    fracties: kelderLampen.map(l => l.licht.intensity / l.basis),
+    stroomVloerWaarden: kelderLampen.map(l => l.stroomVloer),
+  };
+});
+check('Er zijn precies 2 kelder-kamerlampen met een eigen stroomVloer',
+  kelderLampenTick.aantal === 2 && kelderLampenTick.stroomVloerWaarden.every(v => v === 0.36), kelderLampenTick);
+// Ruimere tolerantie dan de andere Stroomuitval-fracties hierboven: deze
+// lampen zitten (anders dan hemisfeer/exposure/buiten) ook nog in de
+// gewone flikkerloop (amp1/amp2 op de sinus), dus de fractie schommelt van
+// nature ±~9% rond de verwachte waarde.
+check('De kelder-kamerlampen volgen ongeveer stroomVloer + (1-stroomVloer)*stroomFactor (0.36 + 0.64*0.12 = 0.4368, ±flikker)',
+  kelderLampenTick.fracties.every(f => Math.abs(f - (0.36 + 0.64 * 0.12)) < 0.1), kelderLampenTick);
+check('De kelder-kamerlampen dimmen tijdens Stroomuitval merkbaar minder hard dan een gewone hanglamp',
+  kelderLampenTick.fracties.every(f => f > naEchteTick.lichtIntensiteitFractie), { kelderLampenTick, naEchteTick });
 // Bij STROOMUITVAL_DIM_FACTOR (0.12) is de verwachte fractie de vloer plus
 // het resterende aandeel van stroomFactor: vloer + (1-vloer)*0.12.
 check('Het algehele hemisfeerlicht volgt exact HEMISFEER_STROOM_VLOER + (1-vloer)*stroomFactor (0.35 + 0.65*0.12 = 0.428)',

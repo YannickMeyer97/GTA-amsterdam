@@ -5,10 +5,13 @@
 // van de nis-westmuur, volledig buiten GRENS. Dat is de structurele reden
 // dat berekenKelderY() weer puur functioneel kan zijn, en dat de speler
 // nergens anders op de kaart kan stijgen of dalen. Deze suite bewaakt
-// precies die drie gebruikerseisen:
+// precies die twee structurele gebruikerseisen:
 //   (1) je moet deur 5 kopen voordat je omlaag kunt,
-//   (2) de trap is de ENIGE plek waar Y ooit verandert,
-//   (3) geen ondode kan er ooit komen (§7.5.2-beslissing 55).
+//   (2) de trap is de ENIGE plek waar Y ooit verandert.
+// Een derde eis — "geen ondode kan er ooit komen" (§7.5.2-beslissing 55) —
+// is via meerdere feedbackrondes (§7.5.4, §7.5.6) uiteindelijk volledig
+// teruggedraaid: sinds §7.5.7 loopt elke ondode gewoon de kelder in, zonder
+// enige restrictie (zie sectie 11 hieronder).
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
@@ -150,7 +153,9 @@ for (const m of cameraKoppeling) {
     m.cameraXZKlopt, m);
 }
 
-// --- 7. Kelderruimte-afmetingen: atelier (9 x 15 = 135 m²) + 10% ----------
+// --- 7. Kelderruimte-afmetingen: breedte gehalveerd op feedback ("veel te
+// groot"), lengte (noord-zuid) ongewijzigd: 7,5 x 9,9 = 74,25 m² (de helft
+// van de vorige 148,5 m² = atelier + 10%) --------------------------------
 const afmetingen = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   return {
@@ -158,34 +163,39 @@ const afmetingen = await page.evaluate(() => {
     diepteZ: d.KELDER_Z_ZUID - d.KELDER_Z_NOORD,
     hoogte: d.KELDER_HOOGTE,
     kamerHoogte: d.KAMER_HOOGTE,
-    atelierOppervlak: (d.KAMER2_HALF_B * 2) * (d.GANG_Z_EIND - d.KAMER2_Z_NOORD),
     grensMinZ: d.GRENS.minZ,
     zNoord: d.KELDER_Z_NOORD,
   };
 });
-check('Kelderruimte is atelier + ~10% (148,5 m² tegen 135 m²)',
-  Math.abs(afmetingen.breedteX * afmetingen.diepteZ - afmetingen.atelierOppervlak * 1.1) < 0.5, afmetingen);
+check('Kelderruimte-breedte is gehalveerd (7,5m i.p.v. 15m)',
+  Math.abs(afmetingen.breedteX - 7.5) < 1e-9, afmetingen);
+check('Kelderruimte-lengte (noord-zuid) is ongewijzigd gebleven (9,9m)',
+  Math.abs(afmetingen.diepteZ - 9.9) < 1e-9, afmetingen);
+check('Kelderruimte-oppervlak is nu 74,25 m² (helft van de vorige 148,5 m²)',
+  Math.abs(afmetingen.breedteX * afmetingen.diepteZ - 74.25) < 0.5, afmetingen);
 check('Kelderplafond is even hoog als het atelier (KELDER_HOOGTE === KAMER_HOOGTE)',
   afmetingen.hoogte === afmetingen.kamerHoogte, afmetingen);
 check('De kelder blijft binnen GRENS.minZ, zodat de z-klem de speler niet uit de ruimte duwt',
   afmetingen.zNoord > afmetingen.grensMinZ, afmetingen);
 
-// --- 8. EIS 3 (beslissing 55): de GRENS-bypass werkt ALLEEN met expliciet
-// magKelderBinnen=true. Een ondode-achtige aanroep (het param weggelaten,
-// exact zoals updateOndoden() dat doet) mag nooit voorbij GRENS.minX komen,
-// ook niet nadat deur 5 gekocht is. ---------------------------------------
+// --- 8. losBotsingenOp()-primitive: magKelderBinnen=false (het default,
+// param weggelaten) blijft altijd geklemd op GRENS.minX. Sinds §7.5.7 geeft
+// de productiecode (updateSpeler EN updateOndoden) dit param altijd expliciet
+// als true door — niemand is meer beperkt — maar de primitive zelf houdt
+// haar eigen veilige default, als verdedigingslinie voor toekomstige
+// aanroepen die het param per ongeluk weglaten. ---------------------------
 const veiligheid = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  const ondode = { x: -10, z: d.KELDERTRAP_CZ };
-  for (let i = 0; i < 300; i++) { ondode.x -= 0.05; d.losBotsingenOp(ondode, 0.35); }
-  const speler = { x: -10, z: d.KELDERTRAP_CZ };
-  for (let i = 0; i < 300; i++) { speler.x -= 0.05; d.losBotsingenOp(speler, 0.35, true); }
-  return { ondodeX: ondode.x, spelerX: speler.x, grensMinX: d.GRENS.minX };
+  const zonderParam = { x: -10, z: d.KELDERTRAP_CZ };
+  for (let i = 0; i < 300; i++) { zonderParam.x -= 0.05; d.losBotsingenOp(zonderParam, 0.35); }
+  const metParam = { x: -10, z: d.KELDERTRAP_CZ };
+  for (let i = 0; i < 300; i++) { metParam.x -= 0.05; d.losBotsingenOp(metParam, 0.35, true); }
+  return { zonderParamX: zonderParam.x, metParamX: metParam.x, grensMinX: d.GRENS.minX };
 });
-check('Ondode-pad (zonder magKelderBinnen) blijft altijd geklemd op GRENS.minX, ook na aankoop',
-  veiligheid.ondodeX >= veiligheid.grensMinX - 1e-9, veiligheid);
-check('Speler-pad (met magKelderBinnen) mag wél voorbij GRENS.minX de kelder in',
-  veiligheid.spelerX < veiligheid.grensMinX, veiligheid);
+check('losBotsingenOp() zonder het param blijft altijd geklemd op GRENS.minX (default-veiligheid)',
+  veiligheid.zonderParamX >= veiligheid.grensMinX - 1e-9, veiligheid);
+check('losBotsingenOp() met magKelderBinnen=true mag wél voorbij GRENS.minX de kelder in',
+  veiligheid.metParamX < veiligheid.grensMinX, veiligheid);
 
 // --- 9. Pantserdrank staat in de kelder en is alleen daar bruikbaar -------
 const pantserdrank = await page.evaluate(() => {
@@ -271,78 +281,52 @@ check('Tijdens 600 simulatieframes (met speler die van zone wisselt) staat NOOIT
 check('Geen enkele ondode komt ooit voorbij GRENS.minX (de onderliggende safety-clamp)',
   kelderVeiligTijdensGolven.minOndodeX >= kelderVeiligTijdensGolven.grensMinX - 1e-9, kelderVeiligTijdensGolven);
 
-// --- 11. Feedback: kelder-balans — zombies mogen naar beneden, maar niet
-// allemaal tegelijk. Zodra de speler ondergronds is (y < -0.05): (a) een
-// ondode die op dat moment al dichtbij het deurgat staat (binnen
-// KELDER_NABIJ_AFSTAND) krijgt magKelderBinnen en mag daarna, net als de
-// speler, voorbij GRENS.minX de trap/kelder in; (b) die toestemming is
-// PERMANENT (blijft staan ook als de ondode later weer ver van de deur
-// afdwaalt of de speler weer boven komt); (c) een ondode die op dat moment
-// NIET dichtbij stond, blijft geklemd op GRENS.minX en dwaalt in plaats
-// daarvan rond binnen zijn eigen zone (nooit een andere zone in). ----------
-const kelderBalans = await page.evaluate(() => {
+// --- 11. Herziening (feedback, §7.5.7): GEEN restrictie meer — elke ondode
+// loopt gewoon de kelder in, ongeacht afstand tot de deur, zodra dat de weg
+// naar de speler is. Eerdere versies van deze suite testten een
+// afstandsdrempel (KELDER_NABIJ_AFSTAND) en een "boven blijven dwalen"-
+// gedrag; die hele mechaniek is op verzoek verwijderd (zie §7.5.2/§7.5.4/
+// §7.5.6 voor de geschiedenis, §7.5.7 voor de volledige terugdraai). Deze
+// test bevestigt het nieuwe gedrag: een ondode vlak bij de deur ÉN een
+// ondode ver weg (dezelfde zuidoosthoek als voorheen, ~20m hemelsbreed)
+// bereiken allebei de kelder zodra de speler daar is en blijft. ------------
+const kelderVrijeToegang = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   for (const o of [...d.ondoden]) d.doodOndode(o);
-  // De speler kan sowieso nooit ondergronds staan zonder deur 5 gekocht te
-  // hebben (zie secties 1-7) — kopen hier houdt de simulatie representatief.
   d.spelStaat.geld = 5000;
   d.koopDeur5();
 
-  // Simuleer "speler is de trap afgedaald": een negatieve Y is voor
-  // updateOndoden() het enige signaal dat ertoe doet (spelerInKelder).
-  d.speler.positie.set(d.KELDER_X_WEST + 5, -d.KELDER_DIEPTE, (d.KELDER_Z_NOORD + d.KELDER_Z_ZUID) / 2);
+  // Speler daalt af en blijft in de kelderruimte staan.
+  const kamerCX = (d.KELDER_X_WEST + d.KELDERTRAP_X_ONDER) / 2;
+  const kamerCZ = (d.KELDER_Z_NOORD + d.KELDER_Z_ZUID) / 2;
+  d.speler.positie.set(kamerCX, -d.KELDER_DIEPTE, kamerCZ);
 
-  // A: al dichtbij het deurgat (1m) op het moment dat de speler afdaalt.
+  // A: al dichtbij het deurgat.
   const dichtbij = d.spawnOndode(0);
   dichtbij.groep.position.set(d.KAMER2_NIS_X_WEST - 1, 0, d.KELDERTRAP_CZ);
-  // B: ver weg in hetzelfde atelier (zone 2), in de zuidoosthoek — ruim
-  // buiten KELDER_NABIJ_AFSTAND, en ver genoeg dat ook het willekeurige
-  // dwaalgedrag (kiesWanderDoel, 2-6m per stap) het tijdens de simulatie
-  // hieronder onmogelijk kan binnenhalen (voorkomt een flaky test).
+  // B: ver weg in hetzelfde atelier (zone 2), de fysieke zuidoosthoek —
+  // exact de positie die eerder juist NOOIT toegang mocht krijgen.
   const verWeg = d.spawnOndode(0);
   verWeg.groep.position.set(d.KAMER2_HALF_B - 0.5, 0, d.GANG_Z_EIND - 1);
-  const eigenZoneVerWeg = d.zoneVan(verWeg.groep.position.x, verWeg.groep.position.z);
 
+  // Genoeg tijd voor de verste ondode om de ~20m af te leggen (bij
+  // ONDODE_SNELHEID 1,5 m/s theoretisch ~14s) plus de trap af te dalen:
+  // 60 sim-seconden (600 ticks) is ruim voldoende marge.
   const dt = 0.1;
-  const verWegPosities = [];
-  for (let tick = 0; tick < 100; tick++) {
-    d.updateOndoden(dt);
-    verWegPosities.push({ x: verWeg.groep.position.x, z: verWeg.groep.position.z });
-  }
-  const naVeleFrames = {
-    dichtbijMagKelderBinnen: dichtbij.magKelderBinnen,
-    dichtbijGebruiktTrap: dichtbij.groep.position.x < d.KAMER2_NIS_X_WEST && dichtbij.groep.position.y < -0.01,
-    verWegMagKelderBinnen: verWeg.magKelderBinnen,
-    verWegBleefInEigenZone: verWegPosities.every(p => d.zoneVan(p.x, p.z) === eigenZoneVerWeg),
-    verWegKwamNooitVoorbijGrens: verWegPosities.every(p => p.x >= d.GRENS.minX - 1e-9),
-    verWegBewoog: Math.hypot(
-      verWegPosities[verWegPosities.length - 1].x - verWegPosities[0].x,
-      verWegPosities[verWegPosities.length - 1].z - verWegPosities[0].z) > 0.3,
+  for (let tick = 0; tick < 600; tick++) d.updateOndoden(dt);
+
+  return {
+    dichtbijOnder: dichtbij.groep.position.y < -0.01,
+    dichtbijVoorbijDeur: dichtbij.groep.position.x < d.KAMER2_NIS_X_WEST,
+    verWegOnder: verWeg.groep.position.y < -0.01,
+    verWegVoorbijDeur: verWeg.groep.position.x < d.KAMER2_NIS_X_WEST,
+    dichtbijY: dichtbij.groep.position.y, verWegY: verWeg.groep.position.y,
   };
-
-  // Permanentie: speler komt weer boven (y=0) — dichtbij-ondode moet zijn
-  // toestemming BEHOUDEN (geen enkele plek in updateOndoden mag hem terug op
-  // false zetten).
-  d.speler.positie.set(1.8, 0, 2.2);
-  d.updateOndoden(dt);
-  const permanentieNaBovenkomst = dichtbij.magKelderBinnen;
-
-  return { ...naVeleFrames, permanentieNaBovenkomst };
 });
-check('Ondode die al dichtbij het deurgat stond, krijgt magKelderBinnen zodra de speler afdaalt',
-  kelderBalans.dichtbijMagKelderBinnen, kelderBalans);
-check('Die ondode gebruikt de trap ook echt: komt voorbij het deurgat en daalt af (y < 0)',
-  kelderBalans.dichtbijGebruiktTrap, kelderBalans);
-check('Ondode ver van de deur (zelfde zone) krijgt GEEN magKelderBinnen',
-  kelderBalans.verWegMagKelderBinnen === false, kelderBalans);
-check('Die ondode blijft ALTIJD geklemd op GRENS.minX (mag niet naar binnen)',
-  kelderBalans.verWegKwamNooitVoorbijGrens, kelderBalans);
-check('Die ondode dwaalt rond (beweegt merkbaar) i.p.v. stil te blijven staan',
-  kelderBalans.verWegBewoog, kelderBalans);
-check('Die ondode blijft tijdens het dwalen altijd in zijn EIGEN zone (geen zone-lek)',
-  kelderBalans.verWegBleefInEigenZone, kelderBalans);
-check('magKelderBinnen is PERMANENT: blijft true ook nadat de speler weer boven is',
-  kelderBalans.permanentieNaBovenkomst, kelderBalans);
+check('Ondode die al dichtbij de deur stond, loopt de kelder in en daalt af (y < 0)',
+  kelderVrijeToegang.dichtbijOnder && kelderVrijeToegang.dichtbijVoorbijDeur, kelderVrijeToegang);
+check('Ondode die ver weg stond, loopt NU OOK gewoon de kelder in en daalt af (y < 0) — geen restrictie meer',
+  kelderVrijeToegang.verWegOnder && kelderVrijeToegang.verWegVoorbijDeur, kelderVrijeToegang);
 
 const fails = report(errs);
 await browser.close();

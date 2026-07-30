@@ -950,8 +950,9 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
    begin voorschreef), maar dan op de door de gebruiker gevraagde
    SCHAAL: de hele kelder — trapkoker én kelderruimte — ligt ten westen
    van de nis-westmuur, volledig buiten GRENS, waar niets anders staat.
-   De kelderruimte is 15 x 9,9 m = 148,5 m^2: exact het atelier (9 x 15 =
-   135 m^2) + 10%, met KELDER_HOOGTE = KAMER_HOOGTE. Gevolg: Y is per
+   De kelderruimte was oorspronkelijk 15 x 9,9 m = 148,5 m^2 (atelier + 10%);
+   op feedback ("veel te groot") is de breedte richting het westen gehalveerd
+   naar 7,5 x 9,9 = 74,25 m^2, met KELDER_HOOGTE = KAMER_HOOGTE. Gevolg: Y is per
    constructie 0 voor ELKE x >= KAMER2_NIS_X_WEST — dus in de startkamer,
    de gang, het atelier, de nis, de binnenplaats en de bijkeuken kan de
    speler nooit meer stijgen of dalen. De trap is de enige plek in het
@@ -959,21 +960,26 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
 
    speler.positie.y wordt hier voor het eerst structureel gebruikt (zie
    berekenKelderY() en de camera-aanpassing in updateSpeler()). GRENS
-   zelf blijft ongewijzigd; alleen binnen de kelder-z-band mag de speler
-   voorbij GRENS.minX — uitsluitend de speler (zie de
-   magKelderBinnen-parameter in losBotsingenOp). Ondoden blijven altijd
-   bij GRENS.minX gestopt: de kelder is een permanente veilige zone
-   buiten ZONE_GRAAF, geen ondode kan er ooit spawnen of binnenkomen
-   (§7.5.2-beslissing 55). Vóór aankoop blokkeert deur5Obstakel het
-   deurgat, dus dan is de trap zelf ook onbereikbaar.
+   zelf blijft ongewijzigd; alleen binnen de kelder-z-band mag men
+   voorbij GRENS.minX (zie de magKelderBinnen-parameter in
+   losBotsingenOp). Herzien in §7.5.7: dit gold aanvankelijk alleen voor
+   de speler, later (§7.5.2/§7.5.4/§7.5.6) gedeeltelijk voor ondoden die
+   dichtbij de deur stonden — op verzoek is die hele restrictie
+   verwijderd, en geeft updateOndoden() nu exact dezelfde bypass door
+   voor elke ondode, zonder enige afstands- of "boven blijven"-logica.
+   Vóór aankoop blokkeert deur5Obstakel het deurgat, dus dan is de trap
+   zelf voor iedereen onbereikbaar — dat blijft de enige poort.
    ================================================================ */
 const KELDERTRAP_CZ = -21.8;               // vaste z-band van de trap/deur (ongewijzigd sinds v2)
 const KELDERTRAP_HALF_BREEDTE = 0.6;       // 1,2m brede trapkoker, even breed als het deurgat
 const KELDERTRAP_X_BOVEN = KAMER2_NIS_X_WEST;               // bovenaan de trap: vloerniveau (Y=0), in het deurgat
 const KELDERTRAP_X_ONDER = KELDERTRAP_X_BOVEN - 4;          // onderaan de trap: keldervloer (Y=-KELDER_DIEPTE), 4m westwaarts
-const KELDER_X_WEST = KELDERTRAP_X_ONDER - 15;              // westmuur van de kelderruimte (15m breed)
+// Feedback: kelder was "veel te groot" — de breedte (het stuk dat naar het
+// westen uitsteekt) is op verzoek gehalveerd, 15m -> 7,5m. De lengte
+// (KELDER_Z_NOORD/KELDER_Z_ZUID, noord-zuid) bleef bewust ongewijzigd.
+const KELDER_X_WEST = KELDERTRAP_X_ONDER - 7.5;             // westmuur van de kelderruimte (7,5m breed, was 15m)
 const KELDER_Z_NOORD = -23.9;              // binnen GRENS.minZ (-23.95), zodat de z-klem de speler niet uit de ruimte duwt
-const KELDER_Z_ZUID = -14;                 // 9,9m diep -> 15 x 9,9 = 148,5 m^2 = atelier + 10%
+const KELDER_Z_ZUID = -14;                 // 9,9m diep (ongewijzigd); breedte 7,5m -> 7,5 x 9,9 = 74,25 m^2
 const KELDER_DIEPTE = 3.3;
 const KELDER_HOOGTE = 3.2;                 // = KAMER_HOOGTE (op verzoek: "ongeveer gelijk aan het atelier")
 // Y-aanname-audit: interactiePunten/winkelmarkeringen waren X/Z-only (Y was
@@ -982,12 +988,11 @@ const KELDER_HOOGTE = 3.2;                 // = KAMER_HOOGTE (op verzoek: "ongev
 // vangnet-invariant: een punt op kelderdiepte reageert nooit op een speler
 // op de begane grond, wat er ook met de plattegrond gebeurt.
 const KELDER_Y_MARGE = 1;
-// Feedback: de kelder is NIET langer een permanente veilige zone — ondoden
-// mogen naar beneden, maar niet allemaal tegelijk. Alleen wie al binnen
-// deze afstand van het deurgat staat op het moment dat de speler afdaalt,
-// krijgt (permanent) toestemming om de trap te gebruiken; zie
-// updateOndoden() en ARCHITECTURE_NOTES.md §7.5.2 (herziening).
-const KELDER_NABIJ_AFSTAND = 6;
+// Feedback: de kelder is GEEN veilige zone meer, ook niet gedeeltelijk —
+// elke ondode mag er gewoon in lopen, precies als de speler, zonder enige
+// afstandsdrempel of "boven blijven wachten"-gedrag. Zie updateOndoden()
+// en ARCHITECTURE_NOTES.md §7.5.7 (herziening — eerdere gedeeltelijke
+// toegang uit §7.5.2/§7.5.4/§7.5.6 volledig teruggedraaid).
 
 // Weer volledig puur (geen state, zoals §7.5.1 oorspronkelijk vroeg): de
 // kelder-footprint is disjunct van alles, dus elke (x,z) heeft precies één
@@ -1825,9 +1830,25 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   // De sterkere lampen (hierboven) alleen waren niet genoeg: het stenen
   // basismateriaal was zo donker (albedo bijna zwart) dat geen enkele
   // lichtsterkte de vloer/muren echt liet oplichten. Daarom hier ook de
-  // kleuren zelf ~2,5-3x lichter (nog steeds koel/stenig, niet warm hout
-  // zoals de startkamer — alleen de HELDERHEID trekt gelijk).
-  const KELDER_TINT = 0x4a443c;
+  // kleuren zelf lichter (nog steeds koel/stenig, niet warm hout zoals de
+  // startkamer — alleen de HELDERHEID trekt gelijk).
+  // Feedbackronde 2: pixelmeting liet zien dat dit nog niet genoeg was (kelder
+  // ~26% zo licht als de startkamer normaal, ~15% tijdens Stroomuitval) — de
+  // kleuren gaan hier nu nóg een stap lichter, samen met sterkere lampen en
+  // een aparte Stroomuitval-boost (zie kelderLamp/lampflikker-loop) zodat
+  // beide standen dichterbij komen zonder de lampen zelf verblindend fel te
+  // maken.
+  // Feedbackronde 3: "de kelder is nu redelijk licht, maak 'm ongeveer 20%
+  // donkerder" — wand-/vloerkleur verlaagd. Eerste gok (factor 0,8: 0x8c8171
+  // -> 0x70675a) bleek bij pixelmeting 27% donkerder (overshoot, de
+  // lichtbijdrage van de kamerlampen zelf is niet-lineair t.o.v. de
+  // albedo-factor); teruggerekend naar factor ~0,851, dat empirisch op
+  // ~20% uitkomt (zie ARCHITECTURE_NOTES.md §7.5.7).
+  // Feedbackronde 4: nog eens 15-20% donkerder bovenop het bovenstaande.
+  // Iteratief getuned met dezelfde pixelmeting (2 tussenstappen, zie
+  // ARCHITECTURE_NOTES.md §7.5.8): eindwaarde meet ~18,1% donkerder dan de
+  // Feedbackronde-3-kleuren (0x776e60/0x6a5d4d hierboven).
+  const KELDER_TINT = 0x655d51;
   const kelderMuurDikte = 0.25;
   const kokerLengte = KELDERTRAP_X_BOVEN - KELDERTRAP_X_ONDER;
   const kokerCX = (KELDERTRAP_X_BOVEN + KELDERTRAP_X_ONDER) / 2;
@@ -1903,15 +1924,15 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   kokerWand(KELDERTRAP_CZ - KELDERTRAP_HALF_BREEDTE - kelderMuurDikte / 2);
   kokerWand(KELDERTRAP_CZ + KELDERTRAP_HALF_BREEDTE + kelderMuurDikte / 2);
 
-  // --- De kelderruimte: 15 x 9,9 m (= atelier + 10%), vloer op
-  // -KELDER_DIEPTE, plafond op KELDER_HOOGTE daarboven. Direct als mesh
-  // omdat vlak() een vaste KAMER_HOOGTE/Y=0 aanneemt.
+  // --- De kelderruimte: 7,5 x 9,9 m (breedte gehalveerd op feedback: was
+  // te groot). Vloer op -KELDER_DIEPTE, plafond op KELDER_HOOGTE daarboven.
+  // Direct als mesh omdat vlak() een vaste KAMER_HOOGTE/Y=0 aanneemt.
   const kamerCX = (KELDER_X_WEST + KELDERTRAP_X_ONDER) / 2;
   const kamerBreedteX = KELDERTRAP_X_ONDER - KELDER_X_WEST;
   const kamerCZ = (KELDER_Z_NOORD + KELDER_Z_ZUID) / 2;
   const kamerDiepteZ = KELDER_Z_ZUID - KELDER_Z_NOORD;
   const kelderVloer = new THREE.Mesh(
-    new THREE.PlaneGeometry(kamerBreedteX, kamerDiepteZ), matFamilie('steen', 0x3d352c));
+    new THREE.PlaneGeometry(kamerBreedteX, kamerDiepteZ), matFamilie('steen', 0x594e41));
   kelderVloer.rotation.x = -Math.PI / 2;
   kelderVloer.position.set(kamerCX, -KELDER_DIEPTE, kamerCZ);
   kelderVloer.receiveShadow = true;
@@ -1951,7 +1972,7 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   // lampLichten geregistreerd zodat de bestaande flikker-/
   // Stroomuitval-dimloop ze automatisch meeneemt.
   kelderLampMateriaal = mat(0xffcf8a, 0.4, 0, { emissive: 0xffb347, emissiveIntensity: 0.9 });
-  function kelderLamp(x, y, z, intensiteit, bereik, koordLengte = 0.4) {
+  function kelderLamp(x, y, z, intensiteit, bereik, koordLengte = 0.4, stroomVloer = undefined) {
     const koord = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, koordLengte, 6), mat(0x1a1410, 0.7));
     koord.position.set(x, y + koordLengte / 2, z);
     wereld.add(koord);
@@ -1964,6 +1985,7 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
     lampLichten.push({
       licht, bolMateriaal: kelderLampMateriaal, bolEmissiefBasis: 0.9,
       basis: intensiteit, fase: Math.random() * Math.PI * 2, amp1: 0.06, amp2: 0.03, minFactor: 0,
+      stroomVloer,
     });
   }
   // Trap-peertje: halverwege de koker, aan een lang snoer vanaf het nieuwe
@@ -1973,12 +1995,22 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   // verlichting".
   const KOKER_LAMP_Y = 0.8;
   kelderLamp(kokerCX, KOKER_LAMP_Y, KELDERTRAP_CZ, 9, 9, KOKER_PLAFOND_Y - KOKER_LAMP_Y);
-  // Feedback: kelderruimte iets lichter, ongeveer gelijk aan de startkamer
-  // (2 lampen à 16/10 over 90m²) — de keldervloer is groter (~15x9.9m),
-  // dus per lamp iets sterker dan de startkamer om ditzelfde gevoel te geven.
+  // Feedback: kelderruimte ongeveer even licht als de startkamer, in ZOWEL
+  // de normale stand als tijdens een Stroomuitval. Pixelmeting liet zien dat
+  // een eerdere lichtboost alleen (18/10) niet genoeg was zolang de
+  // kelderkleuren zelf zoveel donkerder bleven dan de startkamer — vandaar
+  // de lichtere KELDER_TINT/vloerkleur hierboven, plus een intensiteitsboost
+  // (18->22) en een eigen `stroomVloer` (0,36) zodat deze twee lampen
+  // tijdens een Stroomuitval een hogere ondergrens hebben dan de generieke
+  // 12%-vloer (stroomFactor) — zelfde formulepatroon als HEMISFEER_STROOM_
+  // VLOER/BUITEN_STROOM_VLOER, dus NEUTRAAL (geen effect) in de normale
+  // stand. Empirisch getuned met pixelmetingen, zie ARCHITECTURE_NOTES.md.
+  // Posities herschaald toen de kamer smaller werd (7,5m i.p.v. 15m breed):
+  // de oude "-3.5"/"+4" offsets vielen nu (bijna) samen, dus 2m vanaf elke
+  // muur i.p.v. een vaste afstand die op de oude breedte gecalibreerd was.
   const kamerLampY = -KELDER_DIEPTE + KELDER_HOOGTE - 0.5;
-  kelderLamp(KELDERTRAP_X_ONDER - 3.5, kamerLampY, kamerCZ, 18, 10);
-  kelderLamp(KELDER_X_WEST + 4, kamerLampY, kamerCZ, 18, 10);
+  kelderLamp(KELDERTRAP_X_ONDER - 2, kamerLampY, kamerCZ, 22, 10.5, 0.4, 0.36);
+  kelderLamp(KELDER_X_WEST + 2, kamerLampY, kamerCZ, 22, 10.5, 0.4, 0.36);
 
   // Ticket 63 (§7.5.3): kelderinhoud — klein eigen setje decor, passend bij
   // het Amsterdamse-grachtenhuis-thema. Puur sfeer, geen collision (zelfde
@@ -2807,8 +2839,13 @@ bouwVat(KAMER2_NIS_CX + 1.5, KAMER2_NIS_CZ + 1.3);
 // kelderruimte, op de keldervloer (-KELDER_DIEPTE) — een echte reden om
 // de trap af te dalen. Een metalen fust met een gestaalde, koel-witte
 // gloed (i.p.v. de warme verf-props) — visueel meteen herkenbaar als
-// iets anders dan het decor.
-const PANTSERDRANK_X = KELDER_X_WEST + 6;
+// iets anders dan het decor. Feedback: toen de kamer smaller werd (7,5m
+// i.p.v. 15m breed, KELDER_X_WEST dus dichter bij de trap) is de offset
+// vanaf de westmuur verkleind van +6 naar +4, zodat de fust — in absolute
+// coördinaten gezien iets naar het oosten geschoven t.o.v. de oude positie —
+// goed gecentreerd blijft (4m van de westmuur, 3,5m van de oostmuur/
+// trapkoker) i.p.v. veel te dicht tegen die oostmuur aan te staan.
+const PANTSERDRANK_X = KELDER_X_WEST + 4;
 const PANTSERDRANK_Z = (KELDER_Z_NOORD + KELDER_Z_ZUID) / 2 + 2;
 {
   const fust = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.32, 0.85, 12),
@@ -2980,11 +3017,13 @@ addEventListener('mouseup', e => {
 });
 
 // --- Botsingen: duw een punt (met straal) uit alle obstakels ----
-// magKelderBinnen (Ticket 62, v0.19, §7.5.1/§7.5.2): alleen de speler
-// (zie updateSpeler) geeft hier true door. Ondoden (drie aanroepen
-// verderop in updateOndoden) laten dit param weg en blijven dus altijd
-// bij het gewone GRENS.minX gestopt — zo kan geen ondode ooit de
-// kelder in lopen, ook niet als hij de speler daar recht zou volgen.
+// magKelderBinnen (Ticket 62, v0.19, §7.5.1; §7.5.7 herziening): zowel de
+// speler (zie updateSpeler) als elke ondode (drie aanroepen verderop in
+// updateOndoden) geven hier nu altijd true door — geen restrictie meer,
+// iedereen mag de kelder in. Het default (false) blijft staan als
+// verdedigingslinie voor de primitive zelf (zie test-kelder-trap.mjs
+// sectie 8): een toekomstige aanroep die het param per ongeluk weglaat,
+// blijft veilig dicht i.p.v. stilzwijgend open.
 function losBotsingenOp(positie, straal, magKelderBinnen = false) {
   for (const o of obstakels) {
     const dichtstX = Math.max(o.minX, Math.min(positie.x, o.maxX));
@@ -3055,8 +3094,9 @@ function updateSpeler(dt) {
     }
   }
 
-  // Ticket 62 (v0.19, §7.5.1): magKelderBinnen=true — alleen de speler mag
-  // voorbij GRENS.minX de kelder-trapband in (zie losBotsingenOp hierboven).
+  // Ticket 62 (v0.19, §7.5.1; §7.5.7 herziening): magKelderBinnen=true —
+  // de speler mag voorbij GRENS.minX de kelder-trapband in (zie
+  // losBotsingenOp hierboven). Ondoden krijgen sinds §7.5.7 dezelfde bypass.
   losBotsingenOp(speler.positie, speler.straal, true);
   // Puur functioneel, geen state — herberekent elk frame opnieuw of x/z in
   // de kelder-trap-rechthoek vallen (zie berekenKelderY()). Overal elders
@@ -4519,11 +4559,6 @@ function spawnOndode(vensterIndex, type = 'normaal', traits = kiesOndodeTraits()
     // basis rekent — zie het randgeval in ARCHITECTURE_NOTES §5.9.
     gromTimer: nieuweGromTimer(),
     oogBasisIntensiteit: OOG_INTENSITEIT_BASIS,
-    // Feedback: kelder-balans. Eenmaal true (zie updateOndoden), blijft dit
-    // permanent staan — de ondode "kent" dan de trap. wanderDoel/wanderTimer
-    // zijn voor wie boven blijft: die dwaalt door de eigen zone i.p.v. voor
-    // de dichte deuropening te blijven opstapelen.
-    magKelderBinnen: false, wanderDoel: null, wanderTimer: 0,
   };
   groep.userData.ondode = ondode;
   // Ticket 46: was mist-only, geldt nu voor elke actieve eventgolf. Sinds de
@@ -4663,24 +4698,6 @@ function kortsteHoekVerschil(a, b) {
   return Math.atan2(Math.sin(a - b), Math.cos(a - b));
 }
 
-// Feedback: kiest een willekeurig bereikbaar punt binnen dezelfde zone,
-// dichtbij de huidige positie — voor ondoden die "boven blijven" terwijl de
-// speler in de kelder zit (zie updateOndoden). Geen aparte per-zone
-// grenzen nodig: zoneVan() + isVrijePlek() bestaan al en garanderen dat het
-// doel zowel bereikbaar is als in dezelfde zone blijft (geen wegdwalen naar
-// een andere kamer). Retourneert null als er na een paar pogingen niets
-// geldigs is gevonden (dan behoudt de aanroeper het vorige doel).
-function kiesWanderDoel(positie, zone) {
-  for (let i = 0; i < 6; i++) {
-    const hoek = Math.random() * Math.PI * 2;
-    const afstand = 2 + Math.random() * 4;
-    const x = positie.x + Math.cos(hoek) * afstand;
-    const z = positie.z + Math.sin(hoek) * afstand;
-    if (zoneVan(x, z) === zone && isVrijePlek(x, z, ONDODE_STRAAL)) return new THREE.Vector3(x, 0, z);
-  }
-  return null;
-}
-
 // Jagen op de speler + aanvallen als ze dichtbij genoeg zijn. Hergebruikt
 // losBotsingenOp() uit STAP 3 zodat ondoden ook niet door muren lopen.
 // Ticket 30 (Aanval A1): contactschade vervangen door een state machine
@@ -4766,32 +4783,14 @@ function updateOndoden(dt) {
     const spelerZone = zoneVan(speler.positie.x, speler.positie.z);
     const volgendeDeur = eigenZone === spelerZone ? null : NAV_VOLGENDE[eigenZone][spelerZone];
 
-    // Feedback: de kelder is geen permanente veilige zone meer, maar ook
-    // geen open doorgang — anders stormt bij de eerste afdaling meteen elke
-    // ondode in zone 2 naar binnen. zoneVan() kent de kelder zelf geen eigen
-    // zone-id toe (die deelt x/z met zone 2, het atelier — zie §7.5.1/7.5.2),
-    // dus "eigenZone === spelerZone" hierboven is ook true zodra de speler
-    // ondergronds is en de ondode toevallig ergens in het atelier staat.
-    // Zonder ingrijpen zou "rechtstreeks op de speler af" iedereen naar de
-    // (voor hen dichte) deuropening sturen en daar laten opstapelen — exact
-    // het "niet direct wachten boven de trap"-probleem. Oplossing: alleen
-    // wie al dichtbij het deurgat stond op het moment dat de speler naar
-    // beneden ging, krijgt (permanent) toestemming; de rest dwaalt door zijn
-    // eigen zone in plaats van voor de deur te blijven hangen.
-    const spelerInKelder = speler.positie.y < -0.05;
-    if (!ondode.magKelderBinnen && spelerInKelder) {
-      const dx = positie.x - KAMER2_NIS_X_WEST, dz = positie.z - KELDERTRAP_CZ;
-      if (dx * dx + dz * dz <= KELDER_NABIJ_AFSTAND * KELDER_NABIJ_AFSTAND) ondode.magKelderBinnen = true;
-    }
-    const wachtBoven = eigenZone === 2 && spelerInKelder && !ondode.magKelderBinnen;
-    if (wachtBoven) {
-      ondode.wanderTimer -= dt;
-      const doelAfstand = ondode.wanderDoel ? Math.hypot(ondode.wanderDoel.x - positie.x, ondode.wanderDoel.z - positie.z) : 0;
-      if (!ondode.wanderDoel || ondode.wanderTimer <= 0 || doelAfstand < 0.5) {
-        ondode.wanderDoel = kiesWanderDoel(positie, eigenZone) || ondode.wanderDoel;
-        ondode.wanderTimer = 3 + Math.random() * 3;
-      }
-    }
+    // Feedback (§7.5.7, herziening): geen enkele restrictie meer voor de
+    // kelder — een ondode volgt de speler daar precies zoals overal elders
+    // op de kaart. zoneVan() kent de kelder zelf geen eigen zone-id toe (die
+    // deelt x/z met zone 2, het atelier — zie §7.5.1/7.5.2), dus
+    // "eigenZone === spelerZone" hierboven is ook gewoon true zodra de
+    // speler ondergronds is en de ondode ergens in het atelier staat: het
+    // doel is dan al meteen speler.positie zelf (zie doelPunt hieronder),
+    // geen aparte gating- of dwaal-logica nodig.
     // Feedback: binnen zone 4 zelf zit nog een eigen chokepoint — de smalle
     // gang-opening naar de gracht (Ticket 52). Staat de ondode en de speler
     // aan weerszijden daarvan (één in de open bijkeuken, de ander in de
@@ -4809,8 +4808,7 @@ function updateOndoden(dt) {
     const inZoneVier = eigenZone === 4;
     const eigenInGracht = inZoneVier && positie.x >= GRACHTGANG_X_WEST;
     const spelerInGracht = inZoneVier && speler.positie.x >= GRACHTGANG_X_WEST;
-    const doelPunt = (wachtBoven && ondode.wanderDoel) ? ondode.wanderDoel :
-      (volgendeDeur || (eigenInGracht !== spelerInGracht ? GRACHTGANG_DREMPEL : speler.positie));
+    const doelPunt = volgendeDeur || (eigenInGracht !== spelerInGracht ? GRACHTGANG_DREMPEL : speler.positie);
     const naarDoel = new THREE.Vector3().subVectors(doelPunt, positie).setY(0);
 
     // Bij een lopende ontwijk-burst mengt de ondode een groot, vast aandeel
@@ -4833,11 +4831,12 @@ function updateOndoden(dt) {
     const snelheidNu = ondode.snelheid * (ondode.aanvalStaat === 'herstel' ? AANVAL_HERSTEL_SNELHEIDSFACTOR : 1);
     const voorPos = positie.clone();
     positie.addScaledVector(richting, snelheidNu * dt);
-    losBotsingenOp(positie, ONDODE_STRAAL, ondode.magKelderBinnen);
-    // Feedback: net als de speler (zie updateSpeler) volgt de hoogte van een
-    // kelder-toegelaten ondode puur functioneel uit zijn x/z — geen state,
-    // dus hij daalt/stijgt exact zo soepel als de speler op diezelfde trap.
-    if (ondode.magKelderBinnen) positie.y = berekenKelderY(positie.x, positie.z);
+    losBotsingenOp(positie, ONDODE_STRAAL, true);
+    // Feedback: net als de speler (zie updateSpeler) volgt de hoogte van elke
+    // ondode puur functioneel uit zijn x/z — geen state, dus hij daalt/stijgt
+    // exact zo soepel als de speler op diezelfde trap, en buiten de
+    // kelder-footprint blijft dit gewoon 0 (§7.5.7).
+    positie.y = berekenKelderY(positie.x, positie.z);
     ondode.groep.rotation.y = Math.atan2(rechtstreeks.x, rechtstreeks.z);
 
     // Ticket 20 (Z3): losse ledematen-animatie. loopFase loopt nu voor ALLE
@@ -4916,8 +4915,8 @@ function updateOndoden(dt) {
         else delen.romp.rotation.y = FLINCH_ROMP_TWIST * fractie;
         if (ondode.flinch.kernPuls && delen.kern) delen.kern.scale.setScalar(1 + fractie * KERNPULS_SCHAAL_BONUS);
         positie.addScaledVector(ondode.flinch.knokRichting, (KNOCKBACK_AFSTAND / FLINCH_DUUR) * dt);
-        losBotsingenOp(positie, ONDODE_STRAAL, ondode.magKelderBinnen);
-        if (ondode.magKelderBinnen) positie.y = berekenKelderY(positie.x, positie.z);
+        losBotsingenOp(positie, ONDODE_STRAAL, true);
+        positie.y = berekenKelderY(positie.x, positie.z);
       }
     }
 
@@ -6608,7 +6607,19 @@ function gameLoop(nu) {
     // Ticket 46-fix: stroomFactor ontbrak hier — het echte puntlicht (wat de
     // kamer verlicht) dimde niet mee, alleen het kleine gloeipeertje. Dat
     // maakte een Stroomuitval nauwelijks merkbaar.
-    l.licht.intensity = l.basis * Math.max(l.minFactor, factor) * lampDipFactor * stroomFactor;
+    // Feedback: de kelder moet ook tijdens een Stroomuitval ongeveer even
+    // licht blijven als de startkamer. `stroomVloer` (default undefined, dus
+    // geen effect op alle bestaande lampen) herschaalt stroomFactor naar een
+    // eigen ondergrens — exact hetzelfde patroon als HEMISFEER_STROOM_VLOER/
+    // BUITEN_STROOM_VLOER hieronder: bij stroomFactor=1 (normaal) blijft dit
+    // altijd exact 1 (neutraal, geen effect op de normale stand), en bij de
+    // volle Stroomuitval-dip (stroomFactor=STROOMUITVAL_DIM_FACTOR) komt het
+    // uit op `stroomVloer` i.p.v. de generieke 12%-vloer. Bewust GEEN losse
+    // vermenigvuldiger (die zou ook de normale stand meeboosten).
+    const stroomFactorVoorLamp = l.stroomVloer === undefined
+      ? stroomFactor
+      : l.stroomVloer + (1 - l.stroomVloer) * stroomFactor;
+    l.licht.intensity = l.basis * Math.max(l.minFactor, factor) * lampDipFactor * stroomFactorVoorLamp;
     l.bolMateriaal.emissiveIntensity = l.bolEmissiefBasis * stroomFactor;
   }
   // Ticket 46-fix: de ateliers-dakramen ("stabiel hoofdlicht", geen
@@ -6796,8 +6807,6 @@ window.AmsterdamUndeadDebug = {
   KELDERTRAP_CZ, KELDERTRAP_HALF_BREEDTE, KELDERTRAP_X_BOVEN, KELDERTRAP_X_ONDER,
   KELDER_X_WEST, KELDER_Z_NOORD, KELDER_Z_ZUID,
   KELDER_DIEPTE, KELDER_HOOGTE, KELDER_Y_MARGE, berekenKelderY,
-  // Feedback: kelder-balans (magKelderBinnen per ondode + wander-gedrag)
-  KELDER_NABIJ_AFSTAND, kiesWanderDoel,
   deur5Mesh, deur5Obstakel, koopDeur5, deur5Punt,
   get deur5Gekocht() { return deur5Gekocht; },
   // Ticket V6: spawn-pacing per zone:
