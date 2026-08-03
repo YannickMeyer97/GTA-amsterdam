@@ -383,6 +383,23 @@
     cursor: pointer;
     z-index: 10;
   }
+  /* --- Fix 4 (feedback): geluidsknop rechtsboven in het start-/
+       pauzescherm (dezelfde #startscherm-overlay dient voor allebei) --- */
+  #geluidKnop {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 42px;
+    height: 42px;
+    border: none;
+    border-radius: 10px;
+    background: rgba(20, 30, 45, 0.65);
+    color: #ffffff;
+    font-size: 20px;
+    cursor: pointer;
+    z-index: 11;
+  }
+  #geluidKnop:hover { background: rgba(20, 30, 45, 0.85); }
   #startscherm h1 {
     font-size: 52px;
     margin: 0 0 4px;
@@ -465,6 +482,7 @@
 </div>
 
 <div id="startscherm">
+  <button id="geluidKnop" type="button" aria-label="Geluid aan/uit">🔊</button>
   <h1>AMSTERDAM UNDEAD</h1>
   <h2>Een verlaten grachtenpand — overleef de golven ondoden</h2>
   <div class="uitleg">
@@ -3014,6 +3032,11 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { ingedrukt[e.code] = false; });
 
 const startscherm = document.getElementById('startscherm');
+const geluidKnop = document.getElementById('geluidKnop');   // Fix 4: mute-knop, rechtsboven in dezelfde overlay
+geluidKnop.addEventListener('click', (e) => {
+  e.stopPropagation();   // anders bubbelt de klik door naar startscherm's eigen click-listener (start/hervat het spel)
+  zetGeluidGedempt(!geluidGedempt);
+});
 const hulpUI = document.getElementById('hulpUI');
 const richtkruis = document.getElementById('richtkruis');
 const ammoUI = document.getElementById('ammoUI');
@@ -3857,9 +3880,28 @@ function berekenMuziekGain(aankondigingActief, aantalOndoden) {
   if (aankondigingActief) return MUZIEK_VOLUME_AANKONDIGING;
   return aantalOndoden > 0 ? MUZIEK_VOLUME_PLAFOND : MUZIEK_VOLUME_RUST;
 }
+// Fix 4 (feedback: "ik kan nergens het geluid uitzetten"): één gedeelde
+// GainNode tussen ELKE geluidsbron en audio.destination — alles (drone,
+// muziek, piep()-stings, de gerichte boot-hoorn) connect voortaan hierop
+// i.p.v. rechtstreeks op audio.destination. Bewust GEEN audio.suspend()/
+// resume(): initGeluid() hieronder roept bij elke klik op het start-/
+// pauzescherm al onvoorwaardelijk audio.resume() aan (browserregel, geluid
+// mag pas na een klik), dus een suspend-gebaseerde mute zou daar meteen
+// weer ongedaan gemaakt worden. gain.value togglen heeft dat conflict niet.
+let masterGainNode = null;
+let geluidGedempt = false;
+function zetGeluidGedempt(gedempt) {
+  geluidGedempt = gedempt;
+  if (masterGainNode) masterGainNode.gain.value = gedempt ? 0 : 1;
+  geluidKnop.textContent = gedempt ? '🔇' : '🔊';
+}
 function initGeluid() {
   if (!audio) {
     audio = new (window.AudioContext || window.webkitAudioContext)();
+    masterGainNode = audio.createGain();
+    masterGainNode.gain.value = geluidGedempt ? 0 : 1;   // priming: als er al vóór de eerste klik gedempt was
+    masterGainNode.connect(audio.destination);
+
     const osc1 = audio.createOscillator();
     const osc2 = audio.createOscillator();
     osc1.type = 'sine'; osc1.frequency.value = 55;
@@ -3868,7 +3910,7 @@ function initGeluid() {
     dreigingsGainNode.gain.value = 0;
     osc1.connect(dreigingsGainNode);
     osc2.connect(dreigingsGainNode);
-    dreigingsGainNode.connect(audio.destination);
+    dreigingsGainNode.connect(masterGainNode);
     osc1.start();
     osc2.start();
 
@@ -3885,7 +3927,7 @@ function initGeluid() {
     muziekOsc1.connect(muziekGainNode);
     muziekOsc2.connect(muziekGainNode);
     muziekOsc3.connect(muziekGainNode);
-    muziekGainNode.connect(audio.destination);
+    muziekGainNode.connect(masterGainNode);
     muziekOsc1.start();
     muziekOsc2.start();
     muziekOsc3.start();
@@ -3902,7 +3944,7 @@ function piep(type, startHz, eindHz, duur, volume) {
   osc.frequency.exponentialRampToValueAtTime(eindHz, audio.currentTime + duur);
   gain.gain.setValueAtTime(volume, audio.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + duur);
-  osc.connect(gain).connect(audio.destination);
+  osc.connect(gain).connect(masterGainNode);
   osc.start();
   osc.stop(audio.currentTime + duur);
 }
@@ -6847,7 +6889,7 @@ function speelBootHoornGericht() {
   gain.gain.setValueAtTime(volume, audio.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 1.1);
   panner.pan.value = pan;
-  osc.connect(gain).connect(panner).connect(audio.destination);
+  osc.connect(gain).connect(panner).connect(masterGainNode);   // Fix 4: door de master-mute-gain, net als de rest
   osc.start();
   osc.stop(audio.currentTime + 1.1);
   bootHoornHerhaalTeller++;
@@ -7551,6 +7593,10 @@ window.AmsterdamUndeadDebug = {
   get dreigingsGainSchrijfTeller() { return dreigingsGainSchrijfTeller; },
   get dreigingsThrottleTimer() { return dreigingsThrottleTimer; },
   set dreigingsThrottleTimer(v) { dreigingsThrottleTimer = v; },
+  // Fix 4: geluidsknop (master-mute)
+  piep, zetGeluidGedempt, geluidKnop,
+  get geluidGedempt() { return geluidGedempt; },
+  get masterGainNode() { return masterGainNode; },
   // Ticket 52 (Doel D5): gang naar de gracht — vlonder, water, boot, lantaarn
   GRACHTGANG_HALF, GRACHTGANG_X_WEST, GRACHTGANG_LENGTE, GRACHTGANG_DREMPEL,
   VLONDER_X_WEST, VLONDER_X_OOST, VLONDER_DIEPTE,
