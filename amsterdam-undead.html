@@ -221,6 +221,21 @@
     transition: width 0.15s linear, background 0.15s linear;
   }
 
+  /* --- Ticket 67: minimap, linksonder (vrij hoek — hulpUI/interactiePrompt/
+       meldingUI zitten allemaal onderin-gecentreerd, hudUI rechtsboven) --- */
+  #minimapUI {
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    width: 160px;
+    height: 160px;
+    background: rgba(10, 14, 20, 0.55);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 10px;
+    z-index: 5;
+    pointer-events: none;
+  }
+
   /* --- Rode vignet: reageert op HP-verlies, dooft vanzelf weer uit --- */
   #vignet {
     position: fixed;
@@ -407,6 +422,7 @@
   <div id="vluchtrouteUI" style="font-size:12px; font-weight:700; margin-top:2px; color:#6fe8c0;">Vluchtroute: 0/3</div>
   <div id="ontsnappingVensterUI" style="font-size:12px; font-weight:700; margin-top:2px; color:#9fd4ff;"></div>
 </div>
+<canvas id="minimapUI" width="160" height="160" style="display:none"></canvas>
 <div id="vignet"></div>
 <div id="gameOverScherm">
   <h1>JE BENT GEVALLEN</h1>
@@ -2920,6 +2936,8 @@ const interactiePromptUI = document.getElementById('interactiePrompt');
 const meldingUI = document.getElementById('meldingUI');
 const golfBannerUI = document.getElementById('golfBanner');
 const zoneLabelUI = document.getElementById('zoneLabelUI');   // Ticket 50: klein HUD-zonelabel
+const minimapUI = document.getElementById('minimapUI');       // Ticket 67: minimap
+const minimapCtx = minimapUI.getContext('2d');
 document.getElementById('opnieuwKnop').addEventListener('click', () => location.reload());
 // Ticket 45: het winscherm heeft zijn eigen "Opnieuw" (identiek aan
 // opnieuwKnop) en "Speel door" (sluit het scherm, ontsnappingspunt
@@ -2980,6 +2998,7 @@ document.addEventListener('pointerlockchange', () => {
   richtkruis.style.display = actief ? 'block' : 'none';
   ammoUI.style.display = actief ? 'block' : 'none';
   hudUI.style.display = actief ? 'block' : 'none';
+  minimapUI.style.display = actief ? 'block' : 'none';   // Ticket 67
   // Na een game over roept gameOver() zelf exitPointerLock() aan; dit mag
   // het startscherm niet laten terugpoppen over het game-over-scherm heen.
   if (spelStaat.gameOver) return;
@@ -3721,6 +3740,30 @@ const DREIGINGS_NABIJHEID_MINIMUM = 2;    // aantal ondoden binnen het bereik
 function berekenDreigingsGain(aantalBinnenBereik) {
   return aantalBinnenBereik >= DREIGINGS_NABIJHEID_MINIMUM ? DREIGINGS_VOLUME_PLAFOND : 0;
 }
+
+// Ticket 66 (Sfeer/audio): permanente achtergrondmuziek-laag, zelfde
+// nooit-gestopt/herstart-patroon als de dreigingsdrone hierboven (STAP 5),
+// maar een eigen akkoordbed (drie sines, A-mineur-triade) door een eigen
+// gainNode — twee onafhankelijke lagen die allebei alleen via
+// gain.setTargetAtTime() aangestuurd worden, nooit via stop()/start().
+let muziekGainNode = null;
+let muziekGainDoel = 0;
+let muziekThrottleTimer = 0;
+let muziekGainSchrijfTeller = 0;   // debug/test: telt elke echte gain-write
+const MUZIEK_THROTTLE_INTERVAL = 0.5;   // s
+const MUZIEK_GLIJTIJD = 1.2;            // s — trager dan de drone (0.5), muziek schakelt niet abrupt
+const MUZIEK_VOLUME_PLAFOND = 0.05;         // vol tijdens combat (ondoden aanwezig)
+const MUZIEK_VOLUME_RUST = 0.03;            // basisniveau tussen golven in
+const MUZIEK_VOLUME_AANKONDIGING = 0.015;   // zachter tijdens een golf-aankondigingsbanner
+// Randgeval (acceptatiecriterium): combinatie met de drone (max 0.07) mag de
+// sfeer-audio niet overstemmen — 0.05 + 0.07 = 0.12, ruim onder een volle 1.0.
+let muziekAankondigingTimer = 0;   // > 0: een golf-banner staat in beeld, muziek gaat zachter
+// Pure functie (geen audio-aanroepen), zelfde testbaarheidspatroon als
+// berekenDreigingsGain hierboven.
+function berekenMuziekGain(aankondigingActief, aantalOndoden) {
+  if (aankondigingActief) return MUZIEK_VOLUME_AANKONDIGING;
+  return aantalOndoden > 0 ? MUZIEK_VOLUME_PLAFOND : MUZIEK_VOLUME_RUST;
+}
 function initGeluid() {
   if (!audio) {
     audio = new (window.AudioContext || window.webkitAudioContext)();
@@ -3735,6 +3778,24 @@ function initGeluid() {
     dreigingsGainNode.connect(audio.destination);
     osc1.start();
     osc2.start();
+
+    // Ticket 66: het akkoordbed — A2/C3/E3 (A-mineur), ruim onder de
+    // dreigingsdrone in het frequentiespectrum, zodat ze elkaar niet maskeren.
+    const muziekOsc1 = audio.createOscillator();
+    const muziekOsc2 = audio.createOscillator();
+    const muziekOsc3 = audio.createOscillator();
+    muziekOsc1.type = 'sine'; muziekOsc1.frequency.value = 110;      // A2
+    muziekOsc2.type = 'sine'; muziekOsc2.frequency.value = 130.81;   // C3
+    muziekOsc3.type = 'sine'; muziekOsc3.frequency.value = 164.81;   // E3
+    muziekGainNode = audio.createGain();
+    muziekGainNode.gain.value = 0;
+    muziekOsc1.connect(muziekGainNode);
+    muziekOsc2.connect(muziekGainNode);
+    muziekOsc3.connect(muziekGainNode);
+    muziekGainNode.connect(audio.destination);
+    muziekOsc1.start();
+    muziekOsc2.start();
+    muziekOsc3.start();
   }
   if (audio.state === 'suspended') audio.resume();
 }
@@ -3838,6 +3899,25 @@ function updateDreigingsAudio(dt) {
     if (afstand < DREIGINGS_NABIJHEID_BEREIK) aantalBinnenBereik++;
   }
   schrijfDreigingsGain(berekenDreigingsGain(aantalBinnenBereik));
+}
+
+// Ticket 66: schrijft de muziekgain (zelfde write/throttle-patroon als
+// schrijfDreigingsGain hierboven, eigen tijdconstante MUZIEK_GLIJTIJD).
+function schrijfMuziekGain(doel) {
+  muziekGainDoel = doel;
+  muziekGainSchrijfTeller++;
+  if (muziekGainNode) muziekGainNode.gain.setTargetAtTime(doel, audio.currentTime, MUZIEK_GLIJTIJD);
+}
+// Aangeroepen 1x per frame vanuit de spelActief-tak van de gameLoop. De
+// aankondigingstimer telt ELKE frame af (niet gethrottled, anders zou de
+// banner soms al gedoofd zijn voordat de muziek het merkt); de gain-write
+// zelf is wel gethrottled, zelfde reden als bij de dreigingsdrone.
+function updateAchtergrondmuziek(dt) {
+  if (muziekAankondigingTimer > 0) muziekAankondigingTimer -= dt;
+  muziekThrottleTimer -= dt;
+  if (muziekThrottleTimer > 0) return;
+  muziekThrottleTimer = MUZIEK_THROTTLE_INTERVAL;
+  schrijfMuziekGain(berekenMuziekGain(muziekAankondigingTimer > 0, ondoden.length));
 }
 
 /* ================================================================
@@ -4643,6 +4723,105 @@ let laatsteZone = 0;
 const bezochteZones = new Set([0]);
 let zoneLabelSchrijfTeller = 0;   // debug/test: telt elke echte zoneLabelUI-write (nooit per frame)
 zoneLabelUI.textContent = ZONE_NAMEN[0];
+
+// Ticket 67 (Spelerfeedback & oriëntatie): minimap — vaste wereld-naar-
+// canvas-projectie (geen scroll/zoom, zie ROADMAP.md "buiten scope"),
+// speler-positie/-richting, statische zone-omtreklijnen en nabije ondoden
+// als stippen. GRENS dekt het hele boven-de-grond-loopgebied (woonkamer t/m
+// gracht/vlonder, zie GRENS-commentaar hierboven) — alleen de kelder ligt
+// er structureel buiten, vandaar het aparte label-icoon i.p.v. een sublaag.
+const MINIMAP_CANVAS_GROOTTE = 160;
+const MINIMAP_PADDING = 8;
+const MINIMAP_ONDODE_RADIUS = 25;   // m — alleen ondoden binnen dit bereik van de speler tonen
+// Rechthoeken (wereld-x/z) van elke bekende zone, afgeleid van de bestaande
+// muur-/deurconstanten hierboven — geen nieuwe geometrie, puur voor de tekening.
+const MINIMAP_ZONES = [
+  { x0: -HALF_BREEDTE, z0: DEUR_Z, x1: HALF_BREEDTE, z1: HALF_DIEPTE },                              // woonkamer
+  { x0: -DEUR_HALF, z0: GANG_Z_EIND, x1: DEUR_HALF, z1: DEUR_Z },                                    // gang
+  { x0: -KAMER2_HALF_B, z0: KAMER2_Z_NOORD, x1: KAMER2_HALF_B, z1: GANG_Z_EIND },                    // atelier (hoofd)
+  { x0: KAMER2_NIS_X_WEST, z0: KAMER2_Z_NOORD, x1: -KAMER2_HALF_B, z1: KAMER2_NIS_Z_ZUID },           // atelier-nis
+  { x0: DEUR2_X, z0: PLAATS_Z_NOORD, x1: PLAATS_X_OOST, z1: PLAATS_Z_ZUID },                         // binnenplaats
+  { x0: KELDERHALS_X_WEST, z0: KELDERHALS_Z_NOORD, x1: KELDERHALS_X_OOST, z1: KELDERHALS_Z_ZUID },   // kelderhals
+  { x0: BIJKEUKEN_X_WEST, z0: BIJKEUKEN_Z_NOORD, x1: BIJKEUKEN_X_OOST, z1: BIJKEUKEN_Z_ZUID },       // bijkeuken
+  { x0: GRACHTGANG_X_WEST, z0: -GRACHTGANG_HALF, x1: VLONDER_X_OOST, z1: GRACHTGANG_HALF },          // gang naar de gracht + vlonder
+];
+// Pure functies (geen canvas-aanroepen): makkelijk testbaar, en herbruikbaar
+// voor zowel de zone-rechthoeken als de speler-/ondode-stippen hieronder.
+function minimapSchaal() {
+  const wereldBreedte = GRENS.maxX - GRENS.minX;
+  const wereldDiepte = GRENS.maxZ - GRENS.minZ;
+  const beschikbaar = MINIMAP_CANVAS_GROOTTE - MINIMAP_PADDING * 2;
+  return Math.min(beschikbaar / wereldBreedte, beschikbaar / wereldDiepte);
+}
+function minimapTransform(x, z) {
+  const schaal = minimapSchaal();
+  const wereldMiddenX = (GRENS.minX + GRENS.maxX) / 2;
+  const wereldMiddenZ = (GRENS.minZ + GRENS.maxZ) / 2;
+  return {
+    cx: MINIMAP_CANVAS_GROOTTE / 2 + (x - wereldMiddenX) * schaal,
+    cy: MINIMAP_CANVAS_GROOTTE / 2 + (z - wereldMiddenZ) * schaal,
+  };
+}
+// Daadwerkelijke tekening — alleen canvas-state, geen per-tekenbeurt-
+// allocaties buiten de kleine transform-objecten hierboven (verwaarloosbaar
+// t.o.v. de bestaande per-frame effect-pools).
+function tekenMinimap() {
+  const ctx = minimapCtx;
+  ctx.clearRect(0, 0, MINIMAP_CANVAS_GROOTTE, MINIMAP_CANVAS_GROOTTE);
+
+  // Randgeval (Ticket 67): de kelder ligt buiten GRENS — geen aparte
+  // sublaag-tekening, gewoon een klein label i.p.v. de normale speler-/
+  // zone-tekening (die de kelder-x/z toch niet correct zou plaatsen).
+  if (speler.positie.y < -0.1) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.font = 'bold 13px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('KELDER', MINIMAP_CANVAS_GROOTTE / 2, MINIMAP_CANVAS_GROOTTE / 2);
+    return;
+  }
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+  ctx.lineWidth = 1;
+  for (const zone of MINIMAP_ZONES) {
+    const a = minimapTransform(zone.x0, zone.z0);
+    const b = minimapTransform(zone.x1, zone.z1);
+    ctx.strokeRect(Math.min(a.cx, b.cx), Math.min(a.cy, b.cy), Math.abs(b.cx - a.cx), Math.abs(b.cy - a.cy));
+  }
+
+  ctx.fillStyle = '#ff5a5a';
+  for (const o of ondoden) {
+    const dx = o.groep.position.x - speler.positie.x, dz = o.groep.position.z - speler.positie.z;
+    if (dx * dx + dz * dz > MINIMAP_ONDODE_RADIUS * MINIMAP_ONDODE_RADIUS) continue;
+    const p = minimapTransform(o.groep.position.x, o.groep.position.z);
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Speler: een driehoekje, gericht op zijn yaw (zelfde as-conventie als
+  // kortsteHoekVerschil/atan2(-dx,-dz) elders — yaw=0 kijkt naar -z).
+  const sp = minimapTransform(speler.positie.x, speler.positie.z);
+  ctx.save();
+  ctx.translate(sp.cx, sp.cy);
+  ctx.rotate(speler.yaw);
+  ctx.fillStyle = '#6bd0ff';
+  ctx.beginPath();
+  ctx.moveTo(0, -6);
+  ctx.lineTo(4, 5);
+  ctx.lineTo(-4, 5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+let minimapThrottleTimer = 0;
+const MINIMAP_TEKEN_INTERVAL = 0.05;   // s (~3 frames @ 60fps) — canvas hertekenen hoeft niet elke frame
+function updateMinimap(dt) {
+  minimapThrottleTimer -= dt;
+  if (minimapThrottleTimer > 0) return;
+  minimapThrottleTimer = MINIMAP_TEKEN_INTERVAL;
+  tekenMinimap();
+}
+
 // Ticket 28 (map-lus M5): zone-graaf A-B-C-D-E-A i.p.v. de lineaire spine.
 // Elke kant heeft een deurpunt (waar een ondode uit de andere zone naartoe
 // loopt) en een open-conditie (de bijbehorende koopbare deur; de gang<->
@@ -5340,6 +5519,7 @@ function toonGolfBanner(titel, sub = '') {
   golfBannerUI.style.opacity = '1';
   clearTimeout(golfBannerTimer);
   golfBannerTimer = setTimeout(() => { golfBannerUI.style.opacity = '0'; }, 2200);
+  muziekAankondigingTimer = 2.2;   // Ticket 66: muziek gaat zachter zolang de banner in beeld staat
 }
 
 // --- Eventgolven (Ticket 6): elke EVENT_GOLF_INTERVAL-de golf is een eigen
@@ -6630,6 +6810,8 @@ function gameLoop(nu) {
     updateDruppel(dt);      // Ticket 40: kelderhals-druppel-lek
     updateVluchtOnderdelenPuls(dt);   // Ticket 56: subtiele puls op nog niet opgeraapte onderdelen
     updateDreigingsAudio(dt);   // Ticket 49: zachte dreigingsdrone, gethrottled
+    updateAchtergrondmuziek(dt);   // Ticket 66: permanent akkoordbed, gethrottled
+    updateMinimap(dt);   // Ticket 67: minimap-canvas, gethrottled
 
     // Ticket 50 (Sfeer P2): zone-naambanners + HUD-zonelabel. ALLEEN bij een
     // wissel werk doen (1 HUD-write per zonewissel, nooit per frame) — het
@@ -7068,6 +7250,23 @@ window.AmsterdamUndeadDebug = {
   get laatsteZone() { return laatsteZone; },
   set laatsteZone(v) { laatsteZone = v; },
   get zoneLabelSchrijfTeller() { return zoneLabelSchrijfTeller; },
+  // Ticket 66: achtergrondmuziek-laag
+  berekenMuziekGain, updateAchtergrondmuziek, schrijfMuziekGain,
+  MUZIEK_VOLUME_PLAFOND, MUZIEK_VOLUME_RUST, MUZIEK_VOLUME_AANKONDIGING,
+  MUZIEK_THROTTLE_INTERVAL, MUZIEK_GLIJTIJD,
+  get muziekGainNode() { return muziekGainNode; },
+  get muziekGainDoel() { return muziekGainDoel; },
+  get muziekGainSchrijfTeller() { return muziekGainSchrijfTeller; },
+  get muziekThrottleTimer() { return muziekThrottleTimer; },
+  set muziekThrottleTimer(v) { muziekThrottleTimer = v; },
+  get muziekAankondigingTimer() { return muziekAankondigingTimer; },
+  set muziekAankondigingTimer(v) { muziekAankondigingTimer = v; },
+  toonGolfBanner,   // pre-existing gap, nu nodig voor de Ticket 66-aankondigingstest
+  // Ticket 67: minimap
+  minimapUI, MINIMAP_ZONES, MINIMAP_CANVAS_GROOTTE, MINIMAP_PADDING, MINIMAP_ONDODE_RADIUS,
+  minimapSchaal, minimapTransform, tekenMinimap, updateMinimap, MINIMAP_TEKEN_INTERVAL,
+  get minimapThrottleTimer() { return minimapThrottleTimer; },
+  set minimapThrottleTimer(v) { minimapThrottleTimer = v; },
 };
 </script>
 </body>

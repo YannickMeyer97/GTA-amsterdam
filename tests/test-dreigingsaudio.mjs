@@ -113,7 +113,9 @@ check('Na de pauze (spelActief false) staat de doelgain weer op 0', naPauze === 
 // Pointer lock herstellen voor de rest van de suite (andere checks in dit
 // bestand verwachten weer een actief spel).
 await page.evaluate(() => {
-  const canvas = document.querySelector('canvas');
+  // Ticket 67 voegde #minimapUI toe (vóór de renderer-canvas in de DOM),
+  // dus expliciet de renderer-canvas i.p.v. de eerste <canvas> in de DOM.
+  const canvas = window.AmsterdamUndeadDebug.renderer.domElement;
   Object.defineProperty(document, 'pointerLockElement', { configurable: true, get() { return canvas; } });
   document.dispatchEvent(new Event('pointerlockchange'));
 });
@@ -124,12 +126,15 @@ const bronTest = await page.evaluate(() => {
   const initBron = d.initGeluid.toString();
   const updateBron = d.updateDreigingsAudio.toString();
   return {
-    initHeeftTweeStarts: (initBron.match(/\.start\(\)/g) || []).length === 2,
+    // Ticket 66 voegde een tweede oscillator-groep (muziek, 3x .start()) toe
+    // aan initGeluid() — deze check is nu specifiek op osc1/osc2 (de drone)
+    // i.p.v. een totaaltelling, zodat 'm onafhankelijk van andere audio-lagen blijft.
+    initHeeftTweeDroneStarts: (initBron.match(/osc[12]\.start\(\)/g) || []).length === 2,
     initHeeftGeenStop: !/\.stop\(/.test(initBron),
     updateHeeftGeenStartStop: !/\.start\(|\.stop\(/.test(updateBron),
   };
 });
-check('initGeluid() start precies de twee dreigings-oscillators (2x .start())', bronTest.initHeeftTweeStarts, bronTest);
+check('initGeluid() start precies de twee dreigings-oscillators (2x .start())', bronTest.initHeeftTweeDroneStarts, bronTest);
 check('initGeluid() bevat geen .stop()-aanroep', bronTest.initHeeftGeenStop, bronTest);
 check('updateDreigingsAudio() start/stopt zelf geen oscillators (alleen gain-sturing)', bronTest.updateHeeftGeenStartStop, bronTest);
 

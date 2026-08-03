@@ -100,7 +100,9 @@ check('Tijdens pauze dooft de hitmarker toch binnen zijn duur (decay loopt door,
 
 // Pointer lock terug aan voor de resterende secties.
 await page.evaluate(() => {
-  const canvas = document.querySelector('canvas');
+  // Ticket 67 voegde #minimapUI toe (vóór de renderer-canvas in de DOM),
+  // dus expliciet de renderer-canvas i.p.v. de eerste <canvas> in de DOM.
+  const canvas = window.AmsterdamUndeadDebug.renderer.domElement;
   Object.defineProperty(document, 'pointerLockElement', { configurable: true, get() { return canvas; } });
   document.dispatchEvent(new Event('pointerlockchange'));
 });

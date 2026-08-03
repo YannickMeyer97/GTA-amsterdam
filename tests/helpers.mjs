@@ -44,7 +44,11 @@ export async function openAmsterdamUndead({ simuleerPointerLock = false } = {}) 
   await page.waitForTimeout(800);
   if (simuleerPointerLock) {
     await page.evaluate(() => {
-      const canvas = document.querySelector('canvas');
+      // Ticket 67 voegde een tweede <canvas> toe (#minimapUI, statisch in de
+      // HTML, dus vóór de WebGL-renderer-canvas in de DOM) — daarom expliciet
+      // de renderer-canvas via het debug-object i.p.v. de eerste <canvas> in
+      // de DOM (die zou nu #minimapUI zijn).
+      const canvas = window.AmsterdamUndeadDebug.renderer.domElement;
       Object.defineProperty(document, 'pointerLockElement', { configurable: true, get() { return canvas; } });
       document.dispatchEvent(new Event('pointerlockchange'));
     });

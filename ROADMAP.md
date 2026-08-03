@@ -3247,7 +3247,7 @@ zie hieronder.
 - **Type:** audio/sfeer
 - **Verbetergebied:** 4 (Sfeer/audio)
 - **Prioriteit:** middel
-- **Status:** open (gepland)
+- **Status:** afgerond
 - **Afhankelijk van:** —
 - **Doel:** een permanente, originele achtergrondmuziek-laag toevoegen
   zonder de bestaande dreigingsaudio-drone te verstoren (zie
@@ -3297,7 +3297,7 @@ zie hieronder.
 - **Type:** UI/UX
 - **Verbetergebied:** 5 (Spelerfeedback & oriëntatie)
 - **Prioriteit:** middel
-- **Status:** open (gepland)
+- **Status:** afgerond
 - **Afhankelijk van:** —
 - **Doel:** spelers een 2D-topdown-oriëntatiehulp geven (positie,
   richting, bekende zone-omtrekken, nabije ondoden).
