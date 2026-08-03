@@ -4828,15 +4828,23 @@ const MINIMAP_PADDING = 8;
 const MINIMAP_ONDODE_RADIUS = 25;   // m — alleen ondoden binnen dit bereik van de speler tonen
 // Rechthoeken (wereld-x/z) van elke bekende zone, afgeleid van de bestaande
 // muur-/deurconstanten hierboven — geen nieuwe geometrie, puur voor de tekening.
+// Feedback: fog-of-war — een zone wordt pas op de minimap getekend zodra de
+// bijbehorende deur gekocht is (dezelfde deurGekocht/deur2Gekocht/
+// deur3Gekocht-vlaggen als de rest van het spel). `gekocht` is een closure
+// i.p.v. een directe boolean: de underlying let-variabelen worden pas VEEL
+// later in dit bestand gedeclareerd, maar dat is veilig — deze closures
+// worden pas aangeroepen tijdens tekenMinimap(), ver na volledige module-
+// initialisatie (zelfde hoisting-veilige patroon als de WINKEL_STIJLEN-
+// status()-functies elders).
 const MINIMAP_ZONES = [
-  { x0: -HALF_BREEDTE, z0: DEUR_Z, x1: HALF_BREEDTE, z1: HALF_DIEPTE },                              // woonkamer
-  { x0: -DEUR_HALF, z0: GANG_Z_EIND, x1: DEUR_HALF, z1: DEUR_Z },                                    // gang
-  { x0: -KAMER2_HALF_B, z0: KAMER2_Z_NOORD, x1: KAMER2_HALF_B, z1: GANG_Z_EIND },                    // atelier (hoofd)
-  { x0: KAMER2_NIS_X_WEST, z0: KAMER2_Z_NOORD, x1: -KAMER2_HALF_B, z1: KAMER2_NIS_Z_ZUID },           // atelier-nis
-  { x0: DEUR2_X, z0: PLAATS_Z_NOORD, x1: PLAATS_X_OOST, z1: PLAATS_Z_ZUID },                         // binnenplaats
-  { x0: KELDERHALS_X_WEST, z0: KELDERHALS_Z_NOORD, x1: KELDERHALS_X_OOST, z1: KELDERHALS_Z_ZUID },   // kelderhals
-  { x0: BIJKEUKEN_X_WEST, z0: BIJKEUKEN_Z_NOORD, x1: BIJKEUKEN_X_OOST, z1: BIJKEUKEN_Z_ZUID },       // bijkeuken
-  { x0: GRACHTGANG_X_WEST, z0: -GRACHTGANG_HALF, x1: VLONDER_X_OOST, z1: GRACHTGANG_HALF },          // gang naar de gracht + vlonder
+  { x0: -HALF_BREEDTE, z0: DEUR_Z, x1: HALF_BREEDTE, z1: HALF_DIEPTE, gekocht: () => true },                              // woonkamer
+  { x0: -DEUR_HALF, z0: GANG_Z_EIND, x1: DEUR_HALF, z1: DEUR_Z, gekocht: () => deurGekocht },                             // gang
+  { x0: -KAMER2_HALF_B, z0: KAMER2_Z_NOORD, x1: KAMER2_HALF_B, z1: GANG_Z_EIND, gekocht: () => deurGekocht },             // atelier (hoofd)
+  { x0: KAMER2_NIS_X_WEST, z0: KAMER2_Z_NOORD, x1: -KAMER2_HALF_B, z1: KAMER2_NIS_Z_ZUID, gekocht: () => deurGekocht },   // atelier-nis
+  { x0: DEUR2_X, z0: PLAATS_Z_NOORD, x1: PLAATS_X_OOST, z1: PLAATS_Z_ZUID, gekocht: () => deur2Gekocht },                 // binnenplaats
+  { x0: KELDERHALS_X_WEST, z0: KELDERHALS_Z_NOORD, x1: KELDERHALS_X_OOST, z1: KELDERHALS_Z_ZUID, gekocht: () => deur3Gekocht },   // kelderhals
+  { x0: BIJKEUKEN_X_WEST, z0: BIJKEUKEN_Z_NOORD, x1: BIJKEUKEN_X_OOST, z1: BIJKEUKEN_Z_ZUID, gekocht: () => deur3Gekocht },       // bijkeuken
+  { x0: GRACHTGANG_X_WEST, z0: -GRACHTGANG_HALF, x1: VLONDER_X_OOST, z1: GRACHTGANG_HALF, gekocht: () => deur3Gekocht },          // gang naar de gracht + vlonder
 ];
 // Pure functies (geen canvas-aanroepen): makkelijk testbaar, en herbruikbaar
 // voor zowel de zone-rechthoeken als de speler-/ondode-stippen hieronder.
@@ -4876,6 +4884,7 @@ function tekenMinimap() {
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
   ctx.lineWidth = 1;
   for (const zone of MINIMAP_ZONES) {
+    if (!zone.gekocht()) continue;   // fog-of-war: nog niet gekochte zones blijven onzichtbaar
     const a = minimapTransform(zone.x0, zone.z0);
     const b = minimapTransform(zone.x1, zone.z1);
     ctx.strokeRect(Math.min(a.cx, b.cx), Math.min(a.cy, b.cy), Math.abs(b.cx - a.cx), Math.abs(b.cy - a.cy));
@@ -7334,6 +7343,7 @@ window.AmsterdamUndeadDebug = {
   interactiePunten, updateInteracties, activeerHuidigeInteractie,
   koopDeur, koopAmmo, koopUpgrade,
   get deurGekocht() { return deurGekocht; },
+  set deurGekocht(v) { deurGekocht = v; },
   get schadePerTreffer() { return schadePerTreffer; },
   set schadePerTreffer(v) { schadePerTreffer = v; },   // Ticket 11: nodig om upgrade-staat x Smederij-bonus te testen
   get huidigeInteractie() { return huidigeInteractie; },
@@ -7364,6 +7374,7 @@ window.AmsterdamUndeadDebug = {
   deur2Mesh, deur2Obstakel, koopDeur2, koopWatertap,
   deur2Punt, watertapPunt,
   get deur2Gekocht() { return deur2Gekocht; },
+  set deur2Gekocht(v) { deur2Gekocht = v; },
   // Ticket 62 (v0.19, §7.5.1): kelder-trap + Y-beweging + deur 5
   KELDERTRAP_CZ, KELDERTRAP_HALF_BREEDTE, KELDERTRAP_X_BOVEN, KELDERTRAP_X_ONDER,
   KELDER_X_WEST, KELDER_Z_NOORD, KELDER_Z_ZUID,
@@ -7464,6 +7475,7 @@ window.AmsterdamUndeadDebug = {
   // Ticket 25 (Map-lus M2): deur 3 — binnenplaats -> kelderhals
   DEUR3_PRIJS, koopDeur3, deur3Mesh, deur3Obstakel, deur3Punt,
   get deur3Gekocht() { return deur3Gekocht; },
+  set deur3Gekocht(v) { deur3Gekocht = v; },
   // Ticket 26 (Map-lus M3): deur 4 — terugweg, bijkeuken -> woonkamer
   DEUR4_PRIJS, koopDeur4, deur4Mesh, deur4Obstakel, deur4Punt,
   get deur4Gekocht() { return deur4Gekocht; },

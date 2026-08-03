@@ -63,6 +63,11 @@ const tekenTest = await page.evaluate(() => {
   ctx.fillText = (...a) => { fillTextAantal++; return origFillText(...a); };
   ctx.moveTo = (...a) => { moveToAantal++; return origMoveTo(...a); };
 
+  // Fix 2 (fog-of-war, zie sectie 7 verderop) verbergt zones tot de
+  // bijbehorende deur gekocht is — voor DEZE check (telt gewoon alle acht
+  // zone-rechthoeken) alle deuren alvast "gekocht" zetten, zodat 'm los van
+  // die latere fog-of-war-dekking blijft testen.
+  d.deurGekocht = true; d.deur2Gekocht = true; d.deur3Gekocht = true;
   d.speler.positie.set(0, 0, 0);
   d.tekenMinimap();
   const bovenGronds = { strokeRectAantal, fillTextAantal, moveToAantal };
@@ -158,6 +163,47 @@ await page.evaluate(() => {
   Object.defineProperty(document, 'pointerLockElement', { configurable: true, get() { return canvas; } });
   document.dispatchEvent(new Event('pointerlockchange'));
 });
+
+// --- 7. Fix 2 (feedback): fog-of-war — nog niet gekochte zones blijven
+// onzichtbaar op de minimap. Elke MINIMAP_ZONES-entry (behalve de
+// woonkamer, altijd zichtbaar) heeft een `gekocht`-closure die dezelfde
+// deurGekocht/deur2Gekocht/deur3Gekocht-vlaggen leest als de rest van het
+// spel. Geteld via het aantal strokeRect()-aanroepen (elke zichtbare zone
+// tekent precies 1 rechthoek) i.p.v. per-zone-matching — robuuster tegen
+// eventuele toekomstige volgorde-wijzigingen in MINIMAP_ZONES. ------------
+const fogOfWar = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const ctx = d.minimapUI.getContext('2d');
+  let rectAantal = 0;
+  const origStrokeRect = ctx.strokeRect.bind(ctx);
+  ctx.strokeRect = (...a) => { rectAantal++; return origStrokeRect(...a); };
+
+  d.speler.positie.set(0, 0, 0);
+  d.deurGekocht = false; d.deur2Gekocht = false; d.deur3Gekocht = false;
+  rectAantal = 0; d.tekenMinimap();
+  const alleSloten = rectAantal;
+
+  d.deurGekocht = true;
+  rectAantal = 0; d.tekenMinimap();
+  const naDeur1 = rectAantal;
+
+  d.deur2Gekocht = true;
+  rectAantal = 0; d.tekenMinimap();
+  const naDeur2 = rectAantal;
+
+  d.deur3Gekocht = true;
+  rectAantal = 0; d.tekenMinimap();
+  const naDeur3 = rectAantal;
+
+  ctx.strokeRect = origStrokeRect;
+  return { alleSloten, naDeur1, naDeur2, naDeur3 };
+});
+check('Met alle deuren op slot: alleen de woonkamer-rechthoek getekend (1)', fogOfWar.alleSloten === 1, fogOfWar);
+check('Na deur 1 (deurGekocht): woonkamer + gang + atelier(hoofd) + atelier-nis = 4',
+  fogOfWar.naDeur1 === 4, fogOfWar);
+check('Na deur 2 erbij (deur2Gekocht): + binnenplaats = 5', fogOfWar.naDeur2 === 5, fogOfWar);
+check('Na deur 3 erbij (deur3Gekocht): + kelderhals + bijkeuken + gracht/vlonder = 8 (alle zones)',
+  fogOfWar.naDeur3 === 8, fogOfWar);
 
 const fails = report(errs);
 await browser.close();
