@@ -170,6 +170,53 @@ const bronTest = await page.evaluate(() => {
 check('toonSchadeRichting() maakt geen nieuwe DOM-elementen aan (alleen pool-hergebruik)', bronTest.toonGeenCreateElement, bronTest);
 check('updateSchadeWedges() maakt geen nieuwe DOM-elementen aan', bronTest.updateGeenCreateElement, bronTest);
 
+// --- 12. Fix 2 (feedback: "de richtingsfeedback werkt nog niet helemaal
+// goed"): de hoek werd vroeger ÉÉN keer op het hit-moment bevroren — draaide
+// de speler daarna verder (bijna altijd het geval midden in gevecht), dan
+// bleef de pijl op de oude schermhoek staan i.p.v. de bron te blijven volgen.
+// updateSchadeWedges() moet de rotatie nu ELKE frame herberekenen met de
+// ACTUELE speler.yaw. ---------------------------------------------------
+const driftTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.speler.positie.set(0, 0, 0);
+  d.speler.yaw = 0;
+  for (const slot of d.schadeWedgePool) { slot.timer = 0; slot.el.style.opacity = '0'; }
+  d.schadeWedgeVolgende = 0;
+  d.toonSchadeRichting(0, -5);   // bron recht vooruit, bij yaw=0
+  const slot = d.schadeWedgePool[0];
+  const hoekBijHit = slot.el.style.transform;
+
+  // Speler draait een kwartslag (zonder opnieuw geraakt te worden) terwijl
+  // de wedge nog zichtbaar is.
+  d.speler.yaw = Math.PI / 2;
+  d.updateSchadeWedges(0.05);
+  const hoekNaDraaien = slot.el.style.transform;
+
+  return { hoekBijHit, hoekNaDraaien };
+});
+function rotatieHoekVanTransform(t) { const m = /rotate\(([-\d.]+)rad\)/.exec(t); return m ? parseFloat(m[1]) : null; }
+check('Vlak bij de hit (yaw=0, bron recht vooruit): rotatiehoek ≈ 0',
+  Math.abs(rotatieHoekVanTransform(driftTest.hoekBijHit)) < 0.001, driftTest);
+check('Draait de speler daarna een kwartslag zonder nieuwe hit: de pijl volgt mee (hoek verandert, blijft niet bevroren)',
+  Math.abs(rotatieHoekVanTransform(driftTest.hoekNaDraaien) - rotatieHoekVanTransform(driftTest.hoekBijHit)) > 0.5, driftTest);
+check('Na het meedraaien wijst de pijl weer correct naar dezelfde WERELD-bron (bron staat nu "rechts" na de kwartslag)',
+  rotatieHoekVanTransform(driftTest.hoekNaDraaien) > 0.5, driftTest);
+
+// --- 13. berekenSchadeWedgeHoek(): pure functie, los testbaar --------------
+const pureFn = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  return {
+    voor: d.berekenSchadeWedgeHoek(0, -5, 0, 0, 0),
+    rechts: d.berekenSchadeWedgeHoek(5, 0, 0, 0, 0),
+    voorNaKwartslag: d.berekenSchadeWedgeHoek(0, -5, 0, 0, Math.PI / 2),
+  };
+});
+check('berekenSchadeWedgeHoek(): bron recht vooruit bij yaw=0 geeft 0', Math.abs(pureFn.voor) < 0.001, pureFn);
+check('berekenSchadeWedgeHoek(): bron rechts bij yaw=0 geeft -π/2 (vóór de CSS-negatie)',
+  Math.abs(pureFn.rechts - (-Math.PI / 2)) < 0.001, pureFn);
+check('berekenSchadeWedgeHoek(): dezelfde wereld-bron geeft een ANDERE relatieve hoek zodra de speler draait',
+  Math.abs(pureFn.voorNaKwartslag - pureFn.voor) > 0.5, pureFn);
+
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);

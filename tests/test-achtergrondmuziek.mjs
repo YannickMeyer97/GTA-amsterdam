@@ -150,6 +150,64 @@ check('initGeluid() bevat geen .stop()-aanroep', bronTest.initHeeftGeenStop, bro
 check('updateAchtergrondmuziek() start/stopt zelf geen oscillators (alleen gain-sturing)', bronTest.updateHeeftGeenStartStop, bronTest);
 check('Een tweede initGeluid()-aanroep hergebruikt dezelfde muziekGainNode (geen her-creatie)', bronTest.zelfdeNode, bronTest);
 
+// --- 8. Fix 1 (feedback: "ik wil als muziek de nevelklok"): het akkoordbed
+// is vervangen door een periodiek beierende nevelklok — een aparte
+// nevelklokGainNode (zwel/verval-envelope) TUSSEN de drie oscillators en
+// muziekGainNode, aangestuurd door een eigen cadans los van de
+// spelfase-volumesturing. ---------------------------------------------------
+const nevelklokBron = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.initGeluid();
+  const initBron = d.initGeluid.toString();
+  return {
+    drieOscOpNevelklokGain: (initBron.match(/muziekOsc\d\.connect\(nevelklokGainNode\)/g) || []).length === 3,
+    nevelklokGainOpMuziekGain: /nevelklokGainNode\.connect\(muziekGainNode\)/.test(initBron),
+    muziekOscNietDirectOpMuziekGain: !/muziekOsc\d\.connect\(muziekGainNode\)/.test(initBron),
+    nevelklokGainBestaatNaInit: !!d.nevelklokGainNode,
+  };
+});
+check('De drie muziek-oscillators connecten alle drie op nevelklokGainNode (niet rechtstreeks op muziekGainNode)',
+  nevelklokBron.drieOscOpNevelklokGain && nevelklokBron.muziekOscNietDirectOpMuziekGain, nevelklokBron);
+check('nevelklokGainNode zit IN SERIE vóór muziekGainNode (behoudt het bestaande volumebudget)',
+  nevelklokBron.nevelklokGainOpMuziekGain, nevelklokBron);
+check('nevelklokGainNode bestaat na initGeluid()', nevelklokBron.nevelklokGainBestaatNaInit, nevelklokBron);
+
+const nevelklokCadans = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.nevelklokTimer = d.NEVELKLOK_HERHAAL_INTERVAL;   // schone, geprimede start
+  const voor = d.nevelklokTeller;
+  const perStap = d.NEVELKLOK_HERHAAL_INTERVAL / 10;
+  for (let i = 0; i < 9; i++) d.updateAchtergrondmuziek(perStap);
+  const naNegen = d.nevelklokTeller - voor;
+  d.updateAchtergrondmuziek(perStap * 2);
+  const naTien = d.nevelklokTeller - voor;
+  return { naNegen, naTien };
+});
+check('9 stappen van elk 1/10e van het beier-interval laten de klok nog niet beieren',
+  nevelklokCadans.naNegen === 0, nevelklokCadans);
+check('Zodra de opgetelde tijd het beier-interval overschrijdt, beiert de klok precies 1x',
+  nevelklokCadans.naTien === 1, nevelklokCadans);
+
+const nevelklokEnvelope = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const voor = d.nevelklokTeller;
+  d.speelNevelklokToon();
+  return {
+    teller: d.nevelklokTeller - voor,
+    gainDirectNaAanroep: d.nevelklokGainNode.gain.value,   // vlak na de aanroep: nog bij het startpunt (rampt pas over tijd op)
+  };
+});
+check('speelNevelklokToon() verhoogt nevelklokTeller met exact 1 (telbaar zonder audio te horen)',
+  nevelklokEnvelope.teller === 1, nevelklokEnvelope);
+check('Vlak na het triggeren staat de gain nog laag (de zwel begint, is nog niet direct op de piek)',
+  nevelklokEnvelope.gainDirectNaAanroep < 0.5, nevelklokEnvelope);
+
+check('NEVELKLOK_ZWEL_TIJD (3s) + NEVELKLOK_VERVAL_TIJD (4s) matchen de 7s-envelope uit de aangeleverde preview',
+  await page.evaluate(() => {
+    const d = window.AmsterdamUndeadDebug;
+    return d.NEVELKLOK_ZWEL_TIJD === 3 && d.NEVELKLOK_VERVAL_TIJD === 4 && d.NEVELKLOK_HERHAAL_INTERVAL === 13;
+  }), {});
+
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);

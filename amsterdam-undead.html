@@ -1943,8 +1943,26 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   // Feedbackronde 4: nog eens 15-20% donkerder bovenop het bovenstaande.
   // Iteratief getuned met dezelfde pixelmeting (2 tussenstappen, zie
   // ARCHITECTURE_NOTES.md §7.5.8): eindwaarde meet ~18,1% donkerder dan de
-  // Feedbackronde-3-kleuren (0x776e60/0x6a5d4d hierboven).
-  const KELDER_TINT = 0x655d51;
+  // Feedbackronde-3-kleuren.
+  // Fix 3 (feedback: "de kelder mag 20% donkerder in normale stand, in
+  // stroomuitval is de huidige helderheid goed"): ANDERS dan Feedbackronden
+  // 3/4 — dit keer mag alleen de NORMALE stand donkerder worden, de
+  // Stroomuitval-stand moet exact zo blijven als hij was. Zelfde
+  // pixelmeting-methode (screenshot vanuit het midden van de kelderruimte,
+  // luminantie over het onderste deel van het beeld), 3 metingen: factor 0,8
+  // gaf maar 14,3% donkerder (te weinig), factor 0,7 gaf 23,2% (te veel);
+  // lineair geïnterpoleerd naar factor ≈0,736 kwam uit op 20,8% donkerder —
+  // binnen de gevraagde "ongeveer 20%". Cruciaal: DEZELFDE meting op de
+  // Stroomuitval-stand (stroomFactor op STROOMUITVAL_DIM_FACTOR, dezelfde
+  // camerapositie) bleef bij elke van de 3 kleurkeuzes binnen ~2% van de
+  // ORIGINELE Stroomuitval-helderheid — ruim binnen de meetruis van de
+  // lampflikkering zelf (herhaalde metingen MET identieke kleuren gaven al
+  // ~0,3% onderlinge variatie). Stroomuitval is dus al "voldoende
+  // ongewijzigd" puur via de bestaande `stroomVloer`-mechaniek (§7.5.5) —
+  // geen aparte stroomVloer-ophoging nodig, in tegenstelling tot wat
+  // Feedbackronden 3/4 nog aannamen ("proportioneel donkerder in beide
+  // standen"). Zie ARCHITECTURE_NOTES.md §7.5.9.
+  const KELDER_TINT = 0x4a443c;
   const kelderMuurDikte = KELDER_MUUR_DIKTE;
   const kokerLengte = KELDERTRAP_X_BOVEN - KELDERTRAP_X_ONDER;
   const kokerCX = (KELDERTRAP_X_BOVEN + KELDERTRAP_X_ONDER) / 2;
@@ -2028,7 +2046,7 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   const kamerCZ = (KELDER_Z_NOORD + KELDER_Z_ZUID) / 2;
   const kamerDiepteZ = KELDER_Z_ZUID - KELDER_Z_NOORD;
   const kelderVloer = new THREE.Mesh(
-    new THREE.PlaneGeometry(kamerBreedteX, kamerDiepteZ), matFamilie('steen', 0x594e41));
+    new THREE.PlaneGeometry(kamerBreedteX, kamerDiepteZ), matFamilie('steen', 0x423930));
   kelderVloer.rotation.x = -Math.PI / 2;
   kelderVloer.position.set(kamerCX, -KELDER_DIEPTE, kamerCZ);
   kelderVloer.receiveShadow = true;
@@ -2077,7 +2095,7 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
     const koBreedteX = KELDEROOST_X_OOST - KELDEROOST_X_WEST;
     const koCZ = (KELDEROOST_Z_NOORD + KELDEROOST_Z_ZUID) / 2;
     const koDiepteZ = KELDEROOST_Z_ZUID - KELDEROOST_Z_NOORD;
-    const koVloer = new THREE.Mesh(new THREE.PlaneGeometry(koBreedteX, koDiepteZ), matFamilie('steen', 0x594e41));
+    const koVloer = new THREE.Mesh(new THREE.PlaneGeometry(koBreedteX, koDiepteZ), matFamilie('steen', 0x423930));
     koVloer.rotation.x = -Math.PI / 2;
     koVloer.position.set(koCX, -KELDER_DIEPTE, koCZ);
     koVloer.receiveShadow = true;
@@ -3858,11 +3876,15 @@ function berekenDreigingsGain(aantalBinnenBereik) {
 }
 
 // Ticket 66 (Sfeer/audio): permanente achtergrondmuziek-laag, zelfde
-// nooit-gestopt/herstart-patroon als de dreigingsdrone hierboven (STAP 5),
-// maar een eigen akkoordbed (drie sines, A-mineur-triade) door een eigen
-// gainNode — twee onafhankelijke lagen die allebei alleen via
-// gain.setTargetAtTime() aangestuurd worden, nooit via stop()/start().
+// nooit-gestopt/herstart-patroon als de dreigingsdrone hierboven (STAP 5).
+// Fix 1 (feedback: "ik wil als muziek de nevelklok"): het akkoordbed is
+// vervangen door een periodiek beierende verre misthoorn/bel — de
+// nevelklok, zie nevelklokGainNode/speelNevelklokToon() hieronder. Nog
+// steeds twee onafhankelijke lagen (drone + muziek) die alleen via
+// gain-automatie aangestuurd worden, nooit via stop()/start() van de
+// oscillators zelf.
 let muziekGainNode = null;
+let nevelklokGainNode = null;   // de zwel/verval-envelope van de klok zelf (WANNEER)
 let muziekGainDoel = 0;
 let muziekThrottleTimer = 0;
 let muziekGainSchrijfTeller = 0;   // debug/test: telt elke echte gain-write
@@ -3874,6 +3896,15 @@ const MUZIEK_VOLUME_AANKONDIGING = 0.015;   // zachter tijdens een golf-aankondi
 // Randgeval (acceptatiecriterium): combinatie met de drone (max 0.07) mag de
 // sfeer-audio niet overstemmen — 0.05 + 0.07 = 0.12, ruim onder een volle 1.0.
 let muziekAankondigingTimer = 0;   // > 0: een golf-banner staat in beeld, muziek gaat zachter
+// Fix 1: cadans van de nevelklok zelf (HOE VAAK/HOE LANG hij beiert) — los
+// van muziekGainNode (HOE LUID, spelfase-afhankelijk). Zwel/verval-tijden
+// zijn afgeleid uit de aangeleverde preview-WAV (envelope zwelt ~3s op naar
+// de piek, sterft ~4s daarna weg).
+let nevelklokTimer = 0;   // start op 0: de allereerste update-tick laat 'm meteen 1x beieren
+let nevelklokTeller = 0;   // debug/test: telt elke echte beier-aanroep
+const NEVELKLOK_HERHAAL_INTERVAL = 13;   // s tussen twee keer beieren
+const NEVELKLOK_ZWEL_TIJD = 3;           // s: opbouw naar de piek
+const NEVELKLOK_VERVAL_TIJD = 4;         // s: wegsterven na de piek
 // Pure functie (geen audio-aanroepen), zelfde testbaarheidspatroon als
 // berekenDreigingsGain hierboven.
 function berekenMuziekGain(aankondigingActief, aantalOndoden) {
@@ -3914,19 +3945,31 @@ function initGeluid() {
     osc1.start();
     osc2.start();
 
-    // Ticket 66: het akkoordbed — A2/C3/E3 (A-mineur), ruim onder de
-    // dreigingsdrone in het frequentiespectrum, zodat ze elkaar niet maskeren.
+    // Fix 1 (feedback: "ik wil als muziek de nevelklok"): drie sines op de
+    // inharmonische partialen uit de aangeleverde preview-WAV — E2/C#3/D3
+    // (82.41/138.59/146.83 Hz; de kleine-secunde-wrijving tussen de laatste
+    // twee geeft het karakteristieke "beieren"/klok-zweving, i.p.v. een
+    // harmonisch akkoord). Permanent draaiend (nooit gestopt), maar nu door
+    // TWEE gainNodes in serie: eerst nevelklokGainNode (de zwel/verval-
+    // envelope van de klok zelf, periodiek opgelegd door
+    // speelNevelklokToon()), dan muziekGainNode (de bestaande spelfase-
+    // volumesturing: rust/combat/aankondiging). Zo blijft het volumebudget
+    // (plafond 0.05) ongewijzigd — muziekGainNode bepaalt HOE LUID,
+    // nevelklokGainNode bepaalt WANNEER er iets doorheen komt.
     const muziekOsc1 = audio.createOscillator();
     const muziekOsc2 = audio.createOscillator();
     const muziekOsc3 = audio.createOscillator();
-    muziekOsc1.type = 'sine'; muziekOsc1.frequency.value = 110;      // A2
-    muziekOsc2.type = 'sine'; muziekOsc2.frequency.value = 130.81;   // C3
-    muziekOsc3.type = 'sine'; muziekOsc3.frequency.value = 164.81;   // E3
+    muziekOsc1.type = 'sine'; muziekOsc1.frequency.value = 82.41;    // E2
+    muziekOsc2.type = 'sine'; muziekOsc2.frequency.value = 138.59;   // C#3
+    muziekOsc3.type = 'sine'; muziekOsc3.frequency.value = 146.83;   // D3
+    nevelklokGainNode = audio.createGain();
+    nevelklokGainNode.gain.value = 0.0001;
     muziekGainNode = audio.createGain();
     muziekGainNode.gain.value = 0;
-    muziekOsc1.connect(muziekGainNode);
-    muziekOsc2.connect(muziekGainNode);
-    muziekOsc3.connect(muziekGainNode);
+    muziekOsc1.connect(nevelklokGainNode);
+    muziekOsc2.connect(nevelklokGainNode);
+    muziekOsc3.connect(nevelklokGainNode);
+    nevelklokGainNode.connect(muziekGainNode);
     muziekGainNode.connect(masterGainNode);
     muziekOsc1.start();
     muziekOsc2.start();
@@ -4043,12 +4086,34 @@ function schrijfMuziekGain(doel) {
   muziekGainSchrijfTeller++;
   if (muziekGainNode) muziekGainNode.gain.setTargetAtTime(doel, audio.currentTime, MUZIEK_GLIJTIJD);
 }
+// Fix 1: één enkele beier-toon — een zwel/verval-envelope op
+// nevelklokGainNode, zelfde scheduling-bouwsteen als piep() hierboven
+// (setValueAtTime + exponentialRampToValueAtTime), maar dan op een
+// permanent open gainNode i.p.v. een eigen kort-levende oscillator+gain per
+// afspeling (de drie muziekOsc's blijven continu draaien, alleen hún
+// gemeenschappelijke gain krijgt de vorm van een klokslag).
+function speelNevelklokToon() {
+  nevelklokTeller++;
+  if (!nevelklokGainNode) return;
+  const nu = audio.currentTime;
+  nevelklokGainNode.gain.cancelScheduledValues(nu);
+  nevelklokGainNode.gain.setValueAtTime(0.0001, nu);
+  nevelklokGainNode.gain.exponentialRampToValueAtTime(1, nu + NEVELKLOK_ZWEL_TIJD);
+  nevelklokGainNode.gain.exponentialRampToValueAtTime(0.0001, nu + NEVELKLOK_ZWEL_TIJD + NEVELKLOK_VERVAL_TIJD);
+}
 // Aangeroepen 1x per frame vanuit de spelActief-tak van de gameLoop. De
-// aankondigingstimer telt ELKE frame af (niet gethrottled, anders zou de
-// banner soms al gedoofd zijn voordat de muziek het merkt); de gain-write
-// zelf is wel gethrottled, zelfde reden als bij de dreigingsdrone.
+// aankondigingstimer en de nevelklok-cadans tellen ELKE frame af (niet
+// gethrottled, anders zou de banner soms al gedoofd zijn voordat de muziek
+// het merkt, resp. zou de klok-cadans afhangen van de throttle-interval);
+// de gain-write van muziekGainNode zelf is wel gethrottled, zelfde reden als
+// bij de dreigingsdrone.
 function updateAchtergrondmuziek(dt) {
   if (muziekAankondigingTimer > 0) muziekAankondigingTimer -= dt;
+  nevelklokTimer -= dt;
+  if (nevelklokTimer <= 0) {
+    nevelklokTimer += NEVELKLOK_HERHAAL_INTERVAL;
+    speelNevelklokToon();
+  }
   muziekThrottleTimer -= dt;
   if (muziekThrottleTimer > 0) return;
   muziekThrottleTimer = MUZIEK_THROTTLE_INTERVAL;
@@ -4881,15 +4946,90 @@ const MINIMAP_ONDODE_RADIUS = 25;   // m — alleen ondoden binnen dit bereik va
 // worden pas aangeroepen tijdens tekenMinimap(), ver na volledige module-
 // initialisatie (zelfde hoisting-veilige patroon als de WINKEL_STIJLEN-
 // status()-functies elders).
+// Fix 5 (feedback: "ik zie soms muren staan terwijl die er niet zijn,
+// bijvoorbeeld van de beginruimte door de gang naar het atelier, of in het
+// atelier zelf"): elke zone tekende vroeger gewoon zijn EIGEN volledige
+// rechthoek-omtrek — dus overal waar twee zones een echte, open doorgang
+// delen (gang<->woonkamer, gang<->atelier, atelier<->nis, kelderhals<->
+// bijkeuken, bijkeuken<->grachtgang) tekende dat een "spookmuur" precies op
+// de doorgang. Eerst geprobeerd met een generieke fill+erosie-techniek
+// (silhouet vullen, dan elke zone-rechthoek naar binnen krimpen en
+// wegknippen) — bleek NIET te werken voor zones die elkaar alleen RAKEN
+// zonder oppervlakte-overlap (bv. woonkamer en gang delen precies de lijn
+// z=DEUR_Z): de erosie van zone A reikt nooit in zone B's gebied, dus de
+// rand aan weerszijden van zo'n gedeelde lijn bleef gewoon staan (bevestigd
+// met een pixelmeting: de "spookmuur"-kandidaten maten GEEN lagere alpha
+// dan een echte muur). In plaats daarvan: elke zone krijgt een expliciete,
+// met de hand geverifieerde `muren`-lijst (losse lijnstukken, rechtstreeks
+// afgeleid van de bouwMuur()/bouwZoneEMuur()-aanroepen elders in dit
+// bestand) — een muurstuk bestaat NIET op een echte deur-/open-doorgang-
+// breedte, wél overal waar de 3D-wereld ook echt een muur heeft. Elke
+// gedeelde muur (bv. bijkeuken-westmuur = woonkamer-oostmuur) wordt maar
+// door ÉÉN zone getekend, niet dubbel.
 const MINIMAP_ZONES = [
-  { x0: -HALF_BREEDTE, z0: DEUR_Z, x1: HALF_BREEDTE, z1: HALF_DIEPTE, gekocht: () => true },                              // woonkamer
-  { x0: -DEUR_HALF, z0: GANG_Z_EIND, x1: DEUR_HALF, z1: DEUR_Z, gekocht: () => deurGekocht },                             // gang
-  { x0: -KAMER2_HALF_B, z0: KAMER2_Z_NOORD, x1: KAMER2_HALF_B, z1: GANG_Z_EIND, gekocht: () => deurGekocht },             // atelier (hoofd)
-  { x0: KAMER2_NIS_X_WEST, z0: KAMER2_Z_NOORD, x1: -KAMER2_HALF_B, z1: KAMER2_NIS_Z_ZUID, gekocht: () => deurGekocht },   // atelier-nis
-  { x0: DEUR2_X, z0: PLAATS_Z_NOORD, x1: PLAATS_X_OOST, z1: PLAATS_Z_ZUID, gekocht: () => deur2Gekocht },                 // binnenplaats
-  { x0: KELDERHALS_X_WEST, z0: KELDERHALS_Z_NOORD, x1: KELDERHALS_X_OOST, z1: KELDERHALS_Z_ZUID, gekocht: () => deur3Gekocht },   // kelderhals
-  { x0: BIJKEUKEN_X_WEST, z0: BIJKEUKEN_Z_NOORD, x1: BIJKEUKEN_X_OOST, z1: BIJKEUKEN_Z_ZUID, gekocht: () => deur3Gekocht },       // bijkeuken
-  { x0: GRACHTGANG_X_WEST, z0: -GRACHTGANG_HALF, x1: VLONDER_X_OOST, z1: GRACHTGANG_HALF, gekocht: () => deur3Gekocht },          // gang naar de gracht + vlonder
+  { x0: -HALF_BREEDTE, z0: DEUR_Z, x1: HALF_BREEDTE, z1: HALF_DIEPTE, gekocht: () => true,
+    muren: [
+      [-HALF_BREEDTE, DEUR_Z, -HALF_BREEDTE, HALF_DIEPTE],           // west
+      [HALF_BREEDTE, DEUR_Z, HALF_BREEDTE, HALF_DIEPTE],             // oost (ook bijkeuken-westmuur)
+      [-HALF_BREEDTE, HALF_DIEPTE, HALF_BREEDTE, HALF_DIEPTE],       // zuid (voorgevel)
+      [-HALF_BREEDTE, DEUR_Z, -DEUR_HALF, DEUR_Z],                   // noord, west van de gang-deur
+      [DEUR_HALF, DEUR_Z, HALF_BREEDTE, DEUR_Z],                     // noord, oost van de gang-deur
+    ] },   // woonkamer
+  { x0: -DEUR_HALF, z0: GANG_Z_EIND, x1: DEUR_HALF, z1: DEUR_Z, gekocht: () => deurGekocht,
+    muren: [
+      [-DEUR_HALF, GANG_Z_EIND, -DEUR_HALF, DEUR_Z],   // west
+      [DEUR_HALF, GANG_Z_EIND, DEUR_HALF, DEUR_Z],      // oost
+      // noord/zuid bewust weggelaten: dat zijn precies de open deuren naar
+      // resp. atelier en woonkamer, geen muur.
+    ] },   // gang
+  { x0: -KAMER2_HALF_B, z0: KAMER2_Z_NOORD, x1: KAMER2_HALF_B, z1: GANG_Z_EIND, gekocht: () => deurGekocht,
+    muren: [
+      [-KAMER2_HALF_B, KAMER2_Z_NOORD, KAMER2_HALF_B, KAMER2_Z_NOORD],        // noord (achtergevel)
+      [-KAMER2_HALF_B, GANG_Z_EIND, -DEUR_HALF, GANG_Z_EIND],                 // zuid, west van de gang-deur
+      [DEUR_HALF, GANG_Z_EIND, KAMER2_HALF_B, GANG_Z_EIND],                   // zuid, oost van de gang-deur
+      [-KAMER2_HALF_B, KAMER2_NIS_Z_ZUID, -KAMER2_HALF_B, GANG_Z_EIND],       // west, ONDER de nis-opening (erboven is nis, geen muur)
+      [KAMER2_HALF_B, KAMER2_Z_NOORD, KAMER2_HALF_B, DEUR2_Z - DEUR2_HALF],   // oost, noord van deur2
+      [KAMER2_HALF_B, DEUR2_Z + DEUR2_HALF, KAMER2_HALF_B, GANG_Z_EIND],      // oost, zuid van deur2
+    ] },   // atelier (hoofd)
+  { x0: KAMER2_NIS_X_WEST, z0: KAMER2_Z_NOORD, x1: -KAMER2_HALF_B, z1: KAMER2_NIS_Z_ZUID, gekocht: () => deurGekocht,
+    muren: [
+      [KAMER2_NIS_X_WEST, KAMER2_Z_NOORD, -KAMER2_HALF_B, KAMER2_Z_NOORD],       // noord
+      [KAMER2_NIS_X_WEST, KAMER2_Z_NOORD, KAMER2_NIS_X_WEST, KAMER2_NIS_Z_ZUID], // west
+      [KAMER2_NIS_X_WEST, KAMER2_NIS_Z_ZUID, -KAMER2_HALF_B, KAMER2_NIS_Z_ZUID], // zuid
+      // oost bewust weggelaten: volledig open naar het atelier, nooit een deur geweest.
+    ] },   // atelier-nis
+  { x0: DEUR2_X, z0: PLAATS_Z_NOORD, x1: PLAATS_X_OOST, z1: PLAATS_Z_ZUID, gekocht: () => deur2Gekocht,
+    muren: [
+      [DEUR2_X, PLAATS_Z_NOORD, PLAATS_X_OOST, PLAATS_Z_NOORD],                    // noord
+      [PLAATS_X_OOST, PLAATS_Z_NOORD, PLAATS_X_OOST, PLAATS_Z_ZUID],               // oost
+      [DEUR2_X, PLAATS_Z_NOORD, DEUR2_X, DEUR2_Z - DEUR2_HALF],                    // west, noord van deur2
+      [DEUR2_X, DEUR2_Z + DEUR2_HALF, DEUR2_X, PLAATS_Z_ZUID],                     // west, zuid van deur2
+      [DEUR2_X, PLAATS_Z_ZUID, KELDERHALS_X_WEST, PLAATS_Z_ZUID],                  // zuid, west van kelderhals
+      [KELDERHALS_X_OOST, PLAATS_Z_ZUID, PLAATS_X_OOST, PLAATS_Z_ZUID],            // zuid, oost van kelderhals
+    ] },   // binnenplaats
+  { x0: KELDERHALS_X_WEST, z0: KELDERHALS_Z_NOORD, x1: KELDERHALS_X_OOST, z1: KELDERHALS_Z_ZUID, gekocht: () => deur3Gekocht,
+    muren: [
+      [KELDERHALS_X_WEST, KELDERHALS_Z_NOORD, KELDERHALS_X_WEST, KELDERHALS_Z_ZUID],  // west
+      [KELDERHALS_X_OOST, KELDERHALS_Z_NOORD, KELDERHALS_X_OOST, KELDERHALS_Z_ZUID],  // oost
+      // noord/zuid bewust weggelaten: open verbinding met resp. binnenplaats en bijkeuken, geen deur.
+    ] },   // kelderhals
+  { x0: BIJKEUKEN_X_WEST, z0: BIJKEUKEN_Z_NOORD, x1: BIJKEUKEN_X_OOST, z1: BIJKEUKEN_Z_ZUID, gekocht: () => deur3Gekocht,
+    muren: [
+      [BIJKEUKEN_X_WEST, BIJKEUKEN_Z_ZUID, BIJKEUKEN_X_OOST, BIJKEUKEN_Z_ZUID],           // zuid
+      [BIJKEUKEN_X_WEST, BIJKEUKEN_Z_NOORD, KELDERHALS_X_WEST, BIJKEUKEN_Z_NOORD],        // noord, west van kelderhals
+      [KELDERHALS_X_OOST, BIJKEUKEN_Z_NOORD, BIJKEUKEN_X_OOST, BIJKEUKEN_Z_NOORD],        // noord, oost van kelderhals
+      [BIJKEUKEN_X_OOST, BIJKEUKEN_Z_NOORD, BIJKEUKEN_X_OOST, -GRACHTGANG_HALF],          // oost, noord van grachtgang
+      [BIJKEUKEN_X_OOST, GRACHTGANG_HALF, BIJKEUKEN_X_OOST, BIJKEUKEN_Z_ZUID],            // oost, zuid van grachtgang
+      // west bewust weggelaten: dezelfde muur als de woonkamer-oostmuur
+      // hierboven (al getekend, geen doorgang, geen dubbele lijn nodig).
+    ] },   // bijkeuken
+  { x0: GRACHTGANG_X_WEST, z0: -GRACHTGANG_HALF, x1: VLONDER_X_OOST, z1: GRACHTGANG_HALF, gekocht: () => deur3Gekocht,
+    muren: [
+      [GRACHTGANG_X_WEST, -GRACHTGANG_HALF, VLONDER_X_WEST, -GRACHTGANG_HALF],  // noord, alleen het overdekte gangdeel
+      [GRACHTGANG_X_WEST, GRACHTGANG_HALF, VLONDER_X_WEST, GRACHTGANG_HALF],    // zuid, alleen het overdekte gangdeel
+      // west weggelaten: open verbinding met de bijkeuken. Vlonder-gedeelte
+      // (x > VLONDER_X_WEST) is buiten: geen muren in de 3D-wereld daar.
+    ] },   // gang naar de gracht + vlonder
 ];
 // Pure functies (geen canvas-aanroepen): makkelijk testbaar, en herbruikbaar
 // voor zowel de zone-rechthoeken als de speler-/ondode-stippen hieronder.
@@ -4942,13 +5082,24 @@ function tekenMinimap() {
   // Zie ARCHITECTURE_NOTES.md §7.8.1 voor de volledige afleiding.
   ctx.rotate(speler.yaw);
 
+  // Fix 5 (feedback: "ik zie soms muren staan terwijl die er niet zijn,
+  // bijvoorbeeld van de beginruimte door de gang naar het atelier, of in het
+  // atelier zelf"): elke zone tekent nu zijn met de hand geverifieerde
+  // `muren`-lijnstukken (zie MINIMAP_ZONES hierboven) i.p.v. zijn volledige
+  // rechthoek-omtrek — dus geen lijn meer op een open doorgang, alleen waar
+  // de 3D-wereld ook echt een muur heeft.
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
   ctx.lineWidth = 1;
   for (const zone of MINIMAP_ZONES) {
     if (!zone.gekocht()) continue;   // fog-of-war: nog niet gekochte zones blijven onzichtbaar
-    const a = minimapLokaal(zone.x0, zone.z0);
-    const b = minimapLokaal(zone.x1, zone.z1);
-    ctx.strokeRect(Math.min(a.lx, b.lx), Math.min(a.lz, b.lz), Math.abs(b.lx - a.lx), Math.abs(b.lz - a.lz));
+    for (const [mx0, mz0, mx1, mz1] of zone.muren) {
+      const a = minimapLokaal(mx0, mz0);
+      const b = minimapLokaal(mx1, mz1);
+      ctx.beginPath();
+      ctx.moveTo(a.lx, a.lz);
+      ctx.lineTo(b.lx, b.lz);
+      ctx.stroke();
+    }
   }
 
   ctx.fillStyle = '#ff5a5a';
@@ -5586,34 +5737,53 @@ function bouwSchadeWedge() {
   const el = document.createElement('div');
   el.className = 'schadeWedge';
   document.body.appendChild(el);
-  return { el, timer: 0 };
+  return { el, timer: 0, bronX: 0, bronZ: 0 };
 }
 const schadeWedgePool = [];
 for (let i = 0; i < SCHADE_WEDGE_MAX; i++) schadeWedgePool.push(bouwSchadeWedge());
 let schadeWedgeVolgende = 0;
 const SCHADE_WEDGE_DUUR = 0.5;   // s: hoelang zichtbaar, daarna lineair uitgefaded
+// Fix 2 (feedback: "de richtingsfeedback werkt nog niet helemaal goed"):
+// de rotatiehoek werd vroeger ÉÉN keer berekend op het hit-moment en daarna
+// als vaste CSS-transform op de wedge gezet. Draaide de speler tijdens de
+// 0.5s zichtbaarheid zijn muiskijkrichting verder (bijna altijd het geval
+// in de hitte van gevecht), dan bleef de pijl op die bevroren schermhoek
+// staan i.p.v. de wérkelijke wereldrichting van de bron te blijven volgen —
+// vandaar de pure berekenSchadeWedgeHoek() hieronder, die zowel bij het
+// tonen ALS elke frame daarna (zie updateSchadeWedges()) opnieuw met de
+// ACTUELE speler.yaw wordt aangeroepen.
 // relatieveHoek is (net als elders, zie speelBootHoornGericht()) reken-
 // kundig linksom-georiënteerd (atan2), maar CSS rotate() en de wedge-
 // visuele "rechtsom is rechts"-conventie zijn rechtsom-positief — vandaar
 // de NEGATIE hieronder. Zonder die negatie zou een bron aan de rechterkant
 // van de speler de wedge links in beeld tonen (en andersom).
+function berekenSchadeWedgeHoek(bronX, bronZ, spelerX, spelerZ, spelerYaw) {
+  const dx = bronX - spelerX, dz = bronZ - spelerZ;
+  return kortsteHoekVerschil(Math.atan2(-dx, -dz), spelerYaw);
+}
 function toonSchadeRichting(bronX, bronZ) {
   const dx = bronX - speler.positie.x, dz = bronZ - speler.positie.z;
   if (dx === 0 && dz === 0) return;   // bron exact op spelerpositie: geen zinvolle richting
-  const relatieveHoek = kortsteHoekVerschil(Math.atan2(-dx, -dz), speler.yaw);
   const slot = schadeWedgePool[schadeWedgeVolgende];
   schadeWedgeVolgende = (schadeWedgeVolgende + 1) % SCHADE_WEDGE_MAX;
-  slot.el.style.transform = `translate(-50%, -50%) rotate(${-relatieveHoek}rad) translateY(-42vh)`;
-  slot.el.style.opacity = '1';
+  slot.bronX = bronX;
+  slot.bronZ = bronZ;
   slot.timer = SCHADE_WEDGE_DUUR;
+  slot.el.style.opacity = '1';
+  const relatieveHoek = berekenSchadeWedgeHoek(bronX, bronZ, speler.positie.x, speler.positie.z, speler.yaw);
+  slot.el.style.transform = `translate(-50%, -50%) rotate(${-relatieveHoek}rad) translateY(-42vh)`;
 }
 // Cosmetisch: loopt net als updateVignet() gewoon elke frame door (ook tijdens
 // pauze/game-over), zodat een wedge altijd netjes uitdooft i.p.v. "vast" te blijven.
+// Fix 2: herberekent de rotatie ELKE frame (niet alleen de opacity), zodat de
+// pijl de bron blijft volgen terwijl de speler ondertussen ronddraait.
 function updateSchadeWedges(dt) {
   for (const slot of schadeWedgePool) {
     if (slot.timer <= 0) continue;
     slot.timer = Math.max(0, slot.timer - dt);
     slot.el.style.opacity = String(slot.timer / SCHADE_WEDGE_DUUR);
+    const relatieveHoek = berekenSchadeWedgeHoek(slot.bronX, slot.bronZ, speler.positie.x, speler.positie.z, speler.yaw);
+    slot.el.style.transform = `translate(-50%, -50%) rotate(${-relatieveHoek}rad) translateY(-42vh)`;
   }
 }
 
@@ -6781,7 +6951,12 @@ const VLUCHT_ONDERDELEN = [
   { naam: 'Roeispaan', x: 1.8, y: 0, z: ATELIER_MIDDEN_Z - 5, drempelGolf: 3, mesh: bouwRoeispaanMesh(1.8, ATELIER_MIDDEN_Z - 5), zichtbaar: false, opgehaald: false, punt: null, markering: null },
   { naam: 'Touwbundel', x: PLAATS_CX - 5, y: 0, z: PLAATS_Z_ZUID - 1.5, drempelGolf: 6, mesh: bouwTouwbundelMesh(PLAATS_CX - 5, PLAATS_Z_ZUID - 1.5), zichtbaar: false, opgehaald: false, punt: null, markering: null },
   // Feedback: verhuisd van de bijkeuken naar kelderoost (de nieuwe kelderruimte).
-  { naam: 'Scheepslantaarn', x: (KELDEROOST_X_WEST + KELDEROOST_X_OOST) / 2, y: -KELDER_DIEPTE, z: (KELDEROOST_Z_NOORD + KELDEROOST_Z_ZUID) / 2, drempelGolf: 9,
+  // Fix 4 (feedback: "ik wil dat de lantaarn altijd direct zichtbaar is
+  // vanaf ronde 1"): drempelGolf 9 -> 1 — spelStaat.golf begint al op 1, dus
+  // dit onthult 'm meteen zodra de eerste golf start (toonVluchtOnderdelen
+  // IndienDrempel() wacht daarna nog steeds netjes tot deur6/kelderoost
+  // gekocht is vóórdat de speler er ook echt bij kan, zie die functie).
+  { naam: 'Scheepslantaarn', x: (KELDEROOST_X_WEST + KELDEROOST_X_OOST) / 2, y: -KELDER_DIEPTE, z: (KELDEROOST_Z_NOORD + KELDEROOST_Z_ZUID) / 2, drempelGolf: 1,
     mesh: bouwScheepslantaarnMesh((KELDEROOST_X_WEST + KELDEROOST_X_OOST) / 2, (KELDEROOST_Z_NOORD + KELDEROOST_Z_ZUID) / 2, -KELDER_DIEPTE),
     zichtbaar: false, opgehaald: false, punt: null, markering: null },
 ];
@@ -7637,6 +7812,13 @@ window.AmsterdamUndeadDebug = {
   set muziekThrottleTimer(v) { muziekThrottleTimer = v; },
   get muziekAankondigingTimer() { return muziekAankondigingTimer; },
   set muziekAankondigingTimer(v) { muziekAankondigingTimer = v; },
+  // Fix 1: nevelklok (beier-cadans, los van muziekGainNode's volumesturing)
+  speelNevelklokToon,
+  NEVELKLOK_HERHAAL_INTERVAL, NEVELKLOK_ZWEL_TIJD, NEVELKLOK_VERVAL_TIJD,
+  get nevelklokGainNode() { return nevelklokGainNode; },
+  get nevelklokTimer() { return nevelklokTimer; },
+  set nevelklokTimer(v) { nevelklokTimer = v; },
+  get nevelklokTeller() { return nevelklokTeller; },
   toonGolfBanner,   // pre-existing gap, nu nodig voor de Ticket 66-aankondigingstest
   // Ticket 67: minimap
   minimapUI, MINIMAP_ZONES, MINIMAP_CANVAS_GROOTTE, MINIMAP_PADDING, MINIMAP_ONDODE_RADIUS,
@@ -7645,6 +7827,7 @@ window.AmsterdamUndeadDebug = {
   set minimapThrottleTimer(v) { minimapThrottleTimer = v; },
   // Ticket 68: richtingsfeedback bij schade
   SCHADE_WEDGE_MAX, SCHADE_WEDGE_DUUR, schadeWedgePool, toonSchadeRichting, updateSchadeWedges,
+  berekenSchadeWedgeHoek,
   kortsteHoekVerschil,
   get schadeWedgeVolgende() { return schadeWedgeVolgende; },
   set schadeWedgeVolgende(v) { schadeWedgeVolgende = v; },

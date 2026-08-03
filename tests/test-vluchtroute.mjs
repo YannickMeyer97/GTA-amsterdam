@@ -112,10 +112,17 @@ check('De puls raakt een nog onzichtbaar onderdeel (drempelgolf niet bereikt) ni
 
 // --- 3. Elk onderdeel verschijnt EXACT op zijn drempelgolf, ook als de
 // zone nog op slot zit -------------------------------------------------------
+// Fix 4 zette de Scheepslantaarn's drempelGolf op 1 (laagste van de drie,
+// was 9/hoogste) — de test-iteratie moet dus OPLOPEND op drempelGolf lopen
+// i.p.v. array-volgorde, anders "lekt" een latere (hogere-drempel)
+// onderdeel-check per ongeluk een EERDER onderdeel met een lagere drempel al
+// zichtbaar vóórdat diens eigen beurt komt (golf wordt tijdelijk hoger gezet
+// dan die lagere drempel om het HUIDIGE onderdeel te testen).
 const drempelTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const resultaten = [];
-  for (const onderdeel of d.VLUCHT_ONDERDELEN) {
+  const onderdelenOplopend = [...d.VLUCHT_ONDERDELEN].sort((a, b) => a.drempelGolf - b.drempelGolf);
+  for (const onderdeel of onderdelenOplopend) {
     d.spelStaat.golf = onderdeel.drempelGolf - 1;
     d.toonVluchtOnderdelenIndienDrempel();
     const voorDrempel = { zichtbaar: onderdeel.zichtbaar, meshZichtbaar: onderdeel.mesh.visible, puntAanwezig: d.interactiePunten.includes(onderdeel.punt) };

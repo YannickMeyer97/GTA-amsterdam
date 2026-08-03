@@ -436,7 +436,8 @@ const lantaarnTest = await page.evaluate(() => {
   const onderdeel = d.VLUCHT_ONDERDELEN.find(o => o.naam === 'Scheepslantaarn');
   const inKelderoostFootprint = onderdeel.x > d.KELDEROOST_X_WEST && onderdeel.x < d.KELDEROOST_X_OOST &&
     onderdeel.z > d.KELDEROOST_Z_NOORD && onderdeel.z < d.KELDEROOST_Z_ZUID;
-  d.spelStaat.golf = 9;
+  const drempelVoorTest = onderdeel.drempelGolf;
+  d.spelStaat.golf = 1;
   d.toonVluchtOnderdelenIndienDrempel();
   const meshY = onderdeel.mesh.position.y;
   const puntY = onderdeel.punt.positie.y;
@@ -446,12 +447,14 @@ const lantaarnTest = await page.evaluate(() => {
   d.speler.positie.set(onderdeel.x, 0, onderdeel.z);
   d.updateInteracties();
   const reageertOpNul = d.huidigeInteractie ? d.huidigeInteractie.naam : null;
-  return { inKelderoostFootprint, onderdeelY: onderdeel.y, meshY, puntY, zichtbaar: onderdeel.zichtbaar, reageertInKelder, reageertOpNul };
+  return { inKelderoostFootprint, onderdeelY: onderdeel.y, meshY, puntY, zichtbaar: onderdeel.zichtbaar, reageertInKelder, reageertOpNul, drempelVoorTest };
 });
 check('Scheepslantaarn ligt binnen de kelderoost-footprint', lantaarnTest.inKelderoostFootprint, lantaarnTest);
 check('Scheepslantaarn.y = -KELDER_DIEPTE (niet meer 0/bijkeuken)',
   lantaarnTest.onderdeelY === -3.3, lantaarnTest);
-check('Vanaf golf 9 wordt de Scheepslantaarn zichtbaar, met mesh én interactiepunt op de juiste Y (-3.3)',
+check('Fix 4: drempelGolf staat op 1 (altijd direct zichtbaar vanaf de eerste golf)',
+  lantaarnTest.drempelVoorTest === 1, lantaarnTest);
+check('Al vanaf golf 1 wordt de Scheepslantaarn zichtbaar, met mesh én interactiepunt op de juiste Y (-3.3)',
   lantaarnTest.zichtbaar && lantaarnTest.meshY === -3.3 && lantaarnTest.puntY === -3.3, lantaarnTest);
 check('Het interactiepunt reageert IN kelderoost (Y=-KELDER_DIEPTE)',
   lantaarnTest.reageertInKelder === 'Scheepslantaarn', lantaarnTest);

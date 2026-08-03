@@ -94,7 +94,8 @@ check('...ook bij een willekeurige yaw (-1.3 rad)', Math.abs(rotatie.r3.cx) < 0.
 check('De speler-driehoek zelf (moveTo) is onafhankelijk van yaw: exact dezelfde coördinaten bij yaw=0 en yaw=2.4',
   JSON.stringify(rotatie.moveToYaw0) === JSON.stringify(rotatie.moveToYaw24), rotatie);
 
-// --- 2. MINIMAP_ZONES: 8 rechthoeken, elk met een bekend, herkenbaar punt --
+// --- 2. MINIMAP_ZONES: 8 zones, elk met een bekend, herkenbaar punt EN een
+// (Fix 5) `muren`-lijst van losse lijnstukken i.p.v. een volledige omtrek --
 const zonesTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   function bevat(zone, x, z) {
@@ -106,50 +107,56 @@ const zonesTest = await page.evaluate(() => {
     woonkamerBevatOrigin: d.MINIMAP_ZONES.some(z => bevat(z, 0, 0)),
     atelierBevatNis: d.MINIMAP_ZONES.some(z => bevat(z, d.KAMER2_NIS_CX, d.KAMER2_NIS_CZ)),
     binnenplaatsBevatMidden: d.MINIMAP_ZONES.some(z => bevat(z, (d.DEUR2_X + d.PLAATS_X_OOST) / 2, (d.PLAATS_Z_NOORD + d.PLAATS_Z_ZUID) / 2)),
+    allemaalHebbenMuren: d.MINIMAP_ZONES.every(z => Array.isArray(z.muren) && z.muren.length > 0),
+    totaalMuurstukken: d.MINIMAP_ZONES.reduce((som, z) => som + z.muren.length, 0),
   };
 });
 check('Er zijn precies 8 minimap-zones', zonesTest.aantal === 8, zonesTest);
 check('De woonkamer-zone bevat de oorsprong (0,0)', zonesTest.woonkamerBevatOrigin, zonesTest);
 check('Eén zone bevat het midden van de atelier-nis', zonesTest.atelierBevatNis, zonesTest);
 check('Eén zone bevat het midden van de binnenplaats', zonesTest.binnenplaatsBevatMidden, zonesTest);
+check('Elke zone heeft een niet-lege muren-lijst', zonesTest.allemaalHebbenMuren, zonesTest);
+check('Samen 31 muurstukken (5+2+6+3+6+2+5+2, zie MINIMAP_ZONES)', zonesTest.totaalMuurstukken === 31, zonesTest);
 
-// --- 3. tekenMinimap() tekent zone-rechthoeken + speler-driehoek in de
-// normale (boven-de-grond) stand, en NIETS daarvan in de kelder-stand -------
+// --- 3. tekenMinimap() tekent muur-lijnstukken (Fix 5: stroke() per
+// zone.muren-segment i.p.v. strokeRect per zone) + speler-driehoek in de
+// normale (boven-de-grond) stand, en NIETS daarvan in de kelder-stand ------
 const tekenTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const ctx = d.minimapUI.getContext('2d');
-  let strokeRectAantal = 0, fillTextAantal = 0, moveToAantal = 0;
-  const origStrokeRect = ctx.strokeRect.bind(ctx);
+  let strokeAantal = 0, fillTextAantal = 0, moveToAantal = 0;
+  const origStroke = ctx.stroke.bind(ctx);
   const origFillText = ctx.fillText.bind(ctx);
   const origMoveTo = ctx.moveTo.bind(ctx);
-  ctx.strokeRect = (...a) => { strokeRectAantal++; return origStrokeRect(...a); };
+  ctx.stroke = (...a) => { strokeAantal++; return origStroke(...a); };
   ctx.fillText = (...a) => { fillTextAantal++; return origFillText(...a); };
   ctx.moveTo = (...a) => { moveToAantal++; return origMoveTo(...a); };
 
   // Fix 2 (fog-of-war, zie sectie 7 verderop) verbergt zones tot de
-  // bijbehorende deur gekocht is — voor DEZE check (telt gewoon alle acht
-  // zone-rechthoeken) alle deuren alvast "gekocht" zetten, zodat 'm los van
-  // die latere fog-of-war-dekking blijft testen.
+  // bijbehorende deur gekocht is — voor DEZE check (telt gewoon alle
+  // muurstukken van alle acht zones) alle deuren alvast "gekocht" zetten,
+  // zodat 'm los van die latere fog-of-war-dekking blijft testen.
   d.deurGekocht = true; d.deur2Gekocht = true; d.deur3Gekocht = true;
   d.speler.positie.set(0, 0, 0);
   d.tekenMinimap();
-  const bovenGronds = { strokeRectAantal, fillTextAantal, moveToAantal };
+  const bovenGronds = { strokeAantal, fillTextAantal, moveToAantal };
 
-  strokeRectAantal = 0; fillTextAantal = 0; moveToAantal = 0;
+  strokeAantal = 0; fillTextAantal = 0; moveToAantal = 0;
   d.speler.positie.set(d.KELDER_X_WEST + 2, -d.KELDER_DIEPTE, (d.KELDER_Z_NOORD + d.KELDER_Z_ZUID) / 2);
   d.tekenMinimap();
-  const kelder = { strokeRectAantal, fillTextAantal, moveToAantal };
+  const kelder = { strokeAantal, fillTextAantal, moveToAantal };
 
-  ctx.strokeRect = origStrokeRect;
+  ctx.stroke = origStroke;
   ctx.fillText = origFillText;
   ctx.moveTo = origMoveTo;
   d.speler.positie.set(0, 0, 0);
   return { bovenGronds, kelder };
 });
-check('Boven de grond: 8 zone-rechthoeken getekend (strokeRect)', tekenTest.bovenGronds.strokeRectAantal === 8, tekenTest);
-check('Boven de grond: de speler-driehoek wordt getekend (moveTo aangeroepen)', tekenTest.bovenGronds.moveToAantal > 0, tekenTest);
+check('Boven de grond: 31 stroke()-aanroepen (1 per muurstuk, alle 8 zones gekocht)', tekenTest.bovenGronds.strokeAantal === 31, tekenTest);
+check('Boven de grond: precies 32 moveTo-aanroepen (31 muurstukken + 1 speler-driehoek)',
+  tekenTest.bovenGronds.moveToAantal === 32, tekenTest);
 check('Boven de grond: geen "KELDER"-label (geen fillText)', tekenTest.bovenGronds.fillTextAantal === 0, tekenTest);
-check('In de kelder: GEEN zone-rechthoeken (geen sublaag-tekening)', tekenTest.kelder.strokeRectAantal === 0, tekenTest);
+check('In de kelder: GEEN muurstukken (geen sublaag-tekening)', tekenTest.kelder.strokeAantal === 0, tekenTest);
 check('In de kelder: GEEN speler-driehoek (vervangen door het label)', tekenTest.kelder.moveToAantal === 0, tekenTest);
 check('In de kelder: het "KELDER"-label wordt getekend (fillText)', tekenTest.kelder.fillTextAantal === 1, tekenTest);
 
@@ -231,42 +238,106 @@ await page.evaluate(() => {
 // onzichtbaar op de minimap. Elke MINIMAP_ZONES-entry (behalve de
 // woonkamer, altijd zichtbaar) heeft een `gekocht`-closure die dezelfde
 // deurGekocht/deur2Gekocht/deur3Gekocht-vlaggen leest als de rest van het
-// spel. Geteld via het aantal strokeRect()-aanroepen (elke zichtbare zone
-// tekent precies 1 rechthoek) i.p.v. per-zone-matching — robuuster tegen
-// eventuele toekomstige volgorde-wijzigingen in MINIMAP_ZONES. ------------
+// spel. Geteld via het aantal stroke()-aanroepen (Fix 5: elke zichtbare zone
+// tekent nu 1 stroke() per muurstuk, zie tekenMinimap()) i.p.v. per-zone-
+// matching — robuuster tegen eventuele toekomstige volgorde-wijzigingen in
+// MINIMAP_ZONES. Muurstukken per zone: woonkamer 5, gang 2, atelier 6,
+// atelier-nis 3, binnenplaats 6, kelderhals 2, bijkeuken 5, gracht/vlonder 2.
 const fogOfWar = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const ctx = d.minimapUI.getContext('2d');
-  let rectAantal = 0;
-  const origStrokeRect = ctx.strokeRect.bind(ctx);
-  ctx.strokeRect = (...a) => { rectAantal++; return origStrokeRect(...a); };
+  let strokeAantal = 0;
+  const origStroke = ctx.stroke.bind(ctx);
+  ctx.stroke = (...a) => { strokeAantal++; return origStroke(...a); };
 
   d.speler.positie.set(0, 0, 0);
   d.deurGekocht = false; d.deur2Gekocht = false; d.deur3Gekocht = false;
-  rectAantal = 0; d.tekenMinimap();
-  const alleSloten = rectAantal;
+  strokeAantal = 0; d.tekenMinimap();
+  const alleSloten = strokeAantal;
 
   d.deurGekocht = true;
-  rectAantal = 0; d.tekenMinimap();
-  const naDeur1 = rectAantal;
+  strokeAantal = 0; d.tekenMinimap();
+  const naDeur1 = strokeAantal;
 
   d.deur2Gekocht = true;
-  rectAantal = 0; d.tekenMinimap();
-  const naDeur2 = rectAantal;
+  strokeAantal = 0; d.tekenMinimap();
+  const naDeur2 = strokeAantal;
 
   d.deur3Gekocht = true;
-  rectAantal = 0; d.tekenMinimap();
-  const naDeur3 = rectAantal;
+  strokeAantal = 0; d.tekenMinimap();
+  const naDeur3 = strokeAantal;
 
-  ctx.strokeRect = origStrokeRect;
+  ctx.stroke = origStroke;
   return { alleSloten, naDeur1, naDeur2, naDeur3 };
 });
-check('Met alle deuren op slot: alleen de woonkamer-rechthoek getekend (1)', fogOfWar.alleSloten === 1, fogOfWar);
-check('Na deur 1 (deurGekocht): woonkamer + gang + atelier(hoofd) + atelier-nis = 4',
-  fogOfWar.naDeur1 === 4, fogOfWar);
-check('Na deur 2 erbij (deur2Gekocht): + binnenplaats = 5', fogOfWar.naDeur2 === 5, fogOfWar);
-check('Na deur 3 erbij (deur3Gekocht): + kelderhals + bijkeuken + gracht/vlonder = 8 (alle zones)',
-  fogOfWar.naDeur3 === 8, fogOfWar);
+check('Met alle deuren op slot: alleen de woonkamer-muurstukken (5)', fogOfWar.alleSloten === 5, fogOfWar);
+check('Na deur 1 (deurGekocht): + gang(2) + atelier(6) + atelier-nis(3) = 16',
+  fogOfWar.naDeur1 === 16, fogOfWar);
+check('Na deur 2 erbij (deur2Gekocht): + binnenplaats(6) = 22',
+  fogOfWar.naDeur2 === 22, fogOfWar);
+check('Na deur 3 erbij (deur3Gekocht): + kelderhals(2) + bijkeuken(5) + gracht/vlonder(2) = 31 (alle zones)',
+  fogOfWar.naDeur3 === 31, fogOfWar);
+
+// --- 8. Fix 5 (feedback: "ik zie soms muren staan terwijl die er niet zijn,
+// bijvoorbeeld van de beginruimte door de gang naar het atelier, of in het
+// atelier zelf"): pixel-niveau bewijs dat de expliciete muren-lijst écht
+// werkt — op een bekende ECHTE doorgang (geen deur, of een gekochte deur)
+// mag GEEN zichtbare rand staan, terwijl een bekende ECHTE muur (ver van
+// elke doorgang) wél een duidelijk zichtbare rand geeft. Zelfde soort
+// pixelmeting-aanpak als de kelder-helderheidstuning (Fix 3), maar dan op
+// de minimap-canvas i.p.v. de 3D-render. ------------------------------------
+const spookmuurTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.deurGekocht = true; d.deur2Gekocht = true; d.deur3Gekocht = true;
+  d.speler.positie.set(0, 0, 0);
+  d.speler.yaw = 0;   // yaw=0: geen rotatie, wereld-coördinaten == lokale coördinaten
+  d.tekenMinimap();
+
+  const ctx = d.minimapUI.getContext('2d');
+  const midden = d.MINIMAP_CANVAS_GROOTTE / 2;
+  const schaal = d.minimapSchaal();
+
+  // Maximale alpha in een klein venster rond een wereldpunt (vangt de
+  // sub-pixel-anti-aliasing van fillRect op fractionele coördinaten op).
+  function maxAlphaBij(wereldX, wereldZ) {
+    const cx = Math.round(midden + (wereldX - d.speler.positie.x) * schaal);
+    const cy = Math.round(midden + (wereldZ - d.speler.positie.z) * schaal);
+    let maxA = 0;
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dy = -2; dy <= 2; dy++) {
+        const x = cx + dx, y = cy + dy;
+        if (x < 0 || y < 0 || x >= d.MINIMAP_CANVAS_GROOTTE || y >= d.MINIMAP_CANVAS_GROOTTE) continue;
+        const pix = ctx.getImageData(x, y, 1, 1).data;
+        maxA = Math.max(maxA, pix[3]);
+      }
+    }
+    return maxA;
+  }
+
+  return {
+    // Zekere ECHTE muur: woonkamer-oostmuur, ver van elke deur (het midden
+    // van de kamer-diepte, niet bij een hoek/deur).
+    echteMuur: maxAlphaBij(d.HALF_BREEDTE, (d.DEUR_Z + d.HALF_DIEPTE) / 2),
+    // Spookmuur-kandidaat 1: woonkamer <-> gang (deur 1, gekocht).
+    woonkamerGang: maxAlphaBij(0, d.DEUR_Z),
+    // Spookmuur-kandidaat 2: gang <-> atelier.
+    gangAtelier: maxAlphaBij(0, d.GANG_Z_EIND),
+    // Spookmuur-kandidaat 3: atelier <-> atelier-nis (geen deur, altijd open).
+    atelierNis: maxAlphaBij(-d.KAMER2_HALF_B, (d.KAMER2_Z_NOORD + d.KAMER2_NIS_Z_ZUID) / 2),
+    // Spookmuur-kandidaat 4: atelier <-> binnenplaats (deur 2 — beide zones'
+    // muren-lijsten sparen expliciet het DEUR2_Z ± DEUR2_HALF-segment uit).
+    atelierBinnenplaats: maxAlphaBij(d.DEUR2_X, d.DEUR2_Z),
+  };
+});
+check('Een echte muur (woonkamer-oostmuur, ver van elke deur) geeft een duidelijk zichtbare rand',
+  spookmuurTest.echteMuur > 40, spookmuurTest);
+check('GEEN spookmuur op de woonkamer<->gang-doorgang (alpha ruim lager dan bij een echte muur)',
+  spookmuurTest.woonkamerGang < spookmuurTest.echteMuur / 2, spookmuurTest);
+check('GEEN spookmuur op de gang<->atelier-doorgang', spookmuurTest.gangAtelier < spookmuurTest.echteMuur / 2, spookmuurTest);
+check('GEEN spookmuur op de atelier<->atelier-nis-doorgang (nooit een deur geweest, altijd open)',
+  spookmuurTest.atelierNis < spookmuurTest.echteMuur / 2, spookmuurTest);
+check('GEEN spookmuur op de atelier<->binnenplaats-doorgang (deur 2)',
+  spookmuurTest.atelierBinnenplaats < spookmuurTest.echteMuur / 2, spookmuurTest);
 
 const fails = report(errs);
 await browser.close();

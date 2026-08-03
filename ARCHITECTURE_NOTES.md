@@ -2505,6 +2505,55 @@ volledige suite 42/42 groen (de eerder bekende `test-ontsnapping-
 vensters.mjs`-timing-flake trad deze run niet op, consistent met een
 wall-clock-gevoelige flake i.p.v. een structurele regressie).
 
+#### 7.5.9 Herziening (feedback): kelder 20% donkerder, ALLEEN in de normale stand
+
+**Feedback:** "de kelder mag 20% donkerder in normale stand, in
+stroomuitval is de huidige helderheid goed." Dit verschilt fundamenteel
+van §7.5.7/§7.5.8: die rondes gingen er (op basis van
+`test-stroomuitval.mjs`, dat alleen lichtintensiteit-*fracties* test, niet
+gerenderde helderheid) vanuit dat een albedo-wijziging de normale én de
+Stroomuitval-stand altijd evenredig donkerder maakt. Deze keer moest het
+juist NIET evenredig — de Stroomuitval-stand moest exact even licht
+blijven als vóór de wijziging.
+
+**Meetmethode:** zelfde soort pixelmeting als eerder (luminantie
+`0.2126r+0.7152g+0.0722b`), maar nu via een eigen headless Playwright-script
+(canvas-screenshot + Pillow-luminantie in plaats van de eerdere
+in-browser-canvas-methode) vanuit het midden van de hoofdkelderruimte,
+gemiddeld over het onderste 45% van het beeld — voor zowel de normale
+stand (`stroomFactor=1`) als een geforceerde Stroomuitval
+(`actieveEventGolf='stroomuitval'`, `stroomFactor=STROOMUITVAL_DIM_FACTOR`),
+in dezelfde paginasessie zodat beide metingen dezelfde (willekeurige)
+lampflikker-fase delen.
+
+**Resultaat (3 metingen, `KELDER_TINT`/vloerkleur, factor t.o.v. de
+§7.5.8-kleuren `0x655d51`/`0x594e41`):**
+1. Factor 0,8 (`0x514a41`/`0x473e34`): normaal 16,06 → 13,77, **14,3%
+   donkerder** — te weinig.
+2. Factor 0,7 (`0x474139`/`0x3e372e`): normaal 16,06 → 12,33, **23,2%
+   donkerder** — te veel.
+3. Lineair geïnterpoleerd naar factor ≈0,736 (`0x4a443c`/`0x423930`):
+   normaal 16,06 → 12,72, **20,8% donkerder** — binnen de gevraagde
+   "ongeveer 20%".
+
+**De Stroomuitval-meting bleef bij alle drie de kleurkeuzes tussen 9,44 en
+9,48**, tegenover een baseline van 9,65 vóór de wijziging — een verschil
+van ~2%, en een HERHAALDE meting met identieke (eind-)kleuren gaf zelf al
+~0,3% onderlinge variatie (pure lampflikker-ruis). Met andere woorden: de
+albedo-verandering die de normale stand ~21% donkerder maakt, verandert de
+Stroomuitval-stand niet meetbaar boven de eigen meetruis. Verklaring: in
+Stroomuitval is de scène al gedimd tot dicht bij zwart (`stroomVloer=0.36`
+op de keldermuren + de verlaagde `toneMappingExposure`/`hemisfeerLicht`),
+en tone mapping comprimeert het onderste deel van het helderheidsbereik
+niet-lineair — dezelfde albedo-factor die in de heldere normale stand een
+duidelijk zichtbaar verschil geeft, verdwijnt in de Stroomuitval-stand
+grotendeels in die compressie. Geen aparte `stroomVloer`-ophoging nodig:
+het bestaande mechanisme (§7.5.5) hield de Stroomuitval-stand al vanzelf
+voldoende ongewijzigd.
+
+**Volledige regressie:** `test-kelder-trap.mjs` 51/51 groen,
+`test-stroomuitval.mjs` 36/36 groen.
+
 ### 7.6 Verbetergebied 3 — Vijandintelligentie
 
 #### 7.6.1 Waypoint-navigatiegraaf — architectuur (beslissing 57)
@@ -2791,6 +2840,59 @@ yaw-waarden (0, π/2, π, -1.3) en te controleren dat het altijd op
 canvas-boven uitkomt, plus een losse check dat de speler-driehoek
 zelf (de `moveTo`-coördinaten) volledig yaw-onafhankelijk blijft.
 
+##### 7.8.1.1 Fix 5: "spookmuren" op open doorgangen
+
+**Feedback:** "op de kaart zie ik soms muren staan terwijl die er niet
+zijn, bijvoorbeeld van de beginruimte door de gang naar het atelier. Of
+in het atelier zelf." Root cause: elke `MINIMAP_ZONES`-entry tekende zijn
+EIGEN volledige rechthoek-omtrek (`strokeRect`) — overal waar twee zones
+een echte, deurloze of gekochte doorgang delen (gang↔woonkamer,
+gang↔atelier, atelier↔nis, kelderhals↔bijkeuken, bijkeuken↔grachtgang, en
+— minder zichtbaar, want een klein deel van een verder correcte lange
+muur — atelier↔binnenplaats via deur 2) tekenden BEIDE zones daar hun
+eigen randlijn: een muurlijn precies op een plek waar de 3D-wereld gewoon
+doorloopbaar is.
+
+**Eerste ontwerp, EMPIRISCH VERWORPEN: silhouet-vulling + erosie.**
+Aantrekkelijk omdat generiek (geen per-zone-paar-code): vul alle gekochte
+zones als rechthoeken (creëert de unie-silhouet), krimp daarna elke
+rechthoek naar binnen met `MINIMAP_MUUR_DIKTE` en knip dat weg via
+`globalCompositeOperation = 'destination-out'` — wat overblijft zou een
+dunne rand moeten zijn, alleen waar geen andere zone eromheen zit.
+Gefaald bij een pixelmeting: voor zones die elkaar alleen RAKEN zonder
+oppervlakte-overlap (bv. woonkamer en gang delen precies de lijn
+`z=DEUR_Z`, geen gedeeld gebied) reikt de erosie van zone A nooit in zone
+B's rechthoek — dus de buitenste `MINIMAP_MUUR_DIKTE`-brede rand van
+ALLEBEI de zones bleef gewoon staan. Drie van de vier spookmuur-
+kandidaten maten daarna nog exact dezelfde alpha als een bevestigde échte
+muur (89 vs. 89), in plaats van de verwachte lage alpha. Wiskundig: erosie
+van een VERENIGING van rechthoeken is niet gelijk aan de vereniging van
+per-rechthoek-erosies — het verschil zit precies op gedeelde randen, ons
+exacte probleem.
+
+**Uiteindelijke, WERKENDE oplossing: expliciete, met de hand
+geverifieerde muur-segmenten.** Elke `MINIMAP_ZONES`-entry kreeg een
+`muren`-array (losse `[x0,z0,x1,z1]`-lijnstukken), rechtstreeks afgeleid
+van de bestaande `bouwMuur()`/`bouwZoneEMuur()`-aanroepen elders in het
+bestand (dezelfde bron als de 3D-geometrie zelf, dus per constructie
+consistent) — een muursegment bestaat NIET over de breedte van een echte
+deur- of open-doorgang, en een gedeelde muur (bv. bijkeuken-westmuur =
+woonkamer-oostmuur, `BIJKEUKEN_X_WEST = HALF_BREEDTE`) wordt maar door
+ÉÉN zone getekend, niet dubbel. `tekenMinimap()` doet nu simpelweg
+`stroke()` per segment i.p.v. `strokeRect()` per zone. 8 zones, samen 31
+muursegmenten (woonkamer 5, gang 2, atelier 6, atelier-nis 3, binnenplaats
+6, kelderhals 2, bijkeuken 5, gracht/vlonder 2 — dat laatste bewust
+alleen voor het overdekte gangdeel, niet de buiten-vlonder waar de
+3D-wereld ook geen muren heeft).
+
+**Verificatie:** `tests/test-minimap.mjs` §8 bootst de daadwerkelijke
+rendering na (canvas-`getImageData`, max-alpha in een klein venster rond
+elk kandidaat-punt) en bevestigt nu voor alle vier de eerder foute
+kandidaten een duidelijk LAGERE alpha dan een bevestigde echte muur —
+i.e. het bewijs dat de vorige poging niet kon leveren. Volledige
+regressie: `test-minimap.mjs` 37/37 groen, `test-boot-aankondiging.mjs`
+19/19 groen (gebruikt `tekenMinimap()` ook, voor de boot-marker).
+
 #### 7.8.2 Richtingsfeedback bij schade (beslissing 61)
 
 Bij het oplopen van schade verschijnt een korte, richtinggevoelige
@@ -2803,6 +2905,35 @@ vooraf aangemaakte DOM-wedge-elementen die hergebruikt worden per
 hit, nooit `document.createElement` in de hot path
 (`raakOndode()`/schade-afhandeling). Puur CSS/DOM-transform-gestuurd,
 geen nieuwe canvas-laag nodig.
+
+##### 7.8.2.1 Fix 2: de pijl bevroor op het hit-moment i.p.v. de bron te blijven volgen
+
+**Feedback:** "de richtingsfeedback werkt nog niet helemaal goed."
+Geometrisch klopte de rotatieformule al voor élke yaw (cardinale én
+willekeurige hoeken, empirisch geverifieerd via `getBoundingClientRect()`
+vóór deze fix) — de bug zat in de TIJDSDIMENSIE: `toonSchadeRichting()`
+berekende `relatieveHoek` één keer, op het hit-moment, en zette die als
+vaste CSS-`transform` op de wedge. Draaide de speler daarna (tijdens de
+0.5s zichtbaarheid van de wedge) zijn kijkrichting verder — vrijwel
+altijd het geval midden in gevecht — dan bleef de pijl op die bevroren
+schermhoek staan i.p.v. de wérkelijke, inmiddels veranderde relatieve
+richting van de bron te tonen.
+
+**Fix:** `berekenSchadeWedgeHoek(bronX, bronZ, spelerX, spelerZ,
+spelerYaw)` als pure, herbruikbare functie; elke wedge-slot onthoudt nu
+ook `bronX`/`bronZ` (niet alleen `timer`). `updateSchadeWedges(dt)` (al
+elke frame aangeroepen voor de opacity-fade) herberekent nu OOK de
+rotatie-transform, met de ACTUELE `speler.yaw`, zolang de wedge nog
+zichtbaar is — dezelfde bron blijft dus correct "gevolgd" ongeacht hoeveel
+de speler ondertussen ronddraait.
+
+**Verificatie:** `tests/test-schaderichting.mjs` §12 zet de speler op
+yaw=0 met een bron recht vooruit (hoek ≈0), draait de speler dan een
+kwartslag ZONDER nieuwe hit, en bevestigt dat `updateSchadeWedges()` de
+transform bijwerkt (hoek verandert, en verandert naar de correcte nieuwe
+relatieve hoek — de bron staat nu "rechts" na de kwartslag). §13 test
+`berekenSchadeWedgeHoek()` zelf als pure functie. Regressie:
+`test-schaderichting.mjs` 28/28 groen.
 
 ### 7.9 Performancebudgetten en risicogebieden (ronde 5)
 
