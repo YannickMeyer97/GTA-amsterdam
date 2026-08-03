@@ -3342,7 +3342,7 @@ zie hieronder.
 - **Type:** UI/UX
 - **Verbetergebied:** 5 (Spelerfeedback & oriëntatie)
 - **Prioriteit:** middel
-- **Status:** open (gepland)
+- **Status:** afgerond
 - **Afhankelijk van:** —
 - **Doel:** spelers direct laten zien uit welke richting schade komt.
 - **Huidige situatie:** schade toont alleen het bestaande vignet-

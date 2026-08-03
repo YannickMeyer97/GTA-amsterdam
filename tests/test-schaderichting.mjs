@@ -1,0 +1,175 @@
+// Ticket 68: richtingsfeedback bij schade — een vaste pool van DOM-
+// "wedge"-elementen (zelfde effects-pool-patroon als tracerPool/impactPool),
+// die oplichten aan de rand van het beeld, gedraaid naar de hoek tussen
+// kijkrichting en schaderichting. relatieveHoek is (net als bij de
+// boot-hoorn-pan en de kelder-waypointgraaf elders) reken kundig linksom-
+// georiënteerd (atan2), maar CSS rotate() is rechtsom-positief — dus
+// toonSchadeRichting() negeert relatieveHoek bewust vóór het in de
+// rotate()-transform te zetten. Zie ROADMAP.md Ticket 68 en
+// ARCHITECTURE_NOTES.md §7.8.2.
+import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+
+const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
+const { check, report } = makeChecker();
+
+function rotatieHoek(transform) {
+  const m = /rotate\(([-\d.]+)rad\)/.exec(transform);
+  return m ? parseFloat(m[1]) : null;
+}
+
+// --- 1. Pool bestaat: SCHADE_WEDGE_MAX elementen, echt in de DOM, klasse "schadeWedge" ---
+const poolTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  return {
+    aantal: d.schadeWedgePool.length,
+    verwacht: d.SCHADE_WEDGE_MAX,
+    allemaalInDom: d.schadeWedgePool.every(slot => document.body.contains(slot.el)),
+    allemaalJuisteKlasse: d.schadeWedgePool.every(slot => slot.el.className === 'schadeWedge'),
+  };
+});
+check('SCHADE_WEDGE_MAX is 4 en de pool heeft exact dat aantal elementen', poolTest.aantal === poolTest.verwacht && poolTest.aantal === 4, poolTest);
+check('Elk pool-element zit echt in de DOM (document.body)', poolTest.allemaalInDom, poolTest);
+check('Elk pool-element heeft de "schadeWedge"-klasse', poolTest.allemaalJuisteKlasse, poolTest);
+
+// --- 2. Richting vóór: bron recht voor de speler (yaw=0 kijkt naar -z) -----
+const vanVoor = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.speler.positie.set(0, 0, 0);
+  d.speler.yaw = 0;
+  d.toonSchadeRichting(0, -5);   // bron op -z: recht vooruit
+  const slot = d.schadeWedgePool[(d.schadeWedgeVolgende - 1 + d.SCHADE_WEDGE_MAX) % d.SCHADE_WEDGE_MAX];
+  return { transform: slot.el.style.transform, opacity: slot.el.style.opacity, timer: slot.timer };
+});
+const hoekVoor = rotatieHoek(vanVoor.transform);
+check('Bron recht vooruit: rotatiehoek ≈ 0rad', Math.abs(hoekVoor) < 0.001, { vanVoor, hoekVoor });
+check('De wedge licht op (opacity 1) en de timer staat op de volle duur', vanVoor.opacity === '1', vanVoor);
+
+// --- 3. Richting achter: bron recht achter de speler ------------------------
+const vanAchter = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.toonSchadeRichting(0, 5);   // bron op +z: recht achter
+  const slot = d.schadeWedgePool[(d.schadeWedgeVolgende - 1 + d.SCHADE_WEDGE_MAX) % d.SCHADE_WEDGE_MAX];
+  return { transform: slot.el.style.transform };
+});
+const hoekAchter = rotatieHoek(vanAchter.transform);
+check('Bron recht achter: rotatiehoek ≈ ±π (front/behind is sign-symmetrisch, maar wel 180° draai)',
+  Math.abs(Math.abs(hoekAchter) - Math.PI) < 0.001, { vanAchter, hoekAchter });
+
+// --- 4. Richting rechts vs. links: dit is de bug-klasse die front/behind
+// NIET kan vangen (die zijn sign-symmetrisch) — expliciete links/rechts-check.
+const vanRechts = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.toonSchadeRichting(5, 0);   // bron op +x: rechts van de speler (yaw=0)
+  const slot = d.schadeWedgePool[(d.schadeWedgeVolgende - 1 + d.SCHADE_WEDGE_MAX) % d.SCHADE_WEDGE_MAX];
+  return { transform: slot.el.style.transform };
+});
+const vanLinks = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.toonSchadeRichting(-5, 0);   // bron op -x: links van de speler
+  const slot = d.schadeWedgePool[(d.schadeWedgeVolgende - 1 + d.SCHADE_WEDGE_MAX) % d.SCHADE_WEDGE_MAX];
+  return { transform: slot.el.style.transform };
+});
+const hoekRechts = rotatieHoek(vanRechts.transform);
+const hoekLinks = rotatieHoek(vanLinks.transform);
+check('Bron rechts van de speler: POSITIEVE rotatiehoek (wedge draait rechtsom naar de rechterkant)',
+  hoekRechts > 0.1, { vanRechts, hoekRechts });
+check('Bron links van de speler: NEGATIEVE rotatiehoek (wedge draait linksom naar de linkerkant)',
+  hoekLinks < -0.1, { vanLinks, hoekLinks });
+check('Rechts en links geven exact tegengestelde hoeken (symmetrisch rond 0)',
+  Math.abs(hoekRechts + hoekLinks) < 0.001, { hoekRechts, hoekLinks });
+
+// --- 5. Bron exact op spelerpositie: geen NaN, geen crash, gewoon een no-op -
+const geenRichting = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const voor = d.schadeWedgeVolgende;
+  d.toonSchadeRichting(d.speler.positie.x, d.speler.positie.z);
+  return { volgendeOngewijzigd: d.schadeWedgeVolgende === voor };
+});
+check('Bron exact op de spelerpositie: geen wedge geactiveerd (pool-cursor blijft staan)', geenRichting.volgendeOngewijzigd, geenRichting);
+
+// --- 6. Round-robin: 5 aanroepen op een pool van 4 hergebruikt slot 0 -------
+const roundRobin = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.schadeWedgeVolgende = 0;
+  const slotsGeraakt = [];
+  for (let i = 0; i < 5; i++) {
+    d.toonSchadeRichting(0, -5 - i);   // steeds een net iets andere hoek, altijd "voor"
+    slotsGeraakt.push((d.schadeWedgeVolgende - 1 + d.SCHADE_WEDGE_MAX) % d.SCHADE_WEDGE_MAX);
+  }
+  return { slotsGeraakt };
+});
+check('Round-robin: na 5 aanroepen op een pool van 4 is slot 0 opnieuw gebruikt (volgorde 0,1,2,3,0)',
+  JSON.stringify(roundRobin.slotsGeraakt) === JSON.stringify([0, 1, 2, 3, 0]), roundRobin);
+
+// --- 7. updateSchadeWedges(): lineaire uitfade over SCHADE_WEDGE_DUUR -------
+const fadeTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.toonSchadeRichting(0, -5);
+  const slot = d.schadeWedgePool[(d.schadeWedgeVolgende - 1 + d.SCHADE_WEDGE_MAX) % d.SCHADE_WEDGE_MAX];
+  const voor = { opacity: slot.el.style.opacity, timer: slot.timer };
+  d.updateSchadeWedges(d.SCHADE_WEDGE_DUUR / 2);
+  const halverwege = { opacity: parseFloat(slot.el.style.opacity), timer: slot.timer };
+  d.updateSchadeWedges(d.SCHADE_WEDGE_DUUR);   // ruim voorbij het einde
+  const naAfloop = { opacity: parseFloat(slot.el.style.opacity), timer: slot.timer };
+  return { voor, halverwege, naAfloop };
+});
+check('Vlak na het tonen staat de opacity op 1 (volle duur)', fadeTest.voor.opacity === '1' && fadeTest.voor.timer === 0.5, fadeTest);
+check('Op de helft van de duur is de opacity ≈ 0.5', Math.abs(fadeTest.halverwege.opacity - 0.5) < 0.05, fadeTest);
+check('Ruim na afloop: opacity en timer staan allebei op 0 (geklemd, niet negatief)',
+  fadeTest.naAfloop.opacity === 0 && fadeTest.naAfloop.timer === 0, fadeTest);
+
+// --- 8. Wedges die al op 0 staan worden niet steeds herschreven (geen
+// zinloze style-writes voor slots die toch al stil liggen) ------------------
+const stilstandTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const slot of d.schadeWedgePool) { slot.timer = 0; slot.el.style.opacity = '0'; }
+  d.updateSchadeWedges(0.1);
+  return { blijftStil: d.schadeWedgePool.every(s => s.el.style.opacity === '0' && s.timer === 0) };
+});
+check('Alle stilstaande (timer=0) wedges blijven op opacity 0 na updateSchadeWedges()', stilstandTest.blijftStil, stilstandTest);
+
+// --- 9. spelerSchade() met bron-positie roept toonSchadeRichting() aan -----
+const viaSpelerSchade = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.speler.positie.set(0, 0, 0);
+  d.speler.yaw = 0;
+  for (const slot of d.schadeWedgePool) { slot.timer = 0; slot.el.style.opacity = '0'; }
+  d.schadeWedgeVolgende = 0;
+  const hpVoor = d.spelerStaat.hp;
+  d.spelerSchade(5, 'loper', 0, -5);   // bron recht vooruit
+  const slot = d.schadeWedgePool[0];
+  return { hpNa: d.spelerStaat.hp, hpVoor, opacity: slot.el.style.opacity, transform: slot.el.style.transform };
+});
+check('spelerSchade() met bron-x/z trekt HP af zoals gewoonlijk', viaSpelerSchade.hpNa === viaSpelerSchade.hpVoor - 5, viaSpelerSchade);
+check('spelerSchade() met bron-x/z activeert ook meteen een wedge (opacity 1)', viaSpelerSchade.opacity === '1', viaSpelerSchade);
+check('Die wedge staat op de juiste ("vooruit") hoek', Math.abs(rotatieHoek(viaSpelerSchade.transform)) < 0.001, viaSpelerSchade);
+
+// --- 10. spelerSchade() ZONDER bron-positie (bv. een toekomstige, nog niet
+// gerichte schadebron) laat de wedge-pool met rust — geen NaN/crash -------
+const zonderBron = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const slot of d.schadeWedgePool) { slot.timer = 0; slot.el.style.opacity = '0'; }
+  const hpVoor = d.spelerStaat.hp;
+  d.spelerSchade(3, 'onbekend');   // geen bronX/bronZ meegegeven
+  return {
+    hpNa: d.spelerStaat.hp, hpVoor,
+    geenWedgeGeraakt: d.schadeWedgePool.every(s => s.timer === 0),
+  };
+});
+check('spelerSchade() zonder bron-positie trekt nog steeds HP af', zonderBron.hpNa === zonderBron.hpVoor - 3, zonderBron);
+check('spelerSchade() zonder bron-positie activeert GEEN wedge', zonderBron.geenWedgeGeraakt, zonderBron);
+
+// --- 11. Bron-check: geen document.createElement() in de schade-hot-path --
+const bronTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  return {
+    toonGeenCreateElement: !/document\.createElement/.test(d.toonSchadeRichting.toString()),
+    updateGeenCreateElement: !/document\.createElement/.test(d.updateSchadeWedges.toString()),
+  };
+});
+check('toonSchadeRichting() maakt geen nieuwe DOM-elementen aan (alleen pool-hergebruik)', bronTest.toonGeenCreateElement, bronTest);
+check('updateSchadeWedges() maakt geen nieuwe DOM-elementen aan', bronTest.updateGeenCreateElement, bronTest);
+
+const fails = report(errs);
+await browser.close();
+process.exit(fails > 0 ? 1 : 0);

@@ -246,6 +246,25 @@
     background: radial-gradient(ellipse at center, rgba(170,10,10,0) 55%, rgba(170,10,10,0.9) 100%);
   }
 
+  /* --- Ticket 68: richtingsfeedback bij schade — een driehoekige "wedge"
+       aan de rand van het beeld, gedraaid naar de hoek tussen kijkrichting
+       en schaderichting (0rad = recht vooruit, boven in beeld), punt naar
+       binnen. Opacity wordt puur via JS/frame gestuurd (zelfde patroon als
+       #vignet hierboven), dus bewust geen CSS-transition hier. --- */
+  .schadeWedge {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-left: 26px solid transparent;
+    border-right: 26px solid transparent;
+    border-top: 46px solid rgba(255, 40, 40, 0.85);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 7;
+  }
+
   /* --- Game-over-scherm --- */
   #gameOverScherm {
     position: fixed;
@@ -4998,7 +5017,7 @@ function updateOndoden(dt) {
         const hoekVerschil = Math.abs(kortsteHoekVerschil(doelHoek, ondode.groep.rotation.y));
         const midX = (positie.x + speler.positie.x) / 2, midZ = (positie.z + speler.positie.z) / 2;
         if (afstand <= profiel.raakBereik && hoekVerschil <= profiel.raakHoek && isVrijePlek(midX, midZ, 0.05)) {
-          spelerSchade(profiel.schade, ondode.type);
+          spelerSchade(profiel.schade, ondode.type, positie.x, positie.z);   // Ticket 68: richtingsfeedback
           speelSlagRaak();   // Ticket 31: bovenop de speelSpelerAu() uit spelerSchade()
         } else {
           speelSlagMis();    // Ticket 31: whoosh bij een ontweken aanval
@@ -5283,7 +5302,7 @@ function ontploiBrander(ondode) {
   setTimeout(() => { scene.remove(flits); scene.remove(licht); }, 220);
   speelExplosie();
 
-  if (pos.distanceTo(speler.positie) <= BRANDER_EXPLOSIE_RADIUS) spelerSchade(BRANDER_EXPLOSIE_SCHADE_SPELER, 'brander');
+  if (pos.distanceTo(speler.positie) <= BRANDER_EXPLOSIE_RADIUS) spelerSchade(BRANDER_EXPLOSIE_SCHADE_SPELER, 'brander', pos.x, pos.z);
 
   for (const andere of [...ondoden]) {
     if (andere === ondode || !ondoden.includes(andere)) continue;   // kan al dood zijn door deze zelfde keten
@@ -5363,12 +5382,53 @@ const spelerStaat = {
 
 let vignetFlits = 0;
 
-function spelerSchade(bedrag, bron = 'onbekend') {
+// Ticket 68 (Spelerfeedback & oriëntatie): richtingsfeedback bij schade — een
+// vaste pool van vooraf aangemaakte wedge-elementen (zelfde effects-pool-
+// patroon als tracerPool/impactPool hierboven), round-robin hergebruikt, dus
+// geen enkele document.createElement()-aanroep in de schade-hot-path zelf.
+const SCHADE_WEDGE_MAX = 4;
+function bouwSchadeWedge() {
+  const el = document.createElement('div');
+  el.className = 'schadeWedge';
+  document.body.appendChild(el);
+  return { el, timer: 0 };
+}
+const schadeWedgePool = [];
+for (let i = 0; i < SCHADE_WEDGE_MAX; i++) schadeWedgePool.push(bouwSchadeWedge());
+let schadeWedgeVolgende = 0;
+const SCHADE_WEDGE_DUUR = 0.5;   // s: hoelang zichtbaar, daarna lineair uitgefaded
+// relatieveHoek is (net als elders, zie speelBootHoornGericht()) reken-
+// kundig linksom-georiënteerd (atan2), maar CSS rotate() en de wedge-
+// visuele "rechtsom is rechts"-conventie zijn rechtsom-positief — vandaar
+// de NEGATIE hieronder. Zonder die negatie zou een bron aan de rechterkant
+// van de speler de wedge links in beeld tonen (en andersom).
+function toonSchadeRichting(bronX, bronZ) {
+  const dx = bronX - speler.positie.x, dz = bronZ - speler.positie.z;
+  if (dx === 0 && dz === 0) return;   // bron exact op spelerpositie: geen zinvolle richting
+  const relatieveHoek = kortsteHoekVerschil(Math.atan2(-dx, -dz), speler.yaw);
+  const slot = schadeWedgePool[schadeWedgeVolgende];
+  schadeWedgeVolgende = (schadeWedgeVolgende + 1) % SCHADE_WEDGE_MAX;
+  slot.el.style.transform = `translate(-50%, -50%) rotate(${-relatieveHoek}rad) translateY(-42vh)`;
+  slot.el.style.opacity = '1';
+  slot.timer = SCHADE_WEDGE_DUUR;
+}
+// Cosmetisch: loopt net als updateVignet() gewoon elke frame door (ook tijdens
+// pauze/game-over), zodat een wedge altijd netjes uitdooft i.p.v. "vast" te blijven.
+function updateSchadeWedges(dt) {
+  for (const slot of schadeWedgePool) {
+    if (slot.timer <= 0) continue;
+    slot.timer = Math.max(0, slot.timer - dt);
+    slot.el.style.opacity = String(slot.timer / SCHADE_WEDGE_DUUR);
+  }
+}
+
+function spelerSchade(bedrag, bron = 'onbekend', bronX = null, bronZ = null) {
   if (spelStaat.gameOver) return;
   spelerStaat.hp = Math.max(0, spelerStaat.hp - bedrag);
   spelerStaat.laatsteSchadeTijd = klok;
   runStats.doodDoor = bron;   // Ticket 42: laatste aanvaller, gebruikt op het gameOver-scherm
   vignetFlits = 1;
+  if (bronX !== null && bronZ !== null) toonSchadeRichting(bronX, bronZ);
   speelSpelerAu();
   updateHUD();
   if (spelerStaat.hp <= 0) gameOver();
@@ -6858,6 +6918,7 @@ function gameLoop(nu) {
   }
   updateVignet(dt);
   updateHitmarker(dt);   // Ticket 33: cosmetisch, decayt door tijdens pauze net als het vignet
+  updateSchadeWedges(dt);   // Ticket 68: richtingsfeedback bij schade, decayt door tijdens pauze net als het vignet
 
   // Sfeer: lampen zacht laten flikkeren (loopt ook tijdens pauze, want puur
   // cosmetisch). `nu` loopt altijd door, dus onafhankelijk van de spel-klok.
@@ -7267,6 +7328,11 @@ window.AmsterdamUndeadDebug = {
   minimapSchaal, minimapTransform, tekenMinimap, updateMinimap, MINIMAP_TEKEN_INTERVAL,
   get minimapThrottleTimer() { return minimapThrottleTimer; },
   set minimapThrottleTimer(v) { minimapThrottleTimer = v; },
+  // Ticket 68: richtingsfeedback bij schade
+  SCHADE_WEDGE_MAX, SCHADE_WEDGE_DUUR, schadeWedgePool, toonSchadeRichting, updateSchadeWedges,
+  kortsteHoekVerschil,
+  get schadeWedgeVolgende() { return schadeWedgeVolgende; },
+  set schadeWedgeVolgende(v) { schadeWedgeVolgende = v; },
 };
 </script>
 </body>
