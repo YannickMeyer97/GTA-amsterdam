@@ -80,10 +80,10 @@ check('Actieve tracers blijven binnen TRACER_MAX, ook na de stress-golf',
   stressTest.tracersActief <= stressTest.tracerMax, stressTest);
 check('Actieve impact-deeltjes blijven binnen IMPACT_MAX, ook na de stress-golf',
   stressTest.impactsActief <= stressTest.impactMax, stressTest);
-check('Winkelmarkeringen groeien niet mee met combat-stress (blijft 12, incl. Ticket 62 deur5)',
-  stressTest.winkelMarkeringenLengte === 12, stressTest);
-check('lampLichten groeit niet mee met combat-stress (blijft 8, incl. Ticket 62 kelder (3 lampen))',
-  stressTest.lampLichtenLengte === 8, stressTest);
+check('Winkelmarkeringen groeien niet mee met combat-stress (blijft 13, incl. deur5 + deur6)',
+  stressTest.winkelMarkeringenLengte === 13, stressTest);
+check('lampLichten groeit niet mee met combat-stress (blijft 9, incl. kelder (3) + kelderoost (1))',
+  stressTest.lampLichtenLengte === 9, stressTest);
 check('stofwolken groeit niet mee met combat-stress (blijft 2)',
   stressTest.stofwolkenLengte === 2, stressTest);
 

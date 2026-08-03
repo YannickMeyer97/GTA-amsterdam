@@ -1017,6 +1017,20 @@ const KELDER_Z_NOORD = -23.9;              // binnen GRENS.minZ (-23.95), zodat 
 const KELDER_Z_ZUID = -14;                 // 9,9m diep (ongewijzigd); breedte 7,5m -> 7,5 x 9,9 = 74,25 m^2
 const KELDER_DIEPTE = 3.3;
 const KELDER_HOOGTE = 3.2;                 // = KAMER_HOOGTE (op verzoek: "ongeveer gelijk aan het atelier")
+const KELDER_MUUR_DIKTE = 0.25;            // was lokaal (kelderMuurDikte) in de geometrie-IIFE; nu ook top-level
+                                            // nodig voor DEUR6_X hieronder (kelderoost).
+// Feedback: "ik zie de lantaarn niet meer" / nieuwe ruimte in de kelder —
+// een tweede kelderkamer (kelderoost), bereikbaar via een eigen deur (deur6)
+// in de oostmuur van de hoofdkelder, zuidelijker dan de trapkoker-opening.
+// Zelfde x-bereik als de trapkoker (KELDERTRAP_X_ONDER..X_BOVEN), maar op
+// een eigen, zuidelijkere z-band — dus GEEN overlap met de trapkoker zelf.
+const KELDEROOST_HALF_BREEDTE = 0.6;                          // deurgat, zelfde maat als de trap-ingang
+const KELDEROOST_CZ = -14.9;                                  // deurcentrum, zo ver mogelijk zuidwaarts op de oostmuur
+const KELDEROOST_X_WEST = KELDERTRAP_X_ONDER;                 // gedeelde muur met de hoofdkelder (deur zit hierin)
+const KELDEROOST_X_OOST = KAMER2_NIS_X_WEST - 0.6;             // ruim binnen de veilige x < KAMER2_NIS_X_WEST-grens
+const KELDEROOST_Z_NOORD = KELDERTRAP_CZ + KELDERTRAP_HALF_BREEDTE + 0.5;   // marge t.o.v. de trapkoker-hoek
+const KELDEROOST_Z_ZUID = KELDER_Z_ZUID;                       // zelfde zuidgrens als de hoofdkelder
+const DEUR6_X = KELDERTRAP_X_ONDER + KELDER_MUUR_DIKTE / 2;    // deurgat-mesh-centrum (midden in de muurdikte)
 // Y-aanname-audit: interactiePunten/winkelmarkeringen waren X/Z-only (Y was
 // impliciet 0). De kelder ligt inmiddels weer op een eigen X/Z, dus deze
 // marge is strikt genomen niet meer nodig — hij blijft staan als goedkope
@@ -1040,6 +1054,12 @@ function berekenKelderY(x, z) {
   if (x >= KELDERTRAP_X_BOVEN) return 0;
   if (z <= KELDER_Z_NOORD || z >= KELDER_Z_ZUID) return 0;
   if (x <= KELDERTRAP_X_ONDER) return -KELDER_DIEPTE;   // de kelderruimte zelf: vlakke vloer
+  // Kelderoost deelt zijn x-bereik (KELDERTRAP_X_ONDER..X_BOVEN) met de
+  // trapkoker hierboven, maar ligt op een eigen, zuidelijkere z-band — dus
+  // MOET vóór de trapkoker-check hieronder afgehandeld worden (anders leest
+  // elke stap voorbij x=KELDERTRAP_X_ONDER in kelderoost als "geen vloer",
+  // en schiet de speler/camera terug omhoog naar Y=0 bij het binnenlopen).
+  if (z > KELDEROOST_Z_NOORD && z < KELDEROOST_Z_ZUID && x < KELDEROOST_X_OOST) return -KELDER_DIEPTE;
   // Tussen boven- en onderkant van de trap: alleen de koker zelf daalt.
   // Daarbuiten ligt geen vloer; de kokermuren houden de speler daar sowieso
   // weg, dus 0 (begane grond) is daar de veilige waarde.
@@ -1366,6 +1386,23 @@ deur5Klink.position.set(KAMER2_NIS_X_WEST - MUUR_DIKTE / 2 + 0.1, 1.0, KELDERTRA
 deur5Klink.userData.materiaalFamilie = 'metaal';
 wereld.add(deur5Klink);
 const deur5Obstakel = registreerRechthoek(KAMER2_NIS_X_WEST - MUUR_DIKTE, KAMER2_NIS_X_WEST, KELDERTRAP_CZ - KELDERTRAP_HALF_BREEDTE, KELDERTRAP_CZ + KELDERTRAP_HALF_BREEDTE);
+
+// Deur 6 (feedback: nieuwe ruimte in de kelder): vult het deurgat in de
+// oostmuur naar kelderoost — zelfde mesh/klink/obstakel-patroon als deur 5,
+// maar op keldervloerniveau (Y = -KELDER_DIEPTE) i.p.v. de nis (Y = 0).
+const deur6Mesh = new THREE.Mesh(
+  new THREE.BoxGeometry(0.16, KELDER_HOOGTE - 0.2, KELDEROOST_HALF_BREEDTE * 2),
+  matFamilie('hout', 0x3a3228)
+);
+deur6Mesh.position.set(DEUR6_X, -KELDER_DIEPTE + (KELDER_HOOGTE - 0.2) / 2, KELDEROOST_CZ);
+deur6Mesh.castShadow = true;
+deur6Mesh.userData.materiaalFamilie = 'hout';
+wereld.add(deur6Mesh);
+const deur6Klink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), matFamilie('metaal', 0xb8c4cc));
+deur6Klink.position.set(DEUR6_X + 0.1, -KELDER_DIEPTE + 1.0, KELDEROOST_CZ - (KELDEROOST_HALF_BREEDTE - 0.25));
+deur6Klink.userData.materiaalFamilie = 'metaal';
+wereld.add(deur6Klink);
+const deur6Obstakel = registreerRechthoek(DEUR6_X - KELDER_MUUR_DIKTE / 2, DEUR6_X + KELDER_MUUR_DIKTE / 2, KELDEROOST_CZ - KELDEROOST_HALF_BREEDTE, KELDEROOST_CZ + KELDEROOST_HALF_BREEDTE);
 
 // De koopbare deur 3 (Ticket 25, map-lus M2): zelfde patroon als deur 1/2,
 // maar in een HORIZONTALE muur (de binnenplaats-zuidmuur) — dus net als
@@ -1890,7 +1927,7 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   // ARCHITECTURE_NOTES.md §7.5.8): eindwaarde meet ~18,1% donkerder dan de
   // Feedbackronde-3-kleuren (0x776e60/0x6a5d4d hierboven).
   const KELDER_TINT = 0x655d51;
-  const kelderMuurDikte = 0.25;
+  const kelderMuurDikte = KELDER_MUUR_DIKTE;
   const kokerLengte = KELDERTRAP_X_BOVEN - KELDERTRAP_X_ONDER;
   const kokerCX = (KELDERTRAP_X_BOVEN + KELDERTRAP_X_ONDER) / 2;
 
@@ -1997,13 +2034,45 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   kelderWand(KELDER_X_WEST - kelderMuurDikte / 2, kamerCZ, kelderMuurDikte, kamerDiepteZ + kelderMuurDikte * 2);
   kelderWand(kamerCX, KELDER_Z_NOORD - kelderMuurDikte / 2, kamerBreedteX, kelderMuurDikte);
   kelderWand(kamerCX, KELDER_Z_ZUID + kelderMuurDikte / 2, kamerBreedteX, kelderMuurDikte);
-  // Oostmuur in twee segmenten, met de trapkoker-opening ertussen.
+  // Oostmuur in DRIE segmenten: de trapkoker-opening (noordelijk, ongewijzigd)
+  // en, in wat eerst één doorlopend zuidsegment was, nu een tweede opening
+  // voor de nieuwe kelderoost-kamer (feedback), zo ver mogelijk zuidwaarts.
+  const oostX = KELDERTRAP_X_ONDER + kelderMuurDikte / 2;
   {
-    const oostX = KELDERTRAP_X_ONDER + kelderMuurDikte / 2;
     const noordDiepte = (KELDERTRAP_CZ - KELDERTRAP_HALF_BREEDTE) - KELDER_Z_NOORD;
     kelderWand(oostX, KELDER_Z_NOORD + noordDiepte / 2, kelderMuurDikte, noordDiepte);
-    const zuidDiepte = KELDER_Z_ZUID - (KELDERTRAP_CZ + KELDERTRAP_HALF_BREEDTE);
-    kelderWand(oostX, KELDER_Z_ZUID - zuidDiepte / 2, kelderMuurDikte, zuidDiepte);
+    const midden0 = KELDERTRAP_CZ + KELDERTRAP_HALF_BREEDTE;
+    const midden1 = KELDEROOST_CZ - KELDEROOST_HALF_BREEDTE;
+    kelderWand(oostX, (midden0 + midden1) / 2, kelderMuurDikte, midden1 - midden0);
+    const zuidRand = KELDEROOST_CZ + KELDEROOST_HALF_BREEDTE;
+    if (KELDER_Z_ZUID - zuidRand > 0.05) {
+      kelderWand(oostX, (zuidRand + KELDER_Z_ZUID) / 2, kelderMuurDikte, KELDER_Z_ZUID - zuidRand);
+    }
+  }
+
+  // --- Kelderoost: tweede kelderruimte, bereikbaar via deur6 in de
+  // hierboven gesplitste oostmuur. Zelfde bouwstijl (KELDER_TINT,
+  // kelderMuurDikte) als de hoofdkelder, eigen kleinere afmetingen (zie de
+  // KELDEROOST_*-constanten hierboven voor de grens-rationale).
+  {
+    const koCX = (KELDEROOST_X_WEST + KELDEROOST_X_OOST) / 2;
+    const koBreedteX = KELDEROOST_X_OOST - KELDEROOST_X_WEST;
+    const koCZ = (KELDEROOST_Z_NOORD + KELDEROOST_Z_ZUID) / 2;
+    const koDiepteZ = KELDEROOST_Z_ZUID - KELDEROOST_Z_NOORD;
+    const koVloer = new THREE.Mesh(new THREE.PlaneGeometry(koBreedteX, koDiepteZ), matFamilie('steen', 0x594e41));
+    koVloer.rotation.x = -Math.PI / 2;
+    koVloer.position.set(koCX, -KELDER_DIEPTE, koCZ);
+    koVloer.receiveShadow = true;
+    wereld.add(koVloer);
+    const koPlafond = new THREE.Mesh(new THREE.PlaneGeometry(koBreedteX, koDiepteZ), mat(0x08090a, 0.95));
+    koPlafond.rotation.x = Math.PI / 2;
+    koPlafond.position.set(koCX, -KELDER_DIEPTE + KELDER_HOOGTE, koCZ);
+    wereld.add(koPlafond);
+    // Noord/zuid/oost-muren (west is de gedeelde muur met de hoofdkelder,
+    // met de zojuist gebouwde deuropening erin — geen extra muur nodig).
+    kelderWand(koCX, KELDEROOST_Z_NOORD - kelderMuurDikte / 2, koBreedteX + kelderMuurDikte, kelderMuurDikte);
+    kelderWand(koCX, KELDEROOST_Z_ZUID + kelderMuurDikte / 2, koBreedteX + kelderMuurDikte, kelderMuurDikte);
+    kelderWand(KELDEROOST_X_OOST + kelderMuurDikte / 2, koCZ, kelderMuurDikte, koDiepteZ + kelderMuurDikte * 2);
   }
 
   // --- Verlichting: één klein peertje boven de trap ("een klein beetje
@@ -2052,6 +2121,9 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   const kamerLampY = -KELDER_DIEPTE + KELDER_HOOGTE - 0.5;
   kelderLamp(KELDERTRAP_X_ONDER - 2, kamerLampY, kamerCZ, 22, 10.5, 0.4, 0.36);
   kelderLamp(KELDER_X_WEST + 2, kamerLampY, kamerCZ, 22, 10.5, 0.4, 0.36);
+  // Kelderoost krijgt zijn eigen lamp, midden in de kleinere ruimte — zelfde
+  // stroomVloer-tuning als de hoofdkelder-lampen hierboven.
+  kelderLamp((KELDEROOST_X_WEST + KELDEROOST_X_OOST) / 2, kamerLampY, (KELDEROOST_Z_NOORD + KELDEROOST_Z_ZUID) / 2, 20, 8, 0.4, 0.36);
 
   // Ticket 63 (§7.5.3): kelderinhoud — klein eigen setje decor, passend bij
   // het Amsterdamse-grachtenhuis-thema. Puur sfeer, geen collision (zelfde
@@ -2642,6 +2714,8 @@ const WINKEL_STIJLEN = {
     status: () => deur4Gekocht ? 'gekocht' : (spelStaat.geld >= DEUR4_PRIJS ? 'beschikbaar' : 'teDuur') },
   deur5:        { kleur: 0x8a7050, bouwIcoon: (g) => bouwIcoonSleutel(g, 0x8a7050),
     status: () => deur5Gekocht ? 'gekocht' : (spelStaat.geld >= DEUR5_PRIJS ? 'beschikbaar' : 'teDuur') },
+  deur6:        { kleur: 0x8a7050, bouwIcoon: (g) => bouwIcoonSleutel(g, 0x8a7050),
+    status: () => deur6Gekocht ? 'gekocht' : (spelStaat.geld >= DEUR6_PRIJS ? 'beschikbaar' : 'teDuur') },
   // Ticket 44: de Vluchtroute — gratis oprapen, dus geen teDuur/gekocht-
   // status nodig (de markering verdwijnt gewoon bij het oprapen). Gedeeld
   // pijl-silhouet (bestaand, anders alleen bij 'upgrade'), eigen zeegroene
@@ -5818,6 +5892,7 @@ const DEUR2_PRIJS  = 1000;             // v0.6: 1250->1000, opent de binnenplaat
 const DEUR3_PRIJS  = 1200;             // Ticket 25: opent de kelderhals/bijkeuken (zone E)
 const DEUR4_PRIJS  = 800;              // Ticket 26: terugdeur, ontgrendelt geen zone
 const DEUR5_PRIJS  = 900;              // Ticket 62: opent de kelder (permanente veilige ruimte, geen combat-zone)
+const DEUR6_PRIJS  = 700;              // feedback: opent kelderoost (nog een veilige ruimte, geen combat-zone)
 const WATERTAP_PRIJS = 200;            // herbruikbaar: geld voor HP
 const WATERTAP_HP    = 50;             // hp per gebruik (gecapt op hpMax)
 const PANTSERDRANK_PRIJS    = 1000;    // v0.7: eenmalige perk in het atelier
@@ -6067,6 +6142,8 @@ const deur4Markering = winkelMarkering(HALF_BREEDTE + MUUR_DIKTE + 2.0, DEUR4_Z,
 // zelfde x-offset-i.p.v.-z-offset-logica als deur2Markering hierboven,
 // want deze deur zit ook in een verticale (noord-zuid) muur.
 const deur5Markering = winkelMarkering(KAMER2_NIS_X_WEST + 0.7, KELDERTRAP_CZ, 'deur5');
+const deur6Markering = winkelMarkering(DEUR6_X - 0.7, KELDEROOST_CZ, 'deur6');
+deur6Markering.position.y += -KELDER_DIEPTE;   // zelfde patroon als pantserdrankMarkering: winkelMarkering() gaat uit van Y=0
 
 // --- Watertap (Ticket V5): herbruikbaar, geld voor HP (risk/reward) ------
 const WATERTAP_X = PLAATS_CX + 1.5;
@@ -6327,6 +6404,27 @@ function koopDeur5() {
   updateHUD();
 }
 
+// Deur 6 (feedback): opent kelderoost — zelfde koop-/verwijder-patroon als
+// deur 5, ook een permanente veilige ruimte buiten ZONE_GRAAF.
+let deur6Gekocht = false;
+function koopDeur6() {
+  if (deur6Gekocht) return;
+  if (spelStaat.geld < DEUR6_PRIJS) { toonMelding(`Nog €${DEUR6_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  spelStaat.geld -= DEUR6_PRIJS;
+  deur6Gekocht = true;
+  wereld.remove(deur6Mesh);
+  wereld.remove(deur6Klink);
+  wereld.remove(deur6Markering);
+  const oi = obstakels.indexOf(deur6Obstakel);
+  if (oi !== -1) obstakels.splice(oi, 1);
+  const pi = interactiePunten.indexOf(deur6Punt);
+  if (pi !== -1) interactiePunten.splice(pi, 1);
+  speelKoop();
+  toonMelding('Deur geforceerd — een nieuwe ruimte is open');
+  toonGolfBanner('KELDEROOST', 'nieuwe toegang geopend');
+  updateHUD();
+}
+
 // Watertap (Ticket V5): herbruikbaar, geld voor HP. Werkt niet als HP al vol is.
 function koopWatertap() {
   if (spelerStaat.hp >= spelerStaat.hpMax) { toonMelding('HP is al vol'); return; }
@@ -6436,6 +6534,15 @@ const deur5Punt = {
   prompt: () => `Druk T: forceer de deur naar de kelder (€${DEUR5_PRIJS})`,
   actie: koopDeur5,
 };
+// deur6Punt staat aan de HOOFDKELDER-kant (zelfde kant als de markering) —
+// dat is de kant waar de speler al kan komen (via deur5) vóórdat deur6 gekocht is.
+const deur6Punt = {
+  naam: 'Deur 6',
+  positie: new THREE.Vector3(DEUR6_X - 0.7, -KELDER_DIEPTE, KELDEROOST_CZ),
+  radius: 1.6,
+  prompt: () => `Druk T: forceer de deur naar kelderoost (€${DEUR6_PRIJS})`,
+  actie: koopDeur6,
+};
 // Ticket 12: smeedt het ACTIEVE wapen — de prompt volgt dus mee als je wisselt (Q).
 const smederijPunt = {
   naam: 'De Smederij',
@@ -6520,9 +6627,9 @@ function bouwTouwbundelMesh(x, z) {
   wereld.add(g);
   return g;
 }
-function bouwScheepslantaarnMesh(x, z) {
+function bouwScheepslantaarnMesh(x, z, y = 0) {
   const g = new THREE.Group();
-  g.position.set(x, 0, z);
+  g.position.set(x, y, z);
   const PLANK_HOOGTE = 0.08;
   const plank = new THREE.Mesh(new THREE.BoxGeometry(0.5, PLANK_HOOGTE, 0.4), matFamilie('hout', 0x3f342a));
   plank.position.y = PLANK_HOOGTE / 2;
@@ -6544,10 +6651,18 @@ function bouwScheepslantaarnMesh(x, z) {
 }
 // Posities via isVrijePlek-probes geverifieerd (atelier/binnenplaats/
 // bijkeuken), ruim uit de buurt van bestaande winkelpunten/decor.
+// Ticket 62b (Y-aanname-audit): elk onderdeel heeft nu een expliciet `y`-veld
+// (0 = begane grond) — nodig zodra een onderdeel niet meer op Y=0 ligt (de
+// Scheepslantaarn verhuisde naar kelderoost, Y=-KELDER_DIEPTE). Zowel de
+// mesh (via bouwScheepslantaarnMesh's y-parameter) als straks het
+// interactiepunt (zie toonVluchtOnderdelenIndienDrempel) gebruiken 'm.
 const VLUCHT_ONDERDELEN = [
-  { naam: 'Roeispaan', x: 1.8, z: ATELIER_MIDDEN_Z - 5, drempelGolf: 3, mesh: bouwRoeispaanMesh(1.8, ATELIER_MIDDEN_Z - 5), zichtbaar: false, opgehaald: false, punt: null, markering: null },
-  { naam: 'Touwbundel', x: PLAATS_CX - 5, z: PLAATS_Z_ZUID - 1.5, drempelGolf: 6, mesh: bouwTouwbundelMesh(PLAATS_CX - 5, PLAATS_Z_ZUID - 1.5), zichtbaar: false, opgehaald: false, punt: null, markering: null },
-  { naam: 'Scheepslantaarn', x: BIJKEUKEN_X_WEST + 1.2, z: -3, drempelGolf: 9, mesh: bouwScheepslantaarnMesh(BIJKEUKEN_X_WEST + 1.2, -3), zichtbaar: false, opgehaald: false, punt: null, markering: null },
+  { naam: 'Roeispaan', x: 1.8, y: 0, z: ATELIER_MIDDEN_Z - 5, drempelGolf: 3, mesh: bouwRoeispaanMesh(1.8, ATELIER_MIDDEN_Z - 5), zichtbaar: false, opgehaald: false, punt: null, markering: null },
+  { naam: 'Touwbundel', x: PLAATS_CX - 5, y: 0, z: PLAATS_Z_ZUID - 1.5, drempelGolf: 6, mesh: bouwTouwbundelMesh(PLAATS_CX - 5, PLAATS_Z_ZUID - 1.5), zichtbaar: false, opgehaald: false, punt: null, markering: null },
+  // Feedback: verhuisd van de bijkeuken naar kelderoost (de nieuwe kelderruimte).
+  { naam: 'Scheepslantaarn', x: (KELDEROOST_X_WEST + KELDEROOST_X_OOST) / 2, y: -KELDER_DIEPTE, z: (KELDEROOST_Z_NOORD + KELDEROOST_Z_ZUID) / 2, drempelGolf: 9,
+    mesh: bouwScheepslantaarnMesh((KELDEROOST_X_WEST + KELDEROOST_X_OOST) / 2, (KELDEROOST_Z_NOORD + KELDEROOST_Z_ZUID) / 2, -KELDER_DIEPTE),
+    zichtbaar: false, opgehaald: false, punt: null, markering: null },
 ];
 let vluchtOnderdelenOpgepakt = 0;
 // Ticket 56: subtiele, permanente schaalpuls op elk zichtbaar-maar-nog-niet-
@@ -6793,9 +6908,10 @@ function toonVluchtOnderdelenIndienDrempel() {
     onderdeel.zichtbaar = true;
     onderdeel.mesh.visible = true;
     onderdeel.markering = winkelMarkering(onderdeel.x, onderdeel.z, 'vluchtroute');
+    if (onderdeel.y) onderdeel.markering.position.y += onderdeel.y;   // winkelMarkering() gaat uit van Y=0
     onderdeel.punt = {
       naam: onderdeel.naam,
-      positie: new THREE.Vector3(onderdeel.x, 0, onderdeel.z),
+      positie: new THREE.Vector3(onderdeel.x, onderdeel.y ?? 0, onderdeel.z),
       radius: 1.2,
       prompt: () => `Druk T: raap ${onderdeel.naam} op`,
       actie: () => raapVluchtOnderdeelOp(onderdeel),
@@ -6804,7 +6920,7 @@ function toonVluchtOnderdelenIndienDrempel() {
   }
 }
 
-const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, pantserdrankPunt, deur2Punt, watertapPunt, ratelaarPunt, smederijPunt, deur3Punt, deur4Punt, deur5Punt];
+const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, pantserdrankPunt, deur2Punt, watertapPunt, ratelaarPunt, smederijPunt, deur3Punt, deur4Punt, deur5Punt, deur6Punt];
 
 let huidigeInteractie = null;
 
@@ -7139,6 +7255,11 @@ window.AmsterdamUndeadDebug = {
   KELDER_DIEPTE, KELDER_HOOGTE, KELDER_Y_MARGE, berekenKelderY,
   deur5Mesh, deur5Obstakel, koopDeur5, deur5Punt,
   get deur5Gekocht() { return deur5Gekocht; },
+  // Feedback: kelderoost — tweede kelderruimte + deur 6
+  KELDEROOST_HALF_BREEDTE, KELDEROOST_CZ, KELDEROOST_X_WEST, KELDEROOST_X_OOST,
+  KELDEROOST_Z_NOORD, KELDEROOST_Z_ZUID, KELDER_MUUR_DIKTE, DEUR6_X, DEUR6_PRIJS,
+  deur6Mesh, deur6Klink, deur6Obstakel, koopDeur6, deur6Punt, deur6Markering,
+  get deur6Gekocht() { return deur6Gekocht; },
   // Ticket V6: spawn-pacing per zone:
   aantalOntgrendeldeZones, effectiefSpawnInterval, effectiefMaxActief,
   ZONE_SPAWN_INTERVAL_FACTOR, ZONE_MAX_ACTIEF_BONUS,

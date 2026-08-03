@@ -114,10 +114,12 @@ check('Alle vier de ateliers-dakramen volgen exact stroomFactor * DAKRAAM_STROOM
 // óók tijdens een Stroomuitval — pixelmeting liet zien dat de generieke
 // 12%-vloer (net als de startkamer-lampen) de kelder véél te donker liet
 // worden t.o.v. het atelier/de startkamer (materiaalverschil, zie
-// ARCHITECTURE_NOTES.md §7.5.1-addendum). De twee kelder-kamerlampen kregen
+// ARCHITECTURE_NOTES.md §7.5.1-addendum). De kelder-kamerlampen kregen
 // daarom een eigen `stroomVloer` (0,36) — zelfde formulepatroon als
 // HEMISFEER_STROOM_VLOER, dus NEUTRAAL (fractie 1) bij stroomFactor=1, en
 // een hogere fractie dan de generieke 12% zodra een Stroomuitval actief is.
+// Kelderoost (feedback) kreeg zijn eigen lamp met dezelfde stroomVloer-tuning
+// erbij: twee in de hoofdkelder + één in kelderoost = drie.
 const kelderLampenTick = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const kelderLampen = d.lampLichten.filter(l => l.stroomVloer !== undefined);
@@ -127,8 +129,8 @@ const kelderLampenTick = await page.evaluate(() => {
     stroomVloerWaarden: kelderLampen.map(l => l.stroomVloer),
   };
 });
-check('Er zijn precies 2 kelder-kamerlampen met een eigen stroomVloer',
-  kelderLampenTick.aantal === 2 && kelderLampenTick.stroomVloerWaarden.every(v => v === 0.36), kelderLampenTick);
+check('Er zijn precies 3 kelder-kamerlampen met een eigen stroomVloer (2 hoofdkelder + 1 kelderoost)',
+  kelderLampenTick.aantal === 3 && kelderLampenTick.stroomVloerWaarden.every(v => v === 0.36), kelderLampenTick);
 // Ruimere tolerantie dan de andere Stroomuitval-fracties hierboven: deze
 // lampen zitten (anders dan hemisfeer/exposure/buiten) ook nog in de
 // gewone flikkerloop (amp1/amp2 op de sinus), dus de fractie schommelt van
@@ -283,12 +285,13 @@ check('buitenLichten staan weer op hun volle basis-intensiteit buiten een Stroom
   hemisfeerNaMist.buitenFracties.every(f => Math.abs(f - 1) < 0.01), hemisfeerNaMist);
 
 // --- 10. Lichttelling ongewijzigd t.o.v. Ticket 46 zelf: dat ticket dimt
-// alleen bestaande lampen/materialen. Ticket 62 voegt daarna bewust twee
+// alleen bestaande lampen/materialen. Ticket 62 voegt daarna bewust drie
 // nieuwe lampen toe (kelder, handmatig in lampLichten geregistreerd, zie
 // amsterdam-undead.html) zodat de kelder hetzelfde flikker-/Stroomuitval-
-// dimgedrag krijgt als elke andere lamp — vandaar 5+2=7, niet meer 5. -------
+// dimgedrag krijgt als elke andere lamp, en kelderoost (feedback) voegt er
+// nog één toe — vandaar 5+3+1=9. -------------------------------------------
 const lichttelling = await page.evaluate(() => window.AmsterdamUndeadDebug.lampLichten.length);
-check('lampLichten bevat 8 entries (5 pre-Ticket-62-baseline + Ticket 62 kelder (3 lampen))', lichttelling === 8, { lichttelling });
+check('lampLichten bevat 9 entries (5 pre-Ticket-62-baseline + 3 kelder + 1 kelderoost)', lichttelling === 9, { lichttelling });
 
 const fails = report(errs);
 await browser.close();

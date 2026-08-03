@@ -328,6 +328,136 @@ check('Ondode die al dichtbij de deur stond, loopt de kelder in en daalt af (y <
 check('Ondode die ver weg stond, loopt NU OOK gewoon de kelder in en daalt af (y < 0) — geen restrictie meer',
   kelderVrijeToegang.verWegOnder && kelderVrijeToegang.verWegVoorbijDeur, kelderVrijeToegang);
 
+// --- 12. Kelderoost (feedback: nieuwe ruimte + deur6 + verplaatste
+// Scheepslantaarn). Kelderoost deelt zijn x-bereik met de trapkoker maar
+// ligt op een eigen, zuidelijkere z-band — berekenKelderY() moet die
+// bounding-box-check VÓÓR de trapkoker-fallback afhandelen (zie het
+// commentaar in berekenKelderY zelf), anders "schiet" de speler terug naar
+// Y=0 zodra hij voorbij x=KELDERTRAP_X_ONDER in kelderoost loopt. ---------
+const kelderoostY = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  let gecontroleerd = 0;
+  const afwijkingen = [];
+  for (let x = d.KELDEROOST_X_WEST + 0.05; x < d.KELDEROOST_X_OOST; x += 0.2) {
+    for (let z = d.KELDEROOST_Z_NOORD + 0.05; z < d.KELDEROOST_Z_ZUID; z += 0.2) {
+      gecontroleerd++;
+      const y = d.berekenKelderY(x, z);
+      if (y !== -d.KELDER_DIEPTE && afwijkingen.length < 5) afwijkingen.push({ x: +x.toFixed(2), z: +z.toFixed(2), y });
+    }
+  }
+  return { gecontroleerd, afwijkingen };
+});
+check(`berekenKelderY is exact -KELDER_DIEPTE op alle ${kelderoostY.gecontroleerd} rasterpunten binnen kelderoost`,
+  kelderoostY.afwijkingen.length === 0, kelderoostY);
+
+// De trapkoker zelf (delend x-bereik, maar noordelijker z-band) moet zijn
+// oorspronkelijke fractionele daalformule behouden — regressiecheck dat de
+// kelderoost-toevoeging die andere tak niet per ongeluk heeft geraakt.
+const trapkokerRegressie = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const x = (d.KELDERTRAP_X_BOVEN + d.KELDERTRAP_X_ONDER) / 2;
+  const verwacht = -d.KELDER_DIEPTE * ((d.KELDERTRAP_X_BOVEN - x) / (d.KELDERTRAP_X_BOVEN - d.KELDERTRAP_X_ONDER));
+  return { y: d.berekenKelderY(x, d.KELDERTRAP_CZ), verwacht };
+});
+check('De trapkoker-fractionele-daalformule is ongewijzigd (halverwege de trap: halverwege -KELDER_DIEPTE)',
+  Math.abs(trapkokerRegressie.y - trapkokerRegressie.verwacht) < 1e-9, trapkokerRegressie);
+
+// Realistische wandeling: vanaf diep in de hoofdkelder, dwars door deur6,
+// tot in kelderoost — Y mag nooit tussentijds terugspringen naar 0.
+const kelderoostWandeling = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const pad = [];
+  const startX = d.KELDER_X_WEST + 3;
+  const eindX = (d.KELDEROOST_X_WEST + d.KELDEROOST_X_OOST) / 2;
+  const stappen = 200;
+  for (let i = 0; i <= stappen; i++) {
+    const x = startX + (eindX - startX) * (i / stappen);
+    const z = d.KELDEROOST_CZ;   // recht door het deurgat
+    pad.push({ x, z, y: d.berekenKelderY(x, z) });
+  }
+  const terugSprongen = pad.filter(p => p.y === 0 && p.x < d.KELDERTRAP_X_BOVEN);
+  return { terugSprongenAantal: terugSprongen.length, eersteTerugsprong: terugSprongen[0] ?? null, laatstePunt: pad[pad.length - 1] };
+});
+check('Een rechte wandeling van hoofdkelder door deur6 naar kelderoost springt NOOIT terug naar Y=0',
+  kelderoostWandeling.terugSprongenAantal === 0, kelderoostWandeling);
+check('Aan het einde van die wandeling staat de speler op -KELDER_DIEPTE in kelderoost',
+  Math.abs(kelderoostWandeling.laatstePunt.y - (-3.3)) < 1e-9, kelderoostWandeling);
+
+// --- 13. Deur 6: koopmechaniek (zelfde patroon als deur 5 in sectie 4).
+// isVrijePlek() is hier NIET bruikbaar (zoals bij deur5): de kelder ligt
+// volledig buiten GRENS, dus isVrijePlek geeft daar altijd false terug,
+// los van obstakels — vandaar dat "geblokkeerd/doorloopbaar" hier via de
+// obstakel-registratie zelf getoetst wordt, plus een collision-gebaseerde
+// doorloop-check (zelfde aanpak als de afdaling-simulatie in sectie 5). ---
+const deur6VoorKoop = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const testPos = { x: d.DEUR6_X, z: d.KELDEROOST_CZ };
+  d.losBotsingenOp(testPos, 0.35, true);
+  return {
+    geblokkeerd: Math.abs(testPos.x - d.DEUR6_X) > 0.05,   // botsing duwt 'm weg van het deurgat
+    obstakelAanwezig: d.obstakels.includes(d.deur6Obstakel),
+    gekocht: d.deur6Gekocht,
+    prijs: d.DEUR6_PRIJS,
+  };
+});
+check('Vóór koop: deur6-opening is geblokkeerd (collision duwt terug), deur6Obstakel geregistreerd, deur6Gekocht false',
+  deur6VoorKoop.geblokkeerd && deur6VoorKoop.obstakelAanwezig && deur6VoorKoop.gekocht === false, deur6VoorKoop);
+
+const deur6NaKoop = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.spelStaat.geld = 2000;
+  document.getElementById('golfBanner').style.opacity = '0';
+  document.getElementById('golfBanner').innerHTML = '';
+  const geldVoor = d.spelStaat.geld;
+  d.koopDeur6();
+  const testPos = { x: d.DEUR6_X, z: d.KELDEROOST_CZ };
+  d.losBotsingenOp(testPos, 0.35, true);
+  return {
+    gekocht: d.deur6Gekocht,
+    geldAfgeschreven: geldVoor - d.spelStaat.geld,
+    obstakelWeg: !d.obstakels.includes(d.deur6Obstakel),
+    meshWeg: d.deur6Mesh.parent === null,
+    puntUitLijst: !d.interactiePunten.includes(d.deur6Punt),
+    doorloopbaar: Math.abs(testPos.x - d.DEUR6_X) < 1e-9,   // nu GEEN botsing meer op exact dezelfde plek
+    bannerTekst: document.getElementById('golfBanner').innerHTML,
+  };
+});
+check(`Na koop: deur6Gekocht = true, exact €${deur6NaKoop.geldAfgeschreven} afgeschreven (= DEUR6_PRIJS)`,
+  deur6NaKoop.gekocht === true && deur6NaKoop.geldAfgeschreven === 700, deur6NaKoop);
+check('Na koop: deur6Obstakel weg uit obstakels[], deur6Mesh weg uit de scene, deurgat nu doorloopbaar',
+  deur6NaKoop.obstakelWeg && deur6NaKoop.meshWeg && deur6NaKoop.doorloopbaar, deur6NaKoop);
+check('Na koop: deur6Punt weg uit interactiePunten', deur6NaKoop.puntUitLijst, deur6NaKoop);
+check('Na koop: de "KELDEROOST"-banner verschijnt', deur6NaKoop.bannerTekst.includes('KELDEROOST'), deur6NaKoop);
+
+// --- 14. Scheepslantaarn: verhuisd naar kelderoost, reageert op de juiste Y
+// (Y-aanname-audit — zie de VLUCHT_ONDERDELEN.y-toevoeging) -----------------
+const lantaarnTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const onderdeel = d.VLUCHT_ONDERDELEN.find(o => o.naam === 'Scheepslantaarn');
+  const inKelderoostFootprint = onderdeel.x > d.KELDEROOST_X_WEST && onderdeel.x < d.KELDEROOST_X_OOST &&
+    onderdeel.z > d.KELDEROOST_Z_NOORD && onderdeel.z < d.KELDEROOST_Z_ZUID;
+  d.spelStaat.golf = 9;
+  d.toonVluchtOnderdelenIndienDrempel();
+  const meshY = onderdeel.mesh.position.y;
+  const puntY = onderdeel.punt.positie.y;
+  d.speler.positie.set(onderdeel.x, -d.KELDER_DIEPTE, onderdeel.z);
+  d.updateInteracties();
+  const reageertInKelder = d.huidigeInteractie ? d.huidigeInteractie.naam : null;
+  d.speler.positie.set(onderdeel.x, 0, onderdeel.z);
+  d.updateInteracties();
+  const reageertOpNul = d.huidigeInteractie ? d.huidigeInteractie.naam : null;
+  return { inKelderoostFootprint, onderdeelY: onderdeel.y, meshY, puntY, zichtbaar: onderdeel.zichtbaar, reageertInKelder, reageertOpNul };
+});
+check('Scheepslantaarn ligt binnen de kelderoost-footprint', lantaarnTest.inKelderoostFootprint, lantaarnTest);
+check('Scheepslantaarn.y = -KELDER_DIEPTE (niet meer 0/bijkeuken)',
+  lantaarnTest.onderdeelY === -3.3, lantaarnTest);
+check('Vanaf golf 9 wordt de Scheepslantaarn zichtbaar, met mesh én interactiepunt op de juiste Y (-3.3)',
+  lantaarnTest.zichtbaar && lantaarnTest.meshY === -3.3 && lantaarnTest.puntY === -3.3, lantaarnTest);
+check('Het interactiepunt reageert IN kelderoost (Y=-KELDER_DIEPTE)',
+  lantaarnTest.reageertInKelder === 'Scheepslantaarn', lantaarnTest);
+check('Het interactiepunt reageert NIET op Y=0 (Y-marge-vangnet, zelfde als Pantserdrank in sectie 9)',
+  lantaarnTest.reageertOpNul !== 'Scheepslantaarn', lantaarnTest);
+
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);

@@ -19,22 +19,36 @@ const laadTest = await page.evaluate(() => {
     meshesOnzichtbaar: d.VLUCHT_ONDERDELEN.map(o => o.mesh.visible),
   };
 });
-check('Bij het laden zijn er nog steeds precies 12 interactiepunten (11 + Ticket 62 deur5Punt, ongewijzigd t.o.v. Ticket 44 zelf)',
-  laadTest.interactiePuntenLengte === 12, laadTest);
+check('Bij het laden zijn er nog steeds precies 13 interactiepunten (incl. deur5Punt + deur6Punt, ongewijzigd t.o.v. Ticket 44 zelf)',
+  laadTest.interactiePuntenLengte === 13, laadTest);
 check('Bij het laden is geen enkel vluchtroute-onderdeel al zichtbaar',
   laadTest.onderdelenZichtbaar.every(v => v === false) && laadTest.meshesOnzichtbaar.every(v => v === false), laadTest);
 
 // --- 2. Elk onderdeel staat in zijn bedoelde zone, op een vrije plek ------
+// De Scheepslantaarn staat sinds de kelderoost-verhuizing in de kelder, die
+// buiten GRENS ligt — isVrijePlek() geeft daar altijd false terug (zie ook
+// test-kelder-trap.mjs sectie 13), dus die krijgt een eigen, kelderoost-
+// footprint-gebaseerde check i.p.v. isVrijePlek(). zoneVan() kent de kelder
+// zelf geen eigen zone-id toe (die deelt x/z met zone 2, het atelier).
 const zoneTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  return d.VLUCHT_ONDERDELEN.map(o => ({ naam: o.naam, zone: d.zoneVan(o.x, o.z), vrij: d.isVrijePlek(o.x, o.z, 0.5) }));
+  const [roeispaan, touwbundel, scheepslantaarn] = d.VLUCHT_ONDERDELEN;
+  return {
+    roeispaan: { zone: d.zoneVan(roeispaan.x, roeispaan.z), vrij: d.isVrijePlek(roeispaan.x, roeispaan.z, 0.5) },
+    touwbundel: { zone: d.zoneVan(touwbundel.x, touwbundel.z), vrij: d.isVrijePlek(touwbundel.x, touwbundel.z, 0.5) },
+    scheepslantaarn: {
+      zone: d.zoneVan(scheepslantaarn.x, scheepslantaarn.z),
+      inKelderoostFootprint: scheepslantaarn.x > d.KELDEROOST_X_WEST && scheepslantaarn.x < d.KELDEROOST_X_OOST &&
+        scheepslantaarn.z > d.KELDEROOST_Z_NOORD && scheepslantaarn.z < d.KELDEROOST_Z_ZUID,
+    },
+  };
 });
 check('Roeispaan staat in het atelier (zone 2) op een vrije plek',
-  zoneTest[0].zone === 2 && zoneTest[0].vrij, zoneTest);
+  zoneTest.roeispaan.zone === 2 && zoneTest.roeispaan.vrij, zoneTest);
 check('Touwbundel staat op de binnenplaats (zone 3) op een vrije plek',
-  zoneTest[1].zone === 3 && zoneTest[1].vrij, zoneTest);
-check('Scheepslantaarn staat in de bijkeuken (zone 4) op een vrije plek',
-  zoneTest[2].zone === 4 && zoneTest[2].vrij, zoneTest);
+  zoneTest.touwbundel.zone === 3 && zoneTest.touwbundel.vrij, zoneTest);
+check('Scheepslantaarn staat binnen de kelderoost-footprint (zoneVan meldt zone 2, want de kelder deelt x/z met het atelier)',
+  zoneTest.scheepslantaarn.zone === 2 && zoneTest.scheepslantaarn.inKelderoostFootprint, zoneTest);
 
 // --- 2b. Ticket 56: elke mesh-group staat ECHT op (x, 0, z) — vóór dit
 // ticket bleef mesh.position altijd op de wereld-oorsprong staan (bug: alleen
@@ -49,13 +63,13 @@ const rustvlakTest = await page.evaluate(() => {
   return d.VLUCHT_ONDERDELEN.map(o => ({
     naam: o.naam,
     meshPos: o.mesh.position.toArray(),
-    verwacht: [o.x, 0, o.z],
+    verwacht: [o.x, o.y ?? 0, o.z],   // Scheepslantaarn staat sinds kelderoost op y = -KELDER_DIEPTE, niet 0
     kinderen: o.mesh.children.length,
     eersteKindIsRustvlak: o.mesh.children[0].geometry.type === 'BoxGeometry',
     pulsMeshIsKind: o.mesh.children.includes(o.mesh.userData.pulsMesh),
   }));
 });
-check('Elke groep staat exact op (onderdeel.x, 0, onderdeel.z) — de mesh.position-bug is gefixt',
+check('Elke groep staat exact op (onderdeel.x, onderdeel.y, onderdeel.z) — de mesh.position-bug is gefixt',
   rustvlakTest.every(r => r.meshPos[0] === r.verwacht[0] && r.meshPos[1] === r.verwacht[1] && r.meshPos[2] === r.verwacht[2]),
   rustvlakTest);
 check('Elk onderdeel heeft een rustvlak (Box-geometrie) als eerste kind van dezelfde group',
@@ -118,8 +132,8 @@ check('Vóór de drempelgolf is geen enkel onderdeel zichtbaar of aanwezig als i
 check('Op de drempelgolf zelf wordt elk onderdeel zichtbaar én krijgt het een interactiepunt',
   drempelTest.resultaten.every(r => r.opDrempel.zichtbaar === true && r.opDrempel.meshZichtbaar === true && r.opDrempel.puntAanwezig === true),
   drempelTest);
-check('interactiePunten is nu 12 + 3 = 15 (alle drie tegelijk aanwezig)',
-  drempelTest.interactiePuntenNa === 15, drempelTest);
+check('interactiePunten is nu 13 + 3 = 16 (alle drie tegelijk aanwezig)',
+  drempelTest.interactiePuntenNa === 16, drempelTest);
 
 // --- 4. Herhaald aanroepen van toonVluchtOnderdelenIndienDrempel() creëert
 // GEEN dubbele punten/markeringen (idempotent zodra al zichtbaar) ----------
@@ -176,25 +190,25 @@ check('Na het oppakken van de Touwbundel (als tweede, niet als eerste): teller o
   oppakTest.naEen.teller === 1 && oppakTest.naEen.touwbundelWeg && oppakTest.naEen.roeispaanNogAanwezig, oppakTest.naEen);
 check('De HUD update meteen mee naar "Vluchtroute: 1/3"',
   oppakTest.naEen.hud === 'Vluchtroute: 1/3', oppakTest.naEen);
-// interactiePunten: 11 basis + de 3 vluchtroute-punten allemaal weer weg =
-// 12 (11 + Ticket 62 deur5Punt) — het ontsnappingspunt zelf verschijnt
-// (sinds Ticket 55) pas na de aankondigingsduur, dus meteen na de derde
-// pickup is het nog 12, niet 13.
-check('Na alle drie: teller op 3, HUD toont 3/3, interactiePunten blijft op 12 (het ontsnappingspunt verschijnt pas na de T55-aankondiging)',
-  oppakTest.naAlle.teller === 3 && oppakTest.naAlle.hud === 'Vluchtroute: 3/3' && oppakTest.naAlle.interactiePuntenNa === 12,
+// interactiePunten: 13 basis (incl. deur5Punt + deur6Punt) + de 3
+// vluchtroute-punten allemaal weer weg = 13 — het ontsnappingspunt zelf
+// verschijnt (sinds Ticket 55) pas na de aankondigingsduur, dus meteen na
+// de derde pickup is het nog 13, niet 14.
+check('Na alle drie: teller op 3, HUD toont 3/3, interactiePunten blijft op 13 (het ontsnappingspunt verschijnt pas na de T55-aankondiging)',
+  oppakTest.naAlle.teller === 3 && oppakTest.naAlle.hud === 'Vluchtroute: 3/3' && oppakTest.naAlle.interactiePuntenNa === 13,
   oppakTest.naAlle);
 check('De derde pickup start wél meteen de T55-aankondigingsfase (hoorn + actieve timer)',
   oppakTest.naAlle.aankondigingActief && oppakTest.naAlle.hoornGespeeld, oppakTest.naAlle);
 
 // --- 6. Regressie: bestaande winkelmarkeringen-telling groeit met precies 3
 // (de gedeelde vluchtroute-stijl levert 3 extra markeringen, boven op de
-// bestaande 12 statische winkels — 11 + Ticket 62 deur5) -------------------
+// bestaande 13 statische winkels — incl. deur5 + deur6) --------------------
 const winkelRegressie = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   return { winkelMarkeringenLengte: d.winkelMarkeringen.length };
 });
-check('winkelMarkeringen bevat de 12 bestaande + 3 (inmiddels opgepakte, dus nog wel gebouwde) vluchtroute-markeringen = 15',
-  winkelRegressie.winkelMarkeringenLengte === 15, winkelRegressie);
+check('winkelMarkeringen bevat de 13 bestaande + 3 (inmiddels opgepakte, dus nog wel gebouwde) vluchtroute-markeringen = 16',
+  winkelRegressie.winkelMarkeringenLengte === 16, winkelRegressie);
 
 const fails = report(errs);
 await browser.close();
