@@ -2640,6 +2640,80 @@ bleef ongewijzigd groen — dezelfde ~9s-vertraging zat daar al binnen de
 ruime 60s-simulatiemarge van die test verstopt, vandaar dat de bug pas
 via speeltest-feedback aan het licht kwam, niet via de bestaande suite.
 
+#### 7.6.5 Kelderoost-chokepoint (feedback, na de kelderoost-uitbreiding)
+
+**Feedback:** "de waypoint routes in de kelder, de zombies lopen nog niet
+goed" — nadat kelderoost (een tweede kelderruimte achter deur6, zie de
+kelderoost-sectie hieronder) een DERDE chokepoint aan zone 2 toevoegde,
+naast de bestaande trapkoker (§7.6.4).
+
+**Waarom dit anders is dan de trapkoker.** Kelderoost deelt zijn hele
+x-bereik (`KELDEROOST_X_WEST..X_OOST`) met de trapkoker
+(`KELDERTRAP_X_ONDER..X_BOVEN`), maar ligt op een eigen, zuidelijkere
+z-band, gescheiden door een massief muursegment tussen de twee
+deuropeningen. Dat schept twee gekoppelde problemen die de trapkoker
+zelf niet had: (a) `KELDERTRAP_ONDER_PUNT`'s zijde-test (`x <=
+KELDERTRAP_X_ONDER`) leest élke positie in kelderoost óók als "andere
+kant" dan de hoofdkelder (want kelderoost ligt óók voorbij die
+x-drempel), en (b) een rechte lijn van de trapvoet naar een
+kelderoost-deurpunt loopt dwars door dat tussenliggende muursegment.
+
+**Twee mislukte tussenversies (empirisch verworpen, ter waarschuwing voor
+toekomstig werk aan deze laag).**
+1. `KELDEROOST_DEUR_PUNT` op `DEUR6_X` (het muurcentrum, x ≈ -15,375)
+   i.p.v. op de echte `isKelderoost()`-x-drempel (`KELDEROOST_X_WEST`,
+   x = -15,5). Zelfde self-terminatie-eis als `KELDERTRAP_ONDER_PUNT`
+   (§7.6.4): het waypoint-punt moet op zijn EIGEN zijde-drempel liggen,
+   anders wordt "aankomen" bij het punt nooit "isKelderoost" en blijft
+   een terugkerende ondode voor altijd op zijn eigen doelpunt hangen
+   (bevestigd: een ondode net voorbij de deur, op weg naar de nis, kwam
+   nooit verder dan x ≈ -15,38).
+2. Een los, statisch "hub"-tussenpunt in het hoofdkelder-interieur (om de
+   muur uit punt (b) te ontwijken), gecombineerd met de gefixte
+   deur-drempel uit punt 1. Dit loste de heen-richting (trapvoet ->
+   kelderoost) op, maar introduceerde een NIEUWE permanente pingpong: zodra
+   de ondode het hub-punt bijna bereikte, werd de stuurvector daarheen
+   bijna nul, en won `KELDEROOST_DEUR_PUNT` (al dichterbij) de eerstvolgende
+   "nearest"-vergelijking terug — waarna de ondode weer terug naar het
+   hub-punt gestuurd werd, enzovoort. Een variant met een DYNAMISCH
+   hub-punt (altijd 2m ten westen van de ondode zelf, om de
+   convergentie-nul-stuurvector te vermijden) loste díe pingpong op, maar
+   zonder een harde afstand-drempel bleef het hub-punt voor ALTIJD
+   "differs" opleveren tegen niet-kelderoost-doelen (zoals de nis), met een
+   ondode die tot in de westmuur van de hoofdkelder doorliep als gevolg —
+   en MET een harde drempel kwam de oorspronkelijke pingpong terug, nu
+   tegen die drempel. Beide hub-varianten zijn losse commits geweest tijdens
+   het debuggen en uiteindelijk verworpen; de kern van het probleem was dat
+   een STATISCH of "vaste-afstand-tot-doel"-hub-punt structureel niet
+   samengaat met het bestaande "dichtstbijzijnde wint"-arbitragemechanisme
+   van `zoekWaypoint()` zodra er een derde, verweg-gelegen concurrerend punt
+   (de deur) in het spel is.
+
+**Uiteindelijke oplossing: alleen de deur-drempel fixen, geen hub.** Met
+`KELDEROOST_DEUR_PUNT` exact op de `isKelderoost()`-x-drempel (fix 1
+hierboven) én `KELDERTRAP_ONDER_PUNT`'s zijde-test uitgebreid met
+`isKelderoost(x, z) ||` (zodat kelderoost-posities als "dezelfde kant"
+als de hoofdkelder gelden, i.p.v. als "andere kant"), blijkt de
+BESTAANDE lokale ontwijk-logica in `updateOndoden()` (dezelfde
+`ontwijkTimer`-gebaseerde zijwaartse-dodge die de trapkoker zelf óók al
+zonder waypoint kon vinden, zij het traag, zie §7.6.4) de muur tussen
+trapvoet en deur6 zelf al betrouwbaar te omzeilen. `ZONE_WAYPOINTS[2]`
+heeft dus uiteindelijk drie entries (boven-/onderkant van de trap +
+kelderoost-deur), geen vier — de dodge-logica vervangt wat een hub-punt
+had moeten doen.
+
+**Resultaat:** beide richtingen bereiken hun doel betrouwbaar (nooit
+permanent vast), binnen 7-22s afhankelijk van de willekeurige
+dodge-richting (`Math.random()`-gebaseerd, dus niet deterministisch) —
+ruimer dan de trapkoker's eigen 3s-garantie (die WEL een dedicated
+waypoint-paar heeft), maar altijd eindig, in tegenstelling tot de
+voorheen permanent vastlopende situatie. Zie
+`tests/test-waypoint-navigatie.mjs` secties 9-10 voor de lookup-checks en
+de trajectory-traces (met een ruime 30s-marge i.p.v. de trapkoker's 3s,
+precies om reden van de dodge-afhankelijkheid); `test-kelder-trap.mjs`
+sectie 12-14 voor de Y-as-/geometrie-/koopmechaniek-regressie van
+kelderoost zelf.
+
 ### 7.7 Verbetergebied 4 — Sfeer/audio
 
 #### 7.7.1 Achtergrondmuziek-architectuur (beslissing 59)

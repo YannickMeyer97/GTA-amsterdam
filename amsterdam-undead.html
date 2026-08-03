@@ -5011,10 +5011,44 @@ function herbouwNavTabel() {
 // hierboven zorgt dat de juiste kant als eerste gekozen wordt.
 const KELDERTRAP_BOVEN_PUNT = new THREE.Vector3(KELDERTRAP_X_BOVEN, 0, KELDERTRAP_CZ);
 const KELDERTRAP_ONDER_PUNT = new THREE.Vector3(KELDERTRAP_X_ONDER, 0, KELDERTRAP_CZ);
+// Feedback ("zombies lopen niet goed in de kelder"): kelderoost (achter
+// deur6) voegde een DERDE, zuidelijkere chokepoint toe aan zone 2, met een
+// massieve muur tussen de trapvoet en deur6 (zie de oostmuur-opbouw
+// hierboven). isKelderoost() herclassificeert kelderoost expliciet als
+// dezelfde "kant" als de hoofdkelder voor KELDERTRAP_ONDER_PUNT (zodat die
+// zich niet met deur6-verkeer bemoeit — zonder deze OR zou elke stap voorbij
+// x=KELDERTRAP_X_ONDER in kelderoost als "andere kant" gelden, met een
+// permanente magneet-oscillatie bij de trapvoet tot gevolg), en
+// KELDEROOST_DEUR_PUNT neemt de hoofdkelder<->kelderoost-oversteek zelf voor
+// zijn rekening — precies zoals KELDERTRAP_BOVEN/-ONDER dat al voor de trap
+// deden.
+//
+// Dit ontwerp is de derde, uiteindelijk werkende versie na twee mislukte
+// tussenstappen (zie ARCHITECTURE_NOTES.md §7.6.5 voor de volledige,
+// empirisch-onderbouwde geschiedenis): (1) KELDEROOST_DEUR_PUNT op DEUR6_X
+// (het muurcentrum) i.p.v. de isKelderoost-drempel liet "terug"-verkeer daar
+// voor altijd hangen (aankomen betekende nooit écht isKelderoost worden);
+// (2) een los "hub"-tussenpunt om de muur tussen trapvoet en deur6 te
+// ontwijken loste dat wel op maar introduceerde een nieuwe pingpong tegen
+// KELDEROOST_DEUR_PUNT zodra de ondode het hub-punt bijna bereikte. Zodra
+// KELDEROOST_DEUR_PUNT zelf op zijn eigen zijde-drempel ligt (fix 1), blijkt
+// de bestaande lokale ontwijk-logica in updateOndoden (dezelfde die de
+// trapkoker al zonder waypoint kon vinden, zij het traag) de muur tussen
+// trapvoet en deur6 zelf al betrouwbaar te omzeilen — geen hub nodig.
+function isKelderoost(x, z) {
+  return x > KELDEROOST_X_WEST && x < KELDEROOST_X_OOST && z > KELDEROOST_Z_NOORD && z < KELDEROOST_Z_ZUID;
+}
+// KELDEROOST_DEUR_PUNT zit exact op de isKelderoost-x-drempel (niet op
+// DEUR6_X, het muurcentrum) — zelfde self-terminatie-eis als
+// KELDERTRAP_ONDER_PUNT hierboven: het punt moet op zijn EIGEN zijde-drempel
+// liggen, anders wordt "aankomen" nooit "isKelderoost" en blijft de ondode
+// voor altijd op zijn eigen doelpunt hangen.
+const KELDEROOST_DEUR_PUNT = new THREE.Vector3(KELDEROOST_X_WEST, 0, KELDEROOST_CZ);
 const ZONE_WAYPOINTS = {
   2: [
     { punt: KELDERTRAP_BOVEN_PUNT, zijde: (x, z) => (x >= KELDERTRAP_X_BOVEN ? 1 : 0) },
-    { punt: KELDERTRAP_ONDER_PUNT, zijde: (x, z) => (x <= KELDERTRAP_X_ONDER ? 1 : 0) },
+    { punt: KELDERTRAP_ONDER_PUNT, zijde: (x, z) => (isKelderoost(x, z) || x <= KELDERTRAP_X_ONDER ? 1 : 0) },
+    { punt: KELDEROOST_DEUR_PUNT, zijde: (x, z) => (isKelderoost(x, z) ? 1 : 0) },
   ],
   4: [
     { punt: GRACHTGANG_DREMPEL, zijde: (x, z) => (x >= GRACHTGANG_X_WEST ? 1 : 0) },
@@ -7363,7 +7397,8 @@ window.AmsterdamUndeadDebug = {
   get NAV_VOLGENDE() { return NAV_VOLGENDE; },
   // Ticket 64/65: intra-zone waypointgraaf (vervangt de oude ad-hoc
   // gracht-chokepoint-special-case, zie ARCHITECTURE_NOTES.md §7.6)
-  ZONE_WAYPOINTS, zoekWaypoint,
+  ZONE_WAYPOINTS, zoekWaypoint, KELDERTRAP_BOVEN_PUNT, KELDERTRAP_ONDER_PUNT,
+  isKelderoost, KELDEROOST_DEUR_PUNT,
   // Ticket 30 (Aanval A1): aanvals-state-machine met wind-up
   AANVAL_PROFIELEN, AANVAL_START_BEREIK, AANVAL_DRAAI_SNELHEID, AANVAL_START_JITTER,
   AANVAL_HERSTEL_SNELHEIDSFACTOR, MAX_AANVALLERS,

@@ -34,16 +34,24 @@ const dataset = await page.evaluate(() => {
     kelderPuntenZijnKelderTrapConstantes:
       d.ZONE_WAYPOINTS[2][0].punt.x === d.KELDERTRAP_X_BOVEN && d.ZONE_WAYPOINTS[2][0].punt.z === d.KELDERTRAP_CZ &&
       d.ZONE_WAYPOINTS[2][1].punt.x === d.KELDERTRAP_X_ONDER && d.ZONE_WAYPOINTS[2][1].punt.z === d.KELDERTRAP_CZ,
+    // Feedback (kelderoost): zone 2 kreeg een DERDE entry voor de deur6-
+    // oversteek, op precies de isKelderoost-x-drempel (zie de uitgebreide
+    // uitleg in amsterdam-undead.html bij ZONE_WAYPOINTS/isKelderoost).
+    kelderoostPuntIsOpDrempel:
+      d.ZONE_WAYPOINTS[2][2].punt.x === d.KELDEROOST_X_WEST && d.ZONE_WAYPOINTS[2][2].punt.z === d.KELDEROOST_CZ &&
+      d.ZONE_WAYPOINTS[2][2].punt === d.KELDEROOST_DEUR_PUNT,
   };
 });
-check('ZONE_WAYPOINTS heeft precies twee zone-entries (2, atelier/kelder-trap; 4, bijkeuken/gracht)',
+check('ZONE_WAYPOINTS heeft precies twee zone-entries (2, atelier/kelder-trap/kelderoost; 4, bijkeuken/gracht)',
   dataset.zones.length === 2 && dataset.zones[0] === '2' && dataset.zones[1] === '4', dataset);
-check('Zone 2 heeft precies twee waypoints (boven- en onderkant van de trap)', dataset.zone2Lengte === 2, dataset);
+check('Zone 2 heeft precies drie waypoints (boven-/onderkant van de trap + kelderoost-deur)', dataset.zone2Lengte === 3, dataset);
 check('Zone 4 heeft precies één waypoint (de gang-drempel)', dataset.zone4Lengte === 1, dataset);
 check('Het waypoint-punt is dezelfde Vector3-instantie als GRACHTGANG_DREMPEL (hergebruikte data, geen kopie)',
   dataset.puntZelfdeAlsGrachtgangDrempel === true, dataset);
 check('De kelder-trap-waypoints staan exact op KELDERTRAP_X_BOVEN/-ONDER, KELDERTRAP_CZ',
   dataset.kelderPuntenZijnKelderTrapConstantes === true, dataset);
+check('Het kelderoost-deur-waypoint staat exact op de isKelderoost-x-drempel (KELDEROOST_X_WEST), niet op DEUR6_X (het muurcentrum)',
+  dataset.kelderoostPuntIsOpDrempel === true, dataset);
 
 // --- 2. zoekWaypoint(): unit-achtige lookup-checks op bekende testposities --
 const lookup = await page.evaluate(() => {
@@ -214,7 +222,100 @@ check('...en bereikt daadwerkelijk de keldervloer (y = -KELDER_DIEPTE)', kelderT
 check('...en komt de speler in de kelderruimte dicht genoeg te staan (binnen 1m)',
   kelderTrap.afstandTotSpeler < 1, kelderTrap);
 
-// --- 8. Volledige gedragsgelijkheid met vóór T65: dezelfde chokepoint-
+// --- 9. zoekWaypoint(): de kelderoost-deur (feedback: "zombies lopen niet
+// goed in de kelder", nadat kelderoost — een nieuwe kelderkamer — een DERDE
+// chokepoint aan zone 2 toevoegde). isKelderoost() moet KELDERTRAP_ONDER_
+// PUNT ervan weerhouden zich met kelderoost-verkeer te bemoeien (anders
+// leest elke kelderoost-positie als "andere kant" dan de hoofdkelder,
+// met een magneet-effect bij de trapvoet tot gevolg — zie de uitgebreide
+// geschiedenis in amsterdam-undead.html / ARCHITECTURE_NOTES.md §7.6.5) ----
+const kelderoostLookup = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const hoofdkelder = { x: d.KELDER_X_WEST + 3, z: (d.KELDER_Z_NOORD + d.KELDER_Z_ZUID) / 2 };
+  const trapvoet = { x: d.KELDERTRAP_ONDER_PUNT.x, z: d.KELDERTRAP_ONDER_PUNT.z };
+  const koCX = (d.KELDEROOST_X_WEST + d.KELDEROOST_X_OOST) / 2;
+  const kelderoost = { x: koCX, z: d.KELDEROOST_CZ };
+  const nis = { x: d.KAMER2_NIS_CX, z: d.KAMER2_NIS_CZ };
+
+  const hoofdkelderNaarKelderoost = d.zoekWaypoint(2, hoofdkelder, kelderoost);
+  const trapvoetNaarKelderoost = d.zoekWaypoint(2, trapvoet, kelderoost);
+  const kelderoostNaarNis = d.zoekWaypoint(2, kelderoost, nis);
+  // Puur hoofdkelder<->nis-verkeer (niets met kelderoost te maken) mag NIET
+  // via KELDEROOST_DEUR_PUNT gerouteerd worden — dat zou een omweg zijn.
+  const hoofdkelderNaarNis = d.zoekWaypoint(2, hoofdkelder, nis);
+  return {
+    hoofdkelderNaarKelderoost: hoofdkelderNaarKelderoost && { x: hoofdkelderNaarKelderoost.x, z: hoofdkelderNaarKelderoost.z },
+    trapvoetNaarKelderoost: trapvoetNaarKelderoost && { x: trapvoetNaarKelderoost.x, z: trapvoetNaarKelderoost.z },
+    kelderoostNaarNis: kelderoostNaarNis && { x: kelderoostNaarNis.x, z: kelderoostNaarNis.z },
+    hoofdkelderNaarNis: hoofdkelderNaarNis && { x: hoofdkelderNaarNis.x, z: hoofdkelderNaarNis.z },
+    deur: { x: d.KELDEROOST_X_WEST, z: d.KELDEROOST_CZ },
+    onder: { x: d.KELDERTRAP_X_ONDER, z: d.KELDERTRAP_CZ },
+    boven: { x: d.KELDERTRAP_X_BOVEN, z: d.KELDERTRAP_CZ },
+  };
+});
+check('hoofdkelder -> kelderoost: mikt op de kelderoost-deur (niet op de trapvoet — isKelderoost-OR voorkomt dat)',
+  JSON.stringify(kelderoostLookup.hoofdkelderNaarKelderoost) === JSON.stringify(kelderoostLookup.deur), kelderoostLookup);
+check('trapvoet (net de trap af) -> kelderoost: mikt OOK op de kelderoost-deur, niet op zichzelf (geen magneet-effect)',
+  JSON.stringify(kelderoostLookup.trapvoetNaarKelderoost) === JSON.stringify(kelderoostLookup.deur), kelderoostLookup);
+check('kelderoost -> nis: eerste tussenpunt is de kelderoost-deur zelf (op weg naar buiten)',
+  JSON.stringify(kelderoostLookup.kelderoostNaarNis) === JSON.stringify(kelderoostLookup.deur), kelderoostLookup);
+check('hoofdkelder -> nis (niets met kelderoost te maken): mikt gewoon op de trapvoet, NIET op de kelderoost-deur',
+  JSON.stringify(kelderoostLookup.hoofdkelderNaarNis) === JSON.stringify(kelderoostLookup.onder), kelderoostLookup);
+
+// --- 10. Trajectory-trace: kelderoost, realistische start-/doelposities in
+// BEIDE richtingen. "heen" (net de trap af, moet naar kelderoost) is het
+// scenario dat twee eerdere ontwerpen (zie amsterdam-undead.html-commentaar)
+// alsnog liet vastlopen — een STATISCH hub-punt gaf een pingpong tegen de
+// kelderoost-deur, en een variant zonder hub clipte de muur tussen trapvoet
+// en deur6. De uiteindelijke, simpelere oplossing (alleen de deur-drempel
+// fixen, geen apart hub-punt) leunt op de bestaande lokale ontwijk-logica
+// (dezelfde die de kelder-trap zelf al zonder waypoint kon vinden) om de
+// muur te omzeilen — vandaar een ruimere tijdslimiet (30s) dan de kelder-
+// trap-eigen 3s-eis in sectie 7 hierboven (die IS met een eigen waypoint
+// opgelost). "terug" (vanaf de kelderoost-deur, moet naar de nis) bewaakt de
+// eerste mislukte ontwerpversie (KELDEROOST_DEUR_PUNT op DEUR6_X i.p.v. de
+// isKelderoost-drempel), die daar voor altijd bleef hangen. -----------------
+const kelderoostTrajectHeen = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.spelStaat.geld = 5000;
+  d.koopDeur5(); d.koopDeur6();
+  const koCX = (d.KELDEROOST_X_WEST + d.KELDEROOST_X_OOST) / 2;
+  d.speler.positie.set(koCX, -d.KELDER_DIEPTE, d.KELDEROOST_CZ);
+  d.ondoden.length = 0;
+  d.spawnWillekeurigeOndode();
+  const ondode = d.ondoden[0];
+  // Realistisch: net de trap af (zoals na een echte nis->trap->hoofdkelder-
+  // afdaling), niet kunstmatig al diep in kelderoost.
+  ondode.groep.position.set(d.KELDERTRAP_ONDER_PUNT.x, -d.KELDER_DIEPTE, d.KELDERTRAP_ONDER_PUNT.z);
+  let tickBinnen = null;
+  for (let i = 0; i < 1800 && tickBinnen === null; i++) {   // max 30s
+    d.updateOndoden(1 / 60);
+    if (d.isKelderoost(ondode.groep.position.x, ondode.groep.position.z)) tickBinnen = i;
+  }
+  return { secondenTotBinnen: tickBinnen === null ? null : +(tickBinnen / 60).toFixed(2) };
+});
+check('"Heen" (trapvoet -> kelderoost): bereikt kelderoost binnen 30s (nooit permanent vast, in tegenstelling tot vóór de fix)',
+  kelderoostTrajectHeen.secondenTotBinnen !== null, kelderoostTrajectHeen);
+
+const kelderoostTrajectTerug = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.speler.positie.set(d.KAMER2_NIS_CX, 0, d.KAMER2_NIS_CZ);
+  d.ondoden.length = 0;
+  d.spawnWillekeurigeOndode();
+  const ondode = d.ondoden[0];
+  // Realistisch: vlak voorbij de deur, niet op een exacte waypoint-coördinaat.
+  ondode.groep.position.set(d.KELDEROOST_DEUR_PUNT.x + 0.5, -d.KELDER_DIEPTE, d.KELDEROOST_DEUR_PUNT.z);
+  let tickBoven = null;
+  for (let i = 0; i < 1800 && tickBoven === null; i++) {   // max 30s
+    d.updateOndoden(1 / 60);
+    if (ondode.groep.position.x >= d.KELDERTRAP_X_BOVEN) tickBoven = i;
+  }
+  return { secondenTotBoven: tickBoven === null ? null : +(tickBoven / 60).toFixed(2) };
+});
+check('"Terug" (net voorbij de kelderoost-deur -> nis): bereikt de nis binnen 30s (vóór de fix: bleef permanent op de deur hangen)',
+  kelderoostTrajectTerug.secondenTotBoven !== null, kelderoostTrajectTerug);
+
+// --- 11. Volledige gedragsgelijkheid met vóór T65: dezelfde chokepoint-
 // scenario's als test-gracht-dock.mjs sectie 8, nu via de generieke laag ----
 const chokepointViaWaypoint = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
