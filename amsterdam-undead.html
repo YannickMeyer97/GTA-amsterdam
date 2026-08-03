@@ -4891,6 +4891,22 @@ function tekenMinimap() {
     ctx.fill();
   }
 
+  // Feedback (boot-aankondiging optie 1): een pulserende amberkleurige stip
+  // op de bootpositie zolang er iets boot-gerelateerds te doen is (zelfde
+  // "leeft er nog iets"-voorwaarde als updateBootHoornHerhaling() hierboven)
+  // — feller/vaster zodra het venster echt open is (ontsnappingsPunt bestaat)
+  // dan tijdens de nadering zelf.
+  if (ontsnappingAankondigingActief || ontsnappingsPunt) {
+    const bp = minimapTransform(bootGroep.position.x, bootGroep.position.z);
+    const klaar = !!ontsnappingsPunt;
+    const pulsFase = klok * (klaar ? 3 : 6);
+    const straal = klaar ? 4 + Math.sin(pulsFase) * 0.8 : 3 + Math.sin(pulsFase) * 1.5;
+    ctx.fillStyle = klaar ? '#ffc85a' : 'rgba(255, 200, 90, 0.6)';
+    ctx.beginPath();
+    ctx.arc(bp.cx, bp.cy, Math.max(0.5, straal), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   // Speler: een driehoekje, gericht op zijn yaw (zelfde as-conventie als
   // kortsteHoekVerschil/atan2(-dx,-dz) elders — yaw=0 kijkt naar -z).
   const sp = minimapTransform(speler.positie.x, speler.positie.z);
@@ -6783,6 +6799,62 @@ function speelBootVertrek() {
   bootVertrekTeller++;
   piep('sine', 150, 100, 0.8, 0.08);   // korter/zachter, symmetrisch met de aankomst
 }
+
+// Feedback ("hoe kan de boot beter aangekondigd worden?"): optie 1 (minimap-
+// marker, zie tekenMinimap()) + optie 3 (herhaalde gerichte hoorn) samen.
+// speelBootHoorn() hierboven speelt maar 1x, bij het BEGIN van de
+// aankondiging — tijdens het hele venster (aankondiging + open venster)
+// herhaalt speelBootHoornGericht() zich elke BOOT_HOORN_HERHAAL_INTERVAL
+// seconden, met pan/volume die de RICHTING en AFSTAND naar de boot laten
+// horen (dezelfde relatieveHoek-conventie als toonSchadeRichting(): reken
+// kundig linksom-georiënteerd, dus de pan-berekening negeert -sin() bewust —
+// zie het commentaar daar voor de volledige uitleg van die conventie).
+const BOOT_HOORN_HERHAAL_INTERVAL = 7;   // s
+const BOOT_HOORN_AFSTAND_MAX = 26;       // m — voorbij dit bereik blijft het volume op zijn minimum
+const BOOT_HOORN_VOLUME_DICHTBIJ = 0.11;
+const BOOT_HOORN_VOLUME_VER = 0.02;
+let bootHoornHerhaalTimer = 0;
+let bootHoornHerhaalTeller = 0;   // debug/test: telt elke gerichte herhaling (los van bootHoornTeller)
+// Pure functie (geen audio-aanroepen): makkelijk testbaar, zelfde patroon
+// als berekenDreigingsGain/berekenMuziekGain hierboven.
+function berekenBootHoornPanVolume(dx, dz, spelerYaw) {
+  const afstand = Math.hypot(dx, dz);
+  const fractieDichtbij = 1 - Math.min(1, afstand / BOOT_HOORN_AFSTAND_MAX);
+  const volume = BOOT_HOORN_VOLUME_VER + (BOOT_HOORN_VOLUME_DICHTBIJ - BOOT_HOORN_VOLUME_VER) * fractieDichtbij;
+  const relatieveHoek = kortsteHoekVerschil(Math.atan2(-dx, -dz), spelerYaw);
+  const pan = Math.max(-1, Math.min(1, -Math.sin(relatieveHoek)));
+  return { pan, volume, afstand };
+}
+function speelBootHoornGericht() {
+  if (!audio) return;
+  const dx = bootGroep.position.x - speler.positie.x, dz = bootGroep.position.z - speler.positie.z;
+  const { pan, volume } = berekenBootHoornPanVolume(dx, dz, speler.yaw);
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  const panner = audio.createStereoPanner();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(200, audio.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(140, audio.currentTime + 1.1);
+  gain.gain.setValueAtTime(volume, audio.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 1.1);
+  panner.pan.value = pan;
+  osc.connect(gain).connect(panner).connect(audio.destination);
+  osc.start();
+  osc.stop(audio.currentTime + 1.1);
+  bootHoornHerhaalTeller++;
+}
+// Loopt zolang er iets "boot-gerelateerds" te horen valt: de aankondiging
+// (nog niet aangemeerd) OF het open venster (al aangemeerd, ontsnappingsPunt
+// bestaat) — pas zodra allebei voorbij zijn (venster gesloten, boot weer
+// weg) stopt de herhaling vanzelf.
+function updateBootHoornHerhaling(dt) {
+  if (!ontsnappingAankondigingActief && !ontsnappingsPunt) return;
+  bootHoornHerhaalTimer -= dt;
+  if (bootHoornHerhaalTimer <= 0) {
+    speelBootHoornGericht();
+    bootHoornHerhaalTimer = BOOT_HOORN_HERHAAL_INTERVAL;
+  }
+}
 // Zelfde patroon als updateVluchtrouteHUD() hierboven: een eigen, kleine
 // HUD-updatefunctie i.p.v. inline in updateHUD() — die laatste wordt al
 // bij module-load 1x aangeroepen (regel ~4562), ver vóór ONTSNAPPING_*
@@ -6811,6 +6883,7 @@ function probeerOntsnappingsVensterTeOpenen() {
   ontsnappingAankondigingActief = true;
   ontsnappingAankondigingTimer = ONTSNAPPING_AANKONDIGING_DUUR;
   speelBootHoorn();
+  bootHoornHerhaalTimer = BOOT_HOORN_HERHAAL_INTERVAL;   // eerste herhaling pas na het volle interval, niet meteen boven op speelBootHoorn()
   toonGolfBanner('Er nadert iets over het water…');
   updateOntsnappingVensterHUD();
 }
@@ -7011,6 +7084,7 @@ function gameLoop(nu) {
     updateGolf(dt);
     updateOntsnappingAankondiging(dt);   // Ticket 55: boot-aankomst-timer
     updateBootUitvaren(dt);              // Feedback: boot-vertrek-timer, symmetrisch
+    updateBootHoornHerhaling(dt);        // Feedback: herhaalde gerichte hoorn (boot-aankondiging optie 3)
     updatePowerups(dt);
     updateMistUitfade(dt);
     updateSpelerRegen(dt);
@@ -7242,6 +7316,13 @@ window.AmsterdamUndeadDebug = {
   set bootUitvarenActief(v) { bootUitvarenActief = v; },
   get bootUitvarenTimer() { return bootUitvarenTimer; },
   set bootUitvarenTimer(v) { bootUitvarenTimer = v; },
+  // Feedback: boot-aankondiging optie 1 (minimap-marker, zie tekenMinimap)
+  // + optie 3 (herhaalde gerichte hoorn)
+  berekenBootHoornPanVolume, speelBootHoornGericht, updateBootHoornHerhaling,
+  BOOT_HOORN_HERHAAL_INTERVAL, BOOT_HOORN_AFSTAND_MAX, BOOT_HOORN_VOLUME_DICHTBIJ, BOOT_HOORN_VOLUME_VER,
+  get bootHoornHerhaalTeller() { return bootHoornHerhaalTeller; },
+  get bootHoornHerhaalTimer() { return bootHoornHerhaalTimer; },
+  set bootHoornHerhaalTimer(v) { bootHoornHerhaalTimer = v; },
   // Ticket 6: eventgolf-framework
   EVENT_GOLF_INTERVAL, isEventGolf, kiesEventType, startEventGolf, eindigEventGolf,
   get actieveEventGolf() { return actieveEventGolf; },
