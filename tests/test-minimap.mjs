@@ -1,35 +1,98 @@
-// Ticket 67: minimap — vaste wereld-naar-canvas-projectie (geen scroll/zoom),
-// speler-positie/-richting, statische zone-omtreklijnen (afgeleid van
-// bestaande muur-/deurconstanten) en nabije ondoden als stippen. De kelder
-// ligt structureel buiten GRENS (zie GRENS-commentaar in het hoofdbestand),
-// dus toont de minimap daar een simpel "KELDER"-label i.p.v. een sublaag.
+// Ticket 67: minimap — "heading-up" wereld-naar-canvas-projectie (geen
+// scroll/zoom), speler altijd gecentreerd en op yaw=0 "boven" op het canvas
+// (feedback: "laat de minimap meedraaien met waar ik naartoe kijk" — de kaart
+// zelf draait mee met ctx.rotate(speler.yaw), zie tekenMinimap()), statische
+// zone-omtreklijnen (afgeleid van bestaande muur-/deurconstanten) en nabije
+// ondoden als stippen. De kelder ligt structureel buiten GRENS (zie
+// GRENS-commentaar in het hoofdbestand), dus toont de minimap daar een
+// simpel "KELDER"-label i.p.v. een sublaag.
 // Zie ROADMAP.md Ticket 67 en ARCHITECTURE_NOTES.md §7.8.1.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
 const { check, report } = makeChecker();
 
-// --- 1. minimapTransform()/minimapSchaal(): pure functies, exact ----------
-const transform = await page.evaluate(() => {
+// --- 1. minimapLokaal()/minimapSchaal(): pure functies, speler-relatief ---
+const lokaal = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  const midden = d.minimapTransform((d.GRENS.minX + d.GRENS.maxX) / 2, (d.GRENS.minZ + d.GRENS.maxZ) / 2);
-  const west = d.minimapTransform(d.GRENS.minX, (d.GRENS.minZ + d.GRENS.maxZ) / 2);
-  const oost = d.minimapTransform(d.GRENS.maxX, (d.GRENS.minZ + d.GRENS.maxZ) / 2);
+  d.speler.positie.set(0, 0, 0);
+  const bijSpeler = d.minimapLokaal(0, 0);
+  const west = d.minimapLokaal(d.GRENS.minX, 0);
+  const oost = d.minimapLokaal(d.GRENS.maxX, 0);
+  d.speler.positie.set(5, 0, 3);
+  const verschoven = d.minimapLokaal(5, 3);
+  const puntOostVanSpeler = d.minimapLokaal(15, 3);
+  d.speler.positie.set(0, 0, 0);
   return {
-    midden, west, oost,
+    bijSpeler, west, oost, verschoven, puntOostVanSpeler,
     schaal: d.minimapSchaal(),
     canvasGrootte: d.MINIMAP_CANVAS_GROOTTE,
     padding: d.MINIMAP_PADDING,
   };
 });
-check('Het wereldmidden projecteert exact op het canvasmidden',
-  Math.abs(transform.midden.cx - transform.canvasGrootte / 2) < 0.01 &&
-  Math.abs(transform.midden.cy - transform.canvasGrootte / 2) < 0.01, transform);
-check('Westgrens ligt links van het midden, oostgrens rechts (correcte x-richting)',
-  transform.west.cx < transform.midden.cx && transform.oost.cx > transform.midden.cx, transform);
+check('De positie van de speler zelf projecteert altijd op lokaal (0,0)',
+  Math.abs(lokaal.bijSpeler.lx) < 0.01 && Math.abs(lokaal.bijSpeler.lz) < 0.01, lokaal);
+check('Westgrens ligt links van de speler (negatieve lx), oostgrens rechts (positieve lx)',
+  lokaal.west.lx < 0 && lokaal.oost.lx > 0, lokaal);
 check('minimapSchaal() is positief en de breedste as (hier: x) vult het canvas exact tot aan de padding',
-  transform.schaal > 0 &&
-  Math.abs((transform.oost.cx - transform.west.cx) - (transform.canvasGrootte - 2 * transform.padding)) < 0.01, transform);
+  lokaal.schaal > 0 &&
+  Math.abs((lokaal.oost.lx - lokaal.west.lx) - (lokaal.canvasGrootte - 2 * lokaal.padding)) < 0.01, lokaal);
+check('Als de speler verplaatst, projecteert de speler-positie zelf nog steeds op (0,0) (relatief, niet wereld-vast)',
+  Math.abs(lokaal.verschoven.lx) < 0.01 && Math.abs(lokaal.verschoven.lz) < 0.01, lokaal);
+check('Een punt 10m oost van de (verplaatste) speler geeft lx = 10 * schaal',
+  Math.abs(lokaal.puntOostVanSpeler.lx - 10 * lokaal.schaal) < 0.01 && Math.abs(lokaal.puntOostVanSpeler.lz) < 0.01, lokaal);
+
+// --- 1b. Heading-up rotatie: de kaart draait mee met speler.yaw, zodat een
+// punt recht vóór de speler altijd op canvas-boven (0,-s) uitkomt, ongeacht
+// de yaw-waarde. Test via de daadwerkelijke ctx.rotate()-transformatie
+// (transformPoint), niet alleen minimapLokaal() (die roteert zelf niet). ---
+const rotatie = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const ctx = d.minimapUI.getContext('2d');
+  d.speler.positie.set(0, 0, 0);
+  d.deurGekocht = true; d.deur2Gekocht = true; d.deur3Gekocht = true;
+
+  function geroteerdPuntVoorSpeler(yaw, afstand) {
+    d.speler.yaw = yaw;
+    // Zelfde wereldrichting als updateSpeler()'s "vooruit"-vector: (-sin(yaw), -cos(yaw)).
+    const x = -Math.sin(yaw) * afstand, z = -Math.cos(yaw) * afstand;
+    const l = d.minimapLokaal(x, z);
+    // Pas dezelfde rotatie toe die tekenMinimap() op het canvas toepast, en
+    // vertaal terug naar canvas-coördinaten t.o.v. het midden.
+    const cosY = Math.cos(yaw), sinY = Math.sin(yaw);
+    return { cx: l.lx * cosY - l.lz * sinY, cy: l.lx * sinY + l.lz * cosY };
+  }
+  const r0 = geroteerdPuntVoorSpeler(0, 8);
+  const r1 = geroteerdPuntVoorSpeler(Math.PI / 2, 8);
+  const r2 = geroteerdPuntVoorSpeler(Math.PI, 8);
+  const r3 = geroteerdPuntVoorSpeler(-1.3, 8);
+
+  // Speler-driehoek zelf: moveTo-coördinaten mogen NOOIT van yaw afhangen
+  // (de driehoek staat vast, alleen de kaart eromheen draait).
+  let moveToArgs = null;
+  const origMoveTo = ctx.moveTo.bind(ctx);
+  ctx.moveTo = (...a) => { moveToArgs = a; return origMoveTo(...a); };
+  d.speler.yaw = 0;
+  d.tekenMinimap();
+  const moveToYaw0 = moveToArgs;
+  moveToArgs = null;
+  d.speler.yaw = 2.4;
+  d.tekenMinimap();
+  const moveToYaw24 = moveToArgs;
+  ctx.moveTo = origMoveTo;
+  d.speler.yaw = 0;
+
+  return { r0, r1, r2, r3, moveToYaw0, moveToYaw24 };
+});
+const s = rotatie.r0 && (rotatie.r0.cy !== 0 ? -rotatie.r0.cy : 0);
+check('Een punt recht vóór de speler komt bij yaw=0 uit op canvas-boven (cx≈0, cy<0)',
+  Math.abs(rotatie.r0.cx) < 0.01 && rotatie.r0.cy < -0.01, rotatie);
+check('Hetzelfde punt-recht-vooruit komt ook bij yaw=π/2 op canvas-boven uit (kaart is meegedraaid)',
+  Math.abs(rotatie.r1.cx) < 0.01 && rotatie.r1.cy < -0.01, rotatie);
+check('...ook bij yaw=π', Math.abs(rotatie.r2.cx) < 0.01 && rotatie.r2.cy < -0.01, rotatie);
+check('...ook bij een willekeurige yaw (-1.3 rad)', Math.abs(rotatie.r3.cx) < 0.01 && rotatie.r3.cy < -0.01, rotatie);
+check('De speler-driehoek zelf (moveTo) is onafhankelijk van yaw: exact dezelfde coördinaten bij yaw=0 en yaw=2.4',
+  JSON.stringify(rotatie.moveToYaw0) === JSON.stringify(rotatie.moveToYaw24), rotatie);
 
 // --- 2. MINIMAP_ZONES: 8 rechthoeken, elk met een bekend, herkenbaar punt --
 const zonesTest = await page.evaluate(() => {

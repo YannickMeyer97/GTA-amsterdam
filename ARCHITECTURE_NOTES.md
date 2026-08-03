@@ -2747,6 +2747,50 @@ geen extra Three.js-camera/render-target — puur 2D Canvas, dezelfde
 bouwsteen als T59's procedurele texturen, dus geen nieuwe
 technologie in het project.
 
+**Heading-up rotatie (feedback: "laat de minimap meedraaien met waar
+ik naartoe kijk").** Oorspronkelijk was de minimap north-up:
+`minimapTransform(x, z)` projecteerde wereld-coördinaten direct en
+wereld-vast op het canvas (`GRENS`-midden → canvasmidden), en alleen
+de speler-driehoek zelf roteerde met `speler.yaw` mee. Dat is
+vervangen door een speler-relatieve, roterende projectie:
+
+- `minimapLokaal(x, z)` geeft de (nog ongeroteerde) afstand tot de
+  speler terug, geschaald: `{ lx: (x - speler.positie.x) * schaal,
+  lz: (z - speler.positie.z) * schaal }`. De speler zelf projecteert
+  dus altijd op `(0, 0)`.
+- `tekenMinimap()` tekent alles wat wél moet meedraaien (zone-
+  omtrekken, ondode-stippen, boot-marker) binnen één
+  `ctx.translate(midden, midden); ctx.rotate(speler.yaw);` blok, en
+  tekent de speler-driehoek zelf DAARNA, in een apart
+  `ctx.save()/ctx.restore()`-blok zonder rotatie — de driehoek staat
+  dus vast en wijst altijd "omhoog"; de kaart eromheen draait.
+
+**Tekenafleiding (waarom `ctx.rotate(speler.yaw)` en niet
+`-speler.yaw`).** `updateSpeler()`'s bewegingscode gebruikt de
+vooruit-richting `(-sin(yaw), -cos(yaw))` bij `yaw = 0` wijst de
+speler dus naar wereld-`-z`. Een punt recht vóór de speler op
+afstand `d` ligt op wereld-`(-d·sin(yaw), -d·cos(yaw))` relatief aan
+de speler, dus in `minimapLokaal`-coördinaten op
+`(-d·sin(yaw)·s, -d·cos(yaw)·s)` (met `s` de schaal). Canvas'
+`ctx.rotate(θ)` roteert rechtsom-positief:
+`(x, y) → (x·cosθ - y·sinθ, x·sinθ + y·cosθ)`. Vul `θ = yaw` in:
+
+```
+cx = (-d·sinγ·s)·cosγ - (-d·cosγ·s)·sinγ = -d·s·(sinγ·cosγ - cosγ·sinγ) = 0
+cy = (-d·sinγ·s)·sinγ + (-d·cosγ·s)·cosγ = -d·s·(sin²γ + cos²γ) = -d·s
+```
+
+(waarbij `γ = yaw`) — dus voor élke `yaw` komt het punt recht vóór
+de speler uit op `(0, -d·s)`: exact recht "boven" het canvasmidden,
+ongeacht de kijkrichting. Met `-speler.yaw` zou de teller van `cy`
+omdraaien naar `+d·s` (het punt zou "onder" uitkomen, of bij een
+niet-nul yaw op een compleet verkeerde hoek) — vandaar de positieve
+rotatie. Geverifieerd in `tests/test-minimap.mjs` §1b door de echte
+`ctx.rotate`-transformatie na te bootsen voor vier verschillende
+yaw-waarden (0, π/2, π, -1.3) en te controleren dat het altijd op
+canvas-boven uitkomt, plus een losse check dat de speler-driehoek
+zelf (de `moveTo`-coördinaten) volledig yaw-onafhankelijk blijft.
+
 #### 7.8.2 Richtingsfeedback bij schade (beslissing 61)
 
 Bij het oplopen van schade verschijnt een korte, richtinggevoelige

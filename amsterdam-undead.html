@@ -4859,12 +4859,15 @@ const bezochteZones = new Set([0]);
 let zoneLabelSchrijfTeller = 0;   // debug/test: telt elke echte zoneLabelUI-write (nooit per frame)
 zoneLabelUI.textContent = ZONE_NAMEN[0];
 
-// Ticket 67 (Spelerfeedback & oriëntatie): minimap — vaste wereld-naar-
-// canvas-projectie (geen scroll/zoom, zie ROADMAP.md "buiten scope"),
-// speler-positie/-richting, statische zone-omtreklijnen en nabije ondoden
-// als stippen. GRENS dekt het hele boven-de-grond-loopgebied (woonkamer t/m
-// gracht/vlonder, zie GRENS-commentaar hierboven) — alleen de kelder ligt
-// er structureel buiten, vandaar het aparte label-icoon i.p.v. een sublaag.
+// Ticket 67 (Spelerfeedback & oriëntatie): minimap — geen scroll/zoom (zie
+// ROADMAP.md "buiten scope"), maar WEL "heading-up" (feedback: "laat de
+// minimap meedraaien met waar ik naartoe kijk"): de speler staat altijd
+// gecentreerd en met yaw=0 ("boven" op het canvas); de kaart zelf (zones,
+// ondoden, boot) draait eromheen mee met de kijkrichting via minimapLokaal()
+// + één ctx.rotate(speler.yaw) rond het canvasmidden (zie tekenMinimap()).
+// GRENS dekt het hele boven-de-grond-loopgebied (woonkamer t/m gracht/
+// vlonder, zie GRENS-commentaar hierboven) — alleen de kelder ligt er
+// structureel buiten, vandaar het aparte label-icoon i.p.v. een sublaag.
 const MINIMAP_CANVAS_GROOTTE = 160;
 const MINIMAP_PADDING = 8;
 const MINIMAP_ONDODE_RADIUS = 25;   // m — alleen ondoden binnen dit bereik van de speler tonen
@@ -4896,14 +4899,17 @@ function minimapSchaal() {
   const beschikbaar = MINIMAP_CANVAS_GROOTTE - MINIMAP_PADDING * 2;
   return Math.min(beschikbaar / wereldBreedte, beschikbaar / wereldDiepte);
 }
-function minimapTransform(x, z) {
+// Feedback ("laat de minimap meedraaien met waar ik naartoe kijk"):
+// heading-up i.p.v. north-up — de speler staat altijd op yaw=0 "boven" op
+// het canvas, de kaart draait om HEM heen. minimapLokaal() geeft daarom
+// SPELER-RELATIEVE, nog ONgeroteerde lokale coördinaten terug (x/z-afstand
+// tot de speler, geschaald) — tekenMinimap() past de rotatie zelf toe via
+// één ctx.rotate(speler.yaw) rond het canvasmidden, ZONDER dat elk punt hier
+// individueel handmatig geroteerd hoeft te worden (zie het commentaar bij
+// de rotate-aanroep verderop voor de afleiding van dat teken).
+function minimapLokaal(x, z) {
   const schaal = minimapSchaal();
-  const wereldMiddenX = (GRENS.minX + GRENS.maxX) / 2;
-  const wereldMiddenZ = (GRENS.minZ + GRENS.maxZ) / 2;
-  return {
-    cx: MINIMAP_CANVAS_GROOTTE / 2 + (x - wereldMiddenX) * schaal,
-    cy: MINIMAP_CANVAS_GROOTTE / 2 + (z - wereldMiddenZ) * schaal,
-  };
+  return { lx: (x - speler.positie.x) * schaal, lz: (z - speler.positie.z) * schaal };
 }
 // Daadwerkelijke tekening — alleen canvas-state, geen per-tekenbeurt-
 // allocaties buiten de kleine transform-objecten hierboven (verwaarloosbaar
@@ -4923,22 +4929,35 @@ function tekenMinimap() {
     return;
   }
 
+  const midden = MINIMAP_CANVAS_GROOTTE / 2;
+  ctx.save();
+  ctx.translate(midden, midden);
+  // Waarom +speler.yaw (en niet -speler.yaw): eenzelfde teken als de oude
+  // (niet-roterende) speler-driehoek hieronder gebruikte om ZICHZELF naar
+  // de kijkrichting te draaien. Een punt recht vóór de speler (wereld-
+  // richting (-sin(yaw), -cos(yaw)), zie updateSpeler()) geeft in
+  // minimapLokaal()-coördinaten (-sin(yaw)*s, -cos(yaw)*s); roteer je dat
+  // met ctx.rotate(yaw) (canvas roteert rechtsom-positief), dan kom je
+  // exact op (0, -s) uit — recht "boven" het canvasmidden, ongeacht yaw.
+  // Zie ARCHITECTURE_NOTES.md §7.8.1 voor de volledige afleiding.
+  ctx.rotate(speler.yaw);
+
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
   ctx.lineWidth = 1;
   for (const zone of MINIMAP_ZONES) {
     if (!zone.gekocht()) continue;   // fog-of-war: nog niet gekochte zones blijven onzichtbaar
-    const a = minimapTransform(zone.x0, zone.z0);
-    const b = minimapTransform(zone.x1, zone.z1);
-    ctx.strokeRect(Math.min(a.cx, b.cx), Math.min(a.cy, b.cy), Math.abs(b.cx - a.cx), Math.abs(b.cy - a.cy));
+    const a = minimapLokaal(zone.x0, zone.z0);
+    const b = minimapLokaal(zone.x1, zone.z1);
+    ctx.strokeRect(Math.min(a.lx, b.lx), Math.min(a.lz, b.lz), Math.abs(b.lx - a.lx), Math.abs(b.lz - a.lz));
   }
 
   ctx.fillStyle = '#ff5a5a';
   for (const o of ondoden) {
     const dx = o.groep.position.x - speler.positie.x, dz = o.groep.position.z - speler.positie.z;
     if (dx * dx + dz * dz > MINIMAP_ONDODE_RADIUS * MINIMAP_ONDODE_RADIUS) continue;
-    const p = minimapTransform(o.groep.position.x, o.groep.position.z);
+    const p = minimapLokaal(o.groep.position.x, o.groep.position.z);
     ctx.beginPath();
-    ctx.arc(p.cx, p.cy, 2.2, 0, Math.PI * 2);
+    ctx.arc(p.lx, p.lz, 2.2, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -4948,22 +4967,23 @@ function tekenMinimap() {
   // — feller/vaster zodra het venster echt open is (ontsnappingsPunt bestaat)
   // dan tijdens de nadering zelf.
   if (ontsnappingAankondigingActief || ontsnappingsPunt) {
-    const bp = minimapTransform(bootGroep.position.x, bootGroep.position.z);
+    const bp = minimapLokaal(bootGroep.position.x, bootGroep.position.z);
     const klaar = !!ontsnappingsPunt;
     const pulsFase = klok * (klaar ? 3 : 6);
     const straal = klaar ? 4 + Math.sin(pulsFase) * 0.8 : 3 + Math.sin(pulsFase) * 1.5;
     ctx.fillStyle = klaar ? '#ffc85a' : 'rgba(255, 200, 90, 0.6)';
     ctx.beginPath();
-    ctx.arc(bp.cx, bp.cy, Math.max(0.5, straal), 0, Math.PI * 2);
+    ctx.arc(bp.lx, bp.lz, Math.max(0.5, straal), 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // Speler: een driehoekje, gericht op zijn yaw (zelfde as-conventie als
-  // kortsteHoekVerschil/atan2(-dx,-dz) elders — yaw=0 kijkt naar -z).
-  const sp = minimapTransform(speler.positie.x, speler.positie.z);
+  ctx.restore();
+
+  // Speler: een vaste driehoek, wijst altijd "omhoog" — de KAART draait nu
+  // mee met de kijkrichting (zie ctx.rotate hierboven), niet meer de
+  // speler-driehoek zelf.
   ctx.save();
-  ctx.translate(sp.cx, sp.cy);
-  ctx.rotate(speler.yaw);
+  ctx.translate(midden, midden);
   ctx.fillStyle = '#6bd0ff';
   ctx.beginPath();
   ctx.moveTo(0, -6);
@@ -7620,7 +7640,7 @@ window.AmsterdamUndeadDebug = {
   toonGolfBanner,   // pre-existing gap, nu nodig voor de Ticket 66-aankondigingstest
   // Ticket 67: minimap
   minimapUI, MINIMAP_ZONES, MINIMAP_CANVAS_GROOTTE, MINIMAP_PADDING, MINIMAP_ONDODE_RADIUS,
-  minimapSchaal, minimapTransform, tekenMinimap, updateMinimap, MINIMAP_TEKEN_INTERVAL,
+  minimapSchaal, minimapLokaal, tekenMinimap, updateMinimap, MINIMAP_TEKEN_INTERVAL,
   get minimapThrottleTimer() { return minimapThrottleTimer; },
   set minimapThrottleTimer(v) { minimapThrottleTimer = v; },
   // Ticket 68: richtingsfeedback bij schade
