@@ -195,14 +195,14 @@ check('vóór het oppakken toont de HUD "Vluchtroute: 0/3"',
   oppakTest.hudVoor === 'Vluchtroute: 0/3', oppakTest);
 check('Na het oppakken van de Touwbundel (als tweede, niet als eerste): teller op 1, mesh+punt weg, Roeispaan blijft ongemoeid',
   oppakTest.naEen.teller === 1 && oppakTest.naEen.touwbundelWeg && oppakTest.naEen.roeispaanNogAanwezig, oppakTest.naEen);
-check('De HUD update meteen mee naar "Vluchtroute: 1/3"',
-  oppakTest.naEen.hud === 'Vluchtroute: 1/3', oppakTest.naEen);
+check('De HUD update meteen mee naar "Vluchtroute: 1/3" + het geldvereiste (Ticket 76: ontdekbaar vanaf het eerste onderdeel)',
+  oppakTest.naEen.hud === 'Vluchtroute: 1/3 · €2500 nodig', oppakTest.naEen);
 // interactiePunten: 13 basis (incl. deur5Punt + deur6Punt) + de 3
 // vluchtroute-punten allemaal weer weg = 13 — het ontsnappingspunt zelf
 // verschijnt (sinds Ticket 55) pas na de aankondigingsduur, dus meteen na
 // de derde pickup is het nog 13, niet 14.
-check('Na alle drie: teller op 3, HUD toont 3/3, interactiePunten blijft op 13 (het ontsnappingspunt verschijnt pas na de T55-aankondiging)',
-  oppakTest.naAlle.teller === 3 && oppakTest.naAlle.hud === 'Vluchtroute: 3/3' && oppakTest.naAlle.interactiePuntenNa === 13,
+check('Na alle drie: teller op 3, HUD toont 3/3 + geldvereiste, interactiePunten blijft op 13 (het ontsnappingspunt verschijnt pas na de T55-aankondiging)',
+  oppakTest.naAlle.teller === 3 && oppakTest.naAlle.hud === 'Vluchtroute: 3/3 · €2500 nodig' && oppakTest.naAlle.interactiePuntenNa === 13,
   oppakTest.naAlle);
 check('De derde pickup start wél meteen de T55-aankondigingsfase (hoorn + actieve timer)',
   oppakTest.naAlle.aankondigingActief && oppakTest.naAlle.hoornGespeeld, oppakTest.naAlle);

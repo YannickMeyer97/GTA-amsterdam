@@ -3198,6 +3198,11 @@ document.getElementById('speelDoorKnop').addEventListener('click', () => {
   const pi = interactiePunten.indexOf(ontsnappingsPunt);
   if (pi !== -1) interactiePunten.splice(pi, 1);
   ontsnappingsPunt = null;
+  // Ticket 76: zonder deze verversing bleef ontsnappingVensterUI op de
+  // stale "Boot ligt aan!" van vóór het winnen staan (de HUD-write zat pas
+  // weer bij de volgende golfstart) — nu springt de regel meteen naar de
+  // accurate "Boot over N golven" voor het volgende venster.
+  updateOntsnappingVensterHUD();
   initGeluid();
   renderer.domElement.requestPointerLock();
 });
@@ -7273,8 +7278,18 @@ function updateVluchtOnderdelenPuls(dt) {
   }
 }
 
+// Ticket 76 (v0.20, §8.7.1): zodra het EERSTE vluchtonderdeel binnen is,
+// toont deze regel meteen ook het geldvereiste — vóór dat moment ontdekte
+// een speler de wincondition vaak pas toevallig bij het ontsnappingspunt
+// zelf. Vóór het eerste onderdeel blijft de regel kaal (geen spoiler).
+// ONTSNAPPING_PRIJS staat verderop in het bestand (STAP 9) — geen TDZ-
+// probleem, deze functie wordt pas ná module-load aangeroepen (bij een
+// echte pickup), net als updateOntsnappingVensterHUD() hieronder.
 function updateVluchtrouteHUD() {
-  document.getElementById('vluchtrouteUI').textContent = `Vluchtroute: ${vluchtOnderdelenOpgepakt}/3`;
+  const el = document.getElementById('vluchtrouteUI');
+  el.textContent = vluchtOnderdelenOpgepakt === 0
+    ? `Vluchtroute: ${vluchtOnderdelenOpgepakt}/3`
+    : `Vluchtroute: ${vluchtOnderdelenOpgepakt}/3 · €${ONTSNAPPING_PRIJS} nodig`;
 }
 
 function raapVluchtOnderdeelOp(onderdeel) {
@@ -7289,6 +7304,12 @@ function raapVluchtOnderdeelOp(onderdeel) {
   toonGolfBanner(`VLUCHTROUTE ${vluchtOnderdelenOpgepakt}/3`, onderdeel.naam);
   updateVluchtrouteHUD();
   probeerOntsnappingsVensterTeOpenen();   // Ticket 55: kan mid-golf de aankondigingsfase starten
+  // Ticket 76: probeerOntsnappingsVensterTeOpenen() ververst ontsnappingVensterUI
+  // alleen als het venster NU daadwerkelijk opengaat (3/3 én een geldige
+  // golf) — bij het EERSTE onderdeel (dus per definitie nog < 3/3) zou de
+  // "Boot over N golven"-regel anders pas bij golf ONTSNAPPING_START_GOLF
+  // verschijnen i.p.v. meteen na deze pickup.
+  updateOntsnappingVensterHUD();
 }
 
 // --- Ticket 45: De Ontsnapping — win-conditie. Het punt verschijnt pas
@@ -7405,7 +7426,13 @@ function updateBootHoornHerhaling(dt) {
 // hieronder gedeclareerd is, dus inline zou een TDZ-ReferenceError geven.
 function updateOntsnappingVensterHUD() {
   const el = document.getElementById('ontsnappingVensterUI');
-  if (spelStaat.golf < ONTSNAPPING_START_GOLF && !ontsnappingsPunt && !ontsnappingAankondigingActief) {
+  // Ticket 76: zodra er minstens één vluchtonderdeel binnen is, toont deze
+  // regel al "Boot over N golven" (was: pas zichtbaar vanaf golf
+  // ONTSNAPPING_START_GOLF) — samen met updateVluchtrouteHUD()'s geldregel
+  // maakt dat de hele wincondition in één oogopslag ontdekbaar zodra de
+  // speler er ook maar één stap richting heeft gezet, i.p.v. pas toevallig
+  // bij het ontsnappingspunt zelf.
+  if (vluchtOnderdelenOpgepakt === 0 && spelStaat.golf < ONTSNAPPING_START_GOLF && !ontsnappingsPunt && !ontsnappingAankondigingActief) {
     el.textContent = '';
   } else if (ontsnappingsPunt) {
     el.textContent = 'Boot ligt aan!';

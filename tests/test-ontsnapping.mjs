@@ -142,17 +142,28 @@ check('Zolang het winscherm zichtbaar is, blijft het startscherm verborgen (popt
 const speelDoorTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const puntVoor = d.ontsnappingsPunt;
+  const hudVoor = document.getElementById('ontsnappingVensterUI').textContent;
   document.getElementById('speelDoorKnop').click();
   return {
     winSchermDisplay: document.getElementById('winScherm').style.display,
     ontsnappingsPuntNa: d.ontsnappingsPunt,
     interactiePuntenBevatNietMeer: !d.interactiePunten.includes(puntVoor),
+    hudVoor,
+    hudNa: document.getElementById('ontsnappingVensterUI').textContent,
   };
 });
 check('"Speel door" verbergt het winscherm',
   speelDoorTest.winSchermDisplay === 'none', speelDoorTest);
 check('"Speel door" verwijdert het ontsnappingspunt definitief (ontsnappingsPunt === null, uit interactiePunten)',
   speelDoorTest.ontsnappingsPuntNa === null && speelDoorTest.interactiePuntenBevatNietMeer, speelDoorTest);
+// Ticket 76: vóór "Speel door" stond de HUD nog op "Boot ligt aan!" (het punt
+// bestond net) — die tekst mag na het klikken niet blijven hangen (de boot is
+// letterlijk niet meer aangemeerd), maar moet meteen naar de accurate
+// "Boot over N golven" voor het volgende venster.
+check('Vóór "Speel door" toonde de HUD nog "Boot ligt aan!" (testopzet klopt)',
+  speelDoorTest.hudVoor === 'Boot ligt aan!', speelDoorTest);
+check('Ná "Speel door" is de stale "Boot ligt aan!"-tekst weg, vervangen door een accurate "Boot over N golven"',
+  speelDoorTest.hudNa !== 'Boot ligt aan!' && speelDoorTest.hudNa.startsWith('Boot over'), speelDoorTest);
 
 // --- 8. "Opnieuw"-knop op het winscherm bestaat en is klikbaar (reload
 // zelf niet headless-testbaar zonder de pagina te breken; alleen de

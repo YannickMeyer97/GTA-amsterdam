@@ -210,16 +210,34 @@ check('Met 3/3 onderdelen maar buiten een ontsnappingsgolf (golf 11): geen aanko
 check('De HUD toont in dat geval "Boot over 3 golven" (eerstvolgende venster op golf 14)',
   buitenVensterTest.hud === 'Boot over 3 golven', buitenVensterTest);
 
-// --- 6. Vóór golf 10 blijft de HUD leeg (nog niet "ontgrendeld") -----------
+// --- 6. Vóór golf 10 blijft de HUD leeg, MAAR alleen zolang er nog geen
+// vluchtonderdeel is opgepakt (Ticket 76: zodra dat wél zo is, mag de regel
+// juist NIET meer leeg blijven — zie sectie 6b) -----------------------------
 await opruimOntsnapping();
 const voorTienHudTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
+  d.vluchtOnderdelenOpgepakt = 0;   // expliciet: vorige secties lieten dit op 3 staan
   d.spelStaat.golf = 3;
   d.updateOntsnappingVensterHUD();
   return { hud: document.getElementById('ontsnappingVensterUI').textContent };
 });
-check('Vóór golf 10 (nog niet ontgrendeld) blijft de HUD-indicatie leeg',
+check('Vóór golf 10 (nog niet ontgrendeld) EN nog geen vluchtonderdeel opgepakt blijft de HUD-indicatie leeg',
   voorTienHudTest.hud === '', voorTienHudTest);
+
+// --- 6b. Ticket 76: zodra het eerste vluchtonderdeel binnen is, toont de
+// regel al "Boot over N golven" — ook al is golf 10 nog lang niet bereikt.
+// Dit maakt de wincondition ontdekbaar zonder toevallig bij de boot te
+// hoeven staan. ---------------------------------------------------------
+await opruimOntsnapping();
+const naEersteOnderdeelHudTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.vluchtOnderdelenOpgepakt = 1;
+  d.spelStaat.golf = 3;
+  d.updateOntsnappingVensterHUD();
+  return { hud: document.getElementById('ontsnappingVensterUI').textContent };
+});
+check('Na het eerste vluchtonderdeel (ook vóór golf 10) toont de HUD "Boot over N golven" i.p.v. leeg',
+  naEersteOnderdeelHudTest.hud === 'Boot over 7 golven', naEersteOnderdeelHudTest);
 
 // --- 7. Het venster sluit weer zodra de golf niet langer een
 // ontsnappingsgolf is — via een ECHTE wave-complete-transitie in
