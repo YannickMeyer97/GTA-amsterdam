@@ -56,6 +56,18 @@ export async function openAmsterdamUndead({ simuleerPointerLock = false } = {}) 
   return { browser, page, errs };
 }
 
+// Ticket 77: wacht op n echte requestAnimationFrame-ticks in de pagina.
+// Bewust GEEN setTimeout — Three.js registreert een geometrie pas bij de
+// renderer (renderer.info.memory.*) nadat hij in een echt frame getekend is,
+// dus zonder deze echte rAF-ticks meet elke resourcetest een vals-negatief.
+export async function frames(page, n) {
+  await page.evaluate((n) => new Promise(resolve => {
+    let i = 0;
+    const tik = () => { if (++i >= n) resolve(); else requestAnimationFrame(tik); };
+    requestAnimationFrame(tik);
+  }), n);
+}
+
 // Eenvoudige pass/fail-teller met dezelfde console-output als de bestaande
 // scratchpad-tests ([OK]/[FAIL] per regel, samenvatting aan het eind).
 export function makeChecker() {
