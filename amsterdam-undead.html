@@ -4682,6 +4682,28 @@ function kiesOndodeTraitsVoorGolf() {
 // userData.lichaamsdeel === 'kop' staat UITSLUITEND op het hoofd-mesh en de
 // twee ogen; elk ander deel is lichaam. Referenties naar de scharnieren
 // komen op groep.userData.delen (spawnOndode zet ze door op ondode.delen).
+// Ticket 69 (v0.20, §8.3.1): gedeelde geometrie-cache voor de ondode-modellen
+// hieronder — zelfde Map-lookup-patroon als materiaalCache/mat() hierboven.
+// maakOndodeModel() maakte per ondode ~9 verse geometrie-instanties aan die
+// nooit werden hergebruikt (gemeten GPU-geheugenlek, zie ARCHITECTURE_NOTES
+// §8.11/§8.3.1); alle ondoden delen nu dezelfde ~9 basisvormen en de
+// per-ondode maatvariatie (rompbreedte, armlengte/-dikte) verhuist naar
+// mesh.scale in plaats van naar geometrie-parameters.
+const geoCache = new Map();
+function geo(sleutel, fabriek) {
+  let gedeeld = geoCache.get(sleutel);
+  if (!gedeeld) {
+    gedeeld = fabriek();
+    geoCache.set(sleutel, gedeeld);
+  }
+  return gedeeld;
+}
+// De Brander-kern heeft, net als de basisvormen hierboven, NOOIT een
+// per-ondode kleurvariatie (in tegenstelling tot huidKleur-materialen elders
+// in dit model) — de kernpuls-animatie (zie raakOndode()) schaalt alleen de
+// MESH, nooit dit materiaal, dus één gedeelde instantie is hier veilig.
+const kernMateriaal = new THREE.MeshStandardMaterial({ color: 0xff9a3d, emissive: 0xff7a1f, emissiveIntensity: 1.6, roughness: 0.4 });
+
 function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTraits()) {
   const groep = new THREE.Group();
   const delen = {};
@@ -4707,8 +4729,8 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   for (const [naam, kant] of [['beenL', -1], ['beenR', 1]]) {
     const pivot = new THREE.Group();
     pivot.position.set(kant * 0.075 + traits.slepend * 0.05, 0.8, 0);
-    const been = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.8, 0.16),
-      new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.9 }));
+    const been = new THREE.Mesh(geo('been', () => new THREE.BoxGeometry(0.13, 0.8, 0.16)),
+      mat(0x2c2620, 0.9));
     been.position.y = -0.4;
     // Feedback: vóór deze fix kregen BEIDE benen dezelfde kanteling zodra
     // slepend != 0 (in het oude één-blok-model was dat één mesh, dus onschuldig;
@@ -4732,15 +4754,16 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   // ontbreken). De armen blijven op vaste x = ±0.24 — een brede romp groeit
   // er desnoods tegenaan (gedrongen schouders), zodat de arm-raycasts op
   // een vast punt betrouwbaar blijven.
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.36 * (vorm.rompBreedte ?? 1) * (profiel.rompFactor ?? 1), 0.6, 0.22),
+  const torso = new THREE.Mesh(geo('torso', () => new THREE.BoxGeometry(0.36, 0.6, 0.22)),
     new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
+  torso.scale.x = (vorm.rompBreedte ?? 1) * (profiel.rompFactor ?? 1);   // Ticket 69: maatvariatie via scale i.p.v. geometrie
   romp.add(torso);
   // Bochel (Sjouwer-vorm en/of 'gebocheld'-profiel): één bult hoog op de
   // rug, in de romp-groep zodat hij met de kromme rug meedraait.
   // Ticket 61 (v0.19, §7.4.4-beslissing 53): meer segmenten voor een
   // vloeiender bolvorm — straal/positie ongewijzigd, puur tessellatie.
   if (vorm.bochel || profiel.bochel) {
-    const bochel = new THREE.Mesh(new THREE.SphereGeometry(0.14, 14, 10),
+    const bochel = new THREE.Mesh(geo('bochel', () => new THREE.SphereGeometry(0.14, 14, 10)),
       new THREE.MeshStandardMaterial({ color: huidKleur.clone().multiplyScalar(0.85), roughness: 0.9 }));
     bochel.position.set(0, 0.16, -0.13);
     romp.add(bochel);
@@ -4749,19 +4772,18 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   // bewust GEEN PointLight (budget: 0 lights per ondode, §4.9). Geen
   // 'kop'-markering, dus een treffer erop is gewoon een lichaamstreffer.
   if (vorm.buik) {
-    const buik = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 12),
+    const buik = new THREE.Mesh(geo('buik', () => new THREE.SphereGeometry(0.16, 16, 12)),
       new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
     buik.position.set(0, -0.1, 0.06);
     romp.add(buik);
-    const kern = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 10),
-      new THREE.MeshStandardMaterial({ color: 0xff9a3d, emissive: 0xff7a1f, emissiveIntensity: 1.6, roughness: 0.4 }));
+    const kern = new THREE.Mesh(geo('kern', () => new THREE.SphereGeometry(0.07, 12, 10)), kernMateriaal);
     kern.position.set(0, -0.1, 0.19);
     romp.add(kern);
     delen.kern = kern;   // Ticket 21 (Z4): referentie voor de kern-puls bij een treffer
   }
   // Gerafelde voddenstrook aan het middel — eigen, herkenbaar "tattered" detail.
-  const vod = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.32, 0.02),
-    new THREE.MeshStandardMaterial({ color: 0x40331f, roughness: 0.95 }));
+  const vod = new THREE.Mesh(geo('vod', () => new THREE.BoxGeometry(0.06, 0.32, 0.02)),
+    mat(0x40331f, 0.95));
   vod.position.set(0.1, -0.32, 0.12);
   vod.rotation.z = 0.3;
   romp.add(vod);
@@ -4789,7 +4811,7 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   // straal (0.18) en positie ONGEWIJZIGD, dus het hoofd-hoogte-anker
   // (ontwerpbeslissing 16) en de headshot-hitbox blijven exact hetzelfde;
   // alleen de tessellatie is vloeiender.
-  const hoofd = new THREE.Mesh(new THREE.SphereGeometry(0.18, 20, 16),
+  const hoofd = new THREE.Mesh(geo('hoofd', () => new THREE.SphereGeometry(0.18, 20, 16)),
     new THREE.MeshStandardMaterial({ color: huidKleur.clone().multiplyScalar(1.15), roughness: 0.8 }));
   hoofd.userData.lichaamsdeel = 'kop';   // treffer hier = headshot (dubbele schade)
   hoofdGroep.add(hoofd);
@@ -4798,7 +4820,7 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   const oogMateriaal = new THREE.MeshStandardMaterial({ color: typeInfo.oogKleur, emissive: typeInfo.oogKleur, emissiveIntensity: 1.4 });
   delen.oogMateriaal = oogMateriaal;   // Ticket 31 (Aanval A2): windup-oogpuls leest/schrijft dit gedeelde material
   for (const kant of [-1, 1]) {
-    const oog = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 8), oogMateriaal);
+    const oog = new THREE.Mesh(geo('oog', () => new THREE.SphereGeometry(0.02, 12, 8)), oogMateriaal);
     // Ticket 61: z 0.14->0.165. Bij het oude 8x8-hoofd staken de ogen door
     // een facet-deuk in het lage-poly-oppervlak heen zichtbaar naar buiten;
     // het nieuwe, vloeiende 20x16-hoofd volgt de wiskundige bolvorm overal
@@ -4830,12 +4852,17 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
     // het mesh vanaf de pivot naar beneden hangt.
     const armLengteMultiplier = 1 + (kant === 1 ? traits.armVerschil : -traits.armVerschil);
     const armLengte = 0.5 * armLengteMultiplier;
-    const armDikte = 0.09 * (profiel.armDikteFactor ?? 1);   // Ticket 19: 'mager' heeft dunnere armen
+    const armDikteFactor = profiel.armDikteFactor ?? 1;   // Ticket 19: 'mager' heeft dunnere armen
     const pivot = new THREE.Group();
     pivot.position.set(kant * 0.24, schouderY, schouderZ);
     pivot.rotation.x = ARM_RUST_ROTATIE_X;   // naar voren uitgestrekt
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(armDikte, armLengte, armDikte),
+    // Ticket 69: basisgeometrie (dikte 0.09, lengte 0.5) gedeeld via geoCache;
+    // de per-ondode armlengte/-dikte komt nu uit mesh.scale i.p.v. uit de
+    // geometrie-parameters zelf — visueel identiek (dikte 0.09*factor,
+    // lengte 0.5*multiplier), positie.y-formule dus ongewijzigd.
+    const arm = new THREE.Mesh(geo('arm', () => new THREE.BoxGeometry(0.09, 0.5, 0.09)),
       new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
+    arm.scale.set(armDikteFactor, armLengteMultiplier, armDikteFactor);
     arm.position.y = -armLengte / 2;
     pivot.add(arm);
     groep.add(pivot);
@@ -7705,6 +7732,7 @@ window.AmsterdamUndeadDebug = {
   ONDODE_TYPES, ONDODE_TYPE_MIN_GOLF, kiesOndodeType, ondodeTypeGewichten,
   kiesOndodeTraits,   // v0.8: cosmetische per-ondode variatie
   VARIATIE_PROFIELEN, maakOndodeModel,   // Ticket 19: silhouetten + variatieprofielen
+  geoCache, kernMateriaal,   // Ticket 69: gedeelde geometrie-cache (voor tests: cache-grootte + hergebruik)
   // Ticket 20: ledematen-animatie-constanten (voor tests)
   ARM_RUST_ROTATIE_X, BEEN_LOOP_AMPLITUDE, ARM_LOOP_FACTOR, HOOFD_KANTEL_AMPLITUDE,
   ROMP_BOB_HOOGTE, STROMPEL_BEEN_ZWAK, STROMPEL_BEEN_STERK,

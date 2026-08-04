@@ -47,7 +47,10 @@ const vormen = await page.evaluate((vasteTraitsStandaard) => {
       if (!kind.isMesh) return;
       meshes++;
       const p = kind.geometry.parameters;
-      if (kind.geometry.type === 'BoxGeometry' && p.height === 0.6) torsoBreedte = p.width;
+      // Ticket 69: de geometrie zelf is nu altijd de gedeelde basisvorm
+      // (width 0.36) — de rompbreedte-variatie per type/profiel zit sinds
+      // T69 in mesh.scale.x, dus de EFFECTIEVE breedte is width * scale.x.
+      if (kind.geometry.type === 'BoxGeometry' && p.height === 0.6) torsoBreedte = p.width * kind.scale.x;
       if (kind.geometry.type === 'SphereGeometry' && p.radius > 0.05 && p.radius < 0.18) bollen++;
       if (kind.material.emissiveIntensity === 1.6) emissiveKern = true;
     });
