@@ -2554,6 +2554,41 @@ voldoende ongewijzigd.
 **Volledige regressie:** `test-kelder-trap.mjs` 51/51 groen,
 `test-stroomuitval.mjs` 36/36 groen.
 
+#### 7.5.10 Fix 3 v2: kelderlicht scheen door de nis-westmuur/deur5 heen
+
+**Feedback:** "het licht van de kelder lijkt door de muur in het atelier
+te schijnen" (met screenshot: een duidelijke lichtvlek rond de deur5-
+doorgang, zichtbaar vanuit de nis). Empirisch bevestigd met een
+voor/na-screenshotvergelijking vanuit de nis, kijkend naar deur5 — de
+vlek was zichtbaar ONGEACHT of deur5 al gekocht was (dus ook door de
+DICHTE, opake houten deur-mesh heen).
+
+**Oorzaak:** puntlichten in deze scene casten geen schaduw (op de ene
+shadow-invariant-lamp na, zie §7.9) — geometrie zoals `deur5Mesh` of de
+nis-westmuur blokkeert dus HELEMAAL NIETS van hun licht; alleen de
+inverse-kwadraat-afstandsval-off en de harde `bereik`-cutoff (Three.js'
+`PointLight.distance`) begrenzen hoe ver een lamp reikt. Het
+trap-koker-peertje (`kelderLamp(kokerCX, KOKER_LAMP_Y, KELDERTRAP_CZ, 9,
+9, ...)`) stond met `bereik=9` middenin de trapkoker, maar op slechts
+~2m van de deur5-doorgang — ruim binnen dat bereik — en scheen dus vrij
+door de deur/muur heen de nis in.
+
+**Fix:** `bereik` 9 → 3.5. Dekt de trapkoker zelf nog steeds volledig
+(de koker is maar 4m lang), maar valt met kwadratische afstandsval-off
+ruim voordat het licht de nis nog merkbaar bereikt. De onderkant van de
+trap/kelderruimte krijgt sowieso zijn eigen, sterkere verlichting via de
+`kelderLamp()`-aanroepen met `stroomVloer` (§7.5.5/§7.5.7-7.5.9) — die
+zijn NIET aangepast, dus de zojuist getunede kelder-helderheid
+(§7.5.7-7.5.9) blijft ongewijzigd.
+
+**Verificatie:** visuele voor/na-screenshotvergelijking (canvas-
+screenshot vanuit de nis, kijkend naar deur5, met en zonder deur5
+gekocht) bevestigt dat de lichtvlek verdwijnt. `tests/test-kelder-
+trap.mjs` §15 bewaakt de regressie: precies 1 lamp op `KELDERTRAP_CZ`
+met `licht.distance <= 4`. Volledige regressie: `test-kelder-trap.mjs`
+54/54 groen, `test-stroomuitval.mjs` 36/36 groen (ongewijzigd — deze
+lamp heeft geen `stroomVloer`, dus geen kruisbesmetting met die suite).
+
 ### 7.6 Verbetergebied 3 — Vijandintelligentie
 
 #### 7.6.1 Waypoint-navigatiegraaf — architectuur (beslissing 57)
@@ -2781,6 +2816,55 @@ algehele audio-discipline heen stapelen. 100% Web Audio, eigen
 compositie/motief — geen samples, geen bestaande herkenbare
 game-muziek of -motieven (IP-regel, CLAUDE.md).
 
+##### 7.7.1.1 Fix 2: de nevelklok was nauwelijks hoorbaar
+
+**Feedback:** "ik hoor geloof ik geen geluid, kan dat kloppen?" — na
+Fix 1 (de nevelklok, §hierboven). Geen wiring-bug (de audiograaf
+`muziekOsc → nevelklokGainNode → muziekGainNode → masterGainNode` was
+en is correct, geverifieerd via de bron-checks in
+`test-achtergrondmuziek.mjs`) maar een STAPELING van drie
+audibiliteitsproblemen die elkaar versterkten:
+
+1. **Exponentiële opbouw is bijna de hele tijd stil.** De zwel-fase
+   gebruikte `exponentialRampToValueAtTime(1, nu + 3s)` vanaf 0.0001 —
+   zo'n curve legt het grootste deel van de stijging af in het LAATSTE
+   kwart van de tijd (bij de helft van de 3s staat de gain nog maar op
+   ~1% van de piek). Een luisteraar hoort dus vooral stilte, gevolgd
+   door een korte "pop" vlak vóór de piek.
+2. **Dubbele, gelijktijdige opbouw bij de allereerste beiering.**
+   `nevelklokTimer` start op 0 (de eerste beiering triggert meteen bij
+   het opstarten), maar `muziekGainNode` zelf start OOK op gain 0 en
+   nadert zijn doelwaarde pas geleidelijk via `setTargetAtTime`
+   (tijdconstante `MUZIEK_GLIJTIJD`=1.2s). Twee onafhankelijke, allebei
+   nog-lage curves VERMENIGVULDIGD (de klok-envelope × de spelfase-
+   volumesturing) maakten precies de EERSTE — en bij een korte test de
+   enige — beiering extra zwak.
+3. **Te lage grondtoon voor kleine speakers.** De partialen (E2/C#3/D3,
+   82/139/147 Hz, overgenomen uit de aangeleverde preview-WAV) liggen
+   in een bereik waar ingebouwde/laptop-speakers doorgaans zwaar dempen
+   (vaak al merkbaar onder ~150 Hz).
+
+**Fix:** (a) opbouw korter én LINEAIR i.p.v. exponentieel
+(`NEVELKLOK_ZWEL_TIJD` 3s → 1.4s, `linearRampToValueAtTime` — een
+lineaire curve staat na de helft van de tijd ook op de helft van het
+volume, dus veel eerder daadwerkelijk hoorbaar; het verval blijft
+bewust exponentieel, dat klinkt voor een wegstervende bel wél
+natuurlijk); (b) alle drie de partialen een octaaf omhoog (E3/C#4/D4,
+165/277/294 Hz) — zelfde kleine-secunde-wrijving/"beieren"-karakter,
+ruim boven de dreigingsdrone (55/57 Hz) dus nog steeds gescheiden lagen,
+maar binnen het bereik dat de meeste speakers goed reproduceren; (c)
+`MUZIEK_VOLUME_PLAFOND`/`RUST`/`AANKONDIGING` opgehoogd (0.05/0.03/0.015
+→ 0.08/0.05/0.025, zelfde trapjes/verhouding) — nog steeds ruim onder
+een overstemmend niveau samen met de drone (0.08+0.07=0.15).
+
+**Verificatie:** `test-achtergrondmuziek.mjs` §9/§10 controleren via
+bron-inspectie (`speelNevelklokToon.toString()`/`initGeluid.toString()`)
+dat de opbouw `linearRampToValueAtTime` gebruikt (niet exponentieel) en
+dat de drie oscillators op de nieuwe, hogere frequenties staan — een
+Web Audio-tijdlijn zelf vooruitspoelen kan niet in een headless test,
+dus de scheduling-code-vorm is het dichtstbijzijnde verifieerbare bewijs.
+Regressie: `test-achtergrondmuziek.mjs` 30/30 groen.
+
 ### 7.8 Verbetergebied 5 — Spelerfeedback & oriëntatie
 
 #### 7.8.1 Minimap (beslissing 60)
@@ -2934,6 +3018,32 @@ transform bijwerkt (hoek verandert, en verandert naar de correcte nieuwe
 relatieve hoek — de bron staat nu "rechts" na de kwartslag). §13 test
 `berekenSchadeWedgeHoek()` zelf als pure functie. Regressie:
 `test-schaderichting.mjs` 28/28 groen.
+
+##### 7.8.2.2 Fix 1 v2: de pijl wees naar de speler toe i.p.v. ervan af
+
+**Feedback:** "de richting aanwijzer bij schade lijkt verkeerd om te
+staan qua teken... hij wijst naar mij toe in plaats van van mij af."
+De ROTATIEHOEK zelf was (opnieuw empirisch bevestigd, zie §7.8.2.1) al
+correct voor elke richting/yaw — de bug zat in de VORM van de driehoek
+zelf, niet in zijn rotatie. De CSS-driehoektruc (0×0-box + transparante
+zij-borders + één gekleurde border) gebruikte `border-top`, wat een
+naar-BENEDEN wijzende driehoek (▼) oplevert. Bij hoek 0 (bron recht
+vooruit) hangt de wedge via `translateY(-42vh)` BOVEN het canvasmidden —
+een naar-beneden wijzende driehoek zou daar dus met de punt terug naar
+het midden (de speler) wijzen: precies het gerapporteerde probleem.
+
+**Fix:** `border-top` → `border-bottom` in de `.schadeWedge`-CSS-regel.
+`border-bottom` levert een naar-BOVEN wijzende driehoek (▲) op — bij
+hoek 0 wijst de punt dan verder omhoog, WEG van het canvasmidden (de
+speler), voor élke rotatiehoek (de rotatie draait de hele vorm inclusief
+zijn punt-richting mee, dus dit geldt voor alle standen, niet alleen
+hoek 0). Puur een CSS-wijziging — de rotatieberekening zelf
+(`berekenSchadeWedgeHoek()`, Fix 2 hierboven) blijft ongewijzigd correct.
+
+**Verificatie:** `tests/test-schaderichting.mjs` §14 controleert via
+`getComputedStyle()` dat `.schadeWedge` een niet-nul `border-bottom-
+width` en een `0px` `border-top-width` heeft. Regressie:
+`test-schaderichting.mjs` 29/29 groen.
 
 ### 7.9 Performancebudgetten en risicogebieden (ronde 5)
 

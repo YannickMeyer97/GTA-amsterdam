@@ -249,8 +249,11 @@
   /* --- Ticket 68: richtingsfeedback bij schade — een driehoekige "wedge"
        aan de rand van het beeld, gedraaid naar de hoek tussen kijkrichting
        en schaderichting (0rad = recht vooruit, boven in beeld), punt naar
-       binnen. Opacity wordt puur via JS/frame gestuurd (zelfde patroon als
-       #vignet hierboven), dus bewust geen CSS-transition hier. --- */
+       BUITEN (wijst van de speler af, richting de bron — Fix 1: stond
+       hiervoor per ongeluk andersom via border-top, waardoor de punt naar
+       de speler toe wees i.p.v. ervan af). Opacity wordt puur via JS/frame
+       gestuurd (zelfde patroon als #vignet hierboven), dus bewust geen
+       CSS-transition hier. --- */
   .schadeWedge {
     position: fixed;
     top: 50%;
@@ -259,7 +262,7 @@
     height: 0;
     border-left: 26px solid transparent;
     border-right: 26px solid transparent;
-    border-top: 46px solid rgba(255, 40, 40, 0.85);
+    border-bottom: 46px solid rgba(255, 40, 40, 0.85);
     opacity: 0;
     pointer-events: none;
     z-index: 7;
@@ -2139,8 +2142,18 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   // die op die hoogte op de trap staat (trede daar ≈ -1,65, ooghoogte
   // ≈ 0,05) en ruim onder het dak. Bewust zwak: "een klein beetje
   // verlichting".
+  // Fix 3 (feedback: "het licht van de kelder lijkt door de muur in het
+  // atelier te schijnen"): bereik 9 -> 3.5. Puntlichten in deze scene
+  // casten geen schaduw (op de ene shadow-invariant-lamp na, zie
+  // ARCHITECTURE_NOTES.md §7.9) — geometrie zoals deur5Mesh of de nis-
+  // westmuur blokkeert dus NIETS van dit licht, alleen de afstandscutoff
+  // (`bereik`) zelf voorkomt dat het door de deur heen de nis in "schijnt".
+  // kokerCX ligt ~2m van de deur/deur5-doorgang (KAMER2_NIS_X_WEST) — 3.5m
+  // bereik dekt de hele trapkoker nog steeds, maar reikt niet meer voorbij
+  // de deur de nis in (de onderkant van de trap krijgt zijn eigen licht via
+  // de kelderLamp()-aanroepen hieronder, met hun eigen ruimere bereik).
   const KOKER_LAMP_Y = 0.8;
-  kelderLamp(kokerCX, KOKER_LAMP_Y, KELDERTRAP_CZ, 9, 9, KOKER_PLAFOND_Y - KOKER_LAMP_Y);
+  kelderLamp(kokerCX, KOKER_LAMP_Y, KELDERTRAP_CZ, 9, 3.5, KOKER_PLAFOND_Y - KOKER_LAMP_Y);
   // Feedback: kelderruimte ongeveer even licht als de startkamer, in ZOWEL
   // de normale stand als tijdens een Stroomuitval. Pixelmeting liet zien dat
   // een eerdere lichtboost alleen (18/10) niet genoeg was zolang de
@@ -3890,21 +3903,37 @@ let muziekThrottleTimer = 0;
 let muziekGainSchrijfTeller = 0;   // debug/test: telt elke echte gain-write
 const MUZIEK_THROTTLE_INTERVAL = 0.5;   // s
 const MUZIEK_GLIJTIJD = 1.2;            // s — trager dan de drone (0.5), muziek schakelt niet abrupt
-const MUZIEK_VOLUME_PLAFOND = 0.05;         // vol tijdens combat (ondoden aanwezig)
-const MUZIEK_VOLUME_RUST = 0.03;            // basisniveau tussen golven in
-const MUZIEK_VOLUME_AANKONDIGING = 0.015;   // zachter tijdens een golf-aankondigingsbanner
+// Fix 2 (feedback: "ik hoor geloof ik geen geluid"): plafond/rust/
+// aankondiging opgehoogd (0.05->0.08 / 0.03->0.05 / 0.015->0.025, zelfde
+// verhouding/trapjes) — zie ook de envelope- en frequentie-aanpassing bij
+// NEVELKLOK_ZWEL_TIJD/muziekOsc hieronder, samen de daadwerkelijke oorzaak.
+const MUZIEK_VOLUME_PLAFOND = 0.08;         // vol tijdens combat (ondoden aanwezig)
+const MUZIEK_VOLUME_RUST = 0.05;            // basisniveau tussen golven in
+const MUZIEK_VOLUME_AANKONDIGING = 0.025;   // zachter tijdens een golf-aankondigingsbanner
 // Randgeval (acceptatiecriterium): combinatie met de drone (max 0.07) mag de
-// sfeer-audio niet overstemmen — 0.05 + 0.07 = 0.12, ruim onder een volle 1.0.
+// sfeer-audio niet overstemmen — 0.08 + 0.07 = 0.15, ruim onder een volle 1.0.
 let muziekAankondigingTimer = 0;   // > 0: een golf-banner staat in beeld, muziek gaat zachter
 // Fix 1: cadans van de nevelklok zelf (HOE VAAK/HOE LANG hij beiert) — los
 // van muziekGainNode (HOE LUID, spelfase-afhankelijk). Zwel/verval-tijden
-// zijn afgeleid uit de aangeleverde preview-WAV (envelope zwelt ~3s op naar
-// de piek, sterft ~4s daarna weg).
+// waren oorspronkelijk afgeleid uit de aangeleverde preview-WAV (envelope
+// zwelt ~3s op naar de piek, sterft ~4s daarna weg).
+// Fix 2 (feedback: "ik hoor geloof ik geen geluid"): met een 3s
+// EXPONENTIËLE opbouw (0.0001 -> 1) zit het overgrote deel van die 3s onder
+// hoorbaar niveau — een exponentiële curve legt bijna de hele afstand af in
+// het laatste kwart van de tijd (bij t=1.5s, halverwege, staat de gain nog
+// maar op ~0.01 van de piek). Gecombineerd met muziekGainNode's EIGEN
+// gelijktijdige opbouw (setTargetAtTime, tijdconstante MUZIEK_GLIJTIJD) bij
+// de állereerste beiering (die begint immers ook bij t=0) werd het
+// resultaat van de twee VERMENIGVULDIGDE, allebei-nog-lage curves zo
+// zwak dat de eerste (en voor een korte test enige) beiering nauwelijks
+// hoorbaar was. Opbouw nu korter én LINEAIR (zie speelNevelklokToon()) —
+// een lineaire curve is na de helft van de tijd ook op de helft van het
+// volume, dus veel eerder daadwerkelijk hoorbaar.
 let nevelklokTimer = 0;   // start op 0: de allereerste update-tick laat 'm meteen 1x beieren
 let nevelklokTeller = 0;   // debug/test: telt elke echte beier-aanroep
 const NEVELKLOK_HERHAAL_INTERVAL = 13;   // s tussen twee keer beieren
-const NEVELKLOK_ZWEL_TIJD = 3;           // s: opbouw naar de piek
-const NEVELKLOK_VERVAL_TIJD = 4;         // s: wegsterven na de piek
+const NEVELKLOK_ZWEL_TIJD = 1.4;         // s: opbouw naar de piek (was 3s, exponentieel — zie Fix 2 hierboven)
+const NEVELKLOK_VERVAL_TIJD = 4;         // s: wegsterven na de piek (exponentieel, klinkt van nature goed)
 // Pure functie (geen audio-aanroepen), zelfde testbaarheidspatroon als
 // berekenDreigingsGain hierboven.
 function berekenMuziekGain(aankondigingActief, aantalOndoden) {
@@ -3946,22 +3975,30 @@ function initGeluid() {
     osc2.start();
 
     // Fix 1 (feedback: "ik wil als muziek de nevelklok"): drie sines op de
-    // inharmonische partialen uit de aangeleverde preview-WAV — E2/C#3/D3
-    // (82.41/138.59/146.83 Hz; de kleine-secunde-wrijving tussen de laatste
-    // twee geeft het karakteristieke "beieren"/klok-zweving, i.p.v. een
-    // harmonisch akkoord). Permanent draaiend (nooit gestopt), maar nu door
-    // TWEE gainNodes in serie: eerst nevelklokGainNode (de zwel/verval-
+    // inharmonische partialen uit de aangeleverde preview-WAV — oorspronkelijk
+    // E2/C#3/D3 (82.41/138.59/146.83 Hz; de kleine-secunde-wrijving tussen de
+    // laatste twee geeft het karakteristieke "beieren"/klok-zweving, i.p.v.
+    // een harmonisch akkoord). Permanent draaiend (nooit gestopt), maar nu
+    // door TWEE gainNodes in serie: eerst nevelklokGainNode (de zwel/verval-
     // envelope van de klok zelf, periodiek opgelegd door
     // speelNevelklokToon()), dan muziekGainNode (de bestaande spelfase-
     // volumesturing: rust/combat/aankondiging). Zo blijft het volumebudget
-    // (plafond 0.05) ongewijzigd — muziekGainNode bepaalt HOE LUID,
-    // nevelklokGainNode bepaalt WANNEER er iets doorheen komt.
+    // ongewijzigd — muziekGainNode bepaalt HOE LUID, nevelklokGainNode
+    // bepaalt WANNEER er iets doorheen komt.
+    // Fix 2 (feedback: "ik hoor geloof ik geen geluid"): alle drie de
+    // partialen een octaaf omhoog (E3/C#4/D4, 164.82/277.18/293.66 Hz) —
+    // ingebouwde/laptop-speakers dempen doorgaans zwaar onder ~150 Hz, dus
+    // de oorspronkelijke E2 (82 Hz) kwam er op zulke speakers nauwelijks
+    // doorheen. De halve-toon-wrijving (277.18 vs 293.66, dezelfde
+    // verhouding als C#3/D3) en dus het "beieren"-karakter blijven
+    // hetzelfde; ruim boven de dreigingsdrone (55/57 Hz) blijven de twee
+    // lagen dus nog steeds gescheiden.
     const muziekOsc1 = audio.createOscillator();
     const muziekOsc2 = audio.createOscillator();
     const muziekOsc3 = audio.createOscillator();
-    muziekOsc1.type = 'sine'; muziekOsc1.frequency.value = 82.41;    // E2
-    muziekOsc2.type = 'sine'; muziekOsc2.frequency.value = 138.59;   // C#3
-    muziekOsc3.type = 'sine'; muziekOsc3.frequency.value = 146.83;   // D3
+    muziekOsc1.type = 'sine'; muziekOsc1.frequency.value = 164.82;   // E3
+    muziekOsc2.type = 'sine'; muziekOsc2.frequency.value = 277.18;   // C#4
+    muziekOsc3.type = 'sine'; muziekOsc3.frequency.value = 293.66;   // D4
     nevelklokGainNode = audio.createGain();
     nevelklokGainNode.gain.value = 0.0001;
     muziekGainNode = audio.createGain();
@@ -4098,7 +4135,11 @@ function speelNevelklokToon() {
   const nu = audio.currentTime;
   nevelklokGainNode.gain.cancelScheduledValues(nu);
   nevelklokGainNode.gain.setValueAtTime(0.0001, nu);
-  nevelklokGainNode.gain.exponentialRampToValueAtTime(1, nu + NEVELKLOK_ZWEL_TIJD);
+  // Fix 2: LINEAIR omhoog (i.p.v. exponentieel) — zie de toelichting bij
+  // NEVELKLOK_ZWEL_TIJD hierboven. De verval-fase blijft wel exponentieel:
+  // dat klinkt voor een wegstervende bel juist wél natuurlijk, en de
+  // hoorbaarheid-timing speelt daar niet (de toon is dan al lang gehoord).
+  nevelklokGainNode.gain.linearRampToValueAtTime(1, nu + NEVELKLOK_ZWEL_TIJD);
   nevelklokGainNode.gain.exponentialRampToValueAtTime(0.0001, nu + NEVELKLOK_ZWEL_TIJD + NEVELKLOK_VERVAL_TIJD);
 }
 // Aangeroepen 1x per frame vanuit de spelActief-tak van de gameLoop. De

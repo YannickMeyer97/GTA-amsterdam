@@ -217,6 +217,25 @@ check('berekenSchadeWedgeHoek(): bron rechts bij yaw=0 geeft -π/2 (vóór de CS
 check('berekenSchadeWedgeHoek(): dezelfde wereld-bron geeft een ANDERE relatieve hoek zodra de speler draait',
   Math.abs(pureFn.voorNaKwartslag - pureFn.voor) > 0.5, pureFn);
 
+// --- 14. Fix 1 (feedback: "hij wijst naar mij toe in plaats van van mij
+// af"): de driehoek zelf moet van de speler AF wijzen, niet ernaartoe. De
+// CSS-driehoektruc (0x0-box + transparante zij-borders + één gekleurde
+// border) bepaalt de punt-richting: `border-top` geeft een naar-BENEDEN
+// wijzende driehoek (▼) — bij θ=0 hangt de wedge BOVEN het canvasmidden, dus
+// zou de punt naar BENEDEN (terug naar de speler) wijzen. `border-bottom`
+// geeft een naar-BOVEN wijzende driehoek (▲): bij θ=0 wijst de punt dan
+// verder omhoog, WEG van de speler — de gewenste richting. --------------
+const vormTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const stijl = getComputedStyle(d.schadeWedgePool[0].el);
+  return {
+    borderBottom: stijl.borderBottomWidth,
+    borderTop: stijl.borderTopWidth,
+  };
+});
+check('.schadeWedge gebruikt border-bottom (driehoek wijst van de speler af), NIET border-top (zou naar de speler toe wijzen)',
+  vormTest.borderBottom !== '0px' && vormTest.borderTop === '0px', vormTest);
+
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);
