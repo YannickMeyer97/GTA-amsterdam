@@ -2589,6 +2589,38 @@ met `licht.distance <= 4`. Volledige regressie: `test-kelder-trap.mjs`
 54/54 groen, `test-stroomuitval.mjs` 36/36 groen (ongewijzigd — deze
 lamp heeft geen `stroomVloer`, dus geen kruisbesmetting met die suite).
 
+##### 7.5.10.1 Fix 3 v3: 3.5m bleek nog niet kort genoeg
+
+**Feedback:** "ik zie nog steeds het licht aan de linkermuur (west muur)
+van het atelier" — later verduidelijkt met een screenshot: niet het
+raam (`glasNW`, een blauw gloeiend, altijd al bestaand en volledig
+legitiem venster op de noordwestmuur, ONgerelateerd aan de kelder —
+bevestigd via een exacte raycast op de gemelde pixel-locatie, die recht
+op `glasNW`'s positie uitkwam) maar een apart, WARM/geel lichtvlek vlak
+bij deur5 zelf.
+
+**Oorzaak:** `kokerCX` (de x-positie van het trap-peertje) ligt maar
+~2m van de deur5-doorgang — bij `bereik=3.5` (§7.5.10) had het licht dus
+nog altijd 1,5m "over" om voorbij de deur te reiken. Een screenshot vlak
+bij de GESLOTEN deur bevestigde een duidelijke warme gloed rond het
+kozijn, ook na de 3.5m-fix.
+
+**Fix:** `bereik` 3.5 → 2.2 — dekt daarmee vrijwel alleen de eigen
+onmiddellijke omgeving in de koker; de gecombineerde kwadratische
+afstandsval-off + Three.js' venster-cutoff-functie brengt de
+lichtbijdrage bij 2m al bijna op 0. Bewust een zwak lampje: dit was van
+meet af aan bedoeld als "een klein beetje verlichting" (regel ~2143),
+niet als volwaardige kamerverlichting — die komt van de bredere
+`kelderLamp()`-aanroepen met hun eigen, ruimere bereik.
+
+**Verificatie:** drie screenshots — (1) vlak bij de gesloten deur5: geen
+merkbare gloed meer rond het kozijn; (2) verder terug in het atelier: nog
+steeds schoon; (3) met deur5 gekocht, er recht induitkijkend: de trap
+zelf blijft nog gewoon leesbaar verlicht (het peertje doet zijn werk
+zodra je er ECHT induitkijkt, lekt alleen niet meer door een gesloten
+deur/muur). `tests/test-kelder-trap.mjs` §15 aangescherpt naar
+`licht.distance <= 2.5`. Volledige regressie: 48/48 scripts groen.
+
 ### 7.6 Verbetergebied 3 — Vijandintelligentie
 
 #### 7.6.1 Waypoint-navigatiegraaf — architectuur (beslissing 57)

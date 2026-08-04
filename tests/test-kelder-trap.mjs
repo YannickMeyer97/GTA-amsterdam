@@ -461,14 +461,18 @@ check('Het interactiepunt reageert IN kelderoost (Y=-KELDER_DIEPTE)',
 check('Het interactiepunt reageert NIET op Y=0 (Y-marge-vangnet, zelfde als Pantserdrank in sectie 9)',
   lantaarnTest.reageertOpNul !== 'Scheepslantaarn', lantaarnTest);
 
-// --- 15. Fix 3 v2 (feedback: "het licht van de kelder lijkt door de muur
-// in het atelier te schijnen"): puntlichten in deze scene casten geen
-// schaduw (op de ene shadow-invariant-lamp na), dus niets blokkeert hun
-// licht — de enige manier om te voorkomen dat het trap-peertje door
-// deur5/de nis-westmuur heen "schijnt" is zijn bereik (afstandscutoff) kort
-// genoeg te houden. Bewaakt hier de regressie: bereik moet klein blijven
-// (was 9, nu 3.5 — ruim genoeg voor de trapkoker zelf, te kort om de nis
-// nog merkbaar te bereiken). --------------------------------------------
+// --- 15. Fix 3 v2/v3 (feedback: "het licht van de kelder lijkt door de
+// muur in het atelier te schijnen" / "ik zie nog steeds het [gele] licht"):
+// puntlichten in deze scene casten geen schaduw (op de ene shadow-
+// invariant-lamp na), dus niets blokkeert hun licht — de enige manier om
+// te voorkomen dat het trap-peertje door deur5/de nis-westmuur heen
+// "schijnt" is zijn bereik (afstandscutoff) kort genoeg te houden. Eerste
+// poging (3.5m) bleek nog niet kort genoeg — kokerCX ligt maar ~2m van de
+// deur, dus 3.5m reikte er nog ruim overheen (bevestigd met een screenshot
+// vlak bij de gesloten deur: een duidelijke warme gloed rond het kozijn).
+// Bewaakt hier de regressie: bereik moet kort blijven (was 9, toen 3.5, nu
+// 2.2 — net genoeg voor de koker zelf, te kort om nog merkbaar door de
+// deur heen te reiken). --------------------------------------------------
 const kokerLampTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const kokerLampen = d.lampLichten.filter(l => l.licht.position.z === d.KELDERTRAP_CZ);
@@ -478,8 +482,8 @@ const kokerLampTest = await page.evaluate(() => {
   };
 });
 check('Er is precies 1 trap-koker-lamp (op KELDERTRAP_CZ)', kokerLampTest.aantal === 1, kokerLampTest);
-check('Het bereik van de trap-koker-lamp is kort (<= 4m), niet de oude 9m die tot in de nis reikte',
-  kokerLampTest.bereiken.every(b => b <= 4), kokerLampTest);
+check('Het bereik van de trap-koker-lamp is kort (<= 2.5m), niet de oude 9m/3.5m die tot in de nis reikten',
+  kokerLampTest.bereiken.every(b => b <= 2.5), kokerLampTest);
 
 const fails = report(errs);
 await browser.close();

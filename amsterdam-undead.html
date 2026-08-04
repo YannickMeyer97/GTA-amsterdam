@@ -2148,12 +2148,21 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   // ARCHITECTURE_NOTES.md §7.9) — geometrie zoals deur5Mesh of de nis-
   // westmuur blokkeert dus NIETS van dit licht, alleen de afstandscutoff
   // (`bereik`) zelf voorkomt dat het door de deur heen de nis in "schijnt".
-  // kokerCX ligt ~2m van de deur/deur5-doorgang (KAMER2_NIS_X_WEST) — 3.5m
-  // bereik dekt de hele trapkoker nog steeds, maar reikt niet meer voorbij
-  // de deur de nis in (de onderkant van de trap krijgt zijn eigen licht via
-  // de kelderLamp()-aanroepen hieronder, met hun eigen ruimere bereik).
+  // Fix 3 v3 (feedback: "ik zie nog steeds het [gele] licht"): 3.5m bleek
+  // nog niet genoeg — kokerCX ligt maar ~2m van de deur, dus bij bereik=3.5
+  // was er op die 2m nog steeds goed merkbaar licht over (bevestigd met een
+  // screenshot vlak bij de GESLOTEN deur5: een duidelijke warme gloed rond
+  // het deurkozijn). Verder naar 2.2m — dekt daarmee vrijwel alleen zijn
+  // eigen directe omgeving in de koker, met kwadratische afstandsval-off
+  // + Three.js' venster-cutoff-functie al bijna op 0 tegen de tijd dat het
+  // licht de 2m tot de deur overbrugt. Blijft bewust zwak — dit peertje was
+  // altijd al bedoeld als "een klein beetje verlichting", niet als volwaardige
+  // kamerverlichting (die komt van de kelderLamp()-aanroepen hieronder).
+  // Geverifieerd: met de deur DICHT is er geen merkbare gloed meer rond het
+  // kozijn; met de deur OPEN (er recht induitkijkend) blijft de trap zelf
+  // nog gewoon leesbaar verlicht.
   const KOKER_LAMP_Y = 0.8;
-  kelderLamp(kokerCX, KOKER_LAMP_Y, KELDERTRAP_CZ, 9, 3.5, KOKER_PLAFOND_Y - KOKER_LAMP_Y);
+  kelderLamp(kokerCX, KOKER_LAMP_Y, KELDERTRAP_CZ, 9, 2.2, KOKER_PLAFOND_Y - KOKER_LAMP_Y);
   // Feedback: kelderruimte ongeveer even licht als de startkamer, in ZOWEL
   // de normale stand als tijdens een Stroomuitval. Pixelmeting liet zien dat
   // een eerdere lichtboost alleen (18/10) niet genoeg was zolang de
