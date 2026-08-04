@@ -502,6 +502,39 @@
   </div>
 </div>
 
+<!-- Ticket 74 (v0.20, §8.6.1): zichtbare faalmodus als de CDN-module nooit
+     laadt (offline, firewall, storing) — anders blijft het scherm gewoon
+     dood zonder enige aanwijzing. Verborgen tenzij het klassieke scriptje
+     hieronder 'm toont. -->
+<div id="cdnFoutmelding" style="display:none; position:fixed; inset:0; z-index:999; background:rgba(10,12,18,0.96); color:#eaf2ea; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px; font-family:inherit;">
+  <div style="font-size:40px; margin-bottom:12px;">⚠️</div>
+  <div style="font-size:20px; font-weight:700; margin-bottom:8px;">Kon Three.js niet laden</div>
+  <div style="opacity:0.85; max-width:420px;">Controleer je internetverbinding en herlaad de pagina. Amsterdam Undead laadt zijn 3D-engine vanaf een CDN.</div>
+</div>
+<script>
+  // Ticket 74: klassiek (niet-module) scriptje — draait dus ALTIJD, ook als
+  // de module hieronder nooit start. Eén timer, meteen geannuleerd zodra de
+  // module-script daadwerkelijk klaar is (helemaal onderaan, ná
+  // window.AmsterdamUndeadDebug = {...}) — dus geen enkele kost als het
+  // laden gewoon lukt. In deze headless-testomgeving laadt het spel binnen
+  // ~800ms, dus 10s is ruim veilig (zie tests/test-faalmodi.mjs).
+  window.__cdnFoutTimer = setTimeout(function () {
+    var el = document.getElementById('cdnFoutmelding');
+    if (el) el.style.display = 'flex';
+  }, 10000);
+  // Vangt directe, synchrone script-fouten in de module (bv. een syntaxfout)
+  // — die hoeven niet op de volle 10s te wachten. Een netwerkfout bij het
+  // laden van de CDN-module zelf (offline/firewall) geeft geen catchable
+  // window.onerror-event, alleen een console-melding; de 10s-timer hierboven
+  // is daarvoor de betrouwbare vangnet.
+  window.addEventListener('error', function () {
+    if (!window.AmsterdamUndeadDebug) {
+      var el = document.getElementById('cdnFoutmelding');
+      if (el) el.style.display = 'flex';
+    }
+  });
+</script>
+
 <!-- Three.js laden vanaf een CDN, zelfde importmap-patroon als de andere game. -->
 <script type="importmap">
 {
@@ -6003,10 +6036,22 @@ const HIGHSCORE_KEY = 'amsterdamUndeadHighscore';
 // localStorage kan ontbreken of geweigerd zijn (privacy-modus, file://-
 // context, headless tests) — dat mag het spel nooit breken, dus altijd
 // try/catch en een stille fallback.
+// Ticket 74 (v0.20, §8.6.1 vervolg): vormvalidatie op het gelezen record —
+// corrupte of handmatig aangepaste localStorage gaf voorheen geen crash
+// (JSON.parse zelf slaagt vaak gewoon), maar wel "Record: undefined" in
+// beeld (score/golf ontbraken of hadden het verkeerde type). Zelfde
+// stille-fallback-filosofie als het try/catch hierboven: bij twijfel null.
+// Een ontbrekend `moeilijkheid`-veld (oudere opslagversie) is WEL geldig —
+// dat blijft feature-detectie bij het tonen (toonStartschermRecord()).
 function leesHighscore() {
   try {
     const raw = localStorage.getItem(HIGHSCORE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const record = JSON.parse(raw);
+    if (!record || typeof record !== 'object') return null;
+    if (typeof record.score !== 'number' || !Number.isFinite(record.score)) return null;
+    if (!Number.isInteger(record.golf) || record.golf <= 0) return null;
+    return record;
   } catch {
     return null;
   }
@@ -8043,6 +8088,7 @@ window.AmsterdamUndeadDebug = {
   get schadeWedgeVolgende() { return schadeWedgeVolgende; },
   set schadeWedgeVolgende(v) { schadeWedgeVolgende = v; },
 };
+clearTimeout(window.__cdnFoutTimer);   // Ticket 74: laden is gelukt, de faalmodus-timer is niet meer nodig
 </script>
 </body>
 </html>
