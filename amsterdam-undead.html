@@ -500,6 +500,13 @@
     <div class="knop" data-moeilijkheid="amsterdammer">Amsterdammer</div>
     <div class="knop" data-moeilijkheid="nachtwacht">Nachtwacht</div>
   </div>
+  <!-- Ticket 75 (v0.20, §8.6.2): muisgevoeligheid — bereik 0,25x-3x de
+       bestaande vaste waarde, default 1x zodat bestaande spelers niets
+       merken tenzij ze zelf schuiven. -->
+  <div style="display:flex; align-items:center; gap:10px; justify-content:center; margin-top:16px; font-size:13px; opacity:0.85;">
+    <label for="gevoeligheidSlider">🖱️ Muisgevoeligheid</label>
+    <input type="range" id="gevoeligheidSlider" min="0.25" max="3" step="0.05" style="width:140px;">
+  </div>
 </div>
 
 <!-- Ticket 74 (v0.20, §8.6.1): zichtbare faalmodus als de CDN-module nooit
@@ -3112,6 +3119,45 @@ geluidKnop.addEventListener('click', (e) => {
   e.stopPropagation();   // anders bubbelt de klik door naar startscherm's eigen click-listener (start/hervat het spel)
   zetGeluidGedempt(!geluidGedempt);
 });
+
+// Ticket 75 (v0.20, §8.6.2): muisgevoeligheid — zelfde beschermde lees-/
+// schrijfpatroon als leesHighscore()/schrijfHighscore() (STAP 8), hier
+// vroeg gedeclareerd omdat de mousemove-handler hieronder 'm direct nodig
+// heeft. Een corrupte/buiten-bereik-waarde wordt geklemd, niet doorgelaten
+// — anders is de camera onbestuurbaar en kan de speler er niet meer uit.
+const MUIS_GEVOELIGHEID_BASIS = 0.0022;
+const MUIS_GEVOELIGHEID_KEY = 'amsterdamUndeadGevoeligheid';
+const MUIS_GEVOELIGHEID_MIN = 0.25, MUIS_GEVOELIGHEID_MAX = 3;
+function leesGevoeligheid() {
+  try {
+    const raw = localStorage.getItem(MUIS_GEVOELIGHEID_KEY);
+    if (raw === null) return 1;
+    const waarde = Number(raw);
+    if (!Number.isFinite(waarde)) return 1;
+    return Math.max(MUIS_GEVOELIGHEID_MIN, Math.min(MUIS_GEVOELIGHEID_MAX, waarde));
+  } catch {
+    return 1;
+  }
+}
+function schrijfGevoeligheid(waarde) {
+  try {
+    localStorage.setItem(MUIS_GEVOELIGHEID_KEY, String(waarde));
+  } catch {
+    // Geweigerd of niet beschikbaar: gewoon niet bewaren, geen crash —
+    // zelfde stille fallback als schrijfHighscore().
+  }
+}
+let muisGevoeligheidFactor = leesGevoeligheid();
+const gevoeligheidSlider = document.getElementById('gevoeligheidSlider');
+gevoeligheidSlider.value = muisGevoeligheidFactor;
+gevoeligheidSlider.addEventListener('click', (e) => {
+  e.stopPropagation();   // zelfde patroon als geluidKnop hierboven: geen pointer-lock-aanvraag bij klikken
+});
+gevoeligheidSlider.addEventListener('input', (e) => {
+  e.stopPropagation();
+  muisGevoeligheidFactor = Math.max(MUIS_GEVOELIGHEID_MIN, Math.min(MUIS_GEVOELIGHEID_MAX, Number(e.target.value)));
+  schrijfGevoeligheid(muisGevoeligheidFactor);
+});
 const hulpUI = document.getElementById('hulpUI');
 const richtkruis = document.getElementById('richtkruis');
 const ammoUI = document.getElementById('ammoUI');
@@ -3225,8 +3271,8 @@ document.addEventListener('pointerlockchange', () => {
 
 addEventListener('mousemove', e => {
   if (document.pointerLockElement !== renderer.domElement) return;
-  speler.yaw -= e.movementX * 0.0022;
-  speler.pitch -= e.movementY * 0.0022;
+  speler.yaw -= e.movementX * MUIS_GEVOELIGHEID_BASIS * muisGevoeligheidFactor;
+  speler.pitch -= e.movementY * MUIS_GEVOELIGHEID_BASIS * muisGevoeligheidFactor;
   speler.pitch = Math.max(-1.45, Math.min(1.45, speler.pitch));
 });
 
@@ -8046,6 +8092,11 @@ window.AmsterdamUndeadDebug = {
   set dreigingsThrottleTimer(v) { dreigingsThrottleTimer = v; },
   // Fix 4: geluidsknop (master-mute)
   piep, zetGeluidGedempt, geluidKnop,
+  // Ticket 75: muisgevoeligheid (voor tests: opslag + klemming + slider-koppeling)
+  MUIS_GEVOELIGHEID_BASIS, MUIS_GEVOELIGHEID_KEY, MUIS_GEVOELIGHEID_MIN, MUIS_GEVOELIGHEID_MAX,
+  leesGevoeligheid, schrijfGevoeligheid, gevoeligheidSlider,
+  get muisGevoeligheidFactor() { return muisGevoeligheidFactor; },
+  set muisGevoeligheidFactor(v) { muisGevoeligheidFactor = v; },
   get geluidGedempt() { return geluidGedempt; },
   get masterGainNode() { return masterGainNode; },
   // Ticket 52 (Doel D5): gang naar de gracht — vlonder, water, boot, lantaarn
