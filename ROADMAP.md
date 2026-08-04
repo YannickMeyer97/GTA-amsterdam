@@ -3382,6 +3382,665 @@ zie hieronder.
 
 ---
 
+## v0.20 — Architectuurronde 6: resourcebeheer, frame-budget en betrouwbaarheid (gepland, nog NIET geïmplementeerd)
+
+Architectuur: zie ARCHITECTURE_NOTES.md §8 (beslissingen 63-69).
+Sonnet-prompts: zie SONNET_EXECUTION_PLAN.md, "ronde 6 (v0.20)".
+
+**Aanleiding.** Deze ronde komt NIET uit een feature-wens maar uit een
+volledige code-audit (senior engineer / performance engineer / game
+design) op de stand van commit `da3524e`. Anders dan de rondes hiervoor
+voegt v0.20 daarom bewust bijna geen nieuwe spelinhoud toe: het gros is
+het dichten van resource-lekken, het weghalen van werk uit de per-frame
+hot path, en het zichtbaar maken van faalmodi die nu stil zijn. De
+audit-bevindingen zijn met metingen onderbouwd; die metingen staan per
+ticket bij **Huidige situatie** en integraal in ARCHITECTURE_NOTES §8.11.
+
+**Uitgangspositie bij aanvang van deze ronde** (gemeten, niet geschat):
+48/48 regressiescripts groen · 7.887 regels in `amsterdam-undead.html` ·
+486 meshes / 445 unieke geometrieën (hergebruikratio 1,09) · 268 unieke
+materialen · 26 PointLights + 1 HemisphereLight · 1 schaduwwerpend licht
+met 156 schaduwwerpende meshes · 52 collision-obstakels · 96 muteerbare
+top-level `let`-bindings · **0 `.dispose()`-aanroepen in het hele
+bestand**.
+
+**Verbetergebieden deze ronde** (nummering per-ronde):
+1. Resourcebeheer & stabiliteit (T69-T70)
+2. Frame-budget (T71-T72)
+3. Vijandleesbaarheid (T73)
+4. Betrouwbaarheid & foutafhandeling (T74)
+5. Spelerervaring & toegankelijkheid (T75-T76)
+6. Testinfrastructuur (T77-T78)
+7. Renderbudget (T79, VOORZICHTIG)
+
+**Volgorde-advies.** T69 en T77 eerst (het lek en de test die 'm bewaakt),
+daarna T71/T72 (goedkoop, laag risico), dan T73/T74, dan T75/T76. T78
+kan op elk moment. T79 is expliciet gegate op profiling en mag pas ná de
+rest.
+
+---
+
+## Ticket 69 — Gedeelde geometrie-cache voor ondode-modellen (VOORZICHTIG)
+
+- **Type:** bugfix / performance
+- **Verbetergebied:** 1 (Resourcebeheer & stabiliteit)
+- **Prioriteit:** kritiek
+- **Status:** open (gepland)
+- **Afhankelijk van:** — (maar T77 hoort in dezelfde ronde te landen als
+  bewaking)
+- **Doel:** het bevestigde GPU-geheugenlek dichten dat lineair meegroeit
+  met de speelduur, zonder de hitboxen of het silhouet van welke ondode
+  dan ook te veranderen.
+- **Huidige situatie:** `maakOndodeModel()` maakt per ondode ~9 verse
+  `BoxGeometry`/`SphereGeometry`-instanties én ~9 verse
+  `MeshStandardMaterial`-instanties, die alle bestaande caches
+  (`mat()`/`materiaalCache`, `matFamilie()`/`matFamilieCache`) omzeilen
+  door de Three.js-constructor rechtstreeks aan te roepen. `doodOndode()`
+  haalt de groep alleen uit de scene-graph. In het hele bestand komt
+  `.dispose()` **nul keer** voor. Gemeten via
+  `renderer.info.memory.geometries` met echte frames tussen spawn en
+  kill: leeg 72 → 20 ondoden levend 252 (**exact +9 per ondode**) → 20
+  ondoden opgeruimd nog steeds 252 (niets vrijgegeven) → na 80
+  spawn/kill-cycli 796, lineair oplopend. Bij het huidige budgetmodel
+  (`GOLF_BUDGET_BASIS` 5 + `GOLF_BUDGET_GROEI` 1,7/golf) spawnt een run
+  van 25 golven ~490 ondoden, dus ~4.400 gelekte geometrieën plus een
+  vergelijkbaar aantal materialen.
+- **Gewenste situatie:** een `geoCache(sleutel, fabriek)`-helper naar
+  exact het patroon van de bestaande `materiaalCache`/`matFamilieCache`
+  (zelfde Map-lookup, zelfde plek in het bestand). De per-ondode
+  maatvariatie (`vorm.rompBreedte`, `profiel.rompFactor`, armlengte/
+  -dikte, lichaamslengte) verhuist van geometrie-parameters naar
+  `mesh.scale`, zodat alle ondoden dezelfde ~9 gedeelde geometrieën
+  hergebruiken. De ~9 directe `new THREE.MeshStandardMaterial(...)`-
+  aanroepen gaan waar mogelijk via `mat()`; het per-ondode
+  `oogMateriaal` moet uniek BLIJVEN (`emissiveIntensity` wordt per
+  ondode geanimeerd — zie `zetOogBasis()`/de windup-puls) en krijgt in
+  plaats daarvan expliciete disposal in T70's opruimhelper.
+- **Codegebieden:** `maakOndodeModel()` (STAP 6), de bestaande
+  cache-helpers `mat()`/`matFamilie()` als sjabloon, `doodOndode()` en
+  `updateStervenden()` voor het opruimmoment.
+- **Buiten scope:** het samenvoegen van statische wereldgeometrie
+  (`BufferGeometryUtils.mergeGeometries`) — dat is een eigen,
+  profiling-gated ticket en raakt `userData.materiaalFamilie`;
+  instancing (`InstancedMesh`) voor ondoden; elke wijziging aan het
+  aantal of de indeling van lichaamsdelen.
+- **Randgevallen:**
+  - **Hitboxen mogen niet verschuiven.** De headshot-detectie leunt op
+    `userData.lichaamsdeel === 'kop'` én op de werkelijke mesh-omvang;
+    een schaalfout verandert stilzwijgend de moeilijkheidsgraad. De
+    wereld-bounding-box van kop en romp moet vóór en ná identiek zijn.
+  - Varianten met afwijkende onderdelen (Sjouwer-bochel, Brander-kern,
+    Sluiper) moeten hun eigen cache-sleutel krijgen, niet per ongeluk
+    die van het normale type delen.
+  - `huidKleur.clone().multiplyScalar(...)` levert per ondode een andere
+    kleur op — dat blijft een materiaal-as, geen geometrie-as, en mag
+    dus niet in de geometrie-sleutel meegenomen worden.
+- **Performancevoorwaarden:** na dit ticket mag
+  `renderer.info.memory.geometries` NIET meer groeien over herhaalde
+  spawn/kill-cycli (harde assertie in T77). Het aantal geometrieën bij
+  een volle golf moet meetbaar dalen t.o.v. de nulmeting hierboven.
+- **Acceptatiecriteria:**
+  - 100 spawn/kill-cycli met echte frames ertussen laten
+    `renderer.info.memory.geometries` binnen ±2 gelijk (was: +900).
+  - Wereld-bounding-box van kop én romp identiek vóór/ná (tolerantie
+    ≤ 1 mm) voor elk van de vijf ondode-types.
+  - `test-ondode-model.mjs`, `test-ondode-vormen.mjs`,
+    `test-ondode-hitreacties.mjs`, `test-vijand-leesbaarheid.mjs` en
+    `test-varianten.mjs` blijven ongewijzigd groen.
+  - Volledige regressie blijft groen.
+- **Testplan:** eerst T77's geheugentest schrijven en 'm rood zien
+  falen op de huidige code (bewijs dat de test het lek daadwerkelijk
+  vangt), dan pas dit ticket implementeren en 'm groen zien worden.
+  Daarna de bounding-box-vergelijking, de vier genoemde
+  ondode-testbestanden, `check-load` en de volledige suite.
+- **Rollback:** `geoCache`-helper verwijderen en `maakOndodeModel()`
+  terugzetten op directe geometrie-constructie (één samenhangende diff,
+  geen halve staat mogelijk).
+- **Sonnet solo:** nee — hitbox-gevoelig, doe dit met expliciete
+  voor/na-bounding-box-metingen.
+
+---
+
+## Ticket 70 — Dispose-contract voor wegwerp-objecten
+
+- **Type:** bugfix
+- **Verbetergebied:** 1 (Resourcebeheer & stabiliteit)
+- **Prioriteit:** hoog
+- **Status:** open (gepland)
+- **Afhankelijk van:** T69 (deelt de opruim-helper)
+- **Doel:** alle overige objecten die tijdens een run worden aangemaakt
+  en weer weggegooid, netjes vrijgeven — zodat "geen `.dispose()` in het
+  bestand" niet stilletjes terugkeert bij het volgende effect.
+- **Huidige situatie:** naast de ondode-modellen (T69) maken ook
+  `ontploiBrander()` (flits-mesh + `PointLight`, opgeruimd via
+  `setTimeout(..., 220)`) en `spawnPowerupDrop()` (octaëder-mesh +
+  eigen `MeshStandardMaterial` + `PointLight`) per keer verse
+  geometrie/materialen aan die alleen uit de scene worden gehaald.
+  De `setTimeout`-opruiming loopt bovendien door tijdens pauze.
+- **Gewenste situatie:** één gedeelde `ruimGroepOp(object3D)`-helper die
+  `traverse()`t en per mesh `geometry.dispose()` + `material.dispose()`
+  aanroept (materiaal-arrays afhandelen; **gedeelde** cache-materialen
+  uit `mat()`/`matFamilie()` overslaan — die horen juist te blijven
+  leven). Aangeroepen vanuit `updateStervenden()` (na afloop van de
+  valanimatie), `ontploiBrander()` en de twee opruimplekken in
+  `updatePowerups()`/`raapPowerupOp()`. De explosie-opruiming verhuist
+  van `setTimeout` naar een timer in de bestaande cosmetische zone van
+  de game-loop, zodat 'ie het pauzegedrag van de rest volgt.
+- **Codegebieden:** nieuwe helper naast `doodOndode()`,
+  `ontploiBrander()`, `spawnPowerupDrop()`, `raapPowerupOp()`,
+  `updatePowerups()`, `updateStervenden()`.
+- **Buiten scope:** de effect-pools (`tracerPool`/`impactPool`) — die
+  zijn al correct begrensd en hergebruikt en mogen NIET disposed
+  worden; texturen uit `bouwCanvasTextuur()` (gedeeld en permanent).
+- **Randgevallen:**
+  - Een gedeeld cache-materiaal disposen zou álle objecten die het
+    delen onzichtbaar/zwart maken — de helper moet gedeelde materialen
+    aantoonbaar overslaan (markeer cache-materialen bij aanmaak, bv.
+    `material.userData.gedeeld = true`).
+  - Een Brander die ontploft terwijl een tweede Brander in de
+    kettingreactie zit, mag geen dubbele dispose op hetzelfde object
+    veroorzaken.
+  - Pauze tijdens een lopende explosieflits: de flits moet bij hervatten
+    gewoon verder aftellen, niet blijven hangen.
+- **Performancevoorwaarden:** geen `traverse()` in de per-frame hot
+  path — alleen op het opruimmoment.
+- **Acceptatiecriteria:**
+  - 200 Brander-explosies en 200 powerup-drops laten
+    `renderer.info.memory.geometries` niet groeien.
+  - Een gedeeld materiaal (bv. `KELDER_TINT`-steen) blijft na 200
+    explosies zichtbaar en niet-disposed.
+  - Volledige regressie blijft groen.
+- **Testplan:** uitbreiding van T77's geheugentest met een explosie- en
+  een powerup-scenario, plus een visuele screenshotcheck dat gedeelde
+  materialen intact blijven.
+- **Rollback:** helper-aanroepen verwijderen (de helper zelf mag blijven
+  staan, is dan dode code).
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 71 — `updateHUD()` uit de per-frame hot path
+
+- **Type:** performance
+- **Verbetergebied:** 2 (Frame-budget)
+- **Prioriteit:** hoog
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** de HUD alleen nog laten schrijven wanneer er werkelijk iets
+  aan de weergave verandert.
+- **Huidige situatie:** `updateHUD()` doet 9× `document.getElementById`
+  plus ~8 DOM-writes per aanroep, en wordt vanuit `updateSpelerRegen()`
+  en `updatePowerups()` ELKE frame aangeroepen zolang de speler
+  regenereert of een buff actief is. Gemeten: **60 schrijfacties naar
+  `hpTekst` per seconde** tijdens regeneratie, dus ~540
+  `getElementById`-lookups per seconde. Opvallend: het bestand cachet
+  elders al wél correct (`hudUI`, `vignet`, `ammoUI`, `minimapUI`
+  staan als const bovenaan) — `updateHUD()` is de enige uitzondering.
+- **Gewenste situatie:** alle 9 element-referenties één keer als const
+  bovenaan (zelfde plek/patroon als de bestaande UI-consts).
+  `updateHUD()` onthoudt de laatst geschreven weergavewaarden en slaat
+  een write over als die ongewijzigd zijn. De guard zit IN `updateHUD()`
+  zelf, zodat geen van de 28 bestaande aanroepplekken hoeft te wijzigen.
+- **Codegebieden:** `updateHUD()`, het UI-const-blok in STAP 3.
+- **Buiten scope:** de HUD-inhoud/opmaak zelf; `updateSpelerRegen()` en
+  `updatePowerups()` blijven `updateHUD()` gewoon aanroepen.
+- **Randgevallen:**
+  - Vergelijk op de WEERGEGEVEN waarde (`Math.round(hp)`), niet op de
+    ruwe float — anders schrijft 'ie alsnog elke frame.
+  - De HP-balkkleur wisselt op drempels (60%/30%): die moet blijven
+    omslaan, dus de kleur hoort bij de vergeleken staat.
+  - De buff-teller telt in hele seconden af (`Math.ceil`) — die moet
+    elke seconde nog wél updaten, en één laatste keer bij het aflopen
+    zodat de tekst leegt.
+- **Performancevoorwaarden:** ≤ 2 HUD-writes per seconde tijdens
+  ononderbroken regeneratie (was 60).
+- **Acceptatiecriteria:**
+  - DOM-schrijfteller: ≤ 2 writes/s tijdens 1 s regeneratie.
+  - HP-balk, geld, golf, schade, herlaadtijd, wapennaam en
+    buff-timers lopen visueel nog steeds live mee.
+  - Volledige regressie blijft groen.
+- **Testplan:** nieuwe DOM-schrijfteller-test (property-setter-spy op
+  `hpTekst.textContent`, zelfde techniek als in de audit gebruikt) +
+  `test-score-stats.mjs` + `test-powerups.mjs` + volledige regressie.
+- **Rollback:** de vergelijk-guard verwijderen; de gecachete
+  element-consts kunnen blijven staan.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 72 — Interactie-prompt en per-frame array-kopieën
+
+- **Type:** performance
+- **Verbetergebied:** 2 (Frame-budget)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** de resterende onnodige per-frame DOM-writes en allocaties
+  uit de game-loop halen.
+- **Huidige situatie:** (a) `updateInteracties()` roept elke frame
+  `toonInteractiePrompt()` of `verbergInteractiePrompt()` aan en schrijft
+  dus altijd `style.opacity`; staat de speler bij een interactiepunt, dan
+  wordt bovendien elke frame de prompt-string opnieuw opgebouwd via een
+  template literal in de `prompt()`-callback. (b) `updatePowerups()` en
+  `ontploiBrander()` maken met `[...powerups]` respectievelijk
+  `[...ondoden]` elke frame een verse array-kopie.
+- **Gewenste situatie:** (a) de prompt schrijft alleen bij een
+  daadwerkelijke wijziging van zichtbaarheid óf tekst (bewaar de laatst
+  getoonde staat); (b) de array-kopieën vervangen door achterwaartse
+  index-loops (`for (let i = arr.length - 1; i >= 0; i--)`), wat
+  veilig-verwijderen-tijdens-itereren behoudt zonder allocatie.
+- **Codegebieden:** `updateInteracties()`, `toonInteractiePrompt()`,
+  `verbergInteractiePrompt()`, `updatePowerups()`, `ontploiBrander()`.
+- **Buiten scope:** de inhoud van de prompt-teksten; het
+  interactiepunt-systeem zelf.
+- **Randgevallen:**
+  - De prompt moet nog steeds meteen verdwijnen bij pauze
+    (`pointerlockchange` roept `verbergInteractiePrompt()` al expliciet
+    aan) — de nieuwe guard mag dat pad niet blokkeren.
+  - Prompt-teksten zijn dynamisch (prijzen veranderen mee met wat je al
+    gekocht hebt): vergelijk op de resulterende string, niet op het punt.
+  - `ontploiBrander()` verwijdert tijdens de loop elementen uit
+    `ondoden` (kettingreactie) — de achterwaartse loop moet daar
+    aantoonbaar tegen kunnen.
+- **Performancevoorwaarden:** nul DOM-writes per frame als de speler
+  stilstaat zonder interactiepunt in bereik.
+- **Acceptatiecriteria:**
+  - DOM-schrijfteller op `interactiePrompt`: 0 writes over 60 frames
+    stilstand buiten bereik, 1 write bij het binnenlopen van bereik.
+  - Kettingreactie-test voor Branders blijft groen
+    (`test-varianten.mjs`).
+  - Volledige regressie blijft groen.
+- **Testplan:** DOM-schrijfteller-test + `test-varianten.mjs` +
+  `test-powerups.mjs` + volledige regressie.
+- **Rollback:** guards verwijderen, index-loops terugdraaien naar
+  spread-kopieën.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 73 — Ondoden kijken in hun looprichting
+
+- **Type:** bugfix / vijandleesbaarheid
+- **Verbetergebied:** 3 (Vijandleesbaarheid)
+- **Prioriteit:** hoog
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** ondoden niet langer zijwaarts/achterwaarts laten schuifelen
+  terwijl ze naar een deur navigeren, zodat hun beweging en hun
+  aanvals-tell weer leesbaar zijn.
+- **Huidige situatie:** `updateOndoden()` zet de kijkrichting
+  onvoorwaardelijk op de richting náár de speler
+  (`rotation.y = Math.atan2(rechtstreeks.x, rechtstreeks.z)`), terwijl de
+  beweging het navigatiedoel volgt
+  (`doelPunt = volgendeDeur || tussenWaypoint || speler.positie`).
+  Gemeten scenario (ondode in de woonkamer, speler in het atelier,
+  nav-doel = gangdeur op (0, −5)): bewegingshoek −156,4°, kijkhoek
+  −166,9° → **10,5° mismatch**. Ligt het waypoint haaks op de
+  spelerrichting (rond een hoek, in de gang naar de gracht, of bij de
+  kelderoost-deur), dan loopt dit structureel op richting 90° en staart
+  de ondode je zichtbaar door een muur heen aan terwijl hij zijwaarts
+  loopt.
+- **Gewenste situatie:** de kijkrichting volgt de daadwerkelijke
+  looprichting (`richting`, incl. de ontwijk-blend), BEHALVE tijdens
+  `aanvalStaat === 'windup'` — daar is naar de speler draaien juist het
+  bedoelde gedrag en zit al een eigen, beperkte bijdraai-limiet
+  (`AANVAL_DRAAI_SNELHEID`). Overweeg een korte lerp i.p.v. een harde
+  set, zodat de draai niet schokt bij een waypoint-wissel.
+- **Codegebieden:** `updateOndoden()`, de regel die `groep.rotation.y`
+  zet (net ná `losBotsingenOp()`/`berekenKelderY()`).
+- **Buiten scope:** de pathing zelf (`NAV_VOLGENDE`, `ZONE_WAYPOINTS`,
+  `zoekWaypoint()`) — dit ticket verandert uitsluitend de VISUELE
+  oriëntatie; de gelopen route moet aantoonbaar identiek blijven.
+- **Randgevallen:**
+  - Staat een ondode stil (geblokkeerd, snelheid ≈ 0), dan is
+    `richting` instabiel — behoud dan de laatste geldige hoek in plaats
+    van naar 0 te springen.
+  - Tijdens `herstel` beweegt de ondode op verlaagde snelheid door: die
+    moet gewoon meedraaien met zijn looprichting.
+  - De melee-raakcheck gebruikt `hoekVerschil` t.o.v. `doelHoek` (naar de
+    speler) — die logica hoort ONGEWIJZIGD te blijven, anders verandert
+    de trefkans.
+- **Performancevoorwaarden:** geen extra transform-writes per ondode per
+  frame (het budget van ≤ 10 uit ARCHITECTURE_NOTES §4.9 blijft staan);
+  dit vervangt een bestaande write, hij komt er niet bij.
+- **Acceptatiecriteria:**
+  - Bij cross-zone-pathing is het verschil tussen bewegingshoek en
+    kijkhoek < 15° (was 10,5° in het gemeten geval en groeiend rond
+    hoeken).
+  - Tijdens `windup` kijkt de ondode aantoonbaar nog steeds naar de
+    speler.
+  - De afgelegde route (positiereeks over 60 ticks) is identiek aan
+    vóór het ticket — bewijs dat alleen de visuele oriëntatie wijzigde.
+  - `test-waypoint-navigatie.mjs`, `test-aanval-machine.mjs` en
+    `test-aanval-tells.mjs` blijven groen.
+- **Testplan:** nieuwe hoekvergelijkingstest (bewegingshoek vs. kijkhoek
+  bij een cross-zone-doel, mét een echt herbouwde nav-tabel via
+  `koopDeur()` — het raw zetten van `deurGekocht` herbouwt `NAV_VOLGENDE`
+  NIET en levert een vals-negatief op) + route-gelijkheidstest + de drie
+  genoemde bestanden + volledige regressie.
+- **Rollback:** één regel terug naar `rechtstreeks`.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 74 — Zichtbare faalmodi: CDN-laadfout en corrupte opslag
+
+- **Type:** betrouwbaarheid
+- **Verbetergebied:** 4 (Betrouwbaarheid & foutafhandeling)
+- **Prioriteit:** hoog
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** de twee bekende stille faalmodi van het spel zichtbaar en
+  begrijpelijk maken voor de speler.
+- **Huidige situatie:** (a) Three.js komt via een importmap van
+  `cdn.jsdelivr.net`. Is die onbereikbaar (offline, firewall, storing),
+  dan wordt de module nooit uitgevoerd en gebeurt er letterlijk niets:
+  geen foutmelding, geen aanwijzing, alleen een dood scherm. Het hele
+  bestand bevat slechts 2 `try`-blokken. (b) `leesHighscore()` doet
+  `JSON.parse` en gebruikt `record.score`/`record.golf` zonder enige
+  validatie; corrupte of handmatig aangepaste localStorage geeft geen
+  crash maar wel `Record: undefined` in beeld.
+- **Gewenste situatie:** (a) een klein KLASSIEK (niet-module) scriptje
+  vóór de module-`<script>` dat een timer zet; bestaat
+  `window.AmsterdamUndeadDebug` na ~10 s nog niet, dan wordt een
+  bestaande overlay gevuld met een begrijpelijke melding ("Kon Three.js
+  niet laden — controleer je internetverbinding"), plus een
+  `window.addEventListener('error')` voor directe module-fouten. (b)
+  `leesHighscore()` valideert het gelezen record op vorm
+  (`typeof score === 'number'`, eindig, `golf` een positief geheel getal)
+  en geeft anders `null` terug — dezelfde stille-fallback-filosofie als
+  het bestaande `try/catch`.
+- **Codegebieden:** nieuw `<script>`-blok in de `<head>`/vóór de
+  module-import, `leesHighscore()`, `toonStartschermRecord()`.
+- **Buiten scope:** een lokale Three.js-fallback-kopie meenemen (breekt
+  de "geen externe assets/single-file"-regel); een tweede CDN als
+  uitwijk; retry-logica.
+- **Randgevallen:**
+  - De timeout mag de headless tests niet storen: die laden binnen
+    ~800 ms, dus 10 s is ruim veilig — maar er moet een expliciete
+    assertie zijn dat de melding tijdens een normale testrun NOOIT
+    zichtbaar wordt.
+  - Een geldig record met een ontbrekend `moeilijkheid`-veld (oudere
+    opslagversie) moet gewoon blijven werken — de bestaande code doet
+    daar al aan feature-detectie, dat gedrag behouden.
+- **Performancevoorwaarden:** het extra scriptje mag niets doen zolang
+  het laden slaagt (één timer, meteen geannuleerd).
+- **Acceptatiecriteria:**
+  - Met een geblokkeerde CDN-route (Playwright `route.abort()`)
+    verschijnt binnen 15 s een zichtbare, leesbare melding.
+  - Bij een normale run verschijnt die melding nooit.
+  - Een gecorrumpeerd localStorage-record (`{"score":"veel"}`,
+    `"[]"`, `"null"`) leidt tot een leeg record, geen `undefined` in
+    beeld, geen console-error.
+  - Volledige regressie blijft groen.
+- **Testplan:** nieuw testbestand met een afgebroken CDN-route + drie
+  corrupte-opslag-varianten + `check-load` + volledige regressie.
+- **Rollback:** het extra scriptje verwijderen; validatie terugdraaien
+  naar de kale `JSON.parse`.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 75 — Muisgevoeligheid instelbaar en persistent
+
+- **Type:** UI/UX / toegankelijkheid
+- **Verbetergebied:** 5 (Spelerervaring & toegankelijkheid)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** de meest gevraagde basisinstelling van elke first-person
+  game beschikbaar maken.
+- **Huidige situatie:** de kijksnelheid staat hardcoded als
+  `0.0022` op twee plekken in de `mousemove`-handler; er is geen enkele
+  spelerinstelling in het spel, en er is ook geen plek waar zoiets zou
+  horen te staan.
+- **Gewenste situatie:** een `MUIS_GEVOELIGHEID_BASIS`-constante plus een
+  slider in het startscherm (dezelfde overlay als de moeilijkheidsknoppen
+  en de geluidsknop), waarde bewaard in localStorage via hetzelfde
+  beschermde lees-/schrijfpatroon als de highscore. Bereik ruwweg
+  0,25×–3× de huidige waarde, met de huidige waarde als default, zodat
+  bestaande spelers niets merken tenzij ze zelf schuiven.
+- **Codegebieden:** `mousemove`-handler, startscherm-HTML/CSS,
+  `leesHighscore()`/`schrijfHighscore()` als sjabloon voor de opslag.
+- **Buiten scope:** aparte gevoeligheid voor x/y; muis-acceleratie;
+  invert-Y; een volwaardig instellingenscherm (dit is één slider).
+- **Randgevallen:**
+  - localStorage geweigerd/afwezig: stil terugvallen op de default,
+    exact zoals de highscore dat al doet.
+  - Een corrupte/buiten-bereik-waarde moet geklemd worden, niet
+    doorgelaten (anders is de camera onbestuurbaar en kan de speler er
+    niet meer uit).
+  - De slider mag geen pointer lock aanvragen bij klikken —
+    `stopPropagation()`, exact hetzelfde patroon als de bestaande
+    geluidsknop (zie Fix 4).
+- **Performancevoorwaarden:** geen; de waarde wordt één keer gelezen en
+  in een variabele gehouden.
+- **Acceptatiecriteria:**
+  - Slider verplaatsen verandert de kijksnelheid meetbaar
+    (`speler.yaw`-delta bij een vaste `movementX`).
+  - Waarde overleeft een herladen.
+  - Klikken op de slider start of hervat het spel niet.
+  - Volledige regressie blijft groen.
+- **Testplan:** nieuw testbestand (gevoeligheid → yaw-delta,
+  persistentie, geen-pointer-lock-check, klemming bij corrupte waarde) +
+  volledige regressie.
+- **Rollback:** slider verwijderen, constante terug naar de vaste
+  waarde.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 76 — Ontsnappingsvereiste volledig in beeld
+
+- **Type:** game design / UI
+- **Verbetergebied:** 5 (Spelerervaring & toegankelijkheid)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** de wincondition ontdekbaar maken, zodat spelers er
+  daadwerkelijk naartoe kunnen spelen.
+- **Huidige situatie:** ontsnappen vereist drie dingen TEGELIJK: alle
+  drie de vluchtonderdelen (elk met een eigen drempelgolf), €2500, en een
+  golf die aan `isOntsnappingsGolf()` voldoet. De HUD toont hiervan
+  alleen "Vluchtroute: n/3" en "Boot over n golven". Het geldvereiste
+  wordt nergens genoemd vóórdat je bij het ontsnappingspunt staat, en het
+  venstermechanisme evenmin. Een speler die niet toevallig €2500 op zak
+  heeft op het juiste moment, ontdekt de wincondition waarschijnlijk
+  nooit — terwijl er een compleet winscherm met scorebonus achter zit.
+- **Gewenste situatie:** zodra het EERSTE vluchtonderdeel is opgeraapt,
+  toont de HUD (of een eenmalige melding) het volledige vereiste,
+  bijvoorbeeld: "Vluchtroute 1/3 · €2500 nodig · boot legt aan in golf
+  X". Bij een open venster zonder genoeg geld een expliciete reden
+  ("De boot ligt klaar — je hebt nog €N nodig") in plaats van stilte.
+- **Codegebieden:** `raapVluchtOnderdeelOp()`, de bestaande
+  ontsnappings-HUD-regel (`updateOntsnappingVensterHUD()`), het
+  interactiepunt van De Ontsnapping.
+- **Buiten scope:** het vereiste zelf veranderen (bedrag, aantal
+  onderdelen, venstercadans) — dit ticket verandert uitsluitend de
+  COMMUNICATIE, niet de balans; een questlog/objectievenscherm.
+- **Randgevallen:**
+  - De tekst mag de bestaande HUD-regels niet verdringen op kleine
+    vensters — houd het op één regel.
+  - Vóór het eerste onderdeel niets tonen (geen spoiler, en het is dan
+    nog niet actiegericht).
+  - Na het winnen én "Speel door" moet de regel verdwijnen, niet
+    blijven hangen.
+- **Performancevoorwaarden:** de HUD-regel valt onder T71's
+  schrijf-alleen-bij-wijziging-regel.
+- **Acceptatiecriteria:**
+  - Na het eerste onderdeel bevat de HUD zowel de teller als het
+    geldvereiste.
+  - Bij een open venster met te weinig geld toont de prompt het
+    ontbrekende bedrag.
+  - Vóór het eerste onderdeel staat er niets extra's.
+  - `test-ontsnapping.mjs` en `test-ontsnapping-vensters.mjs` blijven
+    groen.
+- **Testplan:** uitbreiding van de twee bestaande
+  ontsnappingstestbestanden + volledige regressie.
+- **Rollback:** de extra HUD-tekst verwijderen.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 77 — Resource- en levensduur-regressietests
+
+- **Type:** test/infrastructuur
+- **Verbetergebied:** 6 (Testinfrastructuur)
+- **Prioriteit:** hoog
+- **Status:** open (gepland)
+- **Afhankelijk van:** — (schrijf 'm vóór T69, zie Testplan aldaar)
+- **Doel:** de testcategorie toevoegen die in de audit ontbrak, en die
+  het lek uit T69 had moeten vangen.
+- **Huidige situatie:** 48 testscripts, allemaal integratie op
+  gedrag/state. Geen enkele test kijkt naar resourcegroei, DOM-groei,
+  schrijffrequentie of gedrag over een lange run. Precies daardoor kon
+  een lineair GPU-lek 68 tickets lang onopgemerkt blijven.
+- **Gewenste situatie:** een nieuw `test-resources.mjs` met minimaal:
+  (a) geometrie-/materiaalgroei over 100 spawn/kill-cycli mét echte
+  frames ertussen — cruciaal, want zónder gerenderde frames registreert
+  Three.js de geometrie nooit bij de renderer en meet je een
+  vals-negatief (deze valkuil kostte in de audit twee foute metingen);
+  (b) explosie- en powerup-scenario's (T70); (c) DOM-node-aantal
+  constant na veel treffers; (d) DOM-schrijffrequentie tijdens
+  regeneratie/buff (T71) en bij de interactie-prompt (T72); (e) een
+  lange-run-simulatie (25 golven headless) die asserteert dat
+  `ondoden`, `stervenden`, `powerups` en `interactiePunten` niet
+  onbegrensd groeien.
+- **Codegebieden:** nieuw `tests/test-resources.mjs`; mogelijk een
+  gedeelde `frames(page, n)`-helper in `tests/helpers.mjs`.
+- **Buiten scope:** framerate-/fps-assercties — deze omgeving rendert
+  via SwiftShader (software), dus elke fps-meting hier is
+  betekenisloos; die horen op echte hardware in DevTools.
+- **Randgevallen:**
+  - De frames-helper moet echte `requestAnimationFrame`-ticks
+    afwachten, niet `setTimeout`.
+  - Frustum culling kan meshes ongerenderd laten en zo ook een
+    vals-negatief geven — zet in de meting expliciet
+    `frustumCulled = false` op de testobjecten.
+- **Performancevoorwaarden:** het script mag de suite niet
+  onevenredig verlengen (richtlijn ≤ 30 s).
+- **Acceptatiecriteria:**
+  - De geheugentest faalt aantoonbaar op de code van vóór T69 en
+    slaagt erna (dit is de kern: een test die nooit rood is geweest,
+    bewijst niets).
+  - Alle vijf de genoemde categorieën zijn gedekt.
+  - `run-all.mjs` pikt het bestand automatisch op.
+- **Testplan:** het script tegen `da3524e` draaien (moet FALEN) en tegen
+  de post-T69/T70-code (moet SLAGEN).
+- **Rollback:** testbestand verwijderen.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 78 — CI-workflow en snellere testsuite
+
+- **Type:** infrastructuur
+- **Verbetergebied:** 6 (Testinfrastructuur)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** de bestaande testdiscipline automatisch afdwingen in plaats
+  van 'm van handmatige discipline af te laten hangen.
+- **Huidige situatie:** `run-all.mjs` start voor ELK van de 48 scripts
+  een eigen Chromium-instantie; de volledige suite duurt daardoor ~3
+  minuten. Er is geen CI, geen linting, geen formatting en geen
+  typechecking — regressies worden alleen gevangen als iemand er zelf
+  aan denkt de suite te draaien.
+- **Gewenste situatie:** (a) een GitHub Actions-workflow die op push/PR
+  `node run-all.mjs` draait; (b) `run-all.mjs` hergebruikt één
+  browserinstantie over de scripts heen (nieuwe page per script, zodat
+  de isolatie per test behouden blijft).
+- **Codegebieden:** nieuw `.github/workflows/`, `tests/run-all.mjs`,
+  `tests/helpers.mjs`.
+- **Buiten scope:** ESLint/Prettier/TypeScript introduceren — dat is een
+  eigen afweging met eigen risico's (en raakt de single-file-regel);
+  dit ticket automatiseert alleen wat er al is.
+- **Randgevallen:**
+  - CI heeft geen `/opt/pw-browsers/chromium`: de workflow moet
+    `npx playwright install chromium` doen en `helpers.mjs` moet met een
+    ontbrekende `executablePath` overweg kunnen (env-var of
+    feature-detectie) — zonder het lokale pad te breken.
+  - Eén gedeelde browser mag geen state lekken tussen scripts; elk
+    script krijgt een verse page én een verse CDN-route.
+  - De twee bekende wall-clock-gevoelige flakes
+    (`test-ontsnapping-vensters.mjs`, incidenteel
+    `test-golf-variatielimiter.mjs`) mogen CI niet permanent rood
+    maken — documenteer ze, of geef ze een retry, maar verberg ze niet.
+- **Performancevoorwaarden:** suite-duur meetbaar korter dan de huidige
+  ~3 minuten.
+- **Acceptatiecriteria:**
+  - CI draait groen op een schone checkout.
+  - Suite-duur aantoonbaar gedaald.
+  - Alle 48+ scripts blijven inhoudelijk ongewijzigd slagen.
+- **Testplan:** de suite lokaal vóór/ná timen; workflow op een testbranch
+  laten draaien.
+- **Rollback:** workflow verwijderen; `run-all.mjs` terug naar
+  browser-per-script.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 79 — Zone-gebaseerde lichtculling (VOORZICHTIG, gated op profiling)
+
+- **Type:** performance
+- **Verbetergebied:** 7 (Renderbudget)
+- **Prioriteit:** middel
+- **Status:** open (gepland) — **niet starten vóór de profiling-stap**
+- **Afhankelijk van:** T69-T72 (doe eerst het goedkope, zekere werk)
+- **Doel:** de per-fragment shaderkosten verlagen door lichten van
+  ruimtes waar de speler niet is, uit te schakelen.
+- **Huidige situatie:** de scene bevat 26 `PointLight`s plus 1
+  `HemisphereLight`. Three.js' forward renderer neemt ALLE lichten op in
+  de shader-uniforms en evalueert ze per verlicht fragment, ongeacht
+  afstand of zichtbaarheid — er is geen light-culling in de basis-
+  renderer. Dit is daarmee de grootste structurele fragmentkost van het
+  spel en raakt vooral integrated/mobiele GPU's. **Let op: dit is
+  afgeleid uit de rendering-architectuur, NIET gemeten op echte
+  hardware** — deze omgeving rendert via SwiftShader en levert
+  betekenisloze frametijden.
+- **Gewenste situatie:** eerst een profiling-stap op echte hardware
+  (Chrome DevTools Performance, met en zonder een deel van de lichten)
+  die bevestigt dát dit de bottleneck is en hoeveel het scheelt. Pas
+  daarna: lichten die bij een nog-niet-ontgrendelde of ver-weg-liggende
+  zone horen op `visible = false` zetten, gestuurd door de al bestaande
+  `zoneVan()`/`deurNGekocht`-informatie.
+- **Codegebieden:** `lampLichten`, `buitenLichten`,
+  `stroomGevoeligeDaklichten`, de lampflikker-loop in de game-loop.
+- **Buiten scope:** overstappen op een ander renderpad (deferred,
+  light-probes, baked lighting) — dat is een herschrijving, geen
+  optimalisatie; `intensity = 0` als culling-methode (de uniform wordt
+  dan nog steeds geëvalueerd, dus dat lost niets op — het moet
+  `visible = false` of uit de scene).
+- **Randgevallen:**
+  - **Dit raakt de zwaar getunede helderheidsbalans** uit §7.5.5 en
+    §7.5.7-7.5.10 (vier feedbackrondes met pixelmetingen). Elke
+    wijziging moet met exact diezelfde pixelmeting-methode geverifieerd
+    worden: screenshot vanuit een vast standpunt, luminantie
+    `0.2126r+0.7152g+0.0722b` over het onderste deel van het beeld.
+  - De Stroomuitval-eventgolf stuurt `stroomFactor` over ALLE lampen —
+    culling mag dat mechanisme niet doorbreken (een uitgeschakeld licht
+    mag niet "terugkomen" als vol licht bij het herstel).
+  - Zichtlijnen tussen zones: vanaf de binnenplaats kijk je de bijkeuken
+    in. Een licht hard uitzetten terwijl je de ruimte kunt zien, geeft
+    een zichtbare pop.
+- **Performancevoorwaarden:** meetbare winst op ECHTE hardware, anders
+  het ticket sluiten zonder wijziging.
+- **Acceptatiecriteria:**
+  - Profiling-resultaat vóór/ná gedocumenteerd (echte hardware).
+  - Pixelmeting per zone binnen ±3% van de huidige helderheid in zowel
+    de normale als de Stroomuitval-stand.
+  - Geen zichtbare licht-pop bij het lopen tussen zones (screenshot-
+    reeks op de zonegrenzen).
+  - `test-stroomuitval.mjs` en `test-omgeving-sfeer.mjs` blijven groen.
+- **Testplan:** profiling eerst; daarna pixelmeting per zone in beide
+  standen, de twee genoemde testbestanden en de volledige regressie.
+- **Rollback:** culling-vlag uitzetten (alle lichten weer
+  `visible = true`).
+- **Sonnet solo:** nee — vereist profiling op echte hardware en
+  visuele beoordeling.
+
+---
+
 ## Backlog — bevroren tickets (niet uitvoeren zonder expliciete opdracht)
 
 Op verzoek van de gebruiker: "het nieuwe wapen (ticket 47 en 48) hoef ik

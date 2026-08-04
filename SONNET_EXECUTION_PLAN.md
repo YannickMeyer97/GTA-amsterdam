@@ -1317,3 +1317,264 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
     renderer.domElement`) die de bestaande game-loop bepaalt, geldt ook
     voor deze nieuwe lagen (geen doorlopende animatie/audio-opbouw
     tijdens pauze).
+
+---
+
+## Sonnet-prompts per ticket — ronde 6 (v0.20)
+
+Zelfde werkwijze als ronde 1-5: één ticket per keer, eerst dit plan +
+het ticket in ROADMAP.md (sectie v0.20) + de relevante §8-secties van
+ARCHITECTURE_NOTES.md lezen, minimale wijziging, load-check + het
+testplan van het ticket, nooit committen zonder expliciete opdracht.
+
+**Afwijkend aan deze ronde:** v0.20 komt uit een code-audit, niet uit een
+feature-wens. Bijna elk ticket heeft een **nulmeting** in
+ARCHITECTURE_NOTES §8.11 — lees die vóór je begint en herhaal de meting
+ná afloop. "Het lijkt te werken" is voor deze ronde geen acceptabel
+bewijs; de getallen zijn het bewijs.
+
+**Aanbevolen volgorde:** T77 → T69 → T70 → T71 → T72 → T73 → T74 →
+T75 → T76 → T78 → T79. T77 gaat bewust vóór T69: de test moet eerst rood
+staan op de huidige code.
+
+### Ticket 77 — Resource- en levensduur-regressietests
+- **Context:** `tests/helpers.mjs`, `tests/run-all.mjs`, nulmeting in
+  §8.11. Spec: §8.8.1-beslissing 68.
+- **Doel:** de ontbrekende testcategorie toevoegen: resourcegroei,
+  DOM-groei, schrijffrequentie en gedrag over een lange run.
+- **Stappen:** `frames(page, n)`-helper in `helpers.mjs` (echte
+  `requestAnimationFrame`-ticks); nieuw `tests/test-resources.mjs` met
+  (a) geometriegroei over 100 spawn/kill-cycli, (b) DOM-node-aantal na
+  veel treffers, (c) DOM-schrijffrequentie bij regen/buff/prompt, (d)
+  lange-run-simulatie van 25 golven met groei-assercties op `ondoden`/
+  `stervenden`/`powerups`/`interactiePunten`.
+- **Verplicht bewijs:** draai het script tegen de HUIDIGE code en laat
+  zien dat (a) FAALT. Slaagt het meteen, dan meet je het verkeerde en
+  moet je eerst de twee valkuilen uit §8.8.1 nalopen.
+- **Niet veranderen:** geen enkele regel in `amsterdam-undead.html`
+  (dit ticket is puur test); geen fps-assercties.
+
+### Ticket 69 — Gedeelde geometrie-cache voor ondode-modellen (VOORZICHTIG)
+- **Context:** `maakOndodeModel()` (STAP 6), `mat()`/`matFamilie()` als
+  cache-sjabloon, `doodOndode()`. Spec: §8.3.1-beslissing 63.
+- **Doel:** het bevestigde GPU-lek (+9 geometrieën per ondode, nooit
+  vrijgegeven) dichten zonder hitbox of silhouet te veranderen.
+- **Stappen:** `geoCache(sleutel, fabriek)` naast de bestaande caches;
+  maatvariatie van geometrie-parameters naar `mesh.scale`; directe
+  `new THREE.MeshStandardMaterial(...)`-aanroepen via `mat()` waar dat
+  kan; `oogMateriaal` bewust UNIEK laten; per-variant eigen
+  cache-sleutel.
+- **Verplicht bewijs:** wereld-bounding-box van kop én romp vóór/ná
+  identiek (≤ 1 mm) voor alle vijf types, plus T77's geheugentest van
+  rood naar groen.
+- **Niet veranderen:** aantal/indeling van lichaamsdelen; de
+  effect-pools; `userData.lichaamsdeel`; geen `InstancedMesh`.
+
+### Ticket 70 — Dispose-contract voor wegwerp-objecten
+- **Context:** `ontploiBrander()`, `spawnPowerupDrop()`,
+  `raapPowerupOp()`, `updatePowerups()`, `updateStervenden()`. Spec:
+  §8.3.1/§8.3.2-beslissing 63.
+- **Doel:** alle overige per-run aangemaakte objecten netjes vrijgeven.
+- **Stappen:** `ruimGroepOp(object3D)`-helper die `traverse()`t en
+  `geometry.dispose()` + `material.dispose()` doet; gedeelde
+  cache-materialen expliciet overslaan via een markering bij aanmaak
+  (`material.userData.gedeeld = true`); aanroepen vanuit de vier
+  opruimplekken; de explosie-opruiming van `setTimeout` naar een timer
+  in de cosmetische zone van de game-loop.
+- **Niet veranderen:** `tracerPool`/`impactPool` (die mogen NOOIT
+  disposed worden); `bouwCanvasTextuur()`-texturen (gedeeld, permanent).
+
+### Ticket 71 — `updateHUD()` uit de per-frame hot path
+- **Context:** `updateHUD()`, het UI-const-blok in STAP 3,
+  `updateSpelerRegen()`, `updatePowerups()`. Spec:
+  §8.4.1-beslissing 64.
+- **Doel:** van 60 HUD-writes/s naar ≤ 2/s tijdens regeneratie.
+- **Stappen:** de 9 `getElementById` één keer als const bovenaan
+  (zelfde plek/patroon als `hudUI`/`vignet`/`ammoUI`); laatst
+  geschreven weergavewaarden onthouden; write overslaan als niets
+  wijzigde. Guard IN `updateHUD()`, niet bij de 28 aanroepers.
+- **Let op:** vergelijk op `Math.round(hp)`, niet op de ruwe float —
+  anders is er nul winst. HP-balkkleur (drempels 60%/30%) hoort bij de
+  vergeleken staat. Buff-teller moet elke seconde nog updaten én één
+  keer bij aflopen.
+- **Niet veranderen:** HUD-inhoud/opmaak; de aanroepplekken zelf.
+
+### Ticket 72 — Interactie-prompt en per-frame array-kopieën
+- **Context:** `updateInteracties()`, `toonInteractiePrompt()`,
+  `verbergInteractiePrompt()`, `updatePowerups()`, `ontploiBrander()`.
+  Spec: §8.4.1-beslissing 64.
+- **Doel:** nul DOM-writes per frame bij stilstand zonder
+  interactiepunt; geen array-allocatie per frame.
+- **Stappen:** prompt alleen schrijven bij gewijzigde zichtbaarheid óf
+  tekst (vergelijk op de resulterende string — prijzen zijn dynamisch);
+  `[...powerups]`/`[...ondoden]` vervangen door achterwaartse
+  index-loops.
+- **Let op:** `pointerlockchange` roept `verbergInteractiePrompt()`
+  expliciet aan bij pauze — de nieuwe guard mag dat pad niet blokkeren.
+  `ontploiBrander()` verwijdert tijdens de loop uit `ondoden`
+  (kettingreactie): de index-loop moet daar aantoonbaar tegen kunnen.
+- **Niet veranderen:** prompt-teksten; het interactiepunt-systeem.
+
+### Ticket 73 — Ondoden kijken in hun looprichting
+- **Context:** `updateOndoden()`, de `groep.rotation.y`-regel net ná
+  `losBotsingenOp()`/`berekenKelderY()`. Spec: §8.5.1-beslissing 65.
+- **Doel:** kijkrichting volgt de werkelijke looprichting, behalve
+  tijdens `windup`.
+- **Stappen:** `rotation.y` afleiden uit `richting` (incl. de
+  ontwijk-blend) i.p.v. `rechtstreeks`; `windup`-tak ongemoeid laten;
+  bij snelheid ≈ 0 de laatste geldige hoek behouden; eventueel een
+  korte lerp tegen schokken bij een waypoint-wissel.
+- **Verplicht bewijs:** de positiereeks over 60 ticks moet IDENTIEK
+  zijn aan vóór het ticket — anders heb je stilletjes de pathing
+  veranderd.
+- **Testvalkuil:** zet in de test NIET `deurGekocht = true` rechtstreeks
+  — dat herbouwt `NAV_VOLGENDE` niet en geeft een vals-negatief (0,0°
+  verschil). Gebruik `koopDeur()`.
+- **Niet veranderen:** `NAV_VOLGENDE`, `ZONE_WAYPOINTS`,
+  `zoekWaypoint()`, de melee-`hoekVerschil`-check.
+
+### Ticket 74 — Zichtbare faalmodi: CDN-laadfout en corrupte opslag
+- **Context:** importmap/module-`<script>` in de head,
+  `leesHighscore()`, `toonStartschermRecord()`. Spec:
+  §8.6.1-beslissing 66.
+- **Doel:** een begrijpelijk scherm in plaats van een zwart scherm bij
+  CDN-uitval; geen `undefined` in beeld bij corrupte opslag.
+- **Stappen:** klassiek (niet-module) scriptje vóór de module-import met
+  een ~10 s-timer die controleert of `window.AmsterdamUndeadDebug`
+  bestaat, plus `window.addEventListener('error')`; vormvalidatie in
+  `leesHighscore()` (`typeof score === 'number'`, eindig, `golf`
+  positief geheel) met `null` als fallback.
+- **Let op:** expliciet asserteren dat de melding tijdens een NORMALE
+  testrun nooit zichtbaar wordt. Een record zonder `moeilijkheid`-veld
+  (oudere opslagversie) moet blijven werken.
+- **Niet veranderen:** geen tweede CDN, geen retry, geen lokale
+  Three.js-kopie in de repo (breekt de single-file/geen-assets-regel).
+
+### Ticket 75 — Muisgevoeligheid instelbaar en persistent
+- **Context:** `mousemove`-handler, startscherm-HTML/CSS,
+  `leesHighscore()`/`schrijfHighscore()` als opslagsjabloon. Spec:
+  §8.6.2-beslissing 67.
+- **Doel:** één slider, huidige waarde als default, waarde overleeft
+  herladen.
+- **Stappen:** `MUIS_GEVOELIGHEID_BASIS`-constante; slider in het
+  startscherm (zelfde overlay als moeilijkheidsknoppen/geluidsknop);
+  opslag via het beschermde try/catch-patroon; bereik ~0,25×-3×,
+  waarde klemmen bij inlezen.
+- **Let op:** `stopPropagation()` op de slider — anders start/hervat een
+  klik het spel, exact de bug die Fix 4 bij de geluidsknop opleverde.
+  Een niet-geklemde corrupte waarde maakt de camera onbestuurbaar.
+- **Niet veranderen:** geen aparte x/y-gevoeligheid, geen invert-Y, geen
+  volwaardig instellingenscherm.
+
+### Ticket 76 — Ontsnappingsvereiste volledig in beeld
+- **Context:** `raapVluchtOnderdeelOp()`,
+  `updateOntsnappingVensterHUD()`, het interactiepunt van De
+  Ontsnapping. Spec: §8.7.1.
+- **Doel:** de wincondition ontdekbaar maken.
+- **Stappen:** vanaf het EERSTE opgeraapte onderdeel het volledige
+  vereiste tonen (teller + geldbedrag + boot-cadans, één regel); bij een
+  open venster met te weinig geld het ontbrekende bedrag in de prompt.
+- **Let op:** vóór het eerste onderdeel niets tonen; na winnen +
+  "Speel door" moet de regel verdwijnen; de regel valt onder T71's
+  schrijf-alleen-bij-wijziging-regel.
+- **Niet veranderen:** het vereiste zelf (bedrag, aantal onderdelen,
+  venstercadans) — dit ticket verandert uitsluitend de communicatie.
+
+### Ticket 78 — CI-workflow en snellere testsuite
+- **Context:** `tests/run-all.mjs`, `tests/helpers.mjs`. Spec:
+  §8.8.1-beslissing 68.
+- **Doel:** de testdiscipline automatisch afdwingen; suite-duur omlaag
+  vanaf de huidige ~3 minuten.
+- **Stappen:** GitHub Actions-workflow die `node run-all.mjs` draait;
+  één gedeelde browserinstantie met een verse page (en verse
+  CDN-route) per script.
+- **Let op:** CI heeft geen `/opt/pw-browsers/chromium` — workflow moet
+  `npx playwright install chromium` doen en `helpers.mjs` moet met een
+  ontbrekende `executablePath` overweg kunnen zonder het lokale pad te
+  breken. De twee bekende wall-clock-flakes
+  (`test-ontsnapping-vensters.mjs`, incidenteel
+  `test-golf-variatielimiter.mjs`) documenteren of retryen — niet
+  verbergen.
+- **Niet veranderen:** geen ESLint/Prettier/TypeScript introduceren; de
+  inhoud van de bestaande scripts.
+
+### Ticket 79 — Zone-gebaseerde lichtculling (VOORZICHTIG, gated op profiling)
+- **Context:** `lampLichten`, `buitenLichten`,
+  `stroomGevoeligeDaklichten`, de lampflikker-loop. Spec:
+  §8.10-beslissing 69.
+- **Doel:** per-fragment shaderkosten verlagen door lichten van
+  niet-actieve zones uit te schakelen.
+- **Stap 0 (BLOKKEREND):** profileer op ECHTE hardware (Chrome
+  DevTools Performance, met en zonder een deel van de lichten). Blijkt
+  de winst verwaarloosbaar: ticket sluiten zonder wijziging en
+  terugmelden. Begin niet aan de implementatie op basis van de
+  theoretische analyse alleen.
+- **Stappen (na stap 0):** lichten van nog-niet-ontgrendelde/ver-weg
+  zones op `visible = false`, gestuurd door de bestaande
+  `zoneVan()`/`deurNGekocht`-informatie.
+- **Verplicht bewijs:** pixelmeting per zone (screenshot vanaf een vast
+  standpunt, luminantie `0.2126r+0.7152g+0.0722b` over het onderste deel
+  van het beeld) binnen ±3% van de huidige helderheid, in ZOWEL de
+  normale als de Stroomuitval-stand.
+- **Let op:** `intensity = 0` is GEEN culling (de uniform wordt nog
+  steeds geëvalueerd). Zichtlijnen tussen zones kunnen een licht-pop
+  geven. De Stroomuitval-`stroomFactor` mag niet doorbroken worden.
+- **Niet veranderen:** het renderpad zelf (geen deferred/baked
+  lighting); geen geometrie-merging in dit ticket.
+
+---
+
+### Extra waarschuwingen ronde 6 (v0.20)
+
+41. **Deze ronde is meetgedreven, niet gevoelsgedreven.** Elk ticket met
+    een nulmeting in §8.11 vereist dezelfde meting ná afloop, in het
+    ticket gerapporteerd. "Voelt sneller" of "lijkt opgelost" telt niet
+    als bewijs — juist bij resource-lekken en frame-budget is de
+    waarneming onbetrouwbaar.
+42. **T77 gaat vóór T69, en moet aantoonbaar ROOD staan op de huidige
+    code.** Een geheugentest die meteen groen is, meet vrijwel zeker het
+    verkeerde: zonder gerenderde frames tussen spawn en kill registreert
+    Three.js de geometrie nooit bij de renderer, en frustum-culling doet
+    hetzelfde. Beide valkuilen zijn in de audit daadwerkelijk opgelopen
+    (twee foute metingen achter elkaar) — reken erop dat ze zich
+    herhalen.
+43. **T69 raakt hitboxen, ook al lijkt het puur een cache-wijziging.**
+    De headshot-detectie hangt aan de werkelijke mesh-omvang, en GEEN
+    ENKELE bestaande test asserteert op absolute hitbox-afmetingen. Een
+    schaalfout verandert dus stilzwijgend de moeilijkheidsgraad zonder
+    dat er iets rood wordt. De bounding-box-vergelijking vóór/ná is geen
+    formaliteit maar de enige vangrail.
+44. **Disposeer nooit een gedeeld cache-materiaal.** `mat()` en
+    `matFamilie()` delen materialen over honderden meshes; één
+    `dispose()` daarop maakt de halve kaart zwart. Markeer gedeelde
+    materialen bij aanmaak en laat `ruimGroepOp()` daarop filteren —
+    vertrouw niet op een heuristiek als "zit dit materiaal op meer dan
+    één mesh".
+45. **`intensity = 0` is geen lichtculling (T79).** De uniform wordt nog
+    steeds per fragment geëvalueerd; alleen `visible = false` of uit de
+    scene halen scheelt echt werk. Dit is een klassieke aanname die
+    ogenschijnlijk werkt (het beeld wordt donkerder) maar nul
+    performancewinst geeft.
+46. **T79 raakt vier feedbackrondes aan getunede helderheid** (§7.5.5,
+    §7.5.7-7.5.10). Verifieer met exact dezelfde pixelmeting-methode als
+    daar beschreven, in beide standen (normaal én Stroomuitval). Doe dit
+    ticket als laatste van de ronde, nooit als eerste.
+47. **Framerate is in deze omgeving niet meetbaar.** Headless Chromium
+    rendert via SwiftShader; de audit mat 159 ms mediaan per frame, wat
+    niets zegt over echte hardware. Zet nooit een fps-assertie in de
+    suite en trek nooit een performanceconclusie uit een headless
+    frametijd — gebruik structurele tellers (meshes, lichten, draw
+    calls, geometrieën) of profileer op een echt apparaat.
+48. **De één-bestand-regel blijft staan.** Bij 7.887 regels is
+    "splits dit op in modules" de meest voor de hand liggende
+    architectuursuggestie — en hij valt buiten scope zolang CLAUDE.md
+    de single-file-regel handhaaft. Verbeter binnen de beperking; stel
+    het opsplitsen niet voor als bugfix.
+49. **T71/T72 mogen de UI-inhoud niet veranderen.** Het zijn puur
+    frame-budget-tickets. Verandert er iets aan wat de speler LEEST
+    (andere tekst, andere volgorde, andere drempels), dan is de scope
+    overschreden — dat hoort in T76.
+50. **Elk ticket in deze ronde is los terugdraaibaar.** Er is geen
+    ticket dat een ander ticket half achterlaat; combineer ze niet in
+    één diff, ook niet de kleine (T71+T72 lijken samen te horen, maar
+    hebben verschillende testbewijzen en verschillende rollbacks).

@@ -3251,3 +3251,337 @@ Ticket 35 — niet meer op de binnenplaats), De Ontsnapping (vlonder).
 (binnenplaats) en kratten (binnenplaats) — zie §7.6.1 voor waarom deze
 GEEN eigen waypoint-entry hebben (vrijstaande obstakels, geen
 muur-chokepoint).
+
+---
+
+## 8. Architectuurronde 6 (v0.20) — Resourcebeheer, frame-budget en betrouwbaarheid
+
+### 8.1 Scope en aanleiding
+
+Deze ronde komt niet uit een feature-wens maar uit een **volledige
+code-audit** op de stand van commit `da3524e` (senior engineer,
+performance engineer, game designer). Anders dan rondes 1-5 voegt v0.20
+daarom bewust nauwelijks nieuwe spelinhoud toe. Het gros is:
+
+1. het dichten van een bevestigd, lineair groeiend GPU-resourcelek;
+2. het weghalen van werk uit de per-frame hot path dat daar niet hoort;
+3. het zichtbaar maken van faalmodi die nu volledig stil zijn;
+4. het toevoegen van de testcategorie die deze klasse bugs had moeten
+   vangen.
+
+De audit-bevindingen zijn met metingen onderbouwd (§8.11). Waar een
+bevinding NIET gemeten kon worden, staat dat er expliciet bij — die
+gaan bewust niet als feit de tickets in.
+
+**Belangrijke randvoorwaarde die deze ronde niet aanraakt.** De
+één-bestand-regel uit CLAUDE.md blijft staan. Elk voorstel dat neerkomt
+op "splits `amsterdam-undead.html` op in modules" valt daarmee buiten
+scope, hoe aantrekkelijk het ook is bij 7.887 regels. De architectuur
+wordt binnen die beperking verbeterd, niet eromheen.
+
+### 8.2 Codekaart — nieuw relevante gebieden voor deze ronde
+
+| Gebied | Waar | Waarom relevant |
+| --- | --- | --- |
+| `maakOndodeModel()` | STAP 6 | Bron van het geometrie-/materiaallek (beslissing 63) |
+| `mat()` / `matFamilie()` | STAP 1-2 | Bestaand cache-sjabloon dat exact hergebruikt wordt |
+| `doodOndode()` / `updateStervenden()` | STAP 6/7 | Opruimmoment voor ondode-modellen |
+| `ontploiBrander()` / `spawnPowerupDrop()` | STAP 6 / power-ups | Overige wegwerp-objecten (beslissing 63) |
+| `updateHUD()` | STAP 7 | 9 `getElementById` + ~8 writes, per frame aangeroepen (beslissing 64) |
+| `updateSpelerRegen()` / `updatePowerups()` | STAP 7 / power-ups | De twee per-frame aanroepers van `updateHUD()` |
+| `updateInteracties()` | STAP 9 | Per-frame DOM-write + string-allocatie (beslissing 64) |
+| `updateOndoden()` — `rotation.y` | STAP 6 | Kijkrichting ≠ looprichting (beslissing 65) |
+| Importmap + module-`<script>` | HTML-head | Stille faalmodus bij CDN-uitval (beslissing 66) |
+| `leesHighscore()` / `schrijfHighscore()` | STAP 8 | Sjabloon voor spelerinstellingen (beslissing 67) |
+| `tests/helpers.mjs` / `run-all.mjs` | tests/ | Resource-testcategorie + CI (beslissing 68) |
+| `lampLichten` / `buitenLichten` | STAP 2 e.v. | 26 PointLights, forward-renderer-kosten (beslissing 69) |
+
+### 8.3 Verbetergebied 1 — Resourcebeheer
+
+#### 8.3.1 Gedeelde geometrie-cache en expliciet dispose-contract (beslissing 63)
+
+**Het probleem.** `maakOndodeModel()` maakt per ondode ~9 verse
+geometrieën én ~9 verse `MeshStandardMaterial`-instanties, en omzeilt
+daarbij de twee caches die het project al heeft (`materiaalCache` via
+`mat()`, `matFamilieCache` via `matFamilie()`) door de Three.js-
+constructor rechtstreeks aan te roepen. `doodOndode()` haalt de groep
+alleen uit de scene-graph. In het hele bestand komt `.dispose()`
+**nul keer** voor. Three.js geeft GPU-buffers uitsluitend vrij op een
+expliciete `dispose()` — dus lekt elke gedode ondode zijn geometrie
+permanent.
+
+**Waarom dit 68 tickets lang onopgemerkt bleef.** De symptomen zijn
+onzichtbaar in elke bestaande test: gedrag, state en scene-graph zijn na
+afloop volledig correct — `ondoden` is leeg, `stervenden` is leeg, de
+groep zit nergens meer in. Alleen de GPU-zijde lekt, en daar keek geen
+enkele test naar. Dit is precies de reden dat beslissing 68 (resource-
+tests) in dezelfde ronde zit: de fix zonder de bewaking herhaalt zich.
+
+**De oplossing.** Eén `geoCache(sleutel, fabriek)`-helper naar exact het
+patroon van de bestaande materiaalcaches. De per-ondode maatvariatie
+(`vorm.rompBreedte`, `profiel.rompFactor`, armlengte/-dikte) verhuist van
+geometrie-parameters naar `mesh.scale`, zodat alle ondoden dezelfde ~9
+gedeelde geometrieën hergebruiken. Daarnaast één
+`ruimGroepOp(object3D)`-helper voor wat wél per keer uniek moet zijn.
+
+**Waarom `scale` en niet "gewoon disposen".** Disposen alléén lost het
+lek op maar houdt de allocatiekost per spawn in stand (~18 objecten per
+ondode, tot 18 spawns per golf). De cache lost beide op. De prijs is dat
+de maatvariatie een transform wordt in plaats van geometrie — wat
+functioneel identiek is voor een `BoxGeometry`/`SphereGeometry`, maar
+wél de hitbox raakt en dus geverifieerd moet worden (zie hieronder).
+
+**Wat expliciet NIET gedeeld mag worden.** Het per-ondode
+`oogMateriaal`: `emissiveIntensity` wordt per individu geanimeerd
+(`zetOogBasis()`, de windup-puls, de mist-/stroomuitval-boost). Delen
+zou alle ondoden tegelijk laten pulsen. Dat materiaal blijft uniek en
+gaat in plaats daarvan door `ruimGroepOp()`.
+
+**Het risico dat dit ticket VOORZICHTIG maakt.** De headshot-detectie
+leunt op `userData.lichaamsdeel === 'kop'` én op de werkelijke
+mesh-omvang. Een schaalfout verandert stilzwijgend de trefkans en
+daarmee de moeilijkheidsgraad — zonder dat één test rood wordt, want
+geen enkele bestaande test asserteert op absolute hitbox-afmetingen.
+Vandaar de harde eis: wereld-bounding-box van kop én romp vóór en ná
+identiek (≤ 1 mm) voor alle vijf types.
+
+#### 8.3.2 Wat bewust NIET verandert
+
+De effect-pools (`tracerPool` 8, `impactPool` 24, round-robin) zijn al
+correct: begrensd, hergebruikt, nul allocatie in de hot path. Ze mogen
+**niet** disposed worden — ze leven de hele run. Dat dit patroon al
+bestond náást het ondode-lek is veelzeggend: de kennis was er, ze was
+alleen niet op de vijandmodellen toegepast.
+
+Gedeelde cache-materialen disposen zou álle objecten die ze delen zwart
+maken. `ruimGroepOp()` moet ze aantoonbaar overslaan — markeer ze bij
+aanmaak (bv. `material.userData.gedeeld = true`) in plaats van te
+vertrouwen op een heuristiek.
+
+### 8.4 Verbetergebied 2 — Frame-budget
+
+#### 8.4.1 DOM-writes alleen bij een gewijzigde weergavewaarde (beslissing 64)
+
+**Het probleem.** `updateHUD()` doet 9× `document.getElementById` plus
+~8 DOM-writes, en wordt vanuit `updateSpelerRegen()` en
+`updatePowerups()` élke frame aangeroepen zolang de speler regenereert
+of een buff loopt. Gemeten: 60 writes/s naar `hpTekst`, dus ~540
+`getElementById`-lookups per seconde. `updateInteracties()` schrijft
+daarnaast élke frame `style.opacity` en bouwt bij een actief punt de
+prompt-string opnieuw op.
+
+**De regel die hieruit volgt.** *Een UI-element wordt alleen geschreven
+als de te tonen waarde daadwerkelijk verandert.* De guard hoort IN de
+schrijffunctie (`updateHUD()`, `toonInteractiePrompt()`), niet bij de
+28 aanroepplekken — dat houdt de wijziging klein en voorkomt dat een
+toekomstige aanroeper de regel per ongeluk omzeilt.
+
+**Vergelijk op de weergegeven waarde, niet op de bron.** `spelerStaat.hp`
+is een float die tijdens regeneratie élke frame verandert; `Math.round(hp)`
+verandert ~1× per seconde. Vergelijken op de float levert nul winst op —
+een valkuil die makkelijk over het hoofd te zien is.
+
+**Waarom dit geen micro-optimalisatie is.** Het gaat niet om de kosten
+van één write, maar om een structurele regel die voorkomt dat elke
+volgende HUD-uitbreiding (zoals T76's ontsnappingsregel) er opnieuw 60
+writes/s bij optelt.
+
+### 8.5 Verbetergebied 3 — Vijandleesbaarheid
+
+#### 8.5.1 Kijkrichting volgt looprichting (beslissing 65)
+
+**Het probleem.** `updateOndoden()` zet de kijkrichting onvoorwaardelijk
+op de richting náár de speler, terwijl de beweging het navigatiedoel
+volgt (`volgendeDeur || tussenWaypoint || speler.positie`). Gemeten in
+een cross-zone-scenario: bewegingshoek −156,4° tegenover kijkhoek
+−166,9°, dus **10,5° mismatch**. Ligt het waypoint haaks op de
+spelerrichting — rond een hoek, in de gang naar de gracht, bij de
+kelderoost-deur — dan loopt dit structureel op richting 90°: de ondode
+schuifelt zijwaarts terwijl hij je door een muur heen aanstaart.
+
+**Waarom dit meer is dan cosmetiek.** De hele aanvals-tell uit T31
+(armen omhoog, hoofd achterover, ogen pulsen) leunt erop dat je aan de
+houding van een ondode kunt aflezen wat hij doet. Als de basisoriëntatie
+al niet klopt met de beweging, wordt die tell moeilijker te lezen dan
+ontworpen.
+
+**De uitzondering die moet blijven.** Tijdens `aanvalStaat === 'windup'`
+is naar de speler draaien juist correct — daar zit al een eigen,
+beperkte bijdraai-limiet (`AANVAL_DRAAI_SNELHEID`) die het ontwijken
+mogelijk maakt. Die tak blijft ongemoeid.
+
+**Bewijslast.** Dit ticket mag uitsluitend de VISUELE oriëntatie
+veranderen. De gelopen route (positiereeks over 60 ticks) moet
+aantoonbaar identiek zijn vóór en ná — anders is het stilletjes een
+pathing-wijziging geworden.
+
+**Meetvalkuil, uit de audit.** Een eerste poging dit te meten gaf een
+vals-negatief (0,0° verschil) doordat de test `deurGekocht` rechtstreeks
+op `true` zette. Dat herbouwt `NAV_VOLGENDE` NIET — er was dus helemaal
+geen navigatiedoel en beweging en blik vielen triviaal samen. De test
+moet `koopDeur()` aanroepen zodat de nav-tabel echt herbouwd wordt.
+
+### 8.6 Verbetergebied 4 — Betrouwbaarheid
+
+#### 8.6.1 Zichtbare faalmodi (beslissing 66)
+
+**Het probleem.** Three.js komt via een importmap van een CDN. Is die
+onbereikbaar, dan wordt de module nooit uitgevoerd en gebeurt er
+letterlijk niets: geen foutmelding, geen aanwijzing, alleen een dood
+scherm. Het hele bestand bevat 2 `try`-blokken.
+
+**De regel.** *Een faalmodus die de speler kan treffen, moet zichzelf
+aankondigen.* Concreet: een klein klassiek (niet-module) scriptje vóór
+de module-import zet een timer; bestaat `window.AmsterdamUndeadDebug`
+na ~10 s nog niet, dan verschijnt een leesbare melding.
+
+**Wat dit expliciet niet is.** Geen tweede CDN als uitwijk, geen
+retry-logica, geen lokale Three.js-kopie in de repo — dat laatste zou de
+"geen externe assets / single-file"-regel wél echt breken. Het doel is
+uitsluitend: een begrijpelijk scherm in plaats van een zwart scherm.
+
+**Validatie van opgeslagen data.** `leesHighscore()` doet `JSON.parse`
+en gebruikt de velden ongevalideerd; corrupte opslag geeft geen crash
+maar wel `Record: undefined` in beeld. Dezelfde stille-fallback-
+filosofie als het bestaande `try/catch` krijgt er een vormcontrole bij.
+Dit is nadrukkelijk **geen** beveiligingsmaatregel — zie §8.9.
+
+#### 8.6.2 Spelerinstellingen (beslissing 67)
+
+Muisgevoeligheid staat hardcoded (`0.0022`); er is geen enkele
+spelerinstelling en ook geen plek waar zoiets zou horen. Deze ronde
+introduceert er één, met het bestaande beschermde localStorage-patroon
+(`leesHighscore`/`schrijfHighscore`) als sjabloon, plus twee
+randvoorwaarden die uit eerdere feedback volgen: een corrupte waarde
+wordt geklemd (anders is de camera onbestuurbaar en kan de speler er
+niet meer uit), en het bedieningselement doet `stopPropagation()` zodat
+klikken het spel niet ongewild start — exact de bug die Fix 4 bij de
+geluidsknop opleverde.
+
+### 8.7 Verbetergebied 5 — Spelerervaring
+
+#### 8.7.1 De wincondition is niet ontdekbaar
+
+Ontsnappen vereist drie dingen tegelijk: alle drie de vluchtonderdelen,
+€2500, én een golf die aan `isOntsnappingsGolf()` voldoet. De HUD toont
+daarvan alleen de onderdelen-teller en de boot-cadans. Het geldvereiste
+komt nergens ter sprake vóórdat je bij het ontsnappingspunt staat.
+
+Achter die voorwaarde zit een compleet winscherm met scorebonus — werk
+uit T45 dat een gemiddelde speler waarschijnlijk nooit ziet. T76
+verandert daarom uitsluitend de **communicatie**, niet de balans: geen
+ander bedrag, geen ander aantal onderdelen, geen andere venstercadans.
+Als de wincondition ná die verduidelijking nog steeds te zwaar blijkt,
+is dát een apart balansbesluit met eigen meetwerk.
+
+### 8.8 Verbetergebied 6 — Testinfrastructuur
+
+#### 8.8.1 Resource- en levensduurtests als vaste categorie (beslissing 68)
+
+De suite telt 48 scripts, allemaal integratietests op gedrag en state.
+Geen enkele keek naar resourcegroei, DOM-groei, schrijffrequentie of
+gedrag over een lange run — precies waardoor beslissing 63's lek 68
+tickets lang onzichtbaar bleef. Deze ronde voegt die categorie toe als
+permanent onderdeel van de suite.
+
+**Twee meetvalkuilen, allebei in de audit zelf opgelopen.** Ze horen in
+de test gedocumenteerd te staan, want beide leveren een vals-negatief
+dat er geruststellend uitziet:
+
+1. **Zonder gerenderde frames tussen spawn en kill registreert Three.js
+   de geometrie nooit bij de renderer.** Een strakke synchrone
+   spawn/kill-lus meet dan 0 groei terwijl het lek er wel degelijk is.
+   De test moet echte `requestAnimationFrame`-ticks afwachten.
+2. **Frustum culling kan meshes ongerenderd laten**, met hetzelfde
+   effect. Zet in de meting expliciet `frustumCulled = false`.
+
+**Harde eis aan de nieuwe test:** hij moet aantoonbaar FALEN op de code
+van vóór beslissing 63 en slagen erna. Een test die nooit rood is
+geweest, bewijst niets.
+
+**Wat expliciet buiten scope blijft:** fps-/framerate-assercties. Deze
+omgeving rendert via SwiftShader (software); de audit mat een mediaan
+van 159 ms per frame, wat niets zegt over echte hardware. Framerate
+hoort in DevTools op een echt apparaat, niet in de headless suite.
+
+### 8.9 Beveiliging — expliciete positiebepaling
+
+Voor de huidige scope is er **geen reëel beveiligingsrisico**: lokale
+singleplayer, geen netwerk, geen secrets in de repo, `innerHTML`
+uitsluitend met interne data. De validatie uit beslissing 66 is
+robuustheid, geen beveiliging.
+
+Wel expliciet vastleggen, omdat het later een verkeerde reflex kan
+uitlokken: **alle score-, geld- en progressielogica staat client-side en
+is via de debug-hook triviaal te manipuleren.** Dat is prima voor een
+lokale game. Komt er ooit een gedeeld scorebord, dan is geen enkele
+client-score te vertrouwen en hoort validatie serverside — dat is een
+nieuw ontwerp, geen bugfix, en het heeft geen zin er client-side
+tegenmaatregelen voor te bouwen.
+
+### 8.10 Renderbudget (beslissing 69, voorwaardelijk)
+
+De scene bevat 26 `PointLight`s plus 1 `HemisphereLight`. Three.js'
+forward renderer neemt alle lichten op in de shader-uniforms en
+evalueert ze per verlicht fragment, ongeacht afstand — er is geen
+light-culling in de basisrenderer. Daarnaast: 486 meshes tegenover 445
+unieke geometrieën (hergebruikratio 1,09, dus in de praktijk ~486 draw
+calls) en 156 schaduwwerpende meshes bij één schaduwwerpend licht — een
+`PointLight`, dus een cube shadow map met tot 6 passes.
+
+**Dit is afgeleid uit de rendering-architectuur, niet gemeten op echte
+hardware.** Daarom is T79 expliciet gegate op een profiling-stap: eerst
+bevestigen dát dit de bottleneck is en hoeveel het scheelt, pas daarna
+implementeren. Blijkt de winst verwaarloosbaar, dan wordt het ticket
+gesloten zonder wijziging.
+
+**Waarom dit het laatste ticket van de ronde is.** Lichtculling raakt de
+helderheidsbalans die over vier feedbackrondes met pixelmetingen is
+getuned (§7.5.5, §7.5.7-7.5.10). Elke wijziging moet met exact diezelfde
+methode geverifieerd worden. Dat is een slechte plek om te beginnen en
+een prima plek om te eindigen, ná het goedkope en zekere werk.
+
+**Twee dwaalsporen die vastgelegd horen te worden.** `intensity = 0` is
+géén culling — de uniform wordt nog steeds geëvalueerd, dus het lost
+niets op; het moet `visible = false` of uit de scene. En overstappen op
+een ander renderpad (deferred, baked lighting) is een herschrijving, geen
+optimalisatie, en valt buiten deze ronde.
+
+Geometrie-merging van statisch decor (`BufferGeometryUtils`) is om
+dezelfde reden uitgesteld: het raakt `userData.materiaalFamilie`, dat de
+impact-deeltjes gebruiken om de juiste kleur te kiezen. Pas overwegen ná
+profiling, en dan als eigen ticket.
+
+### 8.11 Nulmeting bij aanvang van deze ronde
+
+Alle waarden gemeten op commit `da3524e`, headless Playwright met de
+lokale Chromium. Ze dienen als vergelijkingsbasis voor de
+acceptatiecriteria in ROADMAP T69-T79.
+
+| Meting | Waarde | Methode |
+| --- | --- | --- |
+| Regressiescripts groen | 48/48 | `node run-all.mjs` |
+| Regels in `amsterdam-undead.html` | 7.887 | `wc -l` |
+| Meshes in de scene | 486 | `scene.traverse` |
+| Unieke geometrieën | 445 (ratio 1,09) | `scene.traverse` + Set op uuid |
+| Unieke materialen | 268 | idem |
+| PointLights / HemisphereLights | 26 / 1 | idem |
+| Schaduwwerpende lichten | 1 | idem (invariant §7.9) |
+| Schaduwwerpende meshes | 156 | idem |
+| Collision-obstakels | 52 | `obstakels.length` |
+| Interactiepunten | 13 | `interactiePunten.length` |
+| Muteerbare top-level `let` | 96 | `grep -cE '^let '` |
+| `.dispose()`-aanroepen | **0** | `grep -c '\.dispose()'` |
+| Geometrieën, scene leeg | 72 | `renderer.info.memory.geometries` |
+| Geometrieën, 20 ondoden levend | 252 (**+9/ondode**) | idem, mét gerenderde frames |
+| Geometrieën ná opruimen van die 20 | 252 (**niets vrijgegeven**) | idem |
+| Geometrieën na 80 spawn/kill-cycli | 796 (lineair) | idem |
+| HUD-writes tijdens regeneratie | 60/s | setter-spy op `hpTekst.textContent` |
+| Kijk/loop-mismatch bij cross-zone-pathing | 10,5° | hoekvergelijking, nav-tabel herbouwd |
+| 200 schot-raycasts | 20,3 ms (~0,1 ms/schot) | `performance.now()` — **prima, niet aanraken** |
+| Frametijd | **niet betrouwbaar meetbaar** | SwiftShader-softwarerendering |
+
+**Geëxtrapoleerde impact van het lek.** Bij het huidige budgetmodel
+(`GOLF_BUDGET_BASIS` 5 + `GOLF_BUDGET_GROEI` 1,7/golf) spawnt een run
+van 25 golven ~490 ondoden → ~4.400 gelekte geometrieën plus een
+vergelijkbaar aantal materialen, permanent, groeiend met de speelduur.
