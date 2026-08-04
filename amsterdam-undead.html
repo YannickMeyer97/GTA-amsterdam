@@ -4194,6 +4194,12 @@ function updateAchtergrondmuziek(dt) {
 
 // --- Balanswaarden ondoden / melee -------------------------------
 const ONDODE_SNELHEID    = 1.5;   // m/s — trager dan de speler (4.5), zodat ontwijken kan
+// Ticket 73 (v0.20, §8.5.1): draaisnelheid van de kijkrichting terwijl de
+// ondode loopt (volgt `richting`, niet meer onvoorwaardelijk de speler) —
+// bewust ruim sneller dan AANVAL_DRAAI_SNELHEID (de windup-bijdraai), zodat
+// lopen responsief oogt; de korte lerp voorkomt alleen een harde schok bij
+// een waypoint-wissel, geen merkbare vertraging.
+const ONDODE_KIJK_DRAAI_SNELHEID = 8;   // rad/s
 // Ticket 14: HP per golf loopt trapsgewijs op met een hard plafond van 4 —
 // de bullet-sponge-borg (ontwerpbeslissing 10): vanaf golf 16 komt verdere
 // moeilijkheid uit budget/samenstelling (Ticket 13), nooit uit meer HP.
@@ -5567,7 +5573,25 @@ function updateOndoden(dt) {
     // exact zo soepel als de speler op diezelfde trap, en buiten de
     // kelder-footprint blijft dit gewoon 0 (§7.5.7).
     positie.y = berekenKelderY(positie.x, positie.z);
-    ondode.groep.rotation.y = Math.atan2(rechtstreeks.x, rechtstreeks.z);
+    // Ticket 73: kijkrichting volgt de daadwerkelijke looprichting (incl.
+    // ontwijk-blend) i.p.v. onvoorwaardelijk de speler — een ondode die om
+    // een hoek of via een tussen-waypoint naar een deur loopt, staarde de
+    // speler anders zichtbaar door de muur heen aan terwijl hij zijwaarts
+    // bewoog (tot ~90° mismatch bij haakse waypoints). `richting` is hier
+    // altijd het BEOOGDE doel-richtingvector (vóór losBotsingenOp), dus
+    // stabiel ook als de botsing de werkelijke verplaatsing blokkeert —
+    // alleen wanneer de ondode al (vrijwel) exact op zijn doelpunt staat is
+    // richting zelf de nulvector; behoud dan gewoon de laatste geldige hoek
+    // i.p.v. naar 0 te springen. Korte lerp i.p.v. een harde set voorkomt
+    // een zichtbare schok bij een waypoint-wissel. (windup hierboven zet
+    // rotation.y al zelf, met zijn eigen beperkte bijdraai, en `continue`t
+    // vóórdat we hier komen.)
+    if (richting.lengthSq() > 1e-6) {
+      const kijkDoelHoek = Math.atan2(richting.x, richting.z);
+      const stap = Math.max(-ONDODE_KIJK_DRAAI_SNELHEID * dt, Math.min(ONDODE_KIJK_DRAAI_SNELHEID * dt,
+        kortsteHoekVerschil(kijkDoelHoek, ondode.groep.rotation.y)));
+      ondode.groep.rotation.y += stap;
+    }
 
     // Ticket 20 (Z3): losse ledematen-animatie. loopFase loopt nu voor ALLE
     // ondoden (snelheidsgekoppeld), niet meer alleen bij strompelt — puur
