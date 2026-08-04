@@ -3096,6 +3096,17 @@ const golfBannerUI = document.getElementById('golfBanner');
 const zoneLabelUI = document.getElementById('zoneLabelUI');   // Ticket 50: klein HUD-zonelabel
 const minimapUI = document.getElementById('minimapUI');       // Ticket 67: minimap
 const minimapCtx = minimapUI.getContext('2d');
+// Ticket 71 (v0.20, §8.4.1): updateHUD() deed tot nu toe 9x getElementById
+// per aanroep i.p.v. deze eenmalig te cachen — de enige uitzondering op het
+// patroon hierboven.
+const hpTekst = document.getElementById('hpTekst');
+const hpBarBinnen = document.getElementById('hpBarBinnen');
+const geldTekst = document.getElementById('geldTekst');
+const golfTekst = document.getElementById('golfTekst');
+const schadeTekst = document.getElementById('schadeTekst');
+const herlaadTekst = document.getElementById('herlaadTekst');
+const wapenTekst = document.getElementById('wapenTekst');
+const powerupStatusUI = document.getElementById('powerupStatusUI');
 document.getElementById('opnieuwKnop').addEventListener('click', () => location.reload());
 // Ticket 45: het winscherm heeft zijn eigen "Opnieuw" (identiek aan
 // opnieuwKnop) en "Speel door" (sluit het scherm, ontsnappingspunt
@@ -6014,27 +6025,54 @@ function gameOver() {
   if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
 }
 
+// Ticket 71 (v0.20, §8.4.1): onthoudt de laatst GESCHREVEN weergavestaat en
+// slaat de tekst-/kleur-writes over als er niets zichtbaar veranderd is —
+// was 60 writes/s naar hpTekst tijdens regeneratie (elke frame een write,
+// ook als de afgeronde hp gelijk bleef). Vergelijk bewust op de AFGERONDE
+// hp (Math.round), niet op de ruwe float, anders is er nul winst.
+// De balkbreedte (hpBarBinnen.style.width) blijft WEL elke aanroep meelopen
+// met de ruwe hp — die moet zichtbaar vloeiend blijven vullen/leeglopen
+// i.p.v. in hp-stapjes te "springen".
+let hudLaatst = null;
 function updateHUD() {
-  document.getElementById('hpTekst').textContent = Math.round(spelerStaat.hp);
   const percentage = Math.max(0, spelerStaat.hp / spelerStaat.hpMax) * 100;
-  const balk = document.getElementById('hpBarBinnen');
-  balk.style.width = percentage + '%';
-  balk.style.background = percentage > 60 ? '#5fd97a' : (percentage > 30 ? '#e0c34f' : '#e05f5f');
-  document.getElementById('geldTekst').textContent = spelStaat.geld;
-  document.getElementById('golfTekst').textContent = spelStaat.golf;
+  hpBarBinnen.style.width = percentage + '%';
+
+  const hpAfgerond = Math.round(spelerStaat.hp);
+  // Kleurdrempel (60%/30%): hoort bij de vergeleken staat, moet blijven omslaan.
+  const balkKleur = percentage > 60 ? '#5fd97a' : (percentage > 30 ? '#e0c34f' : '#e05f5f');
   // Speler-feedback: altijd de werkelijke waarde tonen (incl. de per-wapen
   // Smederij-bonus bij schade) i.p.v. "MAX" — "MAX" verborg de Smederij-bonus
   // en gaf geen idee meer van de echte herlaadtijd/schade tijdens het spelen.
   const weergaveSchade = schadePerTreffer + (wapenStaat.gesmeed ? wapenStaat.definitie.smederijConfig.schadeBonus : 0);
-  document.getElementById('schadeTekst').textContent = weergaveSchade;
-  document.getElementById('herlaadTekst').textContent = `${wapenStaat.herlaadDuur}s`;
   // Ticket 12: ster-merkteken als het actieve wapen gesmeed is.
-  document.getElementById('wapenTekst').textContent = wapenStaat.definitie.naam + (wapenStaat.gesmeed ? ' ★' : '');
+  const wapenLabel = wapenStaat.definitie.naam + (wapenStaat.gesmeed ? ' ★' : '');
   // Power-ups: toon actieve tijdelijke buffs (leeg als er geen actief zijn).
+  // Math.ceil telt in hele seconden af — wisselt dus vanzelf elke seconde,
+  // en één laatste keer bij het aflopen (buffs wordt dan weer leeg).
   const buffs = [];
   if (dubbeleBeloningTimer > 0) buffs.push(`Dubbele Beloning ${Math.ceil(dubbeleBeloningTimer)}s`);
   if (eliminatiemodusTimer > 0) buffs.push(`Eliminatiemodus ${Math.ceil(eliminatiemodusTimer)}s`);
-  document.getElementById('powerupStatusUI').textContent = buffs.join(' · ');
+  const buffTekst = buffs.join(' · ');
+
+  if (hudLaatst &&
+      hudLaatst.hpAfgerond === hpAfgerond && hudLaatst.balkKleur === balkKleur &&
+      hudLaatst.geld === spelStaat.geld && hudLaatst.golf === spelStaat.golf &&
+      hudLaatst.weergaveSchade === weergaveSchade && hudLaatst.herlaadDuur === wapenStaat.herlaadDuur &&
+      hudLaatst.wapenLabel === wapenLabel && hudLaatst.buffTekst === buffTekst) {
+    return;   // niets zichtbaar veranderd: geen enkele tekst-/kleur-write
+  }
+  hudLaatst = { hpAfgerond, balkKleur, geld: spelStaat.geld, golf: spelStaat.golf,
+    weergaveSchade, herlaadDuur: wapenStaat.herlaadDuur, wapenLabel, buffTekst };
+
+  hpTekst.textContent = hpAfgerond;
+  hpBarBinnen.style.background = balkKleur;
+  geldTekst.textContent = spelStaat.geld;
+  golfTekst.textContent = spelStaat.golf;
+  schadeTekst.textContent = weergaveSchade;
+  herlaadTekst.textContent = `${wapenStaat.herlaadDuur}s`;
+  wapenTekst.textContent = wapenLabel;
+  powerupStatusUI.textContent = buffTekst;
 }
 
 /* ================================================================
