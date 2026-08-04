@@ -4539,7 +4539,13 @@ function updatePowerups(dt) {
   // Countdown in de HUD laten meelopen zolang een buff actief is (en één
   // laatste keer zodra 'ie afloopt, zodat de tekst weer leeg wordt).
   if (buffWasActief) updateHUD();
-  for (const drop of [...powerups]) {
+  // Ticket 72 (v0.20, §8.4.1 vervolg): achterwaartse index-loop i.p.v. de
+  // vorige [...powerups]-kopie — evenveel veilig-verwijderen-tijdens-
+  // itereren (raapPowerupOp()/de verval-tak hieronder splicen powerups op
+  // een index <= i, wat een reeds-bezochte hogere index nooit verschuift),
+  // maar zonder de per-frame array-allocatie.
+  for (let i = powerups.length - 1; i >= 0; i--) {
+    const drop = powerups[i];
     drop.draaiFase += dt * 2;
     drop.groep.rotation.y = drop.draaiFase;
     drop.groep.position.y = 0.1 + Math.sin(drop.draaiFase * 1.5) * 0.05;
@@ -4551,8 +4557,7 @@ function updatePowerups(dt) {
     } else if (drop.verval <= 0) {
       wereld.remove(drop.groep);
       ruimGroepOp(drop.groep);   // Ticket 70: kern-mesh (geometrie + materiaal) vrijgeven
-      const j = powerups.indexOf(drop);
-      if (j !== -1) powerups.splice(j, 1);
+      powerups.splice(i, 1);
     }
   }
 }
@@ -6618,11 +6623,22 @@ const WATERTAP_Z = DEUR2_Z - 1.6;
 const watertapMarkering = winkelMarkering(WATERTAP_X, WATERTAP_Z, 'watertap');
 
 // --- UI-helpers ---------------------------------------------------
+// Ticket 72 (v0.20, §8.4.1 vervolg): onthoudt de laatst GETOONDE prompt-
+// tekst (null = verborgen) en slaat de write over als er niets zichtbaar
+// veranderd is — updateInteracties() riep dit eerst elke frame aan, ook
+// zonder interactiepunt in bereik (elke frame style.opacity = '0'). Prompt-
+// teksten zijn dynamisch (prijzen veranderen mee met wat al gekocht is):
+// vergelijk daarom op de RESULTERENDE string, niet op het interactiepunt.
+let interactiePromptLaatst = null;
 function toonInteractiePrompt(tekst) {
+  if (interactiePromptLaatst === tekst) return;
+  interactiePromptLaatst = tekst;
   interactiePromptUI.textContent = tekst;
   interactiePromptUI.style.opacity = '1';
 }
 function verbergInteractiePrompt() {
+  if (interactiePromptLaatst === null) return;
+  interactiePromptLaatst = null;
   interactiePromptUI.style.opacity = '0';
 }
 
