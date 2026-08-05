@@ -5013,6 +5013,30 @@ const STERVEN_DUUR = 0.7;
 // Ticket 19: `traits` is optioneel injecteerbaar zodat tests een specifiek
 // variatieprofiel kunnen afdwingen; zonder argument blijft het gedrag
 // identiek (willekeurige loting).
+// Feedback: een verse ondode-Group staat standaard op rotation.y = 0 (kijkt
+// wereld +Z), en updateOndoden() draait pas geleidelijk (ONDODE_KIJK_DRAAI_
+// SNELHEID) naar de werkelijke looprichting — bij een venster waarvan de
+// kamer de andere kant op ligt gaf dat een zichtbare "eerst omdraaien"
+// voordat de ondode naar voren liep. Dezelfde doelPunt-keuze als
+// updateOndoden() (deurpunt via NAV_VOLGENDE, een intra-zone waypoint, of
+// rechtstreeks de speler). Bewust GEEN onderdeel van spawnOndode() zelf: die
+// wordt ook rechtstreeks door tests aangeroepen om een ondode op een
+// gecontroleerde positie/rotatie neer te zetten voor raycast-/hitbox-
+// verificatie — hier alleen toegepast op de twee ECHTE gameplay-spawnpaden
+// (spawnWillekeurigeOndode/golfSpawnStap), waar de speler een ondode
+// daadwerkelijk uit een venster ziet komen.
+function zetOndodeSpawnRichting(ondode) {
+  const positie = ondode.groep.position;
+  const eigenZone = zoneVan(positie.x, positie.z);
+  const spelerZone = zoneVan(speler.positie.x, speler.positie.z);
+  const volgendeDeur = eigenZone === spelerZone ? null : NAV_VOLGENDE[eigenZone][spelerZone];
+  const tussenWaypoint = volgendeDeur ? null : zoekWaypoint(eigenZone, positie, speler.positie);
+  const doelPunt = volgendeDeur || tussenWaypoint || speler.positie;
+  const dx = doelPunt.x - positie.x, dz = doelPunt.z - positie.z;
+  if (dx * dx + dz * dz > 1e-6) ondode.groep.rotation.y = Math.atan2(dx, dz);
+  return ondode;
+}
+
 function spawnOndode(vensterIndex, type = 'normaal', traits = kiesOndodeTraits()) {
   const venster = VENSTERS[vensterIndex % VENSTERS.length];
   const typeInfo = ONDODE_TYPES[type] || ONDODE_TYPES.normaal;
@@ -5075,7 +5099,7 @@ function kiesVensterIndex() {
 }
 
 function spawnWillekeurigeOndode() {
-  return spawnOndode(kiesVensterIndex());
+  return zetOndodeSpawnRichting(spawnOndode(kiesVensterIndex()));
 }
 
 // Eenvoudige "spine"-navigatie tussen de opeenvolgende zones (woonkamer ->
@@ -6625,7 +6649,7 @@ function golfSpawnStap() {
   // Ticket 23 (Z6): golf-spawns gebruiken de gebufferde profiel-loting i.p.v.
   // de kale kiesOndodeTraits() (die blijft de default voor directe
   // spawnOndode()-aanroepen elders/in tests).
-  const ondode = spawnOndode(idx, type, kiesOndodeTraitsVoorGolf());
+  const ondode = zetOndodeSpawnRichting(spawnOndode(idx, type, kiesOndodeTraitsVoorGolf()));
   spelStaat.budget -= kosten;   // afboeken NA de echte spawn
   return ondode;
 }
@@ -7842,6 +7866,7 @@ window.AmsterdamUndeadDebug = {
   get wisselTimer() { return wisselTimer; },
   get wisselTeller() { return wisselTeller; },
   ondoden, ondodenGroep, VENSTERS, spawnOndode, spawnWillekeurigeOndode, kiesVensterIndex,
+  zetOndodeSpawnRichting,   // Feedback: kijkrichting meteen bij echte spawns (niet in spawnOndode() zelf, tests blijven ongewijzigd)
   updateOndoden, raakOndode, doodOndode,
   // Ticket 22: doodsanimaties (Z5)
   stervenden, stervendenGroep, updateStervenden, VAL_STIJLEN, STERVEN_DUUR,
