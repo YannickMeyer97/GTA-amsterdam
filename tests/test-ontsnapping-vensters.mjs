@@ -392,8 +392,17 @@ await p2.waitForTimeout(2000);   // ruim binnen de duur (~0.9s gesimuleerd): nog
 const nogNiet = await p2.evaluate(() => window.AmsterdamUndeadDebug.ontsnappingsPunt !== null);
 check('Ruim binnen de aankondigingsduur (2s wall-clock) bestaat het punt nog steeds niet',
   nogNiet === false, { nogNiet });
-await p2.waitForTimeout(13000);   // +13s wall-clock (~5.9s gesimuleerd extra) ruim voorbij de 5s-duur
-const uiteindelijkWel = await p2.evaluate(() => window.AmsterdamUndeadDebug.ontsnappingsPunt !== null);
+// CI-fix: een vaste wandklok-marge (was +13s) gokt hoe traag een frame écht
+// rendert (dt gecapt op 0.05s/frame) — op een zwaarder belaste CI-runner dan
+// deze empirische ~0.45 gesimuleerde-seconde-per-reële-seconde bleek zelfs
+// 15s totaal niet genoeg. Poll i.p.v. gokken: wacht nooit langer dan nodig,
+// en geef een ruime deadline i.p.v. een ruime-maar-nog-steeds-vaste marge.
+let uiteindelijkWel = false;
+const pollDeadline = Date.now() + 45000;
+while (!uiteindelijkWel && Date.now() < pollDeadline) {
+  await p2.waitForTimeout(2000);
+  uiteindelijkWel = await p2.evaluate(() => window.AmsterdamUndeadDebug.ontsnappingsPunt !== null);
+}
 check('Na de volledige ONTSNAPPING_AANKONDIGING_DUUR (via de echte gameLoop) verschijnt het punt vanzelf',
   uiteindelijkWel === true, { uiteindelijkWel });
 await b2.close();

@@ -24,7 +24,10 @@ const JSM_ROOT = path.join(__dirname, 'node_modules', 'three', 'examples', 'jsm'
 // i.p.v. een env-var-vlag: geen extra CI-configuratie nodig, en het lokale
 // pad blijft precies zo werken als vóór dit ticket.
 const LOKAAL_CHROMIUM_PAD = '/opt/pw-browsers/chromium';
-const executablePathOptie = existsSync(LOKAAL_CHROMIUM_PAD) ? { executablePath: LOKAAL_CHROMIUM_PAD } : {};
+// Geëxporteerd voor scripts die (net als test-faalmodi.mjs) bewust hun eigen
+// chromium.launch() doen i.p.v. openAmsterdamUndead() — die hebben dezelfde
+// CI-fallback nodig, anders faalt precies zo'n script alsnog hard op CI.
+export const executablePathOptie = existsSync(LOKAAL_CHROMIUM_PAD) ? { executablePath: LOKAAL_CHROMIUM_PAD } : {};
 
 // Ticket 78 (v0.20, §8.8.1): run-all.mjs draait de hele suite in één
 // process en launcht daar één gedeelde browser (globalThis, zie

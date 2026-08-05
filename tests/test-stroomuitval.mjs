@@ -5,7 +5,7 @@
 // nieuwe spawns), eigen spawngewichten, audio, en dat de Mistgolf
 // byte-voor-byte blijft werken (regressie t.o.v. Ticket 6-9).
 // Zie ARCHITECTURE_NOTES.md §6.5 en ROADMAP.md Ticket 46.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, frames } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
 const { check, report } = makeChecker();
@@ -81,7 +81,7 @@ check('De verwachte peer-emissive tijdens de Stroomuitval is duidelijk gedimd (b
 // --- 4. Eén echte gameLoop-tick (wall-clock) dimt de bol-emissive
 // daadwerkelijk, zonder de light-count te wijzigen (pointer lock is al
 // gesimuleerd via openAmsterdamUndead) --------------------------------------
-await page.waitForTimeout(200);   // ruim boven één requestAnimationFrame
+await frames(page, 2);   // een echte, gegarandeerd voltooide frame i.p.v. een wandklok-gok
 const naEchteTick = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const lamp = d.lampLichten[0];
@@ -120,6 +120,13 @@ check('Alle vier de ateliers-dakramen volgen exact stroomFactor * DAKRAAM_STROOM
 // een hogere fractie dan de generieke 12% zodra een Stroomuitval actief is.
 // Kelderoost (feedback) kreeg zijn eigen lamp met dezelfde stroomVloer-tuning
 // erbij: twee in de hoofdkelder + één in kelderoost = drie.
+// CI-fix: lampDipFactor is een ONGERELATEERDE ambiance-dip (druppel-tik,
+// zie updateDruppel()) die ditzelfde l.licht.intensity meevermenigvuldigt
+// (zie de lampflikker-loop) — deze check test bewust ALLEEN de stroomVloer-
+// formule, dus lampDipFactor hier expliciet op 1 vastzetten (i.p.v. een
+// toevallig actieve dip laten meetellen) en één frame laten settelen.
+await page.evaluate(() => { window.AmsterdamUndeadDebug.lampDipFactor = 1; });
+await frames(page, 2);
 const kelderLampenTick = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const kelderLampen = d.lampLichten.filter(l => l.stroomVloer !== undefined);
@@ -268,7 +275,7 @@ check('stroomFactor blijft op 1 tijdens een Mistgolf (geen kruisbesmetting tusse
 
 // --- 10. hemisfeerLicht/toneMappingExposure staan tijdens een Mistgolf (en
 // dus stroomFactor === 1) weer op hun normale, volle waarde ----------------
-await page.waitForTimeout(150);   // laat de flikker-loop het echt toepassen
+await frames(page, 2);   // laat de flikker-loop het echt toepassen (echte frames i.p.v. een wandklok-gok)
 const hemisfeerNaMist = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   return {

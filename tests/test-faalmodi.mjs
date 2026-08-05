@@ -7,7 +7,7 @@
 import { chromium } from 'playwright';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, executablePathOptie } from './helpers.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const GAME_PATH = path.join(__dirname, '..', 'amsterdam-undead.html');
@@ -19,7 +19,7 @@ const alleErrs = [];
 // cdn.jsdelivr.net juist succesvol (lokale three.module.js). Dit scenario
 // simuleert een ECHT onbereikbare CDN via route.abort().
 {
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  const browser = await chromium.launch(executablePathOptie);
   const page = await browser.newPage();
   await page.route('**/cdn.jsdelivr.net/**', r => r.abort());
   await page.goto('file://' + GAME_PATH);

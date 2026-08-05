@@ -9,6 +9,21 @@ import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
 const { check, report } = makeChecker();
 
+// CI-fix: de decay/samenval-venster-mechanismen hieronder draaien op de
+// gameLoop's ECHTE, gecapte dt (max 0.05s/frame) — een vaste wandklok-marge
+// gokt hoeveel gesimuleerde tijd dat op de testmachine daadwerkelijk
+// oplevert, en bleek op GitHub Actions te krap. Poll tot de conditie klopt
+// i.p.v. een marge gokken (zelfde aanpak als test-wapen-identiteit.mjs).
+async function wachtTotConditie(evalFn, klaarFn, { timeoutMs = 10000, intervalMs = 150 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let laatste = await page.evaluate(evalFn);
+  while (!klaarFn(laatste) && Date.now() < deadline) {
+    await page.waitForTimeout(intervalMs);
+    laatste = await page.evaluate(evalFn);
+  }
+  return laatste;
+}
+
 // --- 1. Tier-DOM-check: lichaam / kop / kill --------------------------
 const tierCheck = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
@@ -53,18 +68,20 @@ check('Direct na toonHitmarker("kill") is de tier "kill"', samenval.directNa ===
 check('Een "lichaam"-treffer vlak daarna (binnen het samenval-venster) downgradet de tier niet',
   samenval.naDowngradePoging === 'kill', samenval);
 
-// Ticket 60 (v0.19): composer.render() (post-processing) kost iets meer dan
-// renderer.render(), waardoor de fps in dit headless/software-gerenderde
-// testklimaat daalt en de gameLoop's gecapte dt (max 0.05s/frame) verder
-// achterblijft bij de echte klok — vandaar een ruimere marge dan voorheen
-// (was 120ms) om zeker buiten het venster te komen.
-await page.waitForTimeout(350);   // ruim buiten HITMARKER_SAMENVAL_VENSTER (60 ms), echte klok-tijd
-
-const naVenster = await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  d.toonHitmarker('lichaam');
-  return d.hitmarkerHuidigeTier;
-});
+// Elke toonHitmarker()-aanroep herstart zijn eigen samenval-venster
+// (hitmarkerLaatsteTijd = klok, óók bij een geblokkeerde downgrade, zie de
+// bron) — een poll die zelf herhaald toonHitmarker('lichaam') aanroept is
+// dus alleen zelfcorrigerend als het poll-interval ZELF ruim boven het
+// venster (60ms) ligt. Met een te kort interval (bv. 150ms) accumuleert
+// hooguit 1 gecapte frame (~0.05s) gesimuleerde tijd tussen twee pogingen —
+// net ONDER de 60ms-drempel — waardoor elke poging zijn eigen baseline
+// reset en de test nooit convergeert (empirisch gevonden op CI). 500ms
+// geeft in de praktijk meerdere gecapte frames (~0.1-0.15s) headroom.
+const naVenster = await wachtTotConditie(
+  () => { const d = window.AmsterdamUndeadDebug; d.toonHitmarker('lichaam'); return d.hitmarkerHuidigeTier; },
+  (tier) => tier === 'lichaam',
+  { intervalMs: 500 },
+);
 check('Buiten het samenval-venster wint de nieuwe (lagere) tier gewoon weer',
   naVenster === 'lichaam', { naVenster });
 
@@ -88,13 +105,10 @@ await page.evaluate(() => {
   Object.defineProperty(document, 'pointerLockElement', { configurable: true, get() { return null; } });
   document.dispatchEvent(new Event('pointerlockchange'));
 });
-// Ticket 60 (v0.19): zelfde reden als hierboven — ruimere marge dan het
-// oorspronkelijke 300ms i.v.m. de iets lagere fps door composer.render().
-await page.waitForTimeout(800);   // ruim boven de 0.18s tier-duur, tijdens pauze
-const decayNaPauze = await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  return { opacity: d.hitmarker.style.opacity, timer: d.hitmarkerTimer };
-});
+const decayNaPauze = await wachtTotConditie(
+  () => { const d = window.AmsterdamUndeadDebug; return { opacity: d.hitmarker.style.opacity, timer: d.hitmarkerTimer }; },
+  (u) => u.timer === 0,
+);
 check('Tijdens pauze dooft de hitmarker toch binnen zijn duur (decay loopt door, zelfde keuze als het vignet)',
   decayNaPauze.timer === 0 && parseFloat(decayNaPauze.opacity) === 0, decayNaPauze);
 
