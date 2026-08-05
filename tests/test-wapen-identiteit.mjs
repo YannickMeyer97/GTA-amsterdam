@@ -10,6 +10,25 @@ import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
 const { check, report } = makeChecker();
 
+// CI-fix: de cameraKick-/wisselTimer-decay draait op de gameLoop's ECHTE,
+// gecapte dt (max 0.05s/frame) — hoe traag een frame écht rendert (SwiftShader,
+// zwaarder op een gedeelde CI-runner dan lokaal) bepaalt dus hoeveel
+// gesimuleerde tijd een vaste wandklok-wacht daadwerkelijk oplevert. Een vast
+// aantal ms gokken (was 1500/900ms, al eens verhoogd vanaf 500/400ms) blijft
+// fundamenteel fragiel: op GitHub Actions bleek zelfs 1500ms niet genoeg
+// (cameraKick strandde op 0.00115 i.p.v. ≤0.0007). In plaats van nóg een
+// gok: poll de daadwerkelijke conditie tot 'ie klopt, met een ruime
+// deadline — zo wacht de test nooit langer dan nodig, en nooit te kort.
+async function wachtTotConditie(evalFn, klaarFn, { timeoutMs = 10000, intervalMs = 150 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let laatste = await page.evaluate(evalFn);
+  while (!klaarFn(laatste) && Date.now() < deadline) {
+    await page.waitForTimeout(intervalMs);
+    laatste = await page.evaluate(evalFn);
+  }
+  return laatste;
+}
+
 // --- 0. Per-wapen velden verschillen zoals in de §5.6-tabel ---------------
 const velden = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
@@ -49,18 +68,11 @@ check('Eén Drukspuit-schot verhoogt cameraKick direct naar exact kickSterkte (0
 check('speler.pitch is door het schot niet gemuteerd (blijft 0.2)',
   kickVoor.pitch === 0.2, kickVoor);
 
-// Ticket 60 (v0.19): composer.render() (post-processing) is iets duurder dan
-// renderer.render(), dus in dit headless/software-gerenderde testklimaat
-// daalt de fps merkbaar en blijft de gameLoop's gecapte dt (max 0.05s/frame,
-// zie gameLoop) verder achter op de echte klok — vandaar een ruimere marge
-// dan voorheen (was 500ms) om de vervaltijd zeker te halen.
-await page.waitForTimeout(1500);   // ruim boven de exponentiële-vervaltijd (echte klok)
-
-const kickNa = await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  return { cameraKick: d.cameraKick, pitch: d.speler.pitch };
-});
-check('Na 0.5s is cameraKick terug binnen 5% van de oorspronkelijke kick (0.014 * 0.05 = 0.0007)',
+const kickNa = await wachtTotConditie(
+  () => { const d = window.AmsterdamUndeadDebug; return { cameraKick: d.cameraKick, pitch: d.speler.pitch }; },
+  (u) => u.cameraKick <= 0.014 * 0.05,
+);
+check('cameraKick vervalt exponentieel terug tot binnen 5% van de oorspronkelijke kick (0.014 * 0.05 = 0.0007)',
   kickNa.cameraKick <= 0.014 * 0.05, kickNa);
 check('speler.pitch is nog steeds ongemoeid (blijft 0.2, ook na de vervaltijd)',
   kickNa.pitch === 0.2, kickNa);
@@ -151,14 +163,11 @@ check('wisselWapen() zet wisselTimer meteen op WISSEL_DUUR (0.16)',
 check('wisselWapen() roept speelWissel() precies 1x aan',
   wissel.tellerNa === wissel.tellerVoor + 1, wissel);
 
-// Ticket 60 (v0.19): zelfde reden als hierboven — ruimere marge dan het
-// oorspronkelijke 400ms i.v.m. de iets lagere fps door composer.render().
-await page.waitForTimeout(900);   // ruim boven WISSEL_DUUR (echte klok, cosmetische zone)
-
-const wisselNa = await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  return { wisselTimer: d.wisselTimer, y: d.wapenStaat.definitie.groep.position.y, basisY: d.WAPEN_BASIS_Y };
-});
+const wisselNa = await wachtTotConditie(
+  () => { const d = window.AmsterdamUndeadDebug;
+    return { wisselTimer: d.wisselTimer, y: d.wapenStaat.definitie.groep.position.y, basisY: d.WAPEN_BASIS_Y }; },
+  (u) => u.wisselTimer === 0,
+);
 check('Na WISSEL_DUUR is wisselTimer 0 en staat de actieve wapen-groep weer exact op de rust-y',
   wisselNa.wisselTimer === 0 && wisselNa.y === wisselNa.basisY, wisselNa);
 
