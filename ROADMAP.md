@@ -4041,6 +4041,461 @@ rest.
 
 ---
 
+## v0.21 — Ronde 7: sfeer, wereld en verhaal (gepland, nog NIET geïmplementeerd)
+
+Architectuur: zie ARCHITECTURE_NOTES.md §9 (beslissingen 70-77).
+Sonnet-prompts: zie SONNET_EXECUTION_PLAN.md, "ronde 7 (v0.21)".
+Herkomst van de ideeën: `IDEEEN.md` (E1, E6, I1, I4, I5, J3, K1, K2).
+
+**Aanleiding.** Anders dan v0.20 (die uit een code-audit kwam) komt deze
+ronde uit een vooruitblik-sessie: wat zou je nog bouwen aan een spel dat
+technisch af is. Acht ideeën zijn eruit gelicht die één ding gemeen
+hebben — ze maken de wereld voelbaarder zonder de spelregels aan te
+raken.
+
+**De harde regel van deze ronde** (zie §9.2):
+
+> Geen enkel ticket in v0.21 mag een balansgetal wijzigen.
+
+Verboden: `golfBudget()`, `GOLF_BUDGET_*`, `ONDODE_THREAT_KOSTEN`,
+`GOLF_MAX_ACTIEF`, `ONDODE_HP_TRAPPEN`, `AANVAL_PROFIELEN`, alle
+`*_PRIJS`-constanten, `GELD_PER_HIT`/`GELD_PER_KILL`,
+`POWERUP_DROP_KANS`, `SPELER_HP_MAX`, `schadePerTreffer`/
+`WAPEN_SCHADE_MAX`. Sfeer-tickets hebben een bekend faalpatroon: ze
+verschuiven de moeilijkheidsgraad ongemerkt. Elk ticket hieronder
+benoemt waar dat risico bij hém zit.
+
+**Uitgangspositie bij aanvang** (gemeten op `ac3fa43`, integraal in §9.10):
+52/52 regressiescripts groen · 8.197 regels · 39 `piep()`-aanroepen ·
+32 `speel*()`-functies · 1 `StereoPannerNode` · 4 permanente audio-lagen ·
+9 `lampLichten` (3 kelder) · 1 schaduwwerpend licht op `(0, 2.58, 0)` ·
+26 PointLights · 52 collision-obstakels · 13 interactiepunten ·
+2 localStorage-sleutels.
+
+**Verbetergebieden deze ronde** (nummering per-ronde):
+1. Ruimtelijk geluid (T80)
+2. Onbetrouwbaar licht en een levende stad (T81-T82)
+3. De wereld buiten het pand (T83-T84)
+4. Sporen van de run (T85)
+5. Meta-progressie zonder powercreep (T86)
+6. Verticaliteit (T87)
+
+**Volgorde-advies.** T80 eerst: het levert de gedeelde hoek/pan-helper op
+waar T83 op leunt. Daarna T84 (puur tekst, nul risico) en T81 (klein,
+geïsoleerd) als opwarmers. Dan T82, T83, T86. T85 en T87 als laatste —
+die twee raken respectievelijk de resource-discipline uit v0.20 en de
+Y-invariant, en zijn het minst vergevingsgezind.
+
+---
+
+## Ticket 80 — Richtinghoren: pan op wereldgeluiden
+
+- **Type:** feature (sfeer/leesbaarheid)
+- **Verbetergebied:** 1 (Ruimtelijk geluid)
+- **Prioriteit:** hoog
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** geluid met een echte wereldpositie ook links/rechts hoorbaar
+  maken, zodat een grom achter je informatie wordt in plaats van alleen
+  sfeer.
+- **Huidige situatie:** alle `piep()`-geluiden zijn mono; alleen de
+  boothoorn (`speelBootHoornGericht()`) heeft een `StereoPannerNode`.
+  De benodigde hoekwiskunde staat twee keer los geïmplementeerd:
+  `berekenSchadeWedgeHoek()` (T68) en `berekenBootHoornPanVolume()`
+  (feedbackronde), allebei
+  `kortsteHoekVerschil(Math.atan2(-dx, -dz), spelerYaw)`.
+- **Gewenste situatie:** één gedeelde `berekenRelatieveHoek(bronX, bronZ,
+  spelerX, spelerZ, spelerYaw)` plus `hoekNaarPan(relatieveHoek)`, waar
+  beide bestaande aanroepers op gaan leunen. `piep()` krijgt een
+  optionele `pan`-parameter. `speelOndodeGrom()` en `speelPlankBreek()`
+  geven hun bronpositie mee.
+- **Codegebieden:** `piep()`, `speelOndodeGrom()` (+ de aanroep in
+  `updateOndoden()`, die nu alleen `ondode.type` doorgeeft),
+  `speelPlankBreek()` (+ `beukBarricade()`),
+  `berekenSchadeWedgeHoek()`, `berekenBootHoornPanVolume()`.
+- **Buiten scope:** `PannerNode`/HRTF/3D-audio; afstandsdemping via de
+  Web Audio-panner (de bestaande handmatige volume-op-afstand blijft);
+  pan op speler-eigen geluiden (schot, herladen, wisselen), UI-geluiden
+  (koop, geen geld) of globale gebeurtenissen (golfstart, stroomklap) —
+  die hebben geen bron in de ruimte.
+- **Randgevallen:**
+  - **Bij `pan === 0` of een weggelaten argument mag er GEEN
+    `StereoPannerNode` worden aangemaakt.** De keten blijft dan exact
+    `osc → gain → masterGainNode`, zoals nu. `test-geluidsknop.mjs`
+    asserteert dat alles via `masterGainNode` loopt en dat er precies
+    één `connect(audio.destination)` in de bron staat.
+  - **Er zitten twee verschillende negaties in de bestaande code, om
+    twee verschillende redenen** (CSS rechtsom-positief vs.
+    StereoPanner rechts = +1). Vat die niet samen tot "overal een min".
+    Dit is dezelfde bugklasse als Fix 1 (§7.8.2.2), waar de schadepijl
+    naar de speler toe wees in plaats van ervandaan.
+  - Bron exact op de spelerpositie: pan 0, geen deling door nul (zelfde
+    guard als `toonSchadeRichting()` al heeft).
+- **Performancevoorwaarden:** `speelOndodeGrom()` zit al achter
+  `ONDODE_GROM_GLOBALE_CAP` (1/0,6s) en `ONDODE_GROM_BEREIK` (8m); één
+  extra node per grom is daarmee begrensd op ~1,7 nodes/s.
+- **Acceptatiecriteria:**
+  - Bron LINKS van de speler geeft een NEGATIEVE pan, bron RECHTS een
+    POSITIEVE — richtinggevend geasserteerd, niet als "pan ≠ 0".
+  - Links en rechts geven exact tegengestelde pan (symmetrisch rond 0).
+  - Draait de speler, dan verandert de pan van dezelfde wereldbron mee.
+  - Een `piep()` zonder pan-argument maakt aantoonbaar geen panner aan.
+  - `test-geluidsknop.mjs`, `test-boot-aankondiging.mjs` en
+    `test-schaderichting.mjs` blijven ongewijzigd groen.
+- **Testplan:** nieuw `tests/test-richtinghoren.mjs` (pan-tekenconventie,
+  symmetrie, meedraaien, geen-panner-bij-mono) + de drie genoemde
+  bestaande scripts + volledige regressie.
+- **Rollback:** de `pan`-parameter en de twee aanroepers terugdraaien;
+  de gedeelde helper mag blijven staan (dan dode code).
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 81 — Zeldzame lampuitval
+
+- **Type:** feature (sfeer)
+- **Verbetergebied:** 2 (Onbetrouwbaar licht)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** het licht onbetrouwbaar laten voelen zonder dat er iets
+  gebeurt: eens in de zoveel golven knipt één lamp 0,3-0,5s uit.
+- **Huidige situatie:** de flikkerloop vermenigvuldigt drie
+  onafhankelijke factoren in `l.licht.intensity`: de flikker-sinus
+  (`amp1`/`amp2`), `lampDipFactor` (T40) en `stroomFactorVoorLamp`
+  (T46, met een eigen kelder-vloer). Buiten een Stroomuitval is er geen
+  enkel moment waarop licht wegvalt.
+- **Gewenste situatie:** een VIERDE, onafhankelijke factor per lamp
+  (bijvoorbeeld een `blackoutTimer` per entry), die de bestaande drie
+  nooit overschrijft en na afloop naar exact 1 herstelt.
+- **Codegebieden:** de lampflikker-loop in de gameLoop, `lampLichten`.
+- **Buiten scope:** koppeling aan een eventgolf of golfmijlpaal (zie
+  Randgevallen); de Stroomuitval-logica; de schaduwinstellingen.
+- **Randgevallen:**
+  - **De schaduwwerpende lamp is uitgesloten.** Gemeten op
+    `(0, 2.58, 0)` (woonkamer); die 0,4s uitzetten herstructureert álle
+    schaduwen in beeld en leest als een renderfout, niet als sfeer. Het
+    raakt bovendien de schaduw-invariant uit §7.9.
+  - **De drie kelder-kamerlampen zijn uitgesloten**
+    (`l.stroomVloer !== undefined`). De kelder heeft geen daglicht; een
+    blackout daar is 0,4s volledige blindheid in een ruimte die juist
+    veilig hoort te zijn. Dát zou een balanswijziging zijn.
+  - Blijft over: 5 van de 9 `lampLichten`-entries als kandidaat.
+  - Een blackout tijdens een Stroomuitval mag `stroomFactor` niet
+    terugzetten op 1 bij het aflopen.
+- **Performancevoorwaarden:** geen extra allocatie per frame; de timer
+  is een getal op een bestaande entry.
+- **Acceptatiecriteria:**
+  - De schaduwwerpende lamp en de drie kelderlampen worden aantoonbaar
+    nooit gekozen (loting-test over veel trekkingen).
+  - Na afloop staat de betreffende lamp weer op exact zijn
+    berekende intensiteit (geen drift).
+  - Een blackout tijdens een actieve Stroomuitval laat `stroomFactor`
+    ongemoeid.
+  - `test-stroomuitval.mjs` en `test-omgeving-sfeer.mjs` blijven groen.
+- **Testplan:** nieuw testblok voor de kandidaat-uitsluiting en het
+  herstel + de twee genoemde scripts + volledige regressie.
+- **Rollback:** de vierde factor uit de flikkerloop halen.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 82 — Het geluid van Amsterdam
+
+- **Type:** feature (sfeer)
+- **Verbetergebied:** 2 (Levende stad)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** — (profiteert van T80, vereist het niet)
+- **Doel:** een permanente, zeer zachte stadslaag zodat de wereld buiten
+  het pand hoorbaar doorgaat terwijl je binnen vecht.
+- **Huidige situatie:** vier permanente lagen onder `masterGainNode`:
+  dreigingsdrone (plafond 0,07), muziek (0,08) met de Nevelklok in serie
+  ervóór, en de losse `piep()`-ketens. Buiten die lagen is het stil.
+- **Gewenste situatie:** een vijfde laag met een plafond van **0,03**,
+  met zeldzame, willekeurig getimede gebeurtenissen (verre scheepshoorn,
+  verre klok) op een eigen timer, volledig procedureel.
+- **Codegebieden:** `initGeluid()`, een nieuwe update-functie met eigen
+  throttle in de gameLoop, de debug-hook-export.
+- **Buiten scope:** externe audiobestanden (verboden, zie CLAUDE.md);
+  wijziging aan de bestaande vier lagen; de Nevelklok-cyclus.
+- **Randgevallen:**
+  - **Het stadsbed mag nooit een tell maskeren.** De ondode-grom staat
+    op 0,035-0,045 en is een gameplay-signaal (§5.9: de Sluiper gromt
+    NIET, stilte is zijn tell). Vandaar het plafond ónder het gromvolume
+    én het uit de weg blijven van de gromband (120-340 Hz).
+  - **Aansluiten op `masterGainNode`, nooit op `audio.destination`** —
+    het geluidsknop-contract uit Fix 4, bewaakt door
+    `test-geluidsknop.mjs`.
+  - De gebeurtenis-timer moet los staan van de Nevelklok-cyclus, anders
+    vallen ze samen en klinkt het als één geluid.
+- **Performancevoorwaarden:** gain-schrijfacties gethrottled (patroon
+  `MUZIEK_THROTTLE_INTERVAL`), nooit per frame.
+- **Acceptatiecriteria:**
+  - Er is precies één node op `audio.destination` (ongewijzigd).
+  - Het plafond van de nieuwe laag is aantoonbaar < het gromvolume.
+  - De laag dempt mee met de geluidsknop.
+  - Geen per-frame gain-writes (throttle-test, patroon
+    `test-achtergrondmuziek.mjs`).
+- **Testplan:** nieuw testblok naar het model van
+  `test-achtergrondmuziek.mjs`/`test-dreigingsaudio.mjs` +
+  `test-geluidsknop.mjs` + volledige regressie.
+- **Rollback:** de laag niet aanmaken in `initGeluid()`; de rest is
+  additief.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 83 — De Waterschouw
+
+- **Type:** feature (sfeer/wereld)
+- **Verbetergebied:** 3 (De wereld buiten het pand)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** T80 (gebruikt de gedeelde pan-helper)
+- **Doel:** een tweede boot die periodiek voorbijvaart en nooit stopt,
+  zodat het pand geïsoleerd voelt te midden van een stad die doorgaat.
+- **Huidige situatie:** er is één boot (`bootGroep`), volledig gekoppeld
+  aan De Ontsnapping: `updateBootPositie()` schrijft élke frame
+  onvoorwaardelijk `bootGroep.position.x` op basis van de
+  ontsnappingsstaat, en de minimap tekent een `arc`-marker zodra
+  `ontsnappingAankondigingActief || ontsnappingsPunt`.
+- **Gewenste situatie:** een eigen `schouwGroep` met een eigen
+  updatefunctie en een eigen, duidelijk andere hoorn en minimap-marker.
+- **Codegebieden:** nieuwe groep + updatefunctie naast
+  `updateBootPositie()`, `tekenMinimap()`, een nieuwe `speel*()`-functie.
+- **Buiten scope:** elke wijziging aan `bootGroep`,
+  `updateBootPositie()`, `ontsnappingsPunt` of de ontsnappingsflow.
+- **Randgevallen:**
+  - **Onverwarbaar met de ontsnappingsboot** — dit is de hoofdeis, niet
+    een detail. Drie scheidingen zijn verplicht: (1) een duidelijk
+    andere hoorn dan de 200→140 Hz over 1,1s van de ontsnapping,
+    (2) een minimap-marker die GEEN `arc` is, (3) nooit een
+    interactiepunt, ooit.
+  - **De schouw mag `bootGroep` niet aanraken.** Zou hij dat wel doen,
+    dan vecht hij elke frame met `updateBootPositie()` om dezelfde
+    property.
+  - **`test-boot-aankondiging.mjs` moet MEE bewegen, niet verzwakt
+    worden.** Dat script asserteert nu "precies 1 boot-marker (arc)" en
+    "geen boot-marker zonder aankondiging/venster". Scherp die aan naar
+    "de ONTSNAPPINGS-marker wordt precies 1x getekend"; verwijder de
+    assertie niet.
+- **Performancevoorwaarden:** één extra groep met een handvol meshes;
+  geen extra licht (het budget staat op 26 PointLights, zie §9.10).
+- **Acceptatiecriteria:**
+  - De schouw voegt nooit iets aan `interactiePunten` toe.
+  - `ontsnappingsPunt`/`bootGroep.position.x` blijven aantoonbaar
+    ongemoeid door de schouw.
+  - De twee hoorns zijn aantoonbaar verschillend (andere frequenties/duur).
+  - `test-boot-aankondiging.mjs` en `test-ontsnapping-vensters.mjs`
+    blijven inhoudelijk groen (het eerste met de aangescherpte assertie).
+- **Testplan:** nieuw testblok (schouw raakt de ontsnapping niet,
+  markerscheiding, hoornscheiding) + de twee genoemde scripts +
+  volledige regressie.
+- **Rollback:** de schouwgroep niet aanmaken en de marker niet tekenen.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 84 — Het pand krijgt een adres
+
+- **Type:** feature (verhaal)
+- **Verbetergebied:** 3 (De wereld buiten het pand)
+- **Prioriteit:** laag
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** het pand van "een verlaten gebouw" naar "een specifieke plek"
+  tillen, zodat een run een concreter verhaal oplevert.
+- **Huidige situatie:** het pand heeft geen naam. Zones hebben
+  functionele namen (`ZONE_NAMEN`) en flavour-teksten (`ZONE_FLAVOUR`),
+  maar het gebouw zelf is naamloos op elk scherm.
+- **Gewenste situatie:** een verzonnen grachtnaam + huisnummer op het
+  startscherm, het winscherm en een klein naambordje-mesh bij de
+  voordeur.
+- **Codegebieden:** startscherm-HTML/tekst, `toonWinScherm()`, één klein
+  decor-object.
+- **Buiten scope:** `ZONE_NAMEN`/`ZONE_FLAVOUR` (die zijn al goed);
+  gameplay van welke aard dan ook.
+- **Randgevallen:**
+  - **IP-regel (CLAUDE.md): de naam moet VERZONNEN zijn.** Geen
+    bestaande Amsterdamse gracht met een echt huisnummer — dat plaatst
+    een aanwijsbaar, bestaand adres in een zombiespel. Een geloofwaardig
+    Nederlands klinkende, niet-bestaande naam voldoet aan beide eisen.
+  - Het naambordje mag geen collision toevoegen (obstakels blijft 52).
+- **Performancevoorwaarden:** één mesh, materiaal via `mat()`/
+  `matFamilie()`.
+- **Acceptatiecriteria:**
+  - De naam staat op startscherm én winscherm, consistent.
+  - `obstakels.length` blijft 52.
+  - Volledige regressie blijft groen.
+- **Testplan:** tekstassertie op beide schermen + obstakeltelling +
+  volledige regressie.
+- **Rollback:** teksten terugzetten, mesh verwijderen.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 85 — Etalages: sporen van de run
+
+- **Type:** feature (sfeer)
+- **Verbetergebied:** 4 (Sporen van de run)
+- **Prioriteit:** laag
+- **Status:** open (gepland)
+- **Afhankelijk van:** T69/T70 (moet hun resource-discipline volgen)
+- **Doel:** decor dat meeverandert met wat er in een run gebeurd is,
+  zodat een bekende kamer er op golf 20 anders uitziet dan op golf 1.
+- **Huidige situatie:** alle decor is statisch vanaf het laden. De enige
+  visuele verandering tijdens een run is de winkelstatus
+  (`updateWinkelMarkeringen()`) en de barricade-planken.
+- **Gewenste situatie:** een paar zichtbare, cumulatieve sporen:
+  ramen die op golfmijlpalen dichtgetimmerd raken, een ereplank bij de
+  Smederij die per gesmeed wapen voller wordt.
+- **Codegebieden:** `startGolf()`/het wave-complete-blok als trigger,
+  bestaande decor-bouwfuncties, `mat()`/`matFamilie()`/`geoCache()`.
+- **Buiten scope:** nieuwe collision; nieuwe zones; elk effect op
+  pathing of spawn-druk.
+- **Randgevallen:**
+  - **Dit is precies het patroon dat T69/T70 net hebben opgeruimd.**
+    Materialen ALTIJD via `mat()`/`matFamilie()`, geometrie via
+    `geoCache()` — nooit een directe `new THREE.MeshStandardMaterial()`
+    per mijlpaal. Anders lekt elke mijlpaal, en dat is letterlijk de bug
+    die beslissing 63 dichtte.
+  - **Alleen op golfovergangen, nooit per frame.**
+  - **Geen collision.** `obstakels` blijft 52; een dichtgetimmerd raam
+    dat ineens blokkeert, verandert pathing en dus balans.
+  - **Voorkeur voor materiaal WISSELEN boven mesh TOEVOEGEN**, zodat de
+    mesh-telling constant blijft en T77's resourcetest dit ticket
+    automatisch bewaakt.
+- **Performancevoorwaarden:** mesh- en materiaaltelling mogen niet
+  meegroeien met het golfnummer (harde assertie).
+- **Acceptatiecriteria:**
+  - Na 25 gesimuleerde golven zijn `renderer.info.memory.geometries` en
+    de mesh-telling niet gegroeid t.o.v. golf 1 (± een vaste, kleine
+    marge voor eenmalig toegevoegd decor).
+  - `obstakels.length` blijft 52.
+  - `test-resources.mjs` blijft groen (dit is de bewaker van dit ticket).
+- **Testplan:** uitbreiding van `test-resources.mjs`' lange-run-simulatie
+  met een mesh-/materiaaltelling + obstakeltelling + volledige regressie.
+- **Rollback:** de mijlpaal-trigger uitzetten; decor blijft dan op zijn
+  beginstaat.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 86 — Het stadsarchief
+
+- **Type:** feature (meta-progressie)
+- **Verbetergebied:** 5 (Meta-progressie zonder powercreep)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** —
+- **Doel:** een reden om terug te komen die de balans niet kan raken:
+  cosmetische ontgrendelingen over meerdere runs heen.
+- **Huidige situatie:** de enige persistente staat is de highscore
+  (`amsterdamUndeadHighscore`) en de muisgevoeligheid
+  (`amsterdamUndeadGevoeligheid`). Runs staan verder volledig los van
+  elkaar.
+- **Gewenste situatie:** een derde `localStorage`-sleutel met behaalde
+  mijlpalen, en een klein keuzemenu op het startscherm voor de
+  ontgrendelde cosmetische varianten (kleurset, mondingsvlam-tint,
+  intro-melodie).
+- **Codegebieden:** nieuw lees/schrijf-paar naar het patroon van
+  `leesHighscore()`/`leesGevoeligheid()`, startscherm-UI, de plekken
+  waar een gekozen variant wordt toegepast.
+- **Buiten scope:** elke ontgrendeling met een mechanisch effect. Als
+  een ontgrendeling ook maar één spelregel raakt, hoort hij niet in dit
+  ticket (en niet in deze ronde, zie §9.2).
+- **Randgevallen:**
+  - **Vormvalidatie bij het lezen, veilige default bij twijfel** — exact
+    het patroon uit T74 (`leesHighscore()` valideert veld voor veld) en
+    T75 (`leesGevoeligheid()` klemt).
+  - **Onbekende sleutels in de opslag worden GENEGEERD, niet als corrupt
+    behandeld.** Anders wist een oudere versie de ontgrendelingen van een
+    nieuwere.
+  - **Ontgrendelingen zijn additief en onomkeerbaar** — geen pad dat iets
+    terugneemt. Dat scheelt een hele klasse randgevallen.
+  - `localStorage` kan ontbreken/geweigerd zijn: `try/catch` om elke
+    toegang, stille fallback (bestaand contract).
+- **Performancevoorwaarden:** opslag wordt alleen geschreven op
+  run-einde, nooit tijdens het spelen.
+- **Acceptatiecriteria:**
+  - Corrupte opslag (`'{}'`, `'[]'`, `'null'`, willekeurige tekst) geeft
+    een lege maar geldige staat, nooit een crash of "undefined" in beeld.
+  - Een opslag met een onbekende sleutel behoudt de bekende sleutels.
+  - Geen enkele ontgrendeling raakt een balansgetal (bron-assertie op de
+    verboden lijst uit §9.2).
+  - Volledige regressie blijft groen.
+- **Testplan:** nieuw testblok naar het model van `test-faalmodi.mjs`
+  (corrupte-opslag-varianten) + `test-muisgevoeligheid.mjs`
+  (klem-/defaultgedrag) + volledige regressie.
+- **Rollback:** het keuzemenu verbergen en de opslag niet lezen; de
+  varianten vallen terug op hun standaardwaarde.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 87 — De Vliering (verticaliteit met disjuncte footprint) (VOORZICHTIG)
+
+- **Type:** feature (ruimte)
+- **Verbetergebied:** 6 (Verticaliteit)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** — (doe 'm als laatste van de ronde)
+- **Doel:** verticaliteit toevoegen zonder de Y-invariant te breken waar
+  vijf systemen tegelijk op rusten.
+- **Huidige situatie:** `berekenKelderY(x, z)` is een **pure functie van
+  x en z**. Daarop rusten: `updateSpeler()` (speler-Y),
+  `updateOndoden()` (ondode-Y), `losBotsingenOp()` (volledig 2D),
+  `zoneVan(x, z)` (volledig 2D) en `tekenMinimap()` (2D met één
+  kelder-uitzondering). De kelder kón bestaan omdat zijn footprint
+  **disjunct** is: hij ligt op x/z waar geen begane grond begaanbaar is
+  (§7.11 noteert dat expliciet).
+- **Gewenste situatie:** een verhoogde ruimte volgens exact dat
+  precedent — bereikbaar via een ladder/luik, met uitzicht over een
+  aangrenzende zone, op x/z waar de begane grond niet begaanbaar is.
+  `berekenKelderY()` wordt uitgebreid/hernoemd tot `berekenVloerY(x, z)`
+  die daar een positieve hoogte teruggeeft. Alle vijf systemen blijven
+  ongewijzigd werken, inclusief ondode-navigatie: ondoden kunnen de
+  vliering gewoon op, zonder één regel in `updateOndoden()`.
+- **Codegebieden:** `berekenKelderY()` → `berekenVloerY()`, nieuwe
+  geometrie, een interactiepunt voor het luik, `tekenMinimap()` (zelfde
+  soort uitzondering als de kelder al heeft).
+- **Buiten scope:** een nieuwe zone-id (de vliering deelt zijn zone met
+  de ruimte ernaast, net als de kelder zone 2 deelt met het atelier);
+  wijziging aan `ZONE_GRAAF`/`NAV_VOLGENDE`; wijziging aan spawn-druk of
+  `ZONE_MAX_ACTIEF_BONUS`. **De vliering is ruimte, geen nieuwe zone.**
+- **Randgevallen:**
+  - **De footprint-eis is een TESTEIS, geen ontwerpsuggestie.** De
+    vliering-footprint mag op geen enkel punt samenvallen met begaanbare
+    begane grond. Bewijs met een rastertest over de hele kaart — het
+    precedent staat letterlijk in `test-kelder-trap.mjs`
+    ("berekenKelderY is exact 0 op ALLE 15327 bovengrondse
+    rasterpunten"). Zonder die test is dit ticket niet af.
+  - De speler mag nergens van de vliering af kunnen vallen in een
+    toestand waar `berekenVloerY()` iets anders zegt dan waar hij staat.
+  - De minimap moet niet plotseling twee overlappende zones tekenen.
+  - Een vliering die een gratis, veilige plek blijkt waar ondoden niet
+    komen, is een balanswijziging. Ze moeten er gewoon op kunnen.
+- **Performancevoorwaarden:** geen extra licht (budget 26 PointLights);
+  `obstakels` mag groeien met de vlieringmuren, maar dat aantal moet
+  expliciet in het ticket worden vastgelegd en getest.
+- **Acceptatiecriteria:**
+  - Rastertest: `berekenVloerY()` is op elk begaanbaar begane-grondpunt
+    nog steeds exact 0 (of de bestaande kelderwaarde) — de vliering
+    verandert daar niets.
+  - Een ondode bereikt de speler op de vliering (trajectory-trace,
+    patroon `test-waypoint-navigatie.mjs`).
+  - `test-kelder-trap.mjs` blijft ongewijzigd groen.
+  - Volledige regressie blijft groen.
+- **Testplan:** rastertest + trajectory-trace + `test-kelder-trap.mjs` +
+  volledige regressie.
+- **Rollback:** de vliering-tak uit `berekenVloerY()` halen en de
+  geometrie niet bouwen (één samenhangende diff).
+- **Sonnet solo:** nee — raakt de Y-invariant; doe dit met de rastertest
+  als eerste stap, niet als laatste.
+
+---
+
 ## Backlog — bevroren tickets (niet uitvoeren zonder expliciete opdracht)
 
 Op verzoek van de gebruiker: "het nieuwe wapen (ticket 47 en 48) hoef ik
@@ -4050,6 +4505,31 @@ en 39) blijft ter referentie staan — maar wordt voorlopig NIET
 geïmplementeerd. Als dit ooit weer actueel wordt: gewoon opnieuw oppakken
 zoals hieronder beschreven, er hangt niets anders van af (T47/T48 waren
 altijd al onafhankelijk van T42-46/49-56).
+
+### Ticket 88 (backlog) — Volledige verdiepingslaag (afgewezen bij v0.21)
+- **Status:** backlog — niet uitvoeren zonder expliciete opdracht
+- **Herkomst:** de zware variant van IDEEEN.md E1, afgewezen tijdens de
+  v0.21-planning ten gunste van T87 (De Vliering). Volledige analyse:
+  ARCHITECTURE_NOTES §9.8.
+- **Wat het zou zijn:** twee begaanbare vloeren boven dezelfde x/z —
+  een echte zolder bóven het atelier, met ondoden die tussen
+  verdiepingen navigeren.
+- **Waarom afgewezen (voorlopig):** `berekenKelderY(x, z)` is nu een
+  pure functie van x en z. Twee vloeren over dezelfde x/z maken y een
+  *relatie* in plaats van een functie, en dan moet ELK van deze vijf
+  systemen een verdiepingsbegrip krijgen: `updateSpeler()` (speler-Y),
+  `updateOndoden()` (ondode-Y), `losBotsingenOp()` (nu volledig 2D),
+  `zoneVan()` (nu volledig 2D) en `tekenMinimap()` (welke verdieping
+  teken je). Dat is geen ticket maar een architectuurwijziging met vijf
+  gelijktijdige risicopunten, in systemen die net in v0.20 zijn
+  opgeschoond.
+- **Wanneer dit wél zinnig wordt:** als er een concrete speelreden is die
+  T87's disjuncte vliering aantoonbaar niet dekt. Begin dan bij §9.8,
+  niet bij de geometrie.
+- **Wat T87 er alvast voor doet:** `berekenKelderY()` wordt daar
+  `berekenVloerY(x, z)`. Dat is precies de functie die hier een derde
+  parameter zou krijgen — de naamswijziging is dus geen cosmetiek maar
+  de voorbereiding.
 
 ### Ticket 47 (backlog) — Wapen W4: De Hagelketel (data, model, pellet-schot)
 - **Status:** backlog — niet uitvoeren zonder expliciete opdracht

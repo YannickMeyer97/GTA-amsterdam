@@ -1578,3 +1578,194 @@ staan op de huidige code.
     ticket dat een ander ticket half achterlaat; combineer ze niet in
     één diff, ook niet de kleine (T71+T72 lijken samen te horen, maar
     hebben verschillende testbewijzen en verschillende rollbacks).
+
+---
+
+## Sonnet-prompts per ticket — ronde 7 (v0.21)
+
+Zelfde werkwijze als ronde 1-6: één ticket per keer, eerst dit plan +
+het ticket in ROADMAP.md (sectie v0.21) + de relevante §9-secties van
+ARCHITECTURE_NOTES.md lezen, minimale wijziging, load-check + het
+testplan van het ticket, nooit committen zonder expliciete opdracht.
+
+**Afwijkend aan deze ronde:** v0.21 komt uit `IDEEEN.md` (een
+vooruitblik), niet uit een audit of een bugmelding. Het gevolg is een
+ronde die bijna volledig uit sfeer en wereld bestaat — en juist daarom
+één harde regel heeft die boven alles gaat:
+
+> **Geen enkel ticket in v0.21 mag een balansgetal wijzigen.**
+> Verboden: `golfBudget()`, `GOLF_BUDGET_*`, `ONDODE_THREAT_KOSTEN`,
+> `GOLF_MAX_ACTIEF`, `ONDODE_HP_TRAPPEN`, `AANVAL_PROFIELEN`, alle
+> `*_PRIJS`-constanten, `GELD_PER_HIT`/`GELD_PER_KILL`,
+> `POWERUP_DROP_KANS`, `SPELER_HP_MAX`, `schadePerTreffer`/
+> `WAPEN_SCHADE_MAX`.
+
+**Aanbevolen volgorde:** T80 → T84 → T81 → T82 → T83 → T86 → T85 → T87.
+T80 eerst omdat T83 zijn pan-helper gebruikt. T84 en T81 daarna als
+opwarmers (tekst en een geïsoleerd effect). T85 en T87 als laatste: die
+raken respectievelijk de resource-discipline uit v0.20 en de Y-invariant.
+
+### Ticket 80 — Richtinghoren: pan op wereldgeluiden
+- **Context:** `piep()`, `speelOndodeGrom()` (+ aanroep in
+  `updateOndoden()`), `speelPlankBreek()` (+ `beukBarricade()`),
+  `berekenSchadeWedgeHoek()`, `berekenBootHoornPanVolume()`. Spec:
+  §9.3-beslissing 70.
+- **Doel:** geluid met een wereldpositie ook links/rechts hoorbaar maken.
+- **Stappen:** trek één gedeelde `berekenRelatieveHoek(...)` +
+  `hoekNaarPan(...)` en laat de twee bestaande aanroepers daarop leunen;
+  geef `piep()` een optionele `pan`-parameter; geef de grom en de
+  plankbreuk hun bronpositie mee.
+- **Let op:** bij `pan === 0`/weggelaten mag er GEEN `StereoPannerNode`
+  worden aangemaakt — de keten blijft dan exact `osc → gain →
+  masterGainNode` (contract van `test-geluidsknop.mjs`). En: er zitten
+  TWEE verschillende negaties in de bestaande code, om twee
+  verschillende redenen (CSS rechtsom-positief vs. StereoPanner
+  rechts = +1). Vat die niet samen.
+- **Niet veranderen:** pan op speler-eigen geluiden (schot, herladen,
+  wisselen), UI-geluiden of globale gebeurtenissen; de handmatige
+  volume-op-afstand-aanpak.
+
+### Ticket 81 — Zeldzame lampuitval
+- **Context:** de lampflikker-loop in de gameLoop, `lampLichten`.
+  Spec: §9.4.1-beslissing 71.
+- **Doel:** eens in de zoveel golven knipt één lamp 0,3-0,5s uit.
+- **Stappen:** een VIERDE, onafhankelijke factor per lamp naast de
+  flikker-sinus, `lampDipFactor` en `stroomFactorVoorLamp`; na afloop
+  herstellen naar exact 1.
+- **Let op:** sluit de schaduwwerpende lamp (`(0, 2.58, 0)`) en de drie
+  kelderlampen (`l.stroomVloer !== undefined`) uit — dat is geen
+  cosmetiek maar de reden dat dit geen balanswijziging is. Blijft over:
+  5 van de 9 entries. Een blackout tijdens een Stroomuitval mag
+  `stroomFactor` niet terugzetten op 1.
+- **Niet veranderen:** de bestaande drie factoren; de
+  Stroomuitval-logica; de schaduwinstellingen.
+
+### Ticket 82 — Het geluid van Amsterdam
+- **Context:** `initGeluid()`, een nieuwe gethrottlede updatefunctie.
+  Spec: §9.4.2-beslissing 72.
+- **Doel:** een vijfde, permanente audiolaag (plafond 0,03) met zeldzame
+  stadsgeluiden.
+- **Stappen:** nieuwe gain-node onder `masterGainNode`; eigen
+  gebeurtenis-timer los van de Nevelklok-cyclus; gain-writes
+  gethrottled (patroon `MUZIEK_THROTTLE_INTERVAL`).
+- **Let op:** het bed mag NOOIT een tell maskeren. De ondode-grom staat
+  op 0,035-0,045 en is een gameplay-signaal (de Sluiper gromt niet —
+  stilte is zijn tell). Plafond dus ónder het gromvolume, en blijf uit
+  de gromband (120-340 Hz). Aansluiten op `masterGainNode`, nooit op
+  `audio.destination`.
+- **Niet veranderen:** de bestaande vier lagen; de Nevelklok-cyclus.
+
+### Ticket 83 — De Waterschouw
+- **Context:** nieuwe `schouwGroep` + updatefunctie naast
+  `updateBootPositie()`, `tekenMinimap()`. Spec: §9.5.1-beslissing 73.
+- **Doel:** een tweede boot die voorbijvaart en nooit stopt.
+- **Stappen:** eigen groep, eigen update, eigen hoorn (via T80's
+  pan-helper), eigen minimap-marker.
+- **Let op:** de hoofdeis is ONVERWARBAARHEID met de ontsnappingsboot —
+  andere hoorn dan 200→140 Hz/1,1s, een marker die GEEN `arc` is, en
+  nooit een interactiepunt. De schouw mag `bootGroep` niet aanraken
+  (`updateBootPositie()` schrijft die elke frame). En:
+  `test-boot-aankondiging.mjs` asserteert nu "precies 1 boot-marker
+  (arc)" — scherp die aan naar "de ONTSNAPPINGS-marker", verzwak of
+  verwijder 'm niet.
+- **Niet veranderen:** `bootGroep`, `updateBootPositie()`,
+  `ontsnappingsPunt`, de ontsnappingsflow.
+
+### Ticket 84 — Het pand krijgt een adres
+- **Context:** startscherm, `toonWinScherm()`, één decor-object.
+  Spec: §9.5.2-beslissing 74.
+- **Doel:** een verzonnen grachtnaam + huisnummer op beide schermen en
+  op een naambordje.
+- **Let op:** IP-regel uit CLAUDE.md — de naam moet VERZONNEN zijn, geen
+  bestaande Amsterdamse gracht met een echt huisnummer. Het naambordje
+  mag geen collision toevoegen (`obstakels` blijft 52).
+- **Niet veranderen:** `ZONE_NAMEN`/`ZONE_FLAVOUR`; gameplay van welke
+  aard dan ook.
+
+### Ticket 85 — Etalages: sporen van de run
+- **Context:** `startGolf()`/wave-complete als trigger, bestaande
+  decor-bouwfuncties, `mat()`/`matFamilie()`/`geoCache()`.
+  Spec: §9.6-beslissing 75.
+- **Doel:** decor dat meeverandert met wat er in de run gebeurd is.
+- **Let op:** dit is precies het patroon dat T69/T70 net hebben
+  opgeruimd. Materialen ALTIJD via `mat()`/`matFamilie()`, geometrie via
+  `geoCache()` — nooit een directe `new THREE.MeshStandardMaterial()`
+  per mijlpaal. Alleen op golfovergangen, nooit per frame. Geen
+  collision (`obstakels` blijft 52). Voorkeur: materiaal WISSELEN op een
+  bestaande mesh boven een mesh TOEVOEGEN, dan bewaakt `test-resources.mjs`
+  dit ticket automatisch.
+- **Niet veranderen:** `obstakels`; pathing; spawn-druk.
+
+### Ticket 86 — Het stadsarchief
+- **Context:** nieuw lees/schrijf-paar naar het model van
+  `leesHighscore()`/`leesGevoeligheid()`, startscherm-UI.
+  Spec: §9.7-beslissing 76.
+- **Doel:** cosmetische ontgrendelingen over meerdere runs heen.
+- **Let op:** UITSLUITEND cosmetisch. Raakt een ontgrendeling ook maar
+  één spelregel, dan hoort hij niet in dit ticket. Vormvalidatie bij het
+  lezen met een veilige default (patroon T74/T75); onbekende sleutels
+  NEGEREN in plaats van als corrupt behandelen (anders wist een oudere
+  versie de ontgrendelingen van een nieuwere); ontgrendelingen zijn
+  additief en onomkeerbaar.
+- **Niet veranderen:** de twee bestaande localStorage-sleutels; de
+  arcade-start (het menu is optioneel, geen verplichte stap).
+
+### Ticket 87 — De Vliering (VOORZICHTIG)
+- **Context:** `berekenKelderY()` → `berekenVloerY()`, nieuwe geometrie,
+  luik-interactiepunt, `tekenMinimap()`. Spec: §9.8-beslissing 77.
+- **Doel:** verticaliteit zonder de Y-invariant te breken.
+- **Stappen:** kies een footprint op x/z waar de begane grond NIET
+  begaanbaar is (kelder-precedent), schrijf EERST de rastertest, bouw
+  daarna pas de geometrie.
+- **Let op:** `berekenKelderY(x, z)` is een pure functie van x/z, en
+  vijf systemen leunen daarop (`updateSpeler`, `updateOndoden`,
+  `losBotsingenOp`, `zoneVan`, `tekenMinimap`). De vliering mag die
+  functie-eigenschap NIET breken — vandaar de disjuncte footprint. De
+  rastertest is geen formaliteit maar de enige vangrail; het precedent
+  staat in `test-kelder-trap.mjs` (15327 rasterpunten). Ondoden moeten
+  gewoon op de vliering kunnen komen: een veilige plek waar ze niet
+  komen, is een balanswijziging.
+- **Niet veranderen:** `ZONE_GRAAF`/`NAV_VOLGENDE`; geen nieuwe zone-id;
+  spawn-druk/`ZONE_MAX_ACTIEF_BONUS`. De vliering is ruimte, geen zone.
+
+### Extra waarschuwingen ronde 7 (v0.21)
+
+51. **Sfeer-tickets zijn balanswijzigingen in vermomming.** Dat is het
+    faalpatroon van deze hele ronde. Een lamp die uitvalt op de
+    verkeerde plek, een geluidslaag over een tell heen, een zolder waar
+    ondoden niet komen — alle drie voelen als "sfeer" en zijn alle drie
+    een moeilijkheidswijziging. Loop bij elk ticket expliciet de
+    verboden-lijst uit §9.2 na vóór je klaar zegt.
+52. **De schaduw-invariant blijft: precies één schaduwwerpend licht**
+    (§7.9), gemeten op `(0, 2.58, 0)`. T81 mag die lamp niet uitzetten,
+    T83/T87 mogen er geen tweede bij zetten. Controleer de telling ná
+    elk ticket dat licht of geometrie raakt.
+53. **Nieuwe audio moet ALTIJD op `masterGainNode`.** Fix 4's
+    geluidsknop-contract is dat er precies één node op
+    `audio.destination` hangt; `test-geluidsknop.mjs` asserteert dat op
+    bronniveau. Dit geldt voor T82 én voor de nieuwe hoorn in T83.
+54. **Voeg geen `StereoPannerNode` toe aan geluiden die geen bron in de
+    ruimte hebben.** Een gepande UI-piep of een gepand golfstart-signaal
+    is verwarrend, niet immersief. T80 noemt expliciet welke geluiden
+    wél in aanmerking komen; breid die lijst niet uit "omdat het kan".
+55. **T85 kan het lek uit T69/T70 opnieuw introduceren.** Decor dat
+    tijdens een run wordt bijgemaakt is runtime-allocatie. Gaat dat niet
+    via `mat()`/`matFamilie()`/`geoCache()`, dan lekt elke golfmijlpaal —
+    exact de bug die beslissing 63 dichtte. `test-resources.mjs` is hier
+    de bewaker; laat 'm meelopen.
+56. **`obstakels` staat op 52 en hoort daar te blijven in deze ronde.**
+    Alleen T87 mag dat aantal veranderen, en dan expliciet en getest.
+    Een naambordje (T84), een schouwboot (T83) of dichtgetimmerd decor
+    (T85) dat stiekem collision toevoegt, verandert pathing en dus
+    balans.
+57. **T87: schrijf de rastertest vóór de geometrie, niet erna.** Dit is
+    hetzelfde patroon als waarschuwing 42 (T77 vóór T69): de test moet
+    de footprint-eis afdwingen terwijl je 'm kiest, niet achteraf
+    bevestigen wat je toevallig gebouwd hebt. Kies je de footprint
+    eerst en test je later, dan is de kans groot dat je een overlap
+    ontdekt als de geometrie er al staat.
+58. **De ontsnappingsboot is een van de belangrijkste signalen in het
+    spel.** T83 zet er een tweede boot naast. Elke visuele of auditieve
+    gelijkenis kost een speler een run. Andere hoorn, andere marker,
+    nooit een interactiepunt — en test die scheiding expliciet, niet
+    "het ziet er anders uit".
