@@ -4121,7 +4121,10 @@ function initGeluid() {
   if (audio.state === 'suspended') audio.resume();
 }
 
-function piep(type, startHz, eindHz, duur, volume) {
+// Ticket 80: optionele pan (StereoPanner-conventie, rechts=+1). Bij
+// pan === 0 of weggelaten blijft de keten exact osc -> gain -> masterGainNode
+// (geen StereoPannerNode) — test-geluidsknop.mjs rekent op die kale keten.
+function piep(type, startHz, eindHz, duur, volume, pan) {
   if (!audio) return;
   const osc = audio.createOscillator();
   const gain = audio.createGain();
@@ -4130,7 +4133,13 @@ function piep(type, startHz, eindHz, duur, volume) {
   osc.frequency.exponentialRampToValueAtTime(eindHz, audio.currentTime + duur);
   gain.gain.setValueAtTime(volume, audio.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + duur);
-  osc.connect(gain).connect(masterGainNode);
+  if (pan) {
+    const panner = audio.createStereoPanner();
+    panner.pan.value = pan;
+    osc.connect(gain).connect(panner).connect(masterGainNode);
+  } else {
+    osc.connect(gain).connect(masterGainNode);
+  }
   osc.start();
   osc.stop(audio.currentTime + duur);
 }
@@ -4164,7 +4173,12 @@ let raakTikTeller = 0, kopTikTeller = 0, killKnakTeller = 0;
 function speelRaakTik()  { raakTikTeller++; const p = pitchVariatie(); piep('square', 320 * p, 90 * p, 0.07, 0.08); }
 function speelKopTik()   { kopTikTeller++; const p = pitchVariatie(); piep('square', 460 * p, 140 * p, 0.08, 0.09); }
 function speelKillKnak() { killKnakTeller++; const p = pitchVariatie(); piep('sawtooth', 200 * p, 40 * p, 0.14, 0.12); }
-function speelPlankBreek() { piep('sawtooth', 180, 60, 0.09, 0.09); }
+// Ticket 80: optionele bronpositie voor richtinghoren; zonder argumenten
+// (bv. toekomstige aanroepers) blijft dit gewoon mono, net als voorheen.
+function speelPlankBreek(bronX, bronZ) {
+  const pan = bronX === undefined ? 0 : hoekNaarPan(berekenRelatieveHoek(bronX, bronZ, speler.positie.x, speler.positie.z, speler.yaw));
+  piep('sawtooth', 180, 60, 0.09, 0.09, pan);
+}
 function speelExplosie()  { piep('sawtooth', 90, 30, 0.35, 0.16); setTimeout(() => piep('square', 60, 25, 0.25, 0.08), 40); }
 function speelSpelerAu()  { piep('sawtooth', 160, 60, 0.18, 0.11); }
 // Ticket 31 (Aanval A2): hoorbare tells voor de aanvals-state-machine (T30).
@@ -4348,12 +4362,15 @@ const ONDODE_GROM_GLOBALE_CAP   = 0.6;    // s — minimale tijd tussen twee gro
 let laatsteGromKlok = -999;
 let ondodeGromTeller = 0;   // debug/test: telt elke daadwerkelijk gespeelde grom
 function nieuweGromTimer() { return ONDODE_GROM_MIN_INTERVAL + Math.random() * (ONDODE_GROM_MAX_INTERVAL - ONDODE_GROM_MIN_INTERVAL); }
-function speelOndodeGrom(type) {
+// Ticket 80: optionele bronpositie voor richtinghoren; zonder argumenten
+// (bv. bestaande testaanroepen) blijft dit gewoon mono, net als voorheen.
+function speelOndodeGrom(type, bronX, bronZ) {
   ondodeGromTeller++;
-  if (type === 'sjouwer') piep('sawtooth', 55, 75, 0.4, 0.045);
-  else if (type === 'loper') piep('sawtooth', 260, 340, 0.12, 0.035);
-  else if (type === 'brander') piep('sawtooth', 140, 100, 0.28, 0.045);
-  else piep('sawtooth', 120, 160, 0.22, 0.04);   // normaal
+  const pan = bronX === undefined ? 0 : hoekNaarPan(berekenRelatieveHoek(bronX, bronZ, speler.positie.x, speler.positie.z, speler.yaw));
+  if (type === 'sjouwer') piep('sawtooth', 55, 75, 0.4, 0.045, pan);
+  else if (type === 'loper') piep('sawtooth', 260, 340, 0.12, 0.035, pan);
+  else if (type === 'brander') piep('sawtooth', 140, 100, 0.28, 0.045, pan);
+  else piep('sawtooth', 120, 160, 0.22, 0.04, pan);   // normaal
 }
 
 // Ticket 20 (Z3): ledematen-animatie. Amplitudes in radialen, puur
@@ -5549,6 +5566,25 @@ function kortsteHoekVerschil(a, b) {
   return Math.atan2(Math.sin(a - b), Math.cos(a - b));
 }
 
+// Ticket 80 (Richtinghoren): gedeelde hoekbasis voor alles met een echte
+// wereldpositie — voorheen stond deze exacte berekening apart in
+// berekenSchadeWedgeHoek() (T68) EN berekenBootHoornPanVolume()
+// (feedbackronde). relatieveHoek is rekenkundig linksom-georiënteerd
+// (atan2); wat een aanroeper daarmee doet (CSS rotate() is rechtsom-
+// positief, StereoPanner.pan is rechts=+1) verschilt PER conventie — dat
+// is precies waarom hoekNaarPan() hieronder een aparte functie is, en niet
+// gewoon "overal een min". Zelfde bugklasse als Fix 1 (§7.8.2.2), waar de
+// schadepijl naar de speler toe wees i.p.v. ervandaan.
+function berekenRelatieveHoek(bronX, bronZ, spelerX, spelerZ, spelerYaw) {
+  const dx = bronX - spelerX, dz = bronZ - spelerZ;
+  if (dx === 0 && dz === 0) return 0;   // bron exact op spelerpositie: geen zinvolle richting (zelfde guard als toonSchadeRichting())
+  return kortsteHoekVerschil(Math.atan2(-dx, -dz), spelerYaw);
+}
+// StereoPanner-conventie (rechts = +1), zoals speelBootHoornGericht() al deed.
+function hoekNaarPan(relatieveHoek) {
+  return Math.max(-1, Math.min(1, -Math.sin(relatieveHoek)));
+}
+
 // Jagen op de speler + aanvallen als ze dichtbij genoeg zijn. Hergebruikt
 // losBotsingenOp() uit STAP 3 zodat ondoden ook niet door muren lopen.
 // Ticket 30 (Aanval A1): contactschade vervangen door een state machine
@@ -5754,7 +5790,7 @@ function updateOndoden(dt) {
         ondode.gromTimer = nieuweGromTimer();
         const afstandSpeler = Math.hypot(ondode.groep.position.x - speler.positie.x, ondode.groep.position.z - speler.positie.z);
         if (afstandSpeler < ONDODE_GROM_BEREIK && klok - laatsteGromKlok >= ONDODE_GROM_GLOBALE_CAP) {
-          speelOndodeGrom(ondode.type);
+          speelOndodeGrom(ondode.type, positie.x, positie.z);
           laatsteGromKlok = klok;
         }
       }
@@ -6035,8 +6071,7 @@ const SCHADE_WEDGE_DUUR = 0.5;   // s: hoelang zichtbaar, daarna lineair uitgefa
 // de NEGATIE hieronder. Zonder die negatie zou een bron aan de rechterkant
 // van de speler de wedge links in beeld tonen (en andersom).
 function berekenSchadeWedgeHoek(bronX, bronZ, spelerX, spelerZ, spelerYaw) {
-  const dx = bronX - spelerX, dz = bronZ - spelerZ;
-  return kortsteHoekVerschil(Math.atan2(-dx, -dz), spelerYaw);
+  return berekenRelatieveHoek(bronX, bronZ, spelerX, spelerZ, spelerYaw);
 }
 function toonSchadeRichting(bronX, bronZ) {
   const dx = bronX - speler.positie.x, dz = bronZ - speler.positie.z;
@@ -6585,7 +6620,7 @@ function beukBarricade(venster) {
   venster.planken--;
   const mesh = venster.plankMeshes[venster.planken];
   if (mesh) wereld.remove(mesh);
-  speelPlankBreek();
+  speelPlankBreek(venster.x, venster.z);
   if (wasVol) interactiePunten.push(venster.interactiePunt);
 }
 
@@ -7410,8 +7445,10 @@ function berekenBootHoornPanVolume(dx, dz, spelerYaw) {
   const afstand = Math.hypot(dx, dz);
   const fractieDichtbij = 1 - Math.min(1, afstand / BOOT_HOORN_AFSTAND_MAX);
   const volume = BOOT_HOORN_VOLUME_VER + (BOOT_HOORN_VOLUME_DICHTBIJ - BOOT_HOORN_VOLUME_VER) * fractieDichtbij;
-  const relatieveHoek = kortsteHoekVerschil(Math.atan2(-dx, -dz), spelerYaw);
-  const pan = Math.max(-1, Math.min(1, -Math.sin(relatieveHoek)));
+  // dx/dz zijn hier al deltas (bron t.o.v. speler) — spelerX/spelerZ op 0
+  // laten berekenRelatieveHoek() exact dezelfde dx/dz teruggeven.
+  const relatieveHoek = berekenRelatieveHoek(dx, dz, 0, 0, spelerYaw);
+  const pan = hoekNaarPan(relatieveHoek);
   return { pan, volume, afstand };
 }
 function speelBootHoornGericht() {
@@ -8190,6 +8227,8 @@ window.AmsterdamUndeadDebug = {
   kortsteHoekVerschil,
   get schadeWedgeVolgende() { return schadeWedgeVolgende; },
   set schadeWedgeVolgende(v) { schadeWedgeVolgende = v; },
+  // Ticket 80: richtinghoren
+  berekenRelatieveHoek, hoekNaarPan,
 };
 clearTimeout(window.__cdnFoutTimer);   // Ticket 74: laden is gelukt, de faalmodus-timer is niet meer nodig
 </script>
