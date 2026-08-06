@@ -1913,6 +1913,17 @@ let kozijnSteeg, glasSteeg;
 // Elk licht wordt geregistreerd zodat de game-loop het zacht kan laten
 // flikkeren (kaars-/olielamp-sfeer).
 const lampLichten = [];
+// Ticket 81: zeldzame lampuitval — een VIERDE, onafhankelijke factor op
+// lampLichten-intensiteit (naast de flikker-sinus, lampDipFactor en
+// stroomFactorVoorLamp hieronder in de gameLoop), per lamp een eigen
+// willekeurige timer (zie de flikkerloop). Uitgesloten: de schaduwwerpende
+// lamp (l.licht.castShadow) en de drie kelder-kamerlampen (l.stroomVloer
+// !== undefined) — zie ARCHITECTURE_NOTES.md §9.4.1.
+const LAMP_BLACKOUT_MIN_INTERVAL = 45;   // s
+const LAMP_BLACKOUT_MAX_INTERVAL = 90;   // s
+const LAMP_BLACKOUT_DUUR_MIN = 0.3;      // s
+const LAMP_BLACKOUT_DUUR_MAX = 0.5;      // s
+function nieuweLampBlackoutTimer() { return LAMP_BLACKOUT_MIN_INTERVAL + Math.random() * (LAMP_BLACKOUT_MAX_INTERVAL - LAMP_BLACKOUT_MIN_INTERVAL); }
 // Ticket 46-fix: stabiele (niet-flikkerende) binnenlichten die WEL met
 // stroomFactor mee moeten dimmen tijdens een Stroomuitval, maar geen deel
 // uitmaken van het flikker-/lampDipFactor-systeem hierboven (bv. de
@@ -7837,7 +7848,30 @@ function gameLoop(nu) {
     const stroomFactorVoorLamp = l.stroomVloer === undefined
       ? stroomFactor
       : l.stroomVloer + (1 - l.stroomVloer) * stroomFactor;
-    l.licht.intensity = l.basis * Math.max(l.minFactor, factor) * lampDipFactor * stroomFactorVoorLamp;
+    // Ticket 81: vierde, onafhankelijke factor — zeldzame lampuitval. Nooit
+    // op de schaduwwerpende lamp (herstructureert alle schaduwen in beeld)
+    // of de drie kelder-kamerlampen (0.4s volledige blindheid in een ruimte
+    // die juist veilig hoort te zijn) — zie ARCHITECTURE_NOTES.md §9.4.1.
+    // Raakt stroomFactor zelf nergens aan, dus een blackout tijdens een
+    // actieve Stroomuitval laat die met rust (randgeval uit het ticket).
+    let blackoutFactor = 1;
+    if (!l.licht.castShadow && l.stroomVloer === undefined) {
+      if (l.lampBlackoutTimer === undefined) l.lampBlackoutTimer = nieuweLampBlackoutTimer();
+      if (l.lampBlackoutDuur > 0) {
+        l.lampBlackoutDuur -= dt;
+        blackoutFactor = l.lampBlackoutDuur > 0 ? 0 : 1;
+        if (l.lampBlackoutDuur <= 0) {
+          l.lampBlackoutDuur = 0;
+          l.lampBlackoutTimer = nieuweLampBlackoutTimer();   // volgende, weer willekeurige uitval plannen
+        }
+      } else {
+        l.lampBlackoutTimer -= dt;
+        if (l.lampBlackoutTimer <= 0) {
+          l.lampBlackoutDuur = LAMP_BLACKOUT_DUUR_MIN + Math.random() * (LAMP_BLACKOUT_DUUR_MAX - LAMP_BLACKOUT_DUUR_MIN);
+        }
+      }
+    }
+    l.licht.intensity = l.basis * Math.max(l.minFactor, factor) * lampDipFactor * stroomFactorVoorLamp * blackoutFactor;
     l.bolMateriaal.emissiveIntensity = l.bolEmissiefBasis * stroomFactor;
   }
   // Ticket 46-fix: de ateliers-dakramen ("stabiel hoofdlicht", geen
@@ -8262,6 +8296,9 @@ window.AmsterdamUndeadDebug = {
   berekenRelatieveHoek, hoekNaarPan,
   // Ticket 84: het pand krijgt een adres
   PAND_ADRES, bouwNaambordje,
+  // Ticket 81: zeldzame lampuitval
+  LAMP_BLACKOUT_MIN_INTERVAL, LAMP_BLACKOUT_MAX_INTERVAL,
+  LAMP_BLACKOUT_DUUR_MIN, LAMP_BLACKOUT_DUUR_MAX, nieuweLampBlackoutTimer,
 };
 clearTimeout(window.__cdnFoutTimer);   // Ticket 74: laden is gelukt, de faalmodus-timer is niet meer nodig
 </script>
