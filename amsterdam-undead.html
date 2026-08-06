@@ -4079,6 +4079,97 @@ function berekenMuziekGain(aankondigingActief, aantalOndoden) {
   if (aankondigingActief) return MUZIEK_VOLUME_AANKONDIGING;
   return aantalOndoden > 0 ? MUZIEK_VOLUME_PLAFOND : MUZIEK_VOLUME_RUST;
 }
+
+// Ticket 82 (I5): "het geluid van Amsterdam" — een vijfde, permanente laag
+// naast dreiging/muziek/nevelklok: een gedeelde stadGainNode als vaste
+// "HOE LUID"-ceiling (STADSBED_VOLUME_PLAFOND), waar zeldzame, willekeurig
+// getimede "WANNEER"-gebeurtenissen (verre scheepshoorn, verre stadsklok)
+// doorheen spelen — zelfde twee-gainNodes-in-serie-truc als nevelklokGainNode
+// (WANNEER) -> muziekGainNode (HOE LUID) hierboven. stadGainNode connect op
+// masterGainNode, nooit rechtstreeks op audio.destination (Fix 4-contract,
+// test-geluidsknop.mjs).
+let stadGainNode = null;
+let stadGainDoel = 0;
+let stadThrottleTimer = 0;
+let stadGainSchrijfTeller = 0;   // debug/test: telt elke echte gain-write
+const STAD_THROTTLE_INTERVAL = 2;      // s — het plafond zelf verandert nooit, dus een ruime interval volstaat
+const STAD_GLIJTIJD = 1.5;             // s (setTargetAtTime-tijdconstante)
+// Randgeval (ARCHITECTURE_NOTES §9.4.2): de ondode-grom (gameplay-tell, de
+// Sluiper gromt NIET) staat op 0.035-0.045 — dit plafond moet daar
+// AANTOONBAAR onder blijven, anders maskeert het stadsbed een tell.
+const STADSBED_VOLUME_PLAFOND = 0.03;
+function schrijfStadsbedGain(doel) {
+  stadGainDoel = doel;
+  stadGainSchrijfTeller++;
+  if (stadGainNode) stadGainNode.gain.setTargetAtTime(doel, audio.currentTime, STAD_GLIJTIJD);
+}
+// Zelfde piep()-boilerplate, maar bewust een eigen kleine kopie i.p.v. piep()
+// een bus-parameter te geven: piep() se regex-bewaakte contract
+// (test-geluidsknop.mjs: "connect(masterGainNode)", precies 1
+// "connect(audio.destination)" in de hele bron) blijft zo ongewijzigd en
+// onbewezen-veilig.
+function stadPiep(type, startHz, eindHz, duur, volume) {
+  if (!audio || !stadGainNode) return;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(startHz, audio.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(eindHz, audio.currentTime + duur);
+  gain.gain.setValueAtTime(volume, audio.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + duur);
+  osc.connect(gain).connect(stadGainNode);
+  osc.start();
+  osc.stop(audio.currentTime + duur);
+}
+// Verre scheepshoorn: bewust een ANDER register/timbre/duur dan de echte
+// ontsnappingsboot-hoorn (speelBootHoorn/speelBootHoornGericht: sine,
+// 200->140Hz, 1.1s, tot 0.11) — deze mag nooit met dat kritieke signaal
+// verward worden. Laag, traag, gedempt (triangle, ver onder de gromband
+// 120-340Hz), en via stadGainNode sowieso al ruim onder het gromvolume.
+let stadHoornTeller = 0;   // debug/test
+function speelVerreScheepshoorn() {
+  stadHoornTeller++;
+  stadPiep('triangle', 92, 68, 1.6, 0.8);
+}
+// Verre stadsklok: eigen, hogere/ijlere klank dan de bestaande
+// speelGrachtklok() (440/660Hz) — beide boven de gromband, dus geen van
+// beide kan met een grom verward worden.
+let stadKlokTeller = 0;   // debug/test
+function speelVerreStadsklok() {
+  stadKlokTeller++;
+  stadPiep('sine', 480, 450, 1.3, 0.6);
+  setTimeout(() => stadPiep('sine', 640, 600, 1.1, 0.4), 380);
+}
+const STAD_HOORN_MIN_INTERVAL = 50;    // s
+const STAD_HOORN_MAX_INTERVAL = 110;   // s
+const STAD_KLOK_MIN_INTERVAL = 90;     // s
+const STAD_KLOK_MAX_INTERVAL = 180;    // s
+function nieuweStadHoornTimer() { return STAD_HOORN_MIN_INTERVAL + Math.random() * (STAD_HOORN_MAX_INTERVAL - STAD_HOORN_MIN_INTERVAL); }
+function nieuweStadKlokTimer() { return STAD_KLOK_MIN_INTERVAL + Math.random() * (STAD_KLOK_MAX_INTERVAL - STAD_KLOK_MIN_INTERVAL); }
+let stadHoornTimer = nieuweStadHoornTimer();
+let stadKlokTimer = nieuweStadKlokTimer();
+// Aangeroepen 1x per frame vanuit de spelActief-tak van de gameLoop (zelfde
+// plek als updateAchtergrondmuziek). De twee gebeurtenis-timers tellen ELKE
+// frame af (losstaand van de Nevelklok-cyclus, anders vallen ze samen en
+// klinkt het als één geluid) — alleen de stadGainNode-schrijf zelf is
+// gethrottled, zelfde reden als bij de dreigingsdrone/muziek.
+function updateStadsGeluid(dt) {
+  stadHoornTimer -= dt;
+  if (stadHoornTimer <= 0) {
+    stadHoornTimer = nieuweStadHoornTimer();
+    speelVerreScheepshoorn();
+  }
+  stadKlokTimer -= dt;
+  if (stadKlokTimer <= 0) {
+    stadKlokTimer = nieuweStadKlokTimer();
+    speelVerreStadsklok();
+  }
+  stadThrottleTimer -= dt;
+  if (stadThrottleTimer > 0) return;
+  stadThrottleTimer = STAD_THROTTLE_INTERVAL;
+  schrijfStadsbedGain(STADSBED_VOLUME_PLAFOND);
+}
+
 // Fix 4 (feedback: "ik kan nergens het geluid uitzetten"): één gedeelde
 // GainNode tussen ELKE geluidsbron en audio.destination — alles (drone,
 // muziek, piep()-stings, de gerichte boot-hoorn) connect voortaan hierop
@@ -4150,6 +4241,12 @@ function initGeluid() {
     muziekOsc1.start();
     muziekOsc2.start();
     muziekOsc3.start();
+
+    // Ticket 82: het stadsbed (vijfde laag) — permanent, altijd op
+    // masterGainNode, nooit rechtstreeks op audio.destination.
+    stadGainNode = audio.createGain();
+    stadGainNode.gain.value = 0;
+    stadGainNode.connect(masterGainNode);
   }
   if (audio.state === 'suspended') audio.resume();
 }
@@ -7769,6 +7866,7 @@ function gameLoop(nu) {
     updateVluchtOnderdelenPuls(dt);   // Ticket 56: subtiele puls op nog niet opgeraapte onderdelen
     updateDreigingsAudio(dt);   // Ticket 49: zachte dreigingsdrone, gethrottled
     updateAchtergrondmuziek(dt);   // Ticket 66: permanent akkoordbed, gethrottled
+    updateStadsGeluid(dt);   // Ticket 82: het stadsbed, gethrottled
     updateMinimap(dt);   // Ticket 67: minimap-canvas, gethrottled
 
     // Ticket 50 (Sfeer P2): zone-naambanners + HUD-zonelabel. ALLEEN bij een
@@ -8281,6 +8379,24 @@ window.AmsterdamUndeadDebug = {
   set nevelklokTimer(v) { nevelklokTimer = v; },
   get nevelklokTeller() { return nevelklokTeller; },
   toonGolfBanner,   // pre-existing gap, nu nodig voor de Ticket 66-aankondigingstest
+  // Ticket 82: het stadsbed (vijfde permanente audiolaag)
+  updateStadsGeluid, schrijfStadsbedGain, stadPiep,
+  speelVerreScheepshoorn, speelVerreStadsklok,
+  STADSBED_VOLUME_PLAFOND, STAD_THROTTLE_INTERVAL, STAD_GLIJTIJD,
+  STAD_HOORN_MIN_INTERVAL, STAD_HOORN_MAX_INTERVAL,
+  STAD_KLOK_MIN_INTERVAL, STAD_KLOK_MAX_INTERVAL,
+  nieuweStadHoornTimer, nieuweStadKlokTimer,
+  get stadGainNode() { return stadGainNode; },
+  get stadGainDoel() { return stadGainDoel; },
+  get stadGainSchrijfTeller() { return stadGainSchrijfTeller; },
+  get stadThrottleTimer() { return stadThrottleTimer; },
+  set stadThrottleTimer(v) { stadThrottleTimer = v; },
+  get stadHoornTimer() { return stadHoornTimer; },
+  set stadHoornTimer(v) { stadHoornTimer = v; },
+  get stadKlokTimer() { return stadKlokTimer; },
+  set stadKlokTimer(v) { stadKlokTimer = v; },
+  get stadHoornTeller() { return stadHoornTeller; },
+  get stadKlokTeller() { return stadKlokTeller; },
   // Ticket 67: minimap
   minimapUI, MINIMAP_ZONES, MINIMAP_CANVAS_GROOTTE, MINIMAP_PADDING, MINIMAP_ONDODE_RADIUS,
   minimapSchaal, minimapLokaal, tekenMinimap, updateMinimap, MINIMAP_TEKEN_INTERVAL,

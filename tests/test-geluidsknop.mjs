@@ -1,12 +1,12 @@
 // Fix 4 (feedback: "ik kan nu nergens het geluid uitzetten") — een
 // geluidsknop rechtsboven in het start-/pauzescherm (dezelfde #startscherm-
 // overlay, zie de pointerlockchange-listener). Bewaakt: (1) alle geluid
-// loopt door masterGainNode (bron-check op de vier bronnen: de dreigingsdrone,
-// het T66-akkoordbed, piep()-stings en de gerichte boot-hoorn), (2) klikken
-// toggelt masterGainNode.gain.value en het knop-icoon, (3) muten vóórdat
-// initGeluid() ooit gedraaid heeft, wordt correct meegenomen zodra dat
-// alsnog gebeurt, (4) een klik op de knop start/hervat het spel NIET
-// (stopPropagation).
+// loopt door masterGainNode (bron-check op de vijf bronnen: de dreigingsdrone,
+// het T66-akkoordbed, piep()-stings, de gerichte boot-hoorn en het T82-
+// stadsbed), (2) klikken toggelt masterGainNode.gain.value en het
+// knop-icoon, (3) muten vóórdat initGeluid() ooit gedraaid heeft, wordt
+// correct meegenomen zodra dat alsnog gebeurt, (4) een klik op de knop
+// start/hervat het spel NIET (stopPropagation).
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
@@ -26,10 +26,11 @@ const bronTest = await page.evaluate(() => {
     hoornMasterGain: /connect\(masterGainNode\)/.test(hoornBron),
     initHeeftMasterGain: /masterGainNode = audio\.createGain\(\)/.test(initBron),
     initMasterGainOpDestination: /masterGainNode\.connect\(audio\.destination\)/.test(initBron),
-    // dreigingsGainNode/muziekGainNode connecten allebei op masterGainNode
-    // i.p.v. audio.destination — geteld i.p.v. index-gematcht, want beide
-    // regels staan in dezelfde initGeluid()-bron.
-    dreigingsEnMuziekOpMasterGain: (initBron.match(/GainNode\.connect\(masterGainNode\)/g) || []).length === 2,
+    // dreigingsGainNode/muziekGainNode/stadGainNode (T82) connecten alle
+    // drie op masterGainNode i.p.v. audio.destination — geteld i.p.v.
+    // index-gematcht, want alle drie de regels staan in dezelfde
+    // initGeluid()-bron.
+    dreigingsMuziekEnStadOpMasterGain: (initBron.match(/GainNode\.connect\(masterGainNode\)/g) || []).length === 3,
     initGeenEnkeleDirecteDestinationBehalveMasterGainZelf:
       (initBron.match(/connect\(audio\.destination\)/g) || []).length === 1,
   };
@@ -40,7 +41,7 @@ check('speelBootHoornGericht() connect niet meer rechtstreeks op audio.destinati
 check('speelBootHoornGericht() connect op masterGainNode', bronTest.hoornMasterGain, bronTest);
 check('initGeluid() maakt masterGainNode aan', bronTest.initHeeftMasterGain, bronTest);
 check('masterGainNode is zelf de enige node die op audio.destination connect', bronTest.initMasterGainOpDestination, bronTest);
-check('dreigingsGainNode EN muziekGainNode connecten allebei op masterGainNode', bronTest.dreigingsEnMuziekOpMasterGain, bronTest);
+check('dreigingsGainNode, muziekGainNode EN stadGainNode (T82) connecten alle drie op masterGainNode', bronTest.dreigingsMuziekEnStadOpMasterGain, bronTest);
 check('initGeluid() heeft precies 1 connect(audio.destination) in de hele bron (alleen masterGainNode zelf)',
   bronTest.initGeenEnkeleDirecteDestinationBehalveMasterGainZelf, bronTest);
 
