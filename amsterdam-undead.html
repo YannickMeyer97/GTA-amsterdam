@@ -1572,14 +1572,16 @@ const BOOT_DOK_X = VLONDER_X_OOST + 1.3;
 const BOOT_VERTREK_X = BOOT_DOK_X + 3.5;
 const WATER_BREEDTE = 8;   // was 3 — verbreed zodat de boot zichtbaar vaarwater heeft richting BOOT_VERTREK_X
 // Ticket 83: De Waterschouw — een TWEEDE boot die permanent, onafhankelijk
-// van de ontsnapping, heen en weer patrouilleert. Duidelijk verder de
-// gracht in (eigen Z, ruim voorbij BOOT_VERTREK_X in de watermassa) zodat
-// hij nooit op dezelfde plek als bootGroep verschijnt — zie
-// ARCHITECTURE_NOTES.md §9.5.1 voor de volledige "onverwarbaar met de
-// ontsnappingsboot"-motivatie.
-const SCHOUW_X_WEST = VLONDER_X_OOST + 2.5;
+// van de ontsnapping, heen en weer patrouilleert. X-bereik ligt volledig
+// VOORBIJ BOOT_VERTREK_X (bootGroep komt daar nooit) en Z zit een stuk uit
+// het midden — maar wel binnen de watervlak-grenzen: waterMesh is maar
+// (GRACHTGANG_HALF*2 + 2) = 4m diep in Z, dus ±2 rond BIJKEUKEN_CZ. Een
+// eerdere versie zette SCHOUW_Z op +3.4 (buiten dat vlak, dus onzichtbaar/
+// zwevend in het niets) — die bug is hier gefixt. Zie ARCHITECTURE_NOTES.md
+// §9.5.1 voor de volledige "onverwarbaar met de ontsnappingsboot"-motivatie.
+const SCHOUW_X_WEST = BOOT_VERTREK_X + 1.0;
 const SCHOUW_X_OOST = VLONDER_X_OOST + WATER_BREEDTE - 0.4;
-const SCHOUW_Z = BIJKEUKEN_CZ + 3.4;
+const SCHOUW_Z = BIJKEUKEN_CZ + 1.2;
 const SCHOUW_CYCLUS = 55;   // s — volledige heen-en-terugvaart, puur cosmetisch (op `nu`, loopt door tijdens pauze)
 let vlonderMesh, waterMesh, bootGroep, schouwGroep, grachtLantaarnLicht;   // toegewezen in het geometrie-blok hieronder, debug/test-referenties
 
