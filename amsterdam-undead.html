@@ -1571,7 +1571,17 @@ const GRACHTGANG_DREMPEL = new THREE.Vector3(GRACHTGANG_X_WEST, 0, BIJKEUKEN_CZ)
 const BOOT_DOK_X = VLONDER_X_OOST + 1.3;
 const BOOT_VERTREK_X = BOOT_DOK_X + 3.5;
 const WATER_BREEDTE = 8;   // was 3 — verbreed zodat de boot zichtbaar vaarwater heeft richting BOOT_VERTREK_X
-let vlonderMesh, waterMesh, bootGroep, grachtLantaarnLicht;   // toegewezen in het geometrie-blok hieronder, debug/test-referenties
+// Ticket 83: De Waterschouw — een TWEEDE boot die permanent, onafhankelijk
+// van de ontsnapping, heen en weer patrouilleert. Duidelijk verder de
+// gracht in (eigen Z, ruim voorbij BOOT_VERTREK_X in de watermassa) zodat
+// hij nooit op dezelfde plek als bootGroep verschijnt — zie
+// ARCHITECTURE_NOTES.md §9.5.1 voor de volledige "onverwarbaar met de
+// ontsnappingsboot"-motivatie.
+const SCHOUW_X_WEST = VLONDER_X_OOST + 2.5;
+const SCHOUW_X_OOST = VLONDER_X_OOST + WATER_BREEDTE - 0.4;
+const SCHOUW_Z = BIJKEUKEN_CZ + 3.4;
+const SCHOUW_CYCLUS = 55;   // s — volledige heen-en-terugvaart, puur cosmetisch (op `nu`, loopt door tijdens pauze)
+let vlonderMesh, waterMesh, bootGroep, schouwGroep, grachtLantaarnLicht;   // toegewezen in het geometrie-blok hieronder, debug/test-referenties
 
 /* ================================================================
    ZONE E — DE BIJKEUKEN + KELDERHALS (Ticket 24, map-lus M1): geometrie-
@@ -1754,6 +1764,29 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
   bootGroep.add(bootLicht);
   buitenLichten.push({ licht: bootLicht, basis: 9, bolMateriaal: bootLichtBol.material, bolBasis: bootLichtBolBasis });
   wereld.add(bootGroep);
+
+  // Ticket 83: De Waterschouw — bewust ANDERE, koelere kleur (grijsgroen
+  // i.p.v. het warme bruin van de ontsnappingsboot) en een kleiner, simpeler
+  // silhouet (romp + kajuit, geen boeg/dek/lichtpaal), zodat 'm ook op het
+  // eerste gezicht niet met bootGroep te verwarren is. GEEN PointLight
+  // (performancevoorwaarde uit het ticket, budget blijft op 26) — het
+  // navigatielichtje is emissive-only, zelfde patroon als de ember-gloed op
+  // de wapens (§ "ember-licht verwijderd, alleen emissive materiaal").
+  schouwGroep = new THREE.Group();
+  schouwGroep.position.set(SCHOUW_X_WEST, 0, SCHOUW_Z);
+  const schouwRomp = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 1.9, 10), mat(0x3a4642, 0.75, 0.1));
+  schouwRomp.rotation.z = Math.PI / 2;
+  schouwRomp.position.y = 0.05;
+  schouwRomp.scale.set(1, 1, 0.65);
+  schouwGroep.add(schouwRomp);
+  const schouwKajuit = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.5), mat(0x2c3532, 0.8, 0.05));
+  schouwKajuit.position.set(-0.1, 0.45, 0);
+  schouwGroep.add(schouwKajuit);
+  const schouwNavigatieLicht = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8),
+    new THREE.MeshStandardMaterial({ color: 0xd8f0e0, emissive: 0x7ad8a0, emissiveIntensity: 1.4 }));
+  schouwNavigatieLicht.position.set(0.9, 0.35, 0);
+  schouwGroep.add(schouwNavigatieLicht);
+  wereld.add(schouwGroep);
 
   // Lantaarnpaal: bouwLantaarn() (regel ~1006) is LOKAAL gescoped bij de
   // binnenplaats-geometrie, dus hier gekopieerd en aangepast i.p.v.
@@ -5590,6 +5623,18 @@ function tekenMinimap() {
     ctx.fill();
   }
 
+  // Ticket 83: De Waterschouw — ALTIJD getekend (patrouilleert continu, los
+  // van de ontsnapping), en bewust GEEN arc: een klein vierkantje in een
+  // koele, blauwgroene kleur, duidelijk anders dan de amberkleurige
+  // ontsnappings-arc hierboven. test-boot-aankondiging.mjs bewaakt dat de
+  // ONTSNAPPINGS-marker (arc) precies 1x getekend wordt — dit vierkantje
+  // mag daar dus nooit aan meetellen.
+  {
+    const sp = minimapLokaal(schouwGroep.position.x, schouwGroep.position.z);
+    ctx.fillStyle = '#7ad8c8';
+    ctx.fillRect(sp.lx - 2, sp.lz - 2, 4, 4);
+  }
+
   ctx.restore();
 
   // Speler: een vaste driehoek, wijst altijd "omhoog" — de KAART draait nu
@@ -7713,6 +7758,47 @@ function updateBootHoornHerhaling(dt) {
     bootHoornHerhaalTimer = BOOT_HOORN_HERHAAL_INTERVAL;
   }
 }
+
+// Ticket 83: De Waterschouw's eigen hoorn — bewust een ANDER register/duur
+// dan de ontsnappingshoorn hierboven (480->380Hz/0.55s hier vs 200->140Hz/
+// 1.1s daar: hoger en korter, dus ook door een muur heen te onderscheiden)
+// en een merkbaar lager volume (dit is geen kritiek signaal, puur sfeer —
+// de escape-hoorn blijft het luidste, meest urgente geluid van de twee).
+// Hergebruikt piep()'s pan-parameter (T80) i.p.v. handmatig een eigen
+// osc/gain/panner-keten op te bouwen zoals speelBootHoornGericht() nog
+// doet (die dateert van vóór T80's gedeelde pan-ondersteuning).
+const SCHOUW_HOORN_INTERVAL = 26;   // s tussen twee hoornstoten
+const SCHOUW_HOORN_AFSTAND_MAX = 22;
+const SCHOUW_HOORN_VOLUME_DICHTBIJ = 0.05;
+const SCHOUW_HOORN_VOLUME_VER = 0.015;
+let schouwHoornTimer = 18;   // vertraagde eerste stoot, niet gelijk met een verse boot-hoorn bij het laden
+let schouwHoornTeller = 0;   // debug/test: telt elke echte hoornstoot
+// Pure functie, zelfde patroon als berekenBootHoornPanVolume hierboven.
+function berekenSchouwHoornPanVolume(dx, dz, spelerYaw) {
+  const afstand = Math.hypot(dx, dz);
+  const fractieDichtbij = 1 - Math.min(1, afstand / SCHOUW_HOORN_AFSTAND_MAX);
+  const volume = SCHOUW_HOORN_VOLUME_VER + (SCHOUW_HOORN_VOLUME_DICHTBIJ - SCHOUW_HOORN_VOLUME_VER) * fractieDichtbij;
+  const relatieveHoek = berekenRelatieveHoek(dx, dz, 0, 0, spelerYaw);
+  const pan = hoekNaarPan(relatieveHoek);
+  return { pan, volume, afstand };
+}
+function speelSchouwHoorn() {
+  if (!audio) return;
+  schouwHoornTeller++;
+  const dx = schouwGroep.position.x - speler.positie.x, dz = schouwGroep.position.z - speler.positie.z;
+  const { pan, volume } = berekenSchouwHoornPanVolume(dx, dz, speler.yaw);
+  piep('sine', 480, 380, 0.55, volume, pan);
+}
+// Draait, net als updateBootHoornHerhaling(), alleen tijdens actief spel
+// (audio-timers pauzeren; de VAART zelf — updateSchouwPositie() — loopt wel
+// door tijdens pauze, want puur visueel).
+function updateSchouwHoorn(dt) {
+  schouwHoornTimer -= dt;
+  if (schouwHoornTimer <= 0) {
+    schouwHoornTimer = SCHOUW_HOORN_INTERVAL;
+    speelSchouwHoorn();
+  }
+}
 // Zelfde patroon als updateVluchtrouteHUD() hierboven: een eigen, kleine
 // HUD-updatefunctie i.p.v. inline in updateHUD() — die laatste wordt al
 // bij module-load 1x aangeroepen (regel ~4562), ver vóór ONTSNAPPING_*
@@ -7786,6 +7872,18 @@ function updateBootPositie() {
   } else {
     bootGroep.position.x = BOOT_VERTREK_X;
   }
+}
+// Ticket 83: De Waterschouw — patrouilleert ALTIJD, volledig los van de
+// ontsnappingsstaat (geen ontsnappingAankondigingActief/-Timer-afhankelijkheid,
+// in tegenstelling tot updateBootPositie() hierboven — dat is precies het
+// punt: deze boot stopt nooit). Raakt bootGroep/ontsnappingsPunt nergens aan.
+// Op performance.now() (niet `klok`, en niet `nu` — dat is een parameter van
+// gameLoop(), hier niet in scope), dus loopt ook door tijdens pauze — puur
+// cosmetisch, zelfde discipline als de lampflikker/vignet.
+function updateSchouwPositie() {
+  const fase = (performance.now() * 0.001 % SCHOUW_CYCLUS) / SCHOUW_CYCLUS;   // 0..1, herhalend
+  const fractie = (1 - Math.cos(fase * Math.PI * 2)) / 2;       // vloeiend heen-en-terug (0->1->0)
+  schouwGroep.position.x = SCHOUW_X_WEST + (SCHOUW_X_OOST - SCHOUW_X_WEST) * fractie;
 }
 // Per-frame getikt vanuit de spelActief-tak van gameLoop, symmetrisch met
 // updateOntsnappingAankondiging() hierboven — regelt ALLEEN de uitvaren-
@@ -7950,6 +8048,7 @@ function gameLoop(nu) {
     updateOntsnappingAankondiging(dt);   // Ticket 55: boot-aankomst-timer
     updateBootUitvaren(dt);              // Feedback: boot-vertrek-timer, symmetrisch
     updateBootHoornHerhaling(dt);        // Feedback: herhaalde gerichte hoorn (boot-aankondiging optie 3)
+    updateSchouwHoorn(dt);               // Ticket 83: De Waterschouw, volledig los van de ontsnapping
     updatePowerups(dt);
     updateMistUitfade(dt);
     updateSpelerRegen(dt);
@@ -8116,6 +8215,7 @@ function gameLoop(nu) {
   // de huidige staat, zelfde altijd-lopende cosmetische sectie als de
   // lantaarnpuls hierboven (blijft correct stilstaan tijdens pauze).
   updateBootPositie();
+  updateSchouwPositie();   // Ticket 83: patrouilleert altijd, los van de ontsnapping
 
   if (terugslag > 0) {
     terugslag = Math.max(0, terugslag - dt * 6);
@@ -8229,6 +8329,13 @@ window.AmsterdamUndeadDebug = {
   get bootHoornHerhaalTeller() { return bootHoornHerhaalTeller; },
   get bootHoornHerhaalTimer() { return bootHoornHerhaalTimer; },
   set bootHoornHerhaalTimer(v) { bootHoornHerhaalTimer = v; },
+  // Ticket 83: De Waterschouw — tweede, permanent patrouillerende boot
+  SCHOUW_X_WEST, SCHOUW_X_OOST, SCHOUW_Z, SCHOUW_CYCLUS, updateSchouwPositie,
+  berekenSchouwHoornPanVolume, speelSchouwHoorn, updateSchouwHoorn,
+  SCHOUW_HOORN_INTERVAL, SCHOUW_HOORN_AFSTAND_MAX, SCHOUW_HOORN_VOLUME_DICHTBIJ, SCHOUW_HOORN_VOLUME_VER,
+  get schouwHoornTeller() { return schouwHoornTeller; },
+  get schouwHoornTimer() { return schouwHoornTimer; },
+  set schouwHoornTimer(v) { schouwHoornTimer = v; },
   // Ticket 6: eventgolf-framework
   EVENT_GOLF_INTERVAL, isEventGolf, kiesEventType, startEventGolf, eindigEventGolf,
   get actieveEventGolf() { return actieveEventGolf; },
@@ -8463,7 +8570,7 @@ window.AmsterdamUndeadDebug = {
   // Ticket 52 (Doel D5): gang naar de gracht — vlonder, water, boot, lantaarn
   GRACHTGANG_HALF, GRACHTGANG_X_WEST, GRACHTGANG_LENGTE, GRACHTGANG_DREMPEL,
   VLONDER_X_WEST, VLONDER_X_OOST, VLONDER_DIEPTE,
-  vlonderMesh, waterMesh, bootGroep, grachtLantaarnLicht,
+  vlonderMesh, waterMesh, bootGroep, schouwGroep, grachtLantaarnLicht,
   // Ticket 50: zone-naambanners + HUD-zonelabel
   ZONE_NAMEN, ZONE_FLAVOUR, bezochteZones,
   get laatsteZone() { return laatsteZone; },
