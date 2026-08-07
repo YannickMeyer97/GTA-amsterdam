@@ -87,13 +87,17 @@ check('LAMP_BLACKOUT_DUUR (totale flikkerreeks, vastgelegd bij de trigger) ligt 
   uitvalStart.totaalDuur >= 0.6 && uitvalStart.totaalDuur <= 1.0, uitvalStart);
 
 // --- 3. Echte flikkerreeks: meerdere aan/uit-overgangen binnen de reeks. --
-// Een vast tijdvenster (ook een ruim venster) blijft een gok tegen de
-// dt-cap-race (trage frames rekken de gesimuleerde tijd op t.o.v. de
-// wandklok — bleek op de volledige suite, onder zwaardere CI-belasting,
-// zelfs met 3s marge nog fout te kunnen gaan). Dit venster hoeft alleen
-// GENOEG segmenten te vangen om "meerdere overgangen" aan te tonen, dus een
-// bescheiden venster volstaat; het definitieve einde van de reeks wordt
-// hierna apart, structureel (niet tijdgebaseerd) bevestigd.
+// CI-fix: een wandklok-tijdvenster (was 1500ms) faalde op de echte
+// GitHub-Actions-runner ({"stijgend":1,"dalend":1,"aantalSamples":5}) —
+// bij ~300ms/frame op een zwaarbelaste runner passen maar 5 frames in
+// 1500ms. Een FRAME-geteld venster is hiertegen bewijsbaar robuust: dt is
+// gecapt op 0.05s/frame, dus een traag frame draagt NOOIT minder dan een
+// snel frame bij aan de gesimuleerde tijd (eerder meer, tot het plafond) —
+// N frames garanderen dus altijd minstens N * (echte of gecapte) dt aan
+// gesimuleerde tijd, ongeacht hoe traag de runner daadwerkelijk is. 50
+// frames geeft ruim boven de 1.0s max-reeks aan gesimuleerde tijd in zowel
+// het trage (50*0.05=2.5s gecapt) als het snelle (~50*0.016≈0.8s, ruim
+// genoeg voor meerdere 0.09s-segmenten) geval.
 // Geen nieuwe trigger hier: sectie 2 heeft de reeks al gestart (nog steeds
 // bezig, lampBlackoutDuur > 0 — pas als de reeks daadwerkelijk afloopt leest
 // de flikkerloop lampBlackoutTimer opnieuw), dus dit bemonstert gewoon de
@@ -101,11 +105,11 @@ check('LAMP_BLACKOUT_DUUR (totale flikkerreeks, vastgelegd bij de trigger) ligt 
 const flikkerData = await page.evaluate((idx) => new Promise((resolve) => {
   const d = window.AmsterdamUndeadDebug;
   const samples = [];
-  const start = performance.now();
-  const VENSTER_MS = 1500;
+  const AANTAL_FRAMES = 50;
+  let i = 0;
   function tik() {
     samples.push(d.lampLichten[idx].licht.intensity);
-    if (performance.now() - start < VENSTER_MS) requestAnimationFrame(tik);
+    if (++i < AANTAL_FRAMES) requestAnimationFrame(tik);
     else resolve(samples);
   }
   requestAnimationFrame(tik);
