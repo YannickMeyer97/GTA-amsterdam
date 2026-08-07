@@ -829,6 +829,16 @@ const MUUR_DIKTE = 0.3;
 const PAND_ADRES = 'Nachtreigersgracht 13';
 document.getElementById('pandAdresStart').textContent = PAND_ADRES;
 
+// Ticket 85 (Etalages, sporen van de run): drie decorratieve ramen die op
+// golfmijlpalen dichtgetimmerd raken (zie bouwEtalageRaam()/
+// updateEtalageSporen() verderop). Zelfde vroege-declaratie-reden als
+// PAND_ADRES hierboven: de scene-opbouw vult etalageRamen al tijdens het
+// laden, ver vóór startGolf() verderop in het bestand.
+const ETALAGE_PLANK_KLEUR = 0x2c2114;
+const ETALAGE_MIJLPALEN = [5, 10, 15];   // golf waarop raam 0/1/2 respectievelijk dichtgaat
+let etalageRamen = [];
+let etalageVoltooid = 0;   // hoeveel ramen al dichtgetimmerd zijn — idempotente voortgangsteller
+
 // Map-lus (Tickets 24-26): deur 3/4-posities staan hier al vast (pure
 // literals, geen afhankelijkheden) zodat de muur-splitsingen hieronder
 // (woonkamer-oostmuur voor deur 4, binnenplaats-zuidmuur voor deur 3, ver
@@ -2581,6 +2591,19 @@ function bouwNaambordje(x, y, z, tekst, rotY = 0) {
   wereld.add(bordje);
 }
 
+// Ticket 85 (Etalages, sporen van de run): een klein, PUUR decoratief raam
+// (los van de VENSTERS-barricadesystemen elders — geen spawn-gedrag, geen
+// interactiepunt), dat op golfmijlpalen dichtgetimmerd raakt. Blijft altijd
+// ÉÉN mesh; alleen het materiaal wisselt (updateEtalageSporen() hieronder),
+// nooit een extra mesh erbovenop — dat houdt T77's resourcetest tevreden.
+function bouwEtalageRaam(x, y, z, rotY) {
+  const raam = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.7, 0.04), mat(0x4a6a72, 0.25, 0.15));
+  raam.position.set(x, y, z);
+  raam.rotation.y = rotY;
+  wereld.add(raam);
+  return raam;
+}
+
 // Een plat vloerkleed (dun, ontvangt schaduw, geen collision).
 function bouwKleed(cx, cz, b, d, kleur) {
   const kleed = new THREE.Mesh(new THREE.PlaneGeometry(b, d), mat(kleur, 0.95));
@@ -2698,6 +2721,12 @@ for (const y of [0.5, 0.95, 1.4]) meubelBox(1.3, 0.05, 0.26, 0x2c2114, -4.05, y,
 bouwSchilderij(4.42, 1.9, 1.5, -Math.PI / 2);                          // schilderij oostmuur
 bouwSchilderij(-2, 1.9, -4.78, 0);                                     // schilderij naast de deur (noordmuur)
 bouwNaambordje(0, 1.6, HALF_DIEPTE - 0.22, PAND_ADRES, 0);             // Ticket 84: naambordje bij de voordeur (zuidmuur, tussen de ramen)
+// Ticket 85: drie etalageramen, verspreid over drie muren van de
+// startkamer, ver van bestaand decor. ETALAGE_MIJLPALEN (verderop in dit
+// bestand) bepaalt op welke golf elk raam dichtgaat.
+etalageRamen.push(bouwEtalageRaam(-(HALF_BREEDTE - 0.22), 1.6, 3.2, Math.PI / 2));    // westmuur
+etalageRamen.push(bouwEtalageRaam(HALF_BREEDTE - 0.22, 1.6, -3.0, -Math.PI / 2));     // oostmuur
+etalageRamen.push(bouwEtalageRaam(2.8, 1.6, -(HALF_DIEPTE - 0.22), 0));               // noordmuur
 
 // --- Gang-decor (zone B): een dunne, sombere loper — verder BEWUST leeg
 // (geen kratten/meubels), zodat er niets in het smalle looppad staat waar
@@ -3128,6 +3157,32 @@ const SMEDERIJ_Z = 3.5;
   wereld.add(koolLicht);
 }
 const smederijMarkering = winkelMarkering(SMEDERIJ_X, SMEDERIJ_Z, 'smederij');
+
+// Ticket 85 (Etalages, sporen van de run): een ereplank naast de Smederij
+// met twee vooraf gebouwde, gedoofde medaillons — één per wapen. koopSmederij()
+// verderop in dit bestand licht het bijbehorende medaillon op zodra dat
+// wapen gesmeed wordt (zelfde .material.color/.emissive-mutatie-patroon als
+// meterDrukspuit/tandwielRatelaar daar al gebruiken — geen nieuwe mesh,
+// geen nieuw materiaal-object erbij op dat moment). BELANGRIJK: de twee
+// medaillons hebben elk hun EIGEN materiaal-instantie (mat()'s extra-param
+// forceert dat, i.p.v. de gecachete kale mat(kleur,ruwheid,metaal)-variant)
+// — anders zou mat(0x3a3a3c,0.6,0.2) tweemaal exact hetzelfde gedeelde
+// object teruggeven, en zou het oplichten van het ene medaillon per ongeluk
+// ook het andere mee oplichten (zelfde bugklasse als een gedeeld materiaal
+// dat T69/T70 net had opgeruimd).
+let ereplankMedaillonDrukspuit, ereplankMedaillonRatelaar;
+{
+  const plank = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.06, 0.22), matFamilie('hout', 0x2c2114));
+  plank.position.set(SMEDERIJ_X - 1.15, 1.3, SMEDERIJ_Z + 0.7);
+  plank.castShadow = true;
+  wereld.add(plank);
+  ereplankMedaillonDrukspuit = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 10), mat(0x3a3a3c, 0.6, 0.2, { emissive: 0x000000 }));
+  ereplankMedaillonDrukspuit.position.set(SMEDERIJ_X - 1.4, 1.4, SMEDERIJ_Z + 0.7);
+  wereld.add(ereplankMedaillonDrukspuit);
+  ereplankMedaillonRatelaar = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 10), mat(0x3a3a3c, 0.6, 0.2, { emissive: 0x000000 }));
+  ereplankMedaillonRatelaar.position.set(SMEDERIJ_X - 0.9, 1.4, SMEDERIJ_Z + 0.7);
+  wereld.add(ereplankMedaillonRatelaar);
+}
 
 // --- Atelier-decor (zone C): koel, kaal, met verf-/doek-accenten — bewust
 // géén hergebruik van de warme-woonkamer-props (kratten/vat/tafel). ---
@@ -6697,10 +6752,23 @@ function updateMistUitfade(dt) {
   scene.fog.color.set(mistUitfaseVan.kleur).lerp(new THREE.Color(FOG_NORMAAL.kleur), t);
 }
 
+// Ticket 85: golfmijlpaal-trigger voor de etalageramen. Idempotent via
+// etalageVoltooid (een while, niet een if, zodat een eventuele oversprongen
+// golf — zou vandaag niet gebeuren, maar toekomstbestendig — alsnog alle
+// verstreken mijlpalen in één keer afhandelt). Materiaal-WISSEL op een
+// bestaande mesh (matFamilie(), gecached) — nooit een nieuwe mesh, nooit
+// een losse new MeshStandardMaterial() per mijlpaal.
+function updateEtalageSporen() {
+  while (etalageVoltooid < ETALAGE_MIJLPALEN.length && spelStaat.golf >= ETALAGE_MIJLPALEN[etalageVoltooid]) {
+    etalageRamen[etalageVoltooid].material = matFamilie('hout', ETALAGE_PLANK_KLEUR);
+    etalageVoltooid++;
+  }
+}
 function startGolf() {
   // Ticket 40: golfstart-lichtdip — herstelt binnen 0.8s vanzelf in de
   // lampflikker-loop (gameLoop), puur cosmetisch.
   lampDipFactor = 0.6;
+  updateEtalageSporen();   // Ticket 85: sporen van de run — dichtgetimmerde ramen op golfmijlpalen
   // Event eerst starten: het budget en de banner hangen ervan af.
   if (isEventGolf(spelStaat.golf)) startEventGolf(kiesEventType(spelStaat.golf));
   // Ticket 13: dreigingsbudget i.p.v. een vast aantal — het exacte aantal
@@ -7235,6 +7303,12 @@ function koopSmederij() {
   // Ticket 17: het bijbehorende vooraf gebouwde visual-Group (gloeiringen/
   // tandwiel + ember-light) zichtbaar maken.
   (actiefWapenNaam === 'drukspuit' ? smederijVisualsDrukspuit : smederijVisualsRatelaar).visible = true;
+  // Ticket 85: het bijbehorende ereplank-medaillon oplicht — zelfde
+  // materiaal-mutatie-patroon als het accent hierboven, geen nieuwe mesh.
+  const medaillon = actiefWapenNaam === 'drukspuit' ? ereplankMedaillonDrukspuit : ereplankMedaillonRatelaar;
+  medaillon.material.color.setHex(SMEDERIJ_ACCENT_KLEUR);
+  medaillon.material.emissive.setHex(SMEDERIJ_ACCENT_KLEUR);
+  medaillon.material.emissiveIntensity = 1.3;
   speelSmeed();
   flitsMarkering(smederijMarkering);
   toonMelding(`${wapenStaat.definitie.naam} gesmeed! +${wapenStaat.definitie.smederijConfig.schadeBonus} schade, magazijn ${wapenStaat.magazijnMax}`);
@@ -8634,6 +8708,12 @@ window.AmsterdamUndeadDebug = {
   LAMP_BLACKOUT_MIN_INTERVAL, LAMP_BLACKOUT_MAX_INTERVAL,
   LAMP_BLACKOUT_DUUR_MIN, LAMP_BLACKOUT_DUUR_MAX, LAMP_BLACKOUT_SEGMENT_DUUR,
   nieuweLampBlackoutTimer,
+  // Ticket 85: Etalages — sporen van de run
+  etalageRamen, ETALAGE_MIJLPALEN, ETALAGE_PLANK_KLEUR, updateEtalageSporen,
+  get etalageVoltooid() { return etalageVoltooid; },
+  set etalageVoltooid(v) { etalageVoltooid = v; },
+  get ereplankMedaillonDrukspuit() { return ereplankMedaillonDrukspuit; },
+  get ereplankMedaillonRatelaar() { return ereplankMedaillonRatelaar; },
 };
 clearTimeout(window.__cdnFoutTimer);   // Ticket 74: laden is gelukt, de faalmodus-timer is niet meer nodig
 </script>

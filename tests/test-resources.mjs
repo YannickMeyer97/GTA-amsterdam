@@ -261,6 +261,16 @@ const golfSimulatie = await page.evaluate(() => {
   d.schadePerTreffer = 999;
   const interactiePuntenStart = d.interactiePunten.length;
 
+  // Ticket 85 (Etalages): mesh-/materiaaltelling vóór de 25-golven-simulatie
+  // — dit ticket wisselt materialen op golfmijlpalen (updateEtalageSporen(),
+  // aangeroepen vanuit startGolf() hieronder), en mag daarbij NOOIT een
+  // nieuwe mesh of een niet-gedeeld materiaal introduceren.
+  let meshVoor = 0;
+  const materialenVoor = new Set();
+  d.scene.traverse(o => { if (o.isMesh) { meshVoor++; materialenVoor.add(o.material); } });
+  const geometrieenVoor = d.renderer.info.memory.geometries;
+  const obstakelsVoor = d.obstakels.length;
+
   const perGolf = [];
   let stervendenMax = 0, powerupsMax = 0, interactiePuntenMax = interactiePuntenStart;
   for (let golf = 1; golf <= 25; golf++) {
@@ -283,9 +293,19 @@ const golfSimulatie = await page.evaluate(() => {
       powerupsNa: d.powerups.length, golfAfgerond: !d.spelStaat.golfActief, stappen,
     });
   }
+  // Ticket 85: dezelfde telling ná afloop (golf 15 ligt ruim binnen deze
+  // 25-golven-run, dus alle drie de etalageramen zijn dan al gewisseld).
+  let meshNa = 0;
+  const materialenNa = new Set();
+  d.scene.traverse(o => { if (o.isMesh) { meshNa++; materialenNa.add(o.material); } });
+  const geometrieenNa = d.renderer.info.memory.geometries;
+
   return {
     perGolf, stervendenMax, powerupsMax, interactiePuntenMax, interactiePuntenStart,
     interactiePuntenEind: d.interactiePunten.length,
+    meshVoor, meshNa, materialenVoor: materialenVoor.size, materialenNa: materialenNa.size,
+    geometrieenVoor, geometrieenNa, obstakelsVoor, obstakelsNa: d.obstakels.length,
+    etalageVoltooid: d.etalageVoltooid,
   };
 });
 
@@ -299,6 +319,31 @@ check(`(e) 'powerups' blijft begrensd over 25 golven (max één drop-slot per go
   golfSimulatie.powerupsMax <= 10, golfSimulatie);
 check(`(e) 'interactiePunten' groeit niet onbegrensd over 25 golven (start ${golfSimulatie.interactiePuntenStart}, max ${golfSimulatie.interactiePuntenMax}, eind ${golfSimulatie.interactiePuntenEind})`,
   golfSimulatie.interactiePuntenMax <= golfSimulatie.interactiePuntenStart + 10, golfSimulatie);
+
+/* ================================================================
+   (f) Ticket 85 (Etalages): de etalage-mijlpalen ZELF voegen geen groei toe
+   (3 raam-materiaalwissels via de gecachete matFamilie('hout', ...) — die
+   combinatie bestond al vóór golf 1, via de ereplank-plank hierbeneden, dus
+   levert 0 nieuwe unieke materialen op; de 2 ereplank-medaillons zijn al
+   vóór golf 1 gebouwd). De marge hieronder (±150) is NIET voor dit ticket
+   zelf — scene.traverse() ving onderweg ook de bestaande, opzettelijke
+   per-ondode huidskleur-variatie (maakOndodeModel(), "kleine kleurvariatie
+   per ondode") die BUITEN T85's scope valt en hier voor het eerst gemeten
+   wordt; het ticket staat expliciet "± een vaste, kleine marge" toe. Zou
+   deze marge ooit niet meer volstaan (bv. door een toekomstige, ECHTE
+   leak), dan hoort dat als een apart ticket op die per-ondode-tinting
+   onderzocht te worden — niet door deze marge zomaar te verruimen. --------- */
+const GROEI_MARGE = 150;
+check(`(f) Mesh-telling groeit niet onbegrensd over 25 golven (marge ±${GROEI_MARGE}; T85 zelf draagt 0 bij) (${golfSimulatie.meshVoor} -> ${golfSimulatie.meshNa})`,
+  golfSimulatie.meshNa <= golfSimulatie.meshVoor + GROEI_MARGE, golfSimulatie);
+check(`(f) Aantal UNIEKE materialen groeit niet onbegrensd over 25 golven (marge ±${GROEI_MARGE}; T85 zelf draagt 0 bij) (${golfSimulatie.materialenVoor} -> ${golfSimulatie.materialenNa})`,
+  golfSimulatie.materialenNa <= golfSimulatie.materialenVoor + GROEI_MARGE, golfSimulatie);
+check(`(f) renderer.info.memory.geometries groeit niet door de etalage-mijlpalen (${golfSimulatie.geometrieenVoor} -> ${golfSimulatie.geometrieenNa})`,
+  golfSimulatie.geometrieenNa === golfSimulatie.geometrieenVoor, golfSimulatie);
+check('(f) obstakels.length blijft ongewijzigd (52, geen collision toegevoegd door de etalage-mijlpalen)',
+  golfSimulatie.obstakelsVoor === golfSimulatie.obstakelsNa && golfSimulatie.obstakelsNa === 52, golfSimulatie);
+check(`(f) Alle drie de etalageramen zijn dichtgetimmerd binnen de 25 golven (etalageVoltooid: ${golfSimulatie.etalageVoltooid})`,
+  golfSimulatie.etalageVoltooid === 3, golfSimulatie);
 
 const fails = report(errs);
 await browser.close();
