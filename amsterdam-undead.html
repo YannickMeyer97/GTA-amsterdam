@@ -441,6 +441,22 @@
     border-radius: 999px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.4);
   }
+  /* Ticket 86: Het stadsarchief — kleine toggle-knoppen, uit (grijs
+     omlijnd) totdat de speler 'm actief kiest. */
+  .archiefKnop {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.35);
+    color: rgba(255,255,255,0.7);
+    cursor: pointer;
+  }
+  .archiefKnop.actief {
+    background: #3fae63;
+    border-color: #3fae63;
+    color: #04170a;
+  }
 </style>
 </head>
 <body>
@@ -516,6 +532,17 @@
   <div style="display:flex; align-items:center; gap:10px; justify-content:center; margin-top:16px; font-size:13px; opacity:0.85;">
     <label for="gevoeligheidSlider">🖱️ Muisgevoeligheid</label>
     <input type="range" id="gevoeligheidSlider" min="0.25" max="3" step="0.05" style="width:140px;">
+  </div>
+  <!-- Ticket 86: Het stadsarchief — puur cosmetische ontgrendelingen over
+       meerdere runs heen (zie updateArchiefUI()). Verborgen totdat er
+       minstens één ontgrendeling is. -->
+  <div id="archiefUI" style="display:none; margin-top:14px; text-align:center;">
+    <div style="font-size:12px; opacity:0.7; margin-bottom:6px;">🗄️ Stadsarchief — ontgrendelde varianten</div>
+    <div style="display:flex; gap:10px; justify-content:center;">
+      <div class="archiefKnop" id="archiefKleursetKnop" style="display:none;">🎨 Kleurset</div>
+      <div class="archiefKnop" id="archiefVlamKnop" style="display:none;">🔥 Vlamkleur</div>
+      <div class="archiefKnop" id="archiefMelodieKnop" style="display:none;">🎵 Intro</div>
+    </div>
   </div>
 </div>
 
@@ -4091,9 +4118,15 @@ function schiet() {
   // Ticket 17: warmere mondingsflits bij een gesmeed wapen — elk schot
   // opnieuw expliciet gezet (ook de normale kleur), zodat dit vanzelf
   // herstelt als de gesmeed-status ooit teruggedraaid wordt.
-  const vlamKleur = wapenStaat.gesmeed ? SMEDERIJ_ACCENT_KLEUR : wapenStaat.definitie.vlamKleurBasis;
+  // Ticket 86: de archief-vlamtint is een DERDE optie, alleen relevant als
+  // het wapen NIET gesmeed is (gesmeed heeft al zijn eigen, betekenisvolle
+  // ember-accent — die twee visuele talen niet laten botsen).
+  const archiefVlamActief = stadsarchiefOntgrendelingen().vlamTint && stadsarchief.actief.vlamTint;
+  const vlamKleur = wapenStaat.gesmeed ? SMEDERIJ_ACCENT_KLEUR
+    : (archiefVlamActief ? STADSARCHIEF_VLAM_TINT : wapenStaat.definitie.vlamKleurBasis);
   vlam.material.color.setHex(vlamKleur);
-  vlamLicht.color.setHex(wapenStaat.gesmeed ? SMEDERIJ_ACCENT_KLEUR : wapenStaat.definitie.vlamLichtKleurBasis);
+  vlamLicht.color.setHex(wapenStaat.gesmeed ? SMEDERIJ_ACCENT_KLEUR
+    : (archiefVlamActief ? STADSARCHIEF_VLAM_TINT : wapenStaat.definitie.vlamLichtKleurBasis));
   vlamTimer = 0.05;
   speelSchot();
 
@@ -4385,8 +4418,24 @@ function initGeluid() {
     stadGainNode = audio.createGain();
     stadGainNode.gain.value = 0;
     stadGainNode.connect(masterGainNode);
+    // Ticket 86: de ontgrendelde intro-melodie, precies 1x — bij de
+    // allereerste initGeluid()-aanroep deze sessie (binnen ditzelfde
+    // !audio-blok, dat toch al maar 1x per sessie loopt).
+    if (stadsarchiefOntgrendelingen().introMelodie && stadsarchief.actief.introMelodie) {
+      speelIntroMelodie();
+    }
   }
   if (audio.state === 'suspended') audio.resume();
+}
+// Ticket 86: een korte, oplopende drieklank (A-C#-E-A) — eigen, herkenbaar
+// geluid, niet hergebruikt van elders in het spel.
+let introMelodieTeller = 0;   // debug/test
+function speelIntroMelodie() {
+  introMelodieTeller++;
+  piep('sine', 440, 440, 0.12, 0.05);
+  setTimeout(() => piep('sine', 554.37, 554.37, 0.12, 0.05), 130);
+  setTimeout(() => piep('sine', 659.25, 659.25, 0.12, 0.05), 260);
+  setTimeout(() => piep('sine', 880, 880, 0.2, 0.06), 390);
 }
 
 // Ticket 80: optionele pan (StereoPanner-conventie, rechts=+1). Bij
@@ -5160,6 +5209,12 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   const delen = {};
   const tint = 0.85 + Math.random() * 0.3;   // kleine kleurvariatie per ondode
   const huidKleur = new THREE.Color(typeInfo.kleur).multiplyScalar(tint);
+  // Ticket 86 (Het stadsarchief): ontgrendelde kleurset — puur een extra
+  // kleurvermenigvuldiging bovenop de bestaande formule, raakt geometrie/
+  // silhouet/type-identificatie niet, dus geen enkel mechanisch effect.
+  if (stadsarchiefOntgrendelingen().kleurset && stadsarchief.actief.kleurset) {
+    huidKleur.multiply(STADSARCHIEF_KLEURSET_TINT);
+  }
   // Ticket 19 (Z2): silhouetdata van het type + het gelote variatieprofiel.
   const vorm = typeInfo.vorm ?? {};
   const profiel = VARIATIE_PROFIELEN[traits.profiel] ?? {};
@@ -6516,8 +6571,120 @@ function toonStartschermRecord() {
 }
 toonStartschermRecord();
 
+// Ticket 86: Het stadsarchief — cosmetische meta-progressie over meerdere
+// runs heen. Ontgrendelingen zijn AFGELEID van cumulatieve tellers (nooit
+// losse "unlocked"-vlaggen), zodat ze vanzelf additief en onomkeerbaar zijn
+// — een teller kan alleen stijgen. Exact het beschermde lees-/schrijfpatroon
+// uit T74 (leesHighscore)/T75 (leesGevoeligheid): try/catch om elke
+// toegang, vormvalidatie per veld bij het lezen, veilige default (alles op
+// 0/false) bij twijfel. Onbekende sleutels in de opslag worden GENEGEERD
+// (niet als corrupt behandeld) — leesStadsarchief() leest uitsluitend de
+// bekende velden, de rest van het object wordt simpelweg nooit aangeraakt.
+const STADSARCHIEF_KEY = 'amsterdamUndeadArchief';
+const STADSARCHIEF_DREMPEL_ONTSNAPPINGEN = 3;     // kleurset
+const STADSARCHIEF_DREMPEL_HEADSHOTS = 100;       // mondingsvlam-tint
+const STADSARCHIEF_DREMPEL_GOLF = 20;             // intro-melodie
+// De drie cosmetische varianten zelf — puur decoratief, geen van drieën
+// wordt door enige gameplay-formule gelezen.
+const STADSARCHIEF_KLEURSET_TINT = new THREE.Color(0x8ab4ff);   // koele blauwe waas over de ondode-huidskleur
+const STADSARCHIEF_VLAM_TINT = 0xb478ff;                        // violette mondingsvlam i.p.v. de wapen-eigen kleur
+function leesStadsarchief() {
+  const veiligeStaat = () => ({
+    ontsnappingen: 0, headshotsTotaal: 0, hoogsteGolf: 0,
+    actief: { kleurset: false, vlamTint: false, introMelodie: false },
+  });
+  try {
+    const raw = localStorage.getItem(STADSARCHIEF_KEY);
+    if (!raw) return veiligeStaat();
+    const record = JSON.parse(raw);
+    if (!record || typeof record !== 'object') return veiligeStaat();
+    const geheelGetal = (v) => (Number.isInteger(v) && v >= 0) ? v : 0;
+    const actiefRuw = (record.actief && typeof record.actief === 'object') ? record.actief : {};
+    return {
+      ontsnappingen: geheelGetal(record.ontsnappingen),
+      headshotsTotaal: geheelGetal(record.headshotsTotaal),
+      hoogsteGolf: geheelGetal(record.hoogsteGolf),
+      actief: {
+        kleurset: actiefRuw.kleurset === true,
+        vlamTint: actiefRuw.vlamTint === true,
+        introMelodie: actiefRuw.introMelodie === true,
+      },
+    };
+  } catch {
+    return veiligeStaat();
+  }
+}
+function schrijfStadsarchief(archief) {
+  try {
+    localStorage.setItem(STADSARCHIEF_KEY, JSON.stringify(archief));
+  } catch {
+    // Geweigerd of niet beschikbaar: gewoon niet bewaren, geen crash.
+  }
+}
+let stadsarchief = leesStadsarchief();
+// Voorkomt dubbeltellen van headshotsTotaal bij meerdere ontsnappingen
+// binnen dezelfde sessie (Ticket 45: "Speel door" is GEEN nieuwe run — een
+// page-reload is dat wel): alleen het VERSCHIL sinds de vorige keer
+// schrijven wordt opgeteld, nooit runStats.headshots in zijn geheel opnieuw.
+let archiefHeadshotsBasis = 0;
+function stadsarchiefOntgrendelingen(a = stadsarchief) {
+  return {
+    kleurset: a.ontsnappingen >= STADSARCHIEF_DREMPEL_ONTSNAPPINGEN,
+    vlamTint: a.headshotsTotaal >= STADSARCHIEF_DREMPEL_HEADSHOTS,
+    introMelodie: a.hoogsteGolf >= STADSARCHIEF_DREMPEL_GOLF,
+  };
+}
+// Aangeroepen vanuit toonWinScherm() (ontsnapping: true) en gameOver() —
+// beide zijn bestaande "run-einde"-momenten (schrijfHighscore() schrijft nu
+// al op precies diezelfde twee plekken, zelfde precedent).
+function bijwerkenStadsarchief(opties = {}) {
+  const nieuweHeadshots = runStats.headshots - archiefHeadshotsBasis;
+  if (nieuweHeadshots > 0) stadsarchief.headshotsTotaal += nieuweHeadshots;
+  archiefHeadshotsBasis = runStats.headshots;
+  stadsarchief.hoogsteGolf = Math.max(stadsarchief.hoogsteGolf, spelStaat.golf);
+  if (opties.ontsnapping) stadsarchief.ontsnappingen++;
+  schrijfStadsarchief(stadsarchief);
+  updateArchiefUI();
+}
+
+// Toont/verbergt elke archiefKnop op basis van stadsarchiefOntgrendelingen()
+// en zet de .actief-class op basis van stadsarchief.actief.* — puur
+// weergave, geen enkele hier gelezen waarde raakt een spelregel.
+const archiefUI = document.getElementById('archiefUI');
+const archiefKnoppen = {
+  kleurset: document.getElementById('archiefKleursetKnop'),
+  vlamTint: document.getElementById('archiefVlamKnop'),
+  introMelodie: document.getElementById('archiefMelodieKnop'),
+};
+function updateArchiefUI() {
+  const ontgrendeld = stadsarchiefOntgrendelingen();
+  let ietsOntgrendeld = false;
+  for (const naam in archiefKnoppen) {
+    const knop = archiefKnoppen[naam];
+    if (ontgrendeld[naam]) {
+      ietsOntgrendeld = true;
+      knop.style.display = '';
+      knop.classList.toggle('actief', stadsarchief.actief[naam]);
+    } else {
+      knop.style.display = 'none';
+    }
+  }
+  archiefUI.style.display = ietsOntgrendeld ? 'block' : 'none';
+}
+for (const naam in archiefKnoppen) {
+  archiefKnoppen[naam].addEventListener('click', (e) => {
+    e.stopPropagation();   // zelfde reden als geluidKnop: mag het spel niet per ongeluk starten/hervatten
+    if (!stadsarchiefOntgrendelingen()[naam]) return;   // defensief: verborgen knoppen zijn ook niet klikbaar
+    stadsarchief.actief[naam] = !stadsarchief.actief[naam];
+    schrijfStadsarchief(stadsarchief);
+    updateArchiefUI();
+  });
+}
+updateArchiefUI();
+
 function gameOver() {
   spelStaat.gameOver = true;
+  bijwerkenStadsarchief();   // Ticket 86: run-einde — headshots/hoogste golf bijwerken
   document.getElementById('gameOverGolf').textContent = spelStaat.golf;
   document.getElementById('gameOverGeld').textContent = spelStaat.geld;
   const score = berekenScore();
@@ -8021,6 +8188,7 @@ function probeerOntsnapping() {
 // altijd — zodat "Speel door" alleen de lock opnieuw hoeft aan te vragen
 // (zie de speelDoorKnop-listener bij de andere schermknoppen).
 function toonWinScherm() {
+  bijwerkenStadsarchief({ ontsnapping: true });   // Ticket 86: run-einde (ook bij "Speel door" nadien)
   document.getElementById('pandAdresWin').textContent = PAND_ADRES;   // Ticket 84
   document.getElementById('winGolf').textContent = spelStaat.golf;
   document.getElementById('winGeld').textContent = spelStaat.geld;
@@ -8714,6 +8882,15 @@ window.AmsterdamUndeadDebug = {
   set etalageVoltooid(v) { etalageVoltooid = v; },
   get ereplankMedaillonDrukspuit() { return ereplankMedaillonDrukspuit; },
   get ereplankMedaillonRatelaar() { return ereplankMedaillonRatelaar; },
+  // Ticket 86: Het stadsarchief
+  STADSARCHIEF_KEY, STADSARCHIEF_DREMPEL_ONTSNAPPINGEN, STADSARCHIEF_DREMPEL_HEADSHOTS, STADSARCHIEF_DREMPEL_GOLF,
+  STADSARCHIEF_KLEURSET_TINT, STADSARCHIEF_VLAM_TINT,
+  leesStadsarchief, schrijfStadsarchief, stadsarchiefOntgrendelingen, bijwerkenStadsarchief, updateArchiefUI, speelIntroMelodie,
+  get stadsarchief() { return stadsarchief; },
+  set stadsarchief(v) { stadsarchief = v; },
+  get archiefHeadshotsBasis() { return archiefHeadshotsBasis; },
+  set archiefHeadshotsBasis(v) { archiefHeadshotsBasis = v; },
+  get introMelodieTeller() { return introMelodieTeller; },
 };
 clearTimeout(window.__cdnFoutTimer);   // Ticket 74: laden is gelukt, de faalmodus-timer is niet meer nodig
 </script>
