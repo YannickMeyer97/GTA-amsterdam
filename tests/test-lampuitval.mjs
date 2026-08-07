@@ -1,9 +1,11 @@
 // Ticket 81: zeldzame lampuitval — een vierde, onafhankelijke factor op
 // lampLichten-intensiteit. Bewaakt: de schaduwwerpende lamp en de drie
 // kelder-kamerlampen doen NOOIT mee (categorisch uitgesloten, geen
-// lampBlackoutTimer), een gedwongen uitval dooft een gewone lamp naar
-// intensity 0 en herstelt daarna weer boven 0 (geen drift), en een uitval
-// tijdens een actieve Stroomuitval laat stroomFactor met rust.
+// lampBlackoutTimer), een gedwongen uitval is een echte FLIKKERREEKS
+// (meerdere aan/uit-segmenten over 0.6-1.0s, niet één ononderbroken "uit"
+// — feedback: dat las als een renderglitch) die daarna weer stabiel
+// herstelt (geen drift), en een uitval tijdens een actieve Stroomuitval
+// laat stroomFactor met rust.
 import { openAmsterdamUndead, makeChecker, frames } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
@@ -48,45 +50,94 @@ check('De drie kelderlampen krijgen NOOIT een lampBlackoutTimer',
 check('Alle 5 overige (gewone) lampen krijgen wél een lampBlackoutTimer (getal)',
   uitsluiting.gewoneTimersGezet, uitsluiting);
 
-// --- 2. Gedwongen uitval: een gewone lamp dooft naar intensity 0 -----------
+// --- 2. Gedwongen uitval: een gewone lamp dooft naar intensity 0. Wacht EN
+// lees atomisch binnen ÉÉN page.evaluate() (rAF-poll in de pagina zelf) —
+// twee losse evaluate()-round-trips zouden hier, met segmenten van maar
+// 90ms, een echte race kunnen zijn (het volgende segment kan al zijn
+// omgeslagen tussen "wachten tot 0" en "lees de waarde" in). -------------
 const voorUitval = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const lamp = d.lampLichten.find(l => !l.licht.castShadow && l.stroomVloer === undefined);
   const idx = d.lampLichten.indexOf(lamp);
-  d.lampLichten[idx].lampBlackoutTimer = 0.001;   // forceer bijna-meteen een uitval
   return { idx, intensiteitVoor: lamp.licht.intensity, basis: lamp.basis };
 });
-await wachtTotConditie(
-  (idx) => window.AmsterdamUndeadDebug.lampLichten[idx].licht.intensity,
-  (intensiteit) => intensiteit === 0,
-  voorUitval.idx,
-);
-const tijdensUitval = await page.evaluate((idx) => {
+const uitvalStart = await page.evaluate((idx) => new Promise((resolve) => {
   const d = window.AmsterdamUndeadDebug;
-  return { intensiteit: d.lampLichten[idx].licht.intensity, duur: d.lampLichten[idx].lampBlackoutDuur };
-}, voorUitval.idx);
+  d.lampLichten[idx].lampBlackoutTimer = 0.001;   // forceer bijna-meteen een uitval
+  const deadline = performance.now() + 5000;   // ruime marge: trage frames rekken de gesimuleerde tijd op
+  function tik() {
+    const l = d.lampLichten[idx];
+    if (l.licht.intensity === 0 || performance.now() > deadline) {
+      // lampBlackoutDuur telt al af zodra de reeks gestart is — op het
+      // moment dat we intensity===0 zien is er al (minstens) 1 frame
+      // verstreken, dus die live waarde ligt per definitie iets ONDER de
+      // oorspronkelijke roll. lampBlackoutTotaalDuur is de vaste waarde
+      // die bij de trigger is vastgelegd en nooit meer verandert — dáár
+      // toetsen we het interval tegen.
+      resolve({ intensiteit: l.licht.intensity, duur: l.lampBlackoutDuur, totaalDuur: l.lampBlackoutTotaalDuur });
+    } else {
+      requestAnimationFrame(tik);
+    }
+  }
+  requestAnimationFrame(tik);
+}), voorUitval.idx);
 check('Tijdens de gedwongen uitval staat de lamp op intensity 0',
-  tijdensUitval.intensiteit === 0 && tijdensUitval.duur > 0, { voorUitval, tijdensUitval });
-check('LAMP_BLACKOUT_DUUR ligt binnen 0.3-0.5s',
-  tijdensUitval.duur >= 0.3 && tijdensUitval.duur <= 0.5, tijdensUitval);
+  uitvalStart.intensiteit === 0 && uitvalStart.duur > 0, { voorUitval, uitvalStart });
+check('LAMP_BLACKOUT_DUUR (totale flikkerreeks, vastgelegd bij de trigger) ligt binnen 0.6-1.0s',
+  uitvalStart.totaalDuur >= 0.6 && uitvalStart.totaalDuur <= 1.0, uitvalStart);
 
-// --- 3. Herstel: na afloop van de uitval staat de lamp weer > 0 (geen drift,
-// geen permanente 0-blijver). --------------------------------------------
-const naHerstel = await wachtTotConditie(
-  (idx) => window.AmsterdamUndeadDebug.lampLichten[idx].licht.intensity,
-  (intensiteit) => intensiteit > 0,
-  voorUitval.idx,
-  { timeoutMs: 5000 },
-);
-check('Na afloop van de uitval (max 0.5s) herstelt de lamp weer naar een positieve intensiteit',
-  naHerstel > 0, { naHerstel });
-const naHerstelVolledig = await page.evaluate((idx) => {
+// --- 3. Echte flikkerreeks: meerdere aan/uit-overgangen binnen de reeks. --
+// Een vast tijdvenster (ook een ruim venster) blijft een gok tegen de
+// dt-cap-race (trage frames rekken de gesimuleerde tijd op t.o.v. de
+// wandklok — bleek op de volledige suite, onder zwaardere CI-belasting,
+// zelfs met 3s marge nog fout te kunnen gaan). Dit venster hoeft alleen
+// GENOEG segmenten te vangen om "meerdere overgangen" aan te tonen, dus een
+// bescheiden venster volstaat; het definitieve einde van de reeks wordt
+// hierna apart, structureel (niet tijdgebaseerd) bevestigd.
+// Geen nieuwe trigger hier: sectie 2 heeft de reeks al gestart (nog steeds
+// bezig, lampBlackoutDuur > 0 — pas als de reeks daadwerkelijk afloopt leest
+// de flikkerloop lampBlackoutTimer opnieuw), dus dit bemonstert gewoon de
+// rest van diezelfde, al lopende reeks.
+const flikkerData = await page.evaluate((idx) => new Promise((resolve) => {
   const d = window.AmsterdamUndeadDebug;
-  const lamp = d.lampLichten[idx];
-  return { intensiteit: lamp.licht.intensity, basis: lamp.basis, minFactor: lamp.minFactor };
-}, voorUitval.idx);
-check('Die herstelde intensiteit ligt weer in het normale flikkerbereik (geen restant-dip)',
-  naHerstelVolledig.intensiteit > naHerstelVolledig.basis * naHerstelVolledig.minFactor * 0.5, naHerstelVolledig);
+  const samples = [];
+  const start = performance.now();
+  const VENSTER_MS = 1500;
+  function tik() {
+    samples.push(d.lampLichten[idx].licht.intensity);
+    if (performance.now() - start < VENSTER_MS) requestAnimationFrame(tik);
+    else resolve(samples);
+  }
+  requestAnimationFrame(tik);
+}), voorUitval.idx);
+let stijgend = 0, dalend = 0;
+for (let i = 1; i < flikkerData.length; i++) {
+  const vorigUit = flikkerData[i - 1] === 0, nuUit = flikkerData[i] === 0;
+  if (vorigUit && !nuUit) stijgend++;
+  if (!vorigUit && nuUit) dalend++;
+}
+check('De uitval bestaat uit MEERDERE aan/uit-overgangen (een echte flikkerreeks, geen enkele "uit")',
+  stijgend >= 2 && dalend >= 2, { stijgend, dalend, aantalSamples: flikkerData.length });
+
+// --- 4. Herstel: wacht op het ECHTE einde-signaal van de reeks
+// (lampBlackoutDuur terug op exact 0, gezet door de flikkerloop zelf zodra
+// de reeks afloopt) i.p.v. een geschatte wandklok-marge — structureel
+// robuust, ongeacht hoe traag frames op dat moment lopen. ------------------
+const naAfloop = await page.evaluate((idx) => new Promise((resolve) => {
+  const d = window.AmsterdamUndeadDebug;
+  const deadline = performance.now() + 10000;
+  function tik() {
+    const l = d.lampLichten[idx];
+    if (l.lampBlackoutDuur === 0 || performance.now() > deadline) {
+      resolve({ intensiteit: l.licht.intensity, duurNu: l.lampBlackoutDuur });
+    } else {
+      requestAnimationFrame(tik);
+    }
+  }
+  requestAnimationFrame(tik);
+}), voorUitval.idx);
+check('Zodra lampBlackoutDuur weer op 0 staat (de reeks is echt afgelopen), is de lamp stabiel positief (geen drift)',
+  naAfloop.duurNu === 0 && naAfloop.intensiteit > 0, naAfloop);
 
 // --- 4. Een uitval tijdens een actieve Stroomuitval laat stroomFactor
 // volledig met rust. ---------------------------------------------------

@@ -819,6 +819,16 @@ const HALF_DIEPTE = 5;      // 10 m diep
 const KAMER_HOOGTE = 3.2;
 const MUUR_DIKTE = 0.3;
 
+// Ticket 84: het pand krijgt een adres — een VERZONNEN grachtnaam (IP-regel
+// CLAUDE.md: geen bestaande Amsterdamse gracht met een echt huisnummer).
+// Eén bron van waarheid, zodat startscherm, winscherm EN het naambordje
+// (bouwNaambordje() hieronder, verderop in het bestand) nooit kunnen
+// uiteenlopen. Staat hier vroeg in het bestand (zelfde TDZ-reden als
+// DEUR3_X hierboven) omdat bouwNaambordje() het al gebruikt tijdens de
+// initiële scene-opbouw, ver vóór ZONE_NAMEN e.d. verderop.
+const PAND_ADRES = 'Nachtreigersgracht 13';
+document.getElementById('pandAdresStart').textContent = PAND_ADRES;
+
 // Map-lus (Tickets 24-26): deur 3/4-posities staan hier al vast (pure
 // literals, geen afhankelijkheden) zodat de muur-splitsingen hieronder
 // (woonkamer-oostmuur voor deur 4, binnenplaats-zuidmuur voor deur 3, ver
@@ -1831,7 +1841,7 @@ wereld.add(druppelMesh);
 let druppelTimer = 0;
 let druppelDuur = 3 + Math.random() * 3;
 let druppelTikTeller = 0;   // debug/test: telt elke daadwerkelijk gespeelde tik
-function speelDruppelTik() { druppelTikTeller++; piep('sine', 900, 500, 0.05, 0.03); }
+function speelDruppelTik() { druppelTikTeller++; piep('sine', 900, 500, 0.05, 0.0345); }   // Feedback: +15% (omgeving/sfeer)
 function updateDruppel(dt) {
   druppelTimer += dt;
   const voortgang = Math.min(1, druppelTimer / druppelDuur);
@@ -1921,8 +1931,12 @@ const lampLichten = [];
 // !== undefined) — zie ARCHITECTURE_NOTES.md §9.4.1.
 const LAMP_BLACKOUT_MIN_INTERVAL = 45;   // s
 const LAMP_BLACKOUT_MAX_INTERVAL = 90;   // s
-const LAMP_BLACKOUT_DUUR_MIN = 0.3;      // s
-const LAMP_BLACKOUT_DUUR_MAX = 0.5;      // s
+// Feedback: één harde 0.3-0.5s "uit" las als een renderglitch i.p.v. sfeer.
+// Nu een echte FLIKKERREEKS — de lamp knippert een paar keer aan/uit over
+// een iets langere totale duur, i.p.v. één ononderbroken donkere periode.
+const LAMP_BLACKOUT_DUUR_MIN = 0.6;         // s — totale duur van de flikkerreeks
+const LAMP_BLACKOUT_DUUR_MAX = 1.0;         // s
+const LAMP_BLACKOUT_SEGMENT_DUUR = 0.09;    // s per aan/uit-stap binnen de reeks
 function nieuweLampBlackoutTimer() { return LAMP_BLACKOUT_MIN_INTERVAL + Math.random() * (LAMP_BLACKOUT_MAX_INTERVAL - LAMP_BLACKOUT_MIN_INTERVAL); }
 // Ticket 46-fix: stabiele (niet-flikkerende) binnenlichten die WEL met
 // stroomFactor mee moeten dimmen tijdens een Stroomuitval, maar geen deel
@@ -2490,12 +2504,43 @@ function bouwSchilderij(x, y, z, rotY) {
   g.position.set(x, y, z); g.rotation.y = rotY; wereld.add(g);
 }
 
+// Feedback: het bordje bleek blanco in-game (geen tekst) — een eigen,
+// NIET-getegelde canvas-textuur (i.t.t. bouwCanvasTextuur() hierboven, die
+// juist wél tegelt voor roughness-ruis) met de adrestekst erop gedrukt.
+// Één keer getekend en gecachet (net als bouwCanvasTextuur), zodat een
+// eventuele herbouw van de scene 'm niet steeds opnieuw hoeft te tekenen.
+let naambordjeTextuurCache = null;
+function bouwNaambordjeTextuur(tekst) {
+  if (naambordjeTextuurCache) return naambordjeTextuurCache;
+  const canvas = document.createElement('canvas');
+  canvas.width = 512; canvas.height = 160;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#b08d4f';   // zelfde koperkleur als de basiskleur van het plaatje
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = '#5a4420';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+  ctx.fillStyle = '#2e2210';
+  ctx.font = 'bold 92px Georgia, "Times New Roman", serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(tekst, canvas.width / 2, canvas.height / 2 + 4);
+  naambordjeTextuurCache = new THREE.CanvasTexture(canvas);
+  return naambordjeTextuurCache;
+}
 // Ticket 84: het naambordje bij de voordeur (het pand krijgt een adres) —
 // één plat koperkleurig plaatje, zelfde vlakke-doosjes-tegen-de-muur-truc
 // als bouwSchilderij() hierboven, maar bewust EEN mesh (performance-
-// voorwaarde), geen registreerRechthoek() (obstakels blijft 52).
-function bouwNaambordje(x, y, z, rotY = 0) {
-  const bordje = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.02), matFamilie('metaal', 0xb08d4f));
+// voorwaarde), geen registreerRechthoek() (obstakels blijft 52). Eigen,
+// ongecachete mat()-material (i.p.v. matFamilie()) omdat de canvas-map
+// uniek is voor dit ene object — matFamilie() zou 'm delen met elk ander
+// oppervlak dat toevallig dezelfde kleur gebruikt.
+function bouwNaambordje(x, y, z, tekst, rotY = 0) {
+  const textuur = bouwNaambordjeTextuur(tekst);
+  const bordje = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5, 0.16, 0.02),
+    mat(0xb08d4f, 0.4, 0.6, { map: textuur })
+  );
   bordje.position.set(x, y, z);
   bordje.rotation.y = rotY;
   wereld.add(bordje);
@@ -2617,7 +2662,7 @@ meubelBox(1.4, 1.7, 0.3, 0x40301c, -4.15, 0.85, -1.5, 0.85);           // boeken
 for (const y of [0.5, 0.95, 1.4]) meubelBox(1.3, 0.05, 0.26, 0x2c2114, -4.05, y, -1.5); // planken
 bouwSchilderij(4.42, 1.9, 1.5, -Math.PI / 2);                          // schilderij oostmuur
 bouwSchilderij(-2, 1.9, -4.78, 0);                                     // schilderij naast de deur (noordmuur)
-bouwNaambordje(0, 1.6, HALF_DIEPTE - 0.22, 0);                         // Ticket 84: naambordje bij de voordeur (zuidmuur, tussen de ramen)
+bouwNaambordje(0, 1.6, HALF_DIEPTE - 0.22, PAND_ADRES, 0);             // Ticket 84: naambordje bij de voordeur (zuidmuur, tussen de ramen)
 
 // --- Gang-decor (zone B): een dunne, sombere loper — verder BEWUST leeg
 // (geen kratten/meubels), zodat er niets in het smalle looppad staat waar
@@ -4095,9 +4140,12 @@ let stadGainSchrijfTeller = 0;   // debug/test: telt elke echte gain-write
 const STAD_THROTTLE_INTERVAL = 2;      // s — het plafond zelf verandert nooit, dus een ruime interval volstaat
 const STAD_GLIJTIJD = 1.5;             // s (setTargetAtTime-tijdconstante)
 // Randgeval (ARCHITECTURE_NOTES §9.4.2): de ondode-grom (gameplay-tell, de
-// Sluiper gromt NIET) staat op 0.035-0.045 — dit plafond moet daar
-// AANTOONBAAR onder blijven, anders maskeert het stadsbed een tell.
-const STADSBED_VOLUME_PLAFOND = 0.03;
+// Sluiper gromt NIET) staat op 0.042-0.054 (feedback: +20% t.o.v. de
+// oorspronkelijke 0.035-0.045) — dit plafond moet daar AANTOONBAAR onder
+// blijven, anders maskeert het stadsbed een tell. Feedback: het plafond
+// zelf ook +15% (0.03 -> 0.0345, omgeving/sfeer), nog steeds ruim onder
+// het nieuwe kleinste gromvolume (0.042).
+const STADSBED_VOLUME_PLAFOND = 0.0345;
 function schrijfStadsbedGain(doel) {
   stadGainDoel = doel;
   stadGainSchrijfTeller++;
@@ -4332,10 +4380,12 @@ function speelGameOver()  { piep('sawtooth', 300, 70, 0.5, 0.12); setTimeout(() 
 // Zone-sfeergeluiden (Ticket V8): gedempte gracht-klok (zeldzaam, zone A),
 // een lage kraak bij de eerste stap de gang in, en een windvlaag bij de
 // eerste stap op de binnenplaats.
-function speelGrachtklok() { piep('sine', 440, 380, 0.9, 0.05); setTimeout(() => piep('sine', 660, 560, 0.9, 0.035), 550); }
-function speelGangKraak()  { piep('sawtooth', 90, 40, 0.35, 0.06); }
-function speelWindvlaag()  { piep('sine', 200, 260, 1.1, 0.035); setTimeout(() => piep('sine', 180, 140, 1.3, 0.03), 300); }
-function speelBijkeukenKraak() { piep('sawtooth', 70, 30, 0.4, 0.055); }   // Ticket 27: eigen, iets lagere kraak dan de gang
+// Feedback: alle omgeving-/sfeergeluiden +15% luider t.o.v. de oorspronkelijke
+// waarden (0.05/0.035, 0.06, 0.035/0.03, 0.055) — onderlinge verhoudingen ongewijzigd.
+function speelGrachtklok() { piep('sine', 440, 380, 0.9, 0.0575); setTimeout(() => piep('sine', 660, 560, 0.9, 0.04), 550); }
+function speelGangKraak()  { piep('sawtooth', 90, 40, 0.35, 0.069); }
+function speelWindvlaag()  { piep('sine', 200, 260, 1.1, 0.04); setTimeout(() => piep('sine', 180, 140, 1.3, 0.0345), 300); }
+function speelBijkeukenKraak() { piep('sawtooth', 70, 30, 0.4, 0.0633); }   // Ticket 27: eigen, iets lagere kraak dan de gang
 // Ticket 46 (eventgolf Stroomuitval): korte klik + zakkende zoem bij het
 // uitvallen van de stroom, een kort herstel-tikje zodra 'ie terugkomt.
 let stroomklapTeller = 0, stroomHerstelTeller = 0;
@@ -4492,15 +4542,67 @@ const ONDODE_GROM_GLOBALE_CAP   = 0.6;    // s — minimale tijd tussen twee gro
 let laatsteGromKlok = -999;
 let ondodeGromTeller = 0;   // debug/test: telt elke daadwerkelijk gespeelde grom
 function nieuweGromTimer() { return ONDODE_GROM_MIN_INTERVAL + Math.random() * (ONDODE_GROM_MAX_INTERVAL - ONDODE_GROM_MIN_INTERVAL); }
+// Feedback: de oorspronkelijke grom was een enkele piep()-toon met een
+// STIJGENDE toonhoogte — dat leest als een pieptoon/alarm ("je weet dat je
+// bijna geraakt wordt"), niet als een dier-/zombiegeluid. Nu een eigen,
+// vollere opzet: twee licht ontstemde oscillatoren (dezelfde
+// zweving-truc als de dreigingsdrone, hier hoorbaar als "keelruwheid"
+// i.p.v. een zachte drone) door een lowpass-filter met een DALENDE cutoff
+// (klassieke filtersweep-truc voor een gedempt, keelachtig geluid) en een
+// overwegend DALENDE toonhoogte met een kleine tussenstap voor wat
+// golving/onregelmatigheid. Volumes ongewijzigd t.o.v. de +20%-ronde
+// (0.054/0.042/0.054/0.048).
+const GROM_PROFIELEN = {
+  sjouwer: { golfvorm: 'sawtooth', startHz: 70,  dipHz: 58,  eindHz: 46,  filterStart: 900,  filterEind: 260, detune: 22, duur: 0.5,  volume: 0.054 },
+  loper:   { golfvorm: 'sawtooth', startHz: 190, dipHz: 165, eindHz: 130, filterStart: 1300, filterEind: 550, detune: 16, duur: 0.2,  volume: 0.042 },
+  brander: { golfvorm: 'square',   startHz: 115, dipHz: 95,  eindHz: 66,  filterStart: 1000, filterEind: 240, detune: 26, duur: 0.38, volume: 0.054 },
+  normaal: { golfvorm: 'sawtooth', startHz: 95,  dipHz: 80,  eindHz: 60,  filterStart: 950,  filterEind: 340, detune: 18, duur: 0.32, volume: 0.048 },
+};
 // Ticket 80: optionele bronpositie voor richtinghoren; zonder argumenten
-// (bv. bestaande testaanroepen) blijft dit gewoon mono, net als voorheen.
+// (bv. bestaande testaanroepen) blijft dit gewoon mono (geen panner), net
+// als voorheen. Precies ÉÉN StereoPannerNode per aanroep (gedeeld door
+// beide oscillatoren via het filter), niet één per oscillator —
+// test-richtinghoren.mjs rekent op exact 1 panner per grom.
 function speelOndodeGrom(type, bronX, bronZ) {
   ondodeGromTeller++;
+  if (!audio) return;
+  const p = GROM_PROFIELEN[type] ?? GROM_PROFIELEN.normaal;
+  const nu = audio.currentTime;
+  const midden = nu + p.duur * 0.4;
+  const eind = nu + p.duur;
+
+  const gain = audio.createGain();
+  gain.gain.setValueAtTime(0.0001, nu);
+  gain.gain.linearRampToValueAtTime(p.volume, nu + 0.025);   // snelle, gutturale aanzet
+  gain.gain.exponentialRampToValueAtTime(0.001, eind);
+  gain.connect(masterGainNode);
+
+  const filter = audio.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.Q.value = 0.8;
+  filter.frequency.setValueAtTime(p.filterStart, nu);
+  filter.frequency.exponentialRampToValueAtTime(p.filterEind, eind);
+
   const pan = bronX === undefined ? 0 : hoekNaarPan(berekenRelatieveHoek(bronX, bronZ, speler.positie.x, speler.positie.z, speler.yaw));
-  if (type === 'sjouwer') piep('sawtooth', 55, 75, 0.4, 0.045, pan);
-  else if (type === 'loper') piep('sawtooth', 260, 340, 0.12, 0.035, pan);
-  else if (type === 'brander') piep('sawtooth', 140, 100, 0.28, 0.045, pan);
-  else piep('sawtooth', 120, 160, 0.22, 0.04, pan);   // normaal
+  if (pan) {
+    const panner = audio.createStereoPanner();
+    panner.pan.value = pan;
+    filter.connect(panner).connect(gain);
+  } else {
+    filter.connect(gain);
+  }
+
+  for (const detune of [-p.detune, p.detune]) {
+    const osc = audio.createOscillator();
+    osc.type = p.golfvorm;
+    osc.detune.value = detune;
+    osc.frequency.setValueAtTime(p.startHz, nu);
+    osc.frequency.linearRampToValueAtTime(p.dipHz, midden);
+    osc.frequency.exponentialRampToValueAtTime(p.eindHz, eind);
+    osc.connect(filter);
+    osc.start(nu);
+    osc.stop(eind);
+  }
 }
 
 // Ticket 20 (Z3): ledematen-animatie. Amplitudes in radialen, puur
@@ -5269,14 +5371,6 @@ function zoneVan(x, z) {
 }
 // Ticket 50 (Sfeer P2): zone-naambanners + HUD-zonelabel — indices exact
 // volgens zoneVan() hierboven (0-4).
-// Ticket 84: het pand krijgt een adres — een VERZONNEN grachtnaam (IP-regel
-// CLAUDE.md: geen bestaande Amsterdamse gracht met een echt huisnummer).
-// Eén bron van waarheid, zodat startscherm en winscherm nooit kunnen
-// uiteenlopen — zie de twee textContent-toewijzingen hieronder/in
-// toonWinScherm().
-const PAND_ADRES = 'Nachtreigersgracht 13';
-document.getElementById('pandAdresStart').textContent = PAND_ADRES;
-
 const ZONE_NAMEN = ['De Woonkamer', 'De Gang', 'Het Atelier', 'De Binnenplaats', 'De Bijkeuken'];
 const ZONE_FLAVOUR = [
   'waar het begon',
@@ -7952,20 +8046,35 @@ function gameLoop(nu) {
     // die juist veilig hoort te zijn) — zie ARCHITECTURE_NOTES.md §9.4.1.
     // Raakt stroomFactor zelf nergens aan, dus een blackout tijdens een
     // actieve Stroomuitval laat die met rust (randgeval uit het ticket).
+    // Feedback: één ononderbroken "uit" las als een renderglitch — nu een
+    // echte FLIKKERREEKS. l.lampBlackoutTotaalDuur (gezet bij het plannen
+    // van de reeks) blijft de hele reeks lang vast, zodat "verstreken tijd
+    // sinds het begin van de reeks" uitrekenbaar is uit alleen de
+    // (aftellende) l.lampBlackoutDuur — geen aparte klok-state nodig. Elk
+    // SEGMENT_DUUR-blok wisselt aan/uit (even segment = uit, oneven = aan);
+    // het laatste stukje van de reeks (duur<=0) staat gegarandeerd weer op
+    // 1, dus geen drift na afloop.
     let blackoutFactor = 1;
     if (!l.licht.castShadow && l.stroomVloer === undefined) {
       if (l.lampBlackoutTimer === undefined) l.lampBlackoutTimer = nieuweLampBlackoutTimer();
       if (l.lampBlackoutDuur > 0) {
         l.lampBlackoutDuur -= dt;
-        blackoutFactor = l.lampBlackoutDuur > 0 ? 0 : 1;
+        if (l.lampBlackoutDuur > 0) {
+          const verstreken = l.lampBlackoutTotaalDuur - l.lampBlackoutDuur;
+          const segment = Math.floor(verstreken / LAMP_BLACKOUT_SEGMENT_DUUR);
+          blackoutFactor = segment % 2 === 0 ? 0 : 1;
+        } else {
+          blackoutFactor = 1;
+        }
         if (l.lampBlackoutDuur <= 0) {
           l.lampBlackoutDuur = 0;
-          l.lampBlackoutTimer = nieuweLampBlackoutTimer();   // volgende, weer willekeurige uitval plannen
+          l.lampBlackoutTimer = nieuweLampBlackoutTimer();   // volgende, weer willekeurige flikkerreeks plannen
         }
       } else {
         l.lampBlackoutTimer -= dt;
         if (l.lampBlackoutTimer <= 0) {
           l.lampBlackoutDuur = LAMP_BLACKOUT_DUUR_MIN + Math.random() * (LAMP_BLACKOUT_DUUR_MAX - LAMP_BLACKOUT_DUUR_MIN);
+          l.lampBlackoutTotaalDuur = l.lampBlackoutDuur;
         }
       }
     }
@@ -8414,7 +8523,8 @@ window.AmsterdamUndeadDebug = {
   PAND_ADRES, bouwNaambordje,
   // Ticket 81: zeldzame lampuitval
   LAMP_BLACKOUT_MIN_INTERVAL, LAMP_BLACKOUT_MAX_INTERVAL,
-  LAMP_BLACKOUT_DUUR_MIN, LAMP_BLACKOUT_DUUR_MAX, nieuweLampBlackoutTimer,
+  LAMP_BLACKOUT_DUUR_MIN, LAMP_BLACKOUT_DUUR_MAX, LAMP_BLACKOUT_SEGMENT_DUUR,
+  nieuweLampBlackoutTimer,
 };
 clearTimeout(window.__cdnFoutTimer);   // Ticket 74: laden is gelukt, de faalmodus-timer is niet meer nodig
 </script>
