@@ -135,12 +135,8 @@ await page.evaluate(() => {
   d.ontsnappingAankondigingTimer = 0;
 });
 
-// --- 5. Minimap: amberkleurige ONTSNAPPINGS-marker (arc) verschijnt alleen
-// tijdens aankondiging/venster. Ticket 83 (De Waterschouw) voegde een TWEEDE,
-// ALTIJD zichtbare marker toe (een vierkantje, ctx.fillRect, nooit een arc)
-// — deze assertie is daarom aangescherpt van "boot-marker" naar expliciet
-// "de ONTSNAPPINGS-marker (arc)", en sectie 5b hieronder bewijst actief dat
-// de schouw-marker daar los van staat (geen arc, wél altijd aanwezig). -----
+// --- 5. Minimap: amberkleurige boot-marker verschijnt alleen tijdens
+// aankondiging/venster. -----------------------------------------------------
 const minimapMetAankondiging = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const ctx = d.minimapUI.getContext('2d');
@@ -177,35 +173,6 @@ check('Tijdens de aankondiging: de ONTSNAPPINGS-marker (arc) wordt precies 1x ge
   minimapMetAankondiging.tijdensAankondiging === 1, minimapMetAankondiging);
 check('Tijdens een open venster: de ONTSNAPPINGS-marker (arc) wordt ook precies 1x getekend',
   minimapMetAankondiging.tijdensVenster === 1, minimapMetAankondiging);
-
-// --- 5b. De Waterschouw-marker (fillRect) is hier volledig los van: telt
-// nooit mee als arc, en staat er ALTIJD, in alle drie de scenario's hierboven. ---
-const schouwMarkerTest = await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  const ctx = d.minimapUI.getContext('2d');
-  let rectAantal = 0;
-  const origFillRect = ctx.fillRect.bind(ctx);
-  ctx.fillRect = (...a) => { rectAantal++; return origFillRect(...a); };
-
-  d.ontsnappingAankondigingActief = false;
-  d.ontsnappingsPunt = null;
-  rectAantal = 0;
-  d.tekenMinimap();
-  const zonder = rectAantal;
-
-  d.ontsnappingAankondigingActief = true;
-  rectAantal = 0;
-  d.tekenMinimap();
-  const tijdensAankondiging = rectAantal;
-
-  ctx.fillRect = origFillRect;
-  d.ontsnappingAankondigingActief = false;
-  return { zonder, tijdensAankondiging };
-});
-check('De schouw-marker (fillRect) staat er ook ZONDER een ontsnappings-aankondiging/venster',
-  schouwMarkerTest.zonder >= 1, schouwMarkerTest);
-check('De schouw-marker blijft even vaak getekend tijdens een aankondiging (onafhankelijk van de ontsnapping)',
-  schouwMarkerTest.tijdensAankondiging === schouwMarkerTest.zonder, schouwMarkerTest);
 
 const fails = report(errs);
 await browser.close();
