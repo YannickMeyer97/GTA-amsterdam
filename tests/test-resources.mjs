@@ -340,8 +340,10 @@ check(`(f) Aantal UNIEKE materialen groeit niet onbegrensd over 25 golven (marge
   golfSimulatie.materialenNa <= golfSimulatie.materialenVoor + GROEI_MARGE, golfSimulatie);
 check(`(f) renderer.info.memory.geometries groeit niet door de etalage-mijlpalen (${golfSimulatie.geometrieenVoor} -> ${golfSimulatie.geometrieenNa})`,
   golfSimulatie.geometrieenNa === golfSimulatie.geometrieenVoor, golfSimulatie);
-check('(f) obstakels.length blijft ongewijzigd (52, geen collision toegevoegd door de etalage-mijlpalen)',
-  golfSimulatie.obstakelsVoor === golfSimulatie.obstakelsNa && golfSimulatie.obstakelsNa === 52, golfSimulatie);
+// De kern is "voor === na" (niets groeit tijdens het spelen); het absolute
+// getal is een kaartbrede teller, door T87 (De Vliering) van 52 naar 56.
+check('(f) obstakels.length blijft ongewijzigd tijdens 25 golven (kaartbreed 56, geen collision toegevoegd door de etalage-mijlpalen)',
+  golfSimulatie.obstakelsVoor === golfSimulatie.obstakelsNa && golfSimulatie.obstakelsNa === 56, golfSimulatie);
 check(`(f) Alle drie de etalageramen zijn dichtgetimmerd binnen de 25 golven (etalageVoltooid: ${golfSimulatie.etalageVoltooid})`,
   golfSimulatie.etalageVoltooid === 3, golfSimulatie);
 

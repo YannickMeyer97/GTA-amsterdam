@@ -43,8 +43,11 @@ const obstakelTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   return { obstakelAantal: d.obstakels.length };
 });
-check('obstakels.length blijft 52 (het naambordje voegt geen collision toe)',
-  obstakelTest.obstakelAantal === 52, obstakelTest);
+// Het getal zelf is een kaart-brede teller (T87/De Vliering bracht 'm van 52
+// naar 56); de assertie hier gaat onverminderd over hetzelfde: het naambordje
+// voegt er zelf niets aan toe.
+check('obstakels.length blijft de kaartbrede 56 (het naambordje voegt geen collision toe)',
+  obstakelTest.obstakelAantal === 56, obstakelTest);
 
 // --- 5. Bron-check: bouwNaambordje() maakt precies 1 mesh (performance-eis) -
 const bronTest = await page.evaluate(() => {

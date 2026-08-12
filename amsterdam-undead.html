@@ -844,6 +844,20 @@ function blok(breedte, hoogte, diepte, kleur, ruwheid = 0.88, metaal = 0) {
 const HALF_BREEDTE = 4.5;   // 9 m breed
 const HALF_DIEPTE = 5;      // 10 m diep
 const KAMER_HOOGTE = 3.2;
+// Feedback na T87: "het plafond bij de vliering is wel heel laag". De vliering
+// deelt zijn plafondhoogte met het atelier (de open kijkband boven de
+// borstwering eindigt aan beide kanten op dezelfde lijn), dus die twee gaan
+// samen omhoog: +12,5%, van 3,2 naar 3,6. Bewust een EIGEN constante i.p.v.
+// KAMER_HOOGTE ophogen — dat laatste zou elke kamer, elke deurhoogte en elke
+// hanglamp in het hele pand veranderen, en KELDER_HOOGTE === KAMER_HOOGTE is
+// een expliciet vastgelegde invariant (test-kelder-trap.mjs). Alleen het
+// atelier, de nis en de vliering gebruiken ATELIER_HOOGTE; alle muren die die
+// ruimtes begrenzen krijgen 'm mee, zodat er nergens een kier ontstaat.
+const ATELIER_HOOGTE = 3.6;
+// Verzameling van alle flikkerbare lampen (bolletje + puntlicht). Staat hier
+// zo vroeg omdat het vliering-geometrieblok er al aan toevoegt; de uitgebreide
+// toelichting op het flikkersysteem staat verderop, bij hangLamp().
+const lampLichten = [];
 const MUUR_DIKTE = 0.3;
 
 // Ticket 84: het pand krijgt een adres — een VERZONNEN grachtnaam (IP-regel
@@ -903,6 +917,59 @@ const KAMER2_NIS_X_WEST = -KAMER2_HALF_B - KAMER2_NIS_DIEPTE;
 const KAMER2_NIS_Z_ZUID = KAMER2_Z_NOORD + KAMER2_NIS_BREEDTE;
 const KAMER2_NIS_CX = (KAMER2_NIS_X_WEST + -KAMER2_HALF_B) / 2;
 const KAMER2_NIS_CZ = (KAMER2_Z_NOORD + KAMER2_NIS_Z_ZUID) / 2;
+
+/* ----------------------------------------------------------------
+   TICKET 87 (v0.21, §9.8-beslissing 77) — DE VLIERING
+   ----------------------------------------------------------------
+   Verticaliteit volgens EXACT het kelder-precedent: een verhoogde
+   ruimte op x/z waar de begane grond niet begaanbaar is, zodat
+   x/z -> y een FUNCTIE blijft (geen relatie) en geen van de vijf
+   systemen uit §9.8 een verdiepingsbegrip nodig heeft.
+
+   De gekozen footprint is de "dode hoek" ten zuiden van de nis: het
+   gebied dat de nis-afsluitmuur (z = KAMER2_NIS_Z_ZUID) en de
+   atelier-weststomp (x = -KAMER2_HALF_B) al sinds v0.4 verzegelen.
+   Aangetoond onbegaanbaar met een flood-fill vanaf de startpositie met
+   ALLE deuren gekocht: 0 van de 9878 bereikbare rastercellen ligt erin
+   (zie tests/test-vliering.mjs sectie 1, die die flood-fill in de
+   regressie vastlegt).
+
+   Waarom de vliering geen GRENS-bypass nodig heeft (in tegenstelling
+   tot de kelder): de hele footprint ligt AL binnen GRENS
+   (x >= GRENS.minX = KAMER2_NIS_X_WEST + 0.05). losBotsingenOp()
+   blijft dus letterlijk ongewijzigd — één systeem minder aangeraakt
+   dan bij T62.
+
+   Deze constanten staan bewust HIER (vóór de atelier-geometrie op
+   ~r1030) i.p.v. bij berekenVloerY() verderop: de weststomp wordt daar
+   in segmenten gebouwd rond het vlieringtrap-gat, en dat blok draait
+   direct bij module-load. Zelfde reden als DEUR3_X/PAND_ADRES elders.
+   ---------------------------------------------------------------- */
+const VLIERING_X_WEST  = KAMER2_NIS_X_WEST;    // -11.5, gedeelde lijn met de nis-westmuur
+const VLIERING_X_OOST  = -KAMER2_HALF_B;       //  -4.5, gedeelde lijn met de atelier-weststomp
+const VLIERING_Z_NOORD = KAMER2_NIS_Z_ZUID;    //  -17, tegen de nis-afsluitmuur aan
+const VLIERING_Z_ZUID  = -8.9;                 // ruim ten noorden van GANG_Z_EIND (-8) => zoneVan() blijft 2
+const VLIERING_Y = 1.2;                        // vloerhoogte; ooghoogte 1.2 + 1.7 = 2.9, ruim onder ATELIER_HOOGTE (3.6)
+const VLIERING_BORSTWERING_Y = 2.2;            // bovenkant van de atelier-weststomp: 1.0 m borstwering vanaf de vliering
+// De helling ("ladder") omhoog: een 1,2 m brede koker in de weststomp,
+// zelfde maat en zelfde segmentpatroon als het deur5-gat in de nis-westmuur.
+// Feedbackronde: de trapopening was 1,2 m (net als de keldertrap), maar hier
+// komen bij de trapmond TWEE muren onder een rechte hoek samen — de
+// borstwering (noord-zuid) en de kokernoordwand (oost-west). Een ondode is
+// 0,8 m breed (ONDODE_STRAAL 0,4), en in die binnenhoek van een 1,2 m gleuf
+// hield hij precies genoeg contact met beide muren om er niet meer uit te
+// komen (gemeten: harde vastloper op -4,1 / -10,1). 1,8 m geeft ruim een
+// halve meter speling aan weerszijden en houdt de vliering even dicht: het
+// blijft één opening, met de helling als enige toegang.
+const VLIERINGTRAP_HALF_BREEDTE = 0.9;
+const VLIERINGTRAP_CZ = VLIERING_Z_ZUID - VLIERINGTRAP_HALF_BREEDTE;
+const VLIERINGTRAP_X_OOST = VLIERING_X_OOST;   // onderaan: atelierniveau (y = 0)
+const VLIERINGTRAP_X_WEST = -8;                // bovenaan: vlieringniveau (1,2 m over 3,5 m = 19°, flauwer dan de keldertrap)
+// De Zelflader-vlag staat hier zo vroeg omdat updateHUD() 'm in het
+// wapenlabel leest, en updateHUD() draait al één keer bij module-load — ver
+// vóór koopAutoHerlader() verderop gedeclareerd wordt. Zelfde TDZ-reden als
+// DEUR3_X/PAND_ADRES elders in dit bestand.
+let autoHerladerGekocht = false;
 
 /* ----------------------------------------------------------------
    ZONES v0.3 — vierde zone (D, "de binnenplaats") en de bijbehorende
@@ -965,9 +1032,14 @@ const BAKSTEEN = 0x54281f;
 // `kleur` optioneel: laat de gang (Ticket V4) een eigen, kaler pleister-
 // materiaal gebruiken i.p.v. de baksteen van de kamers, zonder de collision-
 // registratie (die blijft identiek) te raken.
-function bouwMuur(x, z, breedte, diepte, kleur = BAKSTEEN) {
-  const muur = blok(breedte, KAMER_HOOGTE, diepte, kleur, 0.92);
-  muur.position.set(x, KAMER_HOOGTE / 2, z);
+// Ticket 87: optionele `hoogte` — de vliering-borstwering is een LAGERE muur
+// met een open kijkband erboven. Default blijft KAMER_HOOGTE, dus elke
+// bestaande aanroep bouwt exact dezelfde muur als voorheen. De collision
+// (registreerRechthoek) is 2D en dus per definitie hoogte-onafhankelijk: een
+// lagere muur blokkeert nog steeds volledig, precies zoals bedoeld.
+function bouwMuur(x, z, breedte, diepte, kleur = BAKSTEEN, hoogte = KAMER_HOOGTE) {
+  const muur = blok(breedte, hoogte, diepte, kleur, 0.92);
+  muur.position.set(x, hoogte / 2, z);
   wereld.add(muur);
   registreerRechthoek(x - breedte / 2, x + breedte / 2, z - diepte / 2, z + diepte / 2);
 }
@@ -1031,12 +1103,12 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
   const k2Diepte = GANG_Z_EIND - KAMER2_Z_NOORD;
   const k2Cz = ATELIER_MIDDEN_Z;
   vlak(0x9a9284, KAMER2_HALF_B * 2, k2Diepte, 0, k2Cz, 0, false);
-  vlak(0x14100c, KAMER2_HALF_B * 2, k2Diepte, 0, k2Cz, KAMER_HOOGTE, true);
+  vlak(0x14100c, KAMER2_HALF_B * 2, k2Diepte, 0, k2Cz, ATELIER_HOOGTE, true);
   // Zuidmuur van kamer 2 (z = GANG_Z_EIND) met gang-opening (x ∈ [-DEUR_HALF, DEUR_HALF]).
   const zuidBreedte = (KAMER2_HALF_B + MUUR_DIKTE) - DEUR_HALF;
   const zuidZ = GANG_Z_EIND + MUUR_DIKTE / 2;
-  bouwMuur(-(DEUR_HALF + zuidBreedte / 2), zuidZ, zuidBreedte, MUUR_DIKTE);
-  bouwMuur(DEUR_HALF + zuidBreedte / 2, zuidZ, zuidBreedte, MUUR_DIKTE);
+  bouwMuur(-(DEUR_HALF + zuidBreedte / 2), zuidZ, zuidBreedte, MUUR_DIKTE, BAKSTEEN, ATELIER_HOOGTE);
+  bouwMuur(DEUR_HALF + zuidBreedte / 2, zuidZ, zuidBreedte, MUUR_DIKTE, BAKSTEEN, ATELIER_HOOGTE);
   // Noordmuur: één doorlopende muur die zowel de hoofdruimte als de
   // voorraadnis afsluit (v0.4, L-vorm — zie KAMER2_NIS_* hierboven); ze
   // strekt zich net zo ver uit als de west/oostmuren dik zijn, zodat de
@@ -1044,21 +1116,36 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
   {
     const noordWestrand = KAMER2_NIS_X_WEST - MUUR_DIKTE;
     const noordOostrand = KAMER2_HALF_B + MUUR_DIKTE;
-    bouwMuur((noordWestrand + noordOostrand) / 2, KAMER2_Z_NOORD - MUUR_DIKTE / 2, noordOostrand - noordWestrand, MUUR_DIKTE);
+    bouwMuur((noordWestrand + noordOostrand) / 2, KAMER2_Z_NOORD - MUUR_DIKTE / 2, noordOostrand - noordWestrand, MUUR_DIKTE, BAKSTEEN, ATELIER_HOOGTE);
   }
   // Westmuur van de hoofdruimte: alleen het zuidelijke stuk ("de stomp") —
   // het noordelijke stuk is nu de open doorgang naar de nis, geen muur meer.
+  // Ticket 87 (De Vliering): de stomp splitst in DRIE, exact hetzelfde
+  // segmentpatroon als de deur5-splitsing in de nis-westmuur:
+  //   1. noordelijk segment  -> de BORSTWERING van de vliering: even dik en
+  //      op exact dezelfde lijn als vroeger, maar lager (VLIERING_BORSTWERING_Y),
+  //      zodat er tussen de rand en het plafond een open kijkband ontstaat.
+  //      Vanaf de vliering (vloer 1,2) is dat een borstwering van 1,0 m hoog;
+  //      vanuit het atelier een muur met daarboven zicht op de vliering.
+  //   2. het trapgat        -> geen muur (de helling omhoog begint hier).
+  //   3. zuidelijk segment  -> gewone volle muur tot aan de gang-hoek.
+  // De collision van segment 1 blijft ongewijzigd (registreerRechthoek is 2D),
+  // dus niemand loopt er alsnog doorheen — alleen de zichtlijn is nieuw.
   {
-    const westStompDiepte = GANG_Z_EIND - KAMER2_NIS_Z_ZUID;
-    bouwMuur(-KAMER2_HALF_B - MUUR_DIKTE / 2, (GANG_Z_EIND + KAMER2_NIS_Z_ZUID) / 2, MUUR_DIKTE, westStompDiepte);
+    const stompX = -KAMER2_HALF_B - MUUR_DIKTE / 2;
+    const borstweringDiepte = (VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE) - KAMER2_NIS_Z_ZUID;
+    bouwMuur(stompX, KAMER2_NIS_Z_ZUID + borstweringDiepte / 2, MUUR_DIKTE, borstweringDiepte,
+      BAKSTEEN, VLIERING_BORSTWERING_Y);
+    const zuidDiepte = GANG_Z_EIND - (VLIERINGTRAP_CZ + VLIERINGTRAP_HALF_BREEDTE);
+    bouwMuur(stompX, GANG_Z_EIND - zuidDiepte / 2, MUUR_DIKTE, zuidDiepte, BAKSTEEN, ATELIER_HOOGTE);
   }
   // Oostmuur van kamer 2: gesplitst met een deurgat voor deur 2 (Ticket V5),
   // gecentreerd op ATELIER_MIDDEN_Z (== k2Cz) — exact hetzelfde patroon als
   // het deurgat van deur 1 in de noordmuur van de startkamer.
   {
     const oostSegmentDiepte = (k2Diepte / 2) - DEUR2_HALF;
-    bouwMuur(KAMER2_HALF_B + MUUR_DIKTE / 2, k2Cz - (DEUR2_HALF + oostSegmentDiepte / 2), MUUR_DIKTE, oostSegmentDiepte);
-    bouwMuur(KAMER2_HALF_B + MUUR_DIKTE / 2, k2Cz + (DEUR2_HALF + oostSegmentDiepte / 2), MUUR_DIKTE, oostSegmentDiepte);
+    bouwMuur(KAMER2_HALF_B + MUUR_DIKTE / 2, k2Cz - (DEUR2_HALF + oostSegmentDiepte / 2), MUUR_DIKTE, oostSegmentDiepte, BAKSTEEN, ATELIER_HOOGTE);
+    bouwMuur(KAMER2_HALF_B + MUUR_DIKTE / 2, k2Cz + (DEUR2_HALF + oostSegmentDiepte / 2), MUUR_DIKTE, oostSegmentDiepte, BAKSTEEN, ATELIER_HOOGTE);
   }
 }
 /* ================================================================
@@ -1188,13 +1275,46 @@ function berekenKelderY(x, z) {
   return -KELDER_DIEPTE * fractie;
 }
 
+// Ticket 87 (§9.8): de vlieringterm, los gehouden van berekenKelderY()
+// hierboven zodat elk van de twee takken op zichzelf te lezen en te testen
+// blijft. Geeft null terug buiten de vlieringfootprint — dus "deze term
+// heeft hier geen mening", niet "hier is de vloer 0".
+function berekenVlieringY(x, z) {
+  if (x < VLIERING_X_WEST || x > VLIERING_X_OOST) return null;
+  if (z < VLIERING_Z_NOORD || z > VLIERING_Z_ZUID) return null;
+  // De trapkoker: loopt van atelierniveau (y = 0, oostkant) omhoog naar de
+  // vlieringvloer. Alleen binnen de koker-z-band EN ten oosten van de
+  // bovenkant; daarbuiten is de vloer gewoon vlak.
+  if (x > VLIERINGTRAP_X_WEST &&
+      z > VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE &&
+      z < VLIERINGTRAP_CZ + VLIERINGTRAP_HALF_BREEDTE) {
+    const fractie = (VLIERINGTRAP_X_OOST - x) / (VLIERINGTRAP_X_OOST - VLIERINGTRAP_X_WEST);
+    return VLIERING_Y * fractie;
+  }
+  return VLIERING_Y;
+}
+
+// Ticket 87 (§9.8): DE vloerfunctie van het spel. Alle vijf de systemen uit
+// §9.8 die hoogte lezen (speler-Y, ondode-Y, collision, zoneVan, minimap)
+// gaan hier doorheen — berekenKelderY() blijft bestaan als de kelderTERM,
+// niet als de vloerfunctie. Nog steeds een pure functie van x en z: de twee
+// footprints (kelder ten westen van de nis-westmuur, vliering in de dode
+// hoek ten zuiden van de nis) zijn onderling én met de begane grond
+// disjunct, dus elke (x,z) heeft precies één geldige Y. Precies die
+// eigenschap maakt dat losBotsingenOp()/zoneVan() 2D mogen blijven.
+function berekenVloerY(x, z) {
+  const vliering = berekenVlieringY(x, z);
+  if (vliering !== null) return vliering;
+  return berekenKelderY(x, z);
+}
+
 // De voorraadnis zelf (v0.4): eigen vloer/plafond in een net iets kalere,
 // grijzere tint dan de rest van het atelier (opslag i.p.v. schilderhoek),
 // een westmuur en een "afsluitmuur" die de dode hoek ten zuiden van de nis
 // (buiten de plattegrond, tussen de nis en de gang) verzegelt.
 {
   vlak(0x6e6a5f, KAMER2_NIS_DIEPTE, KAMER2_NIS_BREEDTE, KAMER2_NIS_CX, KAMER2_NIS_CZ, 0, false);
-  vlak(0x14100c, KAMER2_NIS_DIEPTE, KAMER2_NIS_BREEDTE, KAMER2_NIS_CX, KAMER2_NIS_CZ, KAMER_HOOGTE, true);
+  vlak(0x14100c, KAMER2_NIS_DIEPTE, KAMER2_NIS_BREEDTE, KAMER2_NIS_CX, KAMER2_NIS_CZ, ATELIER_HOOGTE, true);
   // Ticket 62 (v0.19, §7.5.1): west-muur van de nis splitst in twee
   // segmenten met een deurgat (z ∈ [KELDERTRAP_CZ ± KELDERTRAP_HALF_BREEDTE])
   // voor de nieuwe kelderdeur (deur 5) — zelfde west/oost-segmentpatroon
@@ -1203,11 +1323,175 @@ function berekenKelderY(x, z) {
   // en blijft ongewijzigd.
   {
     const deur5NoordDiepte = (KELDERTRAP_CZ - KELDERTRAP_HALF_BREEDTE) - KAMER2_Z_NOORD;
-    bouwMuur(KAMER2_NIS_X_WEST - MUUR_DIKTE / 2, KAMER2_Z_NOORD + deur5NoordDiepte / 2, MUUR_DIKTE, deur5NoordDiepte);
+    bouwMuur(KAMER2_NIS_X_WEST - MUUR_DIKTE / 2, KAMER2_Z_NOORD + deur5NoordDiepte / 2, MUUR_DIKTE, deur5NoordDiepte, BAKSTEEN, ATELIER_HOOGTE);
     const deur5ZuidDiepte = KAMER2_NIS_Z_ZUID - (KELDERTRAP_CZ + KELDERTRAP_HALF_BREEDTE);
-    bouwMuur(KAMER2_NIS_X_WEST - MUUR_DIKTE / 2, KAMER2_NIS_Z_ZUID - deur5ZuidDiepte / 2, MUUR_DIKTE, deur5ZuidDiepte);
+    bouwMuur(KAMER2_NIS_X_WEST - MUUR_DIKTE / 2, KAMER2_NIS_Z_ZUID - deur5ZuidDiepte / 2, MUUR_DIKTE, deur5ZuidDiepte, BAKSTEEN, ATELIER_HOOGTE);
   }
-  bouwMuur(KAMER2_NIS_CX - MUUR_DIKTE, KAMER2_NIS_Z_ZUID + MUUR_DIKTE / 2, KAMER2_NIS_DIEPTE, MUUR_DIKTE);
+  bouwMuur(KAMER2_NIS_CX - MUUR_DIKTE, KAMER2_NIS_Z_ZUID + MUUR_DIKTE / 2, KAMER2_NIS_DIEPTE, MUUR_DIKTE, BAKSTEEN, ATELIER_HOOGTE);
+}
+
+/* ================================================================
+   TICKET 87 (v0.21, §9.8) — DE VLIERING: geometrie
+   ================================================================
+   Bovenop de dode hoek die de nis-afsluitmuur hierboven al verzegelt.
+   De constanten + berekenVlieringY() staan eerder in dit bestand (zie
+   daar voor de footprint-rationale); dit blok bouwt alleen wat je ziet.
+
+   Bewust GEEN PointLight (performancevoorwaarde uit het ticket: het
+   budget blijft op 26). De ruimte leest via het hemisfeerlicht plus een
+   emissief olielampje — exact hetzelfde "emissive i.p.v. een echt licht"-
+   patroon als de Smederij-gloed en het kelderoost-accent.
+   ================================================================ */
+{
+  const VLIERING_HOUT = 0x6b543a;      // warm, oud vlieringhout
+  const VLIERING_BALK = 0x4a3826;      // donkerder balkhout
+  const kokerZNoord = VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE;
+  const breedteX = VLIERING_X_OOST - VLIERING_X_WEST;
+  const centrumX = (VLIERING_X_WEST + VLIERING_X_OOST) / 2;
+
+  // --- Vloer in twee vlakken, zodat het trapgat vrij blijft ---------------
+  // (a) het hele noordelijke deel, over de volle breedte;
+  // (b) de strook ten westen van de helling, tussen koker en zuidmuur.
+  //
+  // Bewust NIET via vlak(): de vliering krijgt volgens de performance-
+  // voorwaarde van dit ticket géén eigen licht, en zonder lichtbron in de
+  // buurt rendert een gewoon MeshStandardMaterial hier praktisch zwart — je
+  // ziet dan niet eens waar je staat. Een lage emissive maakt het oppervlak
+  // zélf zichtbaar zonder ook maar één PointLight toe te voegen; exact het
+  // patroon dat de Smederij-gloed en de kelderoost-accenten al gebruiken.
+  const vlieringVloerMateriaal = mat(VLIERING_HOUT, 0.85, 0, { emissive: 0x2b1f14, emissiveIntensity: 1 });
+  function vlieringVloer(breedte, diepte, cx, cz) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(breedte, diepte), vlieringVloerMateriaal);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(cx, VLIERING_Y, cz);
+    m.receiveShadow = true;
+    wereld.add(m);
+  }
+  {
+    const noordDiepte = kokerZNoord - VLIERING_Z_NOORD;
+    vlieringVloer(breedteX, noordDiepte, centrumX, VLIERING_Z_NOORD + noordDiepte / 2);
+    const westBreedte = VLIERINGTRAP_X_WEST - VLIERING_X_WEST;
+    const zuidDiepte = VLIERING_Z_ZUID - kokerZNoord;
+    vlieringVloer(westBreedte, zuidDiepte, VLIERING_X_WEST + westBreedte / 2, kokerZNoord + zuidDiepte / 2);
+  }
+  // Plafond op dezelfde hoogte als het atelier, zodat de open kijkband boven
+  // de borstwering aan beide kanten netjes op één lijn eindigt.
+  vlak(0x14100c, breedteX, VLIERING_Z_ZUID - VLIERING_Z_NOORD, centrumX,
+    (VLIERING_Z_NOORD + VLIERING_Z_ZUID) / 2, ATELIER_HOOGTE, true);
+
+  // --- De helling omhoog: losse treden, zelfde techniek als de keldertrap --
+  // (die bouwt óók blokjes onder een oplopende lijn i.p.v. een schuin vlak,
+  // zodat de collision 2D kan blijven en er niets door de vloer steekt).
+  {
+    const TREDEN = 8;
+    const lengte = VLIERINGTRAP_X_OOST - VLIERINGTRAP_X_WEST;
+    const tredeDiepte = lengte / TREDEN;
+    for (let i = 0; i < TREDEN; i++) {
+      const topY = VLIERING_Y * ((i + 1) / TREDEN);
+      const x = VLIERINGTRAP_X_OOST - tredeDiepte * (i + 0.5);
+      const trede = new THREE.Mesh(
+        new THREE.BoxGeometry(tredeDiepte, topY, VLIERINGTRAP_HALF_BREEDTE * 2),
+        matFamilie('hout', VLIERING_BALK));
+      trede.position.set(x, topY / 2, VLIERINGTRAP_CZ);
+      trede.receiveShadow = true;
+      wereld.add(trede);
+    }
+  }
+
+  // --- Muren. Alle drie mét obstakel; de borstwering aan de oostkant is de
+  // gesplitste atelier-weststomp hierboven (die is er dus al). ------------
+  // Westmuur en zuidmuur staan ALLEEN boven de vlieringvloer: eronder ligt
+  // de verzegelde dode hoek, waar toch niemand ooit komt.
+  const vlieringMuurHoogte = ATELIER_HOOGTE - VLIERING_Y;
+  const vlieringMuurMateriaal = mat(VLIERING_BALK, 0.94, 0, { emissive: 0x1d150e, emissiveIntensity: 1 });
+  function vlieringMuur(cx, cz, breedte, diepte) {
+    const muur = new THREE.Mesh(new THREE.BoxGeometry(breedte, vlieringMuurHoogte, diepte), vlieringMuurMateriaal);
+    muur.castShadow = true;
+    muur.receiveShadow = true;
+    muur.position.set(cx, VLIERING_Y + vlieringMuurHoogte / 2, cz);
+    wereld.add(muur);
+    registreerRechthoek(cx - breedte / 2, cx + breedte / 2, cz - diepte / 2, cz + diepte / 2);
+  }
+  vlieringMuur(VLIERING_X_WEST - MUUR_DIKTE / 2, (VLIERING_Z_NOORD + VLIERING_Z_ZUID) / 2,
+    MUUR_DIKTE, VLIERING_Z_ZUID - VLIERING_Z_NOORD);
+  // Zuidmuur: loopt van de westmuur tot exact VLIERING_X_OOST — bewust NIET
+  // MUUR_DIKTE verder naar het oosten, want daar begint de begaanbare
+  // ateliervloer en zou hij als onzichtbare drempel in het atelier steken.
+  vlieringMuur(centrumX - MUUR_DIKTE / 2, VLIERING_Z_ZUID + MUUR_DIKTE / 2, breedteX + MUUR_DIKTE, MUUR_DIKTE);
+  // Noordwand van de trapkoker: houdt je op de helling i.p.v. er zijwaarts
+  // vanaf te stappen (waar de vloer 1,2 m hoger ligt). Zelfde rol als de
+  // kokerWand()-panelen bij de keldertrap. Volle hoogte vanaf de begane
+  // grond, want hij staat naast de helling, niet erop.
+  //
+  // Op verzoek weer over de VOLLE lengte van de koker (een eerdere tussenversie
+  // dekte alleen de westelijke helft, om een collisieval bij de uitgang te
+  // omzeilen — die val is nu bij de wortel opgelost in de waypoint-laag, zie
+  // ZONE_WAYPOINTS/zoekWaypoint(), dus de vliering mag weer volledig dicht
+  // zijn met de helling als enige toegang).
+  {
+    const kokerBreedte = VLIERINGTRAP_X_OOST - VLIERINGTRAP_X_WEST;
+    bouwMuur(VLIERINGTRAP_X_WEST + kokerBreedte / 2, kokerZNoord - MUUR_DIKTE / 2,
+      kokerBreedte, MUUR_DIKTE, VLIERING_BALK, ATELIER_HOOGTE);
+  }
+
+  // --- Decor: een paar dakbalken en een emissief olielampje (geen licht) ---
+  for (const bz of [-15.5, -13, -10.5]) {
+    const balk = new THREE.Mesh(new THREE.BoxGeometry(breedteX, 0.16, 0.16), matFamilie('hout', VLIERING_BALK));
+    balk.position.set(centrumX, ATELIER_HOOGTE - 0.22, bz);
+    wereld.add(balk);
+  }
+  // Feedback: "de lamp in de hoek ziet er wat random uit" — verplaatst naar
+  // het midden van het HOOFDVLAK (het noordelijke, brede deel van de
+  // vliering; bewust NIET het kleine zuidstrookje naast de trap, dat ligt
+  // uit het midden). Hangt nu ook echt aan een koord tegen het plafond,
+  // zelfde silhouet als hangLamp() elders, maar bewust zonder eigen
+  // PointLight (puur decoratief, net als voorheen — geen extra lichtbudget).
+  {
+    const vlieringMiddenX = centrumX;
+    const vlieringMiddenZ = (VLIERING_Z_NOORD + kokerZNoord) / 2;
+    const lampY = ATELIER_HOOGTE - 0.62;
+    const koord = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, ATELIER_HOOGTE - lampY, 6), mat(0x1a1410, 0.7));
+    koord.position.set(vlieringMiddenX, (ATELIER_HOOGTE + lampY) / 2, vlieringMiddenZ);
+    wereld.add(koord);
+    const vlieringLamp = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8),
+      mat(0xffe0a8, 0.4, 0, { emissive: 0xffb454, emissiveIntensity: 1.1 }));
+    vlieringLamp.position.set(vlieringMiddenX, lampY, vlieringMiddenZ);
+    wereld.add(vlieringLamp);
+  }
+
+  // --- Traplampje bij de ingang (op verzoek: "zodat je wel ziet dat er een
+  // trap is"). Dit is de ENIGE echte lichtbron van de vliering en hangt
+  // bewust vlak achter het trapgat, zodat de gloed het atelier in valt en de
+  // opening in de weststomp opvalt. Lichtbudget gaat hiermee van 26 naar 27;
+  // geen schaduw (de schaduw-invariant blijft exact 1 schaduwwerpend licht).
+  // Geregistreerd in lampLichten zodat de bestaande flikker- en
+  // Stroomuitval-dimloop 'm automatisch meeneemt, net als elke andere lamp.
+  {
+    const lampX = VLIERINGTRAP_X_OOST - 0.45;
+    const lampY = VLIERING_Y + 1.55;
+    const koord = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, ATELIER_HOOGTE - lampY, 6), mat(0x1a1410, 0.7));
+    koord.position.set(lampX, (ATELIER_HOOGTE + lampY) / 2, VLIERINGTRAP_CZ);
+    wereld.add(koord);
+    const bolMateriaal = mat(0xffcf8a, 0.4, 0, { emissive: 0xffb347, emissiveIntensity: 0.9 });
+    const bol = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), bolMateriaal);
+    bol.position.set(lampX, lampY, VLIERINGTRAP_CZ);
+    wereld.add(bol);
+    const licht = new THREE.PointLight(0xffb877, 6, 7, 2);
+    licht.position.copy(bol.position);
+    wereld.add(licht);
+    lampLichten.push({
+      licht, bolMateriaal, bolEmissiefBasis: 0.9, basis: 6,
+      fase: Math.random() * Math.PI * 2, amp1: 0.06, amp2: 0.03, minFactor: 0,
+    });
+  }
+  // Twee kisten als opslag-decor (puur visueel, geen collision: ze staan
+  // tegen de muur en de vliering is al krap).
+  for (const [kx, kz] of [[VLIERING_X_WEST + 0.9, -12.4], [VLIERING_X_WEST + 1.7, -11.6]]) {
+    const kist = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.5), matFamilie('hout', 0x5a4530));
+    kist.position.set(kx, VLIERING_Y + 0.25, kz);
+    kist.castShadow = true;
+    wereld.add(kist);
+  }
 }
 
 /* ================================================================
@@ -1477,10 +1761,10 @@ let klinkersMesh;
 // De koopbare deur 2: zelfde patroon als deur 1 (mesh + klink + obstakel die
 // bij aankoop verdwijnen). Vult het deurgat in de oostmuur van het atelier.
 const deur2Mesh = new THREE.Mesh(
-  new THREE.BoxGeometry(0.16, KAMER_HOOGTE - 0.2, DEUR2_HALF * 2),
+  new THREE.BoxGeometry(0.16, ATELIER_HOOGTE - 0.2, DEUR2_HALF * 2),
   matFamilie('hout', 0x4a5058)   // grijzer, "verweerd" hout — anders dan de warme deur 1
 );
-deur2Mesh.position.set(DEUR2_X + MUUR_DIKTE / 2, (KAMER_HOOGTE - 0.2) / 2, DEUR2_Z);
+deur2Mesh.position.set(DEUR2_X + MUUR_DIKTE / 2, (ATELIER_HOOGTE - 0.2) / 2, DEUR2_Z);
 deur2Mesh.castShadow = true;
 deur2Mesh.userData.materiaalFamilie = 'hout';
 wereld.add(deur2Mesh);
@@ -1494,10 +1778,10 @@ const deur2Obstakel = registreerRechthoek(DEUR2_X, DEUR2_X + MUUR_DIKTE, DEUR2_Z
 // in de westmuur van de atelier-nis, zelfde mesh/klink/obstakel-patroon
 // als deur 2 hierboven.
 const deur5Mesh = new THREE.Mesh(
-  new THREE.BoxGeometry(0.16, KAMER_HOOGTE - 0.2, KELDERTRAP_HALF_BREEDTE * 2),
+  new THREE.BoxGeometry(0.16, ATELIER_HOOGTE - 0.2, KELDERTRAP_HALF_BREEDTE * 2),
   matFamilie('hout', 0x3a3228)   // donker, verweerd — past bij een kelderdeur
 );
-deur5Mesh.position.set(KAMER2_NIS_X_WEST - MUUR_DIKTE / 2, (KAMER_HOOGTE - 0.2) / 2, KELDERTRAP_CZ);
+deur5Mesh.position.set(KAMER2_NIS_X_WEST - MUUR_DIKTE / 2, (ATELIER_HOOGTE - 0.2) / 2, KELDERTRAP_CZ);
 deur5Mesh.castShadow = true;
 deur5Mesh.userData.materiaalFamilie = 'hout';
 wereld.add(deur5Mesh);
@@ -1595,7 +1879,8 @@ const VLONDER_X_OOST = VLONDER_X_WEST + VLONDER_DIEPTE;         // = 19.5, ruim 
 // lokale chokepoint op — sinds Ticket 64/65 als data hergebruikt in
 // ZONE_WAYPOINTS[4] (zie zoekWaypoint() en updateOndoden(), verderop in dit
 // bestand), niet meer via een ad-hoc eigenInGracht/spelerInGracht-check.
-const GRACHTGANG_DREMPEL = new THREE.Vector3(GRACHTGANG_X_WEST, 0, BIJKEUKEN_CZ);
+const GRACHTGANG_DREMPEL_BUITEN = new THREE.Vector3(GRACHTGANG_X_WEST - 0.7, 0, BIJKEUKEN_CZ);
+const GRACHTGANG_DREMPEL_BINNEN = new THREE.Vector3(GRACHTGANG_X_WEST + 0.7, 0, BIJKEUKEN_CZ);
 // Feedback: de boot lag de hele run al statisch aangemeerd — je zag 'm nooit
 // echt aankomen. BOOT_DOK_X is de al bestaande, ongewijzigde aangemeerde
 // positie (ontsnappingsPunt rekent hier nog steeds mee, zie
@@ -1958,8 +2243,9 @@ let kozijnSteeg, glasSteeg;
 
 // Warme lampen: een gloeiend bolletje + puntlicht, symmetrisch opgehangen.
 // Elk licht wordt geregistreerd zodat de game-loop het zacht kan laten
-// flikkeren (kaars-/olielamp-sfeer).
-const lampLichten = [];
+// flikkeren (kaars-/olielamp-sfeer). De array zelf staat bewust eerder in dit
+// bestand (bij ATELIER_HOOGTE): het traplampje van de vliering wordt in het
+// vliering-geometrieblok aangemaakt, en dat draait vóór dit punt.
 // Ticket 81: zeldzame lampuitval — een VIERDE, onafhankelijke factor op
 // lampLichten-intensiteit (naast de flikker-sinus, lampDipFactor en
 // stroomFactorVoorLamp hieronder in de gameLoop), per lamp een eigen
@@ -2363,13 +2649,13 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
     new THREE.MeshBasicMaterial({ color: 0xbfe0ff })
   );
   dakraam.rotation.x = Math.PI / 2;
-  dakraam.position.set(0, KAMER_HOOGTE - 0.02, ATELIER_MIDDEN_Z);
+  dakraam.position.set(0, ATELIER_HOOGTE - 0.02, ATELIER_MIDDEN_Z);
   wereld.add(dakraam);
   // v0.6: bereik/intensiteit iets opgehoogd — de hoofdruimte is dieper geworden.
   // Feedback: atelier ~20% donkerder (was 18) — gemeten via pixelhelderheid,
   // niet alleen de PointLight-waarde zelf.
   const dakraamLicht = new THREE.PointLight(0xaacdf0, 10.8, 12, 2);
-  dakraamLicht.position.set(0, KAMER_HOOGTE - 0.3, ATELIER_MIDDEN_Z);
+  dakraamLicht.position.set(0, ATELIER_HOOGTE - 0.3, ATELIER_MIDDEN_Z);
   wereld.add(dakraamLicht);
   stroomGevoeligeDaklichten.push({ licht: dakraamLicht, basis: 10.8 });
 
@@ -2381,11 +2667,11 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
     new THREE.MeshBasicMaterial({ color: 0xbfe0ff })
   );
   dakraamNis.rotation.x = Math.PI / 2;
-  dakraamNis.position.set(KAMER2_NIS_CX, KAMER_HOOGTE - 0.02, KAMER2_NIS_CZ);
+  dakraamNis.position.set(KAMER2_NIS_CX, ATELIER_HOOGTE - 0.02, KAMER2_NIS_CZ);
   wereld.add(dakraamNis);
   // Feedback: atelier ~20% donkerder (was 22).
   const dakraamNisLicht = new THREE.PointLight(0xaacdf0, 13.2, 11, 2);
-  dakraamNisLicht.position.set(KAMER2_NIS_CX, KAMER_HOOGTE - 0.3, KAMER2_NIS_CZ);
+  dakraamNisLicht.position.set(KAMER2_NIS_CX, ATELIER_HOOGTE - 0.3, KAMER2_NIS_CZ);
   wereld.add(dakraamNisLicht);
   stroomGevoeligeDaklichten.push({ licht: dakraamNisLicht, basis: 13.2 });
 
@@ -2398,11 +2684,11 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
     new THREE.MeshBasicMaterial({ color: 0xbfe0ff })
   );
   dakraamNoord.rotation.x = Math.PI / 2;
-  dakraamNoord.position.set(0.5, KAMER_HOOGTE - 0.02, ATELIER_MIDDEN_Z - 6);
+  dakraamNoord.position.set(0.5, ATELIER_HOOGTE - 0.02, ATELIER_MIDDEN_Z - 6);
   wereld.add(dakraamNoord);
   // Feedback: atelier ~20% donkerder (was 22).
   const dakraamNoordLicht = new THREE.PointLight(0xaacdf0, 13.2, 12, 2);
-  dakraamNoordLicht.position.set(0.5, KAMER_HOOGTE - 0.3, ATELIER_MIDDEN_Z - 6);
+  dakraamNoordLicht.position.set(0.5, ATELIER_HOOGTE - 0.3, ATELIER_MIDDEN_Z - 6);
   wereld.add(dakraamNoordLicht);
   stroomGevoeligeDaklichten.push({ licht: dakraamNoordLicht, basis: 13.2 });
 
@@ -2414,11 +2700,11 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
     new THREE.MeshBasicMaterial({ color: 0xbfe0ff })
   );
   dakraamZuidoost.rotation.x = Math.PI / 2;
-  dakraamZuidoost.position.set(3.2, KAMER_HOOGTE - 0.02, ATELIER_MIDDEN_Z - 3);
+  dakraamZuidoost.position.set(3.2, ATELIER_HOOGTE - 0.02, ATELIER_MIDDEN_Z - 3);
   wereld.add(dakraamZuidoost);
   // Feedback: atelier ~20% donkerder (was 18).
   const dakraamZuidoostLicht = new THREE.PointLight(0xaacdf0, 10.8, 10, 2);
-  dakraamZuidoostLicht.position.set(3.2, KAMER_HOOGTE - 0.3, ATELIER_MIDDEN_Z - 3);
+  dakraamZuidoostLicht.position.set(3.2, ATELIER_HOOGTE - 0.3, ATELIER_MIDDEN_Z - 3);
   wereld.add(dakraamZuidoostLicht);
   stroomGevoeligeDaklichten.push({ licht: dakraamZuidoostLicht, basis: 10.8 });
 }
@@ -2877,6 +3163,11 @@ const ICOON_GEO = {
   hamerSteel: new THREE.BoxGeometry(0.045, 0.22, 0.045),
   sleutelRing: new THREE.TorusGeometry(0.07, 0.022, 8, 12),
   sleutelSteel: new THREE.BoxGeometry(0.03, 0.16, 0.03),
+  // De Zelflader: een liggende trommel met een kogel erboven — eigen silhouet,
+  // want hergebruik van het Ratelaar-tandwiel maakte de twee kooppunten op de
+  // kaart visueel niet te onderscheiden.
+  trommel: new THREE.CylinderGeometry(0.085, 0.085, 0.07, 12),
+  trommelKogel: new THREE.CylinderGeometry(0.028, 0.028, 0.1, 8),
 };
 function icoonMesh(geometrie, kleur) {
   return new THREE.Mesh(geometrie, new THREE.MeshStandardMaterial({ color: kleur, emissive: kleur, emissiveIntensity: 0.6 }));
@@ -2914,6 +3205,11 @@ function bouwIcoonHamer(g, kleur) {
   const kop = icoonMesh(ICOON_GEO.hamerKop, kleur); kop.position.y = 1.4; g.add(kop);
   const steel = icoonMesh(ICOON_GEO.hamerSteel, kleur); steel.position.y = 1.24; g.add(steel);
 }
+function bouwIcoonTrommel(g, kleur) {
+  const trommel = icoonMesh(ICOON_GEO.trommel, kleur);
+  trommel.rotation.x = Math.PI / 2; trommel.position.y = 1.31; g.add(trommel);
+  const kogel = icoonMesh(ICOON_GEO.trommelKogel, kleur); kogel.position.y = 1.45; g.add(kogel);
+}
 function bouwIcoonSleutel(g, kleur) {
   const ring = icoonMesh(ICOON_GEO.sleutelRing, kleur); ring.position.y = 1.4; g.add(ring);
   const steel = icoonMesh(ICOON_GEO.sleutelSteel, kleur); steel.position.y = 1.25; g.add(steel);
@@ -2948,6 +3244,8 @@ const WINKEL_STIJLEN = {
   // — staan beide wapens gesmeed, dan blijft dit vanzelf permanent 'gekocht'.
   smederij:     { kleur: 0xff7a1f, bouwIcoon: (g) => bouwIcoonHamer(g, 0xff7a1f),
     status: () => wapenStaat.gesmeed ? 'gekocht' : (spelStaat.geld >= SMEDERIJ_PRIJS ? 'beschikbaar' : 'teDuur') },
+  autoherlader: { kleur: 0x8ef0c8, bouwIcoon: (g) => bouwIcoonTrommel(g, 0x8ef0c8),
+    status: () => autoHerladerGekocht ? 'gekocht' : (spelStaat.geld >= AUTOHERLADER_PRIJS ? 'beschikbaar' : 'teDuur') },
   deur1:        { kleur: 0x9fff9f, bouwIcoon: (g) => bouwIcoonSleutel(g, 0x9fff9f),
     status: () => deurGekocht ? 'gekocht' : (spelStaat.geld >= DEUR_PRIJS ? 'beschikbaar' : 'teDuur') },
   deur2:        { kleur: 0x9fc0e8, bouwIcoon: (g) => bouwIcoonSleutel(g, 0x9fc0e8),
@@ -2981,7 +3279,10 @@ const winkelMarkeringen = [];
 // g.userData.stijlNaam onthoudt welke WINKEL_STIJLEN-entry erbij hoort, zodat
 // updateWinkelMarkeringen() de juiste status() kan opvragen zonder de
 // bestaande winkelMarkeringen-array-vorm (platte Group-lijst) te breken.
-function winkelMarkering(x, z, stijlNaam) {
+// `y` (optioneel, default 0): vloerhoogte van het kooppunt. Nodig sinds de
+// vliering — die ligt op VLIERING_Y, en een ring op y=0 zou daar door de
+// vlieringvloer heen zakken.
+function winkelMarkering(x, z, stijlNaam, y = 0) {
   const stijl = WINKEL_STIJLEN[stijlNaam];
   const g = new THREE.Group();
   const ring = new THREE.Mesh(
@@ -2992,7 +3293,7 @@ function winkelMarkering(x, z, stijlNaam) {
   ring.position.y = 0.03;
   g.add(ring);
   stijl.bouwIcoon(g);
-  g.position.set(x, 0, z);
+  g.position.set(x, y, z);
   g.userData.stijlNaam = stijlNaam;
   wereld.add(g);
   winkelMarkeringen.push(g);
@@ -3159,6 +3460,33 @@ const SMEDERIJ_Z = 3.5;
   wereld.add(koolLicht);
 }
 const smederijMarkering = winkelMarkering(SMEDERIJ_X, SMEDERIJ_Z, 'smederij');
+// De Zelflader op de vliering: achterin, bij de kisten, ruim uit de buurt van
+// de helling zodat je er niet per ongeluk overheen loopt tijdens het klimmen.
+const AUTOHERLADER_X = VLIERING_X_WEST + 2.2;
+const AUTOHERLADER_Z = VLIERING_Z_NOORD + 2.2;
+const autoHerladerMarkering = winkelMarkering(AUTOHERLADER_X, AUTOHERLADER_Z, 'autoherlader', VLIERING_Y);
+// Feedback: "ik zie geen object staan bij de Zelflader" — elk ander
+// kooppunt heeft naast de abstracte ring+icoon ook een eigen fysiek object
+// (de watertap heeft een paal+kraan, de Smederij een aambeeld); dat miste
+// hier. Een compact laadmechanisme: een metalen sokkel + een liggende
+// kogeltrommel + een klein knipperend indicatielampje in dezelfde teal-tint
+// als de winkelstijl. Geen collision (staat als decor tegen de kist aan,
+// net als de kisten zelf geen obstakel zijn).
+{
+  const sokkel = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.4), matFamilie('metaal', 0x3a3f42));
+  sokkel.position.set(AUTOHERLADER_X, VLIERING_Y + 0.2, AUTOHERLADER_Z);
+  sokkel.castShadow = true;
+  wereld.add(sokkel);
+  const trommel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.32, 14), matFamilie('metaal', 0x5a6166));
+  trommel.rotation.z = Math.PI / 2;
+  trommel.position.set(AUTOHERLADER_X, VLIERING_Y + 0.5, AUTOHERLADER_Z);
+  trommel.castShadow = true;
+  wereld.add(trommel);
+  const lampjeMateriaal = mat(0x8ef0c8, 0.4, 0, { emissive: 0x8ef0c8, emissiveIntensity: 1.3 });
+  const lampje = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), lampjeMateriaal);
+  lampje.position.set(AUTOHERLADER_X + 0.2, VLIERING_Y + 0.42, AUTOHERLADER_Z + 0.17);
+  wereld.add(lampje);
+}
 
 // Ticket 85 (Etalages, sporen van de run): een ereplank naast de Smederij
 // met twee vooraf gebouwde, gedoofde medaillons — één per wapen. koopSmederij()
@@ -3547,9 +3875,10 @@ function updateSpeler(dt) {
   // losBotsingenOp hierboven). Ondoden krijgen sinds §7.5.7 dezelfde bypass.
   losBotsingenOp(speler.positie, speler.straal, true);
   // Puur functioneel, geen state — herberekent elk frame opnieuw of x/z in
-  // de kelder-trap-rechthoek vallen (zie berekenKelderY()). Overal elders
-  // blijft dit exact 0, dus het bestaande 2D-gedrag verandert niet.
-  speler.positie.y = berekenKelderY(speler.positie.x, speler.positie.z);
+  // de kelder-trap- of vlieringfootprint vallen (zie berekenVloerY()).
+  // Overal elders blijft dit exact 0, dus het bestaande 2D-gedrag
+  // verandert niet.
+  speler.positie.y = berekenVloerY(speler.positie.x, speler.positie.z);
 
   camera.position.set(
     speler.positie.x,
@@ -3859,6 +4188,12 @@ function wisselWapen() {
 // Wordt elke frame aangeroepen zolang het spel actief is (pointer lock aan);
 // de pauze-gate in de game loop zorgt dat de timer niet doortelt tijdens Esc.
 function updateWapen(dt) {
+  // De Zelflader: leeg magazijn = herlaad vanzelf. herladen() bewaakt zelf al
+  // "al bezig"/"al vol"/"geen reserve", dus dit mag elke frame draaien; het is
+  // een paar vergelijkingen, geen allocatie (hot-path-regel §7.9).
+  if (autoHerladerGekocht && !wapenStaat.herladen && wapenStaat.magazijn === 0) {
+    herladen();
+  }
   if (wapenStaat.herladen) {
     wapenStaat.herlaadTimer -= dt;
     // Ticket 34: herlaad-dip — sinus-boog omlaag/omhoog op herlaadTimer/
@@ -5643,11 +5978,17 @@ function tekenMinimap() {
   // Randgeval (Ticket 67): de kelder ligt buiten GRENS — geen aparte
   // sublaag-tekening, gewoon een klein label i.p.v. de normale speler-/
   // zone-tekening (die de kelder-x/z toch niet correct zou plaatsen).
-  if (speler.positie.y < -0.1) {
+  // Ticket 87 (De Vliering): exact dezelfde uitzondering, één verdieping de
+  // andere kant op. Bewust ook hier een LABEL en geen tweede zone-tekening:
+  // de vliering ligt bovenop de verzegelde dode hoek, dus een normale
+  // 2D-plattegrond zou 'm naast het atelier tekenen alsof je daar kunt
+  // lopen — precies de "twee overlappende zones" die het ticket verbiedt.
+  const opVliering = berekenVlieringY(speler.positie.x, speler.positie.z) !== null;
+  if (speler.positie.y < -0.1 || opVliering) {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
     ctx.font = 'bold 13px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('KELDER', MINIMAP_CANVAS_GROOTTE / 2, MINIMAP_CANVAS_GROOTTE / 2);
+    ctx.fillText(opVliering ? 'VLIERING' : 'KELDER', MINIMAP_CANVAS_GROOTTE / 2, MINIMAP_CANVAS_GROOTTE / 2);
     return;
   }
 
@@ -5829,8 +6170,13 @@ function herbouwNavTabel() {
 // KELDERTRAP_BOVEN/-ONDER routeren via de twee muuropeningen van de koker
 // (boven bij de nis, onder bij de kelderruimte); de "nearest"-regel
 // hierboven zorgt dat de juiste kant als eerste gekozen wordt.
-const KELDERTRAP_BOVEN_PUNT = new THREE.Vector3(KELDERTRAP_X_BOVEN, 0, KELDERTRAP_CZ);
-const KELDERTRAP_ONDER_PUNT = new THREE.Vector3(KELDERTRAP_X_ONDER, 0, KELDERTRAP_CZ);
+// Twee aanlooppunten per doorgang (zie de zelfterminatie-toelichting bij
+// ZONE_WAYPOINTS): één net buiten en één net binnen de deelruimte, allebei
+// midden in de 1,2 m brede koker zodat ze op vrije vloer liggen.
+const KELDERTRAP_BOVEN_BUITEN = new THREE.Vector3(KELDERTRAP_X_BOVEN + 0.7, 0, KELDERTRAP_CZ);
+const KELDERTRAP_BOVEN_BINNEN = new THREE.Vector3(KELDERTRAP_X_BOVEN - 0.7, 0, KELDERTRAP_CZ);
+const KELDERTRAP_ONDER_BUITEN = new THREE.Vector3(KELDERTRAP_X_ONDER + 0.7, 0, KELDERTRAP_CZ);
+const KELDERTRAP_ONDER_BINNEN = new THREE.Vector3(KELDERTRAP_X_ONDER - 0.7, 0, KELDERTRAP_CZ);
 // Feedback ("zombies lopen niet goed in de kelder"): kelderoost (achter
 // deur6) voegde een DERDE, zuidelijkere chokepoint toe aan zone 2, met een
 // massieve muur tussen de trapvoet en deur6 (zie de oostmuur-opbouw
@@ -5858,42 +6204,202 @@ const KELDERTRAP_ONDER_PUNT = new THREE.Vector3(KELDERTRAP_X_ONDER, 0, KELDERTRA
 function isKelderoost(x, z) {
   return x > KELDEROOST_X_WEST && x < KELDEROOST_X_OOST && z > KELDEROOST_Z_NOORD && z < KELDEROOST_Z_ZUID;
 }
+// Kelderoost INCLUSIEF zijn deuropening. Zonder de deurgat-strook viel een
+// ondode die precies in deur6 stond (x == KELDEROOST_X_WEST) buiten ALLE
+// deelruimtes: kelderoost begint pas strikt oostelijker, en de kelderruimte
+// hieronder eindigt precies daar. Hij mikte dan meteen op de trapkoker 7 m
+// noordelijker en drukte zich vast tegen de massieve muur ertussen — gemeten
+// als een harde vastloper op (-15,5 / -15,1).
+function isKelderoostGebied(x, z) {
+  return isKelderoost(x, z) ||
+    (x > KELDEROOST_X_WEST - KELDER_MUUR_DIKTE && x <= KELDEROOST_X_WEST &&
+      z > KELDEROOST_CZ - KELDEROOST_HALF_BREEDTE && z < KELDEROOST_CZ + KELDEROOST_HALF_BREEDTE);
+}
 // KELDEROOST_DEUR_PUNT zit exact op de isKelderoost-x-drempel (niet op
 // DEUR6_X, het muurcentrum) — zelfde self-terminatie-eis als
 // KELDERTRAP_ONDER_PUNT hierboven: het punt moet op zijn EIGEN zijde-drempel
 // liggen, anders wordt "aankomen" nooit "isKelderoost" en blijft de ondode
 // voor altijd op zijn eigen doelpunt hangen.
-const KELDEROOST_DEUR_PUNT = new THREE.Vector3(KELDEROOST_X_WEST, 0, KELDEROOST_CZ);
+const KELDEROOST_DEUR_BUITEN = new THREE.Vector3(KELDEROOST_X_WEST - 0.7, 0, KELDEROOST_CZ);
+const KELDEROOST_DEUR_BINNEN = new THREE.Vector3(KELDEROOST_X_WEST + 0.7, 0, KELDEROOST_CZ);
+function isVliering(x, z) {
+  return berekenVlieringY(x, z) !== null;
+}
+// De z-band waarin de helling ligt (het deurgat in de borstwering én de
+// koker zelf hebben exact deze breedte).
+function inVlieringKokerBand(z) {
+  return z > VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE &&
+    z < VLIERINGTRAP_CZ + VLIERINGTRAP_HALF_BREEDTE;
+}
+// Het VLAKKE deel van de vliering = alles ten noorden van de kokerband. De
+// scheidslijn is bewust een Z-lijn en geen X-lijn: de kokernoordwand loopt
+// oost-west en houdt op bij x = VLIERINGTRAP_X_WEST, dus een ondode kruist
+// die lijn loodrecht en precies één keer. Een x-grens bij het muuruiteinde
+// (een eerdere versie) gaf juist een pingpong: elke stap oostwaarts zette de
+// deelruimte-vlag weer om, waarna hij terug naar het waypoint mikte en
+// eindeloos heen en weer bleef schuiven op het muuruiteinde.
+function isVlieringVlak(x, z) {
+  return isVliering(x, z) && z <= VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE;
+}
+// Ticket 87 (De Vliering) + feedbackronde: de helling is de ENIGE toegang, en
+// hij heeft — net als de keldertrap — TWEE muuropeningen achter elkaar: de
+// voet (het gat in de borstwering, naar het atelier) en de top (om het
+// uiteinde van de kokernoordwand heen, naar het vlakke deel).
+//
+// Elke doorgang krijgt TWEE aanlooppunten, één aan elke kant. Dat is geen
+// franje maar de kern van de zelfterminatie: een ondode die een deelruimte
+// VERLAAT mikt op het punt aan de buitenkant (aankomen = buiten = klaar), en
+// een ondode die er BINNENGAAT mikt op het punt aan de binnenkant (aankomen =
+// binnen = klaar). Met één gedeeld punt op de grens klopt hooguit één van de
+// twee richtingen: de andere landt exact op zijn doel zonder dat de
+// deelruimte-vlag omslaat, houdt daar een nul-richting over en staat stil —
+// precies het gedrag waarbij ondoden bevroren op de trapvoet en op het
+// muuruiteinde (gemeten op -4,5/-9,5 resp. -8,5/-10,0).
+const VLIERINGTRAP_ONDER_BUITEN = new THREE.Vector3(VLIERING_X_OOST + 0.7, 0, VLIERINGTRAP_CZ);
+const VLIERINGTRAP_ONDER_BINNEN = new THREE.Vector3(VLIERING_X_OOST - 0.9, 0, VLIERINGTRAP_CZ);
+// De topdoorgang ligt WEST van het uiteinde van de kokernoordwand, dus beide
+// punten staan op open vloer i.p.v. in een muurhoek.
+const VLIERINGTRAP_BOVEN_BUITEN = new THREE.Vector3(
+  VLIERINGTRAP_X_WEST - 0.5, 0, VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE + 0.25);
+const VLIERINGTRAP_BOVEN_BINNEN = new THREE.Vector3(
+  VLIERINGTRAP_X_WEST - 0.5, 0, VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE - 0.55);
+
+// Aanlooppunten voor de nis-doorgang, midden in de 6 m brede opening en ruim
+// ten noorden van het uiteinde van de borstwering (z = KAMER2_NIS_Z_ZUID),
+// zodat de route ernaartoe evenwijdig aan die muur loopt in plaats van erdoor.
+const NIS_DOORGANG_BUITEN = new THREE.Vector3(-KAMER2_HALF_B + 0.6, 0, KAMER2_NIS_Z_ZUID - 2);
+const NIS_DOORGANG_BINNEN = new THREE.Vector3(-KAMER2_HALF_B - 0.6, 0, KAMER2_NIS_Z_ZUID - 2);
+
+// --- De sub-ruimte-boom van een zone -------------------------------------
+// Feedbackronde na T87: zone 2 is inmiddels geen lineaire KETEN meer maar een
+// BOOM van deelruimtes die allemaal zone-id 2 delen:
+//
+//     atelier + nis  (de hub)
+//       ├── keldertrap-koker → kelderruimte → kelderoost
+//       └── vlieringhelling  → vlieringvlak
+//
+// De oude regel "pak het DICHTSTBIJZIJNDE toepasselijke waypoint" klopt
+// alleen voor een keten. In een boom kiest hij structureel fout: een ondode
+// op het vlakke deel van de vliering heeft de trapVOET dichterbij dan de
+// trapTOP, terwijl de kokernoordwand daar precies tussen staat. Vandaar dit
+// model: elk waypoint bewaakt de ingang van één deelruimte, met
+//   `binnen(x,z)` — ligt een positie IN die deelruimte, en
+//   `niveau`      — hoe diep genest (hoger = dieper).
+// Keuzeregel in zoekWaypoint(): zit je zelf IN een deelruimte waar je doel
+// niet in zit, verlaat dan eerst de DIEPSTE daarvan; zit je er zelf buiten,
+// betreed dan de ONDIEPSTE die je doel wel bevat. Dat is precies één stap per
+// aanroep, dus nog steeds geen graaf-traversal (zie de performance-eis).
+//
+// Zelfterminatie-eis: `puntBuiten` moet aantoonbaar BUITEN de deelruimte
+// liggen en `puntBinnen` erbinnen (bewaakt door tests/test-waypoint-
+// navigatie.mjs). Zo slaat de vlag bij aankomst altijd om en valt het
+// waypoint weg, in plaats van dat de ondode voor altijd mikt op de plek waar
+// hij al staat.
 const ZONE_WAYPOINTS = {
   2: [
-    { punt: KELDERTRAP_BOVEN_PUNT, zijde: (x, z) => (x >= KELDERTRAP_X_BOVEN ? 1 : 0) },
-    { punt: KELDERTRAP_ONDER_PUNT, zijde: (x, z) => (isKelderoost(x, z) || x <= KELDERTRAP_X_ONDER ? 1 : 0) },
-    { punt: KELDEROOST_DEUR_PUNT, zijde: (x, z) => (isKelderoost(x, z) ? 1 : 0) },
+    // De NIS-tak. De nis is een 6 m brede open doorgang, dus normaal niet iets
+    // waar een waypoint voor nodig is — maar sinds de vliering bestaat staat
+    // de 7 m lange borstwering pal tussen de vlieringtrap en de nis in. Een
+    // ondode die de vliering uit kwam mikte dwars door die muur op de nis (of
+    // de kelder erachter) en kwam er niet omheen. De nis is bovendien de
+    // enige toegang tot het keldercomplex, dus hij hoort in de boom ook
+    // BOVEN de kelder te staan: vandaar dat `binnen` hieronder de kelder
+    // meeneemt en de kelderniveaus één zijn opgeschoven.
+    { niveau: 1,
+      binnen: (x, z) => x <= KELDERTRAP_X_BOVEN ||
+        (x <= -KAMER2_HALF_B && z <= KAMER2_NIS_Z_ZUID),
+      puntBuiten: NIS_DOORGANG_BUITEN, puntBinnen: NIS_DOORGANG_BINNEN },
+    // Het hele keldercomplex (koker + kelderruimte + kelderoost) ligt ten
+    // westen van de nis-westmuur; de vliering begint pas OP die lijn, dus
+    // deze test sluit 'm vanzelf uit.
+    { niveau: 2, binnen: (x, z) => x <= KELDERTRAP_X_BOVEN,
+      puntBuiten: KELDERTRAP_BOVEN_BUITEN, puntBinnen: KELDERTRAP_BOVEN_BINNEN },
+    // De kelderruimte zelf, voorbij de koker. isKelderoost() hoort er
+    // expliciet bij (zie de toelichting hierboven): anders zou elke stap in
+    // kelderoost als "buiten" gelden en oscilleert het bij de trapvoet.
+    { niveau: 3, binnen: (x, z) => isKelderoostGebied(x, z) || x < KELDERTRAP_X_ONDER,
+      puntBuiten: KELDERTRAP_ONDER_BUITEN, puntBinnen: KELDERTRAP_ONDER_BINNEN },
+    { niveau: 4, binnen: (x, z) => isKelderoostGebied(x, z),
+      puntBuiten: KELDEROOST_DEUR_BUITEN, puntBinnen: KELDEROOST_DEUR_BINNEN },
+    // De vlieringtak. Niveau 1 = het hele complex (helling + vlak deel),
+    // niveau 2 = alleen het vlakke deel achter de kokernoordwand.
+    // Het gebied loopt een half metertje DOOR ten oosten van het deurgat (tot
+    // aan puntBuiten). Zonder die strook slaat de vlag al bij de eerste stap
+    // voorbij de drempel om, mikt de ondode meteen weer op een speler achter
+    // de borstwering, wordt hij teruggeduwd en pingpongt hij in de deur. Met
+    // de tweetraps-nadering hierboven blijft de INKOMENDE richting gewoon
+    // werken: een ondode in die strook geldt weliswaar als "binnen het
+    // vlieringcomplex", maar niet als "op het vlakke deel", dus hij wordt
+    // netjes verder gerouteerd langs de kokeras.
+    { niveau: 1,
+      binnen: (x, z) => isVliering(x, z) ||
+        (inVlieringKokerBand(z) && x > VLIERING_X_OOST && x < VLIERINGTRAP_ONDER_BUITEN.x),
+      puntBuiten: VLIERINGTRAP_ONDER_BUITEN, puntBinnen: VLIERINGTRAP_ONDER_BINNEN },
+    { niveau: 2, binnen: (x, z) => isVlieringVlak(x, z),
+      puntBuiten: VLIERINGTRAP_BOVEN_BUITEN, puntBinnen: VLIERINGTRAP_BOVEN_BINNEN },
   ],
   4: [
-    { punt: GRACHTGANG_DREMPEL, zijde: (x, z) => (x >= GRACHTGANG_X_WEST ? 1 : 0) },
+    { niveau: 1, binnen: (x, z) => x > GRACHTGANG_X_WEST,
+      puntBuiten: GRACHTGANG_DREMPEL_BUITEN, puntBinnen: GRACHTGANG_DREMPEL_BINNEN },
   ],
 };
 
-// Geeft het (dichtstbijzijnde toepasselijke) waypoint terug waarlangs een
-// positie in `zone` naar `naarPos` moet lopen, of null als er geen
-// tussenstap nodig is (zone heeft geen waypoints, of geen enkele entry
-// scheidt `vanPos` van `naarPos`). Performance-voorwaarde (T64/T65, zie
-// ARCHITECTURE_NOTES §7.9): simpele object-/array-indexering + een paar
-// aftrekkingen, geen graaf-traversal, geen allocaties — veilig om elke
-// ondode elke frame aan te roepen vanuit updateOndoden().
+// Geeft het waypoint terug waarlangs een positie in `zone` naar `naarPos`
+// moet lopen, of null als er geen tussenstap nodig is (zone heeft geen
+// waypoints, of geen enkele deelruimte scheidt `vanPos` van `naarPos`).
+// Performance-voorwaarde (T64/T65, zie ARCHITECTURE_NOTES §7.9): één lus over
+// een handvol entries met wat vergelijkingen, geen graaf-traversal, geen
+// allocaties — veilig om elke ondode elke frame aan te roepen.
+// Een doorgang wordt in TWEE stappen genomen: eerst het aanlooppunt aan je
+// EIGEN kant, en pas als je daar bent het punt aan de overkant. Dat is niet
+// cosmetisch — een koker of deurgat is vaak alleen te bereiken langs zijn
+// eigen as. Mikte een ondode meteen op het punt aan de overkant, dan liep die
+// lijn schuin door de muur ernaast (gemeten bij de vlieringtrap: vanaf de
+// helling ging de lijn naar het punt op het vlakke deel dwars door de
+// kokernoordwand) en drukte hij zich daar vast.
+// De omschakeling gebeurt op de afstand tot het punt aan de OVERKANT, niet op
+// die tot je eigen punt. Dat is bewust: het eerste is monotoon (hij komt er
+// alleen maar dichterbij), het tweede niet. Een eerdere versie mat de afstand
+// tot het eigen punt en liet de ondode precies op die cirkel omkeren — dan
+// mikte hij afwisselend vooruit en achteruit en stond hij stil in de deur.
+// Zolang hij nog verder van de overkant staat dan de doorgang zelf lang is
+// (plus een marge) mikt hij op zijn eigen kant; daarna steekt hij over.
+const DOORGANG_MARGE = 0.4;
+function doorgangPunt(wp, vanPos, vanBinnen) {
+  const eigenKant = vanBinnen ? wp.puntBinnen : wp.puntBuiten;
+  const overkant = vanBinnen ? wp.puntBuiten : wp.puntBinnen;
+  const dx = overkant.x - vanPos.x, dz = overkant.z - vanPos.z;
+  return (dx * dx + dz * dz) > wp.drempelKw ? eigenKant : overkant;
+}
+// Voorberekende omschakeldrempel per doorgang: de lengte van de doorgang zelf
+// plus DOORGANG_MARGE, gekwadrateerd (zodat doorgangPunt() zonder sqrt werkt).
+for (const zone in ZONE_WAYPOINTS) {
+  for (const wp of ZONE_WAYPOINTS[zone]) {
+    const lx = wp.puntBuiten.x - wp.puntBinnen.x, lz = wp.puntBuiten.z - wp.puntBinnen.z;
+    const drempel = Math.hypot(lx, lz) + DOORGANG_MARGE;
+    wp.drempelKw = drempel * drempel;
+  }
+}
+
 function zoekWaypoint(zone, vanPos, naarPos) {
   const lijst = ZONE_WAYPOINTS[zone];
   if (!lijst) return null;
-  let beste = null, besteAfstandKw = Infinity;
+  let eruit = null, eruitNiveau = -1;          // diepste deelruimte waar `van` IN zit
+  let erin = null, erinNiveau = Infinity;      // ondiepste deelruimte waar `van` BUITEN staat
   for (let i = 0; i < lijst.length; i++) {
     const wp = lijst[i];
-    if (wp.zijde(vanPos.x, vanPos.z) === wp.zijde(naarPos.x, naarPos.z)) continue;
-    const dx = wp.punt.x - vanPos.x, dz = wp.punt.z - vanPos.z;
-    const afstandKw = dx * dx + dz * dz;
-    if (afstandKw < besteAfstandKw) { beste = wp.punt; besteAfstandKw = afstandKw; }
+    const vanBinnen = wp.binnen(vanPos.x, vanPos.z);
+    if (vanBinnen === wp.binnen(naarPos.x, naarPos.z)) continue;   // scheidt deze twee niet
+    if (vanBinnen) {
+      if (wp.niveau > eruitNiveau) { eruit = doorgangPunt(wp, vanPos, true); eruitNiveau = wp.niveau; }
+    } else if (wp.niveau < erinNiveau) {
+      erin = doorgangPunt(wp, vanPos, false); erinNiveau = wp.niveau;
+    }
   }
-  return beste;
+  // Eerst naar buiten werken, pas daarna naar binnen: sta je zelf nog in een
+  // deelruimte die je doel niet bevat, dan is de uitgang daarvan altijd de
+  // eerstvolgende stap.
+  return eruit || erin;
 }
 
 // Performance-audit (feedback): hergebruikte temp-vectors voor
@@ -6039,8 +6545,28 @@ function updateOndoden(dt) {
     // gedrag als voorheen, inclusief de eerder gefixte bug dat dit NOOIT mag
     // gelden voor zone 3 (binnenplaats), ook al ligt een deel daarvan ook op
     // x >= GRACHTGANG_X_WEST (zie de zijde-check op ZONE_WAYPOINTS[4]).
-    const tussenWaypoint = volgendeDeur ? null : zoekWaypoint(eigenZone, positie, speler.positie);
-    const doelPunt = volgendeDeur || tussenWaypoint || speler.positie;
+    //
+    // Feedback (na T87, De Vliering): vóór deze fix werd zoekWaypoint()
+    // ALLEEN geraadpleegd als de ondode in dezelfde zone als de speler zat
+    // (volgendeDeur === null). Een ondode die op de vliering (of in de
+    // kelder) stond terwijl de speler naar een ANDERE zone liep — bv. de
+    // binnenplaats — kreeg dan meteen het cross-zone deurpunt als doel,
+    // zonder eerst de disjuncte deelruimte te verlaten via zijn eigen
+    // trap-/hellingwaypoint. Hij liep dan tegen de borstwering (of de
+    // koker-wand) aan en kwam nooit meer los.
+    //
+    // De juiste formulering is niet "waypoint wint altijd" (een eerdere
+    // tussenversie deed dat, en bracht daarmee prompt de oude gracht-bug
+    // terug: een ondode in de bijkeuken liep naar de gracht-drempel zodra de
+    // speler toevallig op x >= GRACHTGANG_X_WEST stond, ook al zat die in de
+    // binnenplaats-zone), maar: **route naar de eerstvolgende hop, en gebruik
+    // de deelruimte-waypoints om díe hop te bereiken.** Bij een cross-zone
+    // achtervolging is die hop het deurpunt, anders de speler zelf. Zo blijft
+    // de zone-graaf leidend voor "welke kant op", terwijl de waypointlaag
+    // alleen nog bepaalt "hoe kom ik daar vanuit mijn huidige deelruimte".
+    const naarPunt = volgendeDeur || speler.positie;
+    const tussenWaypoint = zoekWaypoint(eigenZone, positie, naarPunt);
+    const doelPunt = tussenWaypoint || naarPunt;
     const naarDoel = _tmpNaarDoel.subVectors(doelPunt, positie).setY(0);
 
     // Bij een lopende ontwijk-burst mengt de ondode een groot, vast aandeel
@@ -6066,9 +6592,9 @@ function updateOndoden(dt) {
     losBotsingenOp(positie, ONDODE_STRAAL, true);
     // Feedback: net als de speler (zie updateSpeler) volgt de hoogte van elke
     // ondode puur functioneel uit zijn x/z — geen state, dus hij daalt/stijgt
-    // exact zo soepel als de speler op diezelfde trap, en buiten de
-    // kelder-footprint blijft dit gewoon 0 (§7.5.7).
-    positie.y = berekenKelderY(positie.x, positie.z);
+    // exact zo soepel als de speler op diezelfde trap/helling, en buiten de
+    // kelder- én vlieringfootprint blijft dit gewoon 0 (§7.5.7, §9.8).
+    positie.y = berekenVloerY(positie.x, positie.z);
     // Ticket 73: kijkrichting volgt de daadwerkelijke looprichting (incl.
     // ontwijk-blend) i.p.v. onvoorwaardelijk de speler — een ondode die om
     // een hoek of via een tussen-waypoint naar een deur loopt, staarde de
@@ -6166,7 +6692,7 @@ function updateOndoden(dt) {
         if (ondode.flinch.kernPuls && delen.kern) delen.kern.scale.setScalar(1 + fractie * KERNPULS_SCHAAL_BONUS);
         positie.addScaledVector(ondode.flinch.knokRichting, (KNOCKBACK_AFSTAND / FLINCH_DUUR) * dt);
         losBotsingenOp(positie, ONDODE_STRAAL, true);
-        positie.y = berekenKelderY(positie.x, positie.z);
+        positie.y = berekenVloerY(positie.x, positie.z);
       }
     }
 
@@ -6694,7 +7220,8 @@ function updateHUD() {
   // en gaf geen idee meer van de echte herlaadtijd/schade tijdens het spelen.
   const weergaveSchade = schadePerTreffer + (wapenStaat.gesmeed ? wapenStaat.definitie.smederijConfig.schadeBonus : 0);
   // Ticket 12: ster-merkteken als het actieve wapen gesmeed is.
-  const wapenLabel = wapenStaat.definitie.naam + (wapenStaat.gesmeed ? ' ★' : '');
+  // ⟳ = De Zelflader gemonteerd (auto-herladen actief), naast de ★ voor gesmeed.
+  const wapenLabel = wapenStaat.definitie.naam + (wapenStaat.gesmeed ? ' ★' : '') + (autoHerladerGekocht ? ' ⟳' : '');
   // Power-ups: toon actieve tijdelijke buffs (leeg als er geen actief zijn).
   // Math.ceil telt in hele seconden af — wisselt dus vanzelf elke seconde,
   // en één laatste keer bij het aflopen (buffs wordt dan weer leeg).
@@ -7002,6 +7529,12 @@ const RATELAAR_PRIJS   = 750;   // eenmalig: tweede wapen, op de binnenplaats
 // Ticket 12: De Smederij — late-game geldsink, per wapen (zie ARCHITECTURE_NOTES §2.7-8).
 const SMEDERIJ_PRIJS   = 3000;  // eenmalig per wapen: Smederij-schadebonus + groter magazijn
 const SMEDERIJ_VLAM_BOOST = 1.5;   // feller mondingsvuur voor een gesmeed wapen (schiet() past dit toe)
+// Op verzoek: De Zelflader — koopbaar op de vliering. Eenmalig, geldt daarna
+// voor BEIDE wapens (de vlag is globaal, niet per wapenStaat): zodra je
+// magazijn leeg is start het herladen vanzelf, zodat R nooit meer nodig is.
+// Bewust alleen op LEEG en niet bij een half magazijn — anders herlaadt hij
+// midden in een vuurgevecht ongevraagd en verlies je reserve-kogels.
+const AUTOHERLADER_PRIJS = 1000;
 // SMEDERIJ_ACCENT_KLEUR staat bij de wapen-opbouw hierboven (Ticket 17).
 
 // --- v0.3: Werkbank (atelier), tweede deur en binnenplaats-interacties ---
@@ -7446,6 +7979,24 @@ function koopSmederij() {
   updateHUD();
 }
 
+// De Zelflader (op verzoek, op de vliering): eenmalige upgrade die het
+// herladen automatisch start zodra het magazijn leeg is. Zelfde koop-patroon
+// als koopSnelspanner()/koopRatelaar(): prijscheck, geld afschrijven, vlag
+// zetten, geluid + flits + melding, HUD bijwerken.
+function koopAutoHerlader() {
+  if (autoHerladerGekocht) return;
+  if (spelStaat.geld < AUTOHERLADER_PRIJS) {
+    toonMelding(`Nog €${AUTOHERLADER_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return;
+  }
+  spelStaat.geld -= AUTOHERLADER_PRIJS;
+  autoHerladerGekocht = true;
+  speelKoop();
+  flitsMarkering(autoHerladerMarkering);
+  toonMelding('De Zelflader gemonteerd! Je wapen herlaadt voortaan vanzelf');
+  updateAmmoUI();
+  updateHUD();
+}
+
 // Deur 2 (Ticket V5): opent de binnenplaats. Exact hetzelfde patroon als koopDeur().
 let deur2Gekocht = false;
 function koopDeur2() {
@@ -7689,6 +8240,18 @@ const smederijPunt = {
     : `Druk T: smeed ${wapenStaat.definitie.naam} (€${SMEDERIJ_PRIJS})`,
   actie: koopSmederij,
 };
+// De Zelflader (vliering). positie.y = VLIERING_Y, zodat de bestaande
+// KELDER_Y_MARGE-check in updateInteracties() 'm alleen aanbiedt als je ook
+// echt bovenop de vliering staat — niet als je eronder in het atelier loopt.
+const autoHerladerPunt = {
+  naam: 'De Zelflader',
+  positie: new THREE.Vector3(AUTOHERLADER_X, VLIERING_Y, AUTOHERLADER_Z),
+  radius: 1.6,
+  prompt: () => autoHerladerGekocht
+    ? 'De Zelflader is al gemonteerd'
+    : `Druk T: monteer De Zelflader (€${AUTOHERLADER_PRIJS})`,
+  actie: koopAutoHerlader,
+};
 // --- Ticket 44: de Vluchtroute — drie verzamelbare, originele onderdelen
 // verspreid over golf én zone. Elke mesh staat vooraf klaar en onzichtbaar
 // (§6.4-beslissing 35); startGolf() onthult 'm op de drempelgolf en voegt
@@ -7846,11 +8409,11 @@ function raapVluchtOnderdeelOp(onderdeel) {
   toonGolfBanner(`VLUCHTROUTE ${vluchtOnderdelenOpgepakt}/3`, onderdeel.naam);
   updateVluchtrouteHUD();
   probeerOntsnappingsVensterTeOpenen();   // Ticket 55: kan mid-golf de aankondigingsfase starten
-  // Ticket 76: probeerOntsnappingsVensterTeOpenen() ververst ontsnappingVensterUI
-  // alleen als het venster NU daadwerkelijk opengaat (3/3 én een geldige
-  // golf) — bij het EERSTE onderdeel (dus per definitie nog < 3/3) zou de
-  // "Boot over N golven"-regel anders pas bij golf ONTSNAPPING_START_GOLF
-  // verschijnen i.p.v. meteen na deze pickup.
+  // probeerOntsnappingsVensterTeOpenen() ververst ontsnappingVensterUI alleen
+  // als het venster NU daadwerkelijk opengaat (3/3 én een geldige golf) —
+  // bij het 3e onderdeel (het moment waarop de regel voor het eerst iets
+  // anders dan leeg mag tonen, zie updateOntsnappingVensterHUD()) is dat
+  // niet per se dezelfde golf, dus hier expliciet ook zelf verversen.
   updateOntsnappingVensterHUD();
 }
 
@@ -7971,13 +8534,16 @@ function updateBootHoornHerhaling(dt) {
 // hieronder gedeclareerd is, dus inline zou een TDZ-ReferenceError geven.
 function updateOntsnappingVensterHUD() {
   const el = document.getElementById('ontsnappingVensterUI');
-  // Ticket 76: zodra er minstens één vluchtonderdeel binnen is, toont deze
-  // regel al "Boot over N golven" (was: pas zichtbaar vanaf golf
-  // ONTSNAPPING_START_GOLF) — samen met updateVluchtrouteHUD()'s geldregel
-  // maakt dat de hele wincondition in één oogopslag ontdekbaar zodra de
-  // speler er ook maar één stap richting heeft gezet, i.p.v. pas toevallig
-  // bij het ontsnappingspunt zelf.
-  if (vluchtOnderdelenOpgepakt === 0 && spelStaat.golf < ONTSNAPPING_START_GOLF && !ontsnappingsPunt && !ontsnappingAankondigingActief) {
+  // Feedback: T76 toonde deze regel al zodra het EERSTE vluchtonderdeel
+  // binnen was ("Boot over N golven"), maar de boot komt pas echt zodra alle
+  // 3 onderdelen binnen zijn (zie probeerOntsnappingsVensterTeOpenen() /
+  // updateOntsnappingsVenster(), die allebei vluchtOnderdelenOpgepakt >=
+  // VLUCHT_ONDERDELEN.length eisen) — met 1 of 2 onderdelen was de melding
+  // dus misleidend: de golf-aftelling klopte, maar de boot verscheen die
+  // golf niet. De regel blijft nu leeg tot de vluchtroute compleet is; pas
+  // dan kan ontsnappingsPunt/ontsnappingAankondigingActief sowieso al waar
+  // zijn, dus die twee takken hieronder blijven ongewijzigd.
+  if (vluchtOnderdelenOpgepakt < VLUCHT_ONDERDELEN.length) {
     el.textContent = '';
   } else if (ontsnappingsPunt) {
     el.textContent = 'Boot ligt aan!';
@@ -8145,7 +8711,7 @@ function toonVluchtOnderdelenIndienDrempel() {
   }
 }
 
-const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, pantserdrankPunt, deur2Punt, watertapPunt, ratelaarPunt, smederijPunt, deur3Punt, deur4Punt, deur5Punt, deur6Punt];
+const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, pantserdrankPunt, deur2Punt, watertapPunt, ratelaarPunt, smederijPunt, deur3Punt, deur4Punt, deur5Punt, deur6Punt, autoHerladerPunt];
 
 let huidigeInteractie = null;
 
@@ -8529,6 +9095,20 @@ window.AmsterdamUndeadDebug = {
   KELDERTRAP_CZ, KELDERTRAP_HALF_BREEDTE, KELDERTRAP_X_BOVEN, KELDERTRAP_X_ONDER,
   KELDER_X_WEST, KELDER_Z_NOORD, KELDER_Z_ZUID,
   KELDER_DIEPTE, KELDER_HOOGTE, KELDER_Y_MARGE, berekenKelderY,
+  // Ticket 87: De Vliering — berekenVloerY() is de samengestelde vloerfunctie
+  // (kelderterm + vlieringterm); berekenKelderY hierboven blijft kelder-only.
+  berekenVloerY, berekenVlieringY,
+  VLIERING_X_WEST, VLIERING_X_OOST, VLIERING_Z_NOORD, VLIERING_Z_ZUID,
+  VLIERING_Y, VLIERING_BORSTWERING_Y,
+  VLIERINGTRAP_CZ, VLIERINGTRAP_HALF_BREEDTE, VLIERINGTRAP_X_OOST, VLIERINGTRAP_X_WEST,
+  isVliering, isVlieringVlak, inVlieringKokerBand, ATELIER_HOOGTE,
+  VLIERINGTRAP_ONDER_BUITEN, VLIERINGTRAP_ONDER_BINNEN,
+  VLIERINGTRAP_BOVEN_BUITEN, VLIERINGTRAP_BOVEN_BINNEN,
+  // De Zelflader (auto-herlader, koopbaar op de vliering)
+  AUTOHERLADER_PRIJS, AUTOHERLADER_X, AUTOHERLADER_Z, koopAutoHerlader,
+  autoHerladerPunt, autoHerladerMarkering,
+  get autoHerladerGekocht() { return autoHerladerGekocht; },
+  set autoHerladerGekocht(v) { autoHerladerGekocht = v; },
   deur5Mesh, deur5Obstakel, koopDeur5, deur5Punt,
   get deur5Gekocht() { return deur5Gekocht; },
   // Feedback: kelderoost — tweede kelderruimte + deur 6
@@ -8643,8 +9223,11 @@ window.AmsterdamUndeadDebug = {
   get NAV_VOLGENDE() { return NAV_VOLGENDE; },
   // Ticket 64/65: intra-zone waypointgraaf (vervangt de oude ad-hoc
   // gracht-chokepoint-special-case, zie ARCHITECTURE_NOTES.md §7.6)
-  ZONE_WAYPOINTS, zoekWaypoint, KELDERTRAP_BOVEN_PUNT, KELDERTRAP_ONDER_PUNT,
-  isKelderoost, KELDEROOST_DEUR_PUNT,
+  ZONE_WAYPOINTS, zoekWaypoint, isKelderoost, isKelderoostGebied,
+  NIS_DOORGANG_BUITEN, NIS_DOORGANG_BINNEN,
+  KELDERTRAP_BOVEN_BUITEN, KELDERTRAP_BOVEN_BINNEN,
+  KELDERTRAP_ONDER_BUITEN, KELDERTRAP_ONDER_BINNEN,
+  KELDEROOST_DEUR_BUITEN, KELDEROOST_DEUR_BINNEN,
   // Ticket 30 (Aanval A1): aanvals-state-machine met wind-up
   AANVAL_PROFIELEN, AANVAL_START_BEREIK, AANVAL_DRAAI_SNELHEID, AANVAL_START_JITTER,
   AANVAL_HERSTEL_SNELHEIDSFACTOR, MAX_AANVALLERS,
@@ -8714,7 +9297,8 @@ window.AmsterdamUndeadDebug = {
   get geluidGedempt() { return geluidGedempt; },
   get masterGainNode() { return masterGainNode; },
   // Ticket 52 (Doel D5): gang naar de gracht — vlonder, water, boot, lantaarn
-  GRACHTGANG_HALF, GRACHTGANG_X_WEST, GRACHTGANG_LENGTE, GRACHTGANG_DREMPEL,
+  GRACHTGANG_HALF, GRACHTGANG_X_WEST, GRACHTGANG_LENGTE,
+  GRACHTGANG_DREMPEL_BUITEN, GRACHTGANG_DREMPEL_BINNEN,
   VLONDER_X_WEST, VLONDER_X_OOST, VLONDER_DIEPTE,
   vlonderMesh, waterMesh, bootGroep, grachtLantaarnLicht,
   // Ticket 50: zone-naambanners + HUD-zonelabel

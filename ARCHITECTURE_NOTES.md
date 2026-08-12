@@ -3229,6 +3229,7 @@ Twee aftakkingen die niet in de lus zelf liggen:
 | Voorraadnis (deel van C) | C | −11.5 … −4.5 | −23 … −17 | `KAMER2_NIS_X_WEST`, `KAMER2_NIS_Z_ZUID` |
 | Kelder-trap (koker, deel van C qua `zoneVan`) | C | −15.5 … −11.5 | trapband rond −21.8 | `KELDERTRAP_X_BOVEN/-ONDER`, `KELDERTRAP_CZ`, `KELDERTRAP_HALF_BREEDTE` |
 | Kelder (−Y, disjuncte footprint) | C | −23 … −15.5 | −23.9 … −14 | `KELDER_X_WEST`, `KELDER_Z_NOORD/ZUID`, `KELDER_DIEPTE = 3.3` |
+| Vliering (+Y, disjuncte footprint, T87) | C | −11.5 … −4.5 | −17 … −8.9 | `VLIERING_X_WEST/OOST`, `VLIERING_Z_NOORD/ZUID`, `VLIERING_Y = 1.2` |
 | Binnenplaats | D (3) | 4.5 … 20.5 | −24 … −7 | `DEUR2_X`, `PLAATS_X_OOST`, `PLAATS_Z_NOORD/ZUID`, `PLAATS_CX` |
 | Kelderhals (deel van E, verbindt D↔bijkeuken) | E | 9 … 11 | −7 … −4.5 | `KELDERHALS_X_WEST/OOST`, `KELDERHALS_Z_NOORD/ZUID` |
 | Bijkeuken | E (4) | 4.5 … 12 | −4.5 … 4.5 | `BIJKEUKEN_X_WEST/OOST`, `BIJKEUKEN_Z_NOORD/ZUID` |
@@ -3927,6 +3928,255 @@ de ROADMAP-backlog. Niet omdat het onmogelijk is, maar omdat de
 kosten/risico-verhouding pas verantwoord is als er een concrete
 speelreden voor is die de vliering niet al dekt. Wie dat ooit oppakt,
 begint bij deze paragraaf.
+
+#### 9.8.1 Implementatieverslag T87 (uitgevoerd)
+
+**Gekozen footprint: de dode hoek ten zuiden van de nis.** Sinds v0.4
+verzegelen de nis-afsluitmuur (z = `KAMER2_NIS_Z_ZUID`) en de
+atelier-weststomp (x = `-KAMER2_HALF_B`) samen een rechthoek die op de
+begane grond volledig onbereikbaar is. Dat is aangetoond, niet
+aangenomen: een flood-fill vanaf de startpositie met ALLE deuren gekocht
+vindt 9878 bereikbare rastercellen, waarvan er **0** in die hoek liggen.
+Die flood-fill staat als sectie 1 in `tests/test-vliering.mjs` en is,
+zoals het ticket eist, geschreven en groen gedraaid vóór er ook maar één
+mesh gebouwd was.
+
+**Waarom `isVrijePlek()` hier niet volstaat.** Die functie kijkt alleen
+naar obstakel-overlap en GRENS, niet naar bereikbaarheid — hij meldt 221
+punten in de dode hoek als "vrij", terwijl er geen enkele route heen
+bestaat. Wie de footprint-eis met `isVrijePlek()` toetst, toetst dus iets
+anders dan wat er staat. De flood-fill gebruikt hetzelfde primitief als
+`losBotsingenOp()` zelf (cirkel-tegen-rechthoek + de GRENS-klem incl.
+kelder-bypass).
+
+**`berekenKelderY()` is NIET hernoemd.** Het ticket noemde
+"uitgebreid/hernoemd tot `berekenVloerY(x, z)`", maar dat botste met de
+eis dat `test-kelder-trap.mjs` ongewijzigd groen blijft: dat bestand
+asserteert onder meer dat `berekenKelderY` exact 0 is op alle 15327
+bovengrondse rasterpunten, en de vliering ligt binnen dat bereik.
+Gekozen oplossing: `berekenKelderY()` blijft precies wat hij was (de
+kelderTERM), `berekenVlieringY()` is de vlieringterm, en
+`berekenVloerY()` is de nieuwe samengestelde vloerfunctie waar alle
+consumenten doorheen gaan. Beide bestaande rasterassertie blijven
+daardoor letterlijk waar én blijven bewaken wat ze bewaakten;
+`test-kelder-trap.mjs` is niet aangeraakt en bleef 54/54 groen.
+
+**Eén systeem minder aangeraakt dan bij T62.** De vlieringfootprint ligt
+volledig binnen GRENS (x ≥ `GRENS.minX`), in tegenstelling tot de kelder
+die ten westen daarvan ligt. `losBotsingenOp()` bleef daardoor letterlijk
+ongewijzigd — geen tweede bypass naast `magKelderBinnen`. `zoneVan()`
+bleef eveneens ongewijzigd: de hele vliering ligt op z < `GANG_Z_EIND`
+en valt dus vanzelf in zone 2, precies zoals het ticket voorschreef
+("de vliering is ruimte, geen nieuwe zone").
+
+**Ondode-navigatie.** Zonder tussenstap duwt een ondode in het atelier
+recht tegen de borstwering — dan zou de vliering "een gratis veilige plek
+waar ondoden niet komen" zijn, oftewel een balanswijziging. Opgelost met
+één extra intra-zone waypoint (`VLIERINGTRAP_VOET_PUNT`) in
+`ZONE_WAYPOINTS[2]`, op exact dezelfde manier als de kelder-trap: het
+punt ligt op zijn eigen zijde-drempel, zodat "aankomen" ook echt
+"overgestoken" betekent. Getoetst met een trajectory-trace: een ondode
+die midden in het atelier start, staat binnen 60s daadwerkelijk bovenop
+de vliering, met zijn Y op vlieringhoogte.
+
+**Licht.** De performancevoorwaarde ("geen extra licht") is gehaald: het
+budget staat nog steeds op 26 PointLights en op exact 1 schaduwwerpend
+licht. Zonder lichtbron rendert de ruimte echter praktisch zwart — je ziet
+niet waar je staat. Opgelost met een lage `emissive` op het vloer- en
+muurmateriaal (zelfde "emissive i.p.v. een echt licht"-techniek als de
+Smederij-gloed), plus een emissief olielampje als visueel anker.
+
+**Obstakels: 52 → 56** (gesplitste weststomp +1, vliering-westmuur +1,
+vliering-zuidmuur +1, kokerwand +1). Vastgelegd in
+`tests/test-vliering.mjs`; de bestaande tellers in `test-pand-adres.mjs`,
+`test-etalages.mjs` en `test-resources.mjs` zijn meeverhoogd met behoud
+van hun oorspronkelijke bedoeling (die assertie ging steeds over "deze
+feature voegt zelf niets toe", niet over het absolute getal).
+
+#### 9.8.2 Vervolg na de eerste speeltest (op verzoek)
+
+Drie aanpassingen na feedback op de opgeleverde vliering:
+
+1. **Plafond atelier/nis/vliering +12,5%** (3,2 → 3,6) via een eigen
+   `ATELIER_HOOGTE`. De vliering deelde zijn stahoogte met het atelier en
+   die was met 2,0 m krap. Bewust NIET `KAMER_HOOGTE` opgehoogd: dat zou
+   elke kamer, deurhoogte en hanglamp in het pand veranderen én de
+   vastgelegde invariant `KELDER_HOOGTE === KAMER_HOOGTE`
+   (test-kelder-trap.mjs) breken. Alleen het atelier, de nis en de
+   vliering gebruiken de nieuwe constante; alle muren die die ruimtes
+   begrenzen én de erin hangende dakramen en deur2/deur5-meshes krijgen
+   'm mee, zodat er nergens een kier ontstaat. Stahoogte op de vliering
+   is nu 2,4 m.
+
+2. **Traplampje bij de ingang.** Zonder lichtbron viel de trapopening in
+   de weststomp niet op. Dit is een bewuste, gevraagde afwijking van de
+   oorspronkelijke T87-performancevoorwaarde "geen extra licht": het
+   lichtbudget gaat van 26 naar 27 PointLights. De schaduw-invariant
+   (exact 1 schaduwwerpend licht) blijft ongewijzigd, en de lamp is in
+   `lampLichten` geregistreerd zodat de bestaande flikker- en
+   Stroomuitval-dimloop 'm automatisch meenemen. `lampLichten` moest
+   daarvoor eerder in het bestand gedeclareerd worden — het
+   vliering-geometrieblok draait vóór het oude declaratiepunt.
+
+3. **De Zelflader** (€1000, koopbaar op de vliering): eenmalige upgrade
+   die het herladen automatisch start zodra het magazijn leeg is, zodat
+   R niet meer nodig is. Geldt na aankoop voor beide wapens (globale
+   vlag, niet per `wapenStaat`). Bewust alleen op LEEG en niet bij een
+   half magazijn — anders herlaadt hij ongevraagd midden in een
+   vuurgevecht en verlies je reserve-kogels. Het interactiepunt staat op
+   `positie.y = VLIERING_Y`, zodat de bestaande `KELDER_Y_MARGE`-check in
+   `updateInteracties()` 'm alleen aanbiedt als je ook echt boven staat.
+   `winkelMarkering()` kreeg daarvoor een optionele `y`-parameter (default
+   0, dus alle bestaande aanroepen ongewijzigd).
+
+   **Let op — dit is een echte gameplay-toevoeging, geen sfeer.** Hij valt
+   daarmee buiten de v0.21-invariant uit §9.2 ("geen ticket in deze ronde
+   wijzigt een balansgetal"). Dat is een expliciete keuze van de
+   gebruiker, geen sluipende uitbreiding: er is een nieuw prijsgetal
+   (`AUTOHERLADER_PRIJS`) bijgekomen, geen bestaand balansgetal gewijzigd.
+
+#### 9.8.3 Vervolg na de tweede speeltest (op verzoek + bugmelding)
+
+Drie punten na de eerste ronde vliering-feedback:
+
+1. **Vlieringlamp gecentreerd tegen het plafond.** Stond eerst in een hoek
+   op ~1,5 m hoogte ("ziet er wat random uit"); hangt nu aan een koord
+   midden boven het hoofdvlak van de vliering (bewust het noordelijke,
+   brede deel — niet het smalle zuidstrookje naast de trap, dat ligt uit
+   het midden), tegen het plafond, zelfde silhouet als `hangLamp()`.
+   Nog steeds puur decoratief, geen `PointLight` — lichtbudget blijft 27.
+
+2. **De Zelflader kreeg een fysiek object.** Elk ander kooppunt heeft naast
+   de abstracte ring+icoon-`winkelMarkering()` ook een eigen decor-mesh
+   (watertap: paal+kraan; Smederij: aambeeld) — dat ontbrak hier. Nu een
+   metalen sokkel + liggende kogeltrommel + een klein teal-emissief
+   indicatielampje, exact op de plek van de markering.
+
+3. **Bugfix: ondoden liepen vast op de vliering** zodra de speler naar een
+   andere zone liep (gemeld: vanaf de binnenplaats). Twee onafhankelijke
+   oorzaken, allebei gefixt:
+
+   - **Routeringsbug in `updateOndoden()`.** `zoekWaypoint()` (de
+     sub-area-chokepointlaag uit T64/T65, incl. het T87-vlieringpunt) werd
+     vóór deze fix ALLEEN geraadpleegd als de ondode in dezelfde zone als
+     de speler zat (`volgendeDeur === null`). Zodra de speler een andere
+     zone in liep, werd `volgendeDeur` (het cross-zone deurpunt) direct als
+     doel gekozen — zonder eerst de disjuncte vliering-/kelder-subruimte te
+     verlaten via de eigen trap-/hellingwaypoint. Een ondode op de vliering
+     liep dan recht tegen de borstwering aan: een gratis veilige plek,
+     precies wat het ticket verbiedt. Fix: `zoekWaypoint()` draait nu
+     ALTIJD en wint van `volgendeDeur` zodra de zijde-functie een mismatch
+     geeft (`doelPunt = tussenWaypoint || volgendeDeur || speler.positie`).
+     Binnen dezelfde zone was `volgendeDeur` altijd al `null`, dus dat pad
+     is functioneel ongewijzigd — dit raakt uitsluitend het cross-zone
+     geval. Werkt hierdoor ook meteen voor het kelder-equivalent van
+     hetzelfde scenario, niet alleen de vliering.
+   - **Geometrische val bij de treduitgang.** Onafhankelijk van de
+     routeringsbug bleek de "noordwand van de trapkoker" (T87) tot precies
+     de hoek van de opening in de oostmuur te lopen. Twee muren die in
+     exact hetzelfde punt een rechte hoek vormen zijn een klassieke val
+     voor een collisiestraal (`ONDODE_STRAAL` 0,4): een diagonale nadering
+     raakt bijna onvermijdelijk beide muren tegelijk en kan geen kant op.
+     Fix: die muur dekt nu alleen de westelijke (hoge) helft van de
+     helling — waar het hoogteverschil bij zijwaarts afstappen het grootst
+     is — en laat de oostelijke helft, dicht bij de uitgang waar de vloer
+     toch al bijna op atelierniveau ligt, open.
+
+   Beide fixes waren onafhankelijk nodig: de routeringsbug alleen had de
+   ondode nog steeds bij de trapvoet-hoek vast laten lopen; de
+   muurgeometrie alleen had niets uitgemaakt zolang `doelPunt` nooit naar
+   de trapvoet wees. `tests/test-vliering.mjs` sectie 18-19 legt het exacte
+   bugscenario (speler op de binnenplaats, ondode op de vliering) vast als
+   regressie.
+
+#### 9.8.4 Feedback: "Boot over N golven" was misleidend vóór een complete vluchtroute
+
+T76 (§8.7.1) toonde de "Boot over N golven"-regel al zodra het EERSTE
+vluchtonderdeel binnen was, met opzet — de wincondition moest
+ontdekbaar zijn zonder toevallig bij de boot te staan. In de praktijk
+bleek dat misleidend: de golf-aftelling klopte, maar
+`probeerOntsnappingsVensterTeOpenen()`/`updateOntsnappingsVenster()`
+eisen allebei `vluchtOnderdelenOpgepakt >= VLUCHT_ONDERDELEN.length`
+(3/3) vóór het venster echt opengaat. Met 1 of 2 onderdelen verscheen de
+boot die golf dus niet — de melding beloofde iets wat niet gebeurde.
+
+Fix (in `updateOntsnappingVensterHUD()`): de regel blijft nu leeg totdat
+de vluchtroute compleet is (3/3), ongeacht de golf. Zodra dat zo is,
+verschijnt de melding meteen, ook vóór `ONTSNAPPING_START_GOLF` — dat
+deel van T76's bedoeling (niet wachten tot golf 10 om de countdown te
+tonen) blijft overeind, alleen de drempel is verschoven van "1e
+onderdeel" naar "3e onderdeel". `updateVluchtrouteHUD()`'s eigen
+`N/3 · €PRIJS nodig`-regel (zichtbaar vanaf het 1e onderdeel) blijft
+ongewijzigd — die belofte klopt namelijk wel meteen: het geldvereiste
+geldt zodra je er ook maar íets van hebt. Getest in
+`tests/test-ontsnapping-vensters.mjs` (secties 6b/6c).
+
+#### 9.8.5 Navigatie-refactor: van keten naar boom (feedbackronde)
+
+Melding: "de waypoint-navigatie gaat niet goed — als ik op de vliering sta en
+ze komen vanaf de kelderingang gaat het ook mis". Aanleiding om niet één
+symptoom te fixen maar de hele kaart te meten.
+
+**Meetopzet eerst.** `tests/test-navigatie-dekking.mjs` zet elke ondode-plek
+tegen elke spelerplek (12 plekken, 132 paren) en eist aankomst binnen 60s. De
+eerste meting gaf **15 vastlopers**; dat maakte de diagnose feitelijk in
+plaats van speculatief, en elke fix hieronder is erdoor aangetoond.
+
+**Kernbevinding: zone 2 is een BOOM geworden, geen keten.** Sinds de kelder,
+kelderoost en de vliering deelt zone 2 zijn id met vijf deelruimtes:
+
+```
+atelier (hub)
+  └── nis ──── keldertrap-koker ── kelderruimte ── kelderoost
+  └── vlieringhelling ── vlieringvlak
+```
+
+De oude regel in `zoekWaypoint()` was "pak het DICHTSTBIJZIJNDE toepasselijke
+waypoint". Dat klopt voor een keten, maar kiest in een boom structureel fout:
+vanaf het vlakke deel van de vliering ligt de trapVOET dichterbij dan de
+trapTOP, terwijl de kokernoordwand daar precies tussen staat. Vervangen door
+een genest model — elk waypoint bewaakt één deelruimte met een `binnen(x,z)`
+en een `niveau` — met de regel: *zit je in een deelruimte waar je doel niet in
+zit, verlaat dan eerst de diepste daarvan; zit je erbuiten, betreed dan de
+ondiepste die je doel wel bevat.* Nog steeds één lus zonder graaf-traversal.
+
+**Drie fouten die de meting blootlegde, alle drie structureel:**
+
+1. **Zelfterminatie.** Een waypointpunt dat aan de verkeerde kant van zijn
+   eigen grens ligt, laat de ondode mikken op de plek waar hij al staat —
+   nul-richting, dus stilstand. Elke doorgang heeft nu een aanlooppunt aan
+   BEIDE kanten (`puntBuiten`/`puntBinnen`); verlaten mikt op buiten,
+   binnengaan op binnen. Vastgelegd als losse invariant in de test.
+2. **Tweetraps-nadering.** Een koker is vaak alleen langs zijn eigen as te
+   bereiken. Mikte een ondode meteen op het punt aan de overkant, dan liep die
+   lijn schuin door de muur ernaast. Hij mikt nu eerst op het punt aan zijn
+   eigen kant en steekt pas over als hij daar is. De omschakeling gebeurt op
+   de afstand tot het punt aan de OVERKANT — die is monotoon; een eerdere
+   versie mat de afstand tot het eigen punt en liet de ondode precies op die
+   cirkel omkeren.
+3. **Gaten in de deelruimte-definities.** De deur6-opening viel tussen
+   kelderoost (begint strikt oostelijker) en de kelderruimte (eindigt precies
+   daar) in: een ondode dáár hoorde bij geen enkele deelruimte en mikte dwars
+   door de massieve muur. Opgelost met `isKelderoostGebied()`, dat de
+   deuropening expliciet meeneemt.
+
+**Twee geometrische bijstellingen.** De trapopening van de vliering ging van
+1,2 m naar 1,8 m (bij de trapmond komen twee muren onder een rechte hoek
+samen; een ondode van 0,8 m breed hield daar net genoeg contact met beide om
+vast te blijven zitten). En de nis kreeg een eigen doorgang in de boom: sinds
+de vliering bestaat staat de 7 m lange borstwering pal tussen de vlieringtrap
+en de nis, en de nis is bovendien de enige toegang tot het keldercomplex — hij
+hoort dus ook hiërarchisch boven de kelder te staan.
+
+**Wat NIET geholpen heeft** (genoteerd omdat het plausibel klinkt): een
+"commit-regel" waarbij een ondode zich aan zijn gekozen waypoint vastlegt tot
+hij er is. Dat verving de flipflop door een ondode die op zijn waypoint bleef
+staan, en verdrievoudigde het aantal vastlopers (15 → 48). De echte oorzaak
+zat in de puntplaatsing, niet in de besluitvorming.
+
+**Eindstand: 0 van de 132 routeparen loopt vast**, langste legitieme route 33s
+(gracht ↔ kelderoost, vijf chokepoints). De vliering is daarbij weer volledig
+dicht met de helling als enige toegang, zoals gevraagd.
 
 ### 9.9 Wat deze ronde bewust niet doet
 

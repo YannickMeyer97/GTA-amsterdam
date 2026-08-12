@@ -30,28 +30,52 @@ const dataset = await page.evaluate(() => {
     zones: Object.keys(d.ZONE_WAYPOINTS).sort(),
     zone2Lengte: d.ZONE_WAYPOINTS[2].length,
     zone4Lengte: d.ZONE_WAYPOINTS[4].length,
-    puntZelfdeAlsGrachtgangDrempel: d.ZONE_WAYPOINTS[4][0].punt === d.GRACHTGANG_DREMPEL,
-    kelderPuntenZijnKelderTrapConstantes:
-      d.ZONE_WAYPOINTS[2][0].punt.x === d.KELDERTRAP_X_BOVEN && d.ZONE_WAYPOINTS[2][0].punt.z === d.KELDERTRAP_CZ &&
-      d.ZONE_WAYPOINTS[2][1].punt.x === d.KELDERTRAP_X_ONDER && d.ZONE_WAYPOINTS[2][1].punt.z === d.KELDERTRAP_CZ,
-    // Feedback (kelderoost): zone 2 kreeg een DERDE entry voor de deur6-
-    // oversteek, op precies de isKelderoost-x-drempel (zie de uitgebreide
-    // uitleg in amsterdam-undead.html bij ZONE_WAYPOINTS/isKelderoost).
-    kelderoostPuntIsOpDrempel:
-      d.ZONE_WAYPOINTS[2][2].punt.x === d.KELDEROOST_X_WEST && d.ZONE_WAYPOINTS[2][2].punt.z === d.KELDEROOST_CZ &&
-      d.ZONE_WAYPOINTS[2][2].punt === d.KELDEROOST_DEUR_PUNT,
+    grachtPuntenZijnDeConstantes:
+      d.ZONE_WAYPOINTS[4][0].puntBuiten === d.GRACHTGANG_DREMPEL_BUITEN &&
+      d.ZONE_WAYPOINTS[4][0].puntBinnen === d.GRACHTGANG_DREMPEL_BINNEN,
+    // De kelder-waypoints staan sinds de nis-tak op index 1 t/m 3; hun
+    // aanlooppunten liggen aan weerszijden van KELDERTRAP_X_BOVEN/-ONDER op
+    // de kokeras (KELDERTRAP_CZ).
+    kelderPuntenOpDeKokeras:
+      d.ZONE_WAYPOINTS[2][1].puntBuiten.z === d.KELDERTRAP_CZ &&
+      d.ZONE_WAYPOINTS[2][1].puntBinnen.z === d.KELDERTRAP_CZ &&
+      d.ZONE_WAYPOINTS[2][2].puntBuiten.z === d.KELDERTRAP_CZ &&
+      d.ZONE_WAYPOINTS[2][2].puntBinnen.z === d.KELDERTRAP_CZ,
+    kelderoostPuntenRondDeDrempel:
+      d.ZONE_WAYPOINTS[2][3].puntBuiten === d.KELDEROOST_DEUR_BUITEN &&
+      d.ZONE_WAYPOINTS[2][3].puntBinnen === d.KELDEROOST_DEUR_BINNEN &&
+      d.ZONE_WAYPOINTS[2][3].puntBuiten.x < d.KELDEROOST_X_WEST &&
+      d.ZONE_WAYPOINTS[2][3].puntBinnen.x > d.KELDEROOST_X_WEST,
+    // Zelfterminatie-eis: puntBuiten ligt aantoonbaar BUITEN de deelruimte en
+    // puntBinnen erbinnen. Zonder dat mikt een ondode die aankomt op de plek
+    // waar hij al staat en staat hij permanent stil.
+    alleAanlooppuntenAanDeJuisteKant: Object.keys(d.ZONE_WAYPOINTS).every(z =>
+      d.ZONE_WAYPOINTS[z].every(wp =>
+        wp.binnen(wp.puntBuiten.x, wp.puntBuiten.z) === false &&
+        wp.binnen(wp.puntBinnen.x, wp.puntBinnen.z) === true)),
+    // Nesting: binnen één zone is elk niveau uniek per tak, en dieper geneste
+    // deelruimtes liggen volledig binnen hun ouder.
+    niveausOplopend: d.ZONE_WAYPOINTS[2].map(wp => wp.niveau).join(','),
   };
 });
 check('ZONE_WAYPOINTS heeft precies twee zone-entries (2, atelier/kelder-trap/kelderoost; 4, bijkeuken/gracht)',
   dataset.zones.length === 2 && dataset.zones[0] === '2' && dataset.zones[1] === '4', dataset);
-check('Zone 2 heeft precies drie waypoints (boven-/onderkant van de trap + kelderoost-deur)', dataset.zone2Lengte === 3, dataset);
+// Zone 2 is inmiddels een BOOM van deelruimtes: nis-tak (die het hele
+// keldercomplex omvat) -> keldercomplex -> kelderruimte -> kelderoost, plus
+// een aparte vlieringtak (complex -> vlak deel). Zes doorgangen in totaal.
+check('Zone 2 heeft precies zes waypoints (nis, keldercomplex, kelderruimte, kelderoost, vliering, vlieringvlak)',
+  dataset.zone2Lengte === 6, dataset);
 check('Zone 4 heeft precies één waypoint (de gang-drempel)', dataset.zone4Lengte === 1, dataset);
-check('Het waypoint-punt is dezelfde Vector3-instantie als GRACHTGANG_DREMPEL (hergebruikte data, geen kopie)',
-  dataset.puntZelfdeAlsGrachtgangDrempel === true, dataset);
-check('De kelder-trap-waypoints staan exact op KELDERTRAP_X_BOVEN/-ONDER, KELDERTRAP_CZ',
-  dataset.kelderPuntenZijnKelderTrapConstantes === true, dataset);
-check('Het kelderoost-deur-waypoint staat exact op de isKelderoost-x-drempel (KELDEROOST_X_WEST), niet op DEUR6_X (het muurcentrum)',
-  dataset.kelderoostPuntIsOpDrempel === true, dataset);
+check('De gracht-aanlooppunten zijn dezelfde Vector3-instanties als de constanten (hergebruikte data, geen kopie)',
+  dataset.grachtPuntenZijnDeConstantes === true, dataset);
+check('De kelder-trap-aanlooppunten liggen op de kokeras (KELDERTRAP_CZ)',
+  dataset.kelderPuntenOpDeKokeras === true, dataset);
+check('De kelderoost-aanlooppunten liggen aan weerszijden van de isKelderoost-drempel (KELDEROOST_X_WEST)',
+  dataset.kelderoostPuntenRondDeDrempel === true, dataset);
+check('ELK waypoint: puntBuiten ligt buiten zijn deelruimte en puntBinnen erbinnen (zelfterminatie-eis)',
+  dataset.alleAanlooppuntenAanDeJuisteKant === true, dataset);
+check('De zone-2-niveaus lopen op volgens de boomstructuur (nis 1, kelder 2/3/4, vliering 1/2)',
+  dataset.niveausOplopend === '1,2,3,4,1,2', dataset);
 
 // --- 2. zoekWaypoint(): unit-achtige lookup-checks op bekende testposities --
 const lookup = await page.evaluate(() => {
@@ -88,10 +112,10 @@ const perf = await page.evaluate(() => {
   const b = { x: d.VLONDER_X_WEST + 1, z: 0 };
   let laatste = null;
   for (let i = 0; i < 1000; i++) laatste = d.zoekWaypoint(4, a, b);
-  return { laatsteIsWaypoint: laatste === d.GRACHTGANG_DREMPEL };
+  return { laatsteIsBestaandPunt: laatste === d.GRACHTGANG_DREMPEL_BUITEN || laatste === d.GRACHTGANG_DREMPEL_BINNEN };
 });
 check('1000 herhaalde lookups blijven exact hetzelfde waypoint-object teruggeven (geen allocatie per call)',
-  perf.laatsteIsWaypoint === true, perf);
+  perf.laatsteIsBestaandPunt === true, perf);
 
 // --- 4. Trajectory-trace: atelier-nis-hoek (zone 2) --------------------------
 // De nis (KAMER2_NIS_*) is alleen aan de noordkant met de hoofdruimte
@@ -164,19 +188,27 @@ const kelderLookup = await page.evaluate(() => {
     trapNaarKelder: trapNaarKelder && { x: trapNaarKelder.x, z: trapNaarKelder.z },
     boven: { x: d.KELDERTRAP_X_BOVEN, z: d.KELDERTRAP_CZ },
     onder: { x: d.KELDERTRAP_X_ONDER, z: d.KELDERTRAP_CZ },
-    nisZelfdeKant: d.zoekWaypoint(2, nis, { x: d.KAMER2_HALF_B - 1, z: d.GANG_Z_EIND - 1 }),
+    // Twee posities binnen DEZELFDE deelruimte (allebei in de nis) hebben
+    // geen tussenstap nodig.
+    binnenDeNis: d.zoekWaypoint(2, nis, { x: d.KAMER2_NIS_CX + 1, z: d.KAMER2_NIS_CZ + 1 }),
   };
 });
-check('nis -> kelder: eerste tussenpunt is de BOVENkant van de trap (dichtstbijzijnde vanaf de nis)',
-  JSON.stringify(kelderLookup.nisNaarKelder) === JSON.stringify(kelderLookup.boven), kelderLookup);
-check('kelder -> nis: eerste tussenpunt is de ONDERkant van de trap (dichtstbijzijnde vanaf de kelder) — ANDERS dan hierboven',
-  JSON.stringify(kelderLookup.kelderNaarNis) === JSON.stringify(kelderLookup.onder), kelderLookup);
+// De aanlooppunten liggen ±0,7 m aan weerszijden van de drempels; de checks
+// hieronder toetsen daarom aan WELKE KANT van de drempel het gekozen punt
+// ligt — dat is precies de oorspronkelijke bedoeling ("welke opening neemt
+// hij het eerst"), los van de exacte offset.
+check('nis -> kelder: eerste tussenpunt hoort bij de BOVENkant van de trap (de opening naast de nis)',
+  Math.abs(kelderLookup.nisNaarKelder.x - kelderLookup.boven.x) < 1 &&
+  kelderLookup.nisNaarKelder.z === kelderLookup.boven.z, kelderLookup);
+check('kelder -> nis: eerste tussenpunt hoort bij de ONDERkant van de trap — ANDERS dan hierboven',
+  Math.abs(kelderLookup.kelderNaarNis.x - kelderLookup.onder.x) < 1 &&
+  kelderLookup.kelderNaarNis.z === kelderLookup.onder.z, kelderLookup);
 check('middenin de koker -> nis: mikt op de BOVENkant (op weg naar buiten)',
-  JSON.stringify(kelderLookup.trapNaarNis) === JSON.stringify(kelderLookup.boven), kelderLookup);
+  Math.abs(kelderLookup.trapNaarNis.x - kelderLookup.boven.x) < 1, kelderLookup);
 check('middenin de koker -> kelder: mikt op de ONDERkant (op weg naar binnen) — bevestigt dat de koker-positie zelf geen "boven" of "onder" is',
-  JSON.stringify(kelderLookup.trapNaarKelder) === JSON.stringify(kelderLookup.onder), kelderLookup);
-check('Twee posities allebei ruim boven de trap: geen tussenpunt nodig (null)',
-  kelderLookup.nisZelfdeKant === null, kelderLookup);
+  Math.abs(kelderLookup.trapNaarKelder.x - kelderLookup.onder.x) < 1, kelderLookup);
+check('Twee posities binnen dezelfde deelruimte (allebei in de nis): geen tussenpunt nodig (null)',
+  kelderLookup.binnenDeNis === null, kelderLookup);
 
 // --- 7. Trajectory-trace: kelder-trap (zone 2, de feedback-bug) — vóór deze
 // fix bleef een ondode die van opzij (niet uitgelijnd met de 1,2m-brede
@@ -232,7 +264,7 @@ check('...en komt de speler in de kelderruimte dicht genoeg te staan (binnen 1m)
 const kelderoostLookup = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const hoofdkelder = { x: d.KELDER_X_WEST + 3, z: (d.KELDER_Z_NOORD + d.KELDER_Z_ZUID) / 2 };
-  const trapvoet = { x: d.KELDERTRAP_ONDER_PUNT.x, z: d.KELDERTRAP_ONDER_PUNT.z };
+  const trapvoet = { x: d.KELDERTRAP_X_ONDER, z: d.KELDERTRAP_CZ };
   const koCX = (d.KELDEROOST_X_WEST + d.KELDEROOST_X_OOST) / 2;
   const kelderoost = { x: koCX, z: d.KELDEROOST_CZ };
   const nis = { x: d.KAMER2_NIS_CX, z: d.KAMER2_NIS_CZ };
@@ -254,13 +286,18 @@ const kelderoostLookup = await page.evaluate(() => {
   };
 });
 check('hoofdkelder -> kelderoost: mikt op de kelderoost-deur (niet op de trapvoet — isKelderoost-OR voorkomt dat)',
-  JSON.stringify(kelderoostLookup.hoofdkelderNaarKelderoost) === JSON.stringify(kelderoostLookup.deur), kelderoostLookup);
-check('trapvoet (net de trap af) -> kelderoost: mikt OOK op de kelderoost-deur, niet op zichzelf (geen magneet-effect)',
-  JSON.stringify(kelderoostLookup.trapvoetNaarKelderoost) === JSON.stringify(kelderoostLookup.deur), kelderoostLookup);
-check('kelderoost -> nis: eerste tussenpunt is de kelderoost-deur zelf (op weg naar buiten)',
-  JSON.stringify(kelderoostLookup.kelderoostNaarNis) === JSON.stringify(kelderoostLookup.deur), kelderoostLookup);
+  kelderoostLookup.hoofdkelderNaarKelderoost.z === kelderoostLookup.deur.z, kelderoostLookup);
+// Bijgesteld na de deelruimte-refactor: vanaf de kokermond gaat de eerste
+// stap de KELDER in, niet rechtstreeks naar deur6. Dat is geen versoepeling
+// maar een correctie — de rechte lijn van de kokermond naar deur6 gaat dwars
+// door de massieve muur ertussen, en dat was precies de gemeten vastloper.
+check('trapvoet (net de trap af) -> kelderoost: eerste stap gaat de kelder in (de muur tussen kokermond en deur6 wordt niet geclipt), niet naar zichzelf',
+  kelderoostLookup.trapvoetNaarKelderoost.z === kelderoostLookup.onder.z &&
+  kelderoostLookup.trapvoetNaarKelderoost.x < kelderoostLookup.onder.x, kelderoostLookup);
+check('kelderoost -> nis: eerste tussenpunt hoort bij de kelderoost-deur (op weg naar buiten)',
+  kelderoostLookup.kelderoostNaarNis.z === kelderoostLookup.deur.z, kelderoostLookup);
 check('hoofdkelder -> nis (niets met kelderoost te maken): mikt gewoon op de trapvoet, NIET op de kelderoost-deur',
-  JSON.stringify(kelderoostLookup.hoofdkelderNaarNis) === JSON.stringify(kelderoostLookup.onder), kelderoostLookup);
+  kelderoostLookup.hoofdkelderNaarNis.z === kelderoostLookup.onder.z, kelderoostLookup);
 
 // --- 10. Trajectory-trace: kelderoost, realistische start-/doelposities in
 // BEIDE richtingen. "heen" (net de trap af, moet naar kelderoost) is het
@@ -286,7 +323,7 @@ const kelderoostTrajectHeen = await page.evaluate(() => {
   const ondode = d.ondoden[0];
   // Realistisch: net de trap af (zoals na een echte nis->trap->hoofdkelder-
   // afdaling), niet kunstmatig al diep in kelderoost.
-  ondode.groep.position.set(d.KELDERTRAP_ONDER_PUNT.x, -d.KELDER_DIEPTE, d.KELDERTRAP_ONDER_PUNT.z);
+  ondode.groep.position.set(d.KELDERTRAP_X_ONDER, -d.KELDER_DIEPTE, d.KELDERTRAP_CZ);
   let tickBinnen = null;
   for (let i = 0; i < 1800 && tickBinnen === null; i++) {   // max 30s
     d.updateOndoden(1 / 60);
@@ -304,7 +341,7 @@ const kelderoostTrajectTerug = await page.evaluate(() => {
   d.spawnWillekeurigeOndode();
   const ondode = d.ondoden[0];
   // Realistisch: vlak voorbij de deur, niet op een exacte waypoint-coördinaat.
-  ondode.groep.position.set(d.KELDEROOST_DEUR_PUNT.x + 0.5, -d.KELDER_DIEPTE, d.KELDEROOST_DEUR_PUNT.z);
+  ondode.groep.position.set(d.KELDEROOST_X_WEST + 0.5, -d.KELDER_DIEPTE, d.KELDEROOST_CZ);
   let tickBoven = null;
   for (let i = 0; i < 1800 && tickBoven === null; i++) {   // max 30s
     d.updateOndoden(1 / 60);

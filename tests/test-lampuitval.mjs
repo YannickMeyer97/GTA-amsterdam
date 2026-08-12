@@ -41,8 +41,10 @@ const uitsluiting = await page.evaluate(() => {
     gewoneTimersGezet: gewoneLampen.every(l => typeof l.lampBlackoutTimer === 'number'),
   };
 });
-check('lampLichten heeft 9 entries, waarvan 3 kelderlampen (5 blijven over als kandidaat)',
-  uitsluiting.aantalLampen === 9 && uitsluiting.aantalKelderLampen === 3 && uitsluiting.aantalGewoneLampen === 5, uitsluiting);
+// +1 sinds het vliering-traplampje (op verzoek na T87): 9 -> 10 entries, dus
+// 6 gewone kandidaten voor de lampuitval i.p.v. 5.
+check('lampLichten heeft 10 entries, waarvan 3 kelderlampen (6 blijven over als kandidaat)',
+  uitsluiting.aantalLampen === 10 && uitsluiting.aantalKelderLampen === 3 && uitsluiting.aantalGewoneLampen === 6, uitsluiting);
 check('De schaduwwerpende lamp krijgt NOOIT een lampBlackoutTimer',
   uitsluiting.schaduwLampTimer === undefined, uitsluiting);
 check('De drie kelderlampen krijgen NOOIT een lampBlackoutTimer',

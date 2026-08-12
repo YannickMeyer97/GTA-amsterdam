@@ -104,8 +104,11 @@ check('Alle nieuwe zone-E-muren staan geregistreerd met exact de verwachte bound
 // Band opgehoogd naar 46 (was 40): Ticket 62 voegt 6 nieuwe, legitieme
 // obstakels toe (2 gesplitste nis-westmuur-segmenten + deur5Obstakel +
 // 3 kelderwanden), 37 -> 43. Blijft een ruime bandbreedte, geen exacte telling.
-check('Obstakel-count-test (bijgewerkt voor Ticket 24 + Ticket 62): totaal blijft in een ruime, verwachte bandbreedte',
-  probes.obstakelAantal >= 20 && probes.obstakelAantal <= 52, probes);
+// Band opnieuw opgehoogd naar 58 (was 52): Ticket 87 (De Vliering) voegt er 4
+// toe (gesplitste atelier-weststomp + vliering-west/-zuid + kokerwand),
+// 52 -> 56. De exacte telling staat in tests/test-vliering.mjs.
+check('Obstakel-count-test (bijgewerkt voor Ticket 24 + Ticket 62 + Ticket 87): totaal blijft in een ruime, verwachte bandbreedte',
+  probes.obstakelAantal >= 20 && probes.obstakelAantal <= 58, probes);
 
 const fails = report(errs);
 await browser.close();

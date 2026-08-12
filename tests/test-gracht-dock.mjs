@@ -133,8 +133,9 @@ const lichten = await page.evaluate(() => {
 // verwijderd: 28 -> 26. Kelderoost (feedback) voegt daarna zijn eigen
 // kamerlamp toe: 26 -> 27 (de Scheepslantaarn zelf is puur emissive
 // materiaal, geen echte PointLight, dus die verhuizing telt niet mee).
-check('Lichttelling: 26 (na de Smederij-opruiming) + 1 kelderoost-kamerlamp = 27',
-  lichten.totaal === 27, lichten);
+// +1 sinds het vliering-traplampje (op verzoek toegevoegd na T87): 27 -> 28.
+check('Lichttelling: 26 (na de Smederij-opruiming) + 1 kelderoost-kamerlamp + 1 vliering-traplampje = 28',
+  lichten.totaal === 28, lichten);
 check('De nieuwe gracht-lantaarn zit in buitenLichten (dimt mee tijdens Stroomuitval, buiten-vloer)',
   lichten.lantaarnInBuitenLichten === true, lichten);
 check('De gracht-lantaarn werpt GEEN schaduw (schaduw===1-invariant blijft bij de bestaande lamp)',
@@ -202,7 +203,7 @@ const chokepoint = await page.evaluate(() => {
     return {
       zelfdeZone: d.zoneVan(voor.x, voor.z) === d.zoneVan(spelerPos.x, spelerPos.z),
       hoekBeweging: Math.atan2(na.x - voor.x, na.z - voor.z),
-      hoekNaarDrempel: Math.atan2(d.GRACHTGANG_DREMPEL.x - voor.x, d.GRACHTGANG_DREMPEL.z - voor.z),
+      hoekNaarDrempel: Math.atan2(d.GRACHTGANG_DREMPEL_BUITEN.x - voor.x, d.GRACHTGANG_DREMPEL_BUITEN.z - voor.z),
       hoekNaarSpeler: Math.atan2(spelerPos.x - voor.x, spelerPos.z - voor.z),
     };
   }

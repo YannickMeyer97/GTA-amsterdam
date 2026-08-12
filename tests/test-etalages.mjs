@@ -29,7 +29,9 @@ const basisTest = await page.evaluate(() => {
 });
 check('Er zijn precies 3 etalageramen, elk een echte THREE.Mesh', basisTest.aantalRamen === 3 && basisTest.allemaalMesh, basisTest);
 check('ETALAGE_MIJLPALEN is [5, 10, 15]', JSON.stringify(basisTest.mijlpalen) === JSON.stringify([5, 10, 15]), basisTest);
-check('obstakels.length is 52 (de ramen voegen geen collision toe)', basisTest.obstakelAantal === 52, basisTest);
+// Kaartbrede teller (T87/De Vliering bracht 'm van 52 naar 56); de assertie
+// gaat onverminderd over hetzelfde: de etalageramen voegen zelf niets toe.
+check('obstakels.length is de kaartbrede 56 (de ramen voegen geen collision toe)', basisTest.obstakelAantal === 56, basisTest);
 
 // --- 2. Vóór elke mijlpaal: nog geen enkel raam gewisseld -------------------
 const voorMijlpaalTest = await page.evaluate(() => {

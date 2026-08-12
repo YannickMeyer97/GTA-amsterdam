@@ -210,9 +210,8 @@ check('Met 3/3 onderdelen maar buiten een ontsnappingsgolf (golf 11): geen aanko
 check('De HUD toont in dat geval "Boot over 3 golven" (eerstvolgende venster op golf 14)',
   buitenVensterTest.hud === 'Boot over 3 golven', buitenVensterTest);
 
-// --- 6. Vóór golf 10 blijft de HUD leeg, MAAR alleen zolang er nog geen
-// vluchtonderdeel is opgepakt (Ticket 76: zodra dat wél zo is, mag de regel
-// juist NIET meer leeg blijven — zie sectie 6b) -----------------------------
+// --- 6. Vóór golf 10 blijft de HUD leeg, ongeacht hoeveel vluchtonderdelen
+// er al zijn opgepakt (mits nog niet alle 3) --------------------------------
 await opruimOntsnapping();
 const voorTienHudTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
@@ -224,20 +223,42 @@ const voorTienHudTest = await page.evaluate(() => {
 check('Vóór golf 10 (nog niet ontgrendeld) EN nog geen vluchtonderdeel opgepakt blijft de HUD-indicatie leeg',
   voorTienHudTest.hud === '', voorTienHudTest);
 
-// --- 6b. Ticket 76: zodra het eerste vluchtonderdeel binnen is, toont de
-// regel al "Boot over N golven" — ook al is golf 10 nog lang niet bereikt.
-// Dit maakt de wincondition ontdekbaar zonder toevallig bij de boot te
-// hoeven staan. ---------------------------------------------------------
+// --- 6b. Feedback: "Boot over N golven" was misleidend zolang de vluchtroute
+// nog niet compleet is — de boot komt namelijk pas als alle 3 onderdelen
+// binnen zijn (probeerOntsnappingsVensterTeOpenen() eist 3/3), dus met 1 of
+// 2 onderdelen klopte de golf-aftelling wel maar verscheen de boot die golf
+// niet. De regel blijft nu leeg tot de vluchtroute compleet is (T76's
+// oorspronkelijke "toon 'm al bij het eerste onderdeel" is hiermee
+// teruggedraaid). ---------------------------------------------------------
 await opruimOntsnapping();
-const naEersteOnderdeelHudTest = await page.evaluate(() => {
+const nietCompleteHudTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  d.vluchtOnderdelenOpgepakt = 1;
+  const uit = [];
+  for (const aantal of [1, 2]) {
+    d.vluchtOnderdelenOpgepakt = aantal;
+    d.spelStaat.golf = 3;
+    d.updateOntsnappingVensterHUD();
+    uit.push({ aantal, hud: document.getElementById('ontsnappingVensterUI').textContent });
+  }
+  return uit;
+});
+check('Met 1/3 vluchtonderdelen (ook vóór golf 10) blijft de HUD-indicatie leeg (nog geen boot te verwachten)',
+  nietCompleteHudTest[0].hud === '', nietCompleteHudTest);
+check('Met 2/3 vluchtonderdelen blijft de HUD-indicatie ook nog leeg (pas bij 3/3 klopt de belofte)',
+  nietCompleteHudTest[1].hud === '', nietCompleteHudTest);
+
+// --- 6c. Zodra de vluchtroute WEL compleet is (3/3), verschijnt de melding
+// meteen, ook als golf 10 nog niet bereikt is -------------------------------
+await opruimOntsnapping();
+const drieDerdeHudTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.vluchtOnderdelenOpgepakt = 3;
   d.spelStaat.golf = 3;
   d.updateOntsnappingVensterHUD();
   return { hud: document.getElementById('ontsnappingVensterUI').textContent };
 });
-check('Na het eerste vluchtonderdeel (ook vóór golf 10) toont de HUD "Boot over N golven" i.p.v. leeg',
-  naEersteOnderdeelHudTest.hud === 'Boot over 7 golven', naEersteOnderdeelHudTest);
+check('Met 3/3 vluchtonderdelen (ook vóór golf 10) toont de HUD "Boot over N golven" i.p.v. leeg',
+  drieDerdeHudTest.hud === 'Boot over 7 golven', drieDerdeHudTest);
 
 // --- 7. Het venster sluit weer zodra de golf niet langer een
 // ontsnappingsgolf is — via een ECHTE wave-complete-transitie in

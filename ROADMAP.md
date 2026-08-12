@@ -4434,12 +4434,22 @@ Y-invariant, en zijn het minst vergevingsgezind.
 
 ---
 
-## Ticket 87 — De Vliering (verticaliteit met disjuncte footprint) (VOORZICHTIG)
+## Ticket 87 — De Vliering (verticaliteit met disjuncte footprint) (VOORZICHTIG) ✅
 
 - **Type:** feature (ruimte)
 - **Verbetergebied:** 6 (Verticaliteit)
 - **Prioriteit:** middel
-- **Status:** open (gepland)
+- **Status:** ✅ afgerond — gebouwd bovenop de verzegelde dode hoek ten
+  zuiden van de nis (x −11,5…−4,5, z −17…−8,9), vloer op y = 1,2, met
+  uitzicht over het atelier door de verlaagde weststomp. De rastertest
+  is als eerste geschreven en gedraaid (vóór één regel geometrie), zoals
+  het ticket voorschrijft. `berekenKelderY()` bleef kelder-only; de
+  nieuwe samengestelde vloerfunctie heet `berekenVloerY()`, zodat
+  `test-kelder-trap.mjs` letterlijk ongewijzigd groen bleef (54/54).
+  `losBotsingenOp()` hoefde NIET aangepast: de footprint ligt al binnen
+  GRENS, dus er is geen bypass nodig zoals bij de kelder. Obstakels
+  52 → 56, lichtbudget onveranderd 26. Zie tests/test-vliering.mjs (30
+  checks) en ARCHITECTURE_NOTES.md §9.8.1.
 - **Afhankelijk van:** — (doe 'm als laatste van de ronde)
 - **Doel:** verticaliteit toevoegen zonder de Y-invariant te breken waar
   vijf systemen tegelijk op rusten.

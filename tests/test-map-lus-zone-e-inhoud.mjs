@@ -133,10 +133,13 @@ check('bijkeukenBetreden gaat van false naar true (eenmalige vlag, zelfde patroo
 // verwachte bandbreedte uit Ticket 24 — dit ticket voegt alleen meubelBox-
 // decor toe, geen registreerRechthoek). Band opgehoogd naar 46 (was 40):
 // Ticket 62 voegt 6 nieuwe, legitieme obstakels toe elders in de kaart
-// (nis-westmuur-splitsing + deur5 + kelderwanden), 37 -> 43. ---------------
+// (nis-westmuur-splitsing + deur5 + kelderwanden), 37 -> 43. Band opnieuw
+// opgehoogd naar 58 (was 52): Ticket 87 (De Vliering) voegt er 4 toe, ook
+// elders in de kaart (52 -> 56). Zoals hierboven gaat deze check over "dít
+// ticket voegt geen collision-decor toe", niet over het absolute getal. ----
 const obstakelCount = await page.evaluate(() => window.AmsterdamUndeadDebug.obstakels.length);
-check('Obstakel-count blijft in de door Ticket 24 + Ticket 62 vastgestelde bandbreedte (20-52): geen collision-decor toegevoegd',
-  obstakelCount >= 20 && obstakelCount <= 52, { obstakelCount });
+check('Obstakel-count blijft in de door Ticket 24 + Ticket 62 + Ticket 87 vastgestelde bandbreedte (20-58): geen collision-decor toegevoegd',
+  obstakelCount >= 20 && obstakelCount <= 58, { obstakelCount });
 
 // --- 5. Spawn-camping-risico: het venster (11.6, 2) staat ruim (>5m) van
 // het deur4-kooppunt (bijkeuken-kant, x ≈ 5.2) vandaan ---------------------

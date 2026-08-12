@@ -298,7 +298,7 @@ check('buitenLichten staan weer op hun volle basis-intensiteit buiten een Stroom
 // dimgedrag krijgt als elke andere lamp, en kelderoost (feedback) voegt er
 // nog één toe — vandaar 5+3+1=9. -------------------------------------------
 const lichttelling = await page.evaluate(() => window.AmsterdamUndeadDebug.lampLichten.length);
-check('lampLichten bevat 9 entries (5 pre-Ticket-62-baseline + 3 kelder + 1 kelderoost)', lichttelling === 9, { lichttelling });
+check('lampLichten bevat 10 entries (5 pre-Ticket-62-baseline + 3 kelder + 1 kelderoost + 1 vliering-traplampje)', lichttelling === 10, { lichttelling });
 
 const fails = report(errs);
 await browser.close();
