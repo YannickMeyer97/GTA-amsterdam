@@ -4766,6 +4766,43 @@ op de kelder-ramp en de vlieringtrap loopt hij — daar hoort geen
 contactschaduw, of hij moet per object de juiste y krijgen. Simpelste
 veilige regel: alleen op vlakke vloerdelen.
 
+**Implementatieverslag T91 (uitgevoerd).** `bouwContactschaduw(x, z,
+straalX, straalZ = straalX, rotY = 0)` — vóór regel 833 gedeclareerd
+(beslissing 90, zelfde reden als T89's `EMISSIE_*`-constanten), samen met
+één module-brede `CONTACTSCHADUW_GEO` (`CircleGeometry(1, 24)`) en één
+`CONTACTSCHADUW_MAT` (`MeshBasicMaterial` met een 64×64 canvas-radiale-
+gradient als `map`, `transparent: true`, `depthWrite: false`). De hoogte
+komt uit `berekenVloerY(x, z) + 0,012` (dezelfde offset als de bestaande
+lichtvlek), niet uit een vaste constante — daarmee staat de schaduw ook
+correct op de vliering, mocht daar ooit decor bijkomen. Elliptische
+schaduwen (de tafel: `straalX=0,78, straalZ=0,5`, meeroterend met de
+tafel-`rotY`) worden gerealiseerd door de gedeelde eenheidscirkel
+non-uniform te schalen (`vlak.scale.set(straalX, straalZ, 1)`) op een
+losse `Group` per instantie — geometrie én materiaal blijven letterlijk
+hetzelfde object, alleen de `Group`-transform verschilt per plaatsing.
+Vier aanroepers, elf instanties: `bouwTafel()` (1), `bouwKratten()` (3),
+`bouwVat()` (3), `bouwLantaarn()` (4× op de binnenplaats, een klein
+strak vlekje aan de voet van de paal, los van de bredere warme
+lichtvlek). Geen van de aanroepen ligt op de kelder-ramp of de
+vlieringtrap, dus de "alleen vlakke vloerdelen"-regel hierboven was in
+de praktijk geen keuze die iets hoefde uit te sluiten.
+
+`test-contactschaduw.mjs` (14 checks, nieuw) bevestigt: alle elf
+instanties delen exact één geometrie én één materiaal-object,
+`obstakels.length` blijft 56, het lichtaantal blijft 28, en elke
+schaduw-y komt exact overeen met `berekenVloerY()` op diezelfde x/z.
+`test-visuele-basislijn.mjs` bleef 46/46 groen — de patches zijn klein
+en liggen ver onder ooghoogte, dus ze verschuiven de mediane
+framehelderheid op geen van de acht standpunten meetbaar (T91's eigen
+acceptatie-eis: "basislijn binnen de band"). Volledige regressiesuite:
+**63/63 groen, 0 FAIL**. Beeldverslag: een ooghoogte-overzicht van de
+startkamer met tafel, kratten en vat (schaduw onder de tafel goed
+zichtbaar); de lantaarnpaal op de binnenplaats (het kleine contactvlekje
+gaat grotendeels op in de bredere lichtvlek — verwacht, geen bug); en
+een dichtbij, sterk omlaaggericht standpunt bij de kratten waar het
+contactvlak zelf duidelijk als donkere ovale vlek afsteekt tegen de
+vloer.
+
 **T102 — Subdivisie-helper (het fundament).** De grote vlakken (muren,
 vloeren, plafonds) zijn nu `BoxGeometry` (24 vertices) of een
 ongesubdivideerde `PlaneGeometry`. Voor een vloeiende

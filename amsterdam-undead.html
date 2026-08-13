@@ -708,6 +708,55 @@ function mat(kleur, ruwheid = 0.9, metaal = 0, extra = {}) {
   return gedeeld;
 }
 
+// Ticket 91 (v0.22, §10.7-beslissing 82): contactschaduwen — één gedeelde
+// radiale gradient-textuur op één gedeelde vlak-geometrie, hergebruikt door
+// elk vrijstaand decor-object (tafel, kratten, vat, lantaarnpaal).
+// MeshBasicMaterial doorloopt geen lichtberekening, dus de fragmentkosten
+// zijn verwaarloosbaar ondanks meerdere instanties. Vóór regel 833
+// gedeclareerd (beslissing 90, zelfde reden als de EMISSIE_*-constanten in
+// Ticket 89): bouwLantaarn() plaatst al op regel ~1785 de eerste instantie.
+function bouwContactschaduwTextuur() {
+  const n = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = n;
+  const ctx = canvas.getContext('2d');
+  const midden = n / 2;
+  const gradient = ctx.createRadialGradient(midden, midden, 0, midden, midden, midden);
+  gradient.addColorStop(0, 'rgba(0,0,0,0.55)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, n, n);
+  return new THREE.CanvasTexture(canvas);
+}
+const CONTACTSCHADUW_GEO = new THREE.CircleGeometry(1, 24);
+const CONTACTSCHADUW_MAT = new THREE.MeshBasicMaterial({
+  map: bouwContactschaduwTextuur(), transparent: true, depthWrite: false, side: THREE.DoubleSide,
+});
+CONTACTSCHADUW_MAT.userData.gedeeld = true;   // Ticket 70: ruimGroepOp() mag dit nooit disposen
+const CONTACTSCHADUW_Y_OFFSET = 0.012;   // zelfde offset als de bestaande lichtvlek (voorkomt z-fighting)
+
+// x/z: middelpunt op de vloer. straalX/straalZ: halve breedte/diepte van de
+// bounding box eronder (gelijk houden geeft een cirkel). rotY lijnt een
+// niet-vierkante schaduw uit met de rotatie van het object erboven. De
+// hoogte komt uit berekenVloerY(x, z) — expliciet GEEN vaste 0,012, want dat
+// zou fout staan op elke vloer die niet op y=0 ligt (bijv. de vliering).
+// berekenVloerY() is een function-declaratie (gehoist), dus geen TDZ-risico
+// ondanks dat hij pas op regel ~1338 textueel gedefinieerd wordt.
+// Let op (spec): NIET aanroepen op een HELLING (kelder-ramp, vlieringtrap) —
+// geen van de huidige aanroepen (tafel/kratten/vat/lantaarnpaal) ligt daar.
+function bouwContactschaduw(x, z, straalX, straalZ = straalX, rotY = 0) {
+  const groep = new THREE.Group();
+  groep.position.set(x, berekenVloerY(x, z) + CONTACTSCHADUW_Y_OFFSET, z);
+  groep.rotation.y = rotY;
+  const vlak = new THREE.Mesh(CONTACTSCHADUW_GEO, CONTACTSCHADUW_MAT);
+  vlak.rotation.x = -Math.PI / 2;
+  vlak.scale.set(straalX, straalZ, 1);
+  vlak.userData.contactschaduw = true;
+  groep.add(vlak);
+  wereld.add(groep);
+  return groep;
+}
+
 // Ticket 58 (v0.19, §7.4.1-beslissing 50): centraal PALET-object voor
 // consistente art direction. Groepeert kleuren die al in de scene zaten
 // (bestaande hexwaarden, dus geen visuele sprong) onder benoemde,
@@ -1752,6 +1801,9 @@ let klinkersMesh;
     paal.position.set(x, 1.3, z);
     paal.castShadow = true;
     wereld.add(paal);
+    // Ticket 91: contactschaduw aan de voet van de paal — een klein, strak
+    // donker vlekje, los van de bredere warme lichtvlek hieronder.
+    bouwContactschaduw(x, z, 0.18);
     const armatuur = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.22), mat(0x1c1f20, 0.5, 0.4));
     armatuur.position.set(x, 2.62, z);
     wereld.add(armatuur);
@@ -2854,6 +2906,9 @@ function bouwTafel(cx, cz, rotY = 0) {
     poot.position.set(px, 0.36, pz); poot.castShadow = true; g.add(poot);
   }
   g.position.set(cx, 0, cz); g.rotation.y = rotY; wereld.add(g);
+  // Ticket 91: schaduw iets ruimer dan het tafelblad (1,3 x 0,8) voor een
+  // zachte penumbra-uitstraling, meeroterend met rotY.
+  bouwContactschaduw(cx, cz, 0.78, 0.5, rotY);
 }
 
 // Een stapel kratten.
@@ -2861,6 +2916,7 @@ function bouwKratten(cx, cz) {
   const houtK = 0x6b4f2c;
   meubelBox(0.5, 0.5, 0.5, houtK, cx, 0.25, cz, 0.9);
   meubelBox(0.44, 0.44, 0.44, 0x5e441f, cx + 0.1, 0.72, cz - 0.05, 0.9, 0.4);
+  bouwContactschaduw(cx, cz, 0.42);   // Ticket 91: dekt beide kratten in de stapel
 }
 
 // Een ton/vat (cilinder).
@@ -2871,6 +2927,7 @@ function bouwVat(cx, cz) {
     const band = new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.31, 0.05, 12), mat(0x2a2018, 0.6, 0.4));
     band.position.set(cx, y, cz); wereld.add(band);
   }
+  bouwContactschaduw(cx, cz, 0.38);   // Ticket 91: net iets ruimer dan de vatstraal (0,3)
 }
 
 // Een ingelijst "schilderij" tegen een muur (donker doek + lijst), platte box.
@@ -9586,6 +9643,8 @@ window.AmsterdamUndeadDebug = {
   VLAM_FLITS_DUUR, SMEDERIJ_VLAM_BOOST,
   get vlamTimer() { return vlamTimer; },
   get vlamNetGezet() { return vlamNetGezet; },
+  // Ticket 91 (v0.22, §10.7): contactschaduwen
+  CONTACTSCHADUW_GEO, CONTACTSCHADUW_MAT, CONTACTSCHADUW_Y_OFFSET, bouwContactschaduw,
 };
 clearTimeout(window.__cdnFoutTimer);   // Ticket 74: laden is gelukt, de faalmodus-timer is niet meer nodig
 </script>
