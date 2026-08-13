@@ -1769,3 +1769,776 @@ raken respectievelijk de resource-discipline uit v0.20 en de Y-invariant.
     gelijkenis kost een speler een run. Andere hoorn, andere marker,
     nooit een interactiepunt — en test die scheiding expliciet, niet
     "het ziet er anders uit".
+
+---
+
+## Sonnet-prompts per ticket — ronde 8 (v0.22, visuele architectuur)
+
+Zelfde werkwijze als ronde 1-7: één ticket per keer, eerst dit plan +
+de relevante §10-secties van ARCHITECTURE_NOTES.md + `VISUEEL.md` lezen,
+minimale wijziging, load-check + het testplan van het ticket, nooit
+committen zonder expliciete opdracht.
+
+**Afwijkend aan deze ronde:** de tickets staan hier compleet (inclusief
+acceptatiecriteria en testplan) in plaats van in ROADMAP.md. Deze ronde
+komt uit `VISUEEL.md`, een technical-artist-analyse, en de eigenaar
+heeft daaruit 23 richtingen goedgekeurd plus 4 infrastructuurstappen.
+
+**De zes invarianten van deze ronde (§10.2) — lees ze vóór élk ticket:**
+
+> 1. **De helderheidsbasislijn uit T88** is de meetlat. Elk ticket dat
+>    licht, materiaal of post-processing raakt, draait
+>    `test-visuele-basislijn.mjs`. Buiten de band ⇒ niet af.
+> 2. **Het lichtaantal blijft 28** (1 hemisfeer + 27 point), waarvan
+>    **precies 1** schaduw werpt. Geen enkel ticket voegt een `Light` toe.
+> 3. **Gameplay-leesbaarheid boven schoonheid.** Aanvallende ondode,
+>    schotrichting en interactiepunt blijven altijd afleesbaar.
+> 4. **Geen balansgetallen** — de verbodenlijst uit §9.2 blijft gelden.
+> 5. **`obstakels` blijft 56.** Geen visuele toevoeging krijgt collision.
+> 6. **Het T69/T70-resourcecontract blijft heel.** Materialen via
+>    `mat()`/`matFamilie()`, geometrie via `geo()`/`geoCache`, opruimen
+>    via `ruimGroepOp()`.
+
+**Uitvoeringsvolgorde (vast, zie §10.15):**
+
+```
+Fase 0  T88
+Fase 1  T89 → T90 → T91 → T92 → T93 → T94 → T95
+Fase 2  T96 → T97 → T98
+Fase 3  T99 → T100 → T101
+Fase 4  T102 → T103 → T104 → T105
+Fase 5  T106 → T107 → T108
+Fase 6  T109 → T110
+Fase 7  T111 → T112 → T113
+Fase 8  T114
+```
+
+Harde afhankelijkheden: T88 vóór alles · T89 vóór T90/T110/T113 · T93
+vóór T111/T112 · T96 vóór T97/T98 · T99 vóór T100 · T102 vóór T103 ·
+T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
+
+---
+
+### Fase 0 — Vangrail
+
+### Ticket 88 — Visuele basislijn en helderheidsvangrail (EERST)
+- **Context:** nieuw `tests/test-visuele-basislijn.mjs`, `tests/helpers.mjs`,
+  `run-all.mjs`. Spec: §10.4-beslissing 79, nulmeting §10.17.
+- **Doel:** een machinale meetlat waaraan elk volgend ticket in deze
+  ronde getoetst wordt.
+- **Stappen:** (1) per zone één vaste camerastand (positie + kijkrichting
+  + vensterafmeting hardcoded, nooit afhankelijk van spelstaat);
+  (2) screenshot → gemiddelde en mediane pixelhelderheid + verdeling over
+  een paar helderheidsbanden; (3) rendermetrics vastleggen via
+  `info.render`/`info.memory` met `autoReset = false`; (4) de
+  invarianten-tellingen uit §10.17 asserteren (28 lichten, 1
+  schaduwwerper, 56 obstakels, 14 interactiepunten).
+- **Acceptatie:** de test draait groen op de huidige build; elke
+  vastgelegde waarde staat als constante bovenaan het bestand met een
+  toegestane band eromheen; `run-all.mjs` pikt hem op.
+- **Test:** zichzelf. Verifieer daarnaast dat twee opeenvolgende runs
+  dezelfde waarden binnen de band opleveren (anders is de band te smal
+  of zit er niet-determinisme in de camerastand).
+- **Let op:** assertie is een **band**, geen exact getal — ruis (T96),
+  variatie (T104) en animatie maken exacte pixelgelijkheid onhaalbaar.
+  Zet de band ruim genoeg om niet-determinisme op te vangen, maar smal
+  genoeg om een echte verschuiving te vangen. Pointer lock simuleren
+  (bekende valkuil uit CLAUDE.md), en de camerastand mag niet van een
+  gespawnde ondode of een gekochte deur afhangen.
+- **Niet veranderen:** niets in `amsterdam-undead.html`. Dit ticket is
+  test-only.
+
+---
+
+### Fase 1 — Directe winst
+
+### Ticket 89 — Emissieve hiërarchie vastleggen
+- **Context:** `bloomPass` (`UnrealBloomPass(256×256, 0.35, 0.4, 0.82)`),
+  `glasMateriaal`, de lampbollen in `hangLamp()`/`bouwLantaarn()`,
+  `kernMateriaal`, `OOG_INTENSITEIT_*`, `winkelMarkering()`/
+  `flitsMarkering()`/`doofMarkering()`. Spec: §10.5-beslissing 80.
+- **Doel:** de 64 emissieve meshes onder drie benoemde niveaus brengen
+  (Accent ~0,4 / Bron ~1,2-1,6 / Signaal ~2,6-3,4) en de uitschieters
+  corrigeren.
+- **Stappen:** inventariseer élke emissieve waarde in het bestand; leg de
+  drie niveaus als constanten vast; deel elk bestaand element in; corrigeer
+  alleen wat er echt buiten valt.
+- **Acceptatie:** drie benoemde constanten bestaan; elke emissieve
+  call-site verwijst ernaar of heeft een expliciete comment waarom niet;
+  `test-visuele-basislijn.mjs` blijft binnen de band.
+- **Test:** basislijn + een nieuwe assertie dat ondode-ogen en actieve
+  koopmarkeringen op het Signaal-niveau zitten.
+- **Let op:** **de Signaal-laag is een gameplaylaag.** Ondode-ogen en
+  actieve koopmarkeringen zitten daar omdat de speler ze moet kunnen
+  vinden, niet omdat ze mooi zijn. Verlaag ze nooit. Dit ticket levert
+  bewust **geen zichtbaar effect** op — het is een tabel waar T90, T110
+  en T113 op leunen. Verzin er geen effect bij.
+- **Niet veranderen:** de bloom-threshold zelf in dit ticket (dat is een
+  aparte, gemeten beslissing); de oogtrap 1,4/2,6/3,4.
+
+### Ticket 90 — De mondingsvlam wordt een lichtmoment
+- **Context:** `vlamDrukspuit` + `vlamLichtDrukspuit`, het gelijknamige
+  paar bij de Ratelaar, `schiet()`. Spec: §10.6-beslissing 81.
+- **Doel:** elk schot verlicht één tot twee frames lang de kamer.
+- **Stappen:** (1) `vlamLichtDrukspuit`-intensiteit van 1,1 naar de orde
+  15-25 voor precies één tot twee frames; (2) vlamgeometrie van
+  `SphereGeometry(0.035)` naar twee gekruiste quads met een
+  canvas-getekende stervorm, per schot willekeurig geroteerd/geschaald;
+  (3) optioneel een korte piek op de bloom-sterkte.
+- **Acceptatie:** de flitsduur is korter dan het kortste vuurinterval van
+  de Ratelaar; de piek schaalt **niet** met vuursnelheid; het
+  lichtaantal blijft 28.
+- **Test:** nieuwe `test-mondingsvlam.mjs` — assert de flitsduur, dat er
+  bij aanhoudend vuur nooit twee flitsen stapelen, en dat `visible`
+  netjes terugvalt. Plus basislijn.
+- **Let op:** bij de Ratelaar (automatisch vuur) wordt dit een
+  **stroboscoop** als de duur of de piek niet begrensd is — en dat kost
+  leesbaarheid op precies het moment dat de speler het meest moet zien.
+  Zet er een minimum-interval en een bovengrens op. Dit is een bestaand
+  licht dat harder aangaat, **geen nieuw licht**.
+- **Niet veranderen:** `WAPEN_DRUKSPUIT`/`WAPEN_RATELAAR`-definities,
+  vuursnelheid, schade, `terugslag`/`cameraKick`.
+
+### Ticket 91 — Contactschaduwen
+- **Context:** nieuwe helper naast `blok()`/`meubelBox()`; aanroepers
+  `bouwTafel()`, `bouwLantaarn()`, de kist-/ton-bouwers;
+  `bouwCanvasTextuur()`; `berekenVloerY()`. Spec: §10.7-beslissing 82.
+- **Doel:** elk vrijstaand object krijgt een zachte donkere vlek op de
+  vloer eronder.
+- **Stappen:** één gedeelde radiale gradient-canvastextuur + één gedeelde
+  `PlaneGeometry`; `MeshBasicMaterial({ transparent: true, depthWrite:
+  false })`; schaal uit de bounding box; y net boven de vloer (patroon:
+  de bestaande `lichtvlek` op y = 0,012).
+- **Acceptatie:** textuur en geometrie zijn gedeeld (één instantie, in de
+  cache); `obstakels` blijft 56; basislijn binnen de band.
+- **Test:** `test-contactschaduw.mjs` — assert precies één gedeelde
+  textuur en één gedeelde geometrie, geen collision-toevoeging, en dat
+  elke schaduw-y overeenkomt met `berekenVloerY()` op die x/z. Plus
+  `test-resources.mjs` en basislijn.
+- **Let op:** op de **kelder-ramp en de vlieringtrap** loopt de vloer —
+  daar hoort geen contactschaduw (of hij moet de juiste y krijgen).
+  Simpelste veilige regel: alleen op vlakke vloerdelen. Overlappende
+  transparante quads kunnen z-fighten; houd ze op één vaste hoogte per
+  vloerniveau.
+- **Niet veranderen:** `obstakels`; `berekenVloerY()`/`berekenKelderY()`/
+  `berekenVlieringY()`.
+
+### Ticket 92 — De camera gaat leven
+- **Context:** de cosmetische zone van de gameLoop waar `terugslag` en
+  `cameraKick` wegvallen; `updateSpeler()` voor de snelheid;
+  `berekenVloerY()` voor het landingsmoment. Spec: §10.9-beslissing 84.
+- **Doel:** loopwiegen, landingsdip en lean bij strafen.
+- **Stappen:** sinus op de camera-y gekoppeld aan **afgelegde afstand**;
+  gedempte veer op de landing; `camera.rotation.z` die naar de zijwaartse
+  invoer toe interpoleert; wapenmodel wiegt tegen.
+- **Acceptatie:** amplitude in centimeters, lean onder 1°; bij stilstand
+  is er **geen** wieging; een schot raakt exact hetzelfde als vóór dit
+  ticket.
+- **Test:** `test-camerabeweging.mjs` — assert dat de camera-y bij
+  stilstand constant is, dat hij bij lopen binnen een band varieert, en
+  (belangrijkst) dat de raycast-oorsprong van `schiet()` niet meebeweegt.
+- **Let op:** **hang het wiegen aan de afgelegde afstand, niet aan de
+  tijd** — anders wiegt het beeld ook als je stilstaat, en dat is
+  achteraf lastig te herkennen. De camerabeweging staat volledig buiten
+  `updateSpeler()`, `losBotsingenOp()` en `schiet()`. Misselijkheid is
+  een reëel risico: klein houden.
+- **Niet veranderen:** collision, `speler.hoogte`, muisgevoeligheid,
+  de raycast-keten.
+
+### Ticket 93 — Fogdiepte per zone
+- **Context:** `FOG_NORMAAL`, `scene.fog`, `mistUitfaseTimer`/
+  `mistUitfaseVan` als interpolatiesjabloon, `zoneVan()`. Spec:
+  §10.13-beslissing 88.
+- **Doel:** binnen blijft benauwd (6/24), buiten opent naar ~40 m.
+- **Stappen:** twee fogprofielen (binnen/buiten), zacht geïnterpoleerd op
+  een zonewissel met dezelfde soort overgang als de mist-uitfade.
+- **Acceptatie:** de Mistgolf werkt onveranderd en stapelt netjes op het
+  zoneprofiel in plaats van het te overschrijven; na een Mistgolf keert
+  de fog terug naar het profiel van de **huidige** zone, niet naar
+  `FOG_NORMAAL`.
+- **Test:** `test-fogdiepte.mjs` — assert de profielen per zone, de
+  zachte overgang, en expliciet het samenspel met `FOG_MIST` (start
+  Mistgolf buiten, beëindig hem, controleer dat je op het buitenprofiel
+  uitkomt). Plus `test-eventgolven`-regressie.
+- **Let op:** fog-afstand is een **gameplayparameter** — hij bepaalt op
+  hoeveel meter je een ondode ziet aankomen. Buiten verder zien is
+  vermoedelijk positief, maar benoem het als bijeffect en test het; laat
+  het niet stilzwijgend gebeuren. Dit ticket is de **voorwaarde** voor
+  T111/T112.
+- **Niet veranderen:** `FOG_MIST`-waarden; `MIST_UITFADE_DUUR`;
+  `camera.far`.
+
+### Ticket 94 — Rijkere inslagen
+- **Context:** `spawnImpact()`, `bouwEffectSlot()`, `pakEffectSlot()`,
+  `IMPACT_MAX`, `MATERIAAL_KLEUREN`, `actieveEffecten`, en de
+  `face.normal` die `schiet()` al uit de raycast krijgt.
+- **Doel:** inslagen krijgen richting, langgerekte vonken en een korte
+  rookpluim.
+- **Stappen:** deeltjes krijgen een snelheidscomponent langs de
+  inslagnormaal; langgerekte vorm voor snelle vonken (schaal langs de
+  bewegingsrichting, zoals `spawnTracer()` al doet); tweede pool voor
+  korte opzwellende rookquads.
+- **Acceptatie:** alles vooraf gebouwd en gerecycled — **nul allocaties
+  en nul `setTimeout` in `schiet()`/`raakOndode()`**; `IMPACT_MAX`
+  verhoogd maar begrensd.
+- **Test:** `test-resources.mjs` (geheugenlek) + een uitbreiding van het
+  bestaande effect-testscript: assert dat het aantal effect-meshes na
+  200 schoten constant blijft.
+- **Let op:** dit is de veiligste ticket van de ronde, met één
+  aandachtspunt: `pakEffectSlot()` loopt **lineair** over
+  `actieveEffecten` en dat is een hot path. Bij enkele tientallen slots
+  verwaarloosbaar, bij honderden niet. Houd de pool klein.
+- **Niet veranderen:** de pool-architectuur zelf; `TRACER_MAX`-gedrag;
+  schade of raycast-logica.
+
+### Ticket 95 — De kill als gebeurtenis
+- **Context:** `raakOndode()` (kill-afhandeling), de bestaande
+  impact-burst, de hitmarker-tiers en `HITMARKER_SAMENVAL_VENSTER`.
+- **Doel:** een dodelijke treffer krijgt een korte emissieve flits plus
+  een grotere deeltjesburst.
+- **Stappen:** één frame de emissieve waarde van de ondode-materialen
+  omhoog (die zijn **per instantie** aangemaakt, dus dat mag — in
+  tegenstelling tot de gedeelde wereldmaterialen); grotere
+  `spawnImpact()`-burst met `MATERIAAL_KLEUREN.vijand`/`vijandKop`.
+- **Acceptatie:** bij meerdere gelijktijdige kills (Brander-explosie)
+  stapelen de flitsen niet; het samenvalvenster werkt zoals bij de
+  hitmarker.
+- **Test:** uitbreiding van het bestaande kill-/hitmarker-testscript —
+  assert de samenval bij 5 gelijktijdige kills.
+- **Let op:** raak **nooit** een gedeeld materiaal aan voor deze flits.
+  De ondode-huidmaterialen zijn per instantie; `kernMateriaal` is
+  **gedeeld** en mag niet gemuteerd worden (§7.9
+  materiaal-mutatiediscipline).
+- **Niet veranderen:** kill-logica, geld, score, `GELD_PER_KILL`.
+
+---
+
+### Fase 2 — De naverwerkingsketen
+
+### Ticket 96 — Naverwerkingspass: filmkorrel en chromatische aberratie
+- **Context:** de composer-opbouw (`RenderPass` → `bloomPass` →
+  `OutputPass`). Nieuw: `ShaderPass` uit
+  `three/addons/postprocessing/`. Spec: §10.8-beslissing 83.
+- **Doel:** één eigen pass die het beeld "gefilmd" maakt — en die de
+  drager wordt voor T97 en T98.
+- **Stappen:** één `ShaderPass` met handgeschreven GLSL: hash-ruis op
+  `gl_FragCoord` + `uTijd` voor de korrel, radiale UV-offset per
+  kleurkanaal voor de aberratie. Plaatsing: **ná `bloomPass`, vóór
+  `OutputPass`** (korrel mag niet mee-bloomen).
+- **Acceptatie:** `composer.passes.length` gaat van 3 naar 4 en **blijft
+  4** voor de rest van de ronde; de aberratie is nul in het beeldcentrum
+  en begint pas voorbij ~60% van de straal; er is één schakelbare
+  sterkte-uniform.
+- **Test:** `test-naverwerking.mjs` — assert het aantal passes, de
+  volgorde (bloom vóór deze pass, output erna), en dat de pass-uniforms
+  bestaan. Plus basislijn (korrel verschuift de gemeten helderheid licht
+  — dit is het eerste ticket dat de band mag opzoeken).
+- **Let op:** `ShaderPass` komt uit **dezelfde addons-map** als de vier
+  bestaande imports — dezelfde CDN-host, dezelfde versie, geen tweede
+  afhankelijkheid (dus **geen** herhaling van waarschuwing 32). Gebruik
+  níét de derde-partij-bibliotheek `postprocessing`. Korrel die je als
+  korrel *ziet*, is te sterk. Aberratie in het centrum is
+  misselijkmakend en kost richtprecisie.
+- **Niet veranderen:** `bloomPass`-parameters; `OutputPass`;
+  `toneMapping`/`toneMappingExposure`; de `.schadeWedge` (blijft DOM).
+
+### Ticket 97 — Vignet in de composer
+- **Context:** `#vignet` (CSS + de JS die zijn opacity per frame zet),
+  `stroomFactor`, `EXPOSURE_STROOM_VLOER`, de T96-pass.
+- **Doel:** het vignet ligt ín het beeld en reageert op HP en Stroomuitval.
+- **Stappen:** radiale demping als extra term in de T96-pass; sterkte,
+  kleur en radius als uniforms die de bestaande HP-/eventlogica zet; het
+  DOM-element vervalt.
+- **Acceptatie:** **geen** extra pass (`composer.passes.length` blijft
+  4); een expliciete bovengrens op de sterkte staat als constante in de
+  code; `.schadeWedge` blijft ongewijzigd in DOM.
+- **Test:** uitbreiding `test-naverwerking.mjs` — assert dat het
+  vignet-uniform meebeweegt met HP en met `stroomFactor`, en dat het
+  DOM-element weg is. Plus het bestaande schadefeedback-testscript.
+- **Let op:** het vignet maakt de beeldranden donkerder, en dáár
+  verschijnen ondoden in het perifere zicht. Te sterk = verlies van
+  leesbaarheid. De bovengrens is geen suggestie.
+- **Niet veranderen:** `.schadeWedge` (moet scherp en direct blijven);
+  de HP-logica zelf.
+
+### Ticket 98 — Per-zone kleurgrading
+- **Context:** `zoneVan()`, de T96-pass, `EXPOSURE_BASIS`/
+  `EXPOSURE_STROOM_VLOER` als precedent voor globale beeldsturing.
+- **Doel:** elke zone krijgt een eigen kleurtoon; de overgang is zacht.
+- **Stappen:** lift/gamma/gain per zone als drie vectoren; interpolatie
+  **in de pass** over minstens een halve seconde (`zoneVan()` is
+  discreet, dus de blend hoort niet in de zonelogica).
+- **Acceptatie:** **luminantie-neutraal** — de grading verschuift chroma,
+  niet helderheid; `test-visuele-basislijn.mjs` blijft per zone binnen de
+  band; geen extra pass.
+- **Test:** uitbreiding basislijn — meet per zone zowel helderheid (moet
+  binnen de band blijven) als een kleurindicator (moet meetbaar
+  verschillen tussen kelder, atelier en buiten).
+- **Let op:** dit is het ticket dat het makkelijkst de kalibratie uit
+  §7.5.5-7.5.10 sloopt. Luminantie-neutraal is de harde eis, niet een
+  streven. Een harde overgang op de zonegrens is lelijk én verraadt de
+  zonegrens aan de speler.
+- **Niet veranderen:** helderheid per zone; `zoneVan()`; de
+  Stroomuitval-exposurelogica.
+
+---
+
+### Fase 3 — De vijand
+
+### Ticket 99 — Ondode-silhouet: handen, schouders, gerafelde vod
+- **Context:** `maakOndodeModel()`, `geo()`/`geoCache`, `ONDODE_TYPES`,
+  `VARIATIE_PROFIELEN`. Spec: §10.10-beslissing 85.
+- **Doel:** een silhouet dat op tien meter in het donker als figuur leest.
+- **Stappen:** drie tot vijf extra **gedeelde** vormen via `geo()`:
+  schouderpartij, twee handen, en een vod-geometrie met gekartelde
+  onderrand (in code gegenereerde `BufferGeometry`, geen `PlaneGeometry`).
+- **Acceptatie:** alle nieuwe vormen zitten in `geoCache` met
+  `userData.gedeeld = true`; `test-resources.mjs` blijft groen; de
+  hoofdhoogte blijft binnen de ±0,03-band van `test-ondode-model.mjs`.
+- **Test:** `test-ondode-model.mjs` uitbreiden — assert dat geen enkel
+  nieuw deel `userData.lichaamsdeel === 'kop'` draagt, en dat het aantal
+  gedeelde geometrieën per ondode constant is over 50 spawn/kill-cycli.
+- **Let op:** **`userData.lichaamsdeel === 'kop'` staat uitsluitend op
+  het hoofd-mesh en de twee ogen.** Een schouder die per ongeluk als kop
+  telt, is een balanswijziging (headshots). Extra meshes schalen met
+  `effectiefMaxActief()` (14, met zonebonus 18) — meet de draw calls.
+- **Niet veranderen:** hitbox-markering; `ONDODE_TYPES`-kleuren;
+  de armposities op x = ±0,24 (de arm-raycasts leunen daarop).
+
+### Ticket 100 — Rimlight op de ondoden
+- **Context:** `maakOndodeModel()` (waar per ondode al een
+  `MeshStandardMaterial` wordt gemaakt), `kernMateriaal` (gedeeld —
+  buiten de injectie houden), `OOG_INTENSITEIT_MIST`/`_STROOMUITVAL`.
+  Spec: §10.10-beslissing 85.
+- **Doel:** ondoden krijgen een koele lichtrand langs hun silhouetranden.
+- **Stappen:** fresnel-term (`pow(1.0 - dot(normal, viewDir), k)`) als
+  extra emissieve bijdrage, via `onBeforeCompile` op **uitsluitend** de
+  ondode-materialen. Gedeelde uniform voor de sterkte, zodat hij mee kan
+  bewegen met de eventgolven.
+- **Acceptatie:** **geen extra `Light`** (lichtaantal blijft 28); de
+  rimkleur wijkt zichtbaar af van zowel warm lamplicht als koel
+  maanlicht; `kernMateriaal` is ongemoeid.
+- **Test:** `test-rimlight.mjs` — assert dat de injectie alleen op
+  ondode-materialen zit (tel de gedeelde wereldmaterialen: die mogen
+  géén rim-uniform hebben), en dat het lichtaantal 28 blijft.
+- **Let op:** een echte rimlight-**lichtbron** zou 14-18 extra
+  `PointLight`s betekenen bovenop 27 — onbetaalbaar (§10.3). Dit is
+  shaderwerk. `onBeforeCompile` moet **in de materiaalfabriek**, nooit
+  achteraf op een instantie (§7.9 materiaal-mutatiediscipline). Three.js'
+  shader-chunknamen zijn **geen publieke API**: leg de gebruikte
+  chunknaam en de versie vast in een comment. Te sterk = ondoden lijken
+  te gloeien, wat de toon naar sci-fi duwt.
+- **Niet veranderen:** `kernMateriaal`; de oogtrap; wereldmaterialen.
+
+### Ticket 101 — Verval-shading op de huid
+- **Context:** `geo()` (gedeelde vormen krijgen eenmalig een
+  `color`-attribuut), `maakOndodeModel()`, `huidKleur`,
+  `STADSARCHIEF_KLEURSET_TINT`.
+- **Doel:** de huid ziet er rottend uit zonder één textuurpixel.
+- **Stappen:** (1) holte-gebaseerde vertexkleur-gradient op de **gedeelde**
+  `geo()`-vormen — kost per ondode letterlijk niets; (2) procedurele
+  vlekkenruis in de shader met lage sterkte. Beide vermenigvuldigen met
+  `huidKleur`.
+- **Acceptatie:** de type-kleuren uit `ONDODE_TYPES` blijven onderling
+  onderscheidbaar; `STADSARCHIEF_KLEURSET_TINT` (T86) werkt onveranderd.
+- **Test:** uitbreiding `test-ondode-model.mjs` + `test-stadsarchief.mjs`
+  — assert dat de kleurset-ontgrendeling nog steeds een meetbaar
+  kleurverschil geeft, en dat twee verschillende types nog steeds
+  meetbaar in tint verschillen.
+- **Let op:** de type-kleuren zijn een **gameplaysignaal** (Brander vs.
+  Loper). De vervalkleur mag daarom in **waarde** variëren, niet in
+  **tint**. Dit is de grens tussen sfeer en balans.
+- **Niet veranderen:** `ONDODE_TYPES`-basiskleuren; de
+  `tint`-formule; `STADSARCHIEF_KLEURSET_TINT`.
+
+---
+
+### Fase 4 — Ruimtelijke diepte
+
+### Ticket 102 — Subdivisie-helper voor grote vlakken (fundament)
+- **Context:** `bouwMuur()`, `blok()`, de vloer-/plafond-
+  `PlaneGeometry`-blokken (startkamer, atelier, kelder, kelderoost,
+  vliering). Spec: §10.7-beslissing 82.
+- **Doel:** grote vlakken krijgen genoeg vertices voor een vloeiende
+  occlusie-gradient in T103.
+- **Stappen:** één gedeelde helper die muur-/vloer-/plafondvlakken met
+  bijvoorbeeld 8×8 segmenten opbouwt; alleen toepassen op de **grote**
+  vlakken, niet op decor.
+- **Acceptatie:** driehoekstal per frame blijft onder ~60k; draw calls
+  **ongewijzigd** (subdivisie voegt geen meshes toe); basislijn binnen
+  de band (dit ticket mag het beeld niet veranderen).
+- **Test:** `test-visuele-basislijn.mjs` — het beeld moet **identiek**
+  blijven binnen de band; plus een assertie op het driehoekstal.
+- **Let op:** dit ticket levert **geen zichtbaar effect** op. Als het
+  beeld verandert, is er iets mis. Let op de naden: gesubdivideerde
+  vlakken moeten exact op dezelfde wereldcoördinaten eindigen als
+  daarvoor, anders ontstaan kieren tussen muur en vloer.
+- **Niet veranderen:** wereldafmetingen; `obstakels`; `berekenVloerY()`.
+
+### Ticket 103 — Ingebakken hoekocclusie (zwaartepunt van de ronde)
+- **Context:** T102's helper, `obstakels` als bron, `mat()`/
+  `matFamilie()` (`vertexColors`). Spec: §10.7-beslissing 82.
+- **Doel:** hoeken, muurvoeten en plafondnaden lopen zacht donkerder —
+  kamers krijgen een binnenkant.
+- **Stappen:** per vertex bepalen hoe dicht die bij een andere
+  geregistreerde rechthoek uit `obstakels` ligt; vertexkleur navenant
+  dimmen; `vertexColors: true` op de betrokken materialen.
+- **Acceptatie:** **nul extra rendertijd** (vertexattribuut, geen extra
+  samples/passes/lichten); deurgaten smeren niet dicht; basislijn per
+  zone binnen de band, of — als de band wordt overschreden — de nieuwe
+  waarde expliciet bijgewerkt mét onderbouwing in ARCHITECTURE_NOTES §10.
+- **Test:** `test-hoekocclusie.mjs` — assert dat vertices in een hoek
+  donkerder zijn dan vertices midden op een vlak, dat vertices rond een
+  deurgat **niet** gedimd zijn, en dat er geen nieuwe materialen zijn
+  bijgekomen. Plus basislijn per zone en `test-resources.mjs`.
+- **Let op:** **dit is het ticket dat de helderheidsbalans het hardst
+  raakt.** §7.5.5-7.5.10 zijn vier feedbackrondes over precies deze
+  kalibratie, en de kelder is al eens als "te donker" teruggekomen. Meet
+  per zone, niet globaal. Voor de cachebotsing: zet `vertexColors`
+  **globaal** aan in plaats van een tweede cache-tak te maken — zonder
+  color-attribuut gedraagt Three.js zich dan als wit, dus neutraal. Een
+  tweede cache-tak verdubbelt de cache en breekt het contract dat
+  call-sites erover hebben.
+- **Niet veranderen:** `obstakels`; basiskleuren; het cache-contract van
+  `mat()`/`matFamilie()`.
+
+### Ticket 104 — Variatie per instantie
+- **Context:** `blok()`, `meubelBox()`, de `vertexColors`-infrastructuur
+  uit T103. Spec: §10.12-beslissing 87.
+- **Doel:** geen twee identieke bakstenen, kisten of planken.
+- **Stappen:** een **deterministische** per-mesh tint (hash van de
+  positie, geen `Math.random()`) als vertexkleur, vermenigvuldigend met
+  de materiaalkleur. Bereik ±10%.
+- **Acceptatie:** het aantal unieke materialen stijgt **niet** (dit is
+  juist de manier om méér te delen); twee runs geven identieke tints.
+- **Test:** `test-instantievariatie.mjs` — assert determinisme over twee
+  page-loads, het tintbereik, en dat `materiaalCache`/`matFamilieCache`
+  niet groeien. Plus basislijn.
+- **Let op:** de ondode-modellen doen dit al met een **nieuw materiaal
+  per instantie** — dat is precies wat hier vermeden moet worden. De
+  meting laat 285 unieke materialen zien in een lege scene, veel meer
+  dan de cache suggereert, omdat call-sites `extra` meegeven aan `mat()`
+  (contract: niet-lege `extra` ⇒ altijd verse instantie). Niet-determinisme
+  maakt `test-visuele-basislijn.mjs` instabiel.
+- **Niet veranderen:** het cache-contract; `PALET`-waarden.
+
+### Ticket 105 — Afgeschuinde randen
+- **Context:** `blok()`, `meubelBox()`, `bouwTafel()`, `deurMesh`, de
+  kisten/tonnen/werkbanken; `geo()` als cache-patroon. Spec:
+  §10.12-beslissing 87.
+- **Doel:** randen vangen een streepje licht; objecten ogen gemaakt.
+- **Stappen:** een `blokAfgeschuind`-variant met 1-2 cm afschuining,
+  gecachet op maat zoals `geo()` dat doet. Toepassen op tafels, kisten,
+  deuren en werkbanken.
+- **Acceptatie:** **niet** op `bouwMuur()` (muren hebben geen zichtbare
+  vrije rand en het zou het driehoekstal verdrievoudigen); `obstakels`
+  blijft rechthoekig en blijft 56; driehoekstal per frame binnen budget.
+- **Test:** `test-afschuining.mjs` — assert dat gelijke maten dezelfde
+  gecachete geometrie delen, dat muren ongewijzigd zijn, en het
+  driehoekstal. Plus `test-resources.mjs`.
+- **Let op:** bij meer dan ~2 cm gaat de visuele geometrie merkbaar
+  afwijken van `obstakels` en lijk je net naast een hoek vast te lopen.
+- **Niet veranderen:** `obstakels`; muurgeometrie; wereldafmetingen.
+
+---
+
+### Fase 5 — Oppervlak
+
+### Ticket 106 — Wereldschaal-UV's (fundament)
+- **Context:** `bouwCanvasTextuur()` (`repeat.set(4, 4)`), `blok()`,
+  `meubelBox()`, `bouwMuur()`, de vloer-/plafond-planes. Spec:
+  §10.11-beslissing 86.
+- **Doel:** een baksteen is overal even groot, ongeacht de maat van het
+  vlak.
+- **Stappen:** de `repeat` verhuist van de **gedeelde textuur** naar het
+  `uv`-attribuut van de geometrie, per vlak geschaald naar de
+  wereldafmetingen. Voor een `BoxGeometry`: zes vlakken, elk eigen schaal.
+- **Acceptatie:** `repeat.set(4, 4)` staat niet langer op de gedeelde
+  textuur; alle drie de bestaande texturen blijven gedeeld (cache
+  intact); basislijn binnen de band.
+- **Test:** `test-wereldschaal-uv.mjs` — assert dat twee vlakken van
+  verschillende afmeting dezelfde UV-dichtheid per wereldmeter hebben, en
+  dat `canvasTextuurCache` nog steeds 3 entries heeft.
+- **Let op:** **dit ticket levert in isolatie bijna geen zichtbaar effect
+  op** — een `roughnessMap` rond wit stretch je nauwelijks merkbaar. Het
+  is fundament voor T107. Niet "verbeteren" door er alvast een `map` bij
+  te doen; dat is T107. Triplanar is bewust **niet** de route (drie
+  texture-samples per map per fragment op een fragment-bound scene).
+- **Niet veranderen:** de tekenaars; de cache; basiskleuren.
+
+### Ticket 107 — De procedurele texturenset
+- **Context:** `CANVAS_TEXTUUR_TEKENAARS`, `bouwCanvasTextuur()`,
+  `MATERIAAL_FAMILIES`, `matFamilie()`, `PALET`. Spec:
+  §10.11-beslissing 86.
+- **Doel:** baksteenverband, planken, pleister en klinkers in plaats van
+  drie ruispatronen.
+- **Stappen:** tekenaars op 512×512 die elk **drie** maps leveren:
+  albedo (`map`), ruwheid (`roughnessMap`, bestaat al) en hoogte (bron
+  voor T108). Het `textuur`-veld per familie wordt een object met drie
+  verwijzingen. Kleuren uit `PALET`, niet uit nieuwe losse hex-waarden.
+- **Acceptatie:** alle texturen blijven **gedeeld** en gecachet;
+  laadtijdtoename gemeten en vastgelegd; basislijn per zone binnen de
+  band (of expliciet bijgewerkt met onderbouwing).
+- **Test:** `test-texturen.mjs` — assert het aantal gedeelde texturen,
+  dat elke familie zijn drie maps heeft, en dat er geen textuur per
+  instantie wordt aangemaakt. Meet de generatietijd en assert een
+  bovengrens. Plus basislijn en `test-resources.mjs`.
+- **Let op:** **stijl is hier het grootste risico, niet performance.**
+  Fotorealistische baksteen op blokgeometrie ziet er *slechter* uit dan
+  effen kleur — dan zie je pas echt dat het dozen zijn. Gestileerd
+  houden, in lijn met het "geverfde maquette"-DNA. Tweede risico:
+  512×512 met duizenden canvas-operaties × 8 tekenaars kan de laadtijd
+  merkbaar verhogen; meet het en verspreid zo nodig over frames.
+  §7.3 heeft de precedent-discussie al gevoerd — dit is de voortzetting
+  daarvan, geen nieuwe uitzondering.
+- **Niet veranderen:** basiskleuren van bestaande oppervlakken (de
+  `map` mag patroon toevoegen, niet de gemiddelde kleur verschuiven);
+  het cache-mechanisme.
+
+### Ticket 108 — Normal maps uit dezelfde hoogtekaarten
+- **Context:** `bouwCanvasTextuur()` (zustertje voor hoogte → normal),
+  `matFamilie()`, `MATERIAAL_FAMILIES`. Spec: §10.11-beslissing 86.
+- **Doel:** voegen en houtnerf vangen echt licht.
+- **Stappen:** Sobel-achtige gradient over T107's hoogtekaart → RGB
+  normal-canvas; als `normalMap` met een instelbare `normalScale`.
+- **Acceptatie:** **lichte uitvoering als startpunt** — alleen baksteen
+  en hout, lage `normalScale`, alleen grote vlakken. Draw calls
+  ongewijzigd; fragment-kosten gemeten en vastgelegd.
+- **Test:** `test-normalmap.mjs` — assert dat de normal-maps gedeeld
+  zijn en uit dezelfde hoogtebron komen als T107. Plus basislijn en een
+  expliciete rendermetriek-vergelijking vóór/ná.
+- **Let op:** **dit is de duurste per-fragment-richting van de ronde en
+  hij schaalt met het aantal lichten** (27). Als de fillrate-aanname uit
+  §10.3 klopt, is dit de eerste richting die op zwakke hardware
+  teruggedraaid moet worden — bouw hem daarom achter één schakelbare
+  constante. Zonder tangents valt Three.js terug op een afgeleide
+  berekening, wat op grote vlakke planes artefacten kan geven.
+  `normalScale` te hoog = reliëfbehang.
+- **Niet veranderen:** T107's albedo/roughness; het lichtaantal.
+
+---
+
+### Fase 6 — Licht als vorm
+
+### Ticket 109 — Raamprojecties op de vloer
+- **Context:** de dakraam-blokken, de glas-/raamblokken rond
+  `glasMateriaal`, het `lichtvlek`-patroon uit `bouwLantaarn()`,
+  `PALET.raamWarmAmber`/`raamKoelBlauw`. Spec: §10.6-beslissing 81.
+- **Doel:** licht neemt de vorm van zijn opening aan.
+- **Stappen:** canvas-getekend kozijnpatroon als gedeelde textuur;
+  geprojecteerd als quad op de vloer met additive blending en
+  `depthWrite: false`; scheefheid statisch berekend uit de raampositie.
+- **Acceptatie:** **geen** `SpotLight` en geen nieuw licht (invariant 2);
+  alleen op **vlakke** vloerdelen — niet op de kelder-ramp of de
+  vlieringtrap; `obstakels` blijft 56.
+- **Test:** `test-raamprojectie.mjs` — assert het lichtaantal (28), dat
+  elke projectiequad op een vlak vloerdeel ligt, en dat de textuur
+  gedeeld is. Plus basislijn.
+- **Let op:** de projectie is **statisch** en klopt dus niet meer zodra
+  er iets tussen raam en vloer staat. In een donkere scene met fog is dat
+  aanvaardbaar; noem het in een comment zodat het een bewuste cheat
+  blijft en geen vergeten bug wordt. Three.js kan gobo's via
+  `SpotLight.map` — dat is hier **verboden**, want het introduceert een
+  nieuw lichttype.
+- **Niet veranderen:** `glasMateriaal`; de dakraamlichten; het lichtaantal.
+
+### Ticket 110 — Zichtbare lichtkegels (duurste ticket van de ronde)
+- **Context:** `bouwLantaarn()`, de dakraam-blokken,
+  `grachtLantaarnLicht`, `hangLamp()`, `buitenLichten`/`lampLichten`,
+  `scene.fog`. Spec: §10.6-beslissing 81.
+- **Doel:** je ziet het licht staan, niet alleen waar het op valt.
+- **Stappen:** open `ConeGeometry` met een eigen `ShaderMaterial`:
+  additive blending, `depthWrite: false`, opacity die naar de rand
+  uitfadet via een fresnel-term en naar beneden via de lokale y; onderaan
+  zacht oplossen.
+- **Acceptatie:** **harde bovengrens op het aantal kegels** (start met
+  zes: vier binnenplaats-lantaarns + de twee grootste dakramen); de
+  kegel-opacity lift mee op `buitenLichten`/`lampLichten` (dimt tijdens
+  Stroomuitval); de shader **respecteert de fog**; geen nieuw licht.
+- **Test:** `test-lichtkegel.mjs` — assert het kegelaantal, dat de
+  opacity meebeweegt met `stroomFactor`, en dat het lichtaantal 28
+  blijft. Plus basislijn en een expliciete rendermetriek-vergelijking.
+- **Let op:** **dit is de duurste toegelaten richting.** Grote,
+  overlappende, camera-nabije additieve transparantie is puur overdraw,
+  en op `pixelRatio` 2 telt dat dubbel. Er is een reële performance-cliff
+  als de speler met zijn neus in een kegel staat (fullscreen additive
+  fragment). Bouw de **lichte** uitvoering (statische fresnel-fade, geen
+  noise, geen animatie) en stop daar tenzij een meting ruimte laat zien.
+  Een kegel die door de fog heen fel blijft, ziet er fout uit. Te sterk =
+  mist-in-een-discotheek in plaats van nachtlucht.
+- **Niet veranderen:** het lichtaantal; `FOG_NORMAAL`/`FOG_MIST`;
+  de lampflikker-logica.
+
+---
+
+### Fase 7 — De wereld buiten
+
+### Ticket 111 — Nachthemel
+- **Context:** `scene.background` (`0x05080b`), `camera.far` (50),
+  `FOG_NORMAAL`, T93's zoneprofiel. Spec: §10.13-beslissing 88.
+- **Doel:** boven de binnenplaats hangt een echte nachthemel.
+- **Stappen:** grote `SphereGeometry`, `side: BackSide`, `depthWrite:
+  false`, **`fog: false`**, met een `ShaderMaterial`: verticale gradient,
+  sterrenveld uit hash-ruis, traag scrollende wolkenlaag uit fractale
+  ruis. De dome beweegt met de camera mee.
+- **Acceptatie:** `fog: false` (anders wordt de hemel egaal grijs); de
+  dome beweegt mee zodat er geen zichtbare parallax is bij het lopen;
+  binnen is er niets van te zien.
+- **Test:** `test-nachthemel.mjs` — assert `fog: false`, `BackSide`,
+  dat de dome binnen `camera.far` past, en dat hij met de camera
+  meebeweegt. Plus basislijn (binnenzones **moeten** onveranderd zijn).
+- **Let op:** **donker en onopvallend houden.** Een sterrenhemel als in
+  een openwereldspel trekt de aandacht weg van waar die hoort — meer "er
+  is een boven" dan "kijk eens hoe mooi". Dit is een stijlbreukrisico,
+  geen technisch risico. `camera.far` op 50 m maakt de dome relatief
+  klein; zonder meebewegen is de parallax zichtbaar.
+- **Niet veranderen:** `camera.far`; de fog-profielen uit T93;
+  het lichtaantal.
+
+### Ticket 112 — Skyline-silhouet
+- **Context:** de binnenplaats-gevels (`PALET.gevelKoud`/`gevelWarm`),
+  de gracht-zone, `blok()`, `camera.far`, T93's buitenprofiel. Spec:
+  §10.13-beslissing 88.
+- **Doel:** de binnenplaats wordt een binnenhof in een stad.
+- **Stappen:** twee tot drie lagen platte, zwarte silhouetgeometrie op
+  ~30/40/45 m, uit `blok()`-primitieven plus driehoeken voor
+  geveltoppen, met aangepaste fogbehandeling. Optioneel trage parallax.
+- **Acceptatie:** **IP-regel:** geen herkenbare bestaande Amsterdamse
+  gebouwen (geen Westertoren, geen Munttoren) — generieke
+  grachtenpand-silhouetten en verzonnen torens, dezelfde lijn als het
+  verzonnen adres uit T84. Alles binnen `camera.far`. `obstakels` blijft
+  56. Samengevoegd of geïnstantieerd, zodat het een handvol draw calls
+  blijft.
+- **Test:** `test-skyline.mjs` — assert het aantal draw calls dat de
+  skyline toevoegt, dat er geen collision bijkomt, en dat de geometrie
+  binnen `camera.far` valt. Plus basislijn.
+- **Let op:** het echte risico is **schaal** — te dichtbij of te groot en
+  de binnenplaats voelt kléiner in plaats van groter. Geometrie die niet
+  wegdooft in een spel waarin alles wegdooft, kan opvallend fout lijken;
+  stem de fogbehandeling zorgvuldig af. Zonder T93 is dit ticket
+  zinloos: de fog op 24 m dooft alles uit.
+- **Niet veranderen:** `obstakels`; `camera.far`; de zone-indeling.
+
+### Ticket 113 — Verlichte raampjes in de verte
+- **Context:** T112's silhouetlagen, de bestaande gevelraampjes,
+  `PALET.raamWarmAmber`/`raamWarmZacht`, `buitenLichten`/`stroomFactor`,
+  het **Accent**-niveau uit T89.
+- **Doel:** er is nog iemand anders in deze stad — en tijdens een
+  Stroomuitval gaan ze allemaal uit.
+- **Stappen:** emissieve quads in de silhouetlagen op Accent-niveau;
+  zeer trage willekeurige toestandswisseling (orde tientallen seconden);
+  koppeling aan `stroomFactor`.
+- **Acceptatie:** de raampjes zitten **onder** de bloom-threshold
+  (Accent-niveau, T89) — een gloeiend raampje op 40 m concurreert met de
+  Signaal-laag die de speler moet kunnen vinden.
+- **Test:** uitbreiding `test-skyline.mjs` — assert het emissieniveau en
+  de Stroomuitval-koppeling. Plus basislijn.
+- **Let op:** dit ticket bestaat niet zonder T112 en is een klein detail.
+  Bouw het niet groter dan het is.
+- **Niet veranderen:** het bloom-niveau; T89's hiërarchie.
+
+---
+
+### Fase 8 — Water
+
+### Ticket 114 — Levend water bij de gracht
+- **Context:** `waterMesh`, `WATER_BREEDTE`, `grachtLantaarnLicht`,
+  `bootGroep` + `updateBootPositie()`. Spec: §10.14-beslissing 89.
+- **Doel:** de gracht deint en breekt het lantaarnlicht.
+- **Stappen:** (1) `waterMesh` subdividen + vertex-shader met twee tot
+  drie gekruiste sinussen; (2) procedurele normal-verstoring uit
+  scrollende ruis zodat het specular van `grachtLantaarnLicht` in een
+  trillende streep breekt; (3) optioneel de boot laten meedeinen.
+- **Acceptatie:** **geen `Reflector`**, geen tweede scene-render, geen
+  nieuwe addons-import; golven komen nooit boven de vlonderrand;
+  `updateBootPositie()` blijft leidend voor de bootpositie (deining komt
+  er bovenop, niet in plaats van).
+- **Test:** `test-water.mjs` — assert dat de golfamplitude onder de
+  vlonderrand blijft, dat `composer.passes.length` 4 blijft, en dat de
+  bootpositie per frame nog steeds door `updateBootPositie()` bepaald
+  wordt. Plus `test-gracht-dock.mjs` en `test-boot-aankondiging.mjs`.
+- **Let op:** een echte spiegelreflectie via `three/addons/objects/Reflector`
+  is een **nieuwe import én een tweede scene-render**, voor één vlak dat
+  de speler alleen in zone 4 ziet, in het donker. Bewust afgewezen — de
+  fake-variant (lantaarnstreep als verticaal uitgerekte gradient-quad die
+  met de golfnormaal vervormt) kost een fractie. Het water ligt op
+  y = −0,05 en de speler kan er niet in.
+- **Niet veranderen:** `updateBootPositie()`; de ontsnappingsflow;
+  `obstakels`.
+
+---
+
+### Extra waarschuwingen ronde 8 (v0.22)
+
+59. **Deze ronde heeft geen natuurlijke faalsignalen.** Een te licht
+    beeld of een gezakte framerate meldt zichzelf niet, in tegenstelling
+    tot een crash of een vastlopende ondode. T88's basislijn is daarom
+    geen formaliteit maar de enige vangrail — draai hem na élk ticket dat
+    licht, materiaal of post-processing raakt, niet alleen aan het eind.
+60. **De scene is fragment-bound, niet draw-call-bound.** 280 draw calls
+    en 18k driehoeken is ruim; 27 `PointLight`s die per verlicht fragment
+    geëvalueerd worden, is dat niet. Geometrie toevoegen is goedkoop,
+    per-fragment werk toevoegen is duur. Toets elke shader-wijziging aan
+    deze regel vóór je hem bouwt (§10.3).
+61. **Het lichtaantal blijft 28 en de schaduwwerper blijft er precies
+    één.** Geen enkel ticket in deze ronde voegt een `THREE.Light` toe.
+    De verleiding is het grootst bij T100 (rimlight per ondode zou
+    14-18 lichten betekenen) en T110 (een echte spot per kegel).
+    Controleer de telling ná elk ticket dat licht of geometrie raakt.
+62. **`mat()` met niet-lege `extra` omzeilt de cache.** Dat contract
+    verklaart waarom er 285 unieke materialen in een lege scene zitten.
+    In deze ronde is dat dodelijk: T103 (`vertexColors`), T104 (tint) en
+    T100 (`onBeforeCompile`) raken allemaal materialen die gedeeld
+    hóren te zijn. Als het materiaalaantal na een ticket stijgt, is er
+    een cache omzeild.
+63. **`onBeforeCompile` hoort in de materiaalfabriek, nooit achteraf op
+    een instantie.** Gedeelde materialen zijn immutabel (§7.9
+    materiaal-mutatiediscipline). Eén achteraf gemuteerd gedeeld
+    materiaal herschildert stilzwijgend elke gebruiker ervan.
+64. **Three.js' shader-chunknamen zijn geen publieke API.** T100, T110,
+    T111 en T114 injecteren of schrijven GLSL. Leg de gebruikte
+    chunknaam en de Three.js-versie (r160) vast in een comment naast de
+    injectie, zodat een versiewissel een vindbare faalplek heeft.
+65. **`userData.lichaamsdeel === 'kop'` staat uitsluitend op het
+    hoofd-mesh en de twee ogen.** T99 voegt schouders en handen toe. Een
+    nieuw deel dat per ongeluk als kop telt, verandert de
+    headshot-kans — een balanswijziging vermomd als silhouetverbetering.
+66. **Extra meshes per ondode schalen met `effectiefMaxActief()`** (14,
+    met zonebonus tot 18). T99's vijf extra delen betekent tot 90 extra
+    draw calls in de piek. Dat past, maar meet het — dit is de grootste
+    draw-call-toename van de ronde.
+67. **Transparantie sorteert op afstand en `depthWrite: false` maakt dat
+    zichtbaar.** T91 (contactschaduwen), T109 (raamprojecties), T110
+    (kegels) en T113 (raampjes) voegen alle vier transparante geometrie
+    toe bovenop de 80 die er al zijn. Overlappende quads op dezelfde
+    hoogte flikkeren; houd één vaste hoogte per vloerniveau aan.
+68. **`antialias: true` werkt niet meer zodra je via de composer
+    rendert.** De anti-aliasing is dus al zwakker dan de constructor
+    suggereert. Dat is geen bug die deze ronde oplost, maar het verklaart
+    waarom T96's korrel relatief veel oplevert (hij maskeert
+    trapjesranden en banding in gradiënten). Verwacht niet dat een extra
+    pass de AA verslechtert — die was er al niet.
+69. **T107 verhoogt de laadtijd.** Acht tekenaars op 512×512 met
+    duizenden canvas-operaties elk is geen gratis opstart. Meet de
+    generatietijd, leg een bovengrens vast, en verspreid zo nodig over
+    frames. Een spel dat traag start, voelt kapot voordat het mooi is.
+70. **De IP-regel geldt onverkort voor T112.** Geen herkenbare bestaande
+    Amsterdamse gebouwen in het skyline-silhouet — dezelfde lijn als het
+    verzonnen adres uit T84. Generiek en verzonnen.
+71. **Drie tickets leveren bewust geen zichtbaar effect op:** T89
+    (emissieve hiërarchie), T102 (subdivisie) en T106 (wereldschaal-UV's).
+    Als het beeld ná zo'n ticket verandert, is er iets mis. Verzin er
+    geen effect bij "omdat het ticket anders leeg voelt" — ze zijn
+    fundament voor respectievelijk T90/T110/T113, T103 en T107.
+72. **Gameplay-leesbaarheid is een acceptatie-eis, geen afweging.** Vijf
+    tickets kunnen hem aantasten: T90 (stroboscoop bij automatisch vuur),
+    T96 (aberratie in het richtpunt), T97 (vignet over het perifere
+    zicht), T101 (type-kleuren die vervagen) en T110 (kegels die het
+    beeld vullen). Elk van die vijf heeft de eis expliciet in zijn
+    testplan staan. Vink hem af, schat hem niet in.
+73. **De schaduw-wissel (A5) valt buiten deze ronde en is geen sluipende
+    optie.** Eén gerichte `DirectionalLight` in plaats van de huidige
+    cube-shadow is potentieel de grootste sprong die dit spel kan maken
+    (§10.16), maar hij raakt een vastgelegde invariant en verdient een
+    eigen ronde met een eigen GPU-meting. Geen enkel ticket hier mag er
+    "alvast naartoe werken".

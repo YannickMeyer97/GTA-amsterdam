@@ -4217,3 +4217,854 @@ hieronder. Vier ervan mogen door deze ronde veranderen (audio-lagen 4→5,
 StereoPanner 1→2+, localStorage-sleutels 2→3, regels omhoog); de rest
 hoort gelijk te blijven — met name **collision-obstakels (52)** en
 **schaduwwerpende lichten (1)**.
+
+---
+
+## 10. Ronde 8 (v0.22) — Visuele architectuur
+
+### 10.1 Scope en aanleiding
+
+Deze ronde komt uit `VISUEEL.md` (de technical-artist-analyse na v0.21),
+niet uit een audit en niet uit een bugmelding. Die analyse bracht de
+huidige rendering-pipeline in kaart, mat de scene door, en formuleerde 47
+visuele richtingen over negen gebieden. De eigenaar heeft daaruit
+**23 richtingen** goedgekeurd, plus de vier infrastructuurstappen die ze
+mogelijk maken.
+
+Vier kaderkeuzes van de eigenaar sturen deze hele ronde:
+
+| Keuze | Antwoord | Gevolg |
+| --- | --- | --- |
+| Visuele richting | **Donkerder en rijker** | Het bestaande DNA wordt versterkt, niet vervangen. Geen enkel ticket maakt de scene structureel lichter. |
+| Doelhardware | **Gemiddelde laptop/browser** | Geen dedicated GPU verondersteld. Fragment-kosten zijn het schaarse goed (§10.3). |
+| Scope | **Laag 1 + laag 2** | De risicovolle laag 4 uit VISUEEL.md §3.3 valt buiten deze ronde — met name de schaduw-wissel (A5). |
+| Wereld buiten de kaart | **Ja** | Nachthemel en skyline-silhouet zijn toegestaan; de fogdiepte per zone is daar de voorwaarde voor. |
+
+**Wat de 23 richtingen gemeen hebben.** Ze voegen geen enkele
+gameplay-regel toe. Geen nieuw vijandtype, geen nieuw wapen, geen nieuwe
+upgrade, geen wijziging aan het threat-budget. Ze veranderen uitsluitend
+hoe de bestaande wereld eruitziet. Dat is dezelfde discipline als
+ronde 7, en om dezelfde reden: een ronde waarin de balans niet kan
+breken, is een ronde die je zonder speeltest-per-ticket kunt uitvoeren.
+
+**Wat er expliciet buiten valt.** SSAO, echte volumetrische mist, echte
+spiegelreflectie op water, extra echte lichtbronnen, een ander renderpad,
+regen, mistslierten, de volledige kleurmigratie, de env-map, de
+tonemapping-curve, en de schaduw-wissel (A5). De onderbouwing per stuk
+staat in `VISUEEL.md` §3.4. Twee daarvan verdienen hier herhaling omdat
+ze het budgetmodel van deze ronde definiëren — zie §10.3.
+
+### 10.2 De invarianten die deze ronde bewaakt
+
+Ronde 7 had één invariant (geen balansgetallen). Deze ronde heeft er
+**zes**, en ze zijn alle zes machinaal controleerbaar. Dat is bewust: een
+visuele ronde heeft geen natuurlijke faalsignalen — een te licht beeld
+of een gezakte framerate meldt zichzelf niet, in tegenstelling tot een
+crash of een vastlopende ondode.
+
+> **1. De helderheidsbasislijn.** Elke wijziging aan licht, materiaal of
+> post-processing wordt getoetst aan de per-zone helderheidsmeting uit
+> T88. Buiten de vastgelegde band ⇒ het ticket is niet af.
+
+> **2. Het lichtaantal blijft 28.** Geen enkel ticket in v0.22 voegt een
+> `THREE.Light` toe of verwijdert er een. De scene houdt 1
+> `HemisphereLight` + 27 `PointLight`s, waarvan er **precies één**
+> schaduw werpt (§7.9, ongewijzigd).
+
+> **3. Gameplay-leesbaarheid gaat boven schoonheid.** Een aanvallende
+> ondode, een schotrichting en een interactiepunt moeten altijd
+> afleesbaar blijven. Waar een ticket dat kan aantasten, staat het als
+> expliciete acceptatie-eis in het testplan.
+
+> **4. Geen balansgetallen.** De verbodenlijst uit §9.2 blijft
+> onverkort gelden: `golfBudget()`, `GOLF_BUDGET_*`,
+> `ONDODE_THREAT_KOSTEN`, `GOLF_MAX_ACTIEF`, `ONDODE_HP_TRAPPEN`,
+> `AANVAL_PROFIELEN`, alle `*_PRIJS`-constanten, `GELD_PER_HIT`/
+> `GELD_PER_KILL`, `POWERUP_DROP_KANS`, `SPELER_HP_MAX`,
+> `schadePerTreffer`/`WAPEN_SCHADE_MAX`.
+
+> **5. `obstakels` blijft 56.** Geen enkele visuele toevoeging krijgt
+> collision. Contactschaduwen, lichtkegels, plinten, skyline: allemaal
+> decor.
+
+> **6. Het resourcecontract uit T69/T70 blijft heel.** Materialen via
+> `mat()`/`matFamilie()`, geometrie via `geo()`/`geoCache`, wegwerp-
+> objecten via `ruimGroepOp()`. Deze ronde voegt veel meshes en
+> materialen toe en is dáármee de grootste bedreiging voor het contract
+> sinds het gelegd werd.
+
+### 10.3 Beslissing 78 — Het budgetmodel: deze ronde is fragment-bound
+
+Dit is de belangrijkste architectuurbeslissing van de ronde, want hij
+bepaalt welke richtingen zijn toegelaten en welke niet.
+
+**De meting.** Headless Chromium via `tests/helpers.mjs`, met
+`renderer.info.autoReset = false` en één `requestAnimationFrame` tussen
+`reset()` en uitlezen. Draw calls en driehoeken zijn
+resolutie-onafhankelijk en dus geldig; frametijd is dat niet
+(SwiftShader-softwarerendering, zie §8.11).
+
+| Meting | Leeg | 14 ondoden levend |
+| --- | --- | --- |
+| Meshes | 523 | 653 |
+| Lichten (`isLight`) | 28 | 28 |
+| Unieke materialen | 285 | 361 |
+| Unieke geometrie-instanties | 482 | 489 |
+| Driehoeken in de scene-graph | 17.782 | 32.902 |
+| **Draw calls per frame** | — | **280** |
+| **Driehoeken per frame** | — | **18.092** |
+| Shaderprogramma's | — | 13 |
+| GPU-geometrieën (`info.memory`) | 83 | 90 |
+| Texturen (`info.memory`) | 16 | 16 |
+| `castShadow`-meshes | 165 | — |
+| Transparante meshes | 80 | — |
+| Emissieve meshes | 64 | — |
+
+**De redenering.** 280 draw calls en 18k driehoeken is voor een
+browsergame ruim: dat is niet waar de tijd heen gaat. De tijd gaat naar
+de fragment shader. Three.js' forward renderer neemt **alle** lichten op
+in de shader-uniforms en evalueert ze **per verlicht fragment**,
+ongeacht afstand — er is geen light-culling in de basisrenderer. Elk
+vol-scherm fragment doet dus 27 puntlichtberekeningen plus een
+hemisfeerterm, en daar bovenop komt de bloom-mipchain.
+
+**De regel die daaruit volgt, en die elk ticket in deze ronde bindt:**
+
+> Er is ruimte voor meer geometrie en meer draw calls. Er is nauwelijks
+> ruimte voor meer per-fragment werk. Elke schermvullende pass en elke
+> duurdere materiaal-shader concurreert rechtstreeks met die 27 lichten.
+
+Dat verklaart de toelatingen en de afwijzingen:
+
+- **Toegelaten, want nul fragment-kosten:** vertexocclusie (T103),
+  per-instantie variatie (T104), afschuining (T105), camerabeweging
+  (T92), fogdiepte (T93), skyline (T112). Deze mogen zonder meting.
+- **Toegelaten met meting:** één eigen `ShaderPass` (T96), normal maps
+  (T108), lichtkegels (T110). Alle drie kosten reëel fragmentwerk en
+  hebben een expliciete afbreek-drempel in hun testplan.
+- **Afgewezen:** SSAO (tweede volledige scene-render, +280 draw calls,
+  en het maakt donker nog donkerder in een scene die al bijna zwart is);
+  raymarched volumetrische mist (30-60 samples per fragment, en dan nog
+  tijdens een eventgolf — de piekbelasting); een `Reflector` op het water
+  (tweede scene-render voor één vlak in één zone).
+
+**Het belangrijkste gevolg voor de pipeline-architectuur.** Deze ronde
+voegt **precies één** nieuwe post-processing-pass toe (T96), en die
+draagt vervolgens drie verschillende effecten (korrel, aberratie,
+vignet, per-zone grading). Vier losse passes zouden vier keer een
+full-screen lees/schrijf-cyclus betekenen; één pass met vier
+uniform-gestuurde termen is één cyclus. Zie beslissing 83.
+
+### 10.4 Beslissing 79 — De helderheidsbasislijn als vangrail (T88)
+
+**Het probleem.** De helderheid van dit spel is over **vier
+feedbackrondes** met pixelmetingen getuned (§7.5.5, §7.5.7-7.5.10). De
+kelder is een keer als "te donker" teruggekomen, de binnenplaats is 20%
+gedimd, het atelier ook, en de kelderlamp-doorschijn door de
+atelier-westmuur heeft twee iteraties gekost. Die kalibratie is
+kostbaar, ongedocumenteerd in getallen, en **elke ticket in deze ronde
+kan hem verschuiven zonder dat iemand het merkt**.
+
+Hoekocclusie maakt hoeken donkerder. Vertexvariatie verschuift kleuren.
+Een grading-matrix raakt alle zones tegelijk. Texturen veranderen de
+gemiddelde albedo. Een lichtkegel voegt additieve helderheid toe. Stuk
+voor stuk klein; opgeteld over 27 tickets een spel dat er anders uitziet
+dan bedoeld, zonder dat er één moment was waarop het "brak".
+
+**De beslissing.** T88 legt vóór alle andere tickets een machinale
+basislijn vast: `tests/test-visuele-basislijn.mjs` neemt op een vast
+aantal camerastandpunten (één per zone, vaste positie en kijkrichting,
+vaste vensterafmeting) een screenshot en berekent daaruit de gemiddelde
+en de mediane pixelhelderheid, plus de verdeling over een paar
+helderheidsbanden. Diezelfde test legt de rendermetrics uit §10.3 vast.
+
+**De vorm van de assertie is bewust een band, geen exact getal.** Een
+exacte pixelgelijkheid is onhaalbaar zodra er ruis (T96), variatie
+(T104) of animatie in het beeld zit. De test asserteert daarom per zone
+een toegestane afwijking ten opzichte van de vastgelegde waarde, en het
+ticket dat de band overschrijdt móet de nieuwe waarde expliciet in de
+test bijwerken mét onderbouwing in dit document. Dat is precies het
+mechanisme dat `test-resources.mjs` voor geheugenlekken doet: niet
+"voorkom de wijziging", maar "maak de wijziging zichtbaar en bewust".
+
+**Waarom dit ticket eerst moet.** Ná drie tickets weet je niet meer welk
+ticket welke verschuiving veroorzaakte. Dit is hetzelfde patroon als
+waarschuwing 42 (T77 vóór T69) en 57 (rastertest vóór de
+vliering-geometrie): de vangrail moet er staan terwijl je bouwt, niet
+erna.
+
+### 10.5 Beslissing 80 — Emissieve hiërarchie, en bloom als art-direction-knop (T89)
+
+**Wat er nu is.** 64 emissieve meshes met waarden die van 0,9 (lampbol
+in `hangLamp()`) tot 3,4 (`OOG_INTENSITEIT_STROOMUITVAL`) lopen, zonder
+onderliggend systeem. `glasMateriaal` staat op 1,6, `kernMateriaal` van
+de Brander ook op 1,6, de lantaarnbollen op 1,32, de bootlamp op 1,8.
+Die getallen zijn stuk voor stuk lokaal beredeneerd en nooit tegen
+elkaar afgewogen.
+
+De `UnrealBloomPass` staat op threshold **0,82** — hoog, zodat alleen de
+echt felle elementen gloeien. Dat werkt vandaag, maar het werkt bij
+toeval: er is geen regel die zegt welk soort object boven of onder die
+drempel hoort te zitten.
+
+**Waarom dat een probleem wordt in deze ronde.** Vier tickets voegen
+emissief materiaal toe of verhogen bestaande waarden: T90 (mondingsvlam),
+T100 (rimlight), T110 (lichtkegels), T113 (verre raampjes). Zonder
+hiërarchie is elke bloom-aanpassing daarna giswerk, en levert elke
+verhoging van de bloom-sterkte een wasachtig beeld op in plaats van een
+dramatisch beeld.
+
+**De beslissing.** Drie benoemde niveaus, vastgelegd als constanten, met
+een expliciete regel welk soort object waar hoort:
+
+| Niveau | Richtwaarde | Wie | Gloeit (boven threshold)? |
+| --- | --- | --- | --- |
+| **Accent** | ~0,4 | achtergrondramen in de verte, zwakke decoraccenten | nee |
+| **Bron** | ~1,2-1,6 | lampbollen, raamglas, winkelmarkeringen, Brander-kern | randgeval, bewust net eronder/erop |
+| **Signaal** | ~2,6-3,4 | ondode-ogen, mondingsvlam, actieve koopmarkering | ja |
+
+De bloom-threshold wordt daarmee één knop die de hele hiërarchie stuurt:
+verlagen laat de Bron-laag meegloeien, verhogen isoleert de
+Signaal-laag. Dat is de art-direction-knop die er nu niet is.
+
+**De harde grens.** De Signaal-laag is een **gameplay**-laag. Ondode-ogen
+en actieve koopmarkeringen zitten daar niet omdat ze mooi zijn maar
+omdat de speler ze moet kunnen vinden. Geen enkel ticket mag een
+decoratief element naar Signaal tillen, en geen enkel ticket mag de
+ogen of de koopmarkeringen eronder duwen.
+
+**Dit ticket levert geen zichtbaar effect op.** Het is een inventarisatie
+plus een tabel plus het corrigeren van de uitschieters. Het staat vooraan
+omdat vier latere tickets erop leunen, niet omdat het op zichzelf iets
+oplevert.
+
+### 10.6 Beslissing 81 — Licht als vorm, zonder één nieuwe lichtbron
+
+**Het probleem.** Het spel *heeft* licht maar *toont* geen licht. Er zijn
+27 puntlichten en geen enkele zichtbare bundel, kegel of projectie. Een
+speler leest een ruimte aan lichtval — waar het vandaan komt, waar het op
+valt, waar het niet komt — en die informatie ontbreekt volledig. De vier
+lichtvlekken op de binnenplaats (`CircleGeometry(1.25, 24)` met opacity
+0,12, plat op y = 0,012 in `bouwLantaarn()`) zijn de enige plek waar
+licht als vórm bestaat, en ze bewijzen dat de techniek hier past.
+
+**De beslissing.** Drie tickets maken licht zichtbaar, en **geen van
+drieën voegt een `THREE.Light` toe.** Dat is geen toevalligheid maar de
+kern van de aanpak: bij 27 bestaande lichten in een forward renderer is
+elke extra lichtbron duurder dan de hele geometrie die het effect
+simuleert. Het precedent staat al in de code — bij de Smederij-visuals is
+een ember-puntlicht met een bereik van 0,9 m weer verwijderd na een
+pixelmeting, met de notitie dat zo'n licht "de fragment-shader evenveel
+kost als een lamp die een hele kamer verlicht".
+
+**T90 — De mondingsvlam wordt een lichtmoment.** `vlamLichtDrukspuit`
+bestaat al als `PointLight(0x9fffb8, 1.1, 6)` met `visible = false`
+tussen schoten door. Intensiteit 1,1 in een scene waar de zwakste
+lantaarn op 9 staat, betekent dat een schot de kamer niet verlicht. De
+ingreep is het licht dat er al is één tot twee frames op een orde van
+15-25 zetten, de vlamgeometrie van een bol naar twee gekruiste quads met
+een canvas-getekende stervorm brengen, en een korte piek op de
+bloom-sterkte. **Het lichtaantal verandert niet** — dit is een bestaand
+licht dat harder aangaat.
+
+De harde eis: bij de Ratelaar (automatisch vuur) mag dit geen
+stroboscoop worden. De flits moet korter zijn dan het vuurinterval en de
+piek mag **niet** meeschalen met vuursnelheid, anders wordt aanhoudend
+vuur verblindend op precies het moment dat de speler het meest moet
+zien.
+
+**T109 — Raamprojecties.** Een canvas-getekend kozijnpatroon,
+geprojecteerd als quad op de vloer onder elk dakraam en elk gevelraam:
+exact het bestaande `lichtvlek`-patroon, maar met een patroon in plaats
+van een egale cirkel. Statisch, dus het klopt niet meer zodra er iets
+tussen raam en vloer staat — in een donkere scene met fog is dat een
+aanvaardbare cheat, en het is de reden dat dit ticket op vlakke vloeren
+blijft (niet op de kelder-ramp, niet op de vlieringtrap).
+
+Bewust géén `SpotLight.map`: Three.js kan gobo's via een spotlight, maar
+dat introduceert een nieuw lichttype en breekt invariant 2.
+
+**T110 — Zichtbare lichtkegels.** Open `ConeGeometry` met een eigen
+`ShaderMaterial`: additive blending, `depthWrite: false`, opacity die
+naar de rand uitfadet via een fresnel-term en naar beneden via de lokale
+y. Onder de vier binnenplaats-lantaarns, de gracht-lantaarn en de
+grootste dakramen.
+
+Dit is **de duurste toegelaten richting van de ronde**. Grote,
+overlappende, camera-nabije additieve transparantie is puur overdraw, en
+op een scherm met `pixelRatio` 2 telt dat dubbel. Drie eisen volgen
+daaruit:
+
+1. Het aantal kegels heeft een harde bovengrens en de lichte uitvoering
+   (statische fresnel-fade, geen noise, zes kegels) is het startpunt —
+   niet de volledige uitvoering.
+2. De kegel-opacity moet meeliften op `buitenLichten`/`lampLichten`,
+   anders blijft er tijdens een Stroomuitval licht in de lucht hangen
+   dat nergens vandaan komt.
+3. De shader moet de fog respecteren. Een kegel die door
+   `FOG_NORMAAL`/`FOG_MIST` heen fel blijft, ziet er fout uit.
+
+**De volgorde binnen dit gebied is niet willekeurig.** T90 eerst (nul
+kosten, direct voelbaar), dan T109 (de goedkope, statische vorm van
+"licht neemt de vorm van zijn opening aan"), dan pas T110. Blijkt T110
+op de doelhardware te duur, dan staat de helft van het effect er al.
+
+### 10.7 Beslissing 82 — Waardestructuur zonder licht (T91, T102, T103)
+
+**Het probleem, en waarom dit het belangrijkste gebied van de ronde is.**
+Objecten staan niet op de vloer — ze zweven erboven. Hoeken zijn even
+helder als vlakken, wat elke kamer plat maakt. Er is geen enkele plek
+waar een object een écht donkere kant heeft, want 27 schaduwloze
+puntlichten lichten alles van drie kanten diffuus aan. Dat is precies de
+"prototype"-look.
+
+Dit is ook waar de één-schaduw-regel pijnlijk wordt: §7.9.1 stelt zelf
+vast dat de enige schaduwwerpende lamp maximaal **12/255 pixelverschil**
+maakt. We betalen zes cube-shadow-passes per frame voor iets dat je niet
+ziet. De echte oplossing daarvoor (A5, een gerichte `DirectionalLight`)
+valt buiten deze ronde omdat hij een vastgelegde invariant raakt. Wat
+overblijft is de vraag: **hoe krijg je waardestructuur zonder licht?**
+
+**De beslissing.** Waardestructuur wordt ingebakken in de geometrie in
+plaats van berekend door de renderer. Twee schalen:
+
+**T91 — Contactschaduwen (de kleine schaal).** Eén gedeelde radiale
+gradient-canvastextuur op een gedeelde `PlaneGeometry`, plat op de
+vloer, geschaald naar de bounding box van het object erboven. Volledig
+statisch: één keer plaatsen bij het bouwen, nooit per frame aanraken.
+`MeshBasicMaterial` doorloopt geen enkele lichtberekening, dus de
+fragment-kosten zijn verwaarloosbaar. Het plaatsingspatroon staat al in
+de code als de lantaarn-`lichtvlek`.
+
+De complicatie is de vloerhoogte. `berekenVloerY(x, z)` levert die, maar
+op de kelder-ramp en de vlieringtrap loopt hij — daar hoort geen
+contactschaduw, of hij moet per object de juiste y krijgen. Simpelste
+veilige regel: alleen op vlakke vloerdelen.
+
+**T102 — Subdivisie-helper (het fundament).** De grote vlakken (muren,
+vloeren, plafonds) zijn nu `BoxGeometry` (24 vertices) of een
+ongesubdivideerde `PlaneGeometry`. Voor een vloeiende
+occlusie-gradient is dat veel te grof. Eén gedeelde helper die deze
+vlakken met bijvoorbeeld 8×8 segmenten opbouwt, is het fundament voor
+T103 — en later ook voor vertex-jitter en vuil (buiten deze ronde).
+
+Dit tilt het driehoekstal van ~18k naar mogelijk 40-60k per frame. Dat
+is ruim binnen budget (§10.3: er is ruimte voor geometrie, niet voor
+fragments) en verandert het aantal draw calls niet.
+
+**T103 — Ingebakken hoekocclusie.** Per vertex bepalen hoe dicht die bij
+een andere geregistreerde rechthoek uit `obstakels` ligt, en de
+vertexkleur navenant dimmen; `vertexColors: true` op de betrokken
+materialen. Vertexkleuren worden in de vertex shader geïnterpoleerd en in
+de fragment shader met de basiskleur vermenigvuldigd: **nul extra
+texture-samples, nul extra passes, nul extra lichten.**
+
+Dit is de richting met de hoogste impact-per-kosten in het hele
+document, en dus het zwaartepunt van de ronde. Twee dingen maken hem
+tegelijk gevaarlijk:
+
+1. **Hij raakt de helderheidsbalans het hardst van alle tickets.** Alles
+   donkerder maken in de hoeken is precies het soort verschuiving waar
+   §7.5.5-7.5.10 vier rondes over hebben gedaan. T88's basislijn is hier
+   niet optioneel.
+2. **Hij botst met de materiaalcache.** `mat()` en `matFamilie()` cachen
+   op kleur/ruwheid/metaal respectievelijk familie/kleur. Materialen met
+   `vertexColors: true` moeten óf een eigen cache-tak krijgen, óf de vlag
+   moet globaal aan (veiliger: zonder color-attribuut gedraagt Three.js
+   zich dan als wit, dus neutraal). De tweede route is voorkeur, want de
+   eerste verdubbelt de cache en breekt het contract dat call-sites
+   erover hebben.
+
+**Een deurgat mag niet dichtsmeren.** De occlusieberekening kijkt naar
+`obstakels`, en een deuropening is de afwezigheid van een obstakel — maar
+de muur eromheen is er wel. Zonder aandacht wordt de rand van elk deurgat
+donker en lijkt de opening kleiner dan hij is. Dat is een
+leesbaarheidsprobleem, niet alleen een schoonheidsfout.
+
+### 10.8 Beslissing 83 — Eén eigen naverwerkingspass als drager (T96, T97, T98)
+
+**Wat er nu is.** `RenderPass` → `UnrealBloomPass(256×256, 0,35, 0,4,
+0,82)` → `OutputPass`. Verder niets. Het vignet (`#vignet`) en de
+schade-wedge (`.schadeWedge`) zijn DOM-elementen met `z-index` 6 en 7:
+ze liggen letterlijk bóvenop het beeld, buiten de tonemapping en buiten
+de bloom.
+
+**Een detail dat nergens vastligt en hier thuishoort.** `antialias: true`
+op de `WebGLRenderer` werkt **niet** meer zodra je via een
+`EffectComposer` naar een render target rendert. De anti-aliasing in dit
+spel is dus al zwakker dan de constructor suggereert. Dat is geen bug die
+deze ronde oplost, maar het verklaart waarom filmkorrel (T96) hier
+relatief veel oplevert: korrel maskeert trapjesranden en banding in
+gradiënten, en dit beeld heeft beide.
+
+**De beslissing.** Precies **één** nieuwe `ShaderPass`, die vier dingen
+tegelijk doet, geplaatst ná `bloomPass` en vóór `OutputPass`:
+
+| Term | Ticket | Waarom in deze pass |
+| --- | --- | --- |
+| Filmkorrel | T96 | hash-ruis op `gl_FragCoord` + tijd |
+| Chromatische aberratie | T96 | radiale UV-offset per kanaal |
+| Vignet | T97 | radiale demping, uniform-gestuurd |
+| Per-zone kleurgrading | T98 | lift/gamma/gain-matrix, uniform-gestuurd |
+
+**Waarom één pass en niet vier.** Elke extra full-screen pass is een
+volledige lees/schrijf-cyclus over het scherm. Vier passes = vier
+cycli; één pass met vier uniform-gestuurde termen = één cyclus. Op een
+fragment-bound scene (§10.3) is dat het verschil tussen "merkbaar" en
+"significant". Het architecturale gevolg: T96 bouwt de pass, T97 en T98
+voegen er alleen uniforms en een paar regels aan toe.
+
+**`ShaderPass` is geen nieuwe afhankelijkheid.** Hij komt uit
+`three/addons/postprocessing/`, exact dezelfde submodule-map waaruit
+`EffectComposer`, `RenderPass`, `UnrealBloomPass` en `OutputPass` al
+komen — dezelfde CDN-host, dezelfde versie, dezelfde importmap-entry.
+Dit is expliciet **geen** tweede CDN-afhankelijkheid en dus geen
+herhaling van het risico uit waarschuwing 32. De populaire
+derde-partij-bibliotheek `postprocessing` (vanruesc) zou dit makkelijker
+maken en wordt bewust **niet** gebruikt: voor één pass die je in vijftig
+regels zelf schrijft, is een tweede host en een tweede
+versiecompatibiliteitsrisico de verkeerde ruil.
+
+**Wat in DOM blijft.** De `.schadeWedge` blijft een DOM-element. Die moet
+juist scherp en direct leesbaar zijn; post-processing zou hem alleen
+zachter maken. Dat is een leesbaarheidsbeslissing, geen technische.
+
+**De drie termen hebben elk een leesbaarheidsgrens.** Korrel die je als
+korrel ziet, is te sterk. Chromatische aberratie in het beeldcentrum is
+misselijkmakend — hij moet radiaal zijn en pas voorbij ~60% van de
+straal beginnen, anders lijdt het richtpunt eronder. En het vignet maakt
+de beeldranden donkerder, precies waar ondoden in het perifere zicht
+verschijnen; daar hoort een expliciete bovengrens op.
+
+**T98 (per-zone grading) moet luminantie-neutraal blijven.** Hij mag de
+*chroma* verschuiven — kelder groeniger, atelier koeler, gracht
+blauwgroener — maar niet de helderheid, anders vecht hij met de
+kalibratie uit T88. En omdat `zoneVan()` een discrete functie is, moet de
+interpolatie tussen zones in de pass zitten (over minstens een halve
+seconde), niet in de zonelogica.
+
+### 10.9 Beslissing 84 — Camerabeweging als cosmetische laag (T92)
+
+**Het probleem.** De camera staat volkomen stil tijdens het lopen. Er is
+`terugslag` en `cameraKick` per schot, en een `WAPEN_HERLAAD_DIP_AMPLITUDE`
+van 0,05 op het wapenmodel — maar geen loopwiegen, geen landingsdip,
+geen lean. In een FPS wordt beweging voor een groot deel gevoeld door de
+camera, niet door de wereld.
+
+**De beslissing.** Drie gedempte, puur cosmetische termen op de camera,
+in de bestaande cosmetische zone van de gameLoop waar `terugslag` en
+`cameraKick` al wegvallen. Die code heeft al de juiste vorm én de juiste
+discipline (hij loopt door tijdens pauze zonder de simulatie te raken).
+
+**Drie architecturale eisen:**
+
+1. **Het wiegen hangt aan de afgelegde afstand, niet aan de tijd.**
+   Anders wiegt het beeld ook als je stilstaat. Dit is de klassieke fout
+   bij headbob en hij is achteraf lastig te herkennen.
+2. **De camerabeweging staat volledig buiten de collision- en
+   raycastketen.** `updateSpeler()`, `losBotsingenOp()` en `schiet()`
+   mogen de gewiegde y/z nooit zien. Een schot moet exact hetzelfde
+   raken als nu.
+3. **Het wapenmodel wiegt tegen.** Anders verstoort het wiegen het
+   richten, en dat is een gameplay-regressie vermomd als sfeer.
+
+**Misselijkheid is een reëel risico.** Camerabeweging is een van de
+weinige visuele ingrepen die spelers fysiek onwel kan maken. De
+amplitude blijft in centimeters en onder één graad lean, en er hoort een
+schakelaar bij in hetzelfde instellingenmenu waar `muisgevoeligheid`
+(T75) al staat. Dat menu-item valt buiten dit ticket maar hoort in de
+overweging.
+
+### 10.10 Beslissing 85 — De vijand krijgt een eigen lichtrespons (T99, T100, T101)
+
+**Het probleem, en het symptoom dat het al jaren maskeert.** De ondoden
+zijn van hetzelfde materiaal gemaakt als de wereld: een gewoon
+`MeshStandardMaterial` met vergelijkbare roughness en zonder eigen
+lichtrespons. In een donkere kamer is dat een donkere vorm tegen een
+donkere achtergrond, en het enige wat je ziet zijn twee oranje stipjes.
+
+Dat verklaart een patroon in de projecthistorie: `OOG_INTENSITEIT_BASIS`
+is 1,4, `_AANVAL` 2,6, `_MIST` 2,6 en `_STROOMUITVAL` 3,4. Die trap is
+er niet omdat felle ogen mooi zijn — hij is er omdat **de ogen in hun
+eentje al het silhouetwerk moeten doen**. Dat is symptoombestrijding. Het
+echte probleem is dat er geen silhouetscheiding is tussen vijand en
+omgeving.
+
+**De beslissing.** Drie tickets, in deze volgorde, allemaal op
+`maakOndodeModel()` en de per-ondode materialen:
+
+**T99 — Silhouet eerst.** Drie tot vijf extra gedeelde vormen via de
+bestaande `geo()`-cache: schouders, handen, en een vod met een gekartelde
+onderrand in plaats van een rechte. Vanaf tien meter in het donker
+verandert dat het silhouet van "speelgoedfiguur" naar "iets dat op je
+afkomt".
+
+**T100 — Rimlight daarna, en niet andersom.** Een fresnel-term
+(`pow(1.0 - dot(normal, viewDir), k)`) als extra emissieve bijdrage,
+geïnjecteerd via `onBeforeCompile` op **uitsluitend** de
+ondode-materialen. Kleur bewust koel en afwijkend van zowel het warme
+lamplicht als het koele maanlicht, zodat een ondode nooit met decor te
+verwarren is.
+
+De volgorde is inhoudelijk, niet organisatorisch: **fresnel op harde,
+blokkerige geometrie geeft een harde rand op de vlakovergangen in plaats
+van een zachte rand rond het silhouet.** T100 vóór T99 zou een half
+effect opleveren en tot bijstellen achteraf leiden.
+
+Expliciet **geen** echte rimlight-lichtbron. Dat zou 14-18 extra
+`PointLight`s betekenen bovenop 27 bestaande, en dat is bij een forward
+renderer onbetaalbaar (§10.3, invariant 2).
+
+**T101 — Verval-shading als laatste.** Een holte-gebaseerde
+vertexkleur-gradient op de gedeelde `geo()`-vormen (die zijn gedeeld, dus
+dit kost letterlijk niets per ondode) plus een procedurele vlekkenruis
+met lage sterkte, beide vermenigvuldigend met `huidKleur`.
+
+**Twee invarianten die deze drie tickets bewaken:**
+
+- **`userData.lichaamsdeel === 'kop'` staat uitsluitend op het hoofd-mesh
+  en de twee ogen.** Elk nieuw deel uit T99 krijgt die markering nooit.
+  Dit is de hitbox-scheiding waar headshots aan hangen — een schouder die
+  per ongeluk als kop telt, is een balanswijziging.
+- **De type-kleuren uit `ONDODE_TYPES` zijn een gameplay-signaal.** Een
+  speler moet een Brander van een Loper kunnen onderscheiden. T101's
+  vervalkleur mag daarom in *waarde* variëren, niet in *tint*. Hetzelfde
+  geldt voor `STADSARCHIEF_KLEURSET_TINT` (T86), dat al met `huidKleur`
+  vermenigvuldigt en gewoon moet blijven werken.
+
+**Schaal.** Extra meshes per ondode schalen met `effectiefMaxActief()` —
+nu 14, met zone-bonus tot 18. Vijf extra meshes betekent tot 90 extra
+draw calls in de piek (280 → ~370). Dat past binnen het budget uit
+§10.3, maar het is de grootste draw-call-toename van de ronde en hoort
+gemeten.
+
+### 10.11 Beslissing 86 — Van roughnessMap-only naar een echte oppervlakteset (T106, T107, T108)
+
+**Wat er nu is, en waarom het niet werkt.** `bouwCanvasTextuur()`
+genereert drie 128×128 canvas-texturen (steen-ruis, houtnerf, geborsteld
+metaal) met `RepeatWrapping` en `repeat.set(4, 4)`. Ze worden
+**uitsluitend als `roughnessMap`** toegepast, nooit als `map` — een
+bewuste keuze uit §7.3, zodat de basiskleur van elk oppervlak exact
+hetzelfde blijft.
+
+Dat was destijds de juiste voorzichtige stap. Het gevolg is alleen dat
+het effect vrijwel onzichtbaar is: een `roughnessMap` rond wit
+(`#e8e8e8` met ruis tussen 205 en 250) op een `MeshStandardMaterial` in
+een scene met veel zwakke puntlichten en nauwelijks specular geeft bijna
+geen signaal. `renderer.info.memory.textures` telt 16 texturen, waarvan
+de meeste UI en naambordjes zijn: er zijn drie oppervlaktetexturen in het
+hele spel en die zie je niet.
+
+Daar komt een tweede probleem bovenop: `repeat.set(4, 4)` staat op de
+**gedeelde textuur**, dus een muur van 9 m breed en een kist van 40 cm
+krijgen dezelfde textuurschaal. De kist ziet er korreliger uit dan de
+muur. Het patroon draagt geen maat.
+
+**De beslissing.** Drie tickets, strikt in deze volgorde:
+
+**T106 — Wereldschaal-UV's (fundament).** De `repeat` verhuist van de
+gedeelde textuur naar het `uv`-attribuut van de geometrie, per vlak
+geschaald naar de wereldafmetingen. Voor een `BoxGeometry` betekent dat
+zes vlakken met elk hun eigen schaal.
+
+**Dit ticket levert in isolatie bijna geen zichtbaar effect op** — een
+`roughnessMap` rond wit stretch je nauwelijks merkbaar. Het staat er
+omdat T107 zonder dit een prachtige baksteentextuur oplevert die op elk
+vlak een andere maat heeft, en dat is erger dan geen textuur. Dat hoort
+er eerlijk bij: dit is een fundament-ticket, geen verbetering.
+
+Triplanar mapping in de shader is het alternatief en is beter (het werkt
+ook op geroteerde blokken en heeft geen UV's nodig), maar het kost drie
+texture-samples per map per fragment in plaats van één. Op een
+fragment-bound scene is dat de verkeerde ruil — **UV-herschaling is de
+gekozen route.**
+
+**T107 — De echte texturenset.** `CANVAS_TEXTUUR_TEKENAARS` gaat van drie
+ruispatronen naar een set tekenfuncties op 512×512: baksteenverband met
+per-steen kleurvariatie en donkere voegen, planken met richting, naden en
+knoesten, pleisterwerk met vlekken, klinkers in keperverband. Elke
+tekenaar levert **drie** maps: albedo (`map`), ruwheid (`roughnessMap`,
+wat er nu al is) en hoogte (bron voor T108).
+
+Dit is de logische voortzetting van de §7.3-beslissing, niet een nieuwe
+uitzondering: "geen textures" leest daar al als "geen extern geladen
+bestanden, geen derde-partij-frameworks", en deze texturen zijn 100%
+runtime met de 2D Canvas-API getekend.
+
+**Twee risico's die dit ticket definiëren.** Ten eerste stijl:
+fotorealistische baksteen op blokgeometrie ziet er *slechter* uit dan
+effen kleur — dan zie je pas echt dat het dozen zijn. De texturen moeten
+gestileerd blijven, in lijn met het "geverfde maquette"-DNA. Ten tweede
+laadtijd: 512×512 met duizenden canvas-operaties per tekenaar kan
+tientallen milliseconden per textuur kosten, en er zijn er acht. Dat moet
+gemeten worden en zo nodig over frames verspreid.
+
+**T108 — Normal maps uit dezelfde hoogtekaarten.** Een Sobel-achtige
+gradient over de hoogtekaart van T107, opgeslagen als RGB, als
+`normalMap` met een instelbare `normalScale`.
+
+**Dit is de duurste per-fragment-richting van de ronde** en hij schaalt
+met het aantal lichten: normal mapping doet per licht extra werk, en er
+zijn er 27. Als de fillrate-aanname uit §10.3 klopt, is dit de eerste
+richting die op zwakke hardware teruggedraaid moet worden — vandaar de
+lichte uitvoering (alleen baksteen en hout, lage `normalScale`, alleen
+grote vlakken) als startpunt.
+
+Aandachtspunt: zonder tangents op de geometrie valt Three.js terug op een
+afgeleide berekening in de shader, wat op grote vlakke
+`PlaneGeometry`-vlakken artefacten kan geven.
+
+### 10.12 Beslissing 87 — Variatie zonder cachebreuk (T104, T105)
+
+**Het probleem.** Er is geen enkele plek waar twee bakstenen van elkaar
+verschillen. Elke kist is exact dezelfde kleur als elke andere kist. Dat
+"copy-paste"-gevoel is het meest verraderlijke kenmerk van procedureel
+gebouwde werelden, want het valt pas op als je het benoemt.
+
+**De beslissing (T104).** Een per-mesh kleurtint als vertexkleur, die met
+de materiaalkleur vermenigvuldigt. Zo blijft het materiaal gedeeld en
+gecachet, en varieert toch elk object.
+
+**De cruciale nuance.** De ondode-modellen doen dit al conceptueel met
+`const tint = 0.85 + Math.random() * 0.3` — maar die krijgen er wél een
+**nieuw materiaal per instantie** voor. Dat is precies wat hier vermeden
+moet worden, en de meting bevestigt waarom: er zijn **285 unieke
+materialen** in een lege scene tegenover een `mat()`-cache die veel meer
+zou moeten delen. Veel call-sites geven `extra` mee en krijgen daarmee
+per definitie een uncached instantie (het cache-contract van `mat()`:
+niet-lege `extra` ⇒ altijd een verse instantie).
+
+Vertexkleur-variatie maakt dus niet alleen het beeld rijker, het maakt
+méér materiaaldeling mogelijk. T104 komt daarom ná T103, dat de
+`vertexColors`-infrastructuur al heeft neergezet.
+
+**Twee eisen.** De tint moet **deterministisch** zijn (een hash van de
+positie, niet `Math.random()`), anders is hij elke sessie anders en
+worden tests instabiel. En het bereik blijft klein (±10%, zoals bij de
+ondoden): te veel variatie maakt de scene rommelig.
+
+**T105 — Afgeschuinde randen.** Elke rand in dit spel is oneindig scherp,
+en een oneindig scherpe rand vangt geen licht. In het echt is elke rand
+een beetje rond, en die millimeter licht langs de rand is wat een object
+aanwezig maakt.
+
+Een `blokAfgeschuind`-variant naast `blok()`/`meubelBox()`, met een
+afschuining van 1-2 cm, gecachet in dezelfde stijl als `geo()`. Wel op
+tafels, kisten, deuren en werkbanken; **niet op `bouwMuur()`** — muren
+hebben geen zichtbare vrije rand en het zou het driehoekstal onnodig
+verdrievoudigen.
+
+De collision-geometrie (`obstakels`) blijft rechthoekig. Bij 1-2 cm is
+de afwijking onmerkbaar; bij meer zou je net naast een hoek vast lijken
+te lopen.
+
+### 10.13 Beslissing 88 — De wereld buiten de kaart (T93, T111, T112, T113)
+
+**Het probleem.** `scene.background` is `0x05080b` — een egale
+bijna-zwarte kleur. `FOG_NORMAAL.far` is 24 m en `camera.far` is 50 m,
+dus alles voorbij ~24 m is volledig weg. Sta je op de binnenplaats en
+kijk je omhoog, dan is er niets. Dat is geen nacht, dat is leegte. Een
+grachtenpand staat tussen andere panden, onder een hemel; het spel
+vertelt nu dat er buiten de kaart niets is.
+
+Dat kost het grootste gevoel dat een buitenzone kan geven: **openheid als
+contrast met de krappe binnenruimtes.**
+
+**De beslissing, en de volgorde die eruit volgt.**
+
+**T93 — Fogdiepte per zone, eerst.** `scene.fog.near`/`far`
+interpoleren op basis van `zoneVan()`, met dezelfde zachte overgang die
+`mistUitfaseTimer` al gebruikt. Binnen blijft dicht (6/24), buiten opent
+naar ~40 m.
+
+Dit ticket staat vroeg in de ronde en niet bij de andere I-tickets, om
+twee redenen. Ten eerste is het op zichzelf al waardevol: het maakt het
+binnen/buiten-contrast dat de kaart in zijn ontwerp heeft, voor het
+eerst fysiek voelbaar. Ten tweede is het de **voorwaarde** voor T111 en
+T112 — een skyline op 40 m is onzichtbaar zolang de fog op 24 m alles
+uitdooft.
+
+Twee complicaties. De Mistgolf-logica overschrijft de fog nu volledig;
+de twee systemen moeten netjes op elkaar stapelen in plaats van elkaar
+te overschrijven. En fog-afstand is een **gameplay**-parameter: hij
+bepaalt op hoeveel meter je een ondode ziet aankomen. Buiten verder zien
+is vermoedelijk positief (de binnenplaats is de open zone waar overzicht
+hoort), maar het is een bijeffect dat expliciet benoemd en getest moet
+worden, niet stilzwijgend meegenomen.
+
+**T111 — Nachthemel.** Een grote `SphereGeometry` met `side: BackSide`,
+`depthWrite: false` en `fog: false`, met een `ShaderMaterial`: verticale
+gradient van donker staalblauw naar bijna-zwart, een sterrenveld uit
+hash-ruis, en een traag scrollende wolkenlaag uit fractale ruis.
+
+De dome moet met de camera meebewegen — `camera.far` op 50 m maakt hem
+relatief klein en anders is de parallax bij het lopen zichtbaar. En hij
+moet **donker en onopvallend** blijven: een sterrenhemel als in een
+openwereldspel trekt de aandacht weg van waar die hoort. Meer "er is een
+boven" dan "kijk eens hoe mooi".
+
+**T112 — Skyline-silhouet.** Twee tot drie lagen platte, zwarte
+silhouetgeometrie op 30/40/45 m, opgebouwd uit `blok()`-primitieven plus
+driehoeken voor de geveltoppen, met een aangepaste fogbehandeling zodat
+ze niet in het niets oplossen.
+
+**De IP-regel uit CLAUDE.md geldt hier onverkort.** Geen herkenbare
+bestaande Amsterdamse gebouwen, geen Westertoren, geen Munttoren.
+Generieke grachtenpand-silhouetten en verzonnen torens — dezelfde lijn
+als het verzonnen adres uit T84.
+
+Het echte risico is **schaal**: staat het silhouet te dichtbij of te
+groot, dan voelt de binnenplaats kleiner in plaats van groter.
+
+**T113 — Verlichte raampjes in de verte.** Emissieve quads in T112's
+silhouetlagen op het **Accent**-niveau uit beslissing 80 (dus onder de
+bloom-threshold — een gloeiend raampje op 40 m concurreert met de
+Signaal-laag die de speler moet kunnen vinden). Kleur uit
+`PALET.raamWarmAmber`/`raamWarmZacht`, net als de bestaande
+gevelraampjes. Zeer trage toestandswisselingen, en allemaal uit tijdens
+een Stroomuitval.
+
+Dit ticket bestaat niet zonder T112 en is een klein detail. Het staat
+erin omdat de koppeling aan `stroomFactor` het van decoratie naar
+verhaal tilt: tijdens een Stroomuitval zie je dat het niet alleen jouw
+pand is.
+
+### 10.14 Beslissing 89 — Levend water zonder tweede scene-render (T114)
+
+**Het probleem.** `waterMesh` is één `PlaneGeometry(8, gangDiepte + 2)`
+met `MeshStandardMaterial({ color: 0x1a3a34, roughness: 0.15,
+metalness: 0.2, transparent: true, opacity: 0.85 })`. Volstrekt stil,
+geen golfjes, geen reflectie. Een gracht is per definitie bewegend,
+spiegelend water; dit is een geverfde plaat. Het is het meest
+opvallende afzonderlijke object in het spel dat er niet uitziet als wat
+het voorstelt.
+
+**De beslissing.** Twee lagen, en expliciet **niet** de derde:
+
+1. **Vertex-deining.** Een gesubdivideerd `waterMesh` met twee tot drie
+   gekruiste sinussen in een vertex-shader. Gratis (vertexwerk, geen
+   fragmentwerk) en direct overtuigend.
+2. **Gebroken specular.** Een procedurele normal-verstoring uit
+   scrollende ruis, zodat het licht van `grachtLantaarnLicht` in een
+   lange, trillende streep breekt in plaats van als één vlek te liggen.
+
+**Wat expliciet afvalt:** een echte spiegelreflectie via Three.js'
+`Reflector` uit `three/addons/objects/`. Dat is een **nieuwe
+addons-import** én een tweede scene-render, voor één vlak dat de speler
+alleen in zone 4 ziet, in het donker, waar de reflectie toch grotendeels
+zwart is met één lichtstreep erin. De fake-variant — de lantaarnstreep
+als verticaal uitgerekte gradient-quad die met de golfnormaal vervormt —
+kost een fractie en is in dit licht nauwelijks te onderscheiden.
+
+**Randvoorwaarden.** Het water ligt op y = −0,05 en de speler kan er niet
+in (er is een obstakel aan de vlonderrand). De golven mogen nooit boven
+de vlonderrand uitkomen. En `bootGroep` mag meedeinen, maar
+`updateBootPositie()` schrijft die groep elke frame — de deining moet
+daar bovenop komen, niet in plaats van.
+
+Dit ticket staat achteraan omdat het volledig zelfstandig is: zone 4,
+één mesh, geen enkele afhankelijkheid. Het is een goede afsluiter en
+een veilige plek om te stoppen als de ronde uitloopt.
+
+### 10.15 De uitvoeringsvolgorde en waarom die zo ligt
+
+27 tickets in acht fasen. De volgorde optimaliseert op vier dingen
+tegelijk: afhankelijkheden eerst, vangrails vóór risico, tickets die
+dezelfde code raken bij elkaar (één regressierun per codegebied), en
+zichtbare winst vroeg.
+
+| Fase | Tickets | Waarom hier |
+| --- | --- | --- |
+| **0. Vangrail** | T88 | Zonder basislijn is elke latere verschuiving onzichtbaar |
+| **1. Directe winst** | T89, T90, T91, T92, T93, T94, T95 | Nul of lage afhankelijkheden, nul fragment-kosten, direct voelbaar |
+| **2. De naverwerkingsketen** | T96, T97, T98 | T96 bouwt de pass; T97/T98 rijden er gratis op mee |
+| **3. De vijand** | T99, T100, T101 | Eén codeblok (`maakOndodeModel()`), en T99 moet vóór T100 |
+| **4. Ruimtelijke diepte** | T102, T103, T104, T105 | T102 is fundament voor T103; T103 legt `vertexColors` neer voor T104 |
+| **5. Oppervlak** | T106, T107, T108 | Strikte keten: UV's → texturen → normals |
+| **6. Licht als vorm** | T109, T110 | Goedkope statische versie vóór de dure volumetrische |
+| **7. De wereld buiten** | T111, T112, T113 | Vereist T93 (fogdiepte) uit fase 1 |
+| **8. Water** | T114 | Volledig zelfstandig, veilige afsluiter |
+
+**De harde afhankelijkheden, expliciet:**
+
+- T88 vóór **alles** (het is de meetlat)
+- T89 vóór T90, T110, T113 (emissieve hiërarchie)
+- T93 vóór T111, T112 (zonder fogdiepte geen zichtbare verte)
+- T96 vóór T97, T98 (de pass moet bestaan)
+- T99 vóór T100 (fresnel op een verfijnd silhouet, niet op dozen)
+- T102 vóór T103 (subdivisie vóór occlusie)
+- T103 vóór T104 (`vertexColors` moet er al liggen)
+- T106 vóór T107 vóór T108 (UV's → texturen → normals)
+- T112 vóór T113 (raampjes zonder skyline bestaan niet)
+
+**Waar je veilig kunt stoppen.** Na fase 1 staat er al een merkbaar
+ander spel voor ongeveer twee weken werk, zonder dat er iets
+onomkeerbaars is gebeurd. Na fase 4 staat de kern van de nieuwe
+identiteit. Fase 5 is de grootste tijdsinvestering van de ronde en de
+meest kunstzinnige; fase 6-8 zijn losse afsluiters.
+
+### 10.16 Wat deze ronde bewust niet doet
+
+- **De schaduw-wissel (A5).** Eén gerichte `DirectionalLight` in plaats
+  van de huidige `PointLight`-cube-shadow is potentieel de grootste
+  visuele sprong die dit spel kan maken, en waarschijnlijk **goedkoper**
+  dan wat er nu staat: één shadow-pass in plaats van zes. §7.9.1 stelt
+  bovendien zelf vast dat de huidige schaduw maximaal 12/255
+  pixelverschil maakt — we betalen zes passes voor iets dat je niet
+  ziet. Hij valt buiten deze ronde omdat hij een expliciet vastgelegde
+  invariant raakt (§7.9), doorlekken tussen verdiepingen een reëel
+  gevaar is (§7.5's geschiedenis met kelderlicht door de
+  atelier-westmuur), en hij een eigen GPU-meting verdient. **Dit is de
+  eerste kandidaat voor een volgende ronde.**
+- **SSAO, raymarched mist, `Reflector`-water, env-map, regen,
+  mistslierten, tonemapping-curve, volledige kleurmigratie.**
+  Onderbouwing per stuk in `VISUEEL.md` §3.4.
+- **Extra echte lichtbronnen, in welke vorm dan ook.** Invariant 2.
+- **Doorschijnende ondode-silhouetten (E3).** Technisch goedkoop, maar
+  het geeft de speler informatie die hij nu niet heeft. Dat is een
+  ontwerpbeslissing, geen visuele — en een spel over ondoden in het
+  donker leeft van niet-weten.
+- **Een instellingenmenu met visuele schakelaars.** T92 (camerawieg) en
+  T96 (korrel) zijn beide kandidaten om uit te kunnen zetten, en het
+  menu waar `muisgevoeligheid` (T75) al in staat is de logische plek.
+  Dat is UI-werk en hoort in een eigen ticket, niet als bijproduct.
+
+### 10.17 Nulmeting bij aanvang van deze ronde
+
+Gemeten op commit `a4210a4`, headless Playwright met de lokale Chromium.
+Vergelijkingsbasis voor de acceptatiecriteria van T88-T114.
+
+| Meting | Waarde | Methode |
+| --- | --- | --- |
+| Regressiescripts groen | zie `run-all.mjs` | `node run-all.mjs` |
+| Regels in `amsterdam-undead.html` | 9.384 | `wc -l` |
+| Objecten in de scene-graph | 606 | `scene.traverse` |
+| Meshes (leeg / 14 ondoden) | 523 / 653 | idem |
+| Unieke geometrie-instanties | 482 / 489 | `Set` op identiteit |
+| Unieke materialen | 285 / 361 | idem |
+| Lichten totaal | 28 (1 hemisfeer + 27 point) | `isLight` |
+| **Schaduwwerpende lichten** | **1** | invariant §7.9 |
+| `castShadow`-meshes | 165 | `scene.traverse` |
+| `receiveShadow`-meshes | 108 | idem |
+| Transparante meshes | 80 | idem |
+| Emissieve meshes | 64 | idem |
+| Driehoeken in de scene-graph | 17.782 / 32.902 | idem |
+| **Draw calls per frame (14 ondoden)** | **280** | `info.render` na `reset()` |
+| **Driehoeken per frame** | **18.092** | idem |
+| Shaderprogramma's | 13 | `info.programs.length` |
+| GPU-geometrieën | 83 / 90 | `info.memory.geometries` |
+| Texturen | 16 | `info.memory.textures` |
+| Collision-obstakels | **56** | `obstakels.length` |
+| Interactiepunten | 14 | `interactiePunten.length` |
+| Post-processing-passes | 3 | `composer.passes.length` |
+| Canvas-oppervlaktetexturen | 3 | `CANVAS_TEXTUUR_TEKENAARS` |
+| Materiaalfamilies | 5 | `MATERIAAL_FAMILIES` |
+| Frametijd | **niet betrouwbaar meetbaar** | SwiftShader (§8.11) |
+
+**Wat door deze ronde mág veranderen:** meshes, geometrieën, materialen,
+driehoeken, draw calls, texturen, shaderprogramma's, passes (3 → 4),
+canvas-texturen (3 → ~8), regels.
+
+**Wat gelijk moet blijven:** lichten (**28**), schaduwwerpende lichten
+(**1**), collision-obstakels (**56**), interactiepunten (**14**), en elk
+balansgetal uit §9.2.
