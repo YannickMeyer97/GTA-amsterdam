@@ -4438,6 +4438,87 @@ waarschuwing 42 (T77 vóór T69) en 57 (rastertest vóór de
 vliering-geometrie): de vangrail moet er staan terwijl je bouwt, niet
 erna.
 
+#### 10.4.2 Implementatieverslag T88 (uitgevoerd)
+
+Gebouwd: `visueleBevriesTijd` (amsterdam-undead.html, naast
+`lampDipFactor`, met getter/setter op het debug-hook), `tests/test-visuele-
+basislijn.mjs`, `tests/maak-beeldverslag.mjs`, en in `tests/helpers.mjs`
+drie nieuwe gedeelde functies: `openVoorVisueleMeting()`,
+`berekenVisueleStandpunten()`, `zetVisueelStandpunt()`.
+
+**Acht standpunten, niet vijf.** §10.4 sprak van "één camerastandpunt per
+zone". Uitgevoerd als vijf zoneVan()-zones (woonkamer/gang/atelier/
+binnenplaats/bijkeuken) **plus** kelder, vliering en gracht — drie
+deelgebieden die een zoneVan()-index delen met een buurzone maar een eigen,
+materieel onderscheiden rendercontext hebben (eigen lampen, eigen
+verdieping) en die latere tickets (T98, T103, T107, T114) met naam
+noemen. Coördinaten worden IN de pagina berekend uit de bestaande
+kaartconstanten (`d.PLAATS_CX`, `d.KELDER_X_WEST`, enz.), nooit als losse
+letterlijke getallen gekopieerd — dat voorkomt dat deze lijst ooit uit de
+pas loopt met de kaart.
+
+**Twee EXTRA meetvallen, gevonden tijdens het bouwen, niet vooraf
+voorzien.** §10.4.1 documenteerde er twee (de flikker, de kapotte
+in-page-routes); tijdens de implementatie kwamen er nog twee bij die het
+architectuurdocument nu ook draagt (zie de code-comments in `helpers.mjs`
+voor het volledige verhaal):
+
+1. **`simuleerPointerLock` (het gebruikelijke testpatroon) is hier fout.**
+   Die optie mockt `document.pointerLockElement`, en dat maakt `spelActief`
+   in `gameLoop` permanent waar. Alles wat daarbinnen hangt — de klok, de
+   kelderhals-druppel, de winkelmarkering-puls, de stofwolken, de golf-/
+   ondoden-simulatie — bleef dus gewoon doorlopen tijdens de meting, geen
+   van allen gedekt door `visueleBevriesTijd`/`lampDipFactor`/
+   `mistUitfaseTimer`. **Oplossing:** een nieuwe `openVoorVisueleMeting()`
+   die het DOM-startscherm verbergt en de HUD-chrome toont — exact wat de
+   `pointerlockchange`-handler in het spel zelf doet — **zonder**
+   `document.pointerLockElement` te overschrijven. `spelActief` blijft
+   daardoor voorgoed false; `updateSpeler()` en de flikkerloop +
+   `composer.render()` blijven wél draaien (die staan buiten die if-tak).
+   Resultaat: 0,000% spreiding over 10 metingen op hetzelfde standpunt,
+   binnen één testrun.
+2. **Elke lamp krijgt bij het bouwen een WILLEKEURIGE flikkerfase**
+   (`hangLamp()`: `fase: Math.random() * Math.PI * 2`) — dus een andere bij
+   elke page-load. `visueleBevriesTijd` bevriest alleen de tijd-term;
+   `Math.sin(t*7+fase)` op `t=0` is nog steeds `Math.sin(fase)`, een andere
+   constante per run. Dat gaf 0% spreiding *binnen* één testrun maar tot
+   6% spreiding *tussen* losse testruns — zichtbaar in kamers met
+   `lampLichten` (woonkamer 6,2%, kelder 3,8%, bijkeuken 2,2%, gang 1,5%),
+   afwezig waar het licht van stabiele `buitenLichten`/
+   `stroomGevoeligeDaklichten` komt (binnenplaats, gracht, atelier,
+   vliering: 0%) — die twee cijferreeksen bevestigen elkaar en wijzen
+   ondubbelzinnig naar de fase als oorzaak. **Oplossing:**
+   `openVoorVisueleMeting()` pint ook `lampLichten[].fase = 0`. Geverifieerd:
+   <0,05% restspreiding over 4 losse browserruns (waarschijnlijk
+   floating-point-optelvolgorde in SwiftShare, niet meer de moeite van het
+   verder najagen waard op dit niveau).
+
+**Waarom dit "gevonden tijdens het bouwen" is en niet "een derde/vierde
+onzorgvuldigheid in het document".** §10.4.1's twee vallen waren met een
+losse Node-probe te vinden zonder ooit een testbestand te schrijven. Deze
+twee zaten dieper: ze werden pas zichtbaar bij het daadwerkelijk schrijven
+van `zetVisueelStandpunt()` en het draaien van de test *meerdere keren
+achter elkaar* (val 1 vereiste een cross-page-load-vergelijking, val 2
+een cross-frame-binnen-één-run-vergelijking eerst, dán cross-run). Dat is
+precies waarom §10.18's les — "elke bewering over runtime-gedrag hoort
+gemeten te zijn vóór hij als beslissing wordt opgeschreven" — een
+grens heeft: sommige gedragingen zijn pas meetbaar zodra de bouwer er
+grondig doorheen gaat. Vandaar dat dit verslag er is: de volgende
+architectuurronde leunt op `openVoorVisueleMeting()`/
+`zetVisueelStandpunt()` als bewezen bouwstenen, niet op een aanname.
+
+**Vastgelegde basislijn** (commit waarop dit ticket is gebouwd; volledige
+tabel in `test-visuele-basislijn.mjs`): gemiddelde/mediane luminantie en
+draw calls/driehoeken per standpunt, band 2% (helderheid) resp. 25%
+(rendermetrics). 40/40 checks groen, drie keer achter elkaar herhaald op
+losse browserruns om precies de bovenstaande cross-run-stabiliteit te
+bevestigen.
+
+**`tests/maak-beeldverslag.mjs`** (beslissing 93) hergebruikt dezelfde
+`openVoorVisueleMeting()`/`zetVisueelStandpunt()` en schrijft genummerde
+PNG's naar `tests/beeldverslag/<label>/` (gitignored). De "voor"-set voor
+de hele ronde is met `node maak-beeldverslag.mjs voor-ronde8` opgeleverd.
+
 ### 10.5 Beslissing 80 — Emissieve hiërarchie, en bloom als art-direction-knop (T89)
 
 **Wat er nu is.** 64 emissieve meshes met waarden die van 0,9 (lampbol

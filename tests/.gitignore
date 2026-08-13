@@ -1,1 +1,6 @@
 node_modules/
+# Ticket 88 (v0.22, beslissing 93): output van maak-beeldverslag.mjs — per
+# ticket tientallen PNG's zonder historische waarde zodra het volgende
+# ticket eroverheen bouwt, horen dus nooit in de repo (zie ARCHITECTURE_
+# NOTES.md §10.14.4).
+beeldverslag/

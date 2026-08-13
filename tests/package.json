@@ -5,6 +5,7 @@
   "description": "Headless Playwright-regressietests voor amsterdam-undead.html (zie tests/README.md)",
   "devDependencies": {
     "playwright": "^1.61.0",
+    "pngjs": "^7.0.0",
     "three": "^0.160.0"
   }
 }

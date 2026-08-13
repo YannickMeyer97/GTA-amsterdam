@@ -2272,6 +2272,13 @@ const stroomGevoeligeDaklichten = [];
 // flikker-factor, dus geen nieuwe per-lamp state nodig.
 let lampDipFactor = 1;
 const LAMP_INTENSITEIT = 16;
+// Ticket 88 (v0.22, §10.4.1): de flikkerloop hieronder gebruikt normaal
+// `nu * 0.001` (wall-clock, loopt altijd door — ook tijdens pauze). Voor
+// deterministische pixelmetingen (test-visuele-basislijn.mjs) moet die tijd
+// bevriesbaar zijn: `null` = normaal gedrag (ongewijzigd), een getal =
+// gebruik die vaste waarde in plaats van `nu * 0.001`. Uitsluitend gezet via
+// het debug-hook, nooit door spellogica zelf.
+let visueleBevriesTijd = null;
 // Perf: schaduw-cubemaps van een PointLight zijn duur (6 faces/frame). Daarom
 // werpt maar ÉÉN lamp schaduw; de andere verlichten zonder schaduw.
 // `opties` laat latere zones (gang, atelier) een eigen kleur/intensiteit en
@@ -8832,7 +8839,9 @@ function gameLoop(nu) {
 
   // Sfeer: lampen zacht laten flikkeren (loopt ook tijdens pauze, want puur
   // cosmetisch). `nu` loopt altijd door, dus onafhankelijk van de spel-klok.
-  const t = nu * 0.001;
+  // Ticket 88: visueleBevriesTijd (debug-only) overschrijft dit voor
+  // deterministische pixelmetingen; null (altijd, buiten tests) = ongewijzigd.
+  const t = visueleBevriesTijd !== null ? visueleBevriesTijd : nu * 0.001;
   // Ticket 40: golfstart-lichtdip — lineair herstel over 0.8s, puur
   // cosmetisch (dezelfde wall-clock dt als terugslag/cameraKick hieronder).
   if (lampDipFactor < 1) lampDipFactor = Math.min(1, lampDipFactor + dt / 0.8);
@@ -9265,6 +9274,10 @@ window.AmsterdamUndeadDebug = {
   get druppelTikTeller() { return druppelTikTeller; },
   get lampDipFactor() { return lampDipFactor; },
   set lampDipFactor(v) { lampDipFactor = v; },
+  // Ticket 88 (v0.22): deterministische pixelmetingen — bevriest de
+  // flikkertijd (11,2% spreiding gemeten over 90 frames zonder dit).
+  get visueleBevriesTijd() { return visueleBevriesTijd; },
+  set visueleBevriesTijd(v) { visueleBevriesTijd = v; },
   // Ticket 46: eventgolf Stroomuitval
   STROOMUITVAL_DIM_FACTOR, STROOMUITVAL_HERSTEL_DUUR,
   speelStroomklap, speelStroomHerstel,

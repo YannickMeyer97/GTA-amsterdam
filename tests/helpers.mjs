@@ -108,6 +108,104 @@ export async function frames(page, n) {
   }), n);
 }
 
+// Ticket 88 (v0.22, §10.4.1): opent het spel voor een visuele meting/opname.
+// Bewust GEEN simuleerPointerLock. Die optie mockt
+// `document.pointerLockElement`, en dat maakt `spelActief` in gameLoop
+// permanent waar — waardoor klok, de kelderhals-druppel, de
+// winkelmarkering-puls, de stofwolken én de golf-/ondoden-simulatie gewoon
+// blijven lopen tijdens de meting. Dat zijn allemaal eigen, dt-gedreven
+// timers die NIET onder visueleBevriesTijd/lampDipFactor/mistUitfaseTimer
+// vallen (empirisch gevonden: twee identieke metingen op hetzelfde
+// standpunt weken af zodra hier pointer lock werd gesimuleerd).
+//
+// In plaats daarvan verbergt dit ALLEEN het DOM-startscherm en toont de
+// HUD-chrome — exact wat de pointerlockchange-handler in het spel zelf
+// doet — zonder `document.pointerLockElement` te overschrijven. Daardoor
+// blijft `spelActief` voorgoed false: alles binnen die if-tak in gameLoop
+// (klok, druppel, winkelmarkeringen, stofwolken, ondoden, golf) staat na
+// het laden permanent stil. `updateSpeler()` en de flikkerloop +
+// `composer.render()` blijven wél elke frame draaien (die staan BUITEN die
+// if-tak), dus de camera en het beeld zelf werken gewoon.
+export async function openVoorVisueleMeting() {
+  const { browser, page, errs } = await openAmsterdamUndead();
+  await page.evaluate(() => {
+    const d = window.AmsterdamUndeadDebug;
+    for (const id of ['hulpUI', 'richtkruis', 'ammoUI', 'hudUI', 'minimapUI']) {
+      document.getElementById(id).style.display = 'block';
+    }
+    document.getElementById('startscherm').style.display = 'none';
+    d.updateHUD();   // eenmalige ververs — spelActief blijft false, dus dit is de enige HUD-write die ooit plaatsvindt
+    // Ticket 88, gevonden tijdens het bouwen (niet vooraf in het
+    // architectuurdocument voorzien): `hangLamp()` geeft elke lamp een
+    // WILLEKEURIGE flikkerfase (`fase: Math.random() * Math.PI * 2`) bij het
+    // bouwen van de wereld — dus bij elke page-load opnieuw. Binnen één
+    // pagina blijft die fase daarna vast (visueleBevriesTijd bevriest alleen
+    // de TIJD-term, niet de fase zelf), dus dat gaf 0% spreiding binnen één
+    // testrun maar tot 6% spreiding TUSSEN losse testruns (elke fase
+    // `Math.sin(fase)` op t=0 is een andere, willekeurige constante) —
+    // precies zichtbaar in kamers met meer/sterker flikkerende lampLichten
+    // (woonkamer, kelder, bijkeuken, gang) en afwezig waar dat licht van
+    // stabiele buitenLichten/stroomGevoeligeDaklichten komt (binnenplaats,
+    // gracht, atelier, vliering — 0% verschil, bevestigt de diagnose). Elke
+    // fase hier op 0 pinnen maakt de meting ook TUSSEN losse browserruns
+    // deterministisch (geverifieerd: <0,05% restspreiding over 4 losse runs).
+    for (const l of d.lampLichten) l.fase = 0;
+  });
+  return { browser, page, errs };
+}
+
+// Ticket 88 (v0.22, §10.4/§10.4.1): acht vaste camerastandpunten voor
+// pixelmetingen — de vijf zoneVan()-zones (woonkamer/gang/atelier/
+// binnenplaats/bijkeuken) plus kelder, vliering en gracht. Die laatste drie
+// delen een zoneVan()-index met een buurzone maar zijn eigen, materieel
+// onderscheiden rendercontexten (eigen lampen, eigen verdieping) die latere
+// tickets expliciet meten (T98 per-zone grading, T103 hoekocclusie, T107
+// texturen, T114 water) — vandaar acht in plaats van letterlijk vijf.
+// Coördinaten worden IN de pagina berekend uit de bestaande constanten
+// (nooit hardcoded gekopieerd), zodat deze lijst nooit uit de pas loopt met
+// de kaart. yaw=0 kijkt naar -z ("noord"); alleen de gracht kijkt naar +x
+// (yaw=-PI/2) om het water in beeld te krijgen.
+export async function berekenVisueleStandpunten(page) {
+  return page.evaluate(() => {
+    const d = window.AmsterdamUndeadDebug;
+    return [
+      { naam: 'woonkamer', x: 0, z: 1, yaw: 0, pitch: 0 },
+      { naam: 'gang', x: 0, z: (d.DEUR_Z + d.GANG_Z_EIND) / 2, yaw: 0, pitch: 0 },
+      { naam: 'atelier', x: 0, z: d.ATELIER_MIDDEN_Z, yaw: 0, pitch: 0 },
+      { naam: 'binnenplaats', x: d.PLAATS_CX, z: (d.PLAATS_Z_NOORD + d.PLAATS_Z_ZUID) / 2, yaw: 0, pitch: 0 },
+      { naam: 'bijkeuken', x: (d.BIJKEUKEN_X_WEST + d.BIJKEUKEN_X_OOST) / 2, z: d.BIJKEUKEN_CZ, yaw: 0, pitch: 0 },
+      { naam: 'kelder', x: (d.KELDER_X_WEST + d.KELDERTRAP_X_ONDER) / 2, z: (d.KELDER_Z_NOORD + d.KELDER_Z_ZUID) / 2, yaw: 0, pitch: 0 },
+      { naam: 'vliering', x: d.VLIERING_X_WEST + 1.5, z: (d.VLIERING_Z_NOORD + d.VLIERING_Z_ZUID) / 2, yaw: 0, pitch: 0 },
+      { naam: 'gracht', x: (d.VLONDER_X_WEST + d.VLONDER_X_OOST) / 2, z: d.BIJKEUKEN_CZ, yaw: -Math.PI / 2, pitch: 0 },
+    ];
+  });
+}
+
+// Zet de speler/camera op een standpunt uit berekenVisueleStandpunten() EN
+// bevriest de tijdafhankelijke systemen die de gemeten helderheid anders met
+// 11,2% laten spreiden (§10.4.1): visueleBevriesTijd (de lampflikker-sinus,
+// draait BUITEN de spelActief-tak in gameLoop, dus altijd), lampDipFactor en
+// stroomFactor (defensief op hun rustwaarde, voor het geval een eerder
+// testonderdeel in dezelfde page een golf/Stroomuitval startte).
+// mistUitfaseTimer wordt hier ook gezet, maar is met openVoorVisueleMeting()
+// (spelActief permanent false) sowieso nooit meer dan de initiële 0.
+// Gebruikt ALTIJD samen met openVoorVisueleMeting() — niet met
+// simuleerPointerLock, zie de toelichting daar.
+export async function zetVisueelStandpunt(page, standpunt) {
+  await page.evaluate((sp) => {
+    const d = window.AmsterdamUndeadDebug;
+    d.speler.positie.set(sp.x, 0, sp.z);
+    d.speler.yaw = sp.yaw;
+    d.speler.pitch = sp.pitch;
+    d.visueleBevriesTijd = 0;
+    d.lampDipFactor = 1;
+    d.mistUitfaseTimer = 0;
+    d.stroomFactor = 1;
+    d.updateSpeler(0);   // synct camera.position/rotation + berekent positie.y via berekenVloerY()
+  }, standpunt);
+  await frames(page, 3);
+}
+
 // Eenvoudige pass/fail-teller met dezelfde console-output als de bestaande
 // scratchpad-tests ([OK]/[FAIL] per regel, samenvatting aan het eind).
 export function makeChecker() {
