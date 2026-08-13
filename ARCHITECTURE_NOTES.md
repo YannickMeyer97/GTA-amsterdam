@@ -4368,7 +4368,7 @@ kan hem verschuiven zonder dat iemand het merkt**.
 Hoekocclusie maakt hoeken donkerder. Vertexvariatie verschuift kleuren.
 Een grading-matrix raakt alle zones tegelijk. Texturen veranderen de
 gemiddelde albedo. Een lichtkegel voegt additieve helderheid toe. Stuk
-voor stuk klein; opgeteld over 27 tickets een spel dat er anders uitziet
+voor stuk klein; opgeteld over 29 tickets een spel dat er anders uitziet
 dan bedoeld, zonder dat er één moment was waarop het "brak".
 
 **De beslissing.** T88 legt vóór alle andere tickets een machinale
@@ -5187,9 +5187,116 @@ verspreid door het bestand.
 Dit is geen instellingenmenu — dat is T115. Dit zijn constanten in de
 broncode.
 
+### 10.14.4 Beslissing 93 — Elk ticket levert een beeldverslag
+
+**Het probleem.** Dit is een ronde waarin het resultaat per definitie
+niet in tekst te vangen is. "De hoeken lopen zachter donker" en "de
+lichtrand maakt het silhouet leesbaar" zijn beweringen die je moet
+zíén om te kunnen beoordelen. Bij de vorige rondes kon een groene test
+het werk grotendeels aantonen; hier kan dat niet — een test bewijst dat
+de helderheid binnen de band bleef, niet dat het er beter uitziet.
+
+Daar komt bij dat de eigenaar de enige is die kan beoordelen of een
+ticket het beoogde beeld oplevert, en dat oordeel is de facto het enige
+acceptatiecriterium dat over smaak gaat.
+
+**De beslissing.** Elk ticket in deze ronde levert naast zijn testresultaat
+een **beeldverslag**: minimaal één voor- en één na-opname vanaf een
+vast, voor dát ticket relevant camerastandpunt.
+
+**T88 levert de gereedschapskist.** De basislijntest bevriest al de
+tijdafhankelijke systemen (flikker, `lampDipFactor`, `mistUitfaseTimer`,
+`klok`) en kent al een vaste camerastand per zone. Datzelfde mechanisme
+levert de beeldopnamen: `tests/maak-beeldverslag.mjs` produceert op
+commando een genummerde set opnamen vanaf de vastgelegde standpunten.
+
+Dat de opnamen uit de **bevroren** opstelling komen is essentieel. Twee
+opnamen van een scene met een 11,2% flikkerswing (§10.4.1) verschillen
+zichtbaar zonder dat er iets veranderd is — dan vergelijk je ruis en
+concludeer je iets over je ticket. Bevriezen maakt voor/na-vergelijking
+pas betekenisvol.
+
+**Wat een beeldverslag moet tonen.** Niet "de scene", maar het punt
+waar het ticket over gaat, van dichtbij genoeg om het te zien. Voor
+hoekocclusie is dat een kamerhoek, niet een overzichtsbeeld. Voor de
+mondingsvlam is het één frame tijdens een schot in de donkerste hoek van
+de startkamer. Elk ticket in SONNET_EXECUTION_PLAN.md benoemt daarom
+zijn eigen standpunt.
+
+**Drie tickets tonen bewust géén verschil.** T89 (emissieve hiërarchie),
+T102 (subdivisie) en T106 (wereldschaal-UV's) horen het beeld niet te
+veranderen. Hun beeldverslag is het bewijs daarvan: twee opnamen die
+identiek horen te zijn. Zichtbaar verschil betekent daar dat er iets
+mis is — het beeldverslag is voor die drie dus een test, geen
+illustratie.
+
+**Waar ze blijven.** In een map buiten de repo-inhoud die ertoe doet
+(bijvoorbeeld de scratchpad), of als bijlage bij de oplevering van het
+ticket. Ze horen **niet** in de repository: het zijn tientallen PNG's per
+ronde en ze hebben geen historische waarde zodra het volgende ticket
+eroverheen bouwt.
+
+### 10.14.5 Beslissing 94 — De ronde eindigt met een meting, niet met een ticket (T116)
+
+**Het probleem.** De ronde is opgezet rond twee onbewezen aannames: dat
+het spel na 28 tickets nog 60fps haalt op een gemiddelde laptop, en dat
+de fillrate-analyse uit §10.3 klopt. Beide zijn gedurende de ronde
+alleen per ticket getoetst, nooit als geheel. En dat geheel is wat de
+speler krijgt.
+
+Daarnaast is er een openstaande vraag die aan het begin van de ronde
+bewust is geparkeerd: **laag 3 en laag 4 uit `VISUEEL.md` §3.3 zijn
+grotendeels buiten scope gebleven**, deels op basis van een
+kosteninschatting die gemaakt is vóórdat er ook maar iets gebouwd was.
+Na 28 tickets is die inschatting achterhaald — in beide richtingen. Een
+techniek kan duurder blijken dan gedacht, maar ook goedkoper, of
+overbodig omdat een ander ticket het effect al levert.
+
+**Wat er buiten de ronde is gebleven.** Uit laag 3 zijn B3 (normal maps,
+T108), I1 (nachthemel, T111) en I2 (skyline, T112) alsnog naar binnen
+gehaald. Wat overblijft:
+
+| | Richting | Oorspronkelijke inschatting |
+| --- | --- | --- |
+| **Laag 3** | B6 — vuil en slijtage | nul rendertijd, vereist T103 |
+| | C3 — vertex-jitter | nul rendertijd, vereist T102 |
+| | F1 — hoogtemist | klein, gameplaygevoelig |
+| | F4 — stof per zone | nul, maar pas zichtbaar mét T110 |
+| | G3 — eventkleuren | nul bovenop T98 |
+| | H3 — blijvende inslagen | klein |
+| | E5 — dissolve bij de dood | klein-middel, raakt opruimcontract |
+| **Laag 4** | A5 — gerichte `DirectionalLight` | mogelijk negatief; raakt §7.9 |
+| | B5 — procedurele env map | middel-groot, onzeker effect |
+| | D6 — tonemapping-curve | nul, raakt alle kalibratie |
+| | F3 — regen en natte klinkers | middel |
+| | F5 — mistslierten | groot in de piek |
+| | G1 — volledige kleurmigratie | nul, grote doorlooptijd |
+
+**De beslissing.** T116 is geen bouwticket maar een **meet- en
+adviesticket**, en het is het enige ticket in de ronde met een document
+als opleverproduct in plaats van code. Het doet drie dingen:
+
+1. **Meet wat er staat.** De volledige procedure uit beslissing 91, maar
+   dan op de eindtoestand: mediane frametijd en frames boven 16,7 ms,
+   op alle vastgelegde standpunten, met 14 ondoden actief. Plus de
+   rendermetrics uit T88 en een vergelijking met de nulmeting in §10.17.
+2. **Beoordeelt hoe het speelt.** Een echte speelsessie tot voorbij golf
+   10, met expliciete aandacht voor de vijf leesbaarheidsrisico's uit
+   waarschuwing 72. Haperingen, stroboscoop-effecten, onleesbare
+   momenten — dat zijn dingen die geen enkele test vangt.
+3. **Herbeoordeelt laag 3 en 4** tegen de gemeten werkelijkheid in
+   plaats van tegen de schatting vooraf.
+
+**Waarom dit expliciet een apart ticket is en geen afsluitende
+handeling.** De verleiding aan het eind van een lange ronde is om te
+stoppen zodra het laatste bouwticket groen is. Dan blijft de vraag "haalt
+dit 60fps?" onbeantwoord, precies zoals T79's profiling-poort nooit is
+doorlopen. Een ticket met een eigen opleverproduct is moeilijker over te
+slaan dan een voornemen.
+
 ### 10.15 De uitvoeringsvolgorde en waarom die zo ligt
 
-27 tickets in acht fasen. De volgorde optimaliseert op vier dingen
+29 tickets in tien fasen. De volgorde optimaliseert op vier dingen
 tegelijk: afhankelijkheden eerst, vangrails vóór risico, tickets die
 dezelfde code raken bij elkaar (één regressierun per codegebied), en
 zichtbare winst vroeg.
@@ -5206,6 +5313,7 @@ zichtbare winst vroeg.
 | **7. De wereld buiten** | T111, T112, T113 | Vereist T93 (fogdiepte) uit fase 1 |
 | **8. Water** | T114 | Volledig zelfstandig, veilige afsluiter |
 | **9. Toegankelijkheid** | T115 | Optioneel; vereist T92 en T96 |
+| **10. Eindmeting** | T116 | Meet de eindtoestand en herbeoordeelt laag 3/4 |
 
 **De harde afhankelijkheden, expliciet:**
 
@@ -5241,7 +5349,8 @@ is. Bij elkaar opgeteld uit de per-ticket-schattingen:
 | 7 — De wereld buiten | 3 | ~1 week |
 | 8 — Water | 1 | 2-3 dagen |
 | 9 — Toegankelijkheid | 1 | 2-3 dagen |
-| **Totaal** | **28** | **~3 maanden** |
+| 10 — Eindmeting | 1 | 2-3 dagen |
+| **Totaal** | **29** | **~3 maanden** |
 
 Dat is geen argument om het niet te doen — het is een argument om fase 1
 als eerste mijlpaal te behandelen en pas daarna te besluiten of de rest

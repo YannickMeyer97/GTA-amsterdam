@@ -180,7 +180,7 @@ ticketnummer. Algemene kop voor elke prompt:
 > afloop de load-check en het testplan van het ticket. Commit niet zonder
 > expliciete opdracht.
 
-### Ticket 1 — wave-heal naar 60
+### Ticket 1 —1 wave-heal naar 60
 - **Context:** `WAVE_HEAL_MIN` (blok "Balanswaarden golven") wordt in de
   wave-complete-branch van `updateGolf()` toegepast via `Math.max`.
 - **Doel:** 75 → 60, inclusief README-tekst.
@@ -190,7 +190,7 @@ ticketnummer. Algemene kop voor elke prompt:
 - **Niet veranderen:** bonusformule, rustTimer, banner.
 - **Acceptatie/test:** zie Ticket 1 in ROADMAP.md.
 
-### Ticket 2 — sterke power-up-cooldown (2 golven)
+### Ticket 2 —2 sterke power-up-cooldown (2 golven)
 - **Context:** `kiesPowerupType()` is nu een uniforme loting; drops
   ontstaan in `raakOndode()` → `spawnPowerupDrop()`.
 - **Doel:** sterke types (Dubbele Beloning, Eliminatiemodus, Kerninslag)
@@ -203,7 +203,7 @@ ticketnummer. Algemene kop voor elke prompt:
 - **Let op:** utility (`munitievoorraad`) is ALTIJD toegestaan — de lijst
   is nooit leeg.
 
-### Ticket 3 — Kerninslag-cooldown (4 golven)
+### Ticket 3 —3 Kerninslag-cooldown (4 golven)
 - **Context:** bouwt direct op Ticket 2, zelfde functie.
 - **Doel:** kerninslag vereist bovendien `golf >= laatsteKerninslagGolf + 4`.
 - **Stappen:** tweede state + constante + gate; registratie in
@@ -213,25 +213,25 @@ ticketnummer. Algemene kop voor elke prompt:
   de constante — niet bouwen.
 - **Niet veranderen:** `geefKerninslag()` zelf.
 
-### Ticket 4 — Loper 2,2 m/s
+### Ticket 4 —4 Loper 2,2 m/s
 - **Stappen:** `ONDODE_TYPES.loper.snelheidMultiplier` 1.8 → 1.47,
   comment bijwerken, waarde-assert (`snelheid ≈ 2.205`).
 - **Niet veranderen:** hp/geld/schaal/kleur van de Loper.
 
-### Ticket 5 — Sjouwer 5 HP
+### Ticket 5 —5 Sjouwer 5 HP
 - **Stappen:** `ONDODE_TYPES.sjouwer.hpMultiplier` 4 → 2.5, comment,
   waarde-assert (golf ≥ 3 → hp === 5). Bestaande variantentest blijft
   geldig (5 > 2×2).
 - **Niet veranderen:** snelheid/geld van de Sjouwer.
 
-### Ticket 10 — debug-hooks + tests in repo
+### Ticket 10 —10 debug-hooks + tests in repo
 - **Doel:** alle nieuwe state van T1–T9 op `AmsterdamUndeadDebug`;
   `tests/`-map met de kern-Playwright-scripts + README.
 - **Let op:** GEEN nieuw global; volg het bestaande getter/setter-patroon.
   Tests moeten draaien vanaf schone checkout (documenteer de
   `three`/`playwright`-installatie in `tests/README.md`).
 
-### Ticket 6 — eventgolf-framework
+### Ticket 6 —6 eventgolf-framework
 - **Context:** `startGolf()` en de wave-complete-branch van `updateGolf()`
   (zie waarschuwingen onderaan).
 - **Doel:** `isEventGolf(golf)` (elke 5e), `kiesEventType` (nu altijd
@@ -242,7 +242,7 @@ ticketnummer. Algemene kop voor elke prompt:
   debug-exports; tests op golf 4/5/6/10 + volledige cyclus.
 - **Niet veranderen:** spawn-logica, heal/bonus-volgorde.
 
-### Ticket 7 — Mistgolf-fog
+### Ticket 7 —7 Mistgolf-fog
 - **Context:** er is exact één `scene.fog = new THREE.Fog(0x060a0e, 6, 24)`.
 - **Doel:** tijdens 'mist'-event fog naar `{0x39443f, 2.5, 11}`, herstel
   in afloophaakje ÉN `gameOver()`; banner "MISTGOLF", eindmelding
@@ -252,7 +252,7 @@ ticketnummer. Algemene kop voor elke prompt:
   vóór/tijdens/na + na gameOver; screenshot-leesbaarheidscheck.
 - **Niet veranderen:** fog buiten mistgolven; renderer/licht-setup.
 
-### Ticket 8 — Sluiper
+### Ticket 8 —8 Sluiper
 - **Doel:** `ONDODE_TYPES.sluiper` (1.35 / 0.75 / 1.1, schaal 0.75,
   kleur 0x3c4a41, ogen 0xb8ffc8), NIET in de normale weging.
 - **Stappen:** type-entry; gewicht 0 buiten mist (echte gating is T9);
@@ -261,14 +261,14 @@ ticketnummer. Algemene kop voor elke prompt:
 - **Niet veranderen:** `maakOndodeModel`-structuur (type-data volstaat),
   `ONDODE_TYPE_MIN_GOLF`.
 
-### Ticket 9 — Mistgolf-spawngewichten
+### Ticket 9 —9 Mistgolf-spawngewichten
 - **Doel:** tijdens `actieveEventGolf === 'mist'` retourneert
   `ondodeTypeGewichten()` uitsluitend `{ sluiper: 1 }`.
 - **Stappen:** één early-return; 100-spawns-asserts op golf 5 (100%
   sluiper) en golf 6 (0% sluiper); bestaande variantentests groen.
 - **Niet veranderen:** `golfSpawnStap`, barricade-gedrag.
 
-### Ticket 13 — threat budget (VOORZICHTIG)
+### Ticket 13 —13 threat budget (VOORZICHTIG)
 - **Context:** riskantste ticket; `spelStaat.teSpawnen` verandert van
   betekenis. Lees eerst de hele golf-cyclus (`startGolf`, `updateGolf`,
   `golfSpawnStap`) en het ticket in ROADMAP.md volledig.
@@ -285,7 +285,7 @@ ticketnummer. Algemene kop voor elke prompt:
 - **Niet veranderen:** `effectiefMaxActief`/interval-logica (dat is T15),
   heal/bonus, barricades.
 
-### Ticket 14 — HP-schaling
+### Ticket 14 —14 HP-schaling
 - **Doel:** `ondodeStartHP()` → trap 1/2/3/4 (golf 1–4 / 5–10 / 11–15 /
   16+, hard plafond 4); Sjouwer `min(round(basis×2.5), 8)`.
 - **Stappen:** trapfunctie; oude constanten opruimen of mappen
@@ -294,7 +294,7 @@ ticketnummer. Algemene kop voor elke prompt:
 - **Let op:** brander-explosie (3 schade) doodt een 4-HP-normaal niet
   meer — bedoeld, noteer het in de commitboodschap.
 
-### Ticket 15 — spawn-cap
+### Ticket 15 —15 spawn-cap
 - **Doel:** `GOLF_MAX_ACTIEF` 18 → 14; `ZONE_MAX_ACTIEF_BONUS` 4 → 2
   (plafond 14/16/18 per zonestand).
 - **Stappen:** twee constanten + comments; cap-test per zonestand
@@ -355,7 +355,7 @@ Zelfde kop als hierboven; vervang alleen het ticketnummer. Lees per ticket
 óók `ARCHITECTURE_NOTES.md` §4 (codekaart-aanvullingen na v0.14, huidige
 plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
 
-### Ticket 16 — power-ups: één drop-slot per golf
+### Ticket 16 —16 power-ups: één drop-slot per golf
 - **Context:** `kiesPowerupType()` heeft nu drie cooldown-gates
   (sterk/kerninslag/munitievoorraad); registratie op drop-moment in
   `spawnPowerupDrop()`, inclusief een `if (!type) return;`-guard.
@@ -372,7 +372,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
 - **Let op:** dit VERVANGT Tickets 2/3 + de feedbackronde-cooldown; één
   commit (makkelijke revert). Nooit combineren met T21.
 
-### Ticket 17 — Smederij-visuals
+### Ticket 17 —17 Smederij-visuals
 - **Context:** wapen-Groups hangen aan de camera; `wisselWapen()` togglet
   `groep.visible`; `koopSmederij()` kleurt nu alleen
   `meterDrukspuit`/`tandwielRatelaar`; `schiet()` boost al
@@ -389,7 +389,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
 - **Niet veranderen:** schade/magazijn/HUD-logica, `wisselWapen()`.
 - **Let op:** budget ≤ 5 meshes + 1 light per wapen; geen particles.
 
-### Ticket 18 — zombies Z1: modulair model (VOORZICHTIG)
+### Ticket 18 —18 zombies Z1: modulair model (VOORZICHTIG)
 - **Context:** `maakOndodeModel()` is één Group met 8 meshes zonder
   pivots; `userData.lichaamsdeel === 'kop'` op hoofd + ogen; `schiet()`
   raycast recursief op `ondodenGroep`.
@@ -403,7 +403,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
   eindbeeld, het `'kop'`-contract.
 - **Let op:** NOOIT combineren met een ander ticket; één commit.
 
-### Ticket 19 — zombies Z2: silhouetten + variatieprofielen
+### Ticket 19 —19 zombies Z2: silhouetten + variatieprofielen
 - **Context:** na Z1; `ONDODE_TYPES` heeft per type kleur/oogKleur/schaal;
   `kiesOndodeTraits()` loot cosmetische traits.
 - **Doel:** per-type vorm-data (Loper dun/gebogen, Sjouwer breed/bochel,
@@ -414,7 +414,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
 - **Niet veranderen:** stats, hitbox-contract (hoofd nooit kleiner dan de
   huidige sphere), directe `spawnOndode`-defaults.
 
-### Ticket 20 — zombies Z3: ledematen-animatie
+### Ticket 20 —20 zombies Z3: ledematen-animatie
 - **Context:** na Z1/Z2; animatie-helft van `updateOndoden()` doet nu
   alleen `rotation.y` + strompel-wiebel op de root.
 - **Doel:** stappende benen, tegenfase-armen, romp-bob, hoofd-microkantel
@@ -426,7 +426,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
   regressie.
 - **Niet veranderen:** de navigatie-helft, positie/collision, melee.
 
-### Ticket 21 — zombies Z4: hitreacties
+### Ticket 21 —21 zombies Z4: hitreacties
 - **Context:** na Z3; `raakOndode()` is het drukste risicogebied
   (schade/geld/drops/buffs) — alleen een veld toevoegen.
 - **Doel:** flinch-state (kop/lichaam) + korte knockback (±0.12 m, door
@@ -439,7 +439,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
   Eliminatiemodus-pad (geen flinch op directe kills).
 - **Let op:** nooit tegelijk met T16 (zelfde functie).
 
-### Ticket 22 — zombies Z5: doodsanimaties
+### Ticket 22 —22 zombies Z5: doodsanimaties
 - **Context:** `doodOndode()` verwijdert nu direct; drie contracten in
   ontwerpbeslissing 17 (golf-einde telt `ondoden`, raycast raakt
   `ondodenGroep`, melee itereert `ondoden`).
@@ -450,7 +450,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
   beeld; raycast door een lijk; Kerninslag → 5 stervenden); regressie.
 - **Niet veranderen:** drop-posities, geld, `ontploiBrander`.
 
-### Ticket 23 — zombies Z6: wave-variatie-limiter
+### Ticket 23 —23 zombies Z6: wave-variatie-limiter
 - **Context:** na Z2; profielen worden geloot in `kiesOndodeTraits()`.
 - **Doel:** ringbuffer (4) voorkomt 3 (bijna) identieke profielen op rij
   in golf-spawns; directe `spawnOndode()`-aanroepen blijven erbuiten.
@@ -458,7 +458,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
   sampling-test (100 spawns); debug-export; regressie.
 - **Niet veranderen:** typekeuze, budget, barricade-gedrag.
 
-### Ticket 24 — map-lus M1: geometrie-schil (VOORZICHTIG)
+### Ticket 24 —24 map-lus M1: geometrie-schil (VOORZICHTIG)
 - **Context:** lees eerst ARCHITECTURE_NOTES §4.4 (muursegmenten +
   pocket) en §4.7 (plattegrond + constanten). `GRENS` hoeft NIET te
   wijzigen.
@@ -473,7 +473,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
 - **Niet veranderen:** bestaande muren, `GRENS`, spawns, nav.
 - **Let op:** NOOIT combineren met een ander ticket.
 
-### Ticket 25 — map-lus M2: deur 3
+### Ticket 25 —25 map-lus M2: deur 3
 - **Context:** de binnenplaats-zuidmuur is één `bouwBinnenplaatsMuur` op
   z = −6.85 — die wordt gesplitst; kooppatroon = `koopDeur2`.
 - **Doel:** koopbare deur 3 (€1200) op x ∈ [9, 11], banner
@@ -486,7 +486,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
 - **Niet veranderen:** kelderdeur-spawn (20.1, −7.4), vensters (dat is
   T27), nav (dat is T28).
 
-### Ticket 26 — map-lus M3: terugdeur (deur 4)
+### Ticket 26 —26 map-lus M3: terugdeur (deur 4)
 - **Context:** woonkamer-oostmuur is één `bouwMuur` op x = 4.65.
 - **Doel:** koopbare terugdeur (€800) op z ∈ [−1, 1], kooppunt aan de
   bijkeuken-kant; ontgrendelt GEEN zone (pacing negeert deur 4);
@@ -495,7 +495,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
   reachability A↔E in beide richtingen; regressie.
 - **Niet veranderen:** A-vensters, ammo-kist, pacing.
 
-### Ticket 27 — map-lus M4: zone-E-inhoud
+### Ticket 27 —27 map-lus M4: zone-E-inhoud
 - **Context:** venster-activering volgt het
   `koopDeur2`/`VENSTERS_PLAATS`-patroon; ammo-kist en zone-audio
   (`gangBetreden`) zijn de voorbeelden.
@@ -508,7 +508,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
   audio-flags; tests (activering, kooppad, audio); regressie.
 - **Niet veranderen:** `kiesVensterIndex`, bestaande vensters.
 
-### Ticket 28 — map-lus M5: navigatie-graaf (VOORZICHTIG)
+### Ticket 28 —28 map-lus M5: navigatie-graaf (VOORZICHTIG)
 - **Context:** lineaire spine (`zoneVan` + `ZONE_DEURPUNTEN`) in de
   navigatie-helft van `updateOndoden()`; fase 8 MOET afgerond zijn.
 - **Doel:** `zoneVan` met E-tak (vóór de woonkamer-check!), `ZONE_GRAAF`
@@ -522,7 +522,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
 - **Niet veranderen:** ontwijk-logica, melee, `kiesVensterIndex`.
 - **Let op:** NOOIT combineren met een ander ticket; één commit.
 
-### Ticket 29 — map-lus M6: balans + eindregressie
+### Ticket 29 —29 map-lus M6: balans + eindregressie
 - **Doel:** pacing-asserts (4 zones == 3-zones-waarden), speeltest beide
   looprichtingen (golf 8+), teksten (startscherm/README), eventuele
   prijstuning ± 25%.
@@ -530,7 +530,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
   + scratchpad-suite + screenshots van de complete lus.
 - **Niet veranderen:** mechanica.
 
-### Ticket 30 — aanval A1: state-machine met wind-up (VOORZICHTIG)
+### Ticket 30 —30 aanval A1: state-machine met wind-up (VOORZICHTIG)
 - **Context:** melee-branch bovenaan `updateOndoden()`
   (`afstand <= MELEE_BEREIK` → schade → `continue`) plus de
   `ondode.meleeTimer = 0`-reset onderaan de loop; constants
@@ -555,7 +555,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
 - **Let op:** NOOIT combineren; derde ingreep in `updateOndoden` —
   alleen de melee-branch aanraken.
 
-### Ticket 31 — aanval A2: tells (pose, ogen, audio)
+### Ticket 31 —31 aanval A2: tells (pose, ogen, audio)
 - **Context:** arm-pivots + `ARM_RUST_ROTATIE_X` (animatie-helft),
   oog-materiaal in `maakOndodeModel` (één material per ondode, nu
   zonder `delen`-referentie). Spec: §5.3.
@@ -572,7 +572,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
   windup/herstel.
 - **Let op:** `if (delen.armL)` overal (eenarmig-profiel).
 
-### Ticket 32 — feedback F1: effecten-pool + tracers + impacts (VOORZICHTIG)
+### Ticket 32 —32 feedback F1: effecten-pool + tracers + impacts (VOORZICHTIG)
 - **Context:** `vonk` in `schiet()` en `bloedvonk` in `raakOndode()`
   (beide: nieuwe mesh + `setTimeout` — verwijderen). Spec: §5.5,
   beslissing 25.
@@ -591,7 +591,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
   geld/schade-paden, Brander-flits (gedocumenteerde uitzondering).
 - **Let op:** NOOIT combineren; 0 allocaties per schot na opwarmen.
 
-### Ticket 33 — feedback F2: hitmarker + treffer-/herlaad-audio
+### Ticket 33 —33 feedback F2: hitmarker + treffer-/herlaad-audio
 - **Context:** `speelTreffer` (uniform), `speelHerlaad`
   (vaste `setTimeout(900)` — vervangen), `speelDroogKlik`, `ammoUI`,
   HUD-DOM-conventie (`vignet`-decay-patroon). Spec: §5.4/§5.5-audio +
@@ -605,7 +605,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
   cosmetische gameLoop-zone; debug-export; tests + regressie.
 - **Niet veranderen:** schadeberekening, `speelSchot` (dat is T34).
 
-### Ticket 34 — feedback F3: wapen-identiteit
+### Ticket 34 —34 feedback F3: wapen-identiteit
 - **Context:** `WAPEN_DRUKSPUIT`/`WAPEN_RATELAAR`-definities,
   `terugslag`-zone in `gameLoop`, camera-pitch-compose in
   `updateSpeler`, `wisselWapen` (instant toggle). Spec: §5.6-tabel +
@@ -619,7 +619,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
   terugslag-zone; wisseltimer; debug-export; tests + regressie.
 - **Niet veranderen:** schade, cooldowns, magazijnen, T33's tiers.
 
-### Ticket 35 — winkel W1: Smederij naar de bijkeuken
+### Ticket 35 —35 winkel W1: Smederij naar de bijkeuken
 - **Context:** `SMEDERIJ_X = DEUR2_X + 2.5`, `SMEDERIJ_Z =
   PLAATS_Z_NOORD + 1.2`; machineblok/markering/kooppunt/koolLicht zijn
   allemaal afgeleiden. Spec: §5.8 + beslissing 28.
@@ -635,7 +635,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
 - **Let op:** de deur4Punt-les — vanaf de woonkamer-kant mag NOOIT een
   prompt verschijnen.
 
-### Ticket 36 — winkel W2: stijl-register + iconen (VOORZICHTIG)
+### Ticket 36 —36 winkel W2: stijl-register + iconen (VOORZICHTIG)
 - **Context:** `interactieMarkering(x, z, kleur)` (±3470) — ring +
   generieke kubus; 12 aanroepen; `doofMarkering` traverset materials.
   Spec: §5.7-tabel (iconen + kleuren letterlijk overnemen) +
@@ -653,7 +653,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
 - **Let op:** NOOIT combineren (12 winkels tegelijk); `doofMarkering`
   moet op elke nieuwe markering blijven werken.
 
-### Ticket 37 — winkel W3: status + winkelLicht + koop-flits
+### Ticket 37 —37 winkel W3: status + winkelLicht + koop-flits
 - **Context:** T36's register; `doofMarkering`-patroon; lampflikker als
   puls-voorbeeld. Spec: §5.7-status + beslissing 30.
 - **Doel:** `status()` per stijl ('beschikbaar'/'teDuur'/'gekocht'/
@@ -669,7 +669,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
 - **Let op:** Smederij-status volgt het ACTIEVE wapen (zelfde logica
   als de bestaande prompt); `schaduw === 1` blijft.
 
-### Ticket 38 — sfeer S1: materiaal-families + impactkleuren
+### Ticket 38 —38 sfeer S1: materiaal-families + impactkleuren
 - **Context:** `mat()`-helper; T32's wereld-impactpad. Spec: §5.9-
   materiaal + beslissing 31.
 - **Doel:** `matFamilie(naam, kleur)`-cache (hout/steen/tegel/metaal/
@@ -683,7 +683,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
 - **Niet veranderen:** props, ondode-materialen, winkel-materials
   (die blijven eigen/doofbaar), tone mapping/color space.
 
-### Ticket 39 — sfeer S2: vijandleesbaarheid
+### Ticket 39 —39 sfeer S2: vijandleesbaarheid
 - **Context:** `ONDODE_TYPES`, animatie-writes in `updateOndoden`,
   `startEventGolf`/`eindigEventGolf`, T31's `delen.oogMateriaal`.
   Spec: §5.9 + beslissing 32.
@@ -699,7 +699,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
   (hoofd-hoogte-anker!).
 - **Niet veranderen:** hoofdgroep-y, hitbox-contract, T30-profielen.
 
-### Ticket 40 — sfeer S3: omgevingsdetails
+### Ticket 40 —40 sfeer S3: omgevingsdetails
 - **Context:** atelier-dakramen (lichtkolommen), kelderluik
   (±regel 1012), `startGolf()`, lampflikker-loop in `gameLoop`.
   Spec: §5.9-sfeer.
@@ -712,7 +712,7 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
   `tests/test-omgeving-sfeer.mjs`; screenshots; regressie.
 - **Niet veranderen:** Mistgolf, bestaande zone-audio, fog-waarden.
 
-### Ticket 41 — integratie: eindregressie + performance-audit
+### Ticket 41 —41 integratie: eindregressie + performance-audit
 - **Doel:** performance-asserts als test (lichten ≤ bestaand + 1,
   precies 1 schaduwwerper, effect-plafonds na stress, pool-hergebruik);
   speeltest-notities (golf 8+ alle deuren open, Mistgolf met
@@ -809,7 +809,7 @@ het ticket in ROADMAP.md + de relevante §6-secties van
 ARCHITECTURE_NOTES.md lezen, minimale wijziging, load-check + het
 testplan van het ticket, nooit committen zonder expliciete opdracht.
 
-### Ticket 42 — score, runStats en highscore
+### Ticket 42 —42 score, runStats en highscore
 - **Context:** `spelStaat` (~4032), `schiet()` (~2671),
   `raakOndode()` (~3912), `gameOver()` (~3995), start-/gameOver-DOM
   (~336-353). Spec: §6.2.
@@ -823,7 +823,7 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
 - **Niet veranderen:** de geld-uitkeringslogica zelf (alleen tellers
   ernaast), hot-path-structuur, bestaande scherm-flows.
 
-### Ticket 43 — moeilijkheidsgraden
+### Ticket 43 —43 moeilijkheidsgraden
 - **Context:** startscherm-DOM + click (~342-353, ~2053),
   `golfBudget()` (~3027), regen-constantes (~3000). Spec: §6.3.
 - **Doel:** `MOEILIJKHEDEN`-register (toerist/amsterdammer/nachtwacht),
@@ -835,7 +835,7 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
 - **Niet veranderen:** prijzen, pauze-flow, de startscherm-guard voor
   game over.
 
-### Ticket 44 — vluchtroute-onderdelen
+### Ticket 44 —44 vluchtroute-onderdelen
 - **Context:** `interactiePunten` (~4804), `WINKEL_STIJLEN` (~1730),
   `startGolf()` (~4120), HUD. Spec: §6.4-beslissing 35.
 - **Doel:** drie onderdelen (golf 3/6/9, atelier/binnenplaats/bijkeuken)
@@ -848,7 +848,7 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
   test-smederij-verhuizing (die blijft juist kloppen dankzij het
   dynamische patroon).
 
-### Ticket 45 — De Ontsnapping (VOORZICHTIG: schermen-guard)
+### Ticket 45 —45 De Ontsnapping (VOORZICHTIG: schermen-guard)
 - **Context:** pointerlockchange-handler (~2060-2071), `gameOverScherm`,
   kelderluik/kelderhals, T42-statsrender, T44-state. Spec: §6.4-
   beslissing 36 + risico §6.10.
@@ -862,7 +862,7 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
 - **Niet veranderen:** `gameOver()` zelf, de bestaande
   restart-via-reload-conventie.
 
-### Ticket 46 — eventgolf Stroomuitval
+### Ticket 46 —46 eventgolf Stroomuitval
 - **Context:** eventgolf-framework (~4052-4110), `hangLamp()` (~1205),
   flikker-loop (~4893), `spawnOndode()`-mistcheck (~3491),
   `eventSpawnGewichten` (~2977). Spec: §6.5.
@@ -883,7 +883,7 @@ staan (met Status: backlog) in ROADMAP.md onderaan de v0.17-sectie;
 ontwerp staat nog in §6.6 (beslissingen 38-39). Pas oppakken als de
 gebruiker dit expliciet weer vraagt.
 
-### Ticket 49 — dreigingsaudio-laag
+### Ticket 49 —49 dreigingsaudio-laag
 - **Context:** `initGeluid()`/`piep()` (~2730), gameLoop-takken. Spec:
   §6.7.
 - **Doel:** twee nooit-herstartende oscillators + gainNode;
@@ -894,7 +894,7 @@ gebruiker dit expliciet weer vraagt.
   getters); regressie.
 - **Niet veranderen:** bestaande one-shots, `speelGolfStart`.
 
-### Ticket 50 — zone-naambanners + HUD-zonelabel
+### Ticket 50 —50 zone-naambanners + HUD-zonelabel
 - **Context:** zone-triggerplek (~4866-4872), `zoneVan()` (~3536),
   `toonGolfBanner`, HUD. Spec: §6.8.
 - **Doel:** `ZONE_NAMEN` (indices exact zoneVan: 0-4), banner 1x per
@@ -904,7 +904,7 @@ gebruiker dit expliciet weer vraagt.
 - **Niet veranderen:** `gangBetreden`/`plaatsBetreden`-audio,
   banner-systeem zelf.
 
-### Ticket 51 — integratie: pacing-audit + eindregressie + teksten
+### Ticket 51 —51 integratie: pacing-audit + eindregressie + teksten
 - **Doel:** `tests/test-lategame-pacing.mjs` (sim golf 12-24: budget,
   HP-trap, mix, max-actief, geldstroom vs sinks, + het
   10/14/18/22-ontsnappingsvensterpatroon uit T54); tuning uitsluitend
@@ -920,7 +920,7 @@ gebruiker dit expliciet weer vraagt.
   git-stash-verificatie documenteren); eindrapport.
 - **Niet veranderen:** mechanica buiten de ±25%-tuning.
 
-### Ticket 52 — Gang naar de Gracht: vlonder, water, boot, lantaarn
+### Ticket 52 —52 Gang naar de Gracht: vlonder, water, boot, lantaarn
 - **Context:** bijkeuken-oostmuur (`BIJKEUKEN_X_OOST`=12, "nepgevel"-
   comment), `GANG_*`-gangpatroon, `bouwLantaarn` (~993, lokaal gescoped
   — kopiëren), `GRENS` (ongewijzigd, ruim voldoende ruimte tot
@@ -936,7 +936,7 @@ gebruiker dit expliciet weer vraagt.
 - **Niet veranderen:** GRENS, andere zones, bestaande bijkeuken-inhoud
   (Smederij/Provisiekast/druppel/kelderluik blijven ongemoeid).
 
-### Ticket 53 — De Ontsnapping verhuist naar de vlonder (VOORZICHTIG)
+### Ticket 53 —53 De Ontsnapping verhuist naar de vlonder (VOORZICHTIG)
 - **Context:** `toonOntsnappingspuntIndienKlaar()` (§6.4-plek),
   `test-ontsnapping.mjs`'s kelderluik-positie-assertie. Spec:
   §6.13-beslissing 44.
@@ -948,7 +948,7 @@ gebruiker dit expliciet weer vraagt.
 - **Niet veranderen:** `ONTSNAPPING_PRIJS`, `toonWinScherm()`,
   `probeerOntsnapping()`, de 3/3-voorwaarde.
 
-### Ticket 54 — Periodieke ontsnappingsvensters (ronde-gating)
+### Ticket 54 —54 Periodieke ontsnappingsvensters (ronde-gating)
 - **Context:** `startGolf()`/`updateGolf()` (haakpunten, zelfde plek als
   T44's `toonVluchtOnderdelenIndienDrempel()`), `isEventGolf` als
   pure-functie-voorbeeld. Spec: §6.13-beslissing 45.
@@ -967,7 +967,7 @@ gebruiker dit expliciet weer vraagt.
   dit ticket VOEGT de golf-gate toe, vervangt niets. Nog GEEN
   aankondigingstimer/tell (dat is T55).
 
-### Ticket 55 — Boot-aankomst: tell en opbouw
+### Ticket 55 —55 Boot-aankomst: tell en opbouw
 - **Context:** `updateOntsnappingsVenster()` (T54, breidt uit),
   `piep()`-patroon, lampflikker-patroon, T52's lantaarnlicht. Spec:
   §6.14-beslissing 46.
@@ -984,7 +984,7 @@ gebruiker dit expliciet weer vraagt.
   van wanneer het interactiepunt precies verschijnt, binnen een al open
   venster).
 
-### Ticket 56 — Vluchtroute-onderdelen fysiek prominenter
+### Ticket 56 —56 Vluchtroute-onderdelen fysiek prominenter
 - **Context:** `bouwRoeispaanMesh()`/`bouwTouwbundelMesh()`/
   `bouwScheepslantaarnMesh()` (§6.4-blok), `VLUCHT_ONDERDELEN`,
   `raapVluchtOnderdeelOp()` (haal NIET aan). Spec: §6.15-beslissing 47.
@@ -1007,7 +1007,7 @@ gebruiker dit expliciet weer vraagt.
   interactiepunt-structuur van T44, `raapVluchtOnderdeelOp()` zelf
   (die blijft ongewijzigd werken dankzij de group-structuur).
 
-### Ticket 57 — Zwevende barricadeplanken elders: audit
+### Ticket 57 —57 Zwevende barricadeplanken elders: audit
 - **Context:** `bouwBarricade()` (`basisY`, al aanwezig sinds de
   binnenplaats-fix), `VENSTERS`/`VENSTERS_KAMER2`/`VENSTERS_BIJKEUKEN`.
   Spec: §6.16-beslissing 48.
@@ -1096,7 +1096,7 @@ het ticket in ROADMAP.md (sectie v0.19) + de relevante §7-secties van
 ARCHITECTURE_NOTES.md lezen, minimale wijziging, load-check + het
 testplan van het ticket, nooit committen zonder expliciete opdracht.
 
-### Ticket 58 — PALET-systeem voor consistente art direction
+### Ticket 58 —58 PALET-systeem voor consistente art direction
 - **Context:** `MATERIAAL_FAMILIES`/`matFamilie()` (~559-575) als
   bestaand stijlvoorbeeld; gevel-/straatdecor-aanroepen
   (`bouwAchterGevel()` e.a.). Spec: §7.4.1-beslissing 50.
@@ -1109,7 +1109,7 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
 - **Niet veranderen:** kleuren buiten de aangewezen call-sites;
   materiaal-families zelf.
 
-### Ticket 59 — Procedurele texturen voor materiaaldiepte
+### Ticket 59 —59 Procedurele texturen voor materiaaldiepte
 - **Context:** `matFamilie()`/`MATERIAAL_FAMILIES` (~559-575),
   `matFamilieCache`. Spec: §7.3 (regel-interpretatie) + §7.4.2-
   beslissing 51.
@@ -1122,7 +1122,7 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
 - **Niet veranderen:** materiaal-mutatiediscipline (per-familie
   gedeeld, nooit per-instantie); geometrie-UV's.
 
-### Ticket 60 — Post-processing-pipeline (EffectComposer)
+### Ticket 60 —60 Post-processing-pipeline (EffectComposer)
 - **Context:** render-loop (`renderer.render(scene, camera)`),
   `onresize`-handler, `<script type="importmap">`. Spec: §7.3 + §7.4.3-
   beslissing 52.
@@ -1137,7 +1137,7 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
 - **Niet veranderen:** shadow-lichttelling; bestaande materiaal-
   instellingen.
 
-### Ticket 61 — Vloeiendere silhouetten (VOORZICHTIG)
+### Ticket 61 —61 Vloeiendere silhouetten (VOORZICHTIG)
 - **Context:** ondode-modelopbouw (Z1-modulaire structuur, Tickets
   18-22), wapenmodel-opbouw, hoofd-hoogte-anker (beslissing 16). Spec:
   §7.4.4-beslissing 53.
@@ -1149,7 +1149,7 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
 - **Niet veranderen:** hitbox-mesh-schalen, head-group-Y-positie,
   animatie-systeem.
 
-### Ticket 62 — Kelder: geometrie, trap en Y-beweging (VOORZICHTIG)
+### Ticket 62 —62 Kelder: geometrie, trap en Y-beweging (VOORZICHTIG)
 - **Context:** `speler.positie` (~2348), `GRENS` (~659),
   `registreerRechthoek`/`losBotsingenOp`/`isVrijePlek` (2D-botsing),
   `speler.hoogte`-toepassing bij het renderen. Spec: §7.5.1-
@@ -1168,7 +1168,7 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
 - **Niet veranderen:** `registreerRechthoek`/`losBotsingenOp`/
   `isVrijePlek` zelf (blijven 2D); `GRENS`.
 
-### Ticket 63 — Kelder als permanente veilige zone + inhoud
+### Ticket 63 —63 Kelder als permanente veilige zone + inhoud
 - **Context:** `ZONE_GRAAF` (~4072), spawn-vensterdefinities,
   `zoneVan()` (~4037). Spec: §7.5.2-beslissing 55, §7.5.3-
   beslissing 56.
@@ -1182,7 +1182,7 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
   volledige regressie (met name `test-gracht-dock.mjs`).
 - **Niet veranderen:** `updateOndoden()`/`NAV_VOLGENDE`.
 
-### Ticket 64 — Waypoint-navigatiegraaf: dataset + lookup
+### Ticket 64 —64 Waypoint-navigatiegraaf: dataset + lookup
 - **Context:** `ZONE_GRAAF` (~4072) als stijlvoorbeeld,
   `test-gracht-dock.mjs`-coördinaten voor de bekende chokepoints. Spec:
   §7.6.1-beslissing 57.
@@ -1197,7 +1197,7 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
 - **Niet veranderen:** `updateOndoden()` zelf; `ZONE_GRAAF`/
   `NAV_VOLGENDE`.
 
-### Ticket 65 — Waypoint-integratie: ad-hoc code vervangen (VOORZICHTIG)
+### Ticket 65 —65 Waypoint-integratie: ad-hoc code vervangen (VOORZICHTIG)
 - **Context:** `updateOndoden()` (~4204-4228),
   `GRACHTGANG_DREMPEL`/`eigenInGracht`/`spelerInGracht`/`inZoneVier`,
   T64's waypointgraaf. Spec: §7.6.2-beslissing 58.
@@ -1211,7 +1211,7 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
   minstens 2 andere zones met obstakels; volledige regressie.
 - **Niet veranderen:** `ZONE_GRAAF`/cross-zone-routing zelf.
 
-### Ticket 66 — Achtergrondmuziek
+### Ticket 66 —66 Achtergrondmuziek
 - **Context:** dreigingsaudio-drone (~3135-3172,
   `dreigingsGainNode`/`zetDreigingsGain()`, plafond 0.07) als exact
   sjabloon. Spec: §7.7.1-beslissing 59.
@@ -1228,7 +1228,7 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
 - **Niet veranderen:** de bestaande dreigingsaudio-drone zelf; diens
   volumeplafond (0.07).
 
-### Ticket 67 — Minimap
+### Ticket 67 —67 Minimap
 - **Context:** bestaande HUD-`<div>`'s (~390-410), zone-/
   muurconstantes voor omtreklijnen. Spec: §7.8.1-beslissing 60.
 - **Doel:** klein, vast gepositioneerd 2D-`<canvas>` bovenop de HUD:
@@ -1242,7 +1242,7 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
 - **Niet veranderen:** geen extra Three.js-camera/render-target; geen
   fog-of-war.
 
-### Ticket 68 — Duidelijkere richtingsfeedback bij schade
+### Ticket 68 —68 Duidelijkere richtingsfeedback bij schade
 - **Context:** `tracerPool`/`impactPool` (~2957-2959) als exact
   poolsjabloon, `raakOndode()`/speler-schadepad. Spec: §7.8.2-
   beslissing 61.
@@ -1337,7 +1337,7 @@ bewijs; de getallen zijn het bewijs.
 T75 → T76 → T78 → T79. T77 gaat bewust vóór T69: de test moet eerst rood
 staan op de huidige code.
 
-### Ticket 77 — Resource- en levensduur-regressietests
+### Ticket 77 —77 Resource- en levensduur-regressietests
 - **Context:** `tests/helpers.mjs`, `tests/run-all.mjs`, nulmeting in
   §8.11. Spec: §8.8.1-beslissing 68.
 - **Doel:** de ontbrekende testcategorie toevoegen: resourcegroei,
@@ -1354,7 +1354,7 @@ staan op de huidige code.
 - **Niet veranderen:** geen enkele regel in `amsterdam-undead.html`
   (dit ticket is puur test); geen fps-assercties.
 
-### Ticket 69 — Gedeelde geometrie-cache voor ondode-modellen (VOORZICHTIG)
+### Ticket 69 —69 Gedeelde geometrie-cache voor ondode-modellen (VOORZICHTIG)
 - **Context:** `maakOndodeModel()` (STAP 6), `mat()`/`matFamilie()` als
   cache-sjabloon, `doodOndode()`. Spec: §8.3.1-beslissing 63.
 - **Doel:** het bevestigde GPU-lek (+9 geometrieën per ondode, nooit
@@ -1370,7 +1370,7 @@ staan op de huidige code.
 - **Niet veranderen:** aantal/indeling van lichaamsdelen; de
   effect-pools; `userData.lichaamsdeel`; geen `InstancedMesh`.
 
-### Ticket 70 — Dispose-contract voor wegwerp-objecten
+### Ticket 70 —70 Dispose-contract voor wegwerp-objecten
 - **Context:** `ontploiBrander()`, `spawnPowerupDrop()`,
   `raapPowerupOp()`, `updatePowerups()`, `updateStervenden()`. Spec:
   §8.3.1/§8.3.2-beslissing 63.
@@ -1384,7 +1384,7 @@ staan op de huidige code.
 - **Niet veranderen:** `tracerPool`/`impactPool` (die mogen NOOIT
   disposed worden); `bouwCanvasTextuur()`-texturen (gedeeld, permanent).
 
-### Ticket 71 — `updateHUD()` uit de per-frame hot path
+### Ticket 71 —71 `updateHUD()` uit de per-frame hot path
 - **Context:** `updateHUD()`, het UI-const-blok in STAP 3,
   `updateSpelerRegen()`, `updatePowerups()`. Spec:
   §8.4.1-beslissing 64.
@@ -1399,7 +1399,7 @@ staan op de huidige code.
   keer bij aflopen.
 - **Niet veranderen:** HUD-inhoud/opmaak; de aanroepplekken zelf.
 
-### Ticket 72 — Interactie-prompt en per-frame array-kopieën
+### Ticket 72 —72 Interactie-prompt en per-frame array-kopieën
 - **Context:** `updateInteracties()`, `toonInteractiePrompt()`,
   `verbergInteractiePrompt()`, `updatePowerups()`, `ontploiBrander()`.
   Spec: §8.4.1-beslissing 64.
@@ -1415,7 +1415,7 @@ staan op de huidige code.
   (kettingreactie): de index-loop moet daar aantoonbaar tegen kunnen.
 - **Niet veranderen:** prompt-teksten; het interactiepunt-systeem.
 
-### Ticket 73 — Ondoden kijken in hun looprichting
+### Ticket 73 —73 Ondoden kijken in hun looprichting
 - **Context:** `updateOndoden()`, de `groep.rotation.y`-regel net ná
   `losBotsingenOp()`/`berekenKelderY()`. Spec: §8.5.1-beslissing 65.
 - **Doel:** kijkrichting volgt de werkelijke looprichting, behalve
@@ -1433,7 +1433,7 @@ staan op de huidige code.
 - **Niet veranderen:** `NAV_VOLGENDE`, `ZONE_WAYPOINTS`,
   `zoekWaypoint()`, de melee-`hoekVerschil`-check.
 
-### Ticket 74 — Zichtbare faalmodi: CDN-laadfout en corrupte opslag
+### Ticket 74 —74 Zichtbare faalmodi: CDN-laadfout en corrupte opslag
 - **Context:** importmap/module-`<script>` in de head,
   `leesHighscore()`, `toonStartschermRecord()`. Spec:
   §8.6.1-beslissing 66.
@@ -1450,7 +1450,7 @@ staan op de huidige code.
 - **Niet veranderen:** geen tweede CDN, geen retry, geen lokale
   Three.js-kopie in de repo (breekt de single-file/geen-assets-regel).
 
-### Ticket 75 — Muisgevoeligheid instelbaar en persistent
+### Ticket 75 —75 Muisgevoeligheid instelbaar en persistent
 - **Context:** `mousemove`-handler, startscherm-HTML/CSS,
   `leesHighscore()`/`schrijfHighscore()` als opslagsjabloon. Spec:
   §8.6.2-beslissing 67.
@@ -1466,7 +1466,7 @@ staan op de huidige code.
 - **Niet veranderen:** geen aparte x/y-gevoeligheid, geen invert-Y, geen
   volwaardig instellingenscherm.
 
-### Ticket 76 — Ontsnappingsvereiste volledig in beeld
+### Ticket 76 —76 Ontsnappingsvereiste volledig in beeld
 - **Context:** `raapVluchtOnderdeelOp()`,
   `updateOntsnappingVensterHUD()`, het interactiepunt van De
   Ontsnapping. Spec: §8.7.1.
@@ -1480,7 +1480,7 @@ staan op de huidige code.
 - **Niet veranderen:** het vereiste zelf (bedrag, aantal onderdelen,
   venstercadans) — dit ticket verandert uitsluitend de communicatie.
 
-### Ticket 78 — CI-workflow en snellere testsuite
+### Ticket 78 —78 CI-workflow en snellere testsuite
 - **Context:** `tests/run-all.mjs`, `tests/helpers.mjs`. Spec:
   §8.8.1-beslissing 68.
 - **Doel:** de testdiscipline automatisch afdwingen; suite-duur omlaag
@@ -1498,7 +1498,7 @@ staan op de huidige code.
 - **Niet veranderen:** geen ESLint/Prettier/TypeScript introduceren; de
   inhoud van de bestaande scripts.
 
-### Ticket 79 — Zone-gebaseerde lichtculling (VOORZICHTIG, gated op profiling)
+### Ticket 79 —79 Zone-gebaseerde lichtculling (VOORZICHTIG, gated op profiling)
 - **Context:** `lampLichten`, `buitenLichten`,
   `stroomGevoeligeDaklichten`, de lampflikker-loop. Spec:
   §8.10-beslissing 69.
@@ -1605,7 +1605,7 @@ T80 eerst omdat T83 zijn pan-helper gebruikt. T84 en T81 daarna als
 opwarmers (tekst en een geïsoleerd effect). T85 en T87 als laatste: die
 raken respectievelijk de resource-discipline uit v0.20 en de Y-invariant.
 
-### Ticket 80 — Richtinghoren: pan op wereldgeluiden
+### Ticket 80 —80 Richtinghoren: pan op wereldgeluiden
 - **Context:** `piep()`, `speelOndodeGrom()` (+ aanroep in
   `updateOndoden()`), `speelPlankBreek()` (+ `beukBarricade()`),
   `berekenSchadeWedgeHoek()`, `berekenBootHoornPanVolume()`. Spec:
@@ -1625,7 +1625,7 @@ raken respectievelijk de resource-discipline uit v0.20 en de Y-invariant.
   wisselen), UI-geluiden of globale gebeurtenissen; de handmatige
   volume-op-afstand-aanpak.
 
-### Ticket 81 — Zeldzame lampuitval
+### Ticket 81 —81 Zeldzame lampuitval
 - **Context:** de lampflikker-loop in de gameLoop, `lampLichten`.
   Spec: §9.4.1-beslissing 71.
 - **Doel:** eens in de zoveel golven knipt één lamp 0,3-0,5s uit.
@@ -1640,7 +1640,7 @@ raken respectievelijk de resource-discipline uit v0.20 en de Y-invariant.
 - **Niet veranderen:** de bestaande drie factoren; de
   Stroomuitval-logica; de schaduwinstellingen.
 
-### Ticket 82 — Het geluid van Amsterdam
+### Ticket 82 —82 Het geluid van Amsterdam
 - **Context:** `initGeluid()`, een nieuwe gethrottlede updatefunctie.
   Spec: §9.4.2-beslissing 72.
 - **Doel:** een vijfde, permanente audiolaag (plafond 0,03) met zeldzame
@@ -1655,7 +1655,7 @@ raken respectievelijk de resource-discipline uit v0.20 en de Y-invariant.
   `audio.destination`.
 - **Niet veranderen:** de bestaande vier lagen; de Nevelklok-cyclus.
 
-### Ticket 83 — De Waterschouw
+### Ticket 83 —83 De Waterschouw
 - **Context:** nieuwe `schouwGroep` + updatefunctie naast
   `updateBootPositie()`, `tekenMinimap()`. Spec: §9.5.1-beslissing 73.
 - **Doel:** een tweede boot die voorbijvaart en nooit stopt.
@@ -1671,7 +1671,7 @@ raken respectievelijk de resource-discipline uit v0.20 en de Y-invariant.
 - **Niet veranderen:** `bootGroep`, `updateBootPositie()`,
   `ontsnappingsPunt`, de ontsnappingsflow.
 
-### Ticket 84 — Het pand krijgt een adres
+### Ticket 84 —84 Het pand krijgt een adres
 - **Context:** startscherm, `toonWinScherm()`, één decor-object.
   Spec: §9.5.2-beslissing 74.
 - **Doel:** een verzonnen grachtnaam + huisnummer op beide schermen en
@@ -1682,7 +1682,7 @@ raken respectievelijk de resource-discipline uit v0.20 en de Y-invariant.
 - **Niet veranderen:** `ZONE_NAMEN`/`ZONE_FLAVOUR`; gameplay van welke
   aard dan ook.
 
-### Ticket 85 — Etalages: sporen van de run
+### Ticket 85 —85 Etalages: sporen van de run
 - **Context:** `startGolf()`/wave-complete als trigger, bestaande
   decor-bouwfuncties, `mat()`/`matFamilie()`/`geoCache()`.
   Spec: §9.6-beslissing 75.
@@ -1696,7 +1696,7 @@ raken respectievelijk de resource-discipline uit v0.20 en de Y-invariant.
   dit ticket automatisch.
 - **Niet veranderen:** `obstakels`; pathing; spawn-druk.
 
-### Ticket 86 — Het stadsarchief
+### Ticket 86 —86 Het stadsarchief
 - **Context:** nieuw lees/schrijf-paar naar het model van
   `leesHighscore()`/`leesGevoeligheid()`, startscherm-UI.
   Spec: §9.7-beslissing 76.
@@ -1710,7 +1710,7 @@ raken respectievelijk de resource-discipline uit v0.20 en de Y-invariant.
 - **Niet veranderen:** de twee bestaande localStorage-sleutels; de
   arcade-start (het menu is optioneel, geen verplichte stap).
 
-### Ticket 87 — De Vliering (VOORZICHTIG)
+### Ticket 87 —87 De Vliering (VOORZICHTIG)
 - **Context:** `berekenKelderY()` → `berekenVloerY()`, nieuwe geometrie,
   luik-interactiepunt, `tekenMinimap()`. Spec: §9.8-beslissing 77.
 - **Doel:** verticaliteit zonder de Y-invariant te breken.
@@ -1782,7 +1782,9 @@ committen zonder expliciete opdracht.
 **Afwijkend aan deze ronde:** de tickets staan hier compleet (inclusief
 acceptatiecriteria en testplan) in plaats van in ROADMAP.md. Deze ronde
 komt uit `VISUEEL.md`, een technical-artist-analyse, en de eigenaar
-heeft daaruit 23 richtingen goedgekeurd plus 4 infrastructuurstappen.
+heeft daaruit 23 richtingen goedgekeurd; daar komen 4
+infrastructuurstappen, een toegankelijkheidsticket en een eindmeting
+bij — samen 29 tickets.
 
 **De zes invarianten van deze ronde (§10.2) — lees ze vóór élk ticket:**
 
@@ -1799,6 +1801,20 @@ heeft daaruit 23 richtingen goedgekeurd plus 4 infrastructuurstappen.
 >    `mat()`/`matFamilie()`, geometrie via `geo()`/`geoCache`, opruimen
 >    via `ruimGroepOp()`.
 
+**Elk ticket levert een beeldverslag (beslissing 93).** Naast het
+testresultaat hoort er per ticket minimaal één **voor**- en één
+**na**-opname, vanaf het standpunt dat in dat ticket staat. Gebruik
+`tests/maak-beeldverslag.mjs` (opgeleverd door T88): die neemt op vanuit
+dezelfde **bevroren** opstelling als de basislijntest — flikker,
+`lampDipFactor`, `mistUitfaseTimer` en `klok` vastgezet. Dat is niet
+optioneel netjes maar noodzakelijk: zonder bevriezen verschillen twee
+opnamen van een ongewijzigde scene al 11,2% (§10.4.1) en vergelijk je
+ruis.
+
+De opnamen horen **niet** in de repository (tientallen PNG's per ronde,
+zonder historische waarde zodra het volgende ticket eroverheen bouwt) —
+scratchpad of oplevering.
+
 **Uitvoeringsvolgorde (vast, zie §10.15):**
 
 ```
@@ -1812,6 +1828,7 @@ Fase 6  T109 → T110
 Fase 7  T111 → T112 → T113
 Fase 8  T114
 Fase 9  T115   (optioneel; vereist T92 en T96)
+Fase 10 T116   (eindmeting + advies laag 3/4)
 ```
 
 Harde afhankelijkheden: T88 vóór alles · T89 vóór T90/T110/T113 · T93
@@ -1822,7 +1839,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 
 ### Fase 0 — Vangrail
 
-### Ticket 88 — Visuele basislijn en helderheidsvangrail (EERST)
+### Ticket 88 —88 Visuele basislijn en helderheidsvangrail (EERST)
 - **Context:** nieuw `tests/test-visuele-basislijn.mjs`, `tests/helpers.mjs`,
   `run-all.mjs`. Spec: §10.4-beslissing 79, nulmeting §10.17.
 - **Doel:** een machinale meetlat waaraan elk volgend ticket in deze
@@ -1838,10 +1855,14 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Acceptatie:** de test draait groen op de huidige build; elke
   vastgelegde waarde staat als constante bovenaan het bestand met een
   toegestane band eromheen; **de band is smal (orde 1-2%), niet 11%**;
-  `run-all.mjs` pikt hem op.
+  `run-all.mjs` pikt hem op. Daarnaast levert dit ticket
+  `tests/maak-beeldverslag.mjs` op — hetzelfde bevroren mechanisme, maar
+  dan opnamen wegschrijvend in plaats van metend (beslissing 93). Elk
+  volgend ticket in de ronde leunt daarop.
 - **Test:** zichzelf. Verifieer expliciet dat **tien** opeenvolgende
   metingen binnen de band vallen — twee is niet genoeg om de
   flikkercyclus te vangen.
+- **Beeldverslag:** **levert zelf de gereedschapskist.** Naast de test ook `tests/maak-beeldverslag.mjs`: genummerde opnamen vanaf de vaste, bevroren standpunten. De set die dit ticket produceert is de **"voor"-referentie voor de hele ronde** — bewaar hem apart.
 - **Let op — twee gemeten vallen (§10.4.1), allebei fataal als je ze
   mist:**
   1. **De flikker geeft 11,2% spreiding** over 90 frames (19,09-21,36,
@@ -1869,7 +1890,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 
 ### Fase 1 — Directe winst
 
-### Ticket 89 — Emissieve hiërarchie vastleggen
+### Ticket 89 —89 Emissieve hiërarchie vastleggen
 - **Context:** `bloomPass` (`UnrealBloomPass(256×256, 0.35, 0.4, 0.82)`),
   `glasMateriaal`, de lampbollen in `hangLamp()`/`bouwLantaarn()`,
   `kernMateriaal`, `OOG_INTENSITEIT_*`, `winkelMarkering()`/
@@ -1885,6 +1906,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   `test-visuele-basislijn.mjs` blijft binnen de band.
 - **Test:** basislijn + een nieuwe assertie dat ondode-ogen en actieve
   koopmarkeringen op het Signaal-niveau zitten.
+- **Beeldverslag:** startkamer met beide hanglampen in beeld, plus de binnenplaats met één lantaarn. **Hoort identiek te zijn** — dit ticket verandert het beeld niet, alleen de onderliggende waarden. Zichtbaar verschil = uitschieter verkeerd gecorrigeerd.
 - **Let op:** **de Signaal-laag is een gameplaylaag.** Ondode-ogen en
   actieve koopmarkeringen zitten daar omdat de speler ze moet kunnen
   vinden, niet omdat ze mooi zijn. Verlaag ze nooit. Dit ticket levert
@@ -1893,7 +1915,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Niet veranderen:** de bloom-threshold zelf in dit ticket (dat is een
   aparte, gemeten beslissing); de oogtrap 1,4/2,6/3,4.
 
-### Ticket 90 — De mondingsvlam wordt een lichtmoment
+### Ticket 90 —90 De mondingsvlam wordt een lichtmoment
 - **Context:** `vlamDrukspuit` + `vlamLichtDrukspuit`, het gelijknamige
   paar bij de Ratelaar, `schiet()`. Spec: §10.6-beslissing 81.
 - **Doel:** elk schot verlicht één tot twee frames lang de kamer.
@@ -1908,6 +1930,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Test:** nieuwe `test-mondingsvlam.mjs` — assert de flitsduur, dat er
   bij aanhoudend vuur nooit twee flitsen stapelen, en dat `visible`
   netjes terugvalt. Plus basislijn.
+- **Beeldverslag:** donkerste hoek van de startkamer, één frame tijdens een schot. Twee sets: Drukspuit én Ratelaar (de Ratelaar is waar de stroboscoop-fout zichtbaar wordt).
 - **Let op:** bij de Ratelaar (automatisch vuur) wordt dit een
   **stroboscoop** als de duur of de piek niet begrensd is — en dat kost
   leesbaarheid op precies het moment dat de speler het meest moet zien.
@@ -1916,7 +1939,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Niet veranderen:** `WAPEN_DRUKSPUIT`/`WAPEN_RATELAAR`-definities,
   vuursnelheid, schade, `terugslag`/`cameraKick`.
 
-### Ticket 91 — Contactschaduwen
+### Ticket 91 —91 Contactschaduwen
 - **Context:** nieuwe helper naast `blok()`/`meubelBox()`; aanroepers
   `bouwTafel()`, `bouwLantaarn()`, de kist-/ton-bouwers;
   `bouwCanvasTextuur()`; `berekenVloerY()`. Spec: §10.7-beslissing 82.
@@ -1932,6 +1955,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   textuur en één gedeelde geometrie, geen collision-toevoeging, en dat
   elke schaduw-y overeenkomt met `berekenVloerY()` op die x/z. Plus
   `test-resources.mjs` en basislijn.
+- **Beeldverslag:** atelier op ooghoogte met tafel, kisten en een lantaarnpaal in beeld; plus één laag standpunt vlak boven de vloer waar het contactvlak zichtbaar is.
 - **Let op:** op de **kelder-ramp en de vlieringtrap** loopt de vloer —
   daar hoort geen contactschaduw (of hij moet de juiste y krijgen).
   Simpelste veilige regel: alleen op vlakke vloerdelen. Overlappende
@@ -1940,7 +1964,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Niet veranderen:** `obstakels`; `berekenVloerY()`/`berekenKelderY()`/
   `berekenVlieringY()`.
 
-### Ticket 92 — De camera gaat leven
+### Ticket 92 —92 De camera gaat leven
 - **Context:** de cosmetische zone van de gameLoop waar `terugslag` en
   `cameraKick` wegvallen; `updateSpeler()` voor de snelheid;
   `berekenVloerY()` voor het landingsmoment. Spec: §10.9-beslissing 84.
@@ -1954,6 +1978,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Test:** `test-camerabeweging.mjs` — assert dat de camera-y bij
   stilstand constant is, dat hij bij lopen binnen een band varieert, en
   (belangrijkst) dat de raycast-oorsprong van `schiet()` niet meebeweegt.
+- **Beeldverslag:** een reeks van vijf opeenvolgende frames tijdens het lopen, plus één frame op het moment van de landingsdip na een sprong van de vliering. Een enkel stilstaand beeld toont dit ticket niet.
 - **Let op:** **hang het wiegen aan de afgelegde afstand, niet aan de
   tijd** — anders wiegt het beeld ook als je stilstaat, en dat is
   achteraf lastig te herkennen. De camerabeweging staat volledig buiten
@@ -1962,7 +1987,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Niet veranderen:** collision, `speler.hoogte`, muisgevoeligheid,
   de raycast-keten.
 
-### Ticket 93 — Fogdiepte per zone
+### Ticket 93 —93 Fogdiepte per zone
 - **Context:** `FOG_NORMAAL`, `scene.fog`, `mistUitfaseTimer`/
   `mistUitfaseVan` als interpolatiesjabloon, `zoneVan()`. Spec:
   §10.13-beslissing 88.
@@ -1977,6 +2002,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   zachte overgang, en expliciet het samenspel met `FOG_MIST` (start
   Mistgolf buiten, beëindig hem, controleer dat je op het buitenprofiel
   uitkomt). Plus `test-eventgolven`-regressie.
+- **Beeldverslag:** binnenplaats kijkend naar de overkant (de fog moet opengaan) én startkamer kijkend door de gang naar het noorden (de fog moet dicht blijven). Het contrast tussen die twee ís het ticket.
 - **Let op:** fog-afstand is een **gameplayparameter** — hij bepaalt op
   hoeveel meter je een ondode ziet aankomen. Buiten verder zien is
   vermoedelijk positief, maar benoem het als bijeffect en test het; laat
@@ -1985,7 +2011,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Niet veranderen:** `FOG_MIST`-waarden; `MIST_UITFADE_DUUR`;
   `camera.far`.
 
-### Ticket 94 — Rijkere inslagen
+### Ticket 94 —94 Rijkere inslagen
 - **Context:** `spawnImpact()`, `bouwEffectSlot()`, `pakEffectSlot()`,
   `IMPACT_MAX`, `MATERIAAL_KLEUREN`, `actieveEffecten`, en de
   `face.normal` die `schiet()` al uit de raycast krijgt.
@@ -2001,6 +2027,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Test:** `test-resources.mjs` (geheugenlek) + een uitbreiding van het
   bestaande effect-testscript: assert dat het aantal effect-meshes na
   200 schoten constant blijft.
+- **Beeldverslag:** close-up van een inslag op steen, op hout en op metaal — drie opnamen, want `MATERIAAL_KLEUREN` verschilt per familie.
 - **Let op:** dit is de veiligste ticket van de ronde, met één
   aandachtspunt: `pakEffectSlot()` loopt **lineair** over
   `actieveEffecten` en dat is een hot path. Bij enkele tientallen slots
@@ -2008,7 +2035,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Niet veranderen:** de pool-architectuur zelf; `TRACER_MAX`-gedrag;
   schade of raycast-logica.
 
-### Ticket 95 — De kill als gebeurtenis
+### Ticket 95 —95 De kill als gebeurtenis
 - **Context:** `raakOndode()` (kill-afhandeling), de bestaande
   impact-burst, de hitmarker-tiers en `HITMARKER_SAMENVAL_VENSTER`.
 - **Doel:** een dodelijke treffer krijgt een korte emissieve flits plus
@@ -2022,6 +2049,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   hitmarker.
 - **Test:** uitbreiding van het bestaande kill-/hitmarker-testscript —
   assert de samenval bij 5 gelijktijdige kills.
+- **Beeldverslag:** één frame op het moment van de dodelijke treffer, plus één frame bij vijf gelijktijdige kills (Brander-explosie) om te tonen dat de flitsen niet stapelen.
 - **Let op:** raak **nooit** een gedeeld materiaal aan voor deze flits.
   De ondode-huidmaterialen zijn per instantie; `kernMateriaal` is
   **gedeeld** en mag niet gemuteerd worden (§7.9
@@ -2032,7 +2060,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 
 ### Fase 2 — De naverwerkingsketen
 
-### Ticket 96 — Naverwerkingspass: filmkorrel en chromatische aberratie
+### Ticket 96 —96 Naverwerkingspass: filmkorrel en chromatische aberratie
 - **Context:** de composer-opbouw (`RenderPass` → `bloomPass` →
   `OutputPass`). Nieuw: `ShaderPass` uit
   `three/addons/postprocessing/`. Spec: §10.8-beslissing 83.
@@ -2050,6 +2078,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   volgorde (bloom vóór deze pass, output erna), en dat de pass-uniforms
   bestaan. Plus basislijn (korrel verschuift de gemeten helderheid licht
   — dit is het eerste ticket dat de band mag opzoeken).
+- **Beeldverslag:** een donkere hoek (daar is de korrel het best zichtbaar) én een beeld met een felle lantaarn aan de rand (daar de aberratie). Toon ook een fog-gradiënt: de banding hoort weg te zijn.
 - **Let op:** `ShaderPass` komt uit **dezelfde addons-map** als de vier
   bestaande imports — dezelfde CDN-host, dezelfde versie, geen tweede
   afhankelijkheid (dus **geen** herhaling van waarschuwing 32). Gebruik
@@ -2059,7 +2088,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Niet veranderen:** `bloomPass`-parameters; `OutputPass`;
   `toneMapping`/`toneMappingExposure`; de `.schadeWedge` (blijft DOM).
 
-### Ticket 97 — Vignet in de composer
+### Ticket 97 —97 Vignet in de composer
 - **Context:** `#vignet` (CSS + de JS die zijn opacity per frame zet),
   `stroomFactor`, `EXPOSURE_STROOM_VLOER`, de T96-pass.
 - **Doel:** het vignet ligt ín het beeld en reageert op HP en Stroomuitval.
@@ -2072,13 +2101,14 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Test:** uitbreiding `test-naverwerking.mjs` — assert dat het
   vignet-uniform meebeweegt met HP en met `stroomFactor`, en dat het
   DOM-element weg is. Plus het bestaande schadefeedback-testscript.
+- **Beeldverslag:** hetzelfde standpunt bij volle HP en bij lage HP, plus één tijdens een Stroomuitval.
 - **Let op:** het vignet maakt de beeldranden donkerder, en dáár
   verschijnen ondoden in het perifere zicht. Te sterk = verlies van
   leesbaarheid. De bovengrens is geen suggestie.
 - **Niet veranderen:** `.schadeWedge` (moet scherp en direct blijven);
   de HP-logica zelf.
 
-### Ticket 98 — Per-zone kleurgrading
+### Ticket 98 —98 Per-zone kleurgrading
 - **Context:** `zoneVan()`, de T96-pass, `EXPOSURE_BASIS`/
   `EXPOSURE_STROOM_VLOER` als precedent voor globale beeldsturing.
 - **Doel:** elke zone krijgt een eigen kleurtoon; de overgang is zacht.
@@ -2091,6 +2121,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Test:** uitbreiding basislijn — meet per zone zowel helderheid (moet
   binnen de band blijven) als een kleurindicator (moet meetbaar
   verschillen tussen kelder, atelier en buiten).
+- **Beeldverslag:** één opname per zone, naast elkaar gezet. Het punt is het onderlinge kleurverschil, niet één beeld op zich.
 - **Let op:** dit is het ticket dat het makkelijkst de kalibratie uit
   §7.5.5-7.5.10 sloopt. Luminantie-neutraal is de harde eis, niet een
   streven. Een harde overgang op de zonegrens is lelijk én verraadt de
@@ -2102,7 +2133,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 
 ### Fase 3 — De vijand
 
-### Ticket 99 — Ondode-silhouet: handen, schouders, gerafelde vod
+### Ticket 99 —99 Ondode-silhouet: handen, schouders, gerafelde vod
 - **Context:** `maakOndodeModel()`, `geo()`/`geoCache`, `ONDODE_TYPES`,
   `VARIATIE_PROFIELEN`. Spec: §10.10-beslissing 85.
 - **Doel:** een silhouet dat op tien meter in het donker als figuur leest.
@@ -2115,6 +2146,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Test:** `test-ondode-model.mjs` uitbreiden — assert dat geen enkel
   nieuw deel `userData.lichaamsdeel === 'kop'` draagt, en dat het aantal
   gedeelde geometrieën per ondode constant is over 50 spawn/kill-cycli.
+- **Beeldverslag:** één ondode op ~10 m in een donkere gang (silhouettest) én een close-up van hetzelfde model. Toon de drie types naast elkaar.
 - **Let op:** **`userData.lichaamsdeel === 'kop'` staat uitsluitend op
   het hoofd-mesh en de twee ogen.** Een schouder die per ongeluk als kop
   telt, is een balanswijziging (headshots). Extra meshes schalen met
@@ -2122,7 +2154,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Niet veranderen:** hitbox-markering; `ONDODE_TYPES`-kleuren;
   de armposities op x = ±0,24 (de arm-raycasts leunen daarop).
 
-### Ticket 100 — Rimlight op de ondoden
+### Ticket 100 —100 Rimlight op de ondoden
 - **Context:** `maakOndodeModel()` (waar per ondode al een
   `MeshStandardMaterial` wordt gemaakt), `kernMateriaal` (gedeeld —
   buiten de injectie houden), `OOG_INTENSITEIT_MIST`/`_STROOMUITVAL`.
@@ -2144,6 +2176,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Test:** `test-rimlight.mjs` — assert dat de injectie alleen op
   ondode-materialen zit (tel de gedeelde wereldmaterialen: die mogen
   géén rim-uniform hebben), en dat het lichtaantal 28 blijft.
+- **Beeldverslag:** een ondode die uit een donkere gang komt, met de camera in het licht — dat is het geval waar rimlight voor bestaat. Plus dezelfde ondode vlak vóór een lichte muur (daar mag het effect juist níét overheersen).
 - **Let op:** een echte rimlight-**lichtbron** zou 14-18 extra
   `PointLight`s betekenen bovenop 27 — onbetaalbaar (§10.3). Dit is
   shaderwerk. `onBeforeCompile` moet **in de materiaalfabriek**, nooit
@@ -2153,7 +2186,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   te gloeien, wat de toon naar sci-fi duwt.
 - **Niet veranderen:** `kernMateriaal`; de oogtrap; wereldmaterialen.
 
-### Ticket 101 — Verval-shading op de huid
+### Ticket 101 —101 Verval-shading op de huid
 - **Context:** `geo()` (gedeelde vormen krijgen eenmalig een
   `color`-attribuut), `maakOndodeModel()`, `huidKleur`,
   `STADSARCHIEF_KLEURSET_TINT`.
@@ -2168,6 +2201,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   — assert dat de kleurset-ontgrendeling nog steeds een meetbaar
   kleurverschil geeft, en dat twee verschillende types nog steeds
   meetbaar in tint verschillen.
+- **Beeldverslag:** close-up van drie verschillende `ONDODE_TYPES` naast elkaar, zodat zichtbaar is dat de type-kleuren nog steeds te onderscheiden zijn.
 - **Let op:** de type-kleuren zijn een **gameplaysignaal** (Brander vs.
   Loper). De vervalkleur mag daarom in **waarde** variëren, niet in
   **tint**. Dit is de grens tussen sfeer en balans.
@@ -2178,7 +2212,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 
 ### Fase 4 — Ruimtelijke diepte
 
-### Ticket 102 — Subdivisie-helper voor grote vlakken (fundament)
+### Ticket 102 —102 Subdivisie-helper voor grote vlakken (fundament)
 - **Context:** `bouwMuur()`, `blok()`, de vloer-/plafond-
   `PlaneGeometry`-blokken (startkamer, atelier, kelder, kelderoost,
   vliering). Spec: §10.7-beslissing 82.
@@ -2192,13 +2226,14 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   de band (dit ticket mag het beeld niet veranderen).
 - **Test:** `test-visuele-basislijn.mjs` — het beeld moet **identiek**
   blijven binnen de band; plus een assertie op het driehoekstal.
+- **Beeldverslag:** één opname per zone. **Deze horen pixel-identiek te zijn aan de voor-opname** — dit ticket mag het beeld niet veranderen. Zichtbaar verschil betekent verschoven naden of een fout in de subdivisie.
 - **Let op:** dit ticket levert **geen zichtbaar effect** op. Als het
   beeld verandert, is er iets mis. Let op de naden: gesubdivideerde
   vlakken moeten exact op dezelfde wereldcoördinaten eindigen als
   daarvoor, anders ontstaan kieren tussen muur en vloer.
 - **Niet veranderen:** wereldafmetingen; `obstakels`; `berekenVloerY()`.
 
-### Ticket 103 — Ingebakken hoekocclusie (zwaartepunt van de ronde)
+### Ticket 103 —103 Ingebakken hoekocclusie (zwaartepunt van de ronde)
 - **Context:** T102's helper, `obstakels` als bron, `mat()`/
   `matFamilie()` (`vertexColors`). Spec: §10.7-beslissing 82.
 - **Doel:** hoeken, muurvoeten en plafondnaden lopen zacht donkerder —
@@ -2214,6 +2249,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   donkerder zijn dan vertices midden op een vlak, dat vertices rond een
   deurgat **niet** gedimd zijn, en dat er geen nieuwe materialen zijn
   bijgekomen. Plus basislijn per zone en `test-resources.mjs`.
+- **Beeldverslag:** de hoek van de startkamer, van het atelier en van de kelder, plus één deurgat van dichtbij. De deurgat-opname is de belangrijkste: die bewijst dat de opening niet dichtsmeert.
 - **Let op:** **dit is het ticket dat de helderheidsbalans het hardst
   raakt.** §7.5.5-7.5.10 zijn vier feedbackrondes over precies deze
   kalibratie, en de kelder is al eens als "te donker" teruggekomen. Meet
@@ -2240,7 +2276,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Niet veranderen:** `obstakels`; basiskleuren; het cache-contract van
   `mat()`/`matFamilie()`.
 
-### Ticket 104 — Variatie per instantie
+### Ticket 104 —104 Variatie per instantie
 - **Context:** `blok()`, `meubelBox()`, de `vertexColors`-infrastructuur
   uit T103. Spec: §10.12-beslissing 87.
 - **Doel:** geen twee identieke bakstenen, kisten of planken.
@@ -2252,6 +2288,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Test:** `test-instantievariatie.mjs` — assert determinisme over twee
   page-loads, het tintbereik, en dat `materiaalCache`/`matFamilieCache`
   niet groeien. Plus basislijn.
+- **Beeldverslag:** een muurvlak met meerdere blokken tegelijk in beeld, plus een rij identieke kisten. Zonder meerdere exemplaren in één beeld is variatie niet te zien.
 - **Let op:** de ondode-modellen doen dit al met een **nieuw materiaal
   per instantie** — dat is precies wat hier vermeden moet worden. De
   meting laat 285 unieke materialen zien in een lege scene, veel meer
@@ -2260,7 +2297,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   maakt `test-visuele-basislijn.mjs` instabiel.
 - **Niet veranderen:** het cache-contract; `PALET`-waarden.
 
-### Ticket 105 — Afgeschuinde randen
+### Ticket 105 —105 Afgeschuinde randen
 - **Context:** `blok()`, `meubelBox()`, `bouwTafel()`, `deurMesh`, de
   kisten/tonnen/werkbanken; `geo()` als cache-patroon. Spec:
   §10.12-beslissing 87.
@@ -2274,6 +2311,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Test:** `test-afschuining.mjs` — assert dat gelijke maten dezelfde
   gecachete geometrie delen, dat muren ongewijzigd zijn, en het
   driehoekstal. Plus `test-resources.mjs`.
+- **Beeldverslag:** close-up van een tafelhoek en een kistrand onder direct lamplicht — het lichtstreepje op de rand is het hele ticket.
 - **Let op — TDZ-val:** "gecachet zoals `geo()` dat doet" betekent
   **niet** dat je `geo()` mag aanroepen. `geoCache` staat op regel 5500;
   `blok()` en `meubelBox()` draaien vanaf regel 833 tijdens module-load.
@@ -2292,7 +2330,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 
 ### Fase 5 — Oppervlak
 
-### Ticket 106 — Wereldschaal-UV's (fundament)
+### Ticket 106 —106 Wereldschaal-UV's (fundament)
 - **Context:** `bouwCanvasTextuur()` (`repeat.set(4, 4)`), `blok()`,
   `meubelBox()`, `bouwMuur()`, de vloer-/plafond-planes. Spec:
   §10.11-beslissing 86.
@@ -2307,6 +2345,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Test:** `test-wereldschaal-uv.mjs` — assert dat twee vlakken van
   verschillende afmeting dezelfde UV-dichtheid per wereldmeter hebben, en
   dat `canvasTextuurCache` nog steeds 3 entries heeft.
+- **Beeldverslag:** één opname per zone. **Horen identiek te zijn** (fundament-ticket, geen zichtbaar effect). Voeg één close-up toe van een groot én een klein vlak naast elkaar, om de UV-dichtheid te tonen.
 - **Let op:** **dit ticket levert in isolatie bijna geen zichtbaar effect
   op** — een `roughnessMap` rond wit stretch je nauwelijks merkbaar. Het
   is fundament voor T107. Niet "verbeteren" door er alvast een `map` bij
@@ -2314,7 +2353,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   texture-samples per map per fragment op een fragment-bound scene).
 - **Niet veranderen:** de tekenaars; de cache; basiskleuren.
 
-### Ticket 107 — De procedurele texturenset
+### Ticket 107 —107 De procedurele texturenset
 - **Context:** `CANVAS_TEXTUUR_TEKENAARS`, `bouwCanvasTextuur()`,
   `MATERIAAL_FAMILIES`, `matFamilie()`, `PALET`. Spec:
   §10.11-beslissing 86.
@@ -2331,6 +2370,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   dat elke familie zijn drie maps heeft, en dat er geen textuur per
   instantie wordt aangemaakt. Meet de generatietijd en assert een
   bovengrens. Plus basislijn en `test-resources.mjs`.
+- **Beeldverslag:** per materiaalfamilie twee opnamen: close-up (~1 m) en middenafstand (~4 m). De middenafstand is waar een te druk patroon zich verraadt.
 - **Let op:** **stijl is hier het grootste risico, niet performance.**
   Fotorealistische baksteen op blokgeometrie ziet er *slechter* uit dan
   effen kleur — dan zie je pas echt dat het dozen zijn. Gestileerd
@@ -2343,7 +2383,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   `map` mag patroon toevoegen, niet de gemiddelde kleur verschuiven);
   het cache-mechanisme.
 
-### Ticket 108 — Normal maps uit dezelfde hoogtekaarten
+### Ticket 108 —108 Normal maps uit dezelfde hoogtekaarten
 - **Context:** `bouwCanvasTextuur()` (zustertje voor hoogte → normal),
   `matFamilie()`, `MATERIAAL_FAMILIES`. Spec: §10.11-beslissing 86.
 - **Doel:** voegen en houtnerf vangen echt licht.
@@ -2355,6 +2395,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Test:** `test-normalmap.mjs` — assert dat de normal-maps gedeeld
   zijn en uit dezelfde hoogtebron komen als T107. Plus basislijn en een
   expliciete rendermetriek-vergelijking vóór/ná.
+- **Beeldverslag:** een muur onder scherende belichting (vlak naast een hanglamp) — daar vangen de voegen het licht. Frontaal belicht toont normal mapping vrijwel niets.
 - **Let op:** **dit is de duurste per-fragment-richting van de ronde en
   hij schaalt met het aantal lichten** (27). Als de fillrate-aanname uit
   §10.3 klopt, is dit de eerste richting die op zwakke hardware
@@ -2368,7 +2409,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 
 ### Fase 6 — Licht als vorm
 
-### Ticket 109 — Raamprojecties op de vloer
+### Ticket 109 —109 Raamprojecties op de vloer
 - **Context:** de dakraam-blokken, de glas-/raamblokken rond
   `glasMateriaal`, het `lichtvlek`-patroon uit `bouwLantaarn()`,
   `PALET.raamWarmAmber`/`raamKoelBlauw`. Spec: §10.6-beslissing 81.
@@ -2382,6 +2423,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Test:** `test-raamprojectie.mjs` — assert het lichtaantal (28), dat
   elke projectiequad op een vlak vloerdeel ligt, en dat de textuur
   gedeeld is. Plus basislijn.
+- **Beeldverslag:** de atelier-vloer onder het centrale dakraam, plus één gevelraam op de binnenplaats.
 - **Let op:** de projectie is **statisch** en klopt dus niet meer zodra
   er iets tussen raam en vloer staat. In een donkere scene met fog is dat
   aanvaardbaar; noem het in een comment zodat het een bewuste cheat
@@ -2390,7 +2432,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   nieuw lichttype.
 - **Niet veranderen:** `glasMateriaal`; de dakraamlichten; het lichtaantal.
 
-### Ticket 110 — Zichtbare lichtkegels (duurste ticket van de ronde)
+### Ticket 110 —110 Zichtbare lichtkegels (duurste ticket van de ronde)
 - **Context:** `bouwLantaarn()`, de dakraam-blokken,
   `grachtLantaarnLicht`, `hangLamp()`, `buitenLichten`/`lampLichten`,
   `scene.fog`. Spec: §10.6-beslissing 81.
@@ -2406,6 +2448,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Test:** `test-lichtkegel.mjs` — assert het kegelaantal, dat de
   opacity meebeweegt met `stroomFactor`, en dat het lichtaantal 28
   blijft. Plus basislijn en een expliciete rendermetriek-vergelijking.
+- **Beeldverslag:** onder een binnenplaats-lantaarn, licht omhoog kijkend; plus hetzelfde standpunt tijdens een Stroomuitval (de kegel moet meedimmen) en één met de camera ín de kegel (de overdraw-cliff).
 - **Let op:** **dit is de duurste toegelaten richting.** Grote,
   overlappende, camera-nabije additieve transparantie is puur overdraw,
   en op `pixelRatio` 2 telt dat dubbel. Er is een reële performance-cliff
@@ -2421,7 +2464,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 
 ### Fase 7 — De wereld buiten
 
-### Ticket 111 — Nachthemel
+### Ticket 111 —111 Nachthemel
 - **Context:** `scene.background` (`0x05080b`), `camera.far` (50),
   `FOG_NORMAAL`, T93's zoneprofiel. Spec: §10.13-beslissing 88.
 - **Doel:** boven de binnenplaats hangt een echte nachthemel.
@@ -2435,6 +2478,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Test:** `test-nachthemel.mjs` — assert `fog: false`, `BackSide`,
   dat de dome binnen `camera.far` past, en dat hij met de camera
   meebeweegt. Plus basislijn (binnenzones **moeten** onveranderd zijn).
+- **Beeldverslag:** binnenplaats, recht omhoog kijkend. Plus één opname vanuit de startkamer om te bewijzen dat er binnen niets van te zien is.
 - **Let op:** **donker en onopvallend houden.** Een sterrenhemel als in
   een openwereldspel trekt de aandacht weg van waar die hoort — meer "er
   is een boven" dan "kijk eens hoe mooi". Dit is een stijlbreukrisico,
@@ -2443,7 +2487,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Niet veranderen:** `camera.far`; de fog-profielen uit T93;
   het lichtaantal.
 
-### Ticket 112 — Skyline-silhouet
+### Ticket 112 —112 Skyline-silhouet
 - **Context:** de binnenplaats-gevels (`PALET.gevelKoud`/`gevelWarm`),
   de gracht-zone, `blok()`, `camera.far`, T93's buitenprofiel. Spec:
   §10.13-beslissing 88.
@@ -2460,6 +2504,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Test:** `test-skyline.mjs` — assert het aantal draw calls dat de
   skyline toevoegt, dat er geen collision bijkomt, en dat de geometrie
   binnen `camera.far` valt. Plus basislijn.
+- **Beeldverslag:** binnenplaats richting de horizon, op ooghoogte — het schaalgevoel is hier het beoordelingspunt.
 - **Let op:** het echte risico is **schaal** — te dichtbij of te groot en
   de binnenplaats voelt kléiner in plaats van groter. Geometrie die niet
   wegdooft in een spel waarin alles wegdooft, kan opvallend fout lijken;
@@ -2467,7 +2512,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   zinloos: de fog op 24 m dooft alles uit.
 - **Niet veranderen:** `obstakels`; `camera.far`; de zone-indeling.
 
-### Ticket 113 — Verlichte raampjes in de verte
+### Ticket 113 —113 Verlichte raampjes in de verte
 - **Context:** T112's silhouetlagen, de bestaande gevelraampjes,
   `PALET.raamWarmAmber`/`raamWarmZacht`, `buitenLichten`/`stroomFactor`,
   het **Accent**-niveau uit T89.
@@ -2481,6 +2526,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   Signaal-laag die de speler moet kunnen vinden.
 - **Test:** uitbreiding `test-skyline.mjs` — assert het emissieniveau en
   de Stroomuitval-koppeling. Plus basislijn.
+- **Beeldverslag:** de skyline normaal én tijdens een Stroomuitval (alle raampjes uit). Dat verschil is de reden dat dit ticket bestaat.
 - **Let op:** dit ticket bestaat niet zonder T112 en is een klein detail.
   Bouw het niet groter dan het is.
 - **Niet veranderen:** het bloom-niveau; T89's hiërarchie.
@@ -2489,7 +2535,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 
 ### Fase 8 — Water
 
-### Ticket 114 — Levend water bij de gracht
+### Ticket 114 —114 Levend water bij de gracht
 - **Context:** `waterMesh`, `WATER_BREEDTE`, `grachtLantaarnLicht`,
   `bootGroep` + `updateBootPositie()`. Spec: §10.14-beslissing 89.
 - **Doel:** de gracht deint en breekt het lantaarnlicht.
@@ -2505,6 +2551,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   vlonderrand blijft, dat `composer.passes.length` 4 blijft, en dat de
   bootpositie per frame nog steeds door `updateBootPositie()` bepaald
   wordt. Plus `test-gracht-dock.mjs` en `test-boot-aankondiging.mjs`.
+- **Beeldverslag:** vanaf de vlonder over de gracht, met de lantaarnreflectie in beeld. Twee frames met ~1 s ertussen, zodat de beweging zichtbaar is.
 - **Let op:** een echte spiegelreflectie via `three/addons/objects/Reflector`
   is een **nieuwe import én een tweede scene-render**, voor één vlak dat
   de speler alleen in zone 4 ziet, in het donker. Bewust afgewezen — de
@@ -2518,7 +2565,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 
 ### Fase 9 — Toegankelijkheid
 
-### Ticket 115 — Visuele schakelaars in het instellingenmenu (optioneel)
+### Ticket 115 —115 Visuele schakelaars in het instellingenmenu (optioneel)
 - **Context:** het bestaande instellingenmenu waar `muisgevoeligheid`
   (T75) en de geluidsknop in staan; de schakelconstanten uit beslissing
   92. Spec: §10.16 (correctie na review).
@@ -2532,6 +2579,7 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Test:** `test-visuele-instellingen.mjs` — assert persistentie,
   corrupte-opslag-afhandeling en dat uitzetten het effect daadwerkelijk
   neutraliseert. Plus `test-instellingen`-regressie.
+- **Beeldverslag:** voor beide schakelaars een paar aan/uit, vanaf een standpunt waar het effect duidelijk is (korrel: donkere hoek; camerawieg: reeks tijdens lopen).
 - **Let op:** de camerawieg is de reden dat dit ticket bestaat en niet
   louter comfort — camerabeweging kan spelers fysiek onwel maken, en dan
   is een schakelaar toegankelijkheid. Voeg **geen** derde schakelaar toe
@@ -2539,6 +2587,88 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   ontwikkelaarsknoppen, geen spelerinstellingen.
 - **Niet veranderen:** de bestaande instellingen; de opslagsleutels van
   T75/T86.
+
+---
+
+### Fase 10 — Eindmeting
+
+### Ticket 116 — Eindmeting, speeltest en herbeoordeling van laag 3 en 4
+- **Context:** de meetprocedure uit §10.14.2-beslissing 91, T88's
+  basislijn en beeldverslag-script, de nulmeting in §10.17, en
+  `VISUEEL.md` §3.2/§3.3 voor de niet-gebouwde richtingen. Spec:
+  §10.14.5-beslissing 94.
+- **Doel:** vaststellen wat er nu écht staat — visueel, qua speelgevoel
+  en qua performance — en op basis daarvan adviseren welke richtingen
+  uit laag 3 en laag 4 alsnog de moeite zijn.
+- **Opleverproduct:** **een document, geen code.** Voorstel:
+  `VISUEEL-EVALUATIE.md`, Nederlands, met de drie delen hieronder.
+
+**Deel 1 — Performance-eindmeting.** Volg de procedure uit beslissing
+91 op de eindtoestand:
+  1. `python3 -m http.server 8000`, spel in Chrome, DevTools →
+     Performance.
+  2. Meet op elk vastgelegd standpunt, mét 14 ondoden actief, 10 s per
+     opname.
+  3. Noteer per standpunt de **mediane frametijd** en het **percentage
+     frames boven 16,7 ms**.
+  4. Meet ook de twee zwaarste momenten apart: een Mistgolf met volle
+     golf, en de camera ín een lichtkegel (T110).
+  5. Zet de rendermetrics uit T88 naast de nulmeting in §10.17: draw
+     calls, driehoeken, materialen, geometrieën, texturen,
+     shaderprogramma's, passes.
+  6. Meet de laadtijd (T107's texturengeneratie) apart.
+
+**Deel 2 — Speeltest.** Speel tot voorbij golf 10 en beoordeel
+expliciet de vijf leesbaarheidsrisico's uit waarschuwing 72:
+stroboscoop bij de Ratelaar (T90), aberratie in het richtpunt (T96),
+vignet over het perifere zicht (T97), onderscheidbaarheid van
+`ONDODE_TYPES` (T101), en kegels die het beeld vullen (T110). Noteer
+elke hapering, elk moment waarop je iets niet kon aflezen, en elk
+moment waarop het beeld mooier was dan bruikbaar.
+
+**Deel 3 — Herbeoordeling van laag 3 en 4.** Loop de dertien
+niet-gebouwde richtingen langs en geef per stuk een **oordeel met
+onderbouwing uit deel 1 en 2**, niet uit de oorspronkelijke schatting:
+
+| | Richting | Vraag die deel 1/2 nu kan beantwoorden |
+| --- | --- | --- |
+| Laag 3 | B6 — vuil en slijtage | Is er na T103/T107 nog visuele ruimte, of wordt het modderig? |
+| | C3 — vertex-jitter | Voegt dit nog iets toe naast T103's occlusie? |
+| | F1 — hoogtemist | Hoeveel fragment-marge is er nog na T110? |
+| | F4 — stof per zone | Zijn T110's kegels er gekomen? Zo nee: overslaan. |
+| | G3 — eventkleuren | Rijdt gratis mee op T98 — waarom dan niet? |
+| | H3 — blijvende inslagen | Past +48 draw calls binnen de gemeten marge? |
+| | E5 — dissolve bij de dood | Is T95 al genoeg als kill-feedback? |
+| Laag 4 | A5 — gerichte `DirectionalLight` | Is de schaduw ná T103 nog steeds onzichtbaar? |
+| | B5 — env map | Heeft T114's water dit nog nodig? |
+| | D6 — tonemapping-curve | Is de kalibratie na T098/T103/T107 nog gezond? |
+| | F3 — regen | Past dit binnen de gemeten buitenzone-marge? |
+| | F5 — mistslierten | Wat kost een Mistgolf nu al (deel 1, stap 4)? |
+| | G1 — kleurmigratie | Is de kleurtaal na T98 al samenhangend genoeg? |
+
+  Sluit af met een **top 3** van richtingen die het meeste opleveren voor
+  de minste kosten, en een expliciete lijst van wat je definitief laat
+  vallen — met reden.
+
+- **Acceptatie:** alle drie de delen aanwezig; elk oordeel in deel 3
+  verwijst naar een getal of waarneming uit deel 1 of 2; er staat een
+  expliciet ja/nee per richting, geen "zou kunnen".
+- **Test:** `run-all.mjs` volledig groen als eindcontrole, plus
+  `test-visuele-basislijn.mjs`.
+- **Beeldverslag:** de volledige eindset vanaf alle vastgelegde
+  standpunten, náást de "voor"-set die T88 aan het begin van de ronde
+  heeft geproduceerd. Dat paar is het visuele eindverslag van de hele
+  ronde en het beste materiaal om te beoordelen of drie maanden werk
+  heeft opgeleverd wat het beloofde.
+- **Let op:** dit ticket is grotendeels **handwerk** en dat is de
+  bedoeling — deel 1 en 2 kunnen niet geautomatiseerd worden op
+  SwiftShader (§8.11), en deel 3 is een oordeel. Plan er een echte
+  sessie voor in. Het risico is dat dit ticket wordt overgeslagen omdat
+  het laatste bouwticket al groen was; T79 laat zien wat er dan gebeurt.
+  Verval **niet** in het alsnog bouwen van laag 3/4-richtingen binnen
+  dit ticket: het levert een advies, en de eigenaar beslist.
+- **Niet veranderen:** niets in `amsterdam-undead.html`. Dit ticket is
+  meten, spelen en schrijven.
 
 ---
 
