@@ -4387,6 +4387,51 @@ test bijwerken mét onderbouwing in dit document. Dat is precies het
 mechanisme dat `test-resources.mjs` voor geheugenlekken doet: niet
 "voorkom de wijziging", maar "maak de wijziging zichtbaar en bewust".
 
+#### 10.4.1 Twee meetvallen, allebei gemeten (correctie na review)
+
+Dit hoofdstuk beschreef T88 aanvankelijk als "screenshot → gemiddelde
+pixelhelderheid", zonder de meetomgeving te controleren. Twee metingen
+achteraf laten zien dat die beschrijving te losjes was.
+
+**Val 1 — de flikker maakt een naïeve band waardeloos.** Gemeten over 90
+opeenvolgende frames op één vast camerastandpunt:
+
+| Meting | Waarde |
+| --- | --- |
+| Laagste gemiddelde luminantie | 19,09 |
+| Hoogste gemiddelde luminantie | 21,36 |
+| Gemiddelde | 20,28 |
+| **Spreiding** | **11,2%** |
+
+Dat is geen ruis maar het flikkersysteem: de twee sinussen per lamp in
+`lampLichten`, plus `lampDipFactor`. Een band die 11% breed moet zijn om
+niet vals te alarmeren, vangt een echte regressie van 5% niet — en
+precies zulke verschuivingen zijn wat T103 (hoekocclusie) en T107
+(texturen) veroorzaken.
+
+**Gevolg voor het ontwerp van T88:** de test moet de tijdafhankelijke
+systemen **bevriezen** vóór hij meet. Concreet: de flikkerfase per lamp
+op een vaste waarde, `lampDipFactor` op 1, `mistUitfaseTimer` op 0, en
+`klok` op een vaste waarde. Pas dan is een smalle band (orde 1-2%)
+zinvol, en pas dan meet de test wat hij beweert te meten.
+
+**Val 2 — de in-page routes leveren zwart of leeg op.** De renderer
+draait met `preserveDrawingBuffer: false`. Gemeten:
+
+| Route | Resultaat |
+| --- | --- |
+| `page.screenshot()` (Playwright) | **werkt** — luminantie 30,91, 87% niet-zwart |
+| `gl.readPixels()` **binnen** de rAF-callback | werkt — luminantie ~20 |
+| `gl.readPixels()` **buiten** het rAF-venster | **0 (zwart)** |
+| `canvas.toDataURL()` na rAF | **leeg** (2018 bytes) |
+
+De screenshot-route klopt dus — Chromium composit de canvas — en dat is
+de route die T88 moet gebruiken. Maar een testschrijver die intuïtief
+naar `readPixels` of `toDataURL` grijpt (allebei voor de hand liggend
+vanuit de pagina), krijgt stilzwijgend nullen terug en schrijft een test
+die groen blijft terwijl hij niets bewaakt. Dat is de gevaarlijkste
+soort test die er bestaat, en daarom staat het hier vastgelegd.
+
 **Waarom dit ticket eerst moet.** Ná drie tickets weet je niet meer welk
 ticket welke verschuiving veroorzaakte. Dit is hetzelfde patroon als
 waarschuwing 42 (T77 vóór T69) en 57 (rastertest vóór de
@@ -4567,19 +4612,62 @@ tegelijk gevaarlijk:
    donkerder maken in de hoeken is precies het soort verschuiving waar
    §7.5.5-7.5.10 vier rondes over hebben gedaan. T88's basislijn is hier
    niet optioneel.
-2. **Hij botst met de materiaalcache.** `mat()` en `matFamilie()` cachen
-   op kleur/ruwheid/metaal respectievelijk familie/kleur. Materialen met
-   `vertexColors: true` moeten óf een eigen cache-tak krijgen, óf de vlag
-   moet globaal aan (veiliger: zonder color-attribuut gedraagt Three.js
-   zich dan als wit, dus neutraal). De tweede route is voorkeur, want de
-   eerste verdubbelt de cache en breekt het contract dat call-sites
-   erover hebben.
+2. **Hij botst met de materiaalcache — en de voor de hand liggende
+   uitweg maakt het spel zwart.** `mat()` en `matFamilie()` cachen op
+   kleur/ruwheid/metaal respectievelijk familie/kleur. Materialen met
+   `vertexColors: true` hebben dus een eigen cache-tak nodig.
+
+   > **Gemeten, r160, egaal belichte plane zonder color-attribuut:**
+   > `vertexColors: false` ⇒ gemiddelde kanaalwaarde **244**;
+   > `vertexColors: true` ⇒ **0**.
+   >
+   > Een ongebonden vertex-attribuut levert in WebGL de generieke
+   > waarde `(0, 0, 0, 1)`, en die wordt met de basiskleur
+   > vermenigvuldigd. `vertexColors` globaal aanzetten maakt daarmee
+   > **elk vlak zonder color-attribuut pikzwart** — het is geen
+   > neutrale vlag.
+
+   De enige twee veilige routes zijn daarom: (a) een **aparte
+   cache-tak** voor materialen met `vertexColors: true`, of (b)
+   `vertexColors` globaal aanzetten **en** elk betrokken vlak
+   verplicht een color-attribuut geven (wit waar er geen occlusie is).
+
+   Route (a) is de voorkeur: hij raakt alleen de vlakken die
+   daadwerkelijk occlusie krijgen, en hij faalt zichtbaar in plaats van
+   stilzwijgend. Route (b) is goedkoper in cachegrootte maar heeft een
+   catastrofale faalmodus — één vergeten vlak is een zwart gat in de
+   wereld. De cache verdubbelt niet werkelijk: alleen de families die
+   occlusie krijgen (steen, hout, tegel) krijgen een tweede tak.
 
 **Een deurgat mag niet dichtsmeren.** De occlusieberekening kijkt naar
 `obstakels`, en een deuropening is de afwezigheid van een obstakel — maar
 de muur eromheen is er wel. Zonder aandacht wordt de rand van elk deurgat
 donker en lijkt de opening kleiner dan hij is. Dat is een
 leesbaarheidsprobleem, niet alleen een schoonheidsfout.
+
+**`obstakels` is een beperkte bron, en de bake moet een na-pass zijn.**
+Twee dingen die bij het schrijven van dit hoofdstuk over het hoofd zijn
+gezien:
+
+- **`obstakels` is 2D en telt maar 56 entries.** Er zit geen Y in, dus
+  plafondhoeken zijn er niet uit af te leiden (die moeten uit de
+  bekende `KAMER_HOOGTE`/`ATELIER_HOOGTE`/`KELDER_HOOGTE` komen). En
+  decor — tafels, kisten, tonnen — zit er bewust níét in, dus occlusie
+  rond meubels komt uit T91 (contactschaduwen), niet uit T103.
+- **De array wordt tijdens het bouwen gevuld.** `bouwMuur()` roept
+  `registreerRechthoek()` aan terwijl de wereld wordt opgebouwd, dus een
+  muur die vroeg gebouwd wordt, kent de muur die er later naast komt
+  niet. **De occlusie-bake moet daarom een expliciete na-pass zijn over
+  alle verzamelde vlakken, ná het volledige geometrieblok** — niet een
+  berekening binnen `bouwMuur()` zelf. Dat vraagt om een lijst van
+  "vlakken die occlusie krijgen" die tijdens het bouwen wordt
+  verzameld en aan het eind in één keer wordt verwerkt.
+
+Een bijkomend gevolg: gekochte deuren verwijderen hun obstakel
+(`deurObstakel` e.a.), maar de gebakken occlusie blijft staan. Dat is
+aanvaardbaar (de vertexkleur rond een geopend deurgat is een fractie te
+donker), maar het hoort een bewuste keuze te zijn en geen ontdekking
+achteraf.
 
 ### 10.8 Beslissing 83 — Eén eigen naverwerkingspass als drager (T96, T97, T98)
 
@@ -4702,7 +4790,18 @@ afkomt".
 **T100 — Rimlight daarna, en niet andersom.** Een fresnel-term
 (`pow(1.0 - dot(normal, viewDir), k)`) als extra emissieve bijdrage,
 geïnjecteerd via `onBeforeCompile` op **uitsluitend** de
-ondode-materialen. Kleur bewust koel en afwijkend van zowel het warme
+ondode-materialen.
+
+**Er is nog geen fabriek om die injectie in te hangen (correctie na
+review).** §7.9's materiaal-mutatiediscipline eist dat
+`onBeforeCompile` in de materiaalfabriek zit en nooit achteraf op een
+instantie — maar `maakOndodeModel()` maakt zijn materialen **inline en
+per instantie** (`new THREE.MeshStandardMaterial({ color: huidKleur,
+... })`, meerdere keren per ondode). Er ís dus geen fabriek. T100 moet
+er eerst één maken: één `maakOndodeMateriaal(huidKleur, ...)` die alle
+inline-constructies vervangt en die de injectie op één plek uitvoert.
+Zonder die stap is de regel niet op te volgen en wordt de injectie
+onvermijdelijk over meerdere call-sites uitgesmeerd. Kleur bewust koel en afwijkend van zowel het warme
 lamplicht als het koele maanlicht, zodat een ondode nooit met decor te
 verwarren is.
 
@@ -4966,6 +5065,128 @@ Dit ticket staat achteraan omdat het volledig zelfstandig is: zone 4,
 één mesh, geen enkele afhankelijkheid. Het is een goede afsluiter en
 een veilige plek om te stoppen als de ronde uitloopt.
 
+### 10.14.1 Beslissing 90 — Declaratievolgorde: elke nieuwe cache vóór regel 833
+
+**Het probleem, en waarom het deze ronde bijna zeker zou toeslaan.** Dit
+project heeft een terugkerende bugklasse: een `const`/`let` die
+textueel ná zijn eerste gebruik staat, terwijl dat gebruik tijdens
+module-load draait. Het is al vier keer gebeurd (`PAND_ADRES`,
+`lampLichten`, `autoHerladerGekocht`, `DOORGANG_MARGE`), elke keer met
+een harde `ReferenceError` bij het laden.
+
+Ronde 8 loopt er recht op af. Drie tickets introduceren een gedeelde
+cache of helper die vanuit de wereldopbouw wordt aangeroepen:
+
+| Ticket | Wat | Aangeroepen vanuit |
+| --- | --- | --- |
+| T91 | contactschaduw-textuur + gedeelde `PlaneGeometry` | `bouwTafel()`, `bouwLantaarn()`, decor-bouwers |
+| T102 | subdivisie-helper | `bouwMuur()`, de vloer-/plafondblokken |
+| T105 | afschuinings-geometriecache | `blok()`, `meubelBox()` |
+
+En de bestaande declaratieposities zijn:
+
+```
+regel  689   const obstakels
+regel  698   const materiaalCache        <- mat()
+regel  759   const canvasTextuurCache    <- bouwCanvasTextuur()
+regel  833   function blok()             <- eerste wereldopbouw begint hier
+regel 1040   function bouwMuur()
+regel 2780   function meubelBox()
+regel 5500   const geoCache              <- geo(), pas NA de hele wereldopbouw
+```
+
+**T105 zoals oorspronkelijk beschreven ("gecachet zoals `geo()` dat
+doet") crasht dus gegarandeerd**: `geoCache` staat op regel 5500 en
+`blok()` draait vanaf 833. `geo()` is bruikbaar voor de
+ondode-modellen (die worden pas tijdens een run aangemaakt), maar niet
+voor wereldgeometrie.
+
+**De regel voor deze ronde:**
+
+> Elke nieuwe gedeelde cache, textuur of geometrie-helper die vanuit de
+> wereldopbouw wordt aangeroepen, wordt gedeclareerd **vóór regel 833**,
+> naast `materiaalCache` en `canvasTextuurCache` — met een comment dat
+> uitlegt waarom hij daar staat, precies zoals `lampLichten` en
+> `buitenLichten` dat al doen.
+
+Dat is geen stijlvoorkeur maar de enige structurele verdediging tegen
+deze bugklasse: de load-check vangt hem wel, maar pas nadat je het
+ticket al hebt gebouwd.
+
+### 10.14.2 Beslissing 91 — De performancepoort krijgt een procedure
+
+**Het probleem.** §10.3 stelt dat frametijd niet betrouwbaar meetbaar is
+in de testomgeving (SwiftShader-softwarerendering), en tegelijk gaten
+T108 en T110 op "een echte GPU-meting". Zonder procedure is dat een
+onafdwingbare poort — en er is precedent: **T79 was gegate op profiling
+en is nooit uitgevoerd.** De ronde mikt bovendien expliciet op 60fps op
+een gemiddelde laptop, en er was geen enkel ticket dat fps meet.
+
+**De beslissing.** Twee lagen, want de automatische laag kan het niet
+alleen.
+
+**Laag 1 — machinaal, in elke regressierun.** T88 legt de proxies vast
+die wél betrouwbaar zijn in SwiftShader: draw calls per frame,
+driehoeken per frame, aantal shaderprogramma's, aantal texturen,
+aantal lichten. Die getallen zijn resolutie- en hardware-onafhankelijk.
+Ze meten geen fps, maar ze vangen wel de meeste manieren waarop je fps
+verliest (een pass erbij, een materiaal dat niet deelt, een licht dat
+erbij komt).
+
+**Laag 2 — handmatig, met een vaste procedure, alleen bij de vier
+tickets die fragmentwerk toevoegen (T96, T108, T110, en T107 voor
+laadtijd).** De procedure staat vast zodat de meting herhaalbaar is:
+
+1. `python3 -m http.server 8000` in de repo-root, spel openen in Chrome.
+2. Speel tot golf 8 (of gebruik de debug-hook om 14 ondoden te spawnen).
+3. Ga staan op het vastgelegde meetpunt in de startkamer, kijkrichting
+   noord — hetzelfde punt dat T88 gebruikt.
+4. Chrome DevTools → Performance → 10 seconden opnemen.
+5. Noteer de **mediane** frametijd en het aantal frames boven 16,7 ms.
+6. Herhaal met het ticket uitgeschakeld (zie beslissing 92).
+
+**De afbreekdrempel, vooraf vastgelegd zodat hij niet achteraf wordt
+opgerekt:** meer dan 10% van de frames boven 16,7 ms, of een mediane
+frametijd die met meer dan 15% stijgt ten opzichte van dezelfde meting
+zonder het ticket ⇒ het ticket gaat terug naar zijn lichte uitvoering.
+Helpt dat niet, dan gaat hij uit.
+
+**Wie meet.** Dit is de enige stap in de hele ronde die niet
+geautomatiseerd kan worden en die de eigenaar op zijn eigen machine moet
+doen. Dat hoort expliciet in de planning te staan, niet als voetnoot —
+zonder die meting zijn T108 en T110 op goed vertrouwen gebouwd.
+
+### 10.14.3 Beslissing 92 — Elke fragment-toevoeging krijgt een schakelaar
+
+**Het probleem.** Deze ronde raakt een helderheidskalibratie die over
+vier feedbackrondes is opgebouwd, en voegt fragmentwerk toe aan een
+scene waarvan de framerate op doelhardware niet gemeten is. Als iets
+achteraf te duur of te donker blijkt, is "het ticket terugdraaien" een
+git-operatie die ook alle latere tickets meesleept.
+
+**De beslissing.** Elk ticket dat per-fragment werk toevoegt of de
+helderheid structureel verschuift, komt achter één benoemde constante te
+staan die het effect volledig uitschakelt:
+
+| Ticket | Schakelaar dekt |
+| --- | --- |
+| T96 | korrel + aberratie (de pass blijft, de termen worden 0) |
+| T97 | vignet-sterkte |
+| T98 | grading (identiteitsmatrix) |
+| T100 | rimlight-sterkte |
+| T103 | occlusiesterkte (0 = geen dimming) |
+| T108 | `normalScale` (0 = platte oppervlakken) |
+| T110 | kegel-opacity + aantal |
+
+Dat maakt de handmatige meting uit beslissing 91 pas uitvoerbaar (je
+kunt A/B meten zonder te herbouwen), het geeft de eigenaar een
+smaakknop, en het maakt een probleem in golf 20 oplosbaar zonder de
+ronde terug te draaien. De constanten horen bij elkaar te staan, niet
+verspreid door het bestand.
+
+Dit is geen instellingenmenu — dat is T115. Dit zijn constanten in de
+broncode.
+
 ### 10.15 De uitvoeringsvolgorde en waarom die zo ligt
 
 27 tickets in acht fasen. De volgorde optimaliseert op vier dingen
@@ -4984,6 +5205,7 @@ zichtbare winst vroeg.
 | **6. Licht als vorm** | T109, T110 | Goedkope statische versie vóór de dure volumetrische |
 | **7. De wereld buiten** | T111, T112, T113 | Vereist T93 (fogdiepte) uit fase 1 |
 | **8. Water** | T114 | Volledig zelfstandig, veilige afsluiter |
+| **9. Toegankelijkheid** | T115 | Optioneel; vereist T92 en T96 |
 
 **De harde afhankelijkheden, expliciet:**
 
@@ -5001,7 +5223,31 @@ zichtbare winst vroeg.
 ander spel voor ongeveer twee weken werk, zonder dat er iets
 onomkeerbaars is gebeurd. Na fase 4 staat de kern van de nieuwe
 identiteit. Fase 5 is de grootste tijdsinvestering van de ronde en de
-meest kunstzinnige; fase 6-8 zijn losse afsluiters.
+meest kunstzinnige; fase 6-9 zijn losse afsluiters.
+
+**De omvang, eerlijk (correctie na review).** Dit hoofdstuk noemde
+nergens de totale doorlooptijd, wat de ronde kleiner deed lijken dan hij
+is. Bij elkaar opgeteld uit de per-ticket-schattingen:
+
+| Fase | Tickets | Ruwe schatting |
+| --- | --- | --- |
+| 0 — Vangrail | 1 | 2-3 dagen |
+| 1 — Directe winst | 7 | ~2 weken |
+| 2 — Naverwerking | 3 | ~1 week |
+| 3 — De vijand | 3 | ~1 week |
+| 4 — Ruimtelijke diepte | 4 | 2-3 weken |
+| 5 — Oppervlak | 3 | 2-4 weken |
+| 6 — Licht als vorm | 2 | ~1 week |
+| 7 — De wereld buiten | 3 | ~1 week |
+| 8 — Water | 1 | 2-3 dagen |
+| 9 — Toegankelijkheid | 1 | 2-3 dagen |
+| **Totaal** | **28** | **~3 maanden** |
+
+Dat is geen argument om het niet te doen — het is een argument om fase 1
+als eerste mijlpaal te behandelen en pas daarna te besluiten of de rest
+volgt. De schattingen voor fase 4 en 5 zijn bovendien het minst
+betrouwbaar: dat is het werk waar "af" een kunstzinnig oordeel is en
+niet een groene test.
 
 ### 10.16 Wat deze ronde bewust niet doet
 
@@ -5024,10 +5270,14 @@ meest kunstzinnige; fase 6-8 zijn losse afsluiters.
   het geeft de speler informatie die hij nu niet heeft. Dat is een
   ontwerpbeslissing, geen visuele — en een spel over ondoden in het
   donker leeft van niet-weten.
-- **Een instellingenmenu met visuele schakelaars.** T92 (camerawieg) en
-  T96 (korrel) zijn beide kandidaten om uit te kunnen zetten, en het
-  menu waar `muisgevoeligheid` (T75) al in staat is de logische plek.
-  Dat is UI-werk en hoort in een eigen ticket, niet als bijproduct.
+- ~~**Een instellingenmenu met visuele schakelaars.**~~ **Correctie na
+  review:** dit stond hier als "buiten scope", terwijl T92 (camerawieg)
+  en T96 (korrel) allebei in hun eigen tekst stelden dat er een
+  schakelaar bij hoort — een tegenspraak binnen hetzelfde hoofdstuk.
+  Opgelost door het als **T115** aan de ronde toe te voegen, achteraan
+  en optioneel. De camerawieg is de doorslaggevende reden: die kan
+  spelers fysiek onwel maken, en dan is een schakelaar geen luxe maar
+  toegankelijkheid.
 
 ### 10.17 Nulmeting bij aanvang van deze ronde
 
@@ -5068,3 +5318,70 @@ canvas-texturen (3 → ~8), regels.
 **Wat gelijk moet blijven:** lichten (**28**), schaduwwerpende lichten
 (**1**), collision-obstakels (**56**), interactiepunten (**14**), en elk
 balansgetal uit §9.2.
+
+### 10.18 Reviewverslag: wat er na het schrijven van dit hoofdstuk is gecorrigeerd
+
+Dit hoofdstuk is in één keer geschreven en daarna kritisch nagelopen,
+waarbij vier aannames zijn getest in plaats van beredeneerd. Drie ervan
+bleken onjuist. Ze staan hier bij elkaar omdat de correcties verspreid
+door §10 zijn doorgevoerd, en omdat een fout die je niet vastlegt
+terugkomt.
+
+**1. `vertexColors` zonder color-attribuut is zwart, niet wit
+(§10.7).** Het hoofdstuk beval oorspronkelijk aan om `vertexColors`
+globaal aan te zetten, met als onderbouwing dat een ontbrekend
+color-attribuut zich "als wit, dus neutraal" gedraagt. Gemeten in r160
+op een egaal belichte plane: **`false` ⇒ 244, `true` zonder attribuut
+⇒ 0.** Een ongebonden vertex-attribuut levert `(0,0,0,1)` en dat
+vermenigvuldigt de basiskleur weg. Het opvolgen van de oorspronkelijke
+aanbeveling had elk vlak zonder color-attribuut pikzwart gemaakt — in
+T103, het ticket dat als zwaartepunt van de ronde is aangewezen. De
+aanbeveling is omgedraaid naar een aparte cache-tak.
+
+**2. De flikker maakt een naïeve helderheidsband waardeloos
+(§10.4.1).** Gemeten over 90 frames op één camerastandpunt: spreiding
+**11,2%** (19,09 tot 21,36), afkomstig van de flikkersinussen in
+`lampLichten` en `lampDipFactor`. T88 was gespecificeerd met "een band"
+zonder die spreiding te kennen; een band die breed genoeg is om de
+flikker te verdragen, vangt geen enkele realistische regressie. T88
+moet de tijdafhankelijke systemen bevriezen vóór hij meet.
+
+**3. Twee van de drie voor de hand liggende meetroutes leveren zwart of
+leeg op (§10.4.1).** `preserveDrawingBuffer` staat op `false`.
+`gl.readPixels()` buiten het rAF-venster geeft 0; `canvas.toDataURL()`
+geeft een leeg beeld. `page.screenshot()` werkt wél. De oorspronkelijke
+tekst noemde alleen "screenshot" en was daarmee toevallig goed, maar
+zonder de val te benoemen waar een testschrijver vrijwel zeker in
+loopt.
+
+**4. Wat niet fout was maar wel te vaag (§10.7, §10.10, §10.14.1).**
+Drie punten die bij nalezen niet uitvoerbaar bleken zoals opgeschreven:
+
+- `obstakels` is 2D, telt 56 entries, bevat geen decor, en wordt
+  *tijdens* het bouwen gevuld — de occlusie-bake van T103 moet dus een
+  expliciete na-pass zijn, niet een berekening binnen `bouwMuur()`.
+- T100 zou `onBeforeCompile` "in de materiaalfabriek" hangen, maar
+  `maakOndodeModel()` maakt zijn materialen inline per instantie. Die
+  fabriek bestaat niet en moet eerst gemaakt worden.
+- T105 zou geometrie cachen "zoals `geo()` dat doet", maar `geoCache`
+  staat op regel 5500 terwijl `blok()` vanaf regel 833 tijdens
+  module-load draait. Dat is een gegarandeerde TDZ-crash, en precies de
+  bugklasse die dit project al vier keer heeft geraakt. Vandaar de
+  expliciete declaratievolgorde-regel in beslissing 90.
+
+**5. Drie structurele gaten (beslissingen 91 en 92, en T115).** De ronde
+mikte op 60fps zonder één ticket dat fps meet; de performancepoort was
+onafdwingbaar (dezelfde val als T79, dat op profiling was gegate en
+nooit is uitgevoerd); er was geen systematische terugvalstrategie; en
+het hoofdstuk sprak zichzelf tegen over de instellingen-schakelaar. Alle
+vier opgelost.
+
+**Wat dit zegt over de methode.** De drie feitelijke fouten hadden één
+ding gemeen: het waren claims over hoe Three.js of de testomgeving zich
+gedraagt, opgeschreven vanuit redenering in plaats van meting. De
+architectuurredenering zelf (welke richtingen passen, in welke volgorde,
+tegen welk budget) hield wél stand. Voor een volgende ronde is de les
+smal en concreet: **elke bewering over runtime-gedrag die een ticket
+draagt, hoort gemeten te zijn vóór hij als beslissing wordt
+opgeschreven** — niet omdat redeneren onbetrouwbaar is, maar omdat het
+hier drie keer een claim opleverde die overtuigend klonk en fout was.

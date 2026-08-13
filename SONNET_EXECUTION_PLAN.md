@@ -1811,6 +1811,7 @@ Fase 5  T106 → T107 → T108
 Fase 6  T109 → T110
 Fase 7  T111 → T112 → T113
 Fase 8  T114
+Fase 9  T115   (optioneel; vereist T92 en T96)
 ```
 
 Harde afhankelijkheden: T88 vóór alles · T89 vóór T90/T110/T113 · T93
@@ -1826,25 +1827,41 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   `run-all.mjs`. Spec: §10.4-beslissing 79, nulmeting §10.17.
 - **Doel:** een machinale meetlat waaraan elk volgend ticket in deze
   ronde getoetst wordt.
-- **Stappen:** (1) per zone één vaste camerastand (positie + kijkrichting
-  + vensterafmeting hardcoded, nooit afhankelijk van spelstaat);
-  (2) screenshot → gemiddelde en mediane pixelhelderheid + verdeling over
-  een paar helderheidsbanden; (3) rendermetrics vastleggen via
-  `info.render`/`info.memory` met `autoReset = false`; (4) de
-  invarianten-tellingen uit §10.17 asserteren (28 lichten, 1
+- **Stappen:** (1) per zone één vaste camerastand (positie +
+  kijkrichting + vensterafmeting hardcoded, nooit afhankelijk van
+  spelstaat); (2) **de tijdafhankelijke systemen bevriezen** (zie Let
+  op); (3) `page.screenshot()` → gemiddelde en mediane pixelhelderheid +
+  verdeling over een paar helderheidsbanden; (4) rendermetrics
+  vastleggen via `info.render`/`info.memory` met `autoReset = false`;
+  (5) de invarianten-tellingen uit §10.17 asserteren (28 lichten, 1
   schaduwwerper, 56 obstakels, 14 interactiepunten).
 - **Acceptatie:** de test draait groen op de huidige build; elke
   vastgelegde waarde staat als constante bovenaan het bestand met een
-  toegestane band eromheen; `run-all.mjs` pikt hem op.
-- **Test:** zichzelf. Verifieer daarnaast dat twee opeenvolgende runs
-  dezelfde waarden binnen de band opleveren (anders is de band te smal
-  of zit er niet-determinisme in de camerastand).
-- **Let op:** assertie is een **band**, geen exact getal — ruis (T96),
-  variatie (T104) en animatie maken exacte pixelgelijkheid onhaalbaar.
-  Zet de band ruim genoeg om niet-determinisme op te vangen, maar smal
-  genoeg om een echte verschuiving te vangen. Pointer lock simuleren
-  (bekende valkuil uit CLAUDE.md), en de camerastand mag niet van een
-  gespawnde ondode of een gekochte deur afhangen.
+  toegestane band eromheen; **de band is smal (orde 1-2%), niet 11%**;
+  `run-all.mjs` pikt hem op.
+- **Test:** zichzelf. Verifieer expliciet dat **tien** opeenvolgende
+  metingen binnen de band vallen — twee is niet genoeg om de
+  flikkercyclus te vangen.
+- **Let op — twee gemeten vallen (§10.4.1), allebei fataal als je ze
+  mist:**
+  1. **De flikker geeft 11,2% spreiding** over 90 frames (19,09-21,36,
+     gemiddelde 20,28). Dat komt van de twee sinussen per lamp in
+     `lampLichten` plus `lampDipFactor`. **Bevries vóór het meten:** de
+     flikkerfase per lamp op een vaste waarde, `lampDipFactor` op 1,
+     `mistUitfaseTimer` op 0, `klok` op een vaste waarde. Zonder dat is
+     de band óf zo breed dat hij niets vangt, óf hij alarmeert vals.
+  2. **Gebruik `page.screenshot()`, NIET `gl.readPixels()` of
+     `canvas.toDataURL()`.** De renderer draait met
+     `preserveDrawingBuffer: false`. Gemeten: `readPixels` buiten het
+     rAF-venster ⇒ **0 (zwart)**; `toDataURL()` na rAF ⇒ **leeg**;
+     `page.screenshot()` ⇒ werkt (luminantie 30,91). De twee
+     kapotte routes zijn precies de routes waar je intuïtief naar
+     grijpt, en ze leveren een test op die groen blijft terwijl hij
+     niets bewaakt.
+
+  Verder: pointer lock simuleren (bekende valkuil uit CLAUDE.md), en de
+  camerastand mag niet van een gespawnde ondode of een gekochte deur
+  afhangen.
 - **Niet veranderen:** niets in `amsterdam-undead.html`. Dit ticket is
   test-only.
 
@@ -2111,10 +2128,16 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
   buiten de injectie houden), `OOG_INTENSITEIT_MIST`/`_STROOMUITVAL`.
   Spec: §10.10-beslissing 85.
 - **Doel:** ondoden krijgen een koele lichtrand langs hun silhouetranden.
-- **Stappen:** fresnel-term (`pow(1.0 - dot(normal, viewDir), k)`) als
-  extra emissieve bijdrage, via `onBeforeCompile` op **uitsluitend** de
-  ondode-materialen. Gedeelde uniform voor de sterkte, zodat hij mee kan
-  bewegen met de eventgolven.
+- **Stappen:** (1) **eerst een materiaalfabriek maken** —
+  `maakOndodeMateriaal(huidKleur, ...)` die alle inline
+  `new THREE.MeshStandardMaterial({ color: huidKleur, ... })`-constructies
+  in `maakOndodeModel()` vervangt; (2) de fresnel-term
+  (`pow(1.0 - dot(normal, viewDir), k)`) als extra emissieve bijdrage via
+  `onBeforeCompile` in díé fabriek; (3) gedeelde uniform voor de sterkte,
+  zodat hij mee kan bewegen met de eventgolven.
+  **Stap 1 is niet optioneel:** waarschuwing 63 eist dat
+  `onBeforeCompile` in de fabriek zit, en die fabriek bestáát niet —
+  `maakOndodeModel()` maakt zijn materialen inline en per instantie.
 - **Acceptatie:** **geen extra `Light`** (lichtaantal blijft 28); de
   rimkleur wijkt zichtbaar af van zowel warm lamplicht als koel
   maanlicht; `kernMateriaal` is ongemoeid.
@@ -2194,11 +2217,26 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Let op:** **dit is het ticket dat de helderheidsbalans het hardst
   raakt.** §7.5.5-7.5.10 zijn vier feedbackrondes over precies deze
   kalibratie, en de kelder is al eens als "te donker" teruggekomen. Meet
-  per zone, niet globaal. Voor de cachebotsing: zet `vertexColors`
-  **globaal** aan in plaats van een tweede cache-tak te maken — zonder
-  color-attribuut gedraagt Three.js zich dan als wit, dus neutraal. Een
-  tweede cache-tak verdubbelt de cache en breekt het contract dat
-  call-sites erover hebben.
+  per zone, niet globaal.
+
+  **`vertexColors` globaal aanzetten maakt het spel ZWART — doe dat
+  niet.** Gemeten in r160 op een egaal belichte plane zonder
+  color-attribuut: `vertexColors: false` ⇒ gemiddelde kanaalwaarde
+  **244**, `vertexColors: true` ⇒ **0**. Een ongebonden vertex-attribuut
+  levert `(0,0,0,1)` en dat vermenigvuldigt de basiskleur weg. Maak
+  daarom een **aparte cache-tak** voor materialen met `vertexColors:
+  true` — alleen voor de families die occlusie krijgen (steen, hout,
+  tegel), dus de cache verdubbelt niet werkelijk. Die route faalt
+  zichtbaar in plaats van stilzwijgend.
+
+  **De bake moet een na-pass zijn.** `obstakels` wordt *tijdens* het
+  bouwen gevuld — een muur die vroeg gebouwd wordt, kent de muur die er
+  later naast komt niet. Verzamel tijdens het bouwen een lijst van
+  vlakken die occlusie krijgen, en verwerk die in één keer ná het
+  volledige geometrieblok. Let ook op de grenzen van de bron:
+  `obstakels` is 2D (geen Y — plafondhoeken komen uit `KAMER_HOOGTE`/
+  `ATELIER_HOOGTE`/`KELDER_HOOGTE`) en bevat geen decor
+  (meubel-occlusie is T91, niet dit ticket).
 - **Niet veranderen:** `obstakels`; basiskleuren; het cache-contract van
   `mat()`/`matFamilie()`.
 
@@ -2236,8 +2274,18 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 - **Test:** `test-afschuining.mjs` — assert dat gelijke maten dezelfde
   gecachete geometrie delen, dat muren ongewijzigd zijn, en het
   driehoekstal. Plus `test-resources.mjs`.
-- **Let op:** bij meer dan ~2 cm gaat de visuele geometrie merkbaar
-  afwijken van `obstakels` en lijk je net naast een hoek vast te lopen.
+- **Let op — TDZ-val:** "gecachet zoals `geo()` dat doet" betekent
+  **niet** dat je `geo()` mag aanroepen. `geoCache` staat op regel 5500;
+  `blok()` en `meubelBox()` draaien vanaf regel 833 tijdens module-load.
+  Een aanroep crasht met een `ReferenceError` — exact de bugklasse die
+  dit project al vier keer heeft geraakt (`PAND_ADRES`, `lampLichten`,
+  `autoHerladerGekocht`, `DOORGANG_MARGE`). Declareer een **eigen**
+  afschuiningscache **vóór regel 833**, naast `materiaalCache` en
+  `canvasTextuurCache`, met een comment waarom hij daar staat
+  (beslissing 90). Hetzelfde geldt voor T91 en T102.
+
+  Verder: bij meer dan ~2 cm gaat de visuele geometrie merkbaar afwijken
+  van `obstakels` en lijk je net naast een hoek vast te lopen.
 - **Niet veranderen:** `obstakels`; muurgeometrie; wereldafmetingen.
 
 ---
@@ -2468,6 +2516,32 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
 
 ---
 
+### Fase 9 — Toegankelijkheid
+
+### Ticket 115 — Visuele schakelaars in het instellingenmenu (optioneel)
+- **Context:** het bestaande instellingenmenu waar `muisgevoeligheid`
+  (T75) en de geluidsknop in staan; de schakelconstanten uit beslissing
+  92. Spec: §10.16 (correctie na review).
+- **Doel:** de speler kan camerawieg en filmkorrel uitzetten.
+- **Stappen:** twee schakelaars die de bestaande constanten uit T92 en
+  T96 op 0 zetten; persistent opslaan volgens hetzelfde patroon als
+  `leesGevoeligheid()`/T75.
+- **Acceptatie:** vormvalidatie bij het lezen met een veilige default
+  (patroon T74/T75); onbekende sleutels negeren; standaard staan beide
+  effecten **aan**.
+- **Test:** `test-visuele-instellingen.mjs` — assert persistentie,
+  corrupte-opslag-afhandeling en dat uitzetten het effect daadwerkelijk
+  neutraliseert. Plus `test-instellingen`-regressie.
+- **Let op:** de camerawieg is de reden dat dit ticket bestaat en niet
+  louter comfort — camerabeweging kan spelers fysiek onwel maken, en dan
+  is een schakelaar toegankelijkheid. Voeg **geen** derde schakelaar toe
+  "omdat het kan": de overige constanten uit beslissing 92 zijn
+  ontwikkelaarsknoppen, geen spelerinstellingen.
+- **Niet veranderen:** de bestaande instellingen; de opslagsleutels van
+  T75/T86.
+
+---
+
 ### Extra waarschuwingen ronde 8 (v0.22)
 
 59. **Deze ronde heeft geen natuurlijke faalsignalen.** Een te licht
@@ -2542,3 +2616,45 @@ T103 vóór T104 · T106 vóór T107 vóór T108 · T112 vóór T113.
     (§10.16), maar hij raakt een vastgelegde invariant en verdient een
     eigen ronde met een eigen GPU-meting. Geen enkel ticket hier mag er
     "alvast naartoe werken".
+
+### Extra waarschuwingen ronde 8 — aanvulling na kritische review
+
+Waarschuwingen 74-79 komen niet uit het ontwerp maar uit een review
+achteraf, waarbij vier aannames uit dit plan zijn gemeten in plaats van
+beredeneerd. Drie bleken onjuist. Volledige verantwoording:
+ARCHITECTURE_NOTES.md §10.18.
+
+74. **`vertexColors: true` zonder color-attribuut rendert ZWART, niet
+    wit.** Gemeten in r160: `false` ⇒ 244, `true` zonder attribuut ⇒ 0.
+    Een eerdere versie van dit plan beval bij T103 aan om de vlag
+    globaal aan te zetten "want dat is neutraal". Dat was fout en had
+    elk vlak zonder color-attribuut pikzwart gemaakt. Gebruik een
+    aparte cache-tak. **Als een ticket in fase 4-5 het beeld ineens
+    zwart maakt, is dit vrijwel zeker de oorzaak.**
+75. **Meet nooit met `gl.readPixels()` of `canvas.toDataURL()`.** De
+    renderer draait met `preserveDrawingBuffer: false`. Gemeten:
+    `readPixels` buiten het rAF-venster ⇒ 0 (zwart), `toDataURL()` na
+    rAF ⇒ leeg beeld, `page.screenshot()` ⇒ werkt. De twee kapotte
+    routes zijn precies de routes waar je intuïtief naar grijpt, en ze
+    leveren een test op die groen blijft terwijl hij niets bewaakt.
+76. **De lampflikker geeft 11,2% spreiding in de gemeten helderheid.**
+    Elke helderheidsmeting die de flikker, `lampDipFactor` en
+    `mistUitfaseTimer` niet bevriest, meet ruis in plaats van het
+    ticket. Dit geldt voor T88 én voor elke ad-hoc voor/na-meting die je
+    onderweg doet.
+77. **Elke nieuwe gedeelde cache hoort vóór regel 833.** `geoCache`
+    (5500) is onbruikbaar voor wereldgeometrie, want `blok()` draait
+    vanaf 833 tijdens module-load. Raakt T91, T102 en T105. Dit is de
+    vijfde keer dat deze bugklasse in dit project opduikt — de vorige
+    vier staan in beslissing 90.
+78. **`obstakels` is geen volledige occlusiebron.** 2D, 56 entries, geen
+    decor, en gevuld *tijdens* het bouwen. T103's bake moet een na-pass
+    zijn over verzamelde vlakken, niet een berekening binnen
+    `bouwMuur()`. Plafondhoeken komen uit de hoogte-constanten, niet uit
+    `obstakels`.
+79. **De performancepoort is handwerk en staat in de planning.**
+    Beslissing 91 legt de procedure en de afbreekdrempel vast (>10% van
+    de frames boven 16,7 ms, of mediane frametijd +15%). Zonder die
+    handmatige meting zijn T108 en T110 op goed vertrouwen gebouwd — en
+    T79 laat zien wat er gebeurt met een poort zonder procedure: die is
+    nooit doorlopen. Plan de meetsessie in vóór je aan fase 5-6 begint.
