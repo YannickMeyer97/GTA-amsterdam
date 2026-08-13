@@ -338,23 +338,23 @@ const vlamToepassingTest = await page.evaluate(() => {
   d.wapenStaat.gesmeed = false;
   d.stadsarchief = { ontsnappingen: 0, headshotsTotaal: 0, hoogsteGolf: 0, actief: { kleurset: false, vlamTint: false, introMelodie: false } };
   d.schiet();
-  const basisKleur = d.wapenStaat.definitie.vlam.material.color.getHex();
+  const basisKleur = d.wapenStaat.definitie.vlamMateriaal.color.getHex();
   const vlamKleurBasis = d.wapenStaat.definitie.vlamKleurBasis;
 
   // Ontgrendeld maar NIET actief: nog steeds de basiskleur.
   d.stadsarchief = { ontsnappingen: 0, headshotsTotaal: 100, hoogsteGolf: 0, actief: { kleurset: false, vlamTint: false, introMelodie: false } };
   d.schiet();
-  const ontgrendeldNietActief = d.wapenStaat.definitie.vlam.material.color.getHex();
+  const ontgrendeldNietActief = d.wapenStaat.definitie.vlamMateriaal.color.getHex();
 
   // Ontgrendeld EN actief: de archief-tint.
   d.stadsarchief.actief.vlamTint = true;
   d.schiet();
-  const ontgrendeldEnActief = d.wapenStaat.definitie.vlam.material.color.getHex();
+  const ontgrendeldEnActief = d.wapenStaat.definitie.vlamMateriaal.color.getHex();
 
   // Een gesmeed wapen wint altijd van de archief-tint (eigen ember-accent).
   d.wapenStaat.gesmeed = true;
   d.schiet();
-  const gesmeedWintVanArchief = d.wapenStaat.definitie.vlam.material.color.getHex();
+  const gesmeedWintVanArchief = d.wapenStaat.definitie.vlamMateriaal.color.getHex();
   d.wapenStaat.gesmeed = false;   // herstellen voor eventuele volgende checks
 
   return { basisKleur, vlamKleurBasis, ontgrendeldNietActief, ontgrendeldEnActief, gesmeedWintVanArchief };

@@ -393,11 +393,11 @@ const vlamKleur = await page.evaluate(() => {
   const kiesWapen = (naam) => { if (d.actiefWapenNaam !== naam) d.wisselWapen(); };
   kiesWapen('drukspuit');   // gesmeed (uit de combo-test hierboven)
   d.schiet();
-  const gesmeedKleur = d.wapenStaat.definitie.vlam.material.color.getHex();
+  const gesmeedKleur = d.wapenStaat.definitie.vlamMateriaal.color.getHex();
   const basisKleur = d.wapenStaat.definitie.vlamKleurBasis;
   d.wapenStaat.gesmeed = false;
   d.schiet();
-  const ongesmeedKleur = d.wapenStaat.definitie.vlam.material.color.getHex();
+  const ongesmeedKleur = d.wapenStaat.definitie.vlamMateriaal.color.getHex();
   d.wapenStaat.gesmeed = true;   // herstellen voor eventuele volgende checks
   return { gesmeedKleur, basisKleur, ongesmeedKleur };
 });

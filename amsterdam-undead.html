@@ -860,6 +860,39 @@ const ATELIER_HOOGTE = 3.6;
 const lampLichten = [];
 const MUUR_DIKTE = 0.3;
 
+// Ticket 89 (v0.22, §10.5-beslissing 80): emissieve hiërarchie. Drie
+// benoemde niveaus voor ELK emissief materiaal in het bestand, zodat de
+// `UnrealBloomPass`-threshold (0,82, zie de composer-opbouw) één
+// voorspelbare art-direction-knop wordt in plaats van 64 los beredeneerde
+// getallen. Vroeg gedeclareerd (TDZ) — het eerste emissieve materiaal
+// (vlieringVloerMateriaal) staat al bij regel ~1362, ruim vóór hangLamp().
+//
+//   Accent  (~0,4)      — zwakke decoraccenten, gloeit NOOIT (onder threshold).
+//                         Nog geen huidige gebruiker; fundament voor T113
+//                         (verre raampjes) en vergelijkbaar toekomstig werk.
+//   Bron    (1,2-1,6)   — lampbollen, raamglas, winkelmarkeringen,
+//                         Brander-kern. Randgeval rond de threshold, BEWUST:
+//                         net eronder of erop, nooit een uitgesproken gloed.
+//   Signaal (2,6-3,4)   — ondode-ogen, mondingsvlam. Gloeit altijd (ruim
+//                         boven threshold). Dit is een GAMEPLAY-laag: de
+//                         speler moet deze dingen kunnen vinden. Nooit
+//                         verlagen; nooit een decoratief element hierheen
+//                         tillen.
+//
+// Bestaande literals zijn hier BEWUST niet allemaal naar toe herschreven —
+// dat zou tientallen, al zorgvuldig getunede waarden in één keer laten
+// meebewegen, wat "geen zichtbaar effect" (de expliciete eis van dit
+// ticket) zou schenden. Elke call-site heeft een commentaar dat 'm indeelt;
+// alleen waar een bestaande literal al EXACT op een randwaarde zat
+// (kernMateriaal, glasMateriaal, de drie hogere OOG_INTENSITEIT_*-treden)
+// is de literal vervangen door de constante — een zuivere naamgeving,
+// géén gedragswijziging.
+const EMISSIE_ACCENT = 0.4;
+const EMISSIE_BRON_MIN = 1.2;
+const EMISSIE_BRON_MAX = 1.6;
+const EMISSIE_SIGNAAL_MIN = 2.6;
+const EMISSIE_SIGNAAL_MAX = 3.4;
+
 // Ticket 84: het pand krijgt een adres — een VERZONNEN grachtnaam (IP-regel
 // CLAUDE.md: geen bestaande Amsterdamse gracht met een echt huisnummer).
 // Eén bron van waarheid, zodat startscherm, winscherm EN het naambordje
@@ -1359,6 +1392,12 @@ function berekenVloerY(x, z) {
   // ziet dan niet eens waar je staat. Een lage emissive maakt het oppervlak
   // zélf zichtbaar zonder ook maar één PointLight toe te voegen; exact het
   // patroon dat de Smederij-gloed en de kelderoost-accenten al gebruiken.
+  // Ticket 89: BEWUST buiten de EMISSIE_*-hiërarchie (§10.5) — dit is geen
+  // "gloeiend ding" dat de speler moet zien, maar een basisverlichting-
+  // substituut (vervangt een PointLight die de vliering niet mag hebben).
+  // De intensiteit (1) staat los van de tabel: de lage EFFECTIEVE
+  // helderheid komt van de donkere emissive-kleur zelf (0x2b1f14, bijna
+  // zwart), niet van een lage intensity — precies waarom staat hierboven.
   const vlieringVloerMateriaal = mat(VLIERING_HOUT, 0.85, 0, { emissive: 0x2b1f14, emissiveIntensity: 1 });
   function vlieringVloer(breedte, diepte, cx, cz) {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(breedte, diepte), vlieringVloerMateriaal);
@@ -1403,6 +1442,8 @@ function berekenVloerY(x, z) {
   // Westmuur en zuidmuur staan ALLEEN boven de vlieringvloer: eronder ligt
   // de verzegelde dode hoek, waar toch niemand ooit komt.
   const vlieringMuurHoogte = ATELIER_HOOGTE - VLIERING_Y;
+  // Ticket 89: zelfde basisverlichting-substituut als vlieringVloerMateriaal
+  // hierboven, BEWUST buiten de EMISSIE_*-hiërarchie (§10.5).
   const vlieringMuurMateriaal = mat(VLIERING_BALK, 0.94, 0, { emissive: 0x1d150e, emissiveIntensity: 1 });
   function vlieringMuur(cx, cz, breedte, diepte) {
     const muur = new THREE.Mesh(new THREE.BoxGeometry(breedte, vlieringMuurHoogte, diepte), vlieringMuurMateriaal);
@@ -1453,6 +1494,8 @@ function berekenVloerY(x, z) {
     const koord = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, ATELIER_HOOGTE - lampY, 6), mat(0x1a1410, 0.7));
     koord.position.set(vlieringMiddenX, (ATELIER_HOOGTE + lampY) / 2, vlieringMiddenZ);
     wereld.add(koord);
+    // Ticket 89: Bron-niveau (§10.5, 1,2-1,6) — lampbol, net onder de
+    // richtwaarde, ongewijzigd gelaten (geen zichtbaar-effect-eis).
     const vlieringLamp = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8),
       mat(0xffe0a8, 0.4, 0, { emissive: 0xffb454, emissiveIntensity: 1.1 }));
     vlieringLamp.position.set(vlieringMiddenX, lampY, vlieringMiddenZ);
@@ -1472,7 +1515,8 @@ function berekenVloerY(x, z) {
     const koord = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, ATELIER_HOOGTE - lampY, 6), mat(0x1a1410, 0.7));
     koord.position.set(lampX, (ATELIER_HOOGTE + lampY) / 2, VLIERINGTRAP_CZ);
     wereld.add(koord);
-    const bolMateriaal = mat(0xffcf8a, 0.4, 0, { emissive: 0xffb347, emissiveIntensity: 0.9 });
+    // Ticket 89: was 0,9 (onder Bron), nu op de Bron-ondergrens (§10.5).
+    const bolMateriaal = mat(0xffcf8a, 0.4, 0, { emissive: 0xffb347, emissiveIntensity: EMISSIE_BRON_MIN });
     const bol = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), bolMateriaal);
     bol.position.set(lampX, lampY, VLIERINGTRAP_CZ);
     wereld.add(bol);
@@ -1716,7 +1760,7 @@ let klinkersMesh;
     // Feedback: binnenplaats ~20% donkerder (was 34/2.2) — gemeten via
     // pixelhelderheid, niet alleen de PointLight-waarde zelf. Raakt bewust
     // NIET de losstaande gracht-lantaarn (Ticket 52, eigen declaratie).
-    const lantaarnBolBasis = 1.32;
+    const lantaarnBolBasis = 1.32;   // Ticket 89: Bron-niveau (§10.5, 1,2-1,6)
     const bol = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 12),
       new THREE.MeshStandardMaterial({ color: 0xffefd0, emissive: 0xffc36a, emissiveIntensity: lantaarnBolBasis }));
     bol.position.set(x, 2.5, z);
@@ -2066,7 +2110,7 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
   const bootLichtPaal = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.35, 6), mat(0x2a2e30, 0.6, 0.3));
   bootLichtPaal.position.set(-0.8, 0.5, 0);
   bootGroep.add(bootLichtPaal);
-  const bootLichtBolBasis = 1.8;
+  const bootLichtBolBasis = 1.8;   // Ticket 89: net boven Bron-max (§10.5, 1,6) — ongewijzigd, geen zichtbaar-effect-eis
   const bootLichtBol = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 10),
     new THREE.MeshStandardMaterial({ color: 0xffefd0, emissive: 0xffc36a, emissiveIntensity: bootLichtBolBasis }));
   bootLichtBol.position.set(-0.8, 0.68, 0);
@@ -2092,7 +2136,7 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
   const gArmatuur = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.22), mat(0x1c1f20, 0.5, 0.4));
   gArmatuur.position.set(lantaarnX, 2.62, lantaarnZ);
   wereld.add(gArmatuur);
-  const gBolBasis = 2.2;
+  const gBolBasis = 2.2;   // Ticket 89: zit tussen Bron (1,2-1,6) en Signaal (2,6-3,4) in — de grootste, meest solitaire lantaarn op de kaart, bewust feller dan een gewone Bron-lamp; ongewijzigd, geen zichtbaar-effect-eis
   const gBol = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 12),
     new THREE.MeshStandardMaterial({ color: 0xffefd0, emissive: 0xffc36a, emissiveIntensity: gBolBasis }));
   gBol.position.set(lantaarnX, 2.5, lantaarnZ);
@@ -2179,7 +2223,10 @@ function updateDruppel(dt) {
 // Ramen richting de gracht: op de zuidmuur, met een koel, donkerblauw
 // gloeiend "buiten"-vlak achter een houten kozijn.
 const kozijnMateriaal = mat(0x2b1c12, 0.8);
-const glasMateriaal = mat(0x3a6a8f, 0.4, 0, { emissive: 0x5fa0c8, emissiveIntensity: 1.6 });
+// Ticket 89: Bron-niveau (§10.5) — de literal matchte al exact
+// EMISSIE_BRON_MAX, dus vervangen door de constante (naamgeving, geen
+// gedragswijziging).
+const glasMateriaal = mat(0x3a6a8f, 0.4, 0, { emissive: 0x5fa0c8, emissiveIntensity: EMISSIE_BRON_MAX });
 for (const x of [-2, 2]) {
   // Kozijn is een SOLIDE blok (geen echt gat erin), dus het glas moet
   // duidelijk vóór het kozijn hangen (dichter bij de camera/kamer) — anders
@@ -2297,7 +2344,7 @@ function hangLamp(x, z, schaduw = false, opties = {}) {
   const koord = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.6, 6), mat(0x1a1410, 0.7));
   koord.position.y = KAMER_HOOGTE - 0.3;
   groep.add(koord);
-  const bolEmissiefBasis = 0.9;
+  const bolEmissiefBasis = EMISSIE_BRON_MIN;   // Ticket 89: was 0,9 (onder Bron), nu op de Bron-ondergrens (§10.5)
   const bol = new THREE.Mesh(
     new THREE.SphereGeometry(0.16, 12, 10),
     mat(bolKleur, 0.4, 0, { emissive: emissief, emissiveIntensity: bolEmissiefBasis })
@@ -2527,7 +2574,9 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   // bruikbaar (die gaat uit van KAMER_HOOGTE/Y=0). Handmatig in
   // lampLichten geregistreerd zodat de bestaande flikker-/
   // Stroomuitval-dimloop ze automatisch meeneemt.
-  kelderLampMateriaal = mat(0xffcf8a, 0.4, 0, { emissive: 0xffb347, emissiveIntensity: 0.9 });
+  // Ticket 89: was 0,9 (onder Bron), nu op de Bron-ondergrens (§10.5) —
+  // zelfde correctie als de hangLamp()-bol hierboven.
+  kelderLampMateriaal = mat(0xffcf8a, 0.4, 0, { emissive: 0xffb347, emissiveIntensity: EMISSIE_BRON_MIN });
   function kelderLamp(x, y, z, intensiteit, bereik, koordLengte = 0.4, stroomVloer = undefined) {
     const koord = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, koordLengte, 6), mat(0x1a1410, 0.7));
     koord.position.set(x, y + koordLengte / 2, z);
@@ -3176,6 +3225,11 @@ const ICOON_GEO = {
   trommel: new THREE.CylinderGeometry(0.085, 0.085, 0.07, 12),
   trommelKogel: new THREE.CylinderGeometry(0.028, 0.028, 0.1, 8),
 };
+// Ticket 89: BEWUST onder Bron (§10.5, 1,2-1,6) — de "beschikbaar"-status
+// van een winkelpunt wordt gedragen door de ringkleur/-opacity-puls
+// (updateWinkelMarkeringen()) en het gedeelde winkelLicht (proximity-
+// PointLight), niet door de gloed van dit icoon zelf. Icoon feller maken
+// zou de aandacht van die twee, al zorgvuldig getunede signalen aftrekken.
 function icoonMesh(geometrie, kleur) {
   return new THREE.Mesh(geometrie, new THREE.MeshStandardMaterial({ color: kleur, emissive: kleur, emissiveIntensity: 0.6 }));
 }
@@ -3458,6 +3512,7 @@ const SMEDERIJ_Z = 3.5;
   const voet = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.28, 10), mat(0x18140f, 0.75));
   voet.position.set(SMEDERIJ_X, 0.0, SMEDERIJ_Z);
   wereld.add(voet);
+  // Ticket 89: Bron-niveau (§10.5).
   const kool = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8),
     new THREE.MeshStandardMaterial({ color: 0xff6a2e, emissive: 0xff4d1a, emissiveIntensity: 1.4 }));
   kool.position.set(SMEDERIJ_X, 0.65, SMEDERIJ_Z);
@@ -3489,7 +3544,7 @@ const autoHerladerMarkering = winkelMarkering(AUTOHERLADER_X, AUTOHERLADER_Z, 'a
   trommel.position.set(AUTOHERLADER_X, VLIERING_Y + 0.5, AUTOHERLADER_Z);
   trommel.castShadow = true;
   wereld.add(trommel);
-  const lampjeMateriaal = mat(0x8ef0c8, 0.4, 0, { emissive: 0x8ef0c8, emissiveIntensity: 1.3 });
+  const lampjeMateriaal = mat(0x8ef0c8, 0.4, 0, { emissive: 0x8ef0c8, emissiveIntensity: 1.3 });   // Ticket 89: Bron-niveau (§10.5)
   const lampje = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), lampjeMateriaal);
   lampje.position.set(AUTOHERLADER_X + 0.2, VLIERING_Y + 0.42, AUTOHERLADER_Z + 0.17);
   wereld.add(lampje);
@@ -3513,6 +3568,9 @@ let ereplankMedaillonDrukspuit, ereplankMedaillonRatelaar;
   plank.position.set(SMEDERIJ_X - 1.15, 1.3, SMEDERIJ_Z + 0.7);
   plank.castShadow = true;
   wereld.add(plank);
+  // Ticket 89: BEWUST buiten de EMISSIE_*-hiërarchie (§10.5) — uit (0x000000)
+  // tot koopSmederij() 'm naar Bron-niveau optilt (emissiveIntensity 1.3,
+  // zie daar), geen eigen tier zolang het wapen nog niet gesmeed is.
   ereplankMedaillonDrukspuit = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 10), mat(0x3a3a3c, 0.6, 0.2, { emissive: 0x000000 }));
   ereplankMedaillonDrukspuit.position.set(SMEDERIJ_X - 1.4, 1.4, SMEDERIJ_Z + 0.7);
   wereld.add(ereplankMedaillonDrukspuit);
@@ -3573,6 +3631,7 @@ const PANTSERDRANK_Z = (KELDER_Z_NOORD + KELDER_Z_ZUID) / 2 + 2;
   fust.position.set(PANTSERDRANK_X, -KELDER_DIEPTE + 0.42, PANTSERDRANK_Z);
   fust.castShadow = true;
   wereld.add(fust);
+  // Ticket 89: Bron-niveau (§10.5).
   const gloed = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.3, 10),
     new THREE.MeshStandardMaterial({ color: 0xd8f0ff, emissive: 0x9fd8ff, emissiveIntensity: 1.3 }));
   gloed.position.set(PANTSERDRANK_X, -KELDER_DIEPTE + 1.0, PANTSERDRANK_Z);
@@ -3951,6 +4010,16 @@ let meterDrukspuit;   // Ticket 12: krijgt een ember-accent zodra de Drukspuit g
   greep.rotation.x = 0.3;
   wapenDrukspuit.add(greep);
   // Klein drukmeter-lampje i.p.v. een oranje speelgoeddop: eigen, herkenbaar detail.
+  // Ticket 89: BEWUST niet naar Bron opgetild, ondanks dat 0,9 er net onder
+  // zit — dit hangt aan de camera (camera.add(wapenDrukspuit) verderop) en
+  // staat dus in ELK standpunt in beeld, in tegenstelling tot een lamp die
+  // alleen z'n eigen kamer raakt. Gemeten: 0,9 → EMISSIE_BRON_MIN duwde de
+  // mediane helderheid op het gracht-standpunt van T88 met 3,9% omhoog
+  // (7,78 → 8,08), over de 2%-band — precies doordat dit lampje daar, in
+  // een verder donkere buitenscène, disproportioneel meeweegt in de
+  // mediaanrangschikking. Alle andere Bron-correcties in dit ticket testten
+  // wél schoon; deze ene raakt bewust alle acht standpunten tegelijk en is
+  // dus de enige met een reëel risico op precies dit effect.
   meterDrukspuit = new THREE.Mesh(new THREE.SphereGeometry(0.014, 12, 8),
     new THREE.MeshStandardMaterial({ color: 0x8fffb0, emissive: 0x4fdc7a, emissiveIntensity: 0.9 }));
   meterDrukspuit.position.set(0, 0.065, 0.02);
@@ -3964,6 +4033,7 @@ let meterDrukspuit;   // Ticket 12: krijgt een ember-accent zodra de Drukspuit g
 // rotatie nodig) plus een zacht flikkerend ember-lichtje.
 const smederijVisualsDrukspuit = new THREE.Group();
 {
+  // Ticket 89: Bron-niveau (§10.5), zoals alle drie de Smederij-accenten.
   const ringMateriaal = new THREE.MeshStandardMaterial({
     color: SMEDERIJ_ACCENT_KLEUR, emissive: SMEDERIJ_ACCENT_KLEUR, emissiveIntensity: 1.3, roughness: 0.4,
   });
@@ -3985,12 +4055,70 @@ wapenDrukspuit.position.set(0.26, -0.22, -0.5);
 camera.add(wapenDrukspuit);
 scene.add(camera);   // camera moet in de scene zitten, anders zie je het wapen niet
 
-const vlamDrukspuit = new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 8),
-  new THREE.MeshBasicMaterial({ color: 0xbfffcf }));
+// Ticket 90 (v0.22, §10.6-beslissing 81): canvas-getekende stervorm voor de
+// mondingsvlam, i.p.v. de oude bolgeometrie — eenmalig getekend, gedeeld
+// tussen beide wapens (wit op transparant; de kleur komt van
+// material.color, die schiet() elk schot opnieuw zet — zelfde aanpak als
+// de bestaande roughness-canvas-texturen in bouwCanvasTextuur() hierboven,
+// maar als sprite i.p.v. tegelbare oppervlakteruis, dus GEEN
+// RepeatWrapping).
+let vlamTextuur = null;
+function bouwVlamTextuur() {
+  if (vlamTextuur) return vlamTextuur;
+  const n = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = n;
+  const ctx = canvas.getContext('2d');
+  const midden = n / 2;
+  ctx.translate(midden, midden);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  // Vierpuntige ster (twee gekruiste vlakken met dezelfde textuur, 45°
+  // uit elkaar, maken er samen een dichtere achtpuntige burst van).
+  for (let i = 0; i < 4; i++) {
+    ctx.save();
+    ctx.rotate((i / 4) * Math.PI * 2);
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-midden * 0.08, -midden * 0.14);
+    ctx.lineTo(0, -midden * 0.98);
+    ctx.lineTo(midden * 0.08, -midden * 0.14);
+    ctx.closePath();
+    ctx.restore();
+  }
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(0, 0, midden * 0.24, 0, Math.PI * 2);   // fel kernpuntje, ook zichtbaar als de ster klein oogt
+  ctx.fill();
+  vlamTextuur = new THREE.CanvasTexture(canvas);
+  return vlamTextuur;
+}
+// Twee gekruiste, met de stervorm gemapte vlakken i.p.v. een bol — vanuit
+// vrijwel elke hoek een herkenbare stervorm i.p.v. een plat vierkant.
+// Eén gedeeld materiaal per wapen: schiet() kleurt het per schot (via
+// groep.userData.vlamMateriaal, dat de oude `vlam.material`-toegang
+// vervangt — een Group heeft zelf geen material).
+function bouwMondingsVlam(beginKleur, grootte) {
+  const materiaal = new THREE.MeshBasicMaterial({
+    map: bouwVlamTextuur(), color: beginKleur, transparent: true,
+    depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  });
+  const groep = new THREE.Group();
+  const vlakA = new THREE.Mesh(new THREE.PlaneGeometry(grootte, grootte), materiaal);
+  groep.add(vlakA);
+  const vlakB = new THREE.Mesh(new THREE.PlaneGeometry(grootte, grootte), materiaal);
+  vlakB.rotation.z = Math.PI / 4;
+  groep.add(vlakB);
+  groep.userData.vlamMateriaal = materiaal;
+  return groep;
+}
+
+const vlamDrukspuit = bouwMondingsVlam(0xbfffcf, 0.09);
 vlamDrukspuit.position.set(0, 0.02, -0.33);
 vlamDrukspuit.visible = false;
 wapenDrukspuit.add(vlamDrukspuit);
-const vlamLichtDrukspuit = new THREE.PointLight(0x9fffb8, 1.1, 6);
+// Ticket 90: was 1,1 (het schot verlichtte de kamer niet), nu op
+// Signaal-niveau (§10.5) — één tot twee frames per schot, zie VLAM_FLITS_DUUR.
+const vlamLichtDrukspuit = new THREE.PointLight(0x9fffb8, 18, 6);
 vlamLichtDrukspuit.position.copy(vlamDrukspuit.position);
 vlamLichtDrukspuit.visible = false;
 wapenDrukspuit.add(vlamLichtDrukspuit);
@@ -4047,6 +4175,7 @@ let tandwielRatelaar;   // Ticket 12: krijgt een ember-accent zodra de Ratelaar 
 const smederijVisualsRatelaar = new THREE.Group();
 let smederijTandwielRatelaar;   // los bewaard: krijgt elke frame een rotatie
 {
+  // Ticket 89: Bron-niveau (§10.5), idem.
   smederijTandwielRatelaar = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.007, 6, 12),
     new THREE.MeshStandardMaterial({
       color: SMEDERIJ_ACCENT_KLEUR, emissive: SMEDERIJ_ACCENT_KLEUR, emissiveIntensity: 1.3, roughness: 0.4,
@@ -4056,6 +4185,7 @@ let smederijTandwielRatelaar;   // los bewaard: krijgt elke frame een rotatie
   smederijVisualsRatelaar.add(smederijTandwielRatelaar);
   // Hitteband om de loop (loop ligt na rotation.x=PI/2 langs de lokale
   // Z-as — zelfde redenering als de gloeiringen van de Drukspuit).
+  // Ticket 89: Bron-niveau (§10.5), idem.
   const hitteband = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.007, 8, 16),
     new THREE.MeshStandardMaterial({
       color: SMEDERIJ_ACCENT_KLEUR, emissive: SMEDERIJ_ACCENT_KLEUR, emissiveIntensity: 1.3, roughness: 0.4,
@@ -4074,18 +4204,34 @@ wapenRatelaar.position.set(0.26, -0.22, -0.5);
 wapenRatelaar.visible = false;
 camera.add(wapenRatelaar);
 
-const vlamRatelaar = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 8),
-  new THREE.MeshBasicMaterial({ color: 0xffd9a0 }));
+// Ticket 90: zelfde gekruiste-vlakken-truc als de Drukspuit (bouwMondingsVlam), iets groter — de Ratelaar is de volume-keuze.
+const vlamRatelaar = bouwMondingsVlam(0xffd9a0, 0.12);
 vlamRatelaar.position.set(0, 0.03, -0.36);
 vlamRatelaar.visible = false;
 wapenRatelaar.add(vlamRatelaar);
-const vlamLichtRatelaar = new THREE.PointLight(0xffcf8a, 1.6, 7);
+// Ticket 90: was 1,6, nu op Signaal-niveau (§10.5) — iets feller dan de
+// Drukspuit, zelfde verhouding als voorheen (1,6/1,1 ≈ 22/18 gerond af).
+const vlamLichtRatelaar = new THREE.PointLight(0xffcf8a, 22, 7);
 vlamLichtRatelaar.position.copy(vlamRatelaar.position);
 vlamLichtRatelaar.visible = false;
 wapenRatelaar.add(vlamLichtRatelaar);
 
 let terugslag = 0;
 let vlamTimer = 0;
+// Fix (na T90): garandeert het EERSTE frame na een schot altijd, ongeacht
+// hoe groot dt toevallig is. Zonder deze vlag wordt vlamTimer in hetzelfde
+// tick waarin hij gezet wordt óók meteen afgeboekt met de dt van het VORIGE
+// frame-interval — en die dt is geclipt op 0,05s (gameLoop, hitch-guard),
+// dus ruimer dan VLAM_FLITS_DUUR (0,033s). Bij een hapering (bijv. een golf
+// die spawnt, precies wanneer je veel schiet) kon de flits daardoor nul
+// zichtbare frames krijgen: gezet én alweer verborgen vóór de eerste render.
+let vlamNetGezet = false;
+// Ticket 90 (v0.22, §10.6): was 0,05s (~3 frames @ 60fps), nu op 1-2 frames
+// @ 60fps — ruim (3x) onder WAPEN_RATELAAR.schotCooldown (0,1s), dus twee
+// flitsen kunnen elkaar nooit overlappen: schiet() ZET vlamTimer telkens
+// terug naar deze vaste waarde (geen optelling), en de duur zelf schaalt
+// nooit mee met de vuursnelheid.
+const VLAM_FLITS_DUUR = 0.033;
 // Ticket 34: visueel-only camera-kick (recoil). Telt op bij elk schot,
 // vervalt exponentieel in de cosmetische gameLoop-zone (net als terugslag).
 // speler.pitch zelf wordt NOOIT gemuteerd — geen blijvende aim-drift.
@@ -4107,10 +4253,15 @@ const WAPEN_DRUKSPUIT = {
   naam: 'Drukspuit', magazijnMax: 8, reserve: 48, schotCooldown: 0.2,
   herlaadDuurNormaal: 1.2, herlaadDuurSnel: 0.7,
   groep: wapenDrukspuit, vlam: vlamDrukspuit, vlamLicht: vlamLichtDrukspuit,
-  vlamLichtBasis: 1.1,   // Ticket 12: schiet() vermenigvuldigt dit bij een gesmeed wapen
+  // Ticket 90: was 1,1, nu op Signaal-niveau (§10.5). Ticket 12: schiet()
+  // vermenigvuldigt dit bij een gesmeed wapen.
+  vlamLichtBasis: 18,
   // Ticket 17: originele mondingsvuur-kleuren, zodat schiet() na een
   // rollback van de gesmeed-status vanzelf weer de normale kleur toont.
-  vlamKleurBasis: vlamDrukspuit.material.color.getHex(), vlamLichtKleurBasis: vlamLichtDrukspuit.color.getHex(),
+  // Ticket 90: vlam is nu een Group (twee gekruiste vlakken) — de kleur zit
+  // op het gedeelde material via userData.vlamMateriaal, niet op .material.
+  vlamMateriaal: vlamDrukspuit.userData.vlamMateriaal,
+  vlamKleurBasis: vlamDrukspuit.userData.vlamMateriaal.color.getHex(), vlamLichtKleurBasis: vlamLichtDrukspuit.color.getHex(),
   // Ticket 11: De Smederij (per-wapen late-game upgrade) — de Drukspuit is
   // de precisie-keuze en krijgt daarom de grootste schadebonus.
   smederijConfig: { schadeBonus: 1.5, magazijnMax: 12 },
@@ -4123,8 +4274,12 @@ const WAPEN_RATELAAR = {
   naam: 'De Ratelaar', magazijnMax: 16, reserve: 96, schotCooldown: 0.1,
   herlaadDuurNormaal: 1.5, herlaadDuurSnel: 0.9,
   groep: wapenRatelaar, vlam: vlamRatelaar, vlamLicht: vlamLichtRatelaar,
-  vlamLichtBasis: 1.6,   // Ticket 12: schiet() vermenigvuldigt dit bij een gesmeed wapen
-  vlamKleurBasis: vlamRatelaar.material.color.getHex(), vlamLichtKleurBasis: vlamLichtRatelaar.color.getHex(),
+  // Ticket 90: was 1,6, nu op Signaal-niveau (§10.5). Ticket 12: schiet()
+  // vermenigvuldigt dit bij een gesmeed wapen.
+  vlamLichtBasis: 22,
+  // Ticket 90: zie de toelichting bij WAPEN_DRUKSPUIT.vlamMateriaal hierboven.
+  vlamMateriaal: vlamRatelaar.userData.vlamMateriaal,
+  vlamKleurBasis: vlamRatelaar.userData.vlamMateriaal.color.getHex(), vlamLichtKleurBasis: vlamLichtRatelaar.color.getHex(),
   // Ticket 11: de Ratelaar is de volume-keuze — minder schadebonus, meer magazijn.
   smederijConfig: { schadeBonus: 1, magazijnMax: 24 },
   // Ticket 34 (§5.6): de Ratelaar is de volumekeuze — kleine kick per schot,
@@ -4178,6 +4333,7 @@ function wisselWapen() {
   // Een eventuele nog zichtbare mondingsflits van het uitgaande wapen meteen
   // doven, anders blijft die (zeldzaam, bij wisselen vlak na een schot) hangen.
   vlamTimer = 0;
+  vlamNetGezet = false;
   wapenStaat.definitie.vlam.visible = false;
   wapenStaat.definitie.vlamLicht.visible = false;
   actiefWapenNaam = actiefWapenNaam === 'drukspuit' ? 'ratelaar' : 'drukspuit';
@@ -4441,10 +4597,16 @@ function schiet() {
   const archiefVlamActief = stadsarchiefOntgrendelingen().vlamTint && stadsarchief.actief.vlamTint;
   const vlamKleur = wapenStaat.gesmeed ? SMEDERIJ_ACCENT_KLEUR
     : (archiefVlamActief ? STADSARCHIEF_VLAM_TINT : wapenStaat.definitie.vlamKleurBasis);
-  vlam.material.color.setHex(vlamKleur);
+  wapenStaat.definitie.vlamMateriaal.color.setHex(vlamKleur);
   vlamLicht.color.setHex(wapenStaat.gesmeed ? SMEDERIJ_ACCENT_KLEUR
     : (archiefVlamActief ? STADSARCHIEF_VLAM_TINT : wapenStaat.definitie.vlamLichtKleurBasis));
-  vlamTimer = 0.05;
+  // Ticket 90: per schot een andere rotatie/schaal, zodat de stervorm niet
+  // elk schot identiek oogt — puur cosmetisch, geen invloed op de tracer/
+  // raycast (die lezen vlam.getWorldPosition(), niet de rotatie/schaal).
+  vlam.rotation.z = Math.random() * Math.PI * 2;
+  vlam.scale.setScalar(0.85 + Math.random() * 0.3);
+  vlamTimer = VLAM_FLITS_DUUR;
+  vlamNetGezet = true;
   speelSchot();
 
   // Ticket 32: tracer-oorsprong is de wereldpositie van de vlam-mesh op het
@@ -4970,8 +5132,16 @@ let actieveAanvallers = 0;   // gelijktijdige wind-ups, begrensd door MAX_AANVAL
 // Puur presentatie — raakt nooit de state-machine-logica of -timings zelf.
 const AANVAL_ARM_HOEK_WINDUP = -1.9;    // rad — armen hoog geheven tijdens de wind-up
 const AANVAL_HOOFD_KANTEL    = 0.12;    // rad — hoofd kantelt licht achterover tijdens de wind-up
-const OOG_INTENSITEIT_BASIS  = 1.4;     // zelfde basiswaarde als in maakOndodeModel()
-const OOG_INTENSITEIT_AANVAL = 2.6;     // piek tijdens de wind-up
+// Ticket 89 (§10.5): de oogtrap is een staat-afhankelijke tieroverschrijding
+// — in rust (BASIS) zit hij BINNEN Bron (1,2-1,6), tijdens elk alarm
+// (AANVAL/MIST/STROOMUITVAL) schiet hij naar Signaal (2,6-3,4). Dat is
+// precies het idee achter de hiërarchie: ondode-ogen zijn een gameplaylaag
+// en horen bij dreiging onmiskenbaar te gloeien. De twee hogere treden
+// matchen de EMISSIE_SIGNAAL_*-grenzen exact, dus vervangen door de
+// constanten (naamgeving, geen gedragswijziging) — BASIS blijft een eigen
+// literal, want 1,4 zit tussen EMISSIE_BRON_MIN/MAX in, niet erop.
+const OOG_INTENSITEIT_BASIS  = 1.4;     // zelfde basiswaarde als in maakOndodeModel() — Bron-niveau, in rust
+const OOG_INTENSITEIT_AANVAL = EMISSIE_SIGNAAL_MIN;     // piek tijdens de wind-up
 // Ticket 39 (Sfeer S2): dezelfde piekwaarde is ook de Mistgolf-oogboost
 // (beslissing 32) — geen toeval, allebei "dit is het kanaal dat het felst
 // mag gaan"; hergebruik i.p.v. een tweede, identieke constante.
@@ -4979,7 +5149,7 @@ const OOG_INTENSITEIT_MIST = OOG_INTENSITEIT_AANVAL;
 // Ticket 46-fix (feedback): tijdens een Stroomuitval zijn de ogen de
 // BELANGRIJKSTE manier om een ondode te zien (de rest van de kamer is nu
 // echt donker) — feller dan het mist-kanaal, niet hergebruikt.
-const OOG_INTENSITEIT_STROOMUITVAL = 3.4;
+const OOG_INTENSITEIT_STROOMUITVAL = EMISSIE_SIGNAAL_MAX;
 // Welke oogboost-waarde bij het huidige event hoort (mist en stroomuitval
 // hebben allebei een boost, maar niet meer dezelfde sinds de feedbackronde).
 function oogIntensiteitVoorEvent() {
@@ -5299,8 +5469,10 @@ function spawnPowerupDrop(x, z, type) {
   laatstePowerupDropGolf = spelStaat.golf;
   if (type === 'kerninslag') laatsteKerninslagGolf = spelStaat.golf;
   const groep = new THREE.Group();
+  // Ticket 89: was 0,9 (onder Bron), nu op de Bron-ondergrens (§10.5) —
+  // een powerup-drop mag best opvallen, dit is geen basisdecor.
   const kern = new THREE.Mesh(new THREE.OctahedronGeometry(0.18, 0),
-    new THREE.MeshStandardMaterial({ color: info.kleur, emissive: info.kleur, emissiveIntensity: 0.9, roughness: 0.3 }));
+    new THREE.MeshStandardMaterial({ color: info.kleur, emissive: info.kleur, emissiveIntensity: EMISSIE_BRON_MIN, roughness: 0.3 }));
   kern.position.y = 0.55;
   groep.add(kern);
   const gloed = new THREE.PointLight(info.kleur, 3, 4, 2);
@@ -5518,7 +5690,10 @@ function geo(sleutel, fabriek) {
 // per-ondode kleurvariatie (in tegenstelling tot huidKleur-materialen elders
 // in dit model) — de kernpuls-animatie (zie raakOndode()) schaalt alleen de
 // MESH, nooit dit materiaal, dus één gedeelde instantie is hier veilig.
-const kernMateriaal = new THREE.MeshStandardMaterial({ color: 0xff9a3d, emissive: 0xff7a1f, emissiveIntensity: 1.6, roughness: 0.4 });
+// Ticket 89: Bron-niveau (§10.5) — de literal matchte al exact
+// EMISSIE_BRON_MAX, dus vervangen door de constante (naamgeving, geen
+// gedragswijziging).
+const kernMateriaal = new THREE.MeshStandardMaterial({ color: 0xff9a3d, emissive: 0xff7a1f, emissiveIntensity: EMISSIE_BRON_MAX, roughness: 0.4 });
 kernMateriaal.userData.gedeeld = true;   // Ticket 70: ruimGroepOp() mag dit nooit disposen
 
 function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTraits()) {
@@ -5640,7 +5815,9 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   hoofdGroep.add(hoofd);
   // Twee kleine gloeiende oogjes: het enige griezelige lichtaccent. Kleur
   // verschilt per type (v0.7), zodat een variant al op afstand herkenbaar is.
-  const oogMateriaal = new THREE.MeshStandardMaterial({ color: typeInfo.oogKleur, emissive: typeInfo.oogKleur, emissiveIntensity: 1.4 });
+  // Ticket 89: start op OOG_INTENSITEIT_BASIS (Bron-niveau, §10.5); schiet
+  // naar Signaal tijdens elk alarm — zie de toelichting bij die constante.
+  const oogMateriaal = new THREE.MeshStandardMaterial({ color: typeInfo.oogKleur, emissive: typeInfo.oogKleur, emissiveIntensity: OOG_INTENSITEIT_BASIS });
   delen.oogMateriaal = oogMateriaal;   // Ticket 31 (Aanval A2): windup-oogpuls leest/schrijft dit gedeelde material
   for (const kant of [-1, 1]) {
     const oog = new THREE.Mesh(geo('oog', () => new THREE.SphereGeometry(0.02, 12, 8)), oogMateriaal);
@@ -7720,6 +7897,8 @@ function interactieMarkering(x, z, kleur) {
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.03;
   g.add(ring);
+  // Ticket 89: zelfde bewuste keuze als icoonMesh() — onder Bron (§10.5),
+  // de ring draagt hier de aandacht, niet de icoon-gloed.
   const icoon = new THREE.Mesh(
     new THREE.BoxGeometry(0.12, 0.12, 0.12),
     new THREE.MeshStandardMaterial({ color: kleur, emissive: kleur, emissiveIntensity: 0.6 })
@@ -7745,6 +7924,7 @@ const upgradeTafel = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 0.5), mat(0x
 upgradeTafel.position.set(-3, 0.2, -2);
 upgradeTafel.castShadow = true;
 wereld.add(upgradeTafel);
+// Ticket 89: Bron-niveau (§10.5), net onder de richtwaarde.
 const upgradeKern = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10),
   new THREE.MeshStandardMaterial({ color: 0xffe08a, emissive: 0xffb63a, emissiveIntensity: 1.1 }));
 upgradeKern.position.set(-3, 0.55, -2);
@@ -7969,7 +8149,7 @@ function koopSmederij() {
   const accent = actiefWapenNaam === 'drukspuit' ? meterDrukspuit : tandwielRatelaar;
   accent.material.color.setHex(SMEDERIJ_ACCENT_KLEUR);
   accent.material.emissive.setHex(SMEDERIJ_ACCENT_KLEUR);
-  accent.material.emissiveIntensity = 1.4;
+  accent.material.emissiveIntensity = 1.4;   // Ticket 89: Bron-niveau (§10.5)
   // Ticket 17: het bijbehorende vooraf gebouwde visual-Group (gloeiringen/
   // tandwiel + ember-light) zichtbaar maken.
   (actiefWapenNaam === 'drukspuit' ? smederijVisualsDrukspuit : smederijVisualsRatelaar).visible = true;
@@ -7978,7 +8158,7 @@ function koopSmederij() {
   const medaillon = actiefWapenNaam === 'drukspuit' ? ereplankMedaillonDrukspuit : ereplankMedaillonRatelaar;
   medaillon.material.color.setHex(SMEDERIJ_ACCENT_KLEUR);
   medaillon.material.emissive.setHex(SMEDERIJ_ACCENT_KLEUR);
-  medaillon.material.emissiveIntensity = 1.3;
+  medaillon.material.emissiveIntensity = 1.3;   // Ticket 89: Bron-niveau (§10.5)
   speelSmeed();
   flitsMarkering(smederijMarkering);
   toonMelding(`${wapenStaat.definitie.naam} gesmeed! +${wapenStaat.definitie.smederijConfig.schadeBonus} schade, magazijn ${wapenStaat.magazijnMax}`);
@@ -8343,6 +8523,7 @@ function bouwScheepslantaarnMesh(x, z, y = 0) {
   const romp = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.18, 0.36, 8), mat(0x241f1a, 0.55, 0.4));
   romp.position.y = PLANK_HOOGTE + 0.18;
   g.add(romp);
+  // Ticket 89: Bron-niveau (§10.5), net onder de richtwaarde.
   const glas = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.26, 8),
     mat(0xffd98a, 0.4, 0, { emissive: 0xffb347, emissiveIntensity: 1.0 }));
   glas.position.y = PLANK_HOOGTE + 0.18;
@@ -8961,8 +9142,15 @@ function gameLoop(nu) {
     if (wisselTimer <= 0) wapenStaat.definitie.groep.position.y = WAPEN_BASIS_Y;   // exact terug naar rust
   }
   if (vlamTimer > 0) {
-    vlamTimer -= dt;
-    if (vlamTimer <= 0) { wapenStaat.definitie.vlam.visible = false; wapenStaat.definitie.vlamLicht.visible = false; }
+    if (vlamNetGezet) {
+      // Dit frame is het schot zelf (of het eerstvolgende tick erna) — sla de
+      // aftelling één keer over, zodat dit frame altijd gerenderd wordt met
+      // de flits zichtbaar, ongeacht hoe groot dt toevallig uitvalt.
+      vlamNetGezet = false;
+    } else {
+      vlamTimer -= dt;
+      if (vlamTimer <= 0) { wapenStaat.definitie.vlam.visible = false; wapenStaat.definitie.vlamLicht.visible = false; }
+    }
   }
 
   composer.render();
@@ -9390,6 +9578,14 @@ window.AmsterdamUndeadDebug = {
   get archiefHeadshotsBasis() { return archiefHeadshotsBasis; },
   set archiefHeadshotsBasis(v) { archiefHeadshotsBasis = v; },
   get introMelodieTeller() { return introMelodieTeller; },
+  // Ticket 89 (v0.22, §10.5): emissieve hiërarchie (kernMateriaal staat al
+  // eerder in dit object, zie Ticket 69)
+  EMISSIE_ACCENT, EMISSIE_BRON_MIN, EMISSIE_BRON_MAX, EMISSIE_SIGNAAL_MIN, EMISSIE_SIGNAAL_MAX,
+  icoonMesh, glasMateriaal,
+  // Ticket 90 (v0.22, §10.6): mondingsvlam als lichtmoment
+  VLAM_FLITS_DUUR, SMEDERIJ_VLAM_BOOST,
+  get vlamTimer() { return vlamTimer; },
+  get vlamNetGezet() { return vlamNetGezet; },
 };
 clearTimeout(window.__cdnFoutTimer);   // Ticket 74: laden is gelukt, de faalmodus-timer is niet meer nodig
 </script>

@@ -4546,23 +4546,59 @@ een expliciete regel welk soort object waar hoort:
 | Niveau | Richtwaarde | Wie | Gloeit (boven threshold)? |
 | --- | --- | --- | --- |
 | **Accent** | ~0,4 | achtergrondramen in de verte, zwakke decoraccenten | nee |
-| **Bron** | ~1,2-1,6 | lampbollen, raamglas, winkelmarkeringen, Brander-kern | randgeval, bewust net eronder/erop |
-| **Signaal** | ~2,6-3,4 | ondode-ogen, mondingsvlam, actieve koopmarkering | ja |
+| **Bron** | ~1,2-1,6 | lampbollen, raamglas, winkelmarkeringen (basisgloed), Brander-kern | randgeval, bewust net eronder/erop |
+| **Signaal** | ~2,6-3,4 | ondode-ogen (bij alarm) | ja |
 
 De bloom-threshold wordt daarmee één knop die de hele hiërarchie stuurt:
 verlagen laat de Bron-laag meegloeien, verhogen isoleert de
 Signaal-laag. Dat is de art-direction-knop die er nu niet is.
 
 **De harde grens.** De Signaal-laag is een **gameplay**-laag. Ondode-ogen
-en actieve koopmarkeringen zitten daar niet omdat ze mooi zijn maar
-omdat de speler ze moet kunnen vinden. Geen enkel ticket mag een
-decoratief element naar Signaal tillen, en geen enkel ticket mag de
-ogen of de koopmarkeringen eronder duwen.
+zitten daar niet omdat ze mooi zijn maar omdat de speler ze moet kunnen
+vinden. Geen enkel ticket mag een decoratief element naar Signaal
+tillen, en geen enkel ticket mag ze eronder duwen.
+
+**Correctie tijdens implementatie: "actieve koopmarkering" hoort niet in
+de Signaal-rij.** Deze paragraaf noemde oorspronkelijk zowel
+"winkelmarkeringen" (Bron) als "actieve koopmarkering" (Signaal) als twee
+verschillende dingen — een tegenspraak binnen dezelfde tabel, geschreven
+vóór het bestaande winkel-affordance-systeem echt was doorgelicht. Het
+bestaande systeem (`updateWinkelMarkeringen()`, T37/ontwerpbeslissing 30)
+signaleert "beschikbaar" al via de ringkleur/-opacity-puls plus het
+gedeelde, proximity-gestuurde `winkelLicht` (een `PointLight`, dus sowieso
+buiten het bereik van deze materiaal-hiërarchie) — niet via een hogere
+`emissiveIntensity` op het icoon. Er bestaat geen "actieve koopmarkering"
+op materiaalniveau, en die retrofitten zou een geheel nieuw, zichtbaar
+gedrag toevoegen — precies wat dit ticket uitsluit. De Signaal-laag is
+daarmee exclusief voor ondode-ogen (T89) en de mondingsvlam (T90, een
+bestaand licht dat harder aangaat, geen materiaal).
 
 **Dit ticket levert geen zichtbaar effect op.** Het is een inventarisatie
 plus een tabel plus het corrigeren van de uitschieters. Het staat vooraan
 omdat vier latere tickets erop leunen, niet omdat het op zichzelf iets
 oplevert.
+
+**Implementatieverslag (uitgevoerd).** Alle 32 emissieve call-sites in
+`amsterdam-undead.html` zijn nagelopen en voorzien van een classificerende
+comment. Zes lagen exact op een Bron/Signaal-grenswaarde en zijn vervangen
+door de nieuwe `EMISSIE_*`-constanten (zuivere naamgeving, geen
+gedragswijziging: `glasMateriaal`, `kernMateriaal`,
+`OOG_INTENSITEIT_AANVAL/_MIST/_STROOMUITVAL`). Zes duidelijke uitschieters
+onder Bron (0,9, meerdere lampbollen + de powerup-kern) zijn opgetild naar
+`EMISSIE_BRON_MIN` (1,2) — elk afzonderlijk getoetst tegen T88's
+basislijn. Eén kandidaat-correctie (`meterDrukspuit`, het drukmeter-
+lampje op de Drukspuit) is **bewust teruggedraaid**: dat lampje hangt aan
+`camera` en staat dus in ELK standpunt in beeld, in tegenstelling tot een
+kamerlamp. Optillen duwde de mediane helderheid van het gracht-standpunt
+met 3,9% omheen — over T88's 2%-band — precies omdat het in een verder
+donkere buitenscène disproportioneel meeweegt in de mediaanrangschikking.
+Dat is precies het risico dat §10.4's "geen zichtbaar effect"-eis bedoelt
+te voorkomen bij een element dat *alle* standpunten tegelijk raakt, in
+tegenstelling tot een lamp die maar één kamer raakt. Twee materialen
+(de vliering-vloer/muur) vallen expliciet BUITEN de hiërarchie: geen
+"gloeiend ding" maar een basisverlichting-substituut (T87 mag de vliering
+geen PointLight geven). `test-visuele-basislijn.mjs` bleef na alle
+correcties 40/40 groen, en de volledige regressiesuite 61/61.
 
 ### 10.6 Beslissing 81 — Licht als vorm, zonder één nieuwe lichtbron
 
@@ -4598,6 +4634,69 @@ stroboscoop worden. De flits moet korter zijn dan het vuurinterval en de
 piek mag **niet** meeschalen met vuursnelheid, anders wordt aanhoudend
 vuur verblindend op precies het moment dat de speler het meest moet
 zien.
+
+**Implementatieverslag T90 (uitgevoerd).** De vlamgeometrie is vervangen
+door `bouwMondingsVlam()`: twee `PlaneGeometry`'s 45° uit elkaar, één
+gedeeld `MeshBasicMaterial` met een canvas-getekende viertak-ster
+(`bouwVlamTextuur()`, 64×64, `AdditiveBlending`, `depthWrite: false`).
+`vlamLichtDrukspuit`/`vlamLichtRatelaar` gingen van intensiteit 1,1 naar
+respectievelijk **18** en **22** — in de Signaal-band (`EMISSIE_SIGNAAL_*`)
+van §10.5, passend bij het karakter van een flits die maar 1-2 frames
+bestaat. Elk schot zet `vlam.rotation.z` en `vlam.scale` op een nieuwe
+willekeurige waarde, zodat opeenvolgende schoten niet identiek ogen.
+`vlamTimer` was al vóór dit ticket een **harde reset** (`vlamTimer =
+VLAM_FLITS_DUUR`), geen optelling — de bestaande architectuur (één
+vlam-instantie per wapen, geen pool) maakt stapeling van flitsen
+structureel onmogelijk, ook bij de Ratelaar. `VLAM_FLITS_DUUR = 0,033`s
+zit ruim (3×) onder de Ratelaar-`schotCooldown` (0,1s), dus de piek
+schaalt niet mee met vuursnelheid en blijft een losse flits, geen
+stroboscoop.
+
+`test-mondingsvlam.mjs` (21 checks, nieuw) bevestigt: structuur (Group
+van 2 vlakken op 1 gedeeld materiaal), Signaal-bereik-intensiteit per
+schot, zichtbaarheid valt na ~20 frames terug naar `false`, geen
+stapeling (object-identiteit, intensiteit verdubbelt niet, timer reset
+i.p.v. optelt, precies 1 licht ongeacht vuursnelheid), geen meeschalen
+met vuursnelheid Ratelaar-vs-Drukspuit, exacte Smederij-boost, en
+per-schot randomisatie over 8 schoten (uniek + binnen bounds).
+`test-visuele-basislijn.mjs` bleef 46/46 groen (T90 roept `schiet()`
+nooit aan tijdens die meting). De eerste volledige-suite-run legde een
+echte regressie bloot: twee al bestaande tests (`test-smederij.mjs`,
+`test-stadsarchief.mjs`) lazen nog `wapenStaat.definitie.vlam.material.
+color` — dat pad bestond bij de oude bol-mesh, maar `vlam` is met dit
+ticket een `Group` geworden (twee vlakken, geen eigen `.material`), dus
+die aanroepen crashten. Beide zijn omgezet naar `definitie.vlamMateriaal.
+color`, het gedeelde-materiaal-pad dat al voor dit doel bestond. Na de
+fix bleef de volledige regressiesuite (62 scripts, incl. het nieuwe
+testbestand) **62/62 groen, 0 FAIL**. Beeldverslag
+(donkerste hoek van de startkamer, standpunt (−3, 0, 3), yaw 3π/4):
+Drukspuit-schot toont een duidelijke groenige lichtopleving die na 20
+frames weer volledig weg is; het Ratelaar-schot vanaf hetzelfde
+standpunt toont dezelfde soort opleving in de eigen kleur, zonder
+stapeling of overbelichting.
+
+**Nabrander: hitch-garantie (speeltest, na oplevering).** De speler
+meldde dat de flits niet bij elk schot zichtbaar was, met soms een
+merkbare stilte ertussen. Root cause: `dt` in de gameLoop is geclipt op
+0,05s (`Math.min(..., 0.05)`, een hitch-guard tegen rare sprongen), ruimer
+dan `VLAM_FLITS_DUUR` (0,033s). `schiet()` en de aftel-/verberglogica
+draaien in hetzelfde gameLoop-tick: als precies dát tick een grote `dt`
+heeft (bijv. een golf die spawnt — precies de momenten met veel schoten),
+werd `vlamTimer` gezet én in dezelfde beurt alweer met die volledige `dt`
+afgeboekt, vóór de eerste render. Zo'n schot kreeg dan **nul zichtbare
+frames**, niet één-tot-twee. Fix: een `vlamNetGezet`-vlag die het eerste
+frame na een schot altijd garandeert — de aftelling wordt dat ene frame
+overgeslagen, ongeacht hoe groot `dt` toevallig uitvalt; `wisselWapen()`
+reset de vlag mee zodat hij nooit naar het volgende wapen doorlekt. Twee
+nieuwe checks in `test-mondingsvlam.mjs` leggen dit vast: `vlamTimer`
+direct na een schot én na het eerste daaropvolgende frame is exact gelijk
+(het gegarandeerde frame), pas na het tweede frame telt hij normaal af.
+(Het testen hiervan bleek zelf een valkuil: schiet() en de eerste meting
+moeten in dezelfde `page.evaluate()` gebeuren met geneste
+`requestAnimationFrame`-callbacks — gameLoop's eigen rAF-lus blijft altijd
+doorlopen, dus tussen twee LOSSE `page.evaluate()`-round-trips kan hij al
+onopgemerkt getikt hebben, wat eerst een vals-negatief gaf.) Volledige
+regressiesuite na de fix: **62/62 groen, 0 FAIL**.
 
 **T109 — Raamprojecties.** Een canvas-getekend kozijnpatroon,
 geprojecteerd als quad op de vloer onder elk dakraam en elk gevelraam:

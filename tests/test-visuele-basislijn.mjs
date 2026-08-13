@@ -170,6 +170,62 @@ check('Post-processing blijft 3 passes (RenderPass/Bloom/Output, tot T96)', inva
 check('BAND-logica: 5% afwijking op een niet-nul basiswaarde faalt de 2%-toets',
   Math.abs(105 - 100) / 100 > BAND, { afwijkingPct: 5, band: BAND * 100 });
 
+// --- 5. T89: de emissieve hiërarchie zelf ---------------------------------
+// De drie niveaus bestaan, en de gameplay-kritieke elementen zitten waar ze
+// horen: ondode-ogen bereiken Signaal zodra het ertoe doet (aanval/mist/
+// stroomuitval), nooit in rust. "Actieve koopmarkering" staat NIET in
+// Signaal — zie de correctie in ARCHITECTURE_NOTES.md §10.5: dat zou een
+// nieuw, zichtbaar gedrag toevoegen dat vandaag niet bestaat (de
+// "beschikbaar"-status wordt gedragen door de ring + het gedeelde
+// winkelLicht, geen materiaal). icoonMesh() blijft daarom bewust ONDER
+// Bron; dat is de vastgelegde uitzondering, niet een bug.
+const hierarchie = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  // icoonMesh() aanroepen vereist een echte THREE.BufferGeometry (niet op
+  // het debug-hook geëxporteerd) — de bronvorm zelf volstaat hier, zelfde
+  // patroon als elders in deze suite (bv. test-pand-adres.mjs's
+  // bouwNaambordje()-bron-check).
+  const icoonBron = d.icoonMesh.toString();
+  const icoonMatch = icoonBron.match(/emissiveIntensity:\s*([\d.]+)/);
+  return {
+    EMISSIE_ACCENT: d.EMISSIE_ACCENT,
+    EMISSIE_BRON_MIN: d.EMISSIE_BRON_MIN,
+    EMISSIE_BRON_MAX: d.EMISSIE_BRON_MAX,
+    EMISSIE_SIGNAAL_MIN: d.EMISSIE_SIGNAAL_MIN,
+    EMISSIE_SIGNAAL_MAX: d.EMISSIE_SIGNAAL_MAX,
+    oogBasis: d.OOG_INTENSITEIT_BASIS,
+    oogAanval: d.OOG_INTENSITEIT_AANVAL,
+    oogMist: d.OOG_INTENSITEIT_MIST,
+    oogStroomuitval: d.OOG_INTENSITEIT_STROOMUITVAL,
+    kernMateriaal: d.kernMateriaal.emissiveIntensity,
+    glasMateriaal: d.glasMateriaal.emissiveIntensity,
+    icoonMeshIntensiteit: icoonMatch ? +icoonMatch[1] : null,
+  };
+});
+check('De drie niveaus zijn correct geordend: Accent < Bron-min < Bron-max < Signaal-min < Signaal-max',
+  hierarchie.EMISSIE_ACCENT < hierarchie.EMISSIE_BRON_MIN &&
+  hierarchie.EMISSIE_BRON_MIN < hierarchie.EMISSIE_BRON_MAX &&
+  hierarchie.EMISSIE_BRON_MAX < hierarchie.EMISSIE_SIGNAAL_MIN &&
+  hierarchie.EMISSIE_SIGNAAL_MIN <= hierarchie.EMISSIE_SIGNAAL_MAX,
+  hierarchie);
+check('Ondode-ogen: basis (rust) zit binnen Bron (1,2-1,6)',
+  hierarchie.oogBasis >= hierarchie.EMISSIE_BRON_MIN && hierarchie.oogBasis <= hierarchie.EMISSIE_BRON_MAX,
+  hierarchie);
+check('Ondode-ogen: aanval/mist/stroomuitval bereiken Signaal (>= 2,6)',
+  hierarchie.oogAanval >= hierarchie.EMISSIE_SIGNAAL_MIN &&
+  hierarchie.oogMist >= hierarchie.EMISSIE_SIGNAAL_MIN &&
+  hierarchie.oogStroomuitval >= hierarchie.EMISSIE_SIGNAAL_MIN,
+  hierarchie);
+check('Ondode-ogen: stroomuitval is het felst (>= mist/aanval), nooit omlaag bijgesteld',
+  hierarchie.oogStroomuitval >= hierarchie.oogMist && hierarchie.oogStroomuitval >= hierarchie.oogAanval,
+  hierarchie);
+check('kernMateriaal (Brander) en glasMateriaal zitten op Bron-max (1,6)',
+  hierarchie.kernMateriaal === hierarchie.EMISSIE_BRON_MAX && hierarchie.glasMateriaal === hierarchie.EMISSIE_BRON_MAX,
+  hierarchie);
+check('icoonMesh() (winkelmarkeringen) blijft BEWUST onder Bron — vastgelegde uitzondering, geen Signaal-tier (§10.5-correctie)',
+  hierarchie.icoonMeshIntensiteit !== null && hierarchie.icoonMeshIntensiteit < hierarchie.EMISSIE_BRON_MIN,
+  hierarchie);
+
 console.log('\nGemeten waarden (voor eventuele bijwerking van BASISLIJN):');
 console.log(JSON.stringify(gemeten, null, 2));
 
