@@ -72,7 +72,7 @@
 
   /* --- Hitmarker (Ticket 33): vier streepjes rond het crosshair, drie
        tiers (lichaam/kop/kill) via een klasse op de container; opacity
-       wordt dt-gedreven in JS gezet (zelfde patroon als #vignet), geen
+       wordt dt-gedreven in JS gezet (zelfde patroon als .schadeWedge), geen
        CSS-transition nodig. --- */
   #hitmarker {
     position: fixed;
@@ -236,15 +236,9 @@
     pointer-events: none;
   }
 
-  /* --- Rode vignet: reageert op HP-verlies, dooft vanzelf weer uit --- */
-  #vignet {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 6;
-    opacity: 0;
-    background: radial-gradient(ellipse at center, rgba(170,10,10,0) 55%, rgba(170,10,10,0.9) 100%);
-  }
+  /* --- Ticket 97: het rode HP-/Stroomuitval-vignet is verhuisd naar de
+       naverwerkingspass (uVignetSterkte/-Kleur/-Radius, ShaderPass) — ligt
+       nu ÍN het beeld i.p.v. als DOM-laag erbovenop. Geen #vignet meer. --- */
 
   /* --- Ticket 68: richtingsfeedback bij schade — een driehoekige "wedge"
        aan de rand van het beeld, gedraaid naar de hoek tussen kijkrichting
@@ -486,7 +480,6 @@
   <div id="ontsnappingVensterUI" style="font-size:12px; font-weight:700; margin-top:2px; color:#9fd4ff;"></div>
 </div>
 <canvas id="minimapUI" width="160" height="160" style="display:none"></canvas>
-<div id="vignet"></div>
 <div id="gameOverScherm">
   <h1>JE BENT GEVALLEN</h1>
   <div>Gehaalde golf: <span id="gameOverGolf">1</span> &nbsp;·&nbsp; Geld: € <span id="gameOverGeld">0</span></div>
@@ -599,6 +592,15 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+// Ticket 105 (v0.22, §10.12-beslissing 87): afgeschuinde randen op meubels
+// — zelfde three@0.160.0-pakket, geen los asset. RoundedBoxGeometry met een
+// lage segmentwaarde geeft een gefacetteerde schuine rand (niet een
+// vloeiende ronding), en belangrijker: continu variërende normals over die
+// schuine rand — dat is wat een object een lichtvangend randje geeft onder
+// gewoon Standard-materiaallicht, zonder enige vertexkleur-truc nodig te
+// hebben (in tegenstelling tot T103/T104 hierboven).
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 /* ================================================================
    STAP 1 — DE BASIS: scene, camera, renderer en licht
@@ -675,7 +677,219 @@ composer.addPass(new RenderPass(scene, camera));
 // resultaat automatisch terug naar volledig scherm.
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.35, 0.4, 0.82);
 composer.addPass(bloomPass);
+
+// Ticket 96 (v0.22, §10.8-beslissing 83): één eigen ShaderPass i.p.v. losse
+// passes per effect — filmkorrel + chromatische aberratie nu, T97 (vignet)
+// en T98 (per-zone kleurgrading) voegen straks alleen uniforms/regels toe
+// aan DEZE pass (composer.passes.length blijft dan 4, niet 5/6). Ná
+// bloomPass (korrel mag niet mee-bloomen) en vóór OutputPass (die de
+// sRGB/ACES-uitvoer herstelt). ShaderPass komt uit dezelfde
+// `three/addons/postprocessing/`-map als de andere vier passes — geen
+// tweede CDN-afhankelijkheid (waarschuwing 32 geldt hier dus niet).
+//
+// KORREL_STERKTE/ABERRATIE_STERKTE zijn bewust klein: "korrel die je als
+// korrel ziet, is te sterk" (§10.8). uSterkte is de ENE schakelbare
+// master-uniform (default 1) die straks T115's toegankelijkheidsschakelaar
+// beide effecten tegelijk laat afbouwen, zonder de individuele constanten
+// aan te raken.
+const KORREL_STERKTE = 0.035;
+const ABERRATIE_STERKTE = 0.006;
+// Genormaliseerde straal (1,0 = beeldhoek) waarvoor de aberratie nul blijft
+// — pas voorbij dit punt loopt hij op. Aberratie in het beeldcentrum zou
+// het richtpunt zelf vervormen (misselijkmakend + kost richtprecisie).
+const ABERRATIE_START_RADIUS = 0.6;
+// Ticket 97 (v0.22, §10.8-beslissing 83): het rode HP-/Stroomuitval-vignet
+// verhuist van een DOM-laag (#vignet, opacity per frame in CSS) naar drie
+// extra uniforms op DEZE pass — zelfde radiale-straal-berekening als de
+// aberratie hierboven, dus geen tweede afstandsformule. VIGNET_STERKTE_MAX
+// is de expliciete bovengrens uit de acceptatiecriteria: de rand mag nooit
+// zo donker worden dat een ondode in het perifere zicht onleesbaar wordt.
+const VIGNET_STERKTE_MAX = 1;
+// Zelfde rood als de oude CSS-gradient (rgba(170,10,10,...) = 0xaa0a0a) —
+// puur een verhuizing, geen nieuwe kleurkeuze.
+const VIGNET_KLEUR = new THREE.Color(0xaa0a0a);
+// Genormaliseerde straal (zelfde schaal als ABERRATIE_START_RADIUS) waarop
+// het vignet begint — matcht de oude CSS-gradient se "55%"-stop.
+const VIGNET_RADIUS = 0.55;
+// Ticket 97: hoeveel een actieve Stroomuitval (stroomFactor omlaag) los van
+// HP aan vignet-sterkte toevoegt — de oude versie reageerde nog nergens op
+// Stroomuitval, dit is de nieuwe, expliciet vereiste term (§10.8: "reageert
+// op HP EN Stroomuitval").
+const VIGNET_STROOM_FACTOR = 0.35;
+const NAVERWERKING_SHADER = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uTijd: { value: 0 },
+    uSterkte: { value: 1 },
+    uVignetSterkte: { value: 0 },
+    uVignetKleur: { value: VIGNET_KLEUR },
+    uVignetRadius: { value: VIGNET_RADIUS },
+    // Ticket 98: per-zone kleurgrading (lift/gamma/gain, ASC-CDL-achtig).
+    // Start op identiteit (lift 0, gamma/gain 1) — vóór de eerste
+    // updateKleurgrading()-tick, dus vóór de eerste zone-detectie, mag de
+    // pass nog geen enkele kleurverschuiving tonen.
+    uGradeLift: { value: new THREE.Vector3(0, 0, 0) },
+    uGradeGamma: { value: new THREE.Vector3(1, 1, 1) },
+    uGradeGain: { value: new THREE.Vector3(1, 1, 1) },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float uTijd;
+    uniform float uSterkte;
+    uniform float uVignetSterkte;
+    uniform vec3 uVignetKleur;
+    uniform float uVignetRadius;
+    uniform vec3 uGradeLift;
+    uniform vec3 uGradeGamma;
+    uniform vec3 uGradeGain;
+    varying vec2 vUv;
+
+    // Hash-ruis (geen textuur nodig) — zelfde soort per-pixel hash als
+    // spawnRook()'s canvas-textuur, maar dan analytisch in GLSL.
+    float hash(vec2 p) {
+      return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453123);
+    }
+
+    void main() {
+      vec2 center = vec2(0.5);
+      // 1,0 aan de beeldhoeken (afstand van het midden tot een hoek is
+      // sqrt(0,5)), niet aan de randmiddens — zo blijft ABERRATIE_START_RADIUS
+      // een echte "percentage van de straal"-waarde.
+      float radius = distance(vUv, center) / 0.70710678;
+      float aberratieFactor = smoothstep(${ABERRATIE_START_RADIUS.toFixed(4)}, 1.0, radius)
+        * ${ABERRATIE_STERKTE.toFixed(4)} * uSterkte;
+      vec2 richting = normalize(vUv - center + 1e-6);
+
+      float r = texture2D(tDiffuse, vUv - richting * aberratieFactor).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv + richting * aberratieFactor).b;
+      vec3 kleur = vec3(r, g, b);
+
+      // Filmkorrel: hash-ruis rond 0, met de tijd mee verspringend zodat hij
+      // niet als een statisch patroon op het scherm "kleeft". Bewust
+      // VERMENIGVULDIGD i.p.v. opgeteld: deze pass zit vóór OutputPass, dus
+      // nog in lineaire (niet-sRGB-gecodeerde) ruimte — additieve korrel zou
+      // in bijna-zwarte pixels (vliering, gracht) na de sRGB-encode van
+      // OutputPass onevenredig zwaar uitvergroot worden (de gammacurve is
+      // steil bij zwart). Multiplicatief schaalt de korrel automatisch mee
+      // met de eigen helderheid van elke pixel, en blijft dus overal
+      // evenredig subtiel — inclusief op echt zwart (0 * ruis = 0).
+      float korrel = 1.0 + (hash(gl_FragCoord.xy + uTijd) - 0.5) * ${KORREL_STERKTE.toFixed(4)} * uSterkte;
+      kleur *= korrel;
+
+      // Ticket 98: per-zone kleurgrading (lift/gamma/gain — hetzelfde model
+      // als een standaard ASC-CDL-kleurcorrectie). LUMINANTIE-NEUTRAAL is
+      // een harde eis (§10.8): de grading mag alleen de VERHOUDING tussen
+      // de kanalen verschuiven, niet de totale helderheid, anders vecht hij
+      // met T88's kalibratie. In plaats van de lift/gain-constanten met de
+      // hand zo te tunen dat ze "toevallig" luminantie-neutraal uitkomen
+      // (breekbaar — elke scène heeft een andere gemiddelde kleur), wordt
+      // de eigen luminantie van elk gegradeerd pixel na afloop teruggezet
+      // op zijn ORIGINELE luminantie: dat garandeert neutraliteit exact,
+      // per pixel, ongeacht hoe de zone-profielen hieronder getuned worden.
+      vec3 gelift = kleur + uGradeLift * (1.0 - kleur);
+      vec3 gegaind = gelift * uGradeGain;
+      vec3 gegradeerd = pow(max(gegaind, vec3(0.0)), 1.0 / uGradeGamma);
+      float lumaVoor = dot(kleur, vec3(0.2126, 0.7152, 0.0722));
+      float lumaNa = dot(gegradeerd, vec3(0.2126, 0.7152, 0.0722));
+      if (lumaNa > 1e-5) gegradeerd *= lumaVoor / lumaNa;
+      kleur = gegradeerd;
+
+      // Ticket 97: vignet — mengt naar uVignetKleur voorbij uVignetRadius,
+      // zelfde smoothstep-vorm als de aberratie (0 tot de drempel, dan
+      // vloeiend oplopend). 0,9 is de oude CSS-gradient se max-alpha aan de
+      // rand (rgba(...,0.9) op 100%) — puur een verhuizing, geen nieuwe
+      // sterkte. uVignetSterkte (HP + Stroomuitval, JS-gestuurd) en uSterkte
+      // (de T96-mastertoggle) schalen er allebei overheen.
+      float vignetRand = smoothstep(uVignetRadius, 1.0, radius);
+      float vignetMenging = clamp(vignetRand * 0.9 * uVignetSterkte * uSterkte, 0.0, 1.0);
+      kleur = mix(kleur, uVignetKleur, vignetMenging);
+
+      gl_FragColor = vec4(kleur, 1.0);
+    }
+  `,
+};
+const naverwerkingsPass = new ShaderPass(NAVERWERKING_SHADER);
+composer.addPass(naverwerkingsPass);
 composer.addPass(new OutputPass());
+
+// Ticket 98 (v0.22, §10.8-beslissing 83): per-zone kleurgrading. Dezelfde
+// achtwegs-indeling als T88's berekenVisueleStandpunten() (de vijf
+// zoneVan()-zones + kelder/vliering/gracht, die een zoneVan()-index delen
+// met een buurzone maar hun eigen renderkleur verdienen — zie
+// kleurgradingZoneVan() verderop, bij zoneVan() zelf). Elke waarde is bewust
+// klein: de shader zet de geluminantie-neutraliteit al hard af (zie de
+// fragment-shader hierboven), dus deze getallen bepalen alleen hoe UITGESPROKEN
+// de tint is, niet of hij de helderheid raakt.
+const KLEUR_GRADING_OVERGANG_DUUR = 0.5;   // s — spec: "minstens een halve seconde"
+const KLEUR_GRADING_ZONES = [
+  // 0 Woonkamer — neutraal: de thuisbasis, geen tint.
+  { lift: new THREE.Vector3(0, 0, 0), gamma: new THREE.Vector3(1, 1, 1), gain: new THREE.Vector3(1, 1, 1) },
+  // 1 Gang — licht kil (smalle overgangsruimte).
+  { lift: new THREE.Vector3(0, 0, 0.01), gamma: new THREE.Vector3(1, 1, 1), gain: new THREE.Vector3(0.97, 0.99, 1.03) },
+  // 2 Atelier — koeler (§10.8: "atelier koeler"). Feedback na speeltest:
+  // de eerste versie (gain 0,93/0,98/1,08) voelde te koel en maakte de
+  // overgang vanuit buurzones te hard — de afwijking t.o.v. neutraal is
+  // hier ongeveer gehalveerd, zelfde richting, subtieler resultaat. Nog
+  // een ronde feedback erna: nog eens ~15% verder teruggebracht t.o.v.
+  // DIE waarde (zelfde richting, iets subtieler nog).
+  { lift: new THREE.Vector3(0, 0, 0.0068), gamma: new THREE.Vector3(1, 1, 1), gain: new THREE.Vector3(0.9703, 0.9915, 1.034) },
+  // 3 Binnenplaats — buitenlucht, neutraal-koel daglicht.
+  { lift: new THREE.Vector3(0, 0.005, 0.01), gamma: new THREE.Vector3(1, 1, 1), gain: new THREE.Vector3(0.97, 1.0, 1.05) },
+  // 4 Bijkeuken — licht kil-utilitair, subtieler dan het atelier.
+  { lift: new THREE.Vector3(0, 0, 0.005), gamma: new THREE.Vector3(1, 1, 1), gain: new THREE.Vector3(0.98, 1.0, 1.02) },
+  // 5 Kelder — groeniger (§10.8: "kelder groeniger"). Drie feedbackrondes
+  // na speeltest: eerst ~30% teruggebracht t.o.v. het origineel, dan nog
+  // eens ~25% verder t.o.v. DIE waarde, en nu nog een vierde ronde: nog
+  // eens ~15% verder t.o.v. DIE waarde (samen ruim twee derde zachter dan
+  // het origineel). Dat duwde eerder de gerenderde G/R-verhouding onder
+  // die van het (ook al getunede) atelier — de oude "kelder groener dan
+  // atelier"-basislijncheck was een gerenderde-pixel-vergelijking TUSSEN
+  // twee onafhankelijk tunebare zones, en brak dus een tweede keer op
+  // precies dezelfde manier. Vervangen door een structurele check op dit
+  // profiel zelf (G > R én G > B in de gain-vector) — die blijft correct
+  // ongeacht hoe ver dit getal ooit nog getuned wordt, zolang de RICHTING
+  // (groener, niet blauwer/roder) intact blijft.
+  { lift: new THREE.Vector3(0, 0.0043, 0), gamma: new THREE.Vector3(1, 1, 1), gain: new THREE.Vector3(0.9643, 1.0357, 0.9732) },
+  // 6 Vliering — stoffig-warm zolderlicht. Neemt sinds de laatste
+  // feedbackronde een klein beetje (20%) van het atelier se koelere tint
+  // mee (lift.z/gain-afwijking van de NIEUWE, hierboven getunede atelier-
+  // waarde) — verschuift de zolder heel licht richting koeler, zonder de
+  // eigen warme identiteit (gain.x > 1, gain.z < 1) te verliezen.
+  { lift: new THREE.Vector3(0.01, 0.005, 0.0014), gamma: new THREE.Vector3(1, 1, 1), gain: new THREE.Vector3(1.054, 1.018, 0.907) },
+  // 7 Gracht — blauwgroener (§10.8: "gracht blauwgroener").
+  { lift: new THREE.Vector3(0, 0.005, 0.01), gamma: new THREE.Vector3(1, 1, 1), gain: new THREE.Vector3(0.92, 1.05, 1.06) },
+];
+// "Van"-kant van de overgang: een EIGEN, muteerbare Vector3-set (niet zomaar
+// een verwijzing naar een KLEUR_GRADING_ZONES-item) — bij een tweede
+// zonewissel middenin een lopende overgang snapshot deze de dan-actuele
+// (mogelijk nog-blendende) uniformwaarde, exact zoals zoneFogVan (T93) dat
+// voor de fog doet. Startwaarde = zone 0's profiel (de speler start daar).
+const kleurgradingVanLift = KLEUR_GRADING_ZONES[0].lift.clone();
+const kleurgradingVanGamma = KLEUR_GRADING_ZONES[0].gamma.clone();
+const kleurgradingVanGain = KLEUR_GRADING_ZONES[0].gain.clone();
+let kleurgradingDoel = KLEUR_GRADING_ZONES[0];
+let kleurgradingTimer = 0;
+let laatsteKleurgradingZone = 0;
+// Cosmetisch, zelfde sjabloon als updateZoneFog(dt): loopt alleen tijdens
+// een lopende overgang, en de shader-uniform staat de rest van de tijd al
+// gewoon op het (laatst bereikte) doel — geen per-frame writes nodig als er
+// niets te blenden valt.
+function updateKleurgrading(dt) {
+  if (kleurgradingTimer <= 0) return;
+  kleurgradingTimer = Math.max(0, kleurgradingTimer - dt);
+  const t = 1 - kleurgradingTimer / KLEUR_GRADING_OVERGANG_DUUR;
+  naverwerkingsPass.uniforms.uGradeLift.value.copy(kleurgradingVanLift).lerp(kleurgradingDoel.lift, t);
+  naverwerkingsPass.uniforms.uGradeGamma.value.copy(kleurgradingVanGamma).lerp(kleurgradingDoel.gamma, t);
+  naverwerkingsPass.uniforms.uGradeGain.value.copy(kleurgradingVanGain).lerp(kleurgradingDoel.gain, t);
+}
 
 // Zwak, koel algeheel licht — de kamer moet vooral door de lampen en de
 // ramen verlicht worden, niet door een felle "zon" zoals op het Dam-plein.
@@ -832,58 +1046,411 @@ function bouwCanvasTextuur(patroon, tekenFn, grootte = 128) {
   if (textuur) return textuur;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = grootte;
-  tekenFn(canvas.getContext('2d'), grootte);
+  // Ticket 107-vervolg: ook dit (oude) pad krijgt de deterministische
+  // stroom — 'metaal' loopt hier nog doorheen en varieerde dus ook per
+  // laadbeurt. De tekenaars negeren de basisWit-parameter op dit pad.
+  tekenFn(canvas.getContext('2d'), grootte, undefined, maakZaadRandom(tekstZaad(patroon)));
   textuur = new THREE.CanvasTexture(canvas);
   textuur.wrapS = textuur.wrapT = THREE.RepeatWrapping;
-  textuur.repeat.set(4, 4);
+  // Ticket 106 (v0.22, §10.11-beslissing 86): GEEN vaste .repeat meer hier —
+  // die verhuist naar het uv-attribuut van elke geometrie (zie
+  // herschaalUVNaarWereldschaal() hieronder), zodat een muur van 9m en een
+  // kist van 40cm niet meer dezelfde textuurschaal delen. RepeatWrapping
+  // blijft aan: de UV's zelf lopen straks over [0, wereldmaat], en de
+  // texture herhaalt daarbinnen vanzelf.
   canvasTextuurCache.set(patroon, textuur);
   return textuur;
 }
-// Elke tekenaar vult eerst bijna-wit (subtiel effect, zie hierboven) en
-// tekent daarna een laag-contrast, per-familie herkenbaar patroon.
+// Ticket 106 (v0.22, §10.11-beslissing 82/86): wereldschaal-UV's. In plaats
+// van BoxGeometry's eigen per-face-UV-layout te reverse-engineeren (die
+// verschilt per as al naar gelang het segmentaantal — T102/T103 gebruiken
+// per muur een ANDERE segX/segZ, dus geen vaste vertex-volgorde om op te
+// bouwen), leest deze functie voor ELKE vertex gewoon de LOKALE positie en
+// normal (die al bestaan) en herleidt daaruit welke twee assen dat vlak
+// bestrijkt (de as waar de normal het sterkst op wijst, valt af). Dat werkt
+// ONVERANDERD voor een BoxGeometry (elk van de 6 vlakken) ÉN voor een platte
+// PlaneGeometry (lokaal altijd normal (0,0,1), dus u=x, v=y) — één functie
+// voor blok() en vlak() samen, ongeacht rotatie (de wereld-rotatie van de
+// mesh raakt lokale UV's niet) of segmentaantal. `texelsPerMeter=1` (één
+// volledige textuurherhaling per meter) is de wereldschaal die T107's
+// patronen (baksteen/planken/klinkers) is ontworpen om op te lezen.
+const TEXELS_PER_METER = 1;
+function herschaalUVNaarWereldschaal(geometrie, texelsPerMeter = TEXELS_PER_METER) {
+  const pos = geometrie.getAttribute('position');
+  const nrm = geometrie.getAttribute('normal');
+  const uv = geometrie.getAttribute('uv');
+  for (let i = 0; i < pos.count; i++) {
+    const nx = Math.abs(nrm.getX(i)), ny = Math.abs(nrm.getY(i)), nz = Math.abs(nrm.getZ(i));
+    let u, v;
+    if (nx >= ny && nx >= nz) { u = pos.getZ(i); v = pos.getY(i); }        // x-vlak: uv uit z/y
+    else if (ny >= nx && ny >= nz) { u = pos.getX(i); v = pos.getZ(i); }   // y-vlak: uv uit x/z
+    else { u = pos.getX(i); v = pos.getY(i); }                            // z-vlak: uv uit x/y
+    uv.setXY(i, u * texelsPerMeter, v * texelsPerMeter);
+  }
+  uv.needsUpdate = true;
+}
+// Ticket 107 (v0.22, §10.11-beslissing 86): van drie ruispatronen naar een
+// echte, herkenbare oppervlakteset. `steen`/`hout`/`natSteen` kregen een
+// TWEEDE parameter (`basisWit`) — ze worden zo twee keer gerenderd door
+// bouwCanvasTextuurPaar() hieronder: één keer als albedo (`map`, meer
+// contrast) en één keer als roughnessMap (dicht bij wit, de bestaande
+// conventie van vóór dit ticket). Bewust GRIJSWAARDE in beide gevallen
+// (R=G=B, nooit een eigen hue in de tekenaar zelf) — de basiskleur komt nog
+// steeds van MATERIAAL_FAMILIES/de meegegeven `kleur` (§7.3's garantie),
+// nu via `color * albedoMap` i.p.v. alleen `color`. `metaal` is BEWUST
+// ongewijzigd gelaten (behoudt zijn oude signatuur/roughness-only pad) —
+// de ticket-spec noemt alleen baksteen/planken/klinkers, geen metaal-
+// upgrade. Stijl blijft laag-contrast en gestileerd ("geverfde maquette",
+// zie het risico hierover in ARCHITECTURE_NOTES §10.11) — geen poging tot
+// fotorealisme, dat zou juist de blokgeometrie erger laten opvallen.
+// Ticket 107-vervolg (klinkerrealisme): de klinkertegel wordt op ECHTE
+// wereldschaal getekend i.p.v. op de globale 1-meter-tegel. Eén tegel
+// beslaat KLINKER_TEGEL_METERS meter (zie de herschaalUVNaarWereldschaal()-
+// aanroep bij de binnenplaatsvloer), verdeeld in KLINKER_CELLEN cellen van
+// 21 cm — de Nederlandse standaard-klinkermaat (21 x 10,5 cm, twee stenen
+// per cel in blokverband). Dat doet twee dingen tegelijk: de stenen krijgen
+// een geloofwaardige maat, en het patroon herhaalt pas na ruim vier meter
+// i.p.v. elke meter (de binnenplaats is 17x16m: van ~270 herhalingen naar
+// ~16).
+const KLINKER_TEGEL_METERS = 4.2;
+const KLINKER_CELLEN = 20;
+// Ticket 107-vervolg: de tekenaars draaiden op Math.random(), dus élke
+// laadbeurt leverde een andere textuur op. Dat is twee keer ongewenst: de
+// binnenplaats lichtte per sessie meetbaar anders op (tot enkele procenten
+// mediane helderheid — meer dan de 2%-vangrail van
+// test-visuele-basislijn.mjs toestaat), en een speler zou het pand nooit
+// twee keer hetzelfde zien. Zelfde keuze als T104 (§10.12), waar
+// hashNaarEenheid() om exact deze reden boven Math.random() ging: variatie
+// mag, willekeur per laadbeurt niet. Elke tekenaar krijgt nu een eigen,
+// vaste stroom, afgeleid van zijn patroonnaam.
+function tekstZaad(tekst) {
+  let h = 2166136261;
+  for (let i = 0; i < tekst.length; i++) {
+    h ^= tekst.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function maakZaadRandom(zaad) {
+  let t = zaad >>> 0;
+  return function () {                                   // mulberry32
+    t = (t + 0x6D2B79F5) >>> 0;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
 const CANVAS_TEXTUUR_TEKENAARS = {
-  steen(ctx, n) {
-    ctx.fillStyle = '#e8e8e8';
+  // Baksteenverband: rijen bakstenen in sprongverband (elke rij een halve
+  // steen verschoven), donkere voeglijnen, kleine per-steen kleurvariatie.
+  steen(ctx, n, basisWit, rnd = Math.random) {
+    const stenenPerRij = 8, rijen = 20;
+    const bWidth = n / stenenPerRij, bHeight = n / rijen;
+    const voeg = Math.max(2, n / 130);
+    const voegWit = Math.max(0, basisWit - 95);
+    ctx.fillStyle = `rgb(${voegWit},${voegWit},${voegWit})`;
     ctx.fillRect(0, 0, n, n);
-    for (let i = 0; i < n * n * 0.5; i++) {
-      const x = Math.random() * n, y = Math.random() * n;
-      const g = 205 + Math.floor(Math.random() * 45);   // 205-250: korrelige steenruis
-      ctx.fillStyle = `rgb(${g},${g},${g})`;
-      ctx.fillRect(x, y, 1.4, 1.4);
+    for (let rij = 0; rij < rijen; rij++) {
+      const y = rij * bHeight;
+      const verschuiving = (rij % 2) * (bWidth / 2);
+      for (let x = -bWidth; x < n + bWidth; x += bWidth) {
+        const g = Math.max(0, Math.min(255, basisWit + (rnd() - 0.5) * 30));
+        ctx.fillStyle = `rgb(${g},${g},${g})`;
+        ctx.fillRect(x + verschuiving + voeg / 2, y + voeg / 2, bWidth - voeg, bHeight - voeg);
+      }
     }
   },
-  hout(ctx, n) {
-    ctx.fillStyle = '#e8e8e8';
+  // Planken met richting (verticale scheidingen), her en der een golvende
+  // nerflijn en af en toe een knoest.
+  hout(ctx, n, basisWit, rnd = Math.random) {
+    const plankBreedte = n / 6;
+    const naad = Math.max(2, n / 170);
+    const naadWit = Math.max(0, basisWit - 65);
+    ctx.fillStyle = `rgb(${naadWit},${naadWit},${naadWit})`;
     ctx.fillRect(0, 0, n, n);
-    ctx.lineWidth = 1.1;
-    for (let y = 3; y < n; y += 6 + Math.random() * 4) {
-      const g = 210 + Math.floor(Math.random() * 30);
-      ctx.strokeStyle = `rgb(${g},${g},${g})`;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      for (let x = 0; x <= n; x += 8) ctx.lineTo(x, y + Math.sin(x * 0.09 + y) * 2.2);
-      ctx.stroke();
+    for (let x = 0; x < n; x += plankBreedte) {
+      const plankTint = Math.max(0, Math.min(255, basisWit + (rnd() - 0.5) * 24));
+      ctx.fillStyle = `rgb(${plankTint},${plankTint},${plankTint})`;
+      ctx.fillRect(x + naad / 2, 0, plankBreedte - naad, n);
+      const nervWit = Math.max(0, plankTint - 22);
+      ctx.strokeStyle = `rgb(${nervWit},${nervWit},${nervWit})`;
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 4; i++) {
+        const nervX = x + naad + rnd() * (plankBreedte - naad * 2);
+        ctx.beginPath();
+        ctx.moveTo(nervX, 0);
+        for (let y = 0; y <= n; y += 12) ctx.lineTo(nervX + Math.sin(y * 0.05 + nervX) * 3, y);
+        ctx.stroke();
+      }
+      if (rnd() < 0.4) {
+        const ky = rnd() * n, kx = x + plankBreedte / 2;
+        const knoestWit = Math.max(0, plankTint - 45);
+        ctx.fillStyle = `rgb(${knoestWit},${knoestWit},${knoestWit})`;
+        ctx.beginPath();
+        ctx.ellipse(kx, ky, 6, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   },
-  metaal(ctx, n) {
+  metaal(ctx, n, _basisWit, rnd = Math.random) {
     ctx.fillStyle = '#e4e4e4';
     ctx.fillRect(0, 0, n, n);
     for (let x = 0; x < n; x += 1.5) {
-      const g = 215 + Math.floor(Math.random() * 30);   // fijne verticale geborsteld-metaal-strepen
+      const g = 215 + Math.floor(rnd() * 30);   // fijne verticale geborsteld-metaal-strepen
       ctx.strokeStyle = `rgb(${g},${g},${g})`;
       ctx.beginPath();
-      ctx.moveTo(x + (Math.random() - 0.5) * 1.5, 0);
-      ctx.lineTo(x + (Math.random() - 0.5) * 1.5, n);
+      ctx.moveTo(x + (rnd() - 0.5) * 1.5, 0);
+      ctx.lineTo(x + (rnd() - 0.5) * 1.5, n);
       ctx.stroke();
     }
   },
+  // Klinkers in BLOKVERBAND (mandjesverband): elke cel van 21x21 cm bevat
+  // twee stenen van 21x10,5 cm, om en om liggend en staand. Bewust dit
+  // verband en niet keperverband: keperverband heeft een schuin
+  // translatierooster en sluit dus niet naadloos aan op een vierkante,
+  // herhalende textuurtegel, terwijl blokverband dat per definitie wél doet
+  // (periode = 2 cellen in beide richtingen) — en het is net zo goed een
+  // gangbaar Nederlands bestratingsverband. De vorige versie legde één
+  // steen midden in een cel met lege ruimte eromheen; dat was geen bestaand
+  // verband en las als een zwevend raster.
+  natSteen(ctx, n, basisWit, rnd = Math.random) {
+    const cel = n / KLINKER_CELLEN;
+    // ~1,2 cm voegbreedte, maar nooit zo breed dat de steen zelf verdwijnt:
+    // de smalste steenmaat is cel/2, dus cel/6 is een veilige bovengrens
+    // (relevant bij kleine canvassen, zoals de steekproef in de tests).
+    const voeg = Math.min(Math.max(2, n / 340), cel / 6);
+    const voegWit = Math.max(0, basisWit - 95);
+    ctx.fillStyle = `rgb(${voegWit},${voegWit},${voegWit})`;
+    ctx.fillRect(0, 0, n, n);
+    const legSteen = (x, y, b, h) => {
+      // Per steen een eigen bakkleur; af en toe een duidelijk donkerder
+      // (verweerd/verzakt) of juist lichter (recent vervangen) exemplaar —
+      // in echt straatwerk is geen enkele klinker gelijk aan zijn buur.
+      let g = basisWit + (rnd() - 0.5) * 34;
+      const rol = rnd();
+      if (rol < 0.07) g = basisWit - 42 - rnd() * 28;
+      else if (rol > 0.95) g = basisWit + 15;
+      g = Math.max(0, Math.min(255, Math.round(g)));
+      ctx.fillStyle = `rgb(${g},${g},${g})`;
+      // Lichte scheefstand: straatwerk ligt nooit kaarsrecht in het gelid.
+      const px = x + voeg / 2 + (rnd() - 0.5) * voeg * 0.7;
+      const py = y + voeg / 2 + (rnd() - 0.5) * voeg * 0.7;
+      const pb = b - voeg, ph = h - voeg;
+      ctx.beginPath();
+      // Afgesleten hoeken (roundRect waar beschikbaar) i.p.v. een kaarsrecht
+      // rechthoekje — een gebruikte klinker heeft geen scherpe hoeken meer.
+      if (ctx.roundRect) ctx.roundRect(px, py, pb, ph, Math.min(pb, ph) * 0.16);
+      else ctx.rect(px, py, pb, ph);
+      ctx.fill();
+    };
+    for (let gy = 0; gy < KLINKER_CELLEN; gy++) {
+      for (let gx = 0; gx < KLINKER_CELLEN; gx++) {
+        const x = gx * cel, y = gy * cel;
+        if ((gx + gy) % 2 === 0) {                  // twee liggende stenen
+          legSteen(x, y, cel, cel / 2);
+          legSteen(x, y + cel / 2, cel, cel / 2);
+        } else {                                    // twee staande stenen
+          legSteen(x, y, cel / 2, cel);
+          legSteen(x + cel / 2, y, cel / 2, cel);
+        }
+      }
+    }
+    // Grootschalige slijtage/vervuiling over meerdere meters: zonder deze
+    // laag blijft élke tegelherhaling exact identiek en zie je het raster
+    // van 4,2 m over de hele binnenplaats terug. Elke vlek wordt in alle
+    // negen wrap-posities getekend, zodat de tegel naadloos blijft
+    // aansluiten (een vlek die de rand raakt, loopt aan de overkant door).
+    for (let i = 0; i < 9; i++) {
+      const cx = rnd() * n, cy = rnd() * n;
+      const straal = n * (0.10 + rnd() * 0.16);
+      const toon = rnd() < 0.78 ? 0 : 255;   // overwegend vuil, af en toe uitgebleekt
+      const alpha = 0.05 + rnd() * 0.07;
+      for (const ox of [-n, 0, n]) {
+        for (const oy of [-n, 0, n]) {
+          const mx = cx + ox, my = cy + oy;
+          if (mx + straal < 0 || mx - straal > n || my + straal < 0 || my - straal > n) continue;
+          const grad = ctx.createRadialGradient(mx, my, 0, mx, my, straal);
+          grad.addColorStop(0, `rgba(${toon},${toon},${toon},${alpha})`);
+          grad.addColorStop(1, `rgba(${toon},${toon},${toon},0)`);
+          ctx.fillStyle = grad;
+          ctx.fillRect(mx - straal, my - straal, straal * 2, straal * 2);
+        }
+      }
+    }
+  },
+  // Pleisterwerk: geen verband, geen raster — een vlakke, licht wolkige
+  // laag met afbladderende plekken die een donkerdere onderlaag tonen, en
+  // een enkele haarscheur. Alles in wrap-posities getekend zodat de tegel
+  // naadloos blijft (pleister heeft geen eigen periodiciteit die een naad
+  // zou kunnen maskeren, dus dat luistert hier nauwer dan bij baksteen).
+  pleister(ctx, n, basisWit, rnd = Math.random) {
+    ctx.fillStyle = `rgb(${basisWit},${basisWit},${basisWit})`;
+    ctx.fillRect(0, 0, n, n);
+    const wrapVlek = (cx, cy, straal, toon, alpha) => {
+      for (const ox of [-n, 0, n]) {
+        for (const oy of [-n, 0, n]) {
+          const mx = cx + ox, my = cy + oy;
+          if (mx + straal < 0 || mx - straal > n || my + straal < 0 || my - straal > n) continue;
+          const grad = ctx.createRadialGradient(mx, my, 0, mx, my, straal);
+          grad.addColorStop(0, `rgba(${toon},${toon},${toon},${alpha})`);
+          grad.addColorStop(1, `rgba(${toon},${toon},${toon},0)`);
+          ctx.fillStyle = grad;
+          ctx.fillRect(mx - straal, my - straal, straal * 2, straal * 2);
+        }
+      }
+    };
+    // Wolkige ondergrond: brede, zachte tooncontrasten (vocht, ouderdom).
+    for (let i = 0; i < 14; i++) {
+      wrapVlek(rnd() * n, rnd() * n, n * (0.08 + rnd() * 0.22),
+        rnd() < 0.55 ? 0 : 255, 0.04 + rnd() * 0.06);
+    }
+    // Afbladderende plekken: harde rand, donkerder eronder (kale ondergrond).
+    // Sterk wisselende maat (kwadratische verdeling: veel kleine schilfers,
+    // een enkele grote kale plek) en per plek een eigen vervormingsfrequentie
+    // — anders krijgen alle plekken dezelfde ronde omtrek en leest het vlak
+    // als stippen in plaats van als afgebladderd pleisterwerk.
+    for (let i = 0; i < 11; i++) {
+      const cx = rnd() * n, cy = rnd() * n;
+      const grof = rnd();
+      const straal = n * (0.012 + grof * grof * 0.085);
+      const punten = 11 + Math.floor(rnd() * 8);
+      const vervormFreq = 1.7 + rnd() * 3.4;
+      const vervormFase = rnd() * Math.PI * 2;
+      const vervormDiepte = 0.30 + rnd() * 0.34;
+      const bladderWit = Math.max(0, basisWit - 34 - Math.floor(rnd() * 30));
+      for (const ox of [-n, 0, n]) {
+        for (const oy of [-n, 0, n]) {
+          const mx = cx + ox, my = cy + oy;
+          if (mx + straal * 1.5 < 0 || mx - straal * 1.5 > n || my + straal * 1.5 < 0 || my - straal * 1.5 > n) continue;
+          ctx.fillStyle = `rgb(${bladderWit},${bladderWit},${bladderWit})`;
+          ctx.beginPath();
+          for (let p = 0; p <= punten; p++) {
+            const hoek = (p / punten) * Math.PI * 2;
+            // Deterministisch per punt-index, zodat alle negen wrap-kopieën
+            // van deze vlek EXACT dezelfde grillige vorm krijgen (anders
+            // sluit een vlek die over de rand loopt niet op zichzelf aan).
+            const r = straal * (1 - vervormDiepte
+              + vervormDiepte * Math.abs(Math.sin(p * vervormFreq + vervormFase))
+              + vervormDiepte * 0.4 * Math.abs(Math.sin(p * vervormFreq * 2.3 + vervormFase)));
+            const px = mx + Math.cos(hoek) * r, py = my + Math.sin(hoek) * r;
+            if (p === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+    }
+    // Haarscheuren: dun, grillig, met vertakking.
+    const scheurWit = Math.max(0, basisWit - 38);
+    ctx.strokeStyle = `rgb(${scheurWit},${scheurWit},${scheurWit})`;
+    ctx.lineWidth = Math.max(1, n / 512);
+    for (let i = 0; i < 5; i++) {
+      const sx = rnd() * n, sy = rnd() * n;
+      let hoek = rnd() * Math.PI * 2;
+      const stappen = 8 + Math.floor(rnd() * 8);
+      const stap = n * 0.035;
+      const punten = [[sx, sy]];
+      for (let s = 0; s < stappen; s++) {
+        hoek += (rnd() - 0.5) * 1.1;
+        const [lx, ly] = punten[punten.length - 1];
+        punten.push([lx + Math.cos(hoek) * stap, ly + Math.sin(hoek) * stap]);
+      }
+      for (const ox of [-n, 0, n]) {
+        for (const oy of [-n, 0, n]) {
+          ctx.beginPath();
+          ctx.moveTo(punten[0][0] + ox, punten[0][1] + oy);
+          for (const [px, py] of punten.slice(1)) ctx.lineTo(px + ox, py + oy);
+          ctx.stroke();
+        }
+      }
+    }
+  },
 };
+// Ticket 107: paired albedo+roughness builder voor de drie "echte" families
+// hierboven. Zelfde tekenaar, twee keer gerenderd op een apart canvas met
+// een ander basiswit-niveau: T107_ALBEDO_BASIS ligt lager (meer contrast,
+// draagt de zichtbare structuur) dan T107_RUWHEID_BASIS (dicht bij wit,
+// zoals vóór dit ticket — subtiele ruwheidsvariatie, geen dominant signaal).
+const T107_ALBEDO_BASIS = 232;
+const T107_RUWHEID_BASIS = 224;
+// Hoe sterk een DONKERE plek in de albedo doorwerkt als een RUWERE plek in
+// de roughnessMap. Zie de uitleg bij bouwCanvasTextuurPaar() hieronder.
+const T107_RUWHEID_INVERSIE = 0.12;
+const canvasTextuurPaarCache = new Map();
+// Ticket 107-vervolg (klinkerrealisme): de roughnessMap wordt nu AFGELEID
+// van de albedo-pixels, en wel OMGEKEERD. Daarvoor tekende deze functie
+// dezelfde tekenaar twee keer met een ander basiswit, wat twee fouten
+// opleverde:
+//
+//  1. Three.js past een roughnessMap VERMENIGVULDIGEND toe
+//     (roughness *= texel.g). Donker in die kaart betekent dus LAGERE
+//     ruwheid = GLANZENDER. De voegen waren donker getekend, dus de voegen
+//     werden juist het glanzendst — fysiek precies omgekeerd (voegspecie is
+//     dof en poreus, de klinker zelf is glad). Bij natSteen (basisruwheid
+//     0,32) kwam de voeg daardoor op ~0,19 uit tegen ~0,29 voor de steen:
+//     een raster van donkere, spiegelende naden tussen lichtere vlakken —
+//     precies de "geborsteld metaal"-indruk.
+//  2. De tekenaars gebruiken Math.random(); twee losse renders leverden dus
+//     twee NIET-corresponderende patronen op (de per-steen tintvariatie in
+//     de albedo hoorde bij andere stenen dan die in de roughnessMap).
+//
+// Door de ruwheid uit de albedo-pixels te berekenen, corresponderen beide
+// kaarten per definitie, en scheelt het bovendien een volledige tekenronde.
+function bouwCanvasTextuurPaar(patroon, tekenFn, grootte = 512) {
+  let paar = canvasTextuurPaarCache.get(patroon);
+  if (paar) return paar;
+  const canvasAlbedo = document.createElement('canvas');
+  canvasAlbedo.width = canvasAlbedo.height = grootte;
+  const ctxAlbedo = canvasAlbedo.getContext('2d');
+  tekenFn(ctxAlbedo, grootte, T107_ALBEDO_BASIS, maakZaadRandom(tekstZaad(patroon)));
+  const albedo = new THREE.CanvasTexture(canvasAlbedo);
+  albedo.wrapS = albedo.wrapT = THREE.RepeatWrapping;
+  albedo.colorSpace = THREE.SRGBColorSpace;   // een kleurmap (map), i.t.t. roughnessMap (data, lineair)
+
+  const bron = ctxAlbedo.getImageData(0, 0, grootte, grootte);
+  const canvasRuwheid = document.createElement('canvas');
+  canvasRuwheid.width = canvasRuwheid.height = grootte;
+  const ctxRuwheid = canvasRuwheid.getContext('2d');
+  const doel = ctxRuwheid.createImageData(grootte, grootte);
+  for (let i = 0; i < bron.data.length; i += 4) {
+    // Donkerder dan het schone oppervlak (voeg, scheur, verweerde steen)
+    // => hoger dan T107_RUWHEID_BASIS => ruwer/doffer.
+    const g = Math.max(0, Math.min(255, Math.round(
+      T107_RUWHEID_BASIS + (T107_ALBEDO_BASIS - bron.data[i]) * T107_RUWHEID_INVERSIE)));
+    doel.data[i] = doel.data[i + 1] = doel.data[i + 2] = g;
+    doel.data[i + 3] = 255;
+  }
+  ctxRuwheid.putImageData(doel, 0, 0);
+  const ruwheid = new THREE.CanvasTexture(canvasRuwheid);
+  ruwheid.wrapS = ruwheid.wrapT = THREE.RepeatWrapping;
+
+  paar = { albedo, ruwheid };
+  canvasTextuurPaarCache.set(patroon, paar);
+  return paar;
+}
 const MATERIAAL_FAMILIES = {
-  hout:     { ruwheid: 0.75, metaal: 0.05, textuur: 'hout' },
-  steen:    { ruwheid: 0.9,  metaal: 0,    textuur: 'steen' },
+  // Ticket 107: `albedo: true` markeert de drie families die de nieuwe
+  // paired-texturenset krijgen (map + roughnessMap). `metaal`/`tegel`
+  // blijven op hun oude pad — geen albedo-upgrade in deze ronde.
+  hout:     { ruwheid: 0.75, metaal: 0.05, textuur: 'hout', albedo: true },
+  steen:    { ruwheid: 0.9,  metaal: 0,    textuur: 'steen', albedo: true },
   tegel:    { ruwheid: 0.55, metaal: 0.05 },
   metaal:   { ruwheid: 0.35, metaal: 0.65, textuur: 'metaal' },
-  natSteen: { ruwheid: 0.32, metaal: 0.12 },   // natte klinkers: lage ruwheid = glans in maanlicht
+  // Ticket 107-vervolg (klinkerrealisme): metalness 0,12 -> 0 en ruwheid
+  // 0,32 -> 0,45. Steen is nooit metallic; die 0,12 tintte de highlight
+  // richting de basiskleur en gaf het oppervlak een "gepolijst plaatwerk"-
+  // karakter. De natte glans hoort uit lage ruwheid te komen, en vooral
+  // PLAATSELIJK te zijn: de plassen op de binnenplaats staan al op
+  // roughness 0,07 en dragen het natte accent nu alleen. 0,45 blijft
+  // duidelijk glanzender dan 'steen' (0,9), dus het blijft leesbaar als
+  // vochtig plaveisel — alleen niet meer als één groot spiegelend vlak.
+  natSteen: { ruwheid: 0.45, metaal: 0, textuur: 'natSteen', albedo: true, grootte: 1024 },
+  // Ticket 107-vervolg: pleisterwerk — de vierde tekenaar uit de
+  // oorspronkelijke T107-opzet, die toen buiten scope viel omdat er geen
+  // aanroeper voor was. Nog steeds NIET aangeroepen door de wereldopbouw:
+  // dit is de grondslag voor een eventuele muur-uitrol (GANG_PLEISTER-
+  // muren), zodat die keuze op beeld beoordeeld kan worden vóór hij vastligt.
+  pleister: { ruwheid: 0.95, metaal: 0, textuur: 'pleister', albedo: true, grootte: 512 },
 };
 const matFamilieCache = new Map();
 function matFamilie(naam, kleur) {
@@ -892,7 +1459,15 @@ function matFamilie(naam, kleur) {
   if (!gedeeld) {
     const info = MATERIAAL_FAMILIES[naam] ?? MATERIAAL_FAMILIES.steen;
     const opties = { color: kleur, roughness: info.ruwheid, metalness: info.metaal };
-    if (info.textuur) opties.roughnessMap = bouwCanvasTextuur(info.textuur, CANVAS_TEXTUUR_TEKENAARS[info.textuur]);
+    if (info.textuur) {
+      if (info.albedo) {
+        const { albedo, ruwheid } = bouwCanvasTextuurPaar(info.textuur, CANVAS_TEXTUUR_TEKENAARS[info.textuur], info.grootte);
+        opties.map = albedo;
+        opties.roughnessMap = ruwheid;
+      } else {
+        opties.roughnessMap = bouwCanvasTextuur(info.textuur, CANVAS_TEXTUUR_TEKENAARS[info.textuur]);
+      }
+    }
     gedeeld = new THREE.MeshStandardMaterial(opties);
     gedeeld.userData.gedeeld = true;   // Ticket 70: ruimGroepOp() mag dit nooit disposen
     matFamilieCache.set(sleutel, gedeeld);
@@ -900,11 +1475,104 @@ function matFamilie(naam, kleur) {
   return gedeeld;
 }
 
-function blok(breedte, hoogte, diepte, kleur, ruwheid = 0.88, metaal = 0) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(breedte, hoogte, diepte), mat(kleur, ruwheid, metaal));
+// Ticket 102 (v0.22, §10.7-beslissing 82): subdivisie-helper. Grote vlakken
+// (muren/vloeren/plafonds) waren tot nu toe één enkel segment (BoxGeometry/
+// PlaneGeometry default) — te grof voor een vloeiende occlusiegradient
+// (T103). Geen zichtbaar effect op zichzelf: BoxGeometry/PlaneGeometry
+// zetten per FACE een uniforme analytische normal, ongeacht het aantal
+// segmenten — een 8x8-gesubdivideerd vlak oogt onder gewoon licht identiek
+// aan een 1x1-vlak zolang er geen per-vertex data (kleur, verplaatsing) op
+// zit. `blok()` blijft default op 1 segment (bestaand gedrag, ongewijzigd
+// voor de meubel-/decor-aanroepen die 'm ook gebruiken, bv. bouwSchuurtje())
+// — alleen de muur-bouwfuncties geven expliciet hogere segmenten mee.
+const SUBDIVISIE_SEGMENTEN = 8;
+
+// Ticket 103 (v0.22, §10.7-beslissing 82): ingebakken hoekocclusie. Een
+// per-vertex GRIJSWAARDE-gradient (vermenigvuldigt met de materiaalkleur,
+// verschuift nooit de tint) die de rand van elk groot vlak subtiel
+// donkerder maakt: muren donkerder waar ze vloer/plafond raken, vloeren en
+// plafonds donkerder waar ze een muur raken. Bewust NIET de zijkanten van
+// muren (waar de ene muur de volgende zou raken): §10.7 waarschuwt expliciet
+// dat de occlusieberekening een deurgat kan "dichtsmeren" als hij niet kan
+// onderscheiden of een muursegment se korte rand een echte hoek is of een
+// deuropening. Verticale muur-randen (top/bodem) en alle vloer/plafond-
+// randen zijn ALTIJD een echte, permanente hoek — geen enkele muur mist een
+// vloer eronder of een plafond erboven, en geen enkele vloer/plafondrand is
+// een "opening". Die twee dekken het grootste deel van de "kamers voelen
+// plat"-klacht zonder het deurgat-risico.
+const OCCLUSIE_BEREIK = 0.6;     // meter vanaf de rand waarbinnen het effect afbouwt
+const OCCLUSIE_STERKTE = 0.35;   // max. 35% donkerder pal op de rand
+function occlusieFactor(afstandTotRand) {
+  const t = Math.min(1, Math.max(0, afstandTotRand) / OCCLUSIE_BEREIK);
+  const smooth = t * t * (3 - 2 * t);   // smoothstep i.p.v. lineair: zachtere overgang
+  return 1 - OCCLUSIE_STERKTE * (1 - smooth);
+}
+// Eén vertexColors-"tweeling" per basismateriaal — nooit het gedeelde
+// origineel zelf gemuteerd (route (a) uit §10.7: een aparte cache-tak i.p.v.
+// vertexColors globaal aanzetten, want dat laatste maakt ELK vlak zonder
+// color-attribuut pikzwart — WebGL's generieke waarde voor een ongebonden
+// vertex-attribuut is (0,0,0,1), zie de meting in ARCHITECTURE_NOTES §10.7).
+// Een WeakMap i.p.v. een sleutel-string-cache: de tweeling hoort bij DIT ENE
+// materiaal-object, dus geen aparte sleutelconstructie nodig, en de tweeling
+// vervalt vanzelf als het basismateriaal ooit onbereikbaar wordt.
+const vertexKleurTweelingen = new WeakMap();
+function matMetVertexKleur(basisMateriaal) {
+  let tweeling = vertexKleurTweelingen.get(basisMateriaal);
+  if (!tweeling) {
+    tweeling = basisMateriaal.clone();
+    tweeling.vertexColors = true;
+    tweeling.userData.gedeeld = true;   // Ticket 70: ruimGroepOp() mag dit nooit disposen
+    vertexKleurTweelingen.set(basisMateriaal, tweeling);
+  }
+  return tweeling;
+}
+function bakRandKleur(geometrie, factorVan) {
+  const pos = geometrie.getAttribute('position');
+  const kleuren = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const f = factorVan(i);
+    kleuren[i * 3] = f; kleuren[i * 3 + 1] = f; kleuren[i * 3 + 2] = f;
+  }
+  geometrie.setAttribute('color', new THREE.Float32BufferAttribute(kleuren, 3));
+}
+// Muur: alleen de verticale rand (top/bodem, lokale Y loopt van -hoogte/2
+// tot +hoogte/2) doet mee — zie de toelichting hierboven.
+function bakMuurOcclusie(geometrie, hoogte) {
+  const pos = geometrie.getAttribute('position');
+  bakRandKleur(geometrie, (i) => occlusieFactor(hoogte / 2 - Math.abs(pos.getY(i))));
+}
+// Vloer/plafond: alle vier de randen doen mee (PlaneGeometry-lokaal X/Y
+// lopen van -breedte/2..breedte/2 resp. -diepte/2..diepte/2, vóór de
+// ±90°-rotatie die vlak() erop toepast om het plat te leggen).
+function bakVlakOcclusie(geometrie, breedte, diepte) {
+  const pos = geometrie.getAttribute('position');
+  bakRandKleur(geometrie, (i) => {
+    const afstandX = breedte / 2 - Math.abs(pos.getX(i));
+    const afstandY = diepte / 2 - Math.abs(pos.getY(i));
+    return occlusieFactor(Math.min(afstandX, afstandY));
+  });
+}
+
+function blok(breedte, hoogte, diepte, kleur, ruwheid = 0.88, metaal = 0, segX = 1, segY = 1, segZ = 1, occlusie = false) {
+  const geometrie = new THREE.BoxGeometry(breedte, hoogte, diepte, segX, segY, segZ);
+  let materiaal = mat(kleur, ruwheid, metaal);
+  if (occlusie) {
+    bakMuurOcclusie(geometrie, hoogte);
+    materiaal = matMetVertexKleur(materiaal);
+  }
+  const m = new THREE.Mesh(geometrie, materiaal);
   m.castShadow = true;
   m.receiveShadow = true;
   return m;
+}
+// Muren zijn altijd een lange, dunne doos (breedte ÓF diepte is de dikte,
+// doorgaans MUUR_DIKTE = 0,3m) — de dunne as heeft geen subdivisie nodig
+// (er loopt geen occlusiegradient over de dikte van een muur), de lange as
+// en de hoogte wel.
+function muurSegmenten(breedte, diepte) {
+  return breedte >= diepte
+    ? { segX: SUBDIVISIE_SEGMENTEN, segZ: 1 }
+    : { segX: 1, segZ: SUBDIVISIE_SEGMENTEN };
 }
 
 // Kamerafmetingen: startkamer 9m breed (x) x 10m diep (z) x 3.2m hoog. Ten
@@ -1112,19 +1780,17 @@ const GRENS = {
 };
 
 // Houten vloer.
-const vloer = new THREE.Mesh(
-  new THREE.PlaneGeometry(HALF_BREEDTE * 2, HALF_DIEPTE * 2),
-  mat(0x8a5f34, 0.75)
-);
+const vloerGeo = new THREE.PlaneGeometry(HALF_BREEDTE * 2, HALF_DIEPTE * 2, SUBDIVISIE_SEGMENTEN, SUBDIVISIE_SEGMENTEN);
+bakVlakOcclusie(vloerGeo, HALF_BREEDTE * 2, HALF_DIEPTE * 2);
+const vloer = new THREE.Mesh(vloerGeo, matMetVertexKleur(mat(0x8a5f34, 0.75)));
 vloer.rotation.x = -Math.PI / 2;
 vloer.receiveShadow = true;
 wereld.add(vloer);
 
 // Plafond (donker, zodat de kamer echt "dicht" aanvoelt).
-const plafond = new THREE.Mesh(
-  new THREE.PlaneGeometry(HALF_BREEDTE * 2, HALF_DIEPTE * 2),
-  mat(0x14100c, 0.95)
-);
+const plafondGeo = new THREE.PlaneGeometry(HALF_BREEDTE * 2, HALF_DIEPTE * 2, SUBDIVISIE_SEGMENTEN, SUBDIVISIE_SEGMENTEN);
+bakVlakOcclusie(plafondGeo, HALF_BREEDTE * 2, HALF_DIEPTE * 2);
+const plafond = new THREE.Mesh(plafondGeo, matMetVertexKleur(mat(0x14100c, 0.95)));
 plafond.rotation.x = Math.PI / 2;
 plafond.position.y = KAMER_HOOGTE;
 wereld.add(plafond);
@@ -1141,7 +1807,8 @@ const BAKSTEEN = 0x54281f;
 // (registreerRechthoek) is 2D en dus per definitie hoogte-onafhankelijk: een
 // lagere muur blokkeert nog steeds volledig, precies zoals bedoeld.
 function bouwMuur(x, z, breedte, diepte, kleur = BAKSTEEN, hoogte = KAMER_HOOGTE) {
-  const muur = blok(breedte, hoogte, diepte, kleur, 0.92);
+  const { segX, segZ } = muurSegmenten(breedte, diepte);
+  const muur = blok(breedte, hoogte, diepte, kleur, 0.92, 0, segX, SUBDIVISIE_SEGMENTEN, segZ, true);
   muur.position.set(x, hoogte / 2, z);
   wereld.add(muur);
   registreerRechthoek(x - breedte / 2, x + breedte / 2, z - diepte / 2, z + diepte / 2);
@@ -1171,13 +1838,84 @@ bouwMuur(-HALF_BREEDTE - MUUR_DIKTE / 2, 0, MUUR_DIKTE, HALF_DIEPTE * 2);       
    plafond worden per stuk toegevoegd zodat er onder de gang/kamer geen gat
    in de wereld zit. */
 function vlak(kleur, breedte, diepte, cx, cz, y, omhoog) {
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(breedte, diepte), mat(kleur, omhoog ? 0.95 : 0.75));
+  // Ticket 103: elke vlak()-aanroep is een kamervloer/-plafond (geen enkele
+  // decoratieve toepassing gevonden), dus occlusie staat hier altijd aan —
+  // in tegenstelling tot blok(), dat ook voor meubels wordt gebruikt en dus
+  // een opt-in nodig heeft.
+  const geometrie = new THREE.PlaneGeometry(breedte, diepte, SUBDIVISIE_SEGMENTEN, SUBDIVISIE_SEGMENTEN);
+  bakVlakOcclusie(geometrie, breedte, diepte);
+  herschaalUVNaarWereldschaal(geometrie);   // Ticket 106: klaar voor als een aanroeper 'm naar matFamilie() overzet
+  const m = new THREE.Mesh(geometrie, matMetVertexKleur(mat(kleur, omhoog ? 0.95 : 0.75)));
   m.rotation.x = omhoog ? Math.PI / 2 : -Math.PI / 2;
   m.position.set(cx, y, cz);
   m.receiveShadow = !omhoog;
   wereld.add(m);
-  return m;   // Ticket 38: aanroepers kunnen zo desgewenst een matFamilie() overzetten
+  return m;   // Ticket 38: aanroepers kunnen zo desgewenst een matFamilie() overzetten —
+              // maar dan WEL via matMetVertexKleur(matFamilie(...)), anders valt de
+              // hier al gebakken occlusie-kleur stil (zie de aanroepers hieronder).
 }
+
+// Ticket 104 (v0.22, §10.12-beslissing 87): per-mesh kleurtint-variatie.
+// Het probleem is letterlijk: bouwKratten()/bouwVat() plaatsen meerdere
+// instanties met hetzelfde (gedeelde, gecachete) materiaal, dus elke kist
+// is tot nu toe exact dezelfde kleur als elke andere kist. Een DETERMINIS-
+// TISCHE hash van de wereldpositie (GEEN Math.random — dat zou de tint elke
+// paginalaad anders maken en elke render-test instabiel) geeft elke
+// instantie een eigen, vaste tint binnen ±10% (TINT_VARIATIE, zelfde bereik
+// als de bestaande ondode-huidtint uit v0.8). Toegepast als een UNIFORME
+// vertexkleur (elke vertex van dit ene mesh krijgt dezelfde factor, geen
+// gradient nodig zoals bij T103's randocclusie) via dezelfde
+// matMetVertexKleur()-tweelingcache — het materiaal blijft gedeeld/gecachet,
+// alleen de vertexkleur verschilt per plaatsing. Staat hier (vóór de eerste
+// meubelBox()-aanroep, ruim vóór meubelBox() zelf tekstueel gedefinieerd
+// wordt verderop) omdat function-hoisting `meubelBox` overal aanroepbaar
+// maakt, maar de `const`s die zijn BODY nodig heeft pas bestaan zodra de
+// script-executie hier voorbij is — een eerdere versie zette deze consts
+// vlak boven meubelBox() zelf, wat een `ReferenceError: Cannot access
+// 'TINT_VARIATIE' before initialization` gaf bij het allereerste
+// meubelBox()-aanroep in de bijkeuken, ruim eerder in de laadvolgorde.
+function hashNaarEenheid(x, y, z) {
+  const n = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
+  return n - Math.floor(n);
+}
+const TINT_VARIATIE = 0.1;
+function bakUniformeTint(geometrie, factor) {
+  const pos = geometrie.getAttribute('position');
+  const kleuren = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    kleuren[i * 3] = factor; kleuren[i * 3 + 1] = factor; kleuren[i * 3 + 2] = factor;
+  }
+  geometrie.setAttribute('color', new THREE.Float32BufferAttribute(kleuren, 3));
+}
+
+// Ticket 105 (v0.22, §10.12-beslissing 87): afgeschuinde randen. Elke rand
+// in dit spel is tot nu toe oneindig scherp, en een oneindig scherpe rand
+// vangt geen licht. Bewust NIET toegepast op bouwMuur(): muren hebben geen
+// zichtbare vrije rand, en het zou het driehoekstal onnodig verdrievoudigen
+// (§10.12). De collision-geometrie (`obstakels`, 2D rechthoeken) blijft
+// ongemoeid — bij een straal van 1,5 cm is de afwijking t.o.v. de
+// werkelijke rechte rand onmerkbaar in de speler-collision.
+//
+// GEEN sleutel-cache (in tegenstelling tot de oorspronkelijke ticket-spec
+// "gecachet zoals geo()"): meubelBox() combineert dit met T104's per-
+// instantie kleurtint, en die bakt een UNIEKE vertexkleur per plaatsing op
+// de geometrie zelf — een gedeelde/gecachete geometrie zou die tint dan
+// voor alle instanties tegelijk overschrijven (de laatste aanroep "wint").
+// Een verse geometrie per aanroep is dus vereist, en dat is toch al het
+// bestaande patroon van blok()/bouwMuur() hierboven (ook nooit via geo()
+// gedeeld) — geen nieuwe asymmetrie in de codebase.
+const AFSCHUINING_STRAAL = 0.015;   // 1,5 cm
+const AFSCHUINING_SEGMENTEN = 2;    // laag gehouden: een gefacetteerde schuine rand, geen vloeiende ronding
+function geoAfgeschuind(breedte, hoogte, diepte) {
+  return new RoundedBoxGeometry(breedte, hoogte, diepte, AFSCHUINING_SEGMENTEN, AFSCHUINING_STRAAL);
+}
+function blokAfgeschuind(breedte, hoogte, diepte, kleur, ruwheid = 0.88, metaal = 0) {
+  const m = new THREE.Mesh(geoAfgeschuind(breedte, hoogte, diepte), mat(kleur, ruwheid, metaal));
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
+
 // Gang (zone B): donker, kaal knelpunt — bewust ANDER materiaal en veel
 // donkerder dan beide kamers, zodat de overgang meteen voelbaar is.
 const GANG_PLEISTER = 0x2e332c;   // koel, afbladderend grijsgroen i.p.v. baksteen
@@ -1194,7 +1932,7 @@ let gangVloerMesh;
 }
 // Ticket 38: gang-vloer krijgt de 'steen'-familie (dof, mat) — zelfde kleur
 // (0x1c1a16), alleen roughness/metalness verandert naar de gedeelde familie.
-gangVloerMesh.material = matFamilie('steen', 0x1c1a16);
+gangVloerMesh.material = matMetVertexKleur(matFamilie('steen', 0x1c1a16));
 gangVloerMesh.userData.materiaalFamilie = 'steen';
 // Het schildersatelier (zone C, tweede kamer): bewust radicaal anders dan de
 // warme woonkamer — koele grijze plankenvloer i.p.v. warm hout.
@@ -1469,8 +2207,15 @@ function berekenVloerY(x, z) {
   // helderheid komt van de donkere emissive-kleur zelf (0x2b1f14, bijna
   // zwart), niet van een lage intensity — precies waarom staat hierboven.
   const vlieringVloerMateriaal = mat(VLIERING_HOUT, 0.85, 0, { emissive: 0x2b1f14, emissiveIntensity: 1 });
+  // Ticket 103: `vlieringVloerMateriaal` heeft door zijn niet-lege `extra`
+  // (zie mat()'s cache-contract) toch al een verse, ongedeelde instantie —
+  // matMetVertexKleur() cachet 'm dus per aanroep, maar dat is hier
+  // hetzelfde object bij elke vlieringVloer()-aanroep (de const hierboven),
+  // dus in de praktijk exact 1 tweeling voor de hele vliering.
   function vlieringVloer(breedte, diepte, cx, cz) {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(breedte, diepte), vlieringVloerMateriaal);
+    const geometrie = new THREE.PlaneGeometry(breedte, diepte, SUBDIVISIE_SEGMENTEN, SUBDIVISIE_SEGMENTEN);
+    bakVlakOcclusie(geometrie, breedte, diepte);
+    const m = new THREE.Mesh(geometrie, matMetVertexKleur(vlieringVloerMateriaal));
     m.rotation.x = -Math.PI / 2;
     m.position.set(cx, VLIERING_Y, cz);
     m.receiveShadow = true;
@@ -1621,9 +2366,16 @@ let klinkersMesh;
   // Ticket 38: dit was al precies de 'natSteen'-familie in vermomming
   // (ruwheid 0.32, metaal 0.12) — nu via matFamilie() zodat de T32-
   // wereldimpact 'm via userData.materiaalFamilie herkent.
+  const klinkersGeo = new THREE.PlaneGeometry(PLAATS_DIEPTE, PLAATS_BREEDTE, SUBDIVISIE_SEGMENTEN, SUBDIVISIE_SEGMENTEN);
+  bakVlakOcclusie(klinkersGeo, PLAATS_DIEPTE, PLAATS_BREEDTE);
+  // Ticket 106 + 107-vervolg: één klinkertegel beslaat KLINKER_TEGEL_METERS
+  // meter i.p.v. de standaard één meter — de klinkers in de textuur staan op
+  // hun echte maat (21 cm), en het patroon herhaalt over deze 17x16m-plaats
+  // nog maar ~16 keer i.p.v. ~270 keer.
+  herschaalUVNaarWereldschaal(klinkersGeo, 1 / KLINKER_TEGEL_METERS);
   const klinkers = new THREE.Mesh(
-    new THREE.PlaneGeometry(PLAATS_DIEPTE, PLAATS_BREEDTE),
-    matFamilie('natSteen', PALET.straatNat)
+    klinkersGeo,
+    matMetVertexKleur(matFamilie('natSteen', PALET.straatNat))
   );
   klinkers.rotation.x = -Math.PI / 2;
   klinkers.position.set(PLAATS_CX, 0, DEUR2_Z);
@@ -1652,7 +2404,10 @@ let klinkersMesh;
   // achterplaats i.p.v. een gesloten doos. Collision blijft exact hetzelfde
   // (registreerRechthoek), dus de speler kan nergens doorheen.
   function bouwBinnenplaatsMuur(x, z, breedte, diepte, hoogte = 2.15, kleur = GANG_PLEISTER) {
-    const muur = new THREE.Mesh(new THREE.BoxGeometry(breedte, hoogte, diepte), mat(kleur, 0.92));
+    const { segX, segZ } = muurSegmenten(breedte, diepte);
+    const geometrie = new THREE.BoxGeometry(breedte, hoogte, diepte, segX, SUBDIVISIE_SEGMENTEN, segZ);
+    bakMuurOcclusie(geometrie, hoogte);
+    const muur = new THREE.Mesh(geometrie, matMetVertexKleur(mat(kleur, 0.92)));
     muur.position.set(x, hoogte / 2, z);
     muur.castShadow = true;
     muur.receiveShadow = true;
@@ -2044,7 +2799,8 @@ let bijkeukenVloerMesh;
   // Muren: alleen de randen bouwen die nog nergens door een bestaande muur
   // worden gedekt.
   function bouwZoneEMuur(x, z, breedte, diepte, kleur) {
-    const muur = blok(breedte, KAMER_HOOGTE, diepte, kleur, 0.92);
+    const { segX, segZ } = muurSegmenten(breedte, diepte);
+    const muur = blok(breedte, KAMER_HOOGTE, diepte, kleur, 0.92, 0, segX, SUBDIVISIE_SEGMENTEN, segZ, true);
     muur.position.set(x, KAMER_HOOGTE / 2, z);
     wereld.add(muur);
     registreerRechthoek(x - breedte / 2, x + breedte / 2, z - diepte / 2, z + diepte / 2);
@@ -2084,7 +2840,7 @@ let bijkeukenVloerMesh;
 }
 // Ticket 38: bijkeuken-vloer krijgt de 'tegel'-familie — zelfde kleur
 // (0x35424a), alleen roughness/metalness verandert.
-bijkeukenVloerMesh.material = matFamilie('tegel', 0x35424a);
+bijkeukenVloerMesh.material = matMetVertexKleur(matFamilie('tegel', 0x35424a));
 bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
 
 /* ================================================================
@@ -2106,7 +2862,8 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
   const vlonderMidX = (VLONDER_X_WEST + VLONDER_X_OOST) / 2;
 
   function bouwGrachtMuur(x, z, breedte, diepte, kleur) {
-    const muur = blok(breedte, KAMER_HOOGTE, diepte, kleur, 0.92);
+    const { segX, segZ } = muurSegmenten(breedte, diepte);
+    const muur = blok(breedte, KAMER_HOOGTE, diepte, kleur, 0.92, 0, segX, SUBDIVISIE_SEGMENTEN, segZ, true);
     muur.position.set(x, KAMER_HOOGTE / 2, z);
     wereld.add(muur);
     registreerRechthoek(x - breedte / 2, x + breedte / 2, z - diepte / 2, z + diepte / 2);
@@ -2122,7 +2879,7 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
   // Vlonder-vloer (x ∈ [VLONDER_X_WEST, VLONDER_X_OOST]) — buiten, eigen
   // houten materiaal (Ticket 38: 'hout'-familie), geen plafond.
   vlonderMesh = vlak(VLONDER_HOUT, VLONDER_DIEPTE, gangDiepte, vlonderMidX, gangCZ, 0.02, false);
-  vlonderMesh.material = matFamilie('hout', VLONDER_HOUT);
+  vlonderMesh.material = matMetVertexKleur(matFamilie('hout', VLONDER_HOUT));
   vlonderMesh.userData.materiaalFamilie = 'hout';
 
   // Lage railings langs de vlonder (buiten, dus geen volle muren — houdt de
@@ -2508,10 +3265,9 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
     const tredeTopY = -tredeHoogte * (i + 1);
     const hoogte = tredeTopY + KELDER_DIEPTE;
     const x = KELDERTRAP_X_BOVEN - tredeBreedte * (i + 0.5);
-    const trede = new THREE.Mesh(
-      new THREE.BoxGeometry(tredeBreedte, hoogte, KELDERTRAP_HALF_BREEDTE * 2),
-      matFamilie('steen', KELDER_TINT)
-    );
+    const tredeGeo = new THREE.BoxGeometry(tredeBreedte, hoogte, KELDERTRAP_HALF_BREEDTE * 2);
+    herschaalUVNaarWereldschaal(tredeGeo);   // Ticket 106
+    const trede = new THREE.Mesh(tredeGeo, matFamilie('steen', KELDER_TINT));
     trede.position.set(x, tredeTopY - hoogte / 2, KELDERTRAP_CZ);
     trede.castShadow = true;
     trede.receiveShadow = true;
@@ -2526,10 +3282,9 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   // trap, precies zoals gevraagd.
   const KOKER_PLAFOND_Y = KOKER_HOOFDRUIMTE;   // ruim boven het hoofd bovenaan de trap (ooghoogte daar: 1,7)
   const kokerBreedteZ = KELDERTRAP_HALF_BREEDTE * 2 + kelderMuurDikte * 2;
-  const kokerDak = new THREE.Mesh(
-    new THREE.BoxGeometry(kokerLengte, 0.2, kokerBreedteZ),
-    matFamilie('steen', KELDER_TINT)
-  );
+  const kokerDakGeo = new THREE.BoxGeometry(kokerLengte, 0.2, kokerBreedteZ);
+  herschaalUVNaarWereldschaal(kokerDakGeo);   // Ticket 106
+  const kokerDak = new THREE.Mesh(kokerDakGeo, matFamilie('steen', KELDER_TINT));
   kokerDak.position.set(kokerCX, KOKER_PLAFOND_Y, KELDERTRAP_CZ);
   wereld.add(kokerDak);
   // Twee sluitpanelen zodat het vlakke dak nergens een kijkgat openlaat.
@@ -2543,8 +3298,9 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   const kelderPlafondY = -KELDER_DIEPTE + KELDER_HOOGTE;
   function kokerSluitpaneel(x, onderY, bovenY, dikte) {
     const hoogte = bovenY - onderY;
-    const paneel = new THREE.Mesh(new THREE.BoxGeometry(dikte, hoogte, kokerBreedteZ),
-      matFamilie('steen', KELDER_TINT));
+    const paneelGeo = new THREE.BoxGeometry(dikte, hoogte, kokerBreedteZ);
+    herschaalUVNaarWereldschaal(paneelGeo);   // Ticket 106
+    const paneel = new THREE.Mesh(paneelGeo, matFamilie('steen', KELDER_TINT));
     paneel.position.set(x, onderY + hoogte / 2, KELDERTRAP_CZ);
     wereld.add(paneel);
   }
@@ -2556,8 +3312,9 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   // keldervloer tot boven het hoogste plafondsegment.
   function kokerWand(cz) {
     const hoogte = KELDER_DIEPTE + KOKER_HOOFDRUIMTE + 0.3;
-    const wand = new THREE.Mesh(new THREE.BoxGeometry(kokerLengte, hoogte, kelderMuurDikte),
-      matFamilie('steen', KELDER_TINT));
+    const wandGeo = new THREE.BoxGeometry(kokerLengte, hoogte, kelderMuurDikte);
+    herschaalUVNaarWereldschaal(wandGeo);   // Ticket 106
+    const wand = new THREE.Mesh(wandGeo, matFamilie('steen', KELDER_TINT));
     wand.position.set(kokerCX, -KELDER_DIEPTE + hoogte / 2, cz);
     wand.castShadow = true;
     wand.receiveShadow = true;
@@ -2575,22 +3332,27 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   const kamerBreedteX = KELDERTRAP_X_ONDER - KELDER_X_WEST;
   const kamerCZ = (KELDER_Z_NOORD + KELDER_Z_ZUID) / 2;
   const kamerDiepteZ = KELDER_Z_ZUID - KELDER_Z_NOORD;
-  const kelderVloer = new THREE.Mesh(
-    new THREE.PlaneGeometry(kamerBreedteX, kamerDiepteZ), matFamilie('steen', 0x423930));
+  const kelderVloerGeo = new THREE.PlaneGeometry(kamerBreedteX, kamerDiepteZ, SUBDIVISIE_SEGMENTEN, SUBDIVISIE_SEGMENTEN);
+  bakVlakOcclusie(kelderVloerGeo, kamerBreedteX, kamerDiepteZ);
+  herschaalUVNaarWereldschaal(kelderVloerGeo);   // Ticket 106
+  const kelderVloer = new THREE.Mesh(kelderVloerGeo, matMetVertexKleur(matFamilie('steen', 0x423930)));
   kelderVloer.rotation.x = -Math.PI / 2;
   kelderVloer.position.set(kamerCX, -KELDER_DIEPTE, kamerCZ);
   kelderVloer.receiveShadow = true;
   wereld.add(kelderVloer);
-  const kelderPlafond = new THREE.Mesh(
-    new THREE.PlaneGeometry(kamerBreedteX, kamerDiepteZ), mat(0x08090a, 0.95));
+  const kelderPlafondGeo = new THREE.PlaneGeometry(kamerBreedteX, kamerDiepteZ, SUBDIVISIE_SEGMENTEN, SUBDIVISIE_SEGMENTEN);
+  bakVlakOcclusie(kelderPlafondGeo, kamerBreedteX, kamerDiepteZ);
+  herschaalUVNaarWereldschaal(kelderPlafondGeo);   // Ticket 106
+  const kelderPlafond = new THREE.Mesh(kelderPlafondGeo, matMetVertexKleur(mat(0x08090a, 0.95)));
   kelderPlafond.rotation.x = Math.PI / 2;
   kelderPlafond.position.set(kamerCX, -KELDER_DIEPTE + KELDER_HOOGTE, kamerCZ);
   wereld.add(kelderPlafond);
 
   // Perimeter-muren van de kelderruimte (echte obstakels).
   function kelderWand(cx, cz, breedte, diepte) {
-    const wand = new THREE.Mesh(new THREE.BoxGeometry(breedte, KELDER_HOOGTE, diepte),
-      matFamilie('steen', KELDER_TINT));
+    const wandGeo = new THREE.BoxGeometry(breedte, KELDER_HOOGTE, diepte);
+    herschaalUVNaarWereldschaal(wandGeo);   // Ticket 106
+    const wand = new THREE.Mesh(wandGeo, matFamilie('steen', KELDER_TINT));
     wand.position.set(cx, -KELDER_DIEPTE + KELDER_HOOGTE / 2, cz);
     wand.castShadow = true;
     wand.receiveShadow = true;
@@ -2625,12 +3387,18 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
     const koBreedteX = KELDEROOST_X_OOST - KELDEROOST_X_WEST;
     const koCZ = (KELDEROOST_Z_NOORD + KELDEROOST_Z_ZUID) / 2;
     const koDiepteZ = KELDEROOST_Z_ZUID - KELDEROOST_Z_NOORD;
-    const koVloer = new THREE.Mesh(new THREE.PlaneGeometry(koBreedteX, koDiepteZ), matFamilie('steen', 0x423930));
+    const koVloerGeo = new THREE.PlaneGeometry(koBreedteX, koDiepteZ, SUBDIVISIE_SEGMENTEN, SUBDIVISIE_SEGMENTEN);
+    bakVlakOcclusie(koVloerGeo, koBreedteX, koDiepteZ);
+    herschaalUVNaarWereldschaal(koVloerGeo);   // Ticket 106
+    const koVloer = new THREE.Mesh(koVloerGeo, matMetVertexKleur(matFamilie('steen', 0x423930)));
     koVloer.rotation.x = -Math.PI / 2;
     koVloer.position.set(koCX, -KELDER_DIEPTE, koCZ);
     koVloer.receiveShadow = true;
     wereld.add(koVloer);
-    const koPlafond = new THREE.Mesh(new THREE.PlaneGeometry(koBreedteX, koDiepteZ), mat(0x08090a, 0.95));
+    const koPlafondGeo = new THREE.PlaneGeometry(koBreedteX, koDiepteZ, SUBDIVISIE_SEGMENTEN, SUBDIVISIE_SEGMENTEN);
+    bakVlakOcclusie(koPlafondGeo, koBreedteX, koDiepteZ);
+    herschaalUVNaarWereldschaal(koPlafondGeo);   // Ticket 106
+    const koPlafond = new THREE.Mesh(koPlafondGeo, matMetVertexKleur(mat(0x08090a, 0.95)));
     koPlafond.rotation.x = Math.PI / 2;
     koPlafond.position.set(koCX, -KELDER_DIEPTE + KELDER_HOOGTE, koCZ);
     wereld.add(koPlafond);
@@ -2907,7 +3675,10 @@ const deurObstakel = registreerRechthoek(-DEUR_HALF, DEUR_HALF, DEUR_Z - MUUR_DI
    ================================================================ */
 
 function meubelBox(b, h, d, kleur, x, y, z, ruw = 0.85, rotY = 0) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(b, h, d), mat(kleur, ruw));
+  const geometrie = geoAfgeschuind(b, h, d);   // Ticket 105: afgeschuinde randen
+  const factor = 1 - TINT_VARIATIE + hashNaarEenheid(x, y, z) * TINT_VARIATIE * 2;
+  bakUniformeTint(geometrie, factor);
+  const m = new THREE.Mesh(geometrie, matMetVertexKleur(mat(kleur, ruw)));
   m.position.set(x, y, z);
   m.rotation.y = rotY;
   m.castShadow = true;
@@ -2920,8 +3691,8 @@ function meubelBox(b, h, d, kleur, x, y, z, ruw = 0.85, rotY = 0) {
 function bouwTafel(cx, cz, rotY = 0) {
   const g = new THREE.Group();
   const hout = 0x5a3f24;
-  const blad = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.08, 0.8), mat(hout, 0.8));
-  blad.position.y = 0.72; blad.castShadow = true; blad.receiveShadow = true; g.add(blad);
+  const blad = blokAfgeschuind(1.3, 0.08, 0.8, hout, 0.8);   // Ticket 105: afgeschuinde randen
+  blad.position.y = 0.72; g.add(blad);
   for (const [px, pz] of [[-0.55, -0.32], [0.55, -0.32], [-0.55, 0.32], [0.55, 0.32]]) {
     const poot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.72, 0.08), mat(hout, 0.8));
     poot.position.set(px, 0.36, pz); poot.castShadow = true; g.add(poot);
@@ -3807,7 +4578,6 @@ const hitmarker = document.getElementById('hitmarker');
 // animationend, geen setTimeout/frame-timer nodig.
 ammoUI.addEventListener('animationend', () => ammoUI.classList.remove('leeg'));
 const hudUI = document.getElementById('hudUI');
-const vignet = document.getElementById('vignet');
 const gameOverScherm = document.getElementById('gameOverScherm');
 const winScherm = document.getElementById('winScherm');
 const interactiePromptUI = document.getElementById('interactiePrompt');
@@ -5897,6 +6667,118 @@ function geo(sleutel, fabriek) {
 // gedragswijziging).
 const kernMateriaal = new THREE.MeshStandardMaterial({ color: 0xff9a3d, emissive: 0xff7a1f, emissiveIntensity: EMISSIE_BRON_MAX, roughness: 0.4 });
 kernMateriaal.userData.gedeeld = true;   // Ticket 70: ruimGroepOp() mag dit nooit disposen
+// Ticket 99: de vod-kleur was al gedeeld (mat(0x40331f, 0.95), geen
+// per-instance tint) — de nieuwe geometrie heeft alleen `side: DoubleSide`
+// nodig (één vlak, van beide kanten zichtbaar), en `mat()`'s `extra`-
+// parameter forceert altijd een VERSE instantie (bestaand contract, zie
+// T104-toelichting) — dus hier een eigen gedeelde module-constante,
+// zelfde patroon als kernMateriaal hierboven, i.p.v. `mat()` met `extra`.
+const VOD_MATERIAAL = new THREE.MeshStandardMaterial({ color: 0x40331f, roughness: 0.95, side: THREE.DoubleSide });
+VOD_MATERIAAL.userData.gedeeld = true;   // Ticket 70: ruimGroepOp() mag dit nooit disposen
+
+// Ticket 99 (v0.22, §10.10-beslissing 85): een handgeschreven BufferGeometry
+// voor de voddenstrook — GEEN PlaneGeometry (expliciet vereist door de
+// ticket-spec), want een rechte rand leest op 10m als "speelgoedfiguur";
+// een gerafelde onderrand leest als "iets dat op je afkomt". Één vlak
+// (voorkant), `side: THREE.DoubleSide` op het material maakt 'm ook van
+// achteren zichtbaar — een los achtervlak zou het driehoekstal verdubbelen
+// voor een verschil dat je op een dun lapje toch niet ziet. Puur gedeelde
+// geometrie (via geo() hieronder aangeroepen): dezelfde kartelvorm voor
+// elke ondode, geen per-instance willekeur nodig voor dit silhouetdetail.
+function bouwGerafeldeVodGeometry() {
+  const breedte = 0.06, hoogte = 0.32, diepte = 0.02;
+  const tanden = 5;   // aantal kartels langs de onderrand
+  const basis = -hoogte / 2;
+  const tandDiepte = 0.05;
+  const xs = [];
+  for (let i = 0; i <= tanden; i++) xs.push(-breedte / 2 + (breedte * i) / tanden);
+  // Afwisselend een "vallei" (op de basislijn) en een "tand" (dieper) —
+  // een klassiek gerafeld-lapje-silhouet.
+  const onderY = xs.map((_, i) => basis - (i % 2 === 1 ? tandDiepte : 0));
+
+  const posities = [];
+  const uvs = [];
+  const index = [];
+  for (let i = 0; i <= tanden; i++) {
+    posities.push(xs[i], hoogte / 2, diepte / 2, xs[i], onderY[i], diepte / 2);
+    uvs.push(i / tanden, 1, i / tanden, 0);
+  }
+  for (let i = 0; i < tanden; i++) {
+    const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+    index.push(a, b, c, b, d, c);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(posities, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(index);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+// Ticket 100 (v0.22, §10.10-beslissing 85): materiaalfabriek voor de
+// ondode-huid — MOEST eerst gebouwd worden, want `onBeforeCompile` hoort
+// per §7.9 (materiaal-mutatiediscipline) in de fabriek te zitten, nooit
+// achteraf op een instantie, en die fabriek bestond niet: elke huid-
+// materiaal-constructie in maakOndodeModel() was tot nu toe een losse
+// `new THREE.MeshStandardMaterial({...})`-aanroep. Vervangt AL die
+// call-sites (torso/schouders/bochel/buik/hoofd/arm/hand) — nooit
+// `kernMateriaal` (gedeeld, Brander-kern) of `oogMateriaal` (heeft al zijn
+// eigen T89-Signaal-emissiesysteem; een tweede, overlappende laag daarop
+// is niet gevraagd en niet gewenst).
+//
+// De fresnel-rim zelf: `pow(1 - dot(normal, viewDir), k)` als extra
+// bijdrage aan `totalEmissiveRadiance`, geïnjecteerd na de bestaande
+// `<emissivemap_fragment>`-chunk — de plek waar MeshStandardMaterial's
+// eigen fragment-shader die variabele al vult, dus de natuurlijke plek om
+// er nog een term bij op te tellen. GEEN nieuwe Light: dit is pure
+// shaderwerk op het materiaal, dus het lichtaantal (28) blijft ongewijzigd.
+// Three.js-shader-chunknamen zijn GEEN publieke API — vastgelegd hier:
+// chunk `<emissivemap_fragment>`, varying `vViewPosition`, three@0.160.0
+// (zelfde versie als de rest van dit project, zie de composer-imports).
+//
+// RIM_UNIFORMS is één gedeeld uniform-object-paar (niet per material
+// gekloond) — elke ondode-materiaal-instantie wijst naar DEZELFDE
+// {value:...}-objecten, dus één toekomstige write op
+// RIM_UNIFORMS.sterkte.value verandert de rim op ALLE ondoden tegelijk
+// (voorbereid op meebewegen met eventgolven, zoals de ticket-spec vraagt —
+// dit ticket zet 'm op een vaste basiswaarde, een latere ronde kan 'm laten
+// pulsen zonder de fabriek opnieuw aan te raken).
+//
+// Design-review na T101 (verval-shading, zie ARCHITECTURE_NOTES §10.10):
+// die tweede, cosmetische laag is teruggedraaid — onvoldoende waarneembaar
+// bij een sterkte die de type-kleuren niet overstemt, en botste sowieso met
+// de vlakke, textuurloze low-poly-stijl van het spel. Bij diezelfde review
+// bleek de rim zelf WEL de bewuste, terechte keuze (lost silhouetherkenning
+// in donkere kamers goedkoop op), maar iets te sterk — RIM_STERKTE_BASIS
+// dus verlaagd naar 20% van de oorspronkelijke 0,6.
+const RIM_KLEUR = new THREE.Color(0x55e0b0);   // koel teal-groen — wijkt bewust af van warm lamplicht (0xffc06a) én koel maanlicht (0xc8ddff)
+const RIM_STERKTE_BASIS = 0.12;                // 20% van de oorspronkelijke 0,6 (design-review, zie boven)
+const RIM_UNIFORMS = {
+  kleur: { value: RIM_KLEUR },
+  sterkte: { value: RIM_STERKTE_BASIS },
+};
+function maakOndodeMateriaal(kleur, ruwheid = 0.85) {
+  const materiaal = new THREE.MeshStandardMaterial({ color: kleur, roughness: ruwheid });
+  materiaal.onBeforeCompile = (shader) => {
+    shader.uniforms.uRimKleur = RIM_UNIFORMS.kleur;
+    shader.uniforms.uRimSterkte = RIM_UNIFORMS.sterkte;
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `
+        uniform vec3 uRimKleur;
+        uniform float uRimSterkte;
+        #include <common>
+      `)
+      .replace('#include <emissivemap_fragment>', `
+        #include <emissivemap_fragment>
+        {
+          vec3 rimViewDir = normalize(vViewPosition);
+          float rimFresnel = pow(1.0 - max(dot(normal, rimViewDir), 0.0), 3.0);
+          totalEmissiveRadiance += uRimKleur * rimFresnel * uRimSterkte;
+        }
+      `);
+  };
+  return materiaal;
+}
 
 function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTraits()) {
   const groep = new THREE.Group();
@@ -5960,17 +6842,30 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   // er desnoods tegenaan (gedrongen schouders), zodat de arm-raycasts op
   // een vast punt betrouwbaar blijven.
   const torso = new THREE.Mesh(geo('torso', () => new THREE.BoxGeometry(0.36, 0.6, 0.22)),
-    new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
+    maakOndodeMateriaal(huidKleur));
   torso.scale.x = (vorm.rompBreedte ?? 1) * (profiel.rompFactor ?? 1);   // Ticket 69: maatvariatie via scale i.p.v. geometrie
   romp.add(torso);
   delen.huidMaterialen.push(torso.material);
+  // Ticket 99: schouderpartij — twee kleine, gedeelde blokken die de
+  // silhouet-overgang tussen romp en arm dichten. Zonder dit oogt een
+  // ondode op afstand als een dunne staaf met twee losse stokjes eraan;
+  // met een schoudermassa leest het silhouet in het donker als figuur.
+  // Kind van `romp` (niet van de arm-pivot): schouders horen bij de romp
+  // en mogen niet met de arm meependelen. Geen 'kop'-markering.
+  for (const kant of [-1, 1]) {
+    const schouder = new THREE.Mesh(geo('schouder', () => new THREE.BoxGeometry(0.14, 0.14, 0.16)),
+      maakOndodeMateriaal(huidKleur));
+    schouder.position.set(kant * 0.19, 0.24, 0.01);
+    romp.add(schouder);
+    delen.huidMaterialen.push(schouder.material);
+  }
   // Bochel (Sjouwer-vorm en/of 'gebocheld'-profiel): één bult hoog op de
   // rug, in de romp-groep zodat hij met de kromme rug meedraait.
   // Ticket 61 (v0.19, §7.4.4-beslissing 53): meer segmenten voor een
   // vloeiender bolvorm — straal/positie ongewijzigd, puur tessellatie.
   if (vorm.bochel || profiel.bochel) {
     const bochel = new THREE.Mesh(geo('bochel', () => new THREE.SphereGeometry(0.14, 14, 10)),
-      new THREE.MeshStandardMaterial({ color: huidKleur.clone().multiplyScalar(0.85), roughness: 0.9 }));
+      maakOndodeMateriaal(huidKleur.clone().multiplyScalar(0.85), 0.9));
     bochel.position.set(0, 0.16, -0.13);
     romp.add(bochel);
     delen.huidMaterialen.push(bochel.material);
@@ -5980,7 +6875,7 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   // 'kop'-markering, dus een treffer erop is gewoon een lichaamstreffer.
   if (vorm.buik) {
     const buik = new THREE.Mesh(geo('buik', () => new THREE.SphereGeometry(0.16, 16, 12)),
-      new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
+      maakOndodeMateriaal(huidKleur));
     buik.position.set(0, -0.1, 0.06);
     romp.add(buik);
     delen.huidMaterialen.push(buik.material);
@@ -5989,9 +6884,13 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
     romp.add(kern);
     delen.kern = kern;   // Ticket 21 (Z4): referentie voor de kern-puls bij een treffer
   }
-  // Gerafelde voddenstrook aan het middel — eigen, herkenbaar "tattered" detail.
-  const vod = new THREE.Mesh(geo('vod', () => new THREE.BoxGeometry(0.06, 0.32, 0.02)),
-    mat(0x40331f, 0.95));
+  // Gerafelde voddenstrook aan het middel — eigen, herkenbaar "tattered"
+  // detail. Ticket 99: de onderrand is nu echt gekarteld (bouwGerafeldeVodGeometry(),
+  // een handgeschreven BufferGeometry) i.p.v. de rechte rand van de oude
+  // BoxGeometry — vandaar ook de aparte, expliciete `matFamilie`-achtige
+  // material hier met `side: THREE.DoubleSide` (één vlak, van beide kanten
+  // zichtbaar; zie de toelichting bij bouwGerafeldeVodGeometry()).
+  const vod = new THREE.Mesh(geo('vodGerafeld', bouwGerafeldeVodGeometry), VOD_MATERIAAL);
   vod.position.set(0.1, -0.32, 0.12);
   vod.rotation.z = 0.3;
   romp.add(vod);
@@ -6020,7 +6919,7 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   // (ontwerpbeslissing 16) en de headshot-hitbox blijven exact hetzelfde;
   // alleen de tessellatie is vloeiender.
   const hoofd = new THREE.Mesh(geo('hoofd', () => new THREE.SphereGeometry(0.18, 20, 16)),
-    new THREE.MeshStandardMaterial({ color: huidKleur.clone().multiplyScalar(1.15), roughness: 0.8 }));
+    maakOndodeMateriaal(huidKleur.clone().multiplyScalar(1.15), 0.8));
   hoofd.userData.lichaamsdeel = 'kop';   // treffer hier = headshot (dubbele schade)
   hoofdGroep.add(hoofd);
   delen.huidMaterialen.push(hoofd.material);
@@ -6072,10 +6971,22 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
     // geometrie-parameters zelf — visueel identiek (dikte 0.09*factor,
     // lengte 0.5*multiplier), positie.y-formule dus ongewijzigd.
     const arm = new THREE.Mesh(geo('arm', () => new THREE.BoxGeometry(0.09, 0.5, 0.09)),
-      new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
+      maakOndodeMateriaal(huidKleur));
     arm.scale.set(armDikteFactor, armLengteMultiplier, armDikteFactor);
     arm.position.y = -armLengte / 2;
     pivot.add(arm);
+    // Ticket 99: een hand aan het uiteinde van de arm — sluitstuk van het
+    // silhouet (een arm die zomaar "afgekapt" eindigt, oogt op afstand
+    // onnatuurlijk). Sibling van `arm`, niet een kind ervan: `arm.scale`
+    // (dikte/lengte-variatie) mag de handgrootte niet meeschalen. Eigen
+    // (kleine) gedeelde geometrie; positie op de volle armlengte onder de
+    // pivot, dus die volgt automatisch de per-instance armLengte. Geen
+    // 'kop'-markering.
+    const hand = new THREE.Mesh(geo('hand', () => new THREE.BoxGeometry(0.08, 0.08, 0.08)),
+      maakOndodeMateriaal(huidKleur));
+    hand.position.y = -armLengte;
+    pivot.add(hand);
+    delen.huidMaterialen.push(hand.material);
     groep.add(pivot);
     delen[naam] = pivot;
     delen.huidMaterialen.push(arm.material);
@@ -6219,6 +7130,23 @@ function zoneVan(x, z) {
   if (z > DEUR_Z) return 0;        // woonkamer
   if (z > GANG_Z_EIND) return 1;   // gang
   return 2;                        // atelier (incl. nis)
+}
+// Ticket 98 (v0.22, §10.8-beslissing 83): dezelfde achtwegs-indeling als
+// T88's berekenVisueleStandpunten() — de vijf zoneVan()-zones hierboven,
+// plus kelder/vliering/gracht, die een zoneVan()-index delen met een
+// buurzone (kelder+vliering met atelier's x/z; gracht met de bijkeuken) maar
+// wél hun eigen KLEUR_GRADING_ZONES-profiel verdienen. Zelfde
+// y<-0,1-/berekenVlieringY()-detectie als tekenMinimap() al gebruikt om
+// dezelfde reden (geen "twee overlappende zones" op een 2D-kaart).
+function kleurgradingZoneVan(x, y, z) {
+  if (berekenVlieringY(x, z) !== null) return 6;   // vliering
+  if (y < -0.1) return 5;                          // kelder
+  // Gracht: alleen het stuk van zone 4 voorbij VLONDER_X_WEST — daar "stopt
+  // het plafond" (zie de VLONDER_X_WEST-toelichting elders), de echte
+  // open-lucht vlonder/dock. Het overdekte grachtgang-stuk ervoor
+  // (bijkeuken/kelderhals, x < VLONDER_X_WEST) blijft zone 4's eigen profiel.
+  if (x >= VLONDER_X_WEST && zoneVan(x, z) === 4) return 7;
+  return zoneVan(x, z);   // 0-4
 }
 // Ticket 50 (Sfeer P2): zone-naambanners + HUD-zonelabel — indices exact
 // volgens zoneVan() hierboven (0-4).
@@ -7443,10 +8371,15 @@ function updateSpelerRegen(dt) {
 
 // Cosmetisch: laat gewoon elk frame doorlopen (ook tijdens pauze/game-over),
 // zodat een flits altijd netjes uitdooft in plaats van "vast" te blijven staan.
+// Ticket 97: schrijft nu naar naverwerkingsPass.uniforms.uVignetSterkte
+// i.p.v. een DOM-opacity — zelfde HP-term als voorheen (laag), plus een
+// nieuwe, onafhankelijke Stroomuitval-term (stroomLaag), samen geklemd op
+// VIGNET_STERKTE_MAX.
 function updateVignet(dt) {
   vignetFlits = Math.max(0, vignetFlits - dt * 2.5);
-  const laag = (1 - spelerStaat.hp / spelerStaat.hpMax) * 0.55;
-  vignet.style.opacity = String(Math.min(1, laag + vignetFlits * 0.6));
+  const hpLaag = (1 - spelerStaat.hp / spelerStaat.hpMax) * 0.55;
+  const stroomLaag = (1 - stroomFactor) * VIGNET_STROOM_FACTOR;
+  naverwerkingsPass.uniforms.uVignetSterkte.value = Math.min(VIGNET_STERKTE_MAX, hpLaag + stroomLaag + vignetFlits * 0.6);
 }
 
 // Ticket 42/43/45: score + highscore. berekenScore() is een PURE functie
@@ -8231,7 +9164,7 @@ const WERKBANK_X = -2.8;
 const WERKBANK_Z = ATELIER_MIDDEN_Z - 2;
 {
   const g = new THREE.Group();
-  const blad = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, 0.55), mat(0x4a3a26, 0.75));
+  const blad = blokAfgeschuind(0.9, 0.08, 0.55, 0x4a3a26, 0.75);   // Ticket 105: afgeschuinde randen
   blad.position.y = 0.8; g.add(blad);
   for (const [px, pz] of [[-0.38, -0.22], [0.38, -0.22], [-0.38, 0.22], [0.38, 0.22]]) {
     const poot = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.8, 0.07), mat(0x342718, 0.8));
@@ -9240,6 +10173,7 @@ function gameLoop(nu) {
     updatePowerups(dt);
     updateMistUitfade(dt);
     updateZoneFog(dt);   // Ticket 93
+    updateKleurgrading(dt);   // Ticket 98
     updateSpelerRegen(dt);
     updateInteracties();
     updateWinkelMarkeringen(dt);   // Ticket 37: status-animatie + winkelLicht
@@ -9279,6 +10213,22 @@ function gameLoop(nu) {
       zoneFogDoel = doelProfiel;
     }
 
+    // Ticket 98 (§10.8-beslissing 83): per-zone kleurgrading. Losse trigger
+    // van de zoneNu-wissel hierboven — kleurgradingZoneVan() is FIJNER (acht
+    // waarden i.p.v. vijf: kelder/vliering/gracht wisselen zonder dat zoneNu
+    // meebeweegt, bv. de trap af naar de kelder terwijl zoneVan() "atelier"
+    // blijft zeggen). Snapshot de HUIDIGE (mogelijk nog blendende) uniform-
+    // waarde als nieuw vertrekpunt, exact het zoneFogVan-patroon hierboven.
+    const kleurgradingZoneNu = kleurgradingZoneVan(speler.positie.x, speler.positie.y, speler.positie.z);
+    if (kleurgradingZoneNu !== laatsteKleurgradingZone) {
+      laatsteKleurgradingZone = kleurgradingZoneNu;
+      kleurgradingVanLift.copy(naverwerkingsPass.uniforms.uGradeLift.value);
+      kleurgradingVanGamma.copy(naverwerkingsPass.uniforms.uGradeGamma.value);
+      kleurgradingVanGain.copy(naverwerkingsPass.uniforms.uGradeGain.value);
+      kleurgradingDoel = KLEUR_GRADING_ZONES[kleurgradingZoneNu];
+      kleurgradingTimer = KLEUR_GRADING_OVERGANG_DUUR;
+    }
+
     // Zone-sfeergeluiden (Ticket V8): eenmalige triggers bij de eerste stap
     // in een nieuwe zone, plus een zeldzame gracht-klok op de achtergrond.
     if (!gangBetreden && speler.positie.z < DEUR_Z) { gangBetreden = true; speelGangKraak(); }
@@ -9314,6 +10264,10 @@ function gameLoop(nu) {
   // Ticket 88: visueleBevriesTijd (debug-only) overschrijft dit voor
   // deterministische pixelmetingen; null (altijd, buiten tests) = ongewijzigd.
   const t = visueleBevriesTijd !== null ? visueleBevriesTijd : nu * 0.001;
+  // Ticket 96: filmkorrel-tijd — zelfde bevriesbare klok als de lampflikker
+  // hierboven, zodat test-visuele-basislijn.mjs (via visueleBevriesTijd) ook
+  // deze pass deterministisch kan meten.
+  naverwerkingsPass.uniforms.uTijd.value = t;
   // Ticket 40: golfstart-lichtdip — lineair herstel over 0.8s, puur
   // cosmetisch (dezelfde wall-clock dt als terugslag/cameraKick hieronder).
   if (lampDipFactor < 1) lampDipFactor = Math.min(1, lampDipFactor + dt / 0.8);
@@ -9516,6 +10470,20 @@ window.AmsterdamUndeadDebug = {
   // Ticket 60: post-processing-pipeline (voor tests: composer/bloomPass bestaan
   // en composer.render() wordt daadwerkelijk gebruikt i.p.v. renderer.render()).
   composer, bloomPass,
+  // Ticket 96: de eigen naverwerkingspass (filmkorrel + chromatische
+  // aberratie; T97/T98 breiden dezelfde pass uit met vignet/kleurgrading).
+  naverwerkingsPass, KORREL_STERKTE, ABERRATIE_STERKTE, ABERRATIE_START_RADIUS,
+  // Ticket 97: het vignet (verhuisd van DOM naar de naverwerkingspass).
+  VIGNET_STERKTE_MAX, VIGNET_RADIUS, VIGNET_STROOM_FACTOR,
+  get vignetFlits() { return vignetFlits; },
+  set vignetFlits(v) { vignetFlits = v; },
+  // Ticket 98: per-zone kleurgrading.
+  KLEUR_GRADING_ZONES, KLEUR_GRADING_OVERGANG_DUUR, kleurgradingZoneVan, updateKleurgrading,
+  get kleurgradingTimer() { return kleurgradingTimer; },
+  set kleurgradingTimer(v) { kleurgradingTimer = v; },
+  get kleurgradingDoel() { return kleurgradingDoel; },
+  get laatsteKleurgradingZone() { return laatsteKleurgradingZone; },
+  set laatsteKleurgradingZone(v) { laatsteKleurgradingZone = v; },
   get wapenStaat() { return wapenStaat; },   // v0.6: wapenStaat wordt herbonden bij wisselen (getter i.p.v. stale referentie)
   get gesmeedActief() { return wapenStaat.gesmeed; },   // Ticket 11: Smederij-status van het ACTIEVE wapen
   // Ticket 12: De Smederij-machine (koopbare implementatie):
@@ -9710,6 +10678,27 @@ window.AmsterdamUndeadDebug = {
   kiesOndodeTraits,   // v0.8: cosmetische per-ondode variatie
   VARIATIE_PROFIELEN, maakOndodeModel,   // Ticket 19: silhouetten + variatieprofielen
   geoCache, kernMateriaal,   // Ticket 69: gedeelde geometrie-cache (voor tests: cache-grootte + hergebruik)
+  // Ticket 100: de ondode-materiaalfabriek (rimlight) + het gedeelde
+  // uniform-paar dat alle ondode-materialen tegelijk aanstuurt.
+  maakOndodeMateriaal, RIM_UNIFORMS, RIM_KLEUR, RIM_STERKTE_BASIS, VOD_MATERIAAL,
+  wereld,   // Ticket 100 (voor tests): de kaartgeometrie-group, om wereldmaterialen te steekproeven
+  // Ticket 102/103: subdivisie-/occlusie-infrastructuur voor grote vlakken.
+  SUBDIVISIE_SEGMENTEN, muurSegmenten, blok, vlak,
+  OCCLUSIE_BEREIK, OCCLUSIE_STERKTE, occlusieFactor,
+  matMetVertexKleur, vertexKleurTweelingen, bakMuurOcclusie, bakVlakOcclusie,
+  // Ticket 104: per-mesh kleurtint-variatie (meubelBox()).
+  hashNaarEenheid, TINT_VARIATIE, bakUniformeTint, meubelBox,
+  // Ticket 105: afgeschuinde randen (RoundedBoxGeometry, ongecachet — zie
+  // toelichting bij geoAfgeschuind()).
+  AFSCHUINING_STRAAL, AFSCHUINING_SEGMENTEN, geoAfgeschuind, blokAfgeschuind,
+  // Ticket 106: wereldschaal-UV's.
+  TEXELS_PER_METER, herschaalUVNaarWereldschaal,
+  // Ticket 107: de echte texturenset (albedo + roughness per familie) —
+  // MATERIAAL_FAMILIES/CANVAS_TEXTUUR_TEKENAARS zijn al eerder geëxposeerd
+  // (zie verderop), hier alleen de nieuwe symbolen.
+  bouwCanvasTextuurPaar, T107_ALBEDO_BASIS, T107_RUWHEID_BASIS, canvasTextuurPaarCache,
+  // Ticket 107-vervolg (klinkerrealisme): inverse roughness + wereldschaal-tegel.
+  T107_RUWHEID_INVERSIE, KLINKER_TEGEL_METERS, KLINKER_CELLEN,
   // Ticket 20: ledematen-animatie-constanten (voor tests)
   ARM_RUST_ROTATIE_X, BEEN_LOOP_AMPLITUDE, ARM_LOOP_FACTOR, HOOFD_KANTEL_AMPLITUDE,
   ROMP_BOB_HOOGTE, STROMPEL_BEEN_ZWAK, STROMPEL_BEEN_STERK,

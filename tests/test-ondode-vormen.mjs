@@ -69,8 +69,13 @@ check('Geen enkel type draagt een light (kern is emissive, geen PointLight)',
   TYPES.every(t => vormen[t].lights === 0), vormen);
 check('Sluiper-kop is ingedoken (naar voren en omlaag gekanteld)',
   vormen.sluiper.hoofdZ > vormen.normaal.hoofdZ && vormen.sluiper.hoofdRotX > vormen.normaal.hoofdRotX, vormen);
-check('Mesh-budget: elk type blijft op <= 14 meshes (standaard-profiel)',
-  TYPES.every(t => vormen[t].meshes <= 14), vormen);
+// Ticket 99 (v0.22, §10.10-beslissing 85) voegde vier gedeelde meshes per
+// ondode toe (twee schouders + twee handen) — de budgetgrens hieronder is
+// dienovereenkomstig meeverhoogd van 14 naar 15 (het nieuwe echte maximum
+// voor het standaard-profiel: Brander, met zijn eigen buik+kern-bollen
+// bovenop de T99-toevoegingen).
+check('Mesh-budget: elk type blijft op <= 15 meshes (standaard-profiel)',
+  TYPES.every(t => vormen[t].meshes <= 15), vormen);
 
 // --- 3. Hitbox-contract op ELKE type x profiel-combinatie ----------------
 const contract = await page.evaluate(() => {
@@ -90,13 +95,17 @@ const contract = await page.evaluate(() => {
           if (kind.geometry.parameters.radius > 0.1) hoofdRadius = kind.geometry.parameters.radius;
         }
       });
-      if (kop !== 3 || hoofdRadius !== 0.18 || meshes > 14) slecht.push({ type, profiel, kop, hoofdRadius, meshes });
+      if (kop !== 3 || hoofdRadius !== 0.18 || meshes > 16) slecht.push({ type, profiel, kop, hoofdRadius, meshes });
       d.doodOndode(o);
     }
   }
   return slecht;
 });
-check("Alle 35 type x profiel-combinaties: precies 3 'kop'-meshes, hoofdradius 0.18, <= 14 meshes",
+// Ticket 99: het echte maximum over alle 35 combinaties is nu 16, niet 14 —
+// 'gebocheld' forceert altijd zijn eigen bochel-mesh (VARIATIE_PROFIELEN.
+// gebocheld.bochel), dus een Brander (die al zijn eigen buik+kern-bollen
+// heeft) met het gebocheld-profiel stapelt tot 15 (standaard) + 1 = 16.
+check("Alle 35 type x profiel-combinaties: precies 3 'kop'-meshes, hoofdradius 0.18, <= 16 meshes",
   contract.length === 0, contract);
 
 // --- 4. Raycast-sweep: headshot per type x 3 profielen, en de rechterarm
@@ -149,8 +158,13 @@ const eenarmig = await page.evaluate((traitsStr) => {
   d.doodOndode(o);
   return uit;
 }, vasteTraits('eenarmig'));
-check('Eenarmig: delen.armL ontbreekt, delen.armR bestaat, één mesh minder (8)',
-  eenarmig.armL && eenarmig.armR && eenarmig.meshes === 8, eenarmig);
+// Ticket 99: de ontbrekende linkerarm neemt sinds dit ticket ook zijn eigen
+// hand mee (sibling van de arm binnen dezelfde pivot-Group, zie
+// maakOndodeModel()) — twee meshes minder dan het standaard-profiel, niet
+// één. Schouders blijven WEL bestaan (die zijn kind van de romp-groep, niet
+// van de arm-pivot), dus alleen arm+hand vallen weg.
+check('Eenarmig: delen.armL ontbreekt, delen.armR bestaat, twee meshes minder (11)',
+  eenarmig.armL && eenarmig.armR && eenarmig.meshes === 11, eenarmig);
 
 // --- 6. Stats blijven byte-voor-byte ongewijzigd --------------------------
 const stats = await page.evaluate(() => {

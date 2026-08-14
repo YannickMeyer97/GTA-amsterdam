@@ -4886,6 +4886,97 @@ aanvaardbaar (de vertexkleur rond een geopend deurgat is een fractie te
 donker), maar het hoort een bewuste keuze te zijn en geen ontdekking
 achteraf.
 
+**Implementatieverslag T102 (uitgevoerd).** Eén gedeelde constante
+(`SUBDIVISIE_SEGMENTEN = 8`) en twee kleine ingrepen: `blok()` kreeg
+optionele `segX/segY/segZ`-parameters (default 1, dus 100% ongewijzigd
+gedrag voor de meubel-/decor-aanroepen die `blok()` ook gebruiken, zoals
+`bouwSchuurtje()`), en `vlak()` kreeg de subdivisie onvoorwaardelijk —
+elke `vlak()`-aanroep bleek bij nazoeken een kamervloer/-plafond, geen
+enkele decoratieve toepassing. Een nieuwe `muurSegmenten(breedte, diepte)`
+kiest per muur automatisch welke as de "lange" (8 segmenten) en welke de
+"dunne" (1 segment, de muurdikte) is, zodat elke muur — ongeacht of hij
+langs X of Z loopt — zijn subdivisie op de juiste as krijgt. Toegepast op
+alle vier de muur-bouwfuncties (`bouwMuur`, `bouwZoneEMuur`,
+`bouwGrachtMuur`, `bouwBinnenplaatsMuur`) en alle losse vloer/plafond-
+constructies die niet via `vlak()` liepen (woonkamer, binnenplaats,
+kelder, kelderoost, vliering).
+
+Zoals voorspeld: nul zichtbaar effect op zichzelf (BoxGeometry/
+PlaneGeometry zetten een uniforme analytische normal per face, ongeacht
+segmentaantal), bevestigd doordat geen enkele helderheids- of draw-call-
+check in `test-visuele-basislijn.mjs` verschoof. Het driehoekstal steeg
+wél fors (van ~2,3k-12,5k naar ~15,6k-35,4k per standpunt, ruim binnen het
+vooraf ingeschatte "40-60k"-budget) — een bewuste, gedocumenteerde
+`RENDER_BAND`-overschrijding, met de basislijn-`triangles`-waarden
+dienovereenkomstig bijgewerkt.
+
+**Implementatieverslag T103 (uitgevoerd, MET een bewuste scope-reductie
+t.o.v. de oorspronkelijke spec hierboven).** De oorspronkelijke beslissing
+vraagt om occlusie af te leiden uit `obstakels` (2D-nabijheid tot ANDERE
+objecten) inclusief de hierboven beschreven na-pass-architectuur en
+deurgat-uitzondering. Bij het bouwen bleek een eenvoudiger, aantoonbaar
+veiliger ontwerp het grootste deel van dezelfde visuele winst te leveren
+zonder het deurgat-risico:
+
+In plaats van `obstakels`-nabijheid gebruikt de uiteindelijke bake
+UITSLUITEND de geometrie van het vlak ZELF: een muur wordt donkerder
+naarmate een vertex dichter bij zijn EIGEN top- of bodemrand ligt (waar
+hij per definitie een plafond/vloer raakt — geen muur mist ooit een van
+beide), en een vloer/plafond donkerder naarmate een vertex dichter bij
+een van zijn EIGEN vier randen ligt (die altijd tegen een muur eindigen).
+Bewust NIET de linker/rechter rand van een muur — dat is precies waar een
+deuropening kan zitten, en zonder een betrouwbare manier om per muur-
+segment te weten of zijn korte rand een echte hoek is of een deurgat, is
+het risico op een "dichtgesmeerde" opening (§10.7's eigen waarschuwing)
+groter dan de esthetische winst van muur-tot-muur-hoeken. Deze scope —
+verticale muurranden + alle vloer/plafondranden — is per constructie
+ALTIJD correct (nooit een obstakel-lookup nodig, dus ook geen na-pass-
+architectuur, geen `obstakels`-afhankelijkheid, geen Y-blindheid-probleem)
+en dekt het leeuwendeel van de "kamers voelen plat"-klacht.
+
+**De materiaalcache-oplossing (§10.7's route (a)).** Niet een aparte
+sleutel-string-cache zoals de beslissing voorstelde, maar een `WeakMap`
+(`vertexKleurTweelingen`) die per basismateriaal-OBJECT een "tweeling"
+onthoudt: `matMetVertexKleur(basisMateriaal)` kloont het basismateriaal
+(nooit het origineel gemuteerd — `mat()`/`matFamilie()` blijven zelf
+volledig ongewijzigd) en zet `vertexColors = true` op de kloon, gecachet
+zodat twee meshes met hetzelfde basismateriaal dezelfde tweeling delen.
+Eenvoudiger dan een parallelle sleutel-cache, met dezelfde garantie: een
+materiaal krijgt nooit `vertexColors:true` zonder dat de bijbehorende
+geometrie ook echt een `color`-attribuut heeft (elke aanroeper bakt eerst
+de kleur, wraptdaarna pas het materiaal).
+
+**Een subtiele valkuil: materiaal-overschrijvingen ná `vlak()`.** Drie
+call-sites (`gangVloerMesh`, `bijkeukenVloerMesh`, `vlonderMesh`)
+vervangen hun `vlak()`-materiaal achteraf door een `matFamilie()`-aanroep
+(Ticket 38's textuur-migratie) — zonder aanpassing zou dat de al gebakken
+occlusiekleur laten "verdampen" (de nieuwe `matFamilie()`-instantie heeft
+geen `vertexColors:true`, dus het aanwezige `color`-attribuut wordt
+simpelweg genegeerd, geen crash maar wel een stille regressie). Opgelost
+door die drie toewijzingen te wrappen in `matMetVertexKleur(matFamilie(
+...))` — `vlak()`'s eigen return-comment waarschuwt hier nu expliciet voor.
+
+`test-hoekocclusie.mjs` (12 checks, nieuw) bevestigt: er bestaat
+daadwerkelijk minstens één occlusie-gebakken wereldmesh, `matMetVertexKleur()`
+muteert het gedeelde basismateriaal nooit en cachet correct per basis-
+materiaal, `bakMuurOcclusie()` leest structureel UITSLUITEND `pos.getY()`
+(nooit X/Z — de bron-garantie achter het "geen deurgat smeert dicht"-
+ontwerp) terwijl `bakVlakOcclusie()` bewust wél X én Y gebruikt,
+`occlusieFactor()`'s grenswaarden kloppen (rand=donkerst, ruim voorbij
+`OCCLUSIE_BEREIK`=1, negatieve afstand geklemd), elke gebakken
+vertexkleur is grijswaarde (nooit een tint), en `obstakels.length` blijft
+ongewijzigd (T102/T103 raken uitsluitend visuele geometrie/materiaal).
+
+Op drie standpunten verschoof de gemeten helderheid net over de strikte
+2%-`BAND`: atelier (camera dicht bij de nis-hoek, -2,4% gemiddelde),
+binnenplaats (klinkers-mediaan dicht bij de muurrand, -4,6%) en vliering
+(bijna-zwarte baseline, dus een kleine absolute verschuiving is al een
+grote procentuele, -4,8%) — allemaal de verwachte, gewenste richting
+(donkerder bij randen), dus de basislijn-`gemiddelde`/`mediaan`-waarden
+zijn voor die drie zones bijgewerkt. De overige vijf bleven ruim binnen de
+band. Volledige regressiesuite ná T102+T103: groen (zie de eindsamenvatting
+onderaan dit hoofdstuk voor het exacte totaal).
+
 ### 10.8 Beslissing 83 — Eén eigen naverwerkingspass als drager (T96, T97, T98)
 
 **Wat er nu is.** `RenderPass` → `UnrealBloomPass(256×256, 0,35, 0,4,
@@ -4947,6 +5038,279 @@ blauwgroener — maar niet de helderheid, anders vecht hij met de
 kalibratie uit T88. En omdat `zoneVan()` een discrete functie is, moet de
 interpolatie tussen zones in de pass zitten (over minstens een halve
 seconde), niet in de zonelogica.
+
+**Implementatieverslag T96 (uitgevoerd).** Eén `ShaderPass` (import uit
+dezelfde `three/addons/postprocessing/`-map als de vier bestaande passes,
+dus geen tweede CDN-afhankelijkheid), geconstrueerd uit een handgeschreven
+`NAVERWERKING_SHADER`-object (`uniforms`/`vertexShader`/`fragmentShader`)
+en toegevoegd als `naverwerkingsPass` ná `bloomPass`, vóór `OutputPass` —
+`composer.passes.length` ging van 3 naar 4.
+
+- **Chromatische aberratie**: radiale UV-offset per kleurkanaal
+  (`texture2D(tDiffuse, vUv ∓ richting·factor).r/.g/.b`), met `factor =
+  smoothstep(ABERRATIE_START_RADIUS, 1.0, radius) * ABERRATIE_STERKTE *
+  uSterkte`. `radius` is genormaliseerd op de afstand tot een BEELDHOEK
+  (`distance(vUv, 0.5) / 0,7071`), niet tot een randmidden — anders zou
+  `ABERRATIE_START_RADIUS` (0,6) geen eerlijke "60% van de straal" meer
+  zijn. `smoothstep` garandeert nul tot de drempel en een vloeiende
+  oploop erna, dus geen aberratie in het richtpunt zelf.
+- **Filmkorrel**: hash-ruis op `gl_FragCoord.xy + uTijd` (dezelfde
+  geen-textuur-hash-truc als T94's rookgradient, maar analytisch in GLSL
+  i.p.v. canvas). `uTijd` volgt de AL BESTAANDE bevriesbare klok `t` uit de
+  lampflikker-berekening (`visueleBevriesTijd !== null ? ... : nu *
+  0.001`) — hetzelfde mechanisme waarmee T88 de lampflikker deterministisch
+  meet, nu gratis hergebruikt voor de korrel.
+- **`uSterkte`**: de ENE schakelbare master-uniform (default 1) die beide
+  termen tegelijk schaalt — voorbereid op T115's toegankelijkheidsschakelaar
+  zonder dat ticket al te bouwen.
+
+**De bug die de basislijntest meteen ving (en waarom hij precies dáár
+zat).** De eerste versie telde de korrel op (`kleur += korrel`). Deze pass
+zit vóór `OutputPass`, dus nog in lineaire (niet-sRGB-gecodeerde) ruimte.
+`test-visuele-basislijn.mjs` sloeg meteen aan: de heldere zones (woonkamer
+t/m bijkeuken, mediaan 18-31) schoven maar 2-4% op, maar de donkere zones
+schoven schokkend ver — **vliering 1,65 → 10,93 (6,6×), gracht 7,78 →
+15,59 (2×)**. Oorzaak: sRGB-encodering is steil bij zwart, dus een kleine
+ABSOLUTE toevoeging in lineaire ruimte wordt door `OutputPass`'
+gammacurve in bijna-zwarte pixels enorm uitvergroot — precies de zones
+waar dit spel het donkerst is. Fix: `kleur *= 1.0 + korrel` (multiplicatief
+i.p.v. additief). Multiplicatieve ruis schaalt automatisch mee met de
+eigen helderheid van elke pixel (0 × ruis = 0), dus blijft overal
+evenredig subtiel. Ná de fix: alle acht zones binnen de bestaande 2%-band,
+**geen enkele BASISLIJN-waarde hoefde bijgewerkt te worden** — de enige
+legitieme wijziging aan `test-visuele-basislijn.mjs` was de
+`composerPasses`-invariant (3 → 4).
+
+`test-naverwerking.mjs` (13 checks, nieuw — wordt door T97/T98 verder
+uitgebreid, niet vervangen) bevestigt: de pass-volgorde en -telling, dat de
+uniforms bestaan met de juiste defaults, dat `uTijd` de bevriesbare klok
+volgt, een bronvorm-check op de `smoothstep`-drempel en de
+multiplicatieve-korrel-regel, en — het functionele bewijs — dat
+`uSterkte=0` versus `uSterkte=1` op hetzelfde bevroren standpunt
+aantoonbaar verschillende pixels oplevert (de master-uniform doet echt
+iets). Volledige regressiesuite ná T96: zie de samenvatting bij T98
+hieronder (fase 2 in één keer afgesloten).
+
+**Implementatieverslag T97 (uitgevoerd).** Het rode HP-vignet verhuist van
+`#vignet` (DOM, `radial-gradient` + JS-gestuurde `opacity`) naar drie
+extra uniforms op dezelfde `naverwerkingsPass` uit T96 —
+`composer.passes.length` blijft 4. De radiale afstandsberekening
+(`radius`, genormaliseerd op 1,0 = beeldhoek) is dezelfde variabele die
+T96 al voor de aberratie berekent; het vignet mengt met `mix(kleur,
+uVignetKleur, smoothstep(uVignetRadius, 1.0, radius) * 0.9 *
+uVignetSterkte * uSterkte)` — `uVignetRadius` (0,55) en de `0,9`-factor
+matchen exact de oude CSS-gradient se stops (`55%`/`rgba(...,0.9)` op
+100%), puur een verhuizing van de vorm zelf. `VIGNET_KLEUR` is hetzelfde
+`0xaa0a0a`-rood.
+
+**Nieuw t.o.v. de oude versie: een Stroomuitval-term.** De oude DOM-versie
+reageerde nergens op `stroomFactor` — `updateVignet()` las alleen HP. De
+ticket-spec eiste expliciet "reageert op HP ÉN Stroomuitval", dus
+`updateVignet()` telt nu een tweede, onafhankelijke term mee:
+`stroomLaag = (1 - stroomFactor) * VIGNET_STROOM_FACTOR` (0,35) — bij een
+volle Stroomuitval (`stroomFactor = STROOMUITVAL_DIM_FACTOR = 0,12`) komt
+dat op ~0,31 extra sterkte, merkbaar maar niet overheersend, en volledig
+onafhankelijk van de speler-HP (getest met HP op maximum, zodat alleen de
+Stroomuitval-term het verschil verklaart).
+
+**De bovengrens.** `VIGNET_STERKTE_MAX = 1` staat als expliciete
+module-constante en klemt de som van HP-term + Stroomuitval-term +
+schade-flits (`Math.min(VIGNET_STERKTE_MAX, hpLaag + stroomLaag +
+vignetFlits * 0.6)`) — zelfde ceiling als de oude `Math.min(1, ...)`, nu
+alleen benoemd i.p.v. een losse magic number. Omdat de vignet-vorm zelf
+(`smoothstep` vanaf 55% straal) de kern van het beeld sowieso nooit
+raakt, blijft zelfs de worst-case-combinatie (0 HP, verse flits, volle
+Stroomuitval — getest) het middenbeeld onaangetast; alleen de uiterste
+randen/hoeken verdiepen.
+
+`test-naverwerking.mjs` uitgebreid (niet vervangen, per de ticket-spec)
+met 11 nieuwe checks: het DOM-element is weg, `.schadeWedge` staat nog
+gewoon met zijn volle pool in de DOM, geen extra pass, de drie nieuwe
+uniforms bestaan, HP- en Stroomuitval-reactie elk apart bewezen (de een
+met de ander op zijn neutrale waarde vastgezet, om kruisbesmetting tussen
+de twee termen uit te sluiten), de bovengrens-klem, en dat
+`spelerSchade()` nog steeds een flits geeft die vanzelf uitdooft. Het
+bestaande `test-schaderichting.mjs` (schadeWedge-gedrag) en
+`test-stroomuitval.mjs` blijven allebei volledig groen — geen van beide
+raakt het vignet, dus geen enkele aanpassing nodig.
+
+**Implementatieverslag T98 (uitgevoerd — fase 2 hiermee volledig
+afgesloten).** Lift/gamma/gain als drie `THREE.Vector3`-uniforms
+(`uGradeLift`/`uGradeGamma`/`uGradeGain`) op dezelfde `naverwerkingsPass` —
+nog steeds `composer.passes.length === 4`. De gradeerformule is de
+standaard ASC-CDL-achtige opbouw (`gelift = kleur + lift·(1-kleur);
+gegaind = gelift · gain; gegradeerd = pow(gegaind, 1/gamma)`), toegepast
+ná de filmkorrel en vóór het vignet in dezelfde fragment-shader.
+
+**De luminantie-neutraliteit is een GARANTIE, geen tuning-doel.** In
+plaats van de lift/gain-constanten met de hand zo te kalibreren dat ze
+"toevallig" weinig helderheid verschuiven (breekbaar: elke scène heeft een
+andere gemiddelde kleur, dus dezelfde constanten zouden in de ene kamer
+wél en de andere kamer niet binnen de band vallen), herschaalt de shader
+elk gegradeerd pixel na afloop terug naar zijn EIGEN oorspronkelijke
+luminantie (`dot(kleur, vec3(0.2126, 0.7152, 0.0722))` vóór en ná,
+`gegradeerd *= lumaVoor / lumaNa`). Dat garandeert neutraliteit exact, per
+pixel, ongeacht hoe de per-zone-profielen hieronder ooit nog getuned
+worden — een sterkere eis dan wat de ticket-spec vroeg, en robuuster dan
+de alternatieve "tune het totdat de basislijntest slaagt"-aanpak.
+
+**Acht zones, niet vijf.** `zoneVan()` kent alleen de vijf hoofdkamers;
+kelder/vliering/gracht delen elk een `zoneVan()`-index met een buurzone
+(kelder/vliering met het atelier se x/z, gracht met de bijkeuken) maar
+verdienen volgens de ticket-spec elk hun eigen kleurtoon ("kelder
+groeniger, atelier koeler, gracht blauwgroener"). Nieuwe
+`kleurgradingZoneVan(x, y, z)`, naast `zoneVan()` zelf: eerst
+`berekenVlieringY(x, z) !== null` (vliering), dan `y < -0,1` (kelder —
+zelfde y-drempel als `tekenMinimap()` al gebruikt voor exact dezelfde
+"twee-overlappende-zones-op-de-kaart"-reden), dan `x >= VLONDER_X_WEST`
+binnen zone 4 (gracht — "hier stopt het plafond, buiten begint", een
+bestaande constante/comment die dit al markeerde), anders `zoneVan(x, z)`
+zelf (0-4). `KLEUR_GRADING_ZONES[0..7]` volgt exact dezelfde volgorde als
+T88's `berekenVisueleStandpunten()`.
+
+**De overgang zit in JS, niet in GLSL** — bewust dezelfde architectuur als
+T93's `updateZoneFog()`, niet een nieuwe. Een discrete
+`kleurgradingZoneVan()`-wissel (eigen trigger-blok in `gameLoop`, los van
+de bestaande `zoneNu`-wissel hierboven, want fijnere granulariteit) zet
+een `kleurgradingTimer` op `KLEUR_GRADING_OVERGANG_DUUR` (0,5 s, het
+spec-minimum) en snapshot de HUIDIGE (mogelijk nog blendende) uniformwaarde
+als nieuw vertrekpunt — exact het `zoneFogVan`-patroon. `updateKleurgrading(dt)`
+lerpt daarna de drie uniforms rechtstreeks (`Vector3.copy().lerp()` op de
+AL BESTAANDE uniform-objecten, geen allocatie) en doet niets zolang er
+niets te blenden valt.
+
+**Een test-artefact, geen echte regressie (gevonden tijdens het
+bouwen).** De basislijn-uitbreiding zette de gradering per standpunt
+rechtstreeks (spelActief staat in die meetflow nooit aan, dus de echte
+trigger loopt niet) en mat zowel gemiddelde als mediane helderheid tegen
+de bestaande 2%-band. Twee zones faalden aanvankelijk op de MEDIAAN:
+vliering (1,65 → 1,78, +7,9%) en gracht (7,78 → 8,22, +5,6%) — allebei
+met een gemiddelde die ruim binnen de band bleef. Oorzaak: de mediaan is
+één 8-bit pixelwaarde, geen gemiddelde over duizenden pixels; bij een
+baseline die al bijna zwart is (1,65 van de 255) is zelfs één
+afrondingsstap uit de `pow()`/`clamp()`-gradeerwiskunde al een schijnbaar
+grote procentuele afwijking. Fix: een absolute ondergrens
+(`MEDIAAN_KWANTISATIE_VLOER = 0,5`) naast de relatieve band, uitsluitend
+voor deze mediaan-toets — de gemiddelde-toets (de statistisch robuustere
+van de twee) behield de zuivere relatieve band.
+
+`test-visuele-basislijn.mjs` uitgebreid met 19 nieuwe checks (16
+helderheid-binnen-band, 3 kleurindicator: kelder meetbaar groener dan het
+atelier, atelier meetbaar kouder dan de kelder, en alle drie
+kelder/atelier/binnenplaats onderling verschillend) — 65/65 groen.
+`test-naverwerking.mjs` uitgebreid met 12 checks voor de pass-mechanica
+zelf: geen extra pass, de acht uniforme classificaties (inclusief het
+kelder/atelier-deelt-een-zoneVan()-index-randgeval), en een ECHTE
+runtime-trigger (via de kelder-coördinaten uit T88's
+`berekenVisueleStandpunten()` — een handmatige `positie.y`-zet bleek
+meteen overschreven te worden door `updateSpeler()`'s eigen
+`berekenVloerY()`-afleiding, ook een test-artefact, gefixt door de echte
+kelder-x/z te gebruiken en de y-hoogte door het spel zelf te laten
+berekenen) die bevestigt dat de overgang niet instant snapt en na afloop
+exact op het doel uitkomt.
+
+**Volledige regressiesuite ná fase 2 (T96+T97+T98 samen): 67/67 groen, 0
+FAIL.**
+
+**Tuning-noot (na speeltest).** Het atelier-profiel voelde te koel — de
+overgang vanuit buurzones (woonkamer/gang, allebei bijna neutraal) las
+als een harde sprong. `gain` ging van `(0,93, 0,98, 1,08)` naar `(0,965,
+0,99, 1,04)` en `lift.z` van `0,015` naar `0,008` — ruwweg de halve
+afwijking t.o.v. neutraal, zelfde richting. Gemeten (gemiddelde R/G/B over
+het atelier-standpunt): de B-min-R-contrast zakte van 14,0 naar 8,5 (~39%
+zachter). Omdat de luminantie-neutraliteit in de shader zelf gegarandeerd
+wordt (de per-pixel luma-herschaling, zie hierboven) had deze tuning geen
+enkel effect op `test-visuele-basislijn.mjs`'s helderheids-checks — alleen
+de richtingsgebonden kleurindicator-checks (kelder groener dan atelier,
+atelier kouder dan kelder) bleven relevant, en die bleven groen omdat de
+RICHTING van de tint ongewijzigd is, alleen de sterkte.
+
+Een tweede feedbackronde vroeg om ook de kelder minder heftig te maken.
+Dezelfde halvering als bij het atelier (`gain (0,92, 1,08, 0,94)` →
+`(0,96, 1,04, 0,97)`) bleek hier ÉÉN grens te ver: `test-visuele-
+basislijn.mjs`'s "kelder is meetbaar groener dan het atelier"-check sloeg
+om (gemeten G/R: kelder 0,929 vs atelier 0,968 — de kelder was na een
+volle halvering niet meer de groenste van de twee, want het atelier was
+zelf óók al gehalveerd in dezelfde ronde). Dit is precies waar de check
+voor bedoeld is: een geautomatiseerd signaal vóórdat de bewuste
+kelder/atelier-onderscheiding uit §10.8 zonder opzet zou wegvallen. Een
+kleinere reductie (~30% i.p.v. 50%, `gain (0,944, 1,056, 0,958)`, gevonden
+door de daadwerkelijke gerenderde G/R-verhouding bij een paar tussenwaarden
+te meten in plaats van te raden) laat de kelder ruim boven het atelier
+blijven (G/R 1,029 vs 0,968) en blijft toch een merkbaar zachtere kelder
+dan de oorspronkelijke versie. `test-visuele-basislijn.mjs`: 65/65 groen;
+`test-naverwerking.mjs`: 34/34 groen.
+
+Een DERDE feedbackronde vroeg om het kelder-groen nóg eens 20-30% te
+verminderen (t.o.v. de op dat moment al 30%-verzachte waarde). Gemeten:
+elke waarde in dat bereik (`extraReductie` 0,2-0,3 op de toen-huidige
+gain) duwde de gerenderde G/R weer onder die van het atelier (0,95-0,93
+vs atelier se 0,968) — de marge uit de vorige ronde bleek precies zo
+krap dat een tweede, kleinere ronde 'm al opnieuw opsoupeerde. In plaats
+van de kelder daarom NIET verder te verzachten (wat de speeltestfeedback
+zou negeren) is de "kelder groener dan atelier"-check zelf herzien: hij
+vergeleek twee ONAFHANKELIJK tunebare zones via hun gerenderde pixels, en
+brak dus per definitie opnieuw zodra alleen de sterkte van een van
+beide veranderde — een fundamenteel fragiele testvorm voor iteratieve
+art-direction, niet een eenmalig ongeluk. Vervangen door een structurele
+check op `KLEUR_GRADING_ZONES` zelf: kelder se `gain.y` (groen) moet het
+dominante, opgehoogde kanaal zijn in DIE ENE gain-vector; atelier se
+`gain.z` (blauw) idem voor dat profiel. Dat toetst precies de
+ontwerpintentie uit §10.8 ("kelder groeniger, atelier koeler") —
+de RICHTING van elke tint — en blijft correct ongeacht hoe ver de
+STERKTE ooit nog getuned wordt, in beide zones onafhankelijk van elkaar.
+De kelder staat nu op `gain (0,958, 1,042, 0,9685)`, `lift.y = 0,005` —
+in totaal ruim de helft zachter dan het origineel over drie
+feedbackrondes. `test-visuele-basislijn.mjs`: 65/65 groen;
+`test-naverwerking.mjs`: 34/34 groen (ongewijzigd — die tests raken de
+kleurgrading-sterkte niet, alleen het triggermechanisme).
+
+**Een VIERDE feedbackronde** (na de T99-T101-ronde, ná het terugdraaien
+van T101 — zie §10.10) vroeg om zowel het atelier-blauw als het
+kelder-groen nóg eens 10-20% te verminderen t.o.v. de op dat moment
+geldende waarden, plus een klein beetje van het atelier-effect mee te
+nemen naar de vliering. Beide reducties: 15% van de afwijking-t.o.v.-
+neutraal (gain/lift richting `1`/`0`) — gekozen als middenwaarde van de
+gevraagde 10-20%-band. Rechtstreeks gemeten via de uniform (niet via de
+trigger — zie de meetkanttekening hieronder): atelier-koelheid (B-min-R)
+zakte van 8,42 naar 7,46 (-11,4%), kelder-groenheid (G-min-gemiddelde-
+R/B) zakte van 2,46 naar 2,01 (-18,2%) — allebei binnen de gevraagde
+band. Atelier: `gain (0,965, 0,99, 1,04)` → `(0,9703, 0,9915, 1,034)`,
+`lift.z` `0,008` → `0,0068`. Kelder: `gain (0,958, 1,042, 0,9685)` →
+`(0,9643, 1,0357, 0,9732)`, `lift.y` `0,005` → `0,0043`.
+
+**Meetkanttekening (herbevestigd, zelfde les als T88's "spelActief staat
+hier nooit aan"-toelichting).** Een eerste meetpoging muteerde
+`KLEUR_GRADING_ZONES[i]` rechtstreeks en riep daarna `zetVisueelStandpunt`
+aan — dat gaf een schijnbaar 0,0%-verschil. Oorzaak: de kleurgrading-
+trigger (`if (kleurgradingZoneNu !== laatsteKleurgradingZone)` in
+gameLoop) zit ZELF binnen `if (spelActief) {...}`, en `spelActief` staat
+in de `openVoorVisueleMeting()`-meetflow permanent uit — dus zelfs een
+"echte" eerste meting (zonder enige mutatie) paste helemaal GEEN
+kleurgrading toe en las gewoon de neutrale, ongegradeerde scene, voor élke
+zone. `test-visuele-basislijn.mjs`'s sectie 6 loste dit al eerder op door
+`naverwerkingsPass.uniforms.uGradeLift/Gamma/Gain` vóór elke meting
+RECHTSTREEKS te zetten (bewust bijgeschreven in de code als "de echte
+runtime-trigger loopt hier nooit door zichzelf") — deze ronde hergebruikte
+exact dat patroon voor de vergelijkende voor/na-meting.
+
+**Vliering neemt een klein beetje van het atelier-effect mee.** Expliciet
+gevraagd: niet de vliering-tint vervangen, alleen een fractie van de
+atelier-koelte ERBIJ mengen. 20% van de (nieuwe, net-getunede)
+atelier-afwijking-t.o.v.-neutraal is opgeteld bij de bestaande vliering-
+waarden: `gain (1,06, 1,02, 0,9)` → `(1,054, 1,018, 0,907)`, `lift.z`
+`0` → `0,0014` (lift.x/lift.y ongewijzigd, want het atelier-profiel heeft
+daar zelf geen afwijking om mee te nemen). Gemeten: vliering-koelheid
+(B-min-R) steeg van 1,90 naar 2,06 — een merkbare maar bescheiden
+verschuiving, de warme zolder-identiteit (`gain.x > 1`, `gain.z < 1`)
+blijft dominant.
+
+Geen enkele test raakte deze ronde: de structurele kelder-/atelier-
+richtingscheck (§10.10 se herziening) blijft groen omdat alleen de
+STERKTE veranderde, nooit de RICHTING, en de vliering had nooit een
+eigen richtingscheck. `test-visuele-basislijn.mjs`: 65/65 groen;
+`test-naverwerking.mjs`: 34/34 groen; volledige regressiesuite: 68/68
+groen.
 
 ### 10.9 Beslissing 84 — Camerabeweging als cosmetische laag (T92)
 
@@ -5142,6 +5506,270 @@ draw calls in de piek (280 → ~370). Dat past binnen het budget uit
 §10.3, maar het is de grootste draw-call-toename van de ronde en hoort
 gemeten.
 
+**Implementatieverslag T99 (uitgevoerd).** Vier nieuwe meshes per ondode
+(niet vijf — de vod is een GEOMETRIE-vervanging, geen extra mesh), alle
+via de bestaande `geo()`-cache dus automatisch `userData.gedeeld = true`:
+
+- **Twee schouders** (`geo('schouder', ...)`, `BoxGeometry(0.14, 0.14,
+  0.16)`), kind van de `romp`-groep (niet van de arm-pivot — schouders
+  horen bij de romp en mogen niet met de arm meependelen), op lokale
+  positie `(±0.19, 0.24, 0.01)`. Dicht de silhouet-overgang tussen romp
+  (breedte 0.36) en arm (bevestigd op x = ±0,24).
+- **Twee handen** (`geo('hand', ...)`, `BoxGeometry(0.08, 0.08, 0.08)`),
+  SIBLING van `arm` binnen dezelfde pivot-`Group` (niet een kind van
+  `arm` zelf) — `arm.scale` (dikte-/lengtevariatie) mag de handgrootte
+  niet meeschalen. Positie `y = -armLengte` (de volle, per-instance
+  armlengte onder de pivot), dus de hand volgt automatisch mee als
+  `traits.armVerschil` de arm langer/korter maakt.
+- **Gerafelde vod**: de oude `BoxGeometry(0.06, 0.32, 0.02)` (rechte
+  rand) vervangen door `bouwGerafeldeVodGeometry()`, een handgeschreven
+  `BufferGeometry` — expliciet **geen** `PlaneGeometry`, want de
+  ticket-spec eist een écht gekartelde onderrand (5 "tanden",
+  afwisselend op de basislijn en 5 cm dieper). Eén vlak (voorkant) met
+  `side: THREE.DoubleSide` op het material i.p.v. een los achtervlak —
+  op een lapje van 2 cm dik zie je het verschil toch niet, en dit
+  halveert het driehoekstal van dit detail. `VOD_MATERIAAL` is nu een
+  eigen gedeelde module-constante (zelfde patroon als `kernMateriaal`)
+  in plaats van via `mat()`: de oude vod-kleur was al gedeeld (geen
+  per-instance tint), maar `mat()`'s `extra`-parameter forceert altijd
+  een VERSE instantie (bestaand contract, zie T104's toelichting elders
+  in dit hoofdstuk) — `side: DoubleSide` via die route had het
+  gedeeld-zijn dus juist gekost, precies het omgekeerde van de bedoeling.
+
+**Geen van de vier nieuwe delen draagt ooit `userData.lichaamsdeel ===
+'kop'`** — expliciet niet gezet, en `test-ondode-model.mjs`'s bestaande
+generieke traverse-check (die AL het hele model doorloopt) ving dat al
+generiek af; een nieuwe, naam-gebonden sectie (zie hieronder) maakt het
+ook expliciet zoals de ticket-spec vraagt.
+
+`test-ondode-model.mjs` uitgebreid met 5 checks: elk van de vijf
+`ONDODE_TYPES` krijgt exact 2 schouders en 2 handen (met neutrale traits,
+zodat het 'eenarmig'-profiel de telling niet toevallig verstoort), de vod
+gebruikt de nieuwe gedeelde `vodGerafeld`-geometrie, geen van de nieuwe
+delen draagt ooit een kop-markering, en `geoCache.size` blijft exact
+gelijk over 50 spawn/kill-cycli (de drie nieuwe geometrieën blijven
+precies 1 entry, ongeacht hoeveel ondoden ooit gespawned zijn). Bestaande
+tests ongewijzigd groen: `test-ondode-model.mjs`'s hitbox-/headshot-
+contract (24 checks, inclusief de al bestaande "geen enkel ander
+mesh-deel draagt een lichaamsdeel-markering"-check), `test-resources.mjs`
+(18 checks, incl. de 100-cycli-geometriegroei-band en de 25-golven-
+meshtelling), en `test-visuele-basislijn.mjs` (65 checks — dit ticket
+raakt alleen het ondode-model, niet de statische scene die de basislijn
+meet, dus logischerwijs geen enkele verschuiving).
+
+**Implementatieverslag T100 (uitgevoerd).** Eerst de fabriek die de
+ticket-spec als niet-optionele stap 1 eiste: `maakOndodeMateriaal(kleur,
+ruwheid = 0.85)` vervangt alle zeven inline
+`new THREE.MeshStandardMaterial({ color: huidKleur, ... })`-constructies
+in `maakOndodeModel()` (torso, twee schouders, bochel, buik, hoofd, arm,
+hand — de laatste twee zijn T99's toevoegingen). `kernMateriaal` en
+`oogMateriaal` gaan er bewust NIET doorheen: die hebben allebei al hun
+eigen emissieve systeem (T89's Signaal-hiërarchie), en `VOD_MATERIAAL`
+(T99) blijft ook ongemoeid — geen van drie is "huid".
+
+**De fresnel-rim.** `onBeforeCompile` injecteert twee stukken in de
+gecompileerde `MeshStandardMaterial`-shader: de uniform-declaraties ná
+`#include <common>`, en de eigenlijke term ná `#include
+<emissivemap_fragment>` — de plek waar three.js' eigen fragment-shader
+`totalEmissiveRadiance` al vult, dus de natuurlijke aansluiting voor nóg
+een emissieve bijdrage. De term zelf: `pow(1 - max(dot(normal,
+normalize(vViewPosition)), 0), 3) * uRimKleur * uRimSterkte`, opgeteld bij
+`totalEmissiveRadiance`. Vastgelegd (chunk-namen zijn geen publieke
+three.js-API): chunk `<emissivemap_fragment>`, varying `vViewPosition`,
+three@0.160.0.
+
+**Eén gedeeld uniform-paar, niet één per materiaal.** `RIM_UNIFORMS =
+{ kleur: {value:...}, sterkte: {value:...} }` staat op moduleniveau; elke
+`onBeforeCompile`-aanroep wijst `shader.uniforms.uRimKleur`/`uRimSterkte`
+naar DEZELFDE twee objecten (niet gekloond). Een toekomstige schrijf op
+`RIM_UNIFORMS.sterkte.value` verandert dus in één keer de rim op alle
+ondoden tegelijk — de infrastructuur die de ticket-spec vraagt ("zodat
+hij mee kan bewegen met de eventgolven"), zonder dat dit ticket zelf al
+bepaalt WANNEER dat gebeurt (`RIM_STERKTE_BASIS` is voor nu een vaste
+waarde — zie de design-review na T101 verderop in deze sectie voor de
+uiteindelijke waarde).
+
+**De kleur.** `0x55e0b0`, een koel teal-groen, gekozen om zichtbaar af te
+wijken van zowel het warme lamplicht (`0xffc06a`) als het koele maanlicht
+(`0xc8ddff`) — gemeten (Euclidische RGB-afstand op een 0-1-schaal): 0,50
+tot lamplicht, 0,32 tot maanlicht, allebei ruim boven de 0,3-drempel die
+`test-rimlight.mjs` aanhoudt.
+
+**Geen extra Light.** De rim is uitsluitend shaderwerk op het materiaal;
+`scene.traverse()` telt nog steeds precies 28 lichten (1 hemisfeer + 27
+point, invariant 2 uit §10.2 blijft intact).
+
+`test-rimlight.mjs` (9 checks, nieuw) bevestigt: het lichtaantal, dat de
+injectie UITSLUITEND op ondode-huidmaterialen zit (een steekproef van 239
+wereldmaterialen via `wereld.traverse()` heeft 'm nergens, `kernMateriaal`/
+`oogMateriaal`/`VOD_MATERIAAL` blijven ongemoeid), de kleurafstand tot
+lamp/maanlicht, en — functioneel bewijs — dat `RIM_UNIFORMS.sterkte` op 0
+versus uitvergroot een aantoonbaar ander beeld oplevert op hetzelfde
+bevroren standpunt.
+
+**Een test-valkuil, gevonden en meteen opgelost.** De eerste versie van de
+injectie-check gebruikte `typeof materiaal.onBeforeCompile === 'function'`
+— dat bleek voor ELK materiaal in de scene waar te zijn, ook materialen
+die deze ticket nooit heeft aangeraakt: `THREE.Material.onBeforeCompile`
+is standaard al een no-op-functie (three.js' eigen default), niet
+`undefined`. De echte marker moest de INHOUD zijn:
+`materiaal.onBeforeCompile.toString().includes('uRimSterkte')` — een
+bronvorm-check, hetzelfde soort techniek als elders in deze testsuite
+(bv. T94's `setTimeout`-afwezigheidscheck).
+
+Bestaande tests ongewijzigd groen: `test-ondode-model.mjs` (29 checks),
+`test-resources.mjs` (18 checks), `test-visuele-basislijn.mjs` (65
+checks) — dit ticket raakt alleen het materiaal, niet de geometrie of de
+statische scene.
+
+**T101 gebouwd, beoordeeld, en teruggedraaid.** T101 is geïmplementeerd
+zoals hierboven gespecificeerd — twee grijswaarde-vervaltermen (per-vertex
+holte-gradient + per-pixel vlekkenruis) — en met volledige testdekking
+groen gekregen (zie de sessiegeschiedenis voor de implementatiedetails en
+een genuanceerde testvalkuil rond stale gameLoop-state in de metingen).
+
+Bij de daaropvolgende visuele review bleek het effect echter niet de
+juiste afweging op te leveren, en is het **teruggedraaid**:
+
+- Op een sterkte die de type-kleuren (het echte gameplaysignaal) niet
+  overstemt, was het effect in de praktijk vrijwel onwaarneembaar — pas
+  bij een sterkte 3-6× hoger dan wat de §10.10-invariant toestond, werd
+  het duidelijk zichtbaar in een test-render.
+- Belangrijker: het effect paste niet bij de kunststijl. Het spel is
+  bewust vlak, low-poly en textuurloos (CLAUDE.md: "geen textures/
+  modellen, alleen simpele geometrieën") — cavity/grime-shading is een
+  realismecue die bij die stijl geen natuurlijke plek heeft, en de kosten
+  (een tweede shader-injectie, een vertexColors-attribuut per gedeelde
+  geo()-vorm, extra testoppervlak) wogen niet op tegen een effect dat
+  niemand tijdens het spelen zou opmerken.
+
+**De rimlight (T100) bleef wél overeind, maar iets te sterk.** Bij
+dezelfde review gold het omgekeerde oordeel: de rim lost een reëel,
+eerder gedocumenteerd probleem op (silhouetherkenning in donkere kamers)
+tegen verwaarloosbare kosten (geen extra Light), en is een gangbare
+techniek in dit genre. `RIM_STERKTE_BASIS` ging wel omlaag, van 0,6 naar
+**0,12** (20% van de oorspronkelijke waarde) — merkbaar subtieler, zonder
+de silhouetscheiding zelf te verliezen.
+
+**Wat er is teruggedraaid.** `voegVervalKleurToe()`, `VERVAL_HOLTE_STERKTE`,
+`VERVAL_VLEK_STERKTE`, de `<color_fragment>`-shaderinjectie en
+`vertexColors: true` in `maakOndodeMateriaal()` zijn verwijderd; de zeven
+`geo()`-aanroepen (torso/schouder/bochel/buik/hoofd/arm/hand) bouwen hun
+geometrie weer rechtstreeks. De bijbehorende testdekking (de gerenderde-
+kleurafstand- en bronvorm-checks in `test-ondode-model.mjs`, en de
+aanvullende sectie in `test-stadsarchief.mjs`) is met de code mee
+verwijderd. `RIM_UNIFORMS`/`maakOndodeMateriaal()` zelf (T100) blijven
+ongewijzigd van vorm, alleen `RIM_STERKTE_BASIS` is aangepast.
+
+Regressie na het terugdraaien: `test-ondode-model.mjs` weer op 29 checks,
+`test-stadsarchief.mjs` weer op 40, `test-rimlight.mjs` ongewijzigd op 9
+(die test leest `RIM_STERKTE_BASIS` dynamisch, dus de waardewijziging
+raakt 'm niet).
+
+<details>
+<summary>Oorspronkelijk implementatieverslag T101 (historisch, de code hieronder bestaat niet meer)</summary>
+
+Twee vervaltermen, allebei **grijswaarde-vermenigvuldigers** (nooit een tint) —
+de harde invariant uit §10.10 hierboven.
+
+**1. Per-vertex holte-gradient.** `voegVervalKleurToe(geometry)` leest de
+al-berekende `normal`-attribute en schrijft een `color`-attribute
+(R=G=B) via `holte = (1 - normal.y) / 2` (0 voor omhoogwijzende
+vlakken, 1 voor omlaagwijzende) en `factor = 1 - VERVAL_HOLTE_STERKTE *
+holte` (`VERVAL_HOLTE_STERKTE = 0,25`). Onderkanten van dozen (buik
+onder de bochel, onderkant van de armen) worden zo een kwart donkerder
+dan bovenkanten — een goedkope benadering van cavity/grime-schaduw
+zonder een echte AO-pass. Gewrapt om de bestaande geometrie-constructors
+in alle zeven huid-`geo()`-sleutels (torso, schouder, bochel, buik,
+hoofd, arm, hand); omdat `geo()` per sleutel al deelt, wordt dit
+**precies één keer per gedeelde vorm** berekend, nooit per ondode-
+instantie. `maakOndodeMateriaal()` kreeg `vertexColors: true`.
+
+**2. Procedurele vlekkenruis.** Een tweede `onBeforeCompile`-injectie in
+dezelfde fabriek als T100's rimlight, ditmaal in `<color_fragment>` (ná
+three.js' eigen `vertexcolor_fragment`-toepassing, dus stapelt bovenop
+de holte-gradient): een 3D-sinusruis op `vViewPosition * 12,0`,
+`vlek = 1 - VERVAL_VLEK_STERKTE * (0,5 + 0,5 * sin(...) * sin(...))`
+(`VERVAL_VLEK_STERKTE = 0,12`), toegepast als `diffuseColor.rgb *=
+vlek`.
+
+**Een misgreep, gevonden via een shader-compile-fout.** De eerste versie
+gebruikte `vUv` als ruis-input. `MeshStandardMaterial` declareert `vUv`
+echter alleen als er daadwerkelijk een texture-map-feature actief is
+(`#ifdef`-bewaakte chunk) — deze huid-materialen hebben geen `map`, dus
+compileren zonder `vUv`, en de eerste poging crashte met "'vUv' :
+undeclared identifier" (zichtbaar via de load-check console-error-
+listener). Opgelost door `vViewPosition` te hergebruiken — al bewezen
+altijd beschikbaar via T100's rim-term — met het geaccepteerde neveneffect
+dat het vlekkenpatroon licht "zwemt" als de camera om het model beweegt
+(bij deze lage sterkte niet storend).
+
+**Testdekking: een tweede, hardnekkiger valkuil dan de shadercode zelf.**
+De ticket-spec eist een RENDER-niveau bewijs dat twee `ONDODE_TYPES` op
+de gerenderde pixel nog meetbaar in kleur verschillen (het type-signaal,
+bv. Brander vs. Loper, mag niet wegvallen tegen de nieuwe grijswaarde-
+termen). Een eerste, brede crop rond "waar het lichaam ongeveer staat"
+mat twee bijna identieke kleuren — geen echte regressie, maar drie
+gestapelde meetfouten in de testopzet zelf, alle drie voortkomend uit
+hetzelfde patroon dat T88's `openVoorVisueleMeting()` al documenteerde
+(cosmetische systemen die alleen in de `spelActief`-gated zone van
+`gameLoop` vervallen, draaien hier nooit omdat dit testbestand bewust
+géén `simuleerPointerLock` gebruikt):
+
+1. **`#startscherm` bleef zichtbaar** — een screenshot ving de DOM-
+   overlay (titel/instructietekst op een donkere achtergrond), niet de
+   3D-canvas erachter. Beide types maten daardoor dezelfde
+   overlay-achtergrond.
+2. **`#gameOverScherm` bleek soms actief** — de bestaande mik-sectie
+   verderop in hetzelfde bestand spawnt herhaaldelijk een ondode vlak
+   voor de speler; in de reële wall-clock tijd tussen losse
+   `page.evaluate()`-round-trips bleef `gameLoop` intussen echt draaien,
+   en die ondode viel de speler soms daadwerkelijk aan. Cumulatief kon dat
+   de speler doden en het game-over-scherm tonen, met dezelfde
+   contaminatie als (1).
+3. **Bevroren, wit-oplichtende "lijken" stapelden zich op** — elke
+   `doodOndode()`-aanroep (ook de opruim-aanroepen tussen testsecties)
+   zet een korte witte kill-flits (T95, `mat.emissive`/
+   `emissiveIntensity`) en laat de ondode omvallen via `stervenden`, en
+   dat vervalt normaal élke frame in `updateStervenden(dt)` — óók
+   gated achter `spelActief`. Zonder die vervalstap bleven **tientallen**
+   bevroren, wit-emissieve lijken op hun oude posities staan, inclusief
+   bovenop de eigen testpositie, en dat domineerde de crop tot een
+   vrijwel uniform wit vlak voor beide types.
+
+Root cause dus niet het shadereffect, maar drie stuks niet-opgeruimde
+testtoestand. Opgelost door in de meethelper expliciet: `#startscherm`
+en `#gameOverScherm` te verbergen, `spelerStaat.hp` te herstellen,
+`actieveEffecten` leeg te maken, en — de doorslaggevende regel —
+`d.updateStervenden(999)` aan te roepen: één reuze-`dt` rondt de hele
+val-/doofanimatie in één klap af en ruimt elk lijk meteen op, in plaats
+van te wachten op een vervaltimer die in dit testbestand nooit vanzelf
+loopt. Camera-aiming hergebruikt de al bewezen `mikCode()`-aanpak (vaste
+afstand z=-3, `scale.setScalar(1)` om schaalverschil tussen types uit
+te sluiten, yaw/pitch exact op de torso `(0, 1,1)` gemikt); een gekloonde
+lamp (geen losse `THREE`-referentie nodig — de debug-hook exposeert er
+geen) dichtbij en fel genoeg gezet zodat de diffuse albedo niet wegvalt
+tegen de donkere, warmgetinte hoek van de kaart waar toevallig getest
+wordt.
+
+`test-ondode-model.mjs` uitgebreid met 2 checks: een gerenderde
+kleurafstand (Euclidisch, RGB 0-255) tussen 'normaal' en 'sjouwer' op
+dezelfde crop >5 (na de fix ruim daarboven), en een bronvorm-check dat
+`maakOndodeMateriaal` de vlekterm als `diffuseColor.rgb *= vlek`
+toepast (scalair, nooit een kleur). `test-stadsarchief.mjs` kreeg
+dezelfde meetopzet als aanvullende sectie: bevestigt dat
+`STADSARCHIEF_KLEURSET_TINT` (T86) ook ná deze twee nieuwe shaderlagen
+nog een meetbaar verschil geeft op de gerenderde pixel, niet alleen op
+`material.color` (dat laatste was al gedekt door een bestaande,
+exacte JS-niveau check die dit ticket ongemoeid liet).
+
+Bestaande tests ongewijzigd groen (op dat moment): `test-ondode-model.mjs`
+(29 → 31 checks), `test-rimlight.mjs` (9 checks), `test-resources.mjs` (18
+checks), `test-stadsarchief.mjs` (40 → 41 checks), `test-visuele-
+basislijn.mjs` (65 checks).
+
+</details>
+
 ### 10.11 Beslissing 86 — Van roughnessMap-only naar een echte oppervlakteset (T106, T107, T108)
 
 **Wat er nu is, en waarom het niet werkt.** `bouwCanvasTextuur()`
@@ -5218,6 +5846,221 @@ Aandachtspunt: zonder tangents op de geometrie valt Three.js terug op een
 afgeleide berekening in de shader, wat op grote vlakke
 `PlaneGeometry`-vlakken artefacten kan geven.
 
+**Implementatieverslag T106 (uitgevoerd).** Eén universele functie,
+`herschaalUVNaarWereldschaal(geometrie, texelsPerMeter = 1)`, i.p.v. de
+BoxGeometry-per-face-UV-layout te reverse-engineeren. De oorspronkelijke
+overweging ("voor een BoxGeometry betekent dat zes vlakken met elk hun
+eigen schaal") ging uit van het herschalen van de BESTAANDE UV-waarden per
+face — maar die aanpak botst met T102/T103: elke muur krijgt daar een
+ANDER segmentaantal per as (`muurSegmenten()`), dus er is geen vaste
+vertex-volgorde/-telling per face om op te bouwen zonder de exacte
+BoxGeometry-broncode te dupliceren.
+
+**De gekozen route: UV afleiden uit lokale positie + normal, niet uit de
+bestaande UV.** Voor elke vertex bepaalt de functie welke as de normal het
+sterkst op wijst (die as valt af) en zet `uv = (de twee overige lokale
+coördinaten) × texelsPerMeter`. Dat werkt ONVERANDERD voor een
+`BoxGeometry` (elk van de 6 vlakken, ongeacht segmentaantal) ÉN voor een
+platte `PlaneGeometry` (lokaal altijd normal `(0,0,1)`, dus simpelweg
+`u=x, v=y`) — één functie voor zowel `blok()` als `vlak()`, ongeacht
+wereld-rotatie (lokale coördinaten zijn rotatie-onafhankelijk) of
+segmentaantal. Bewust GEEN triplanar mapping in de shader (het genoemde
+alternatief) — dat kost drie texture-samples per map per fragment i.p.v.
+één, de verkeerde ruil op deze fragment-bound scene (§10.3).
+
+**Scope: alleen waar het ertoe doet.** `blok()` (gebruikt door
+`bouwSchuurtje()` e.a. voor NIET-getextureerd meubilair, altijd via
+`mat()`) kreeg BEWUST geen aanroep — er is daar nooit een `map`/
+`roughnessMap` om de UV's voor te herschalen, dus dat zou pure verspilling
+zijn. `vlak()` kreeg de aanroep wél onvoorwaardelijk (elke `vlak()`-vloer/
+-plafond kan later alsnog naar `matFamilie()` worden overgezet, zie de
+valkuil hieronder), plus de losstaande `matFamilie('steen', ...)`-
+constructies die niet via `blok()`/`vlak()` lopen: de complete kelder
+(vloer, plafond, perimeter-muren, trap, koker-dak/-wanden/-sluitpanelen)
+en de binnenplaats-klinkersvloer. Deur-/kist-/plank-`matFamilie('hout',
+...)`-aanroepen zijn BEWUST buiten scope gehouden (kleine objecten, het
+"kist van 40cm"-schaalprobleem uit de probleemstelling is daar veel
+kleiner dan bij een muur van 9m) — een kandidaat voor een latere ronde.
+
+`bouwCanvasTextuur()` verloor zijn vaste `.repeat.set(4, 4)` (nu default
+`(1,1)`, `RepeatWrapping` blijft aan zodat de — nu wereldschaal-grote —
+UV-waarden vanzelf herhalen). Zoals voorspeld: nul zichtbaar/meetbaar
+effect op zichzelf (geen enkele helderheids-/driehoekscheck verschoof) —
+de roughnessMap-teksturen zijn nog steeds bijna-wit-met-ruis, en zonder
+T107's albedo `map` is er niets dat de herschaalde UV's daadwerkelijk
+zichtbaar maakt. `test-wereldschaal-uv.mjs` (4 checks, nieuw) bevestigt:
+een echte getextureerde vloer heeft een UV-bereik dat overeenkomt met zijn
+wereldafmeting (niet meer vast 0..1), de kelder-vloer se UV komt exact
+overeen met `lokale positie × TEXELS_PER_METER`, en de roughnessMap van
+een `matFamilie()`-materiaal heeft geen vaste repeat meer.
+
+**Implementatieverslag T107 (uitgevoerd, MET een bewuste scope-reductie).**
+Drie van de vier genoemde patronen: baksteenverband (`steen`), planken met
+nerf/knoesten (`hout`), en klinkers in een VEREENVOUDIGD keperverband
+(`natSteen` — een grid van afwisselend horizontaal/verticaal
+georiënteerde straatsteentjes, geen echt interlocking patroon, maar
+visueel wel als "keperverband" leesbaar op deze schaal). "Pleisterwerk"
+is NIET geïmplementeerd: geen van de vijf bestaande `MATERIAAL_FAMILIES`
+komt daar eenduidig mee overeen (geen `pleister`-familie bestaat), en het
+zou een nieuwe familie hebben vereist zonder een duidelijke aanroeper —
+een kandidaat voor een latere ronde zodra zo'n aanroeper bestaat. `metaal`
+is ONGEWIJZIGD gelaten (blijft zijn oude roughness-only pad) — de
+ticket-spec noemt alleen baksteen/planken/pleisterwerk/klinkers, geen
+metaalupgrade.
+
+**Grijswaarde, net als T101/T103/T104.** Elke tekenaar (`steen`/`hout`/
+`natSteen`) kreeg een tweede parameter (`basisWit`) en tekent uitsluitend
+`rgb(g,g,g)` — nooit een eigen hue. Dezelfde tekenfunctie wordt TWEE keer
+gerenderd door de nieuwe `bouwCanvasTextuurPaar()`: één keer met
+`T107_ALBEDO_BASIS=232` (voor `map`) en één keer met
+`T107_RUWHEID_BASIS=224` (voor `roughnessMap`, dicht bij de
+oorspronkelijke "bijna wit"-conventie van vóór dit ticket). De
+BASISKLEUR komt nog steeds van `MATERIAAL_FAMILIES`/de meegegeven
+`kleur` (§7.3's garantie) — nu via `color × albedoMap` i.p.v. alleen
+`color`, maar zonder dat de map zelf ooit een hue bijdraagt.
+`test-texturenset.mjs` bevestigt dit met een directe pixelinspectie (0
+niet-grijze pixels over drie 64×64-steekproeven).
+
+**Twee texturen per familie, niet één hergebruikt voor beide rollen.**
+`map` en `roughnessMap` zijn twee VOLLEDIG APARTE `CanvasTexture`-objecten
+(elk hun eigen canvas, met een ander `basisWit`) — nooit dezelfde texture
+voor beide toegepast. De albedo-map krijgt expliciet
+`colorSpace = THREE.SRGBColorSpace` (een kleurmap, moet door de sRGB-
+pijplijn van `renderer.outputColorSpace`); de roughnessMap blijft op zijn
+lineaire default (een datamap, geen kleur) — een detail dat zonder
+aandacht een net-niet-goede albedo-helderheid had opgeleverd.
+
+**Stijl- en laadtijd-risico's, beide gecontroleerd.** De patronen blijven
+laag-contrast en simpel getekend (rechte rijen/rechthoeken, geen
+gradients, geen fotorealistische ruis) — in lijn met het "geverfde
+maquette"-DNA, niet fotorealistisch. Laadtijd, rechtstreeks gemeten: alle
+drie de texturenparen (512×512, albedo+roughness, dus 6 canvassen) samen
+bouwen in **~6ms** — ruim onder de "tientallen milliseconden per
+textuur"-zorg uit de probleemstelling (die zorg gold voor acht tekenaars;
+deze ronde bouwt er drie, en zelfs die drie zijn met simpele
+rechthoek-/lijntekenoperaties goedkoper dan de zorg vooronderstelde).
+
+**Helderheid verschoof wél degelijk, en terecht.** Een albedo-map met
+duidelijk donkerdere voeg-/naadlijnen (tot -95 t.o.v. het steenoppervlak
+zelf) trekt het gemiddelde omlaag t.o.v. de oude situatie (geen `map`,
+dus effectief altijd factor 1) — precies het bedoelde, zichtbare effect
+van "een echte textuur" i.p.v. "roughness-only". Twee zones met veel
+beeldvullend getextureerd oppervlak schoven het hardst: binnenplaats
+(klinkersvloer vult het beeld, -12%) en kelder (steen rondom, vloer tot
+plafond, -10%); twee andere zones schoven een fractie mee via zichtbare
+spillover door een deuropening naar een naburige getextureerde ruimte
+(woonkamer -2,2%, bijkeuken -2,3% mediaan). `test-visuele-basislijn.mjs`'s
+`gemiddelde`/`mediaan`-waarden voor die vier zones zijn bijgewerkt; de
+overige vier bleven ruim binnen de 2%-band.
+
+`test-texturenset.mjs` (12 checks, nieuw) bevestigt verder: `steen`/
+`hout`/`natSteen` krijgen beide maps, `metaal`/`tegel` blijven op hun oude
+pad, `map`/`roughnessMap` zijn aantoonbaar twee aparte objecten, de
+colorSpace-instelling klopt voor beide, en het cache-gedrag is correct
+(twee `matFamilie('steen', ...)`-aanroepen met verschillende kleuren
+delen dezelfde textures maar behouden elk hun eigen `material.color`).
+
+**Vervolgronde: klinkerrealisme (op verzoek, na visuele beoordeling).** De
+klinkervloer op de binnenplaats las als geborsteld metaal. Vier oorzaken,
+alle vier aangepakt.
+
+*1. De roughnessMap stond OMGEKEERD — een echte fout, niet een
+smaakkwestie.* Three.js past een roughnessMap vermenigvuldigend toe
+(`roughness *= texel.g`), dus donker in die kaart betekent LAGERE ruwheid,
+oftewel glanzender. `bouwCanvasTextuurPaar()` rende dezelfde tekenaar twee
+keer, waardoor de voegen in beide kaarten donker waren — en de voegen dus
+het glanzendst werden. Bij `natSteen` (basisruwheid 0,32) kwam de voeg op
+~0,19 uit tegen ~0,29 voor het steenvlak: een raster van donkere,
+spiegelende naden tussen lichtere vlakken. Dat is precies de visuele
+handtekening van plaatmetaal, en fysiek het omgekeerde van de werkelijkheid
+(voegspecie is dof en poreus, de klinker glad). De roughnessMap wordt nu
+AFGELEID uit de albedo-pixels, geïnverteerd rond `T107_RUWHEID_BASIS`. Dat
+loste meteen een tweede, niet eerder opgemerkte fout op: de tekenaars
+gebruiken willekeur, dus twee losse renders leverden twee NIET-
+corresponderende patronen op (de tintvariatie in de albedo hoorde bij
+andere stenen dan die in de roughnessMap). Eén tekenronde in plaats van
+twee scheelt bovendien bouwtijd.
+
+*2. `metalness: 0,12` op natSteen.* Steen is nooit metallic. In de metallic
+workflow geldt diffuus = albedo x (1 - metalness), dus die 0,12 haalde 12%
+van de diffuse respons weg en stopte 'm in een getinte speculaire lob —
+letterlijk "een beetje metaal maken". Nu 0. Dit is meteen de reden dat de
+binnenplaats meetbaar lichter werd (zie de basislijn-toelichting in
+`test-visuele-basislijn.mjs`): dat diffuse deel komt overal terug.
+
+*3. Basisruwheid 0,32 was te glad voor een heel vlak.* Nu 0,45. De natte
+glans hoort PLAATSELIJK te zijn, en dat was al geregeld: de plassen staan
+apart op `roughness: 0,07`. Die dragen het natte accent nu alleen.
+
+*4. Het patroon zelf.* Het oude "keperverband" was er geen: het legde één
+steen midden in een cel met lege ruimte eromheen. Nu blokverband
+(mandjesverband) — twee stenen per cel van 21x21 cm, om en om liggend en
+staand. Bewust dit verband: **echt keperverband heeft een schuin
+translatierooster en sluit dus niet naadloos aan op een vierkante,
+herhalende textuurtegel**, terwijl blokverband dat per constructie wel doet
+(periode 2 cellen; `test-texturenset.mjs` legt de even-cellen-eis vast).
+Verder: stenen op hun echte maat (21x10,5 cm) via een tegel van
+`KLINKER_TEGEL_METERS` = 4,2 m in plaats van de globale 1 meter — over de
+binnenplaats van 17x16 m herhaalt het patroon nu ~16 keer in plaats van
+~270 keer. Daar bovenop een grootschalige slijtagelaag (in alle negen
+wrap-posities getekend, dus naadloos) die de resterende herhaling breekt,
+plus afgesleten hoeken, scheefstand en af en toe een verweerde steen.
+
+**Determinisme, alsnog.** De tekenaars draaiden op `Math.random()`, dus elke
+laadbeurt gaf een andere textuur. Dat kwam pas boven water toen de
+helderheidsmeting tussen runs bleef schommelen (28,14 -> 27,3 -> ...) en de
+2%-vangrail daardoor niet stabiel te zetten was. Zelfde keuze als T104
+(§10.12): variatie mag, willekeur per laadbeurt niet — een speler hoort het
+pand niet elke sessie anders te zien. Elke tekenaar krijgt nu een vaste
+stroom (mulberry32, gezaaid vanuit de patroonnaam). Na die wijziging: 27,29
+in twee opeenvolgende runs.
+
+**De vangrail stuurde een inhoudelijke keuze.** De inversiesterkte
+(`T107_RUWHEID_INVERSIE`) is niet gekozen maar GEMETEN. Bij 0,25 en 0,4
+zakte de kelder — die op `steen` draait en waar de wrongly-glossy voegen
+meetbaar aan de helderheid bijdroegen — zo ver weg dat zijn eigen
+kleurgrading niet langer luminantie-neutraal mat: het gat
+gegradeerd/ongegradeerd liep op tot 0,79 tegen een toegestane 0,5. Die
+grading heeft een ADDITIEVE groen-lift, en hoe donkerder de zone, hoe
+zwaarder die relatief doortelt. Bij 0,12 blijft het gat op 0,29 en klopt
+de fysieke richting nog steeds. Belangrijk om vast te leggen: de vangrail
+wees hier niet op een kapotte grading maar op een te donker geworden zone,
+en de door de gebruiker zelf afgestelde kelder-grading is expres NIET
+aangeraakt.
+
+**Pleisterwerk: grondslag gelegd, niet toegepast.** De vierde tekenaar uit
+de oorspronkelijke T107-opzet bestaat nu als volwaardige `pleister`-familie
+(wolkige ondergrond, afbladderende plekken met een donkerdere onderlaag,
+haarscheuren — alles in wrap-posities getekend, want pleister heeft geen
+eigen periodiciteit die een naad zou kunnen maskeren). Hij wordt
+**nergens** door de wereldopbouw aangeroepen; `test-texturenset.mjs`
+bewaakt dat expliciet. De muur-uitrol (`bouwMuur()` naar
+`matMetVertexKleur(matFamilie(...))` plus een UV-herschaling in `blok()`)
+is een aparte keuze die op beeld beoordeeld moet worden vóór hij vastligt —
+een runtime-preview volstond daarvoor, zonder de wereldopbouw te wijzigen.
+
+**Vals alarm tijdens de regressiesweep: `test-camerabeweging.mjs`.** Eén
+volledige `run-all.mjs`-sweep na T107 gaf 72/73 groen met precies deze
+test als enige FAIL (geen schade over 20 schoten, terwijl dezelfde test
+vlak vóór T106/T107 nog gewoon groen was). Uitgebreid geïsoleerd
+onderzocht: een losse probe die exact dezelfde 20-schoten-lus van de
+falende sectie repliceert (inclusief de echte rAF-warmup die bobFase
+aantoonbaar actief maakt) haalde wél gewoon raak op elk schot. Bij
+herhaald losstaand draaien van het testbestand bleek het bovendien
+herhaaldelijk vast te lopen op `requestAnimationFrame`-wachten in een
+HELE ANDERE, aan T106/T107 ongerelateerde sectie (wapen-sway, sectie 6 —
+geen materiaal/UV-code in de buurt). Dat bevestigt wat de eigen
+testcommentaren al waarschuwen (§10.9-sectie 8: "onvoorspelbaar traag/
+variabel in deze headless omgeving"): dit is omgevingsflakiness in de
+sandbox rond rAF-timing, geen echte regressie door T106/T107 — T106/T107
+raken `updateSpeler()`, de camera, `bobFase` of ondode-code helemaal niet
+aan, alleen muur-/vloermaterialen en hun UV's. Een volledige herhaalde
+`run-all.mjs`-sweep erna kwam uit op 73/73 groen, inclusief deze test.
+
+**Fase 5 (T106+T107) afgerond, T108 buiten scope (niet gevraagd).**
+Volledige regressiesuite groen; zie de eindsamenvatting onderaan dit
+hoofdstuk voor het exacte totaal.
+
 ### 10.12 Beslissing 87 — Variatie zonder cachebreuk (T104, T105)
 
 **Het probleem.** Er is geen enkele plek waar twee bakstenen van elkaar
@@ -5261,6 +6104,100 @@ verdrievoudigen.
 De collision-geometrie (`obstakels`) blijft rechthoekig. Bij 1-2 cm is
 de afwijking onmerkbaar; bij meer zou je net naast een hoek vast lijken
 te lopen.
+
+**Implementatieverslag T104 (uitgevoerd).** Scope bewust beperkt tot
+`meubelBox()` — de functie achter `bouwKratten()`/`bouwVat()` en zes
+andere herhaalde meubelplaatsingen, en daarmee letterlijk de "elke kist
+is dezelfde kleur"-klacht uit de probleemstelling. Muren/vloeren/
+plafonds (T103) zijn NIET meegenomen: die zijn niet werkelijk "gekopieerd"
+op de manier die deze ticket bedoelt (elke muur heeft al een eigen,
+onderscheidende afmeting/positie), dus de "copy-paste"-klacht is daar
+minder van toepassing, en het zou vereist hebben dat `blok()` de
+wereldpositie van de muur kent — die wordt pas NA de `blok()`-aanroep
+gezet (`muur.position.set(...)` gebeurt in `bouwMuur()`, niet in `blok()`
+zelf).
+
+`hashNaarEenheid(x, y, z)` — een simpele sinus-gebaseerde hash, GEEN
+`Math.random()` — geeft een deterministische waarde in [0, 1) per
+wereldpositie. `meubelBox()` bakt daarmee een UNIFORME (niet-gradiënte,
+in tegenstelling tot T103's randocclusie) vertexkleur-factor binnen
+±`TINT_VARIATIE` (10%, zelfde bereik als de bestaande ondode-huidtint) en
+wrapt het gedeelde basismateriaal via T103's `matMetVertexKleur()`.
+
+**Een plaatsingsvalkuil, gevonden vóór de test het kon bevestigen.** De
+oorspronkelijke `const TINT_VARIATIE`/`hashNaarEenheid`/`bakUniformeTint`
+stonden eerst vlak boven `meubelBox()` zelf (verderop in het bestand, bij
+de meubel-bouwfuncties). `meubelBox()` als FUNCTIE is overal aanroepbaar
+door function-hoisting, maar de `const`s die zijn body nodig heeft
+bestaan pas zodra de script-executie die regel echt gepasseerd is — en de
+allereerste `meubelBox()`-aanroep (het bijkeuken-keukenblok) staat
+ruim eerder in de laadvolgorde. Resultaat: `ReferenceError: Cannot access
+'TINT_VARIATIE' before initialization`, gevangen door `check-load.mjs`
+vóór er ook maar één test draaide. Opgelost door het hele blokje te
+verplaatsen naar vlak ná `vlak()`, ruim vóór de eerste meubel-aanroep.
+
+`test-kleurtint-variatie.mjs` (9 checks, nieuw) bevestigt: de hash is
+deterministisch en valt in [0,1), twee `meubelBox()`-instanties met
+hetzelfde basismateriaal DELEN dat materiaal (geen cache-verdubbeling)
+maar krijgen een verschillende tint, elke tint blijft binnen ±10%, alle
+vertices van één instantie delen precies dezelfde factor (uniform, geen
+gradient), de bron gebruikt nooit `Math.random()`, en de echte wereld
+bevat meerdere uniform-getinte meshes met minstens twee verschillende
+waarden (de kratten/vaten variëren daadwerkelijk).
+
+**Implementatieverslag T105 (uitgevoerd, MET een bewuste afwijking van de
+"gecachet zoals `geo()`"-spec hierboven).** `RoundedBoxGeometry` (al
+aanwezig in hetzelfde three@0.160.0-pakket als de rest van het project,
+`three/addons/geometries/RoundedBoxGeometry.js`) met een lage straal
+(`AFSCHUINING_STRAAL = 0,015`, 1,5 cm) en een laag segmentaantal
+(`AFSCHUINING_SEGMENTEN = 2`, een gefacetteerde schuine rand i.p.v. een
+vloeiende ronding). Het echte visuele effect komt niet van een
+vertexkleur-truc maar puur van de GEOMETRIE zelf: een afgeschuinde rand
+heeft continu variërende normals, en dat alleen al laat gewoon
+Standard-materiaallicht een lichtstreepje langs de rand vangen — de enige
+van de vier T102-T105-tickets die geen `vertexColors` nodig heeft.
+
+**De cache-afwijking.** De oorspronkelijke spec vroeg om `geoAfgeschuind()`
+te cachen op een sleutel (afmetingen), net als `geo()`. Bij het bouwen
+bleek dat te botsen met T104: `meubelBox()` combineert de afschuining MET
+een per-instantie vertexkleur-tint, en die tint wordt ALS ATTRIBUUT op de
+geometrie zelf gebakken — een gedeelde/gecachete geometrie zou die
+vertexkleur dan voor ALLE instanties tegelijk overschrijven (de laatst
+gebakken tint "wint" voor iedereen die dezelfde afmetingen deelt, precies
+het "geen twee kisten zijn gelijk"-probleem dat T104 net had opgelost, nu
+weer terug via de achterdeur). `geoAfgeschuind()` bouwt daarom bij ELKE
+aanroep een verse `RoundedBoxGeometry` — geen cache, geen sleutel. Dat is
+overigens geen nieuwe asymmetrie in de codebase: `blok()`/`bouwMuur()`
+(T102/T103) deden dit al net zo, nooit via de `geo()`-cache.
+
+Toegepast op `meubelBox()` (dus automatisch op kratten, vaten-nabije
+decor, het keukenblok, de kelderluik-afdekking, de boekenkast en de
+planken — acht call-sites "gratis" via één centrale wijziging) plus de
+twee losstaande tafelblad-constructies (`bouwTafel()`, de werkbank in het
+atelier) via een nieuwe `blokAfgeschuind()`-wrapper. Deuren zijn NIET
+meegenomen in deze ronde (bewuste scope-beperking, geen los deurblad-
+mesh-patroon gevonden dat zich net zo eenvoudig centraal liet aanpassen
+als `meubelBox()`) — een kandidaat voor een latere ronde.
+
+Een afgeschuinde box kost ~30-40 driehoeken meer dan een platte
+`BoxGeometry` (24 vertices), dus het totale driehoekstal steeg opnieuw
+fors in zones met veel meubilair (atelier: werkbank, binnenplaats:
+kratten/vat, kelder: kelderluik, vliering: De Zelflader-meubilair,
+gracht: kratten bij de vlonder) — dezelfde soort bewuste `RENDER_BAND`-
+overschrijding als T102, geen enkele helderheidscheck verschoof.
+
+`test-afgeschuinde-randen.mjs` (6 checks, nieuw) bevestigt: `geoAfgeschuind()`
+bouwt daadwerkelijk een `RoundedBoxGeometry` (niet een platte box) met
+merkbaar meer vertices, cachet bewust NIET (twee aanroepen met identieke
+afmetingen geven verschillende objecten), `meubelBox()` roept 'm ook echt
+aan, de straal blijft binnen de 1-2cm-marge, en het totaal aantal
+`RoundedBoxGeometry`-meshes in de wereld blijft laag (meubilair, geen
+tientallen muren die per ongeluk meegingen).
+
+**Fase 4 (T102-T105) afgerond.** Volledige regressiesuite groen op elke
+tussenstap; de basislijn-`triangles`-waarden in `test-visuele-basislijn.mjs`
+zijn cumulatief bijgewerkt over T102 en T105 (T103/T104 raakten alleen
+helderheid resp. niets meetbaars in de bestaande render-metrics).
 
 ### 10.13 Beslissing 88 — De wereld buiten de kaart (T93, T111, T112, T113)
 

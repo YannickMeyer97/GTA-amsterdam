@@ -237,8 +237,12 @@ const eenKill = await page.evaluate((traitsStr) => {
     KILL_BURST_AANTAL_GROOT: d.KILL_BURST_AANTAL_GROOT, KILL_FLITS_PIEK: d.KILL_FLITS_PIEK,
   };
 }, NEUTRALE_TRAITS_STR_T95);
-check('delen.huidMaterialen bevat de verwachte 4 per-instance materialen (torso/hoofd/armL/armR) voor een normaal/standaard-ondode',
-  eenKill.aantalMaterialen === 4, eenKill);
+// Ticket 99/100 breidden delen.huidMaterialen uit met twee schouders en
+// twee handen (elk een eigen per-instance maakOndodeMateriaal()-materiaal,
+// zie ARCHITECTURE_NOTES §10.10) — van 4 naar 8 voor een normaal/standaard-
+// ondode (torso/schouderL/schouderR/hoofd/armL/armR/handL/handR).
+check('delen.huidMaterialen bevat de verwachte 8 per-instance materialen (torso/schouders/hoofd/armen/handen) voor een normaal/standaard-ondode',
+  eenKill.aantalMaterialen === 8, eenKill);
 check('kernMateriaal (gedeeld) zit nooit in delen.huidMaterialen',
   eenKill.kernNietErbij, eenKill);
 check('Direct na de kill staan ALLE huidmaterialen op KILL_FLITS_PIEK emissiveIntensity',
