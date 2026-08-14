@@ -4980,6 +4980,94 @@ schakelaar bij in hetzelfde instellingenmenu waar `muisgevoeligheid`
 (T75) al staat. Dat menu-item valt buiten dit ticket maar hoort in de
 overweging.
 
+**Implementatieverslag T92 (uitgevoerd).** Alle nieuwe state (`bobFase`,
+`leanHoek`, `landingsDipTimer`/`-Sterkte`, `pieksnelheidDaling`,
+`vorigeSpelerX`/`Z`, `vorigeVloerY`) leeft als losse module-`let`s naast
+`terugslag`/`cameraKick`, en de berekening zelf zit in één nieuw blok in
+de bestaande cosmetische gameLoop-zone, ná de bestaande
+`vlamTimer`-afhandeling, vóór `composer.render()`.
+
+- **Loopwiegen**: `bobFase` loopt op met de ECHTE XZ-afstand tussen twee
+  frames (`Math.hypot(dx, dz)`), niet met `dt` — bij stilstand verandert
+  de fase dus niet, en `Math.sin(bobFase) * BOB_AMPLITUDE` (1,6 cm, zie de
+  tuning-noot hieronder) blijft
+  dan letterlijk constant (bevriest op de laatste fase, keert niet actief
+  terug naar 0 — dat voldoet aan de acceptatie-eis "constant", en is
+  bewust simpel gehouden i.p.v. een extra uitfaseer-envelope).
+- **Landingsdip**: leidt een verticale snelheid af uit
+  `speler.positie.y` (al door `updateSpeler()` ververst via
+  `berekenVloerY()`) en triggert zodra een daling onder
+  `LANDING_TRIGGER_SNELHEID` weer afvlakt — dat gebeurt zowel onderaan de
+  kelder-ramp/vlieringtrap als bij abrupt stoppen halverwege een helling.
+  De dip zelf hergebruikt de bestaande `Math.sin(voortgang·π)`-boog van de
+  herlaad-/wisseldip (WAPEN_HERLAAD_DIP_AMPLITUDE-patroon), geklemd op
+  `LANDING_DIP_MAX` (2,8 cm, getuned).
+- **Lean**: interpoleert `camera.rotation.z` naar `±LEAN_MAX_HOEK` (0,45°,
+  getuned)
+  op basis van `ingedrukt['KeyD'/'KeyA']` rechtstreeks — geen aanraking
+  van `updateSpeler()`.
+- **Wapen-tegenwiegeling**: het wapenmodel (kind van `camera`, dus erft de
+  bob/lean al gratis mee) krijgt bovenop die overerving een EIGEN,
+  onafhankelijke zijwaartse sway (`Math.sin(bobFase) * WAPEN_SWAY_AMPLITUDE`
+  op `position.x`) en een tegengestelde fractie van `leanHoek` op zijn
+  eigen `rotation.z` — zodat het niet star/vastgeschroefd oogt, maar ook
+  het richten niet verstoort.
+
+**De raycast-garantie (kernvereiste 2).** `updateSpeler()` kreeg één
+regel erbij: `camera.rotation.z = 0;`, direct na de bestaande
+`rotation.x`/`rotation.y`-zet. Dat is geen camerabeweging (geen nieuwe
+term, geen interpolatie) — het voltooit alleen de al bestaande discipline
+dat `updateSpeler()` de camera ELK frame volledig vers zet vanuit
+`speler`-state, nu ook voor de derde rotatie-as. Omdat `schiet()` in
+dezelfde gameLoop-tick vóór dit cosmetische blok loopt (de
+`schietKnopIngedrukt`-check zit hoger in gameLoop), ziet een raycast
+daardoor NOOIT een lean- of bobrestant van de vorige tick — bewezen via
+een directe test die `camera.position.y`/`rotation.z` opzettelijk
+"corrumpeert" en dan aantoont dat `updateSpeler()` ze onvoorwaardelijk
+terugzet.
+
+**Twee robuustheidsfixes, gevonden tijdens het testen (geen van beide
+zichtbaar in normale gameplay, wel gemeten via T88's basislijn/eigen
+tests):**
+
+1. **Teleport-clamp op de bob-afstand.** Een directe `speler.positie.set()`
+   (bijv. een debug-herpositionering) las bij de eerstvolgende tick als
+   een absurd grote "afgelegde afstand". `afgelegdeAfstand` is nu geklemd
+   op `speler.snelheid * 0,05` (dezelfde 0,05s-hitch-grens als `dt` zelf
+   in gameLoop) — een normale stap raakt deze grens nooit, een teleport
+   kan bobFase niet meer laten springen.
+2. **`sin()` i.p.v. `cos()` voor de wapen-sway.** De eerste versie gebruikte
+   `cos(bobFase)`, wat bij `bobFase = 0` (in rust) niet 0 is — het wapen
+   stond dus ook in volledige stilstand 0,8 cm verschoven t.o.v.
+   `WAPEN_BASIS_X`. Dat verschoof T88's vliering-mediaan met bijna 5%
+   (gemeten). `sin()` is wél 0 in rust.
+
+`test-camerabeweging.mjs` (24 checks, nieuw) bevestigt: stilstand blijft
+constant, lopen varieert binnen de band, lean interpoleert beide kanten
+op en terug, de landingsdip-boog triggert/klemt/decayt correct, de
+wapen-tegenwiegeling blijft binnen zijn amplitude en staat tegengesteld
+aan de lean, en — het belangrijkste — een schotenreeks tijdens aantoonbaar
+actieve bob raakt nog steeds elke keer. `test-visuele-basislijn.mjs`
+bleef, ná de twee fixes hierboven en een uitbreiding van
+`zetVisueelStandpunt()` (die nu ook `bobFase`/`landingsDipTimer`/
+`-Sterkte`/`pieksnelheidDaling` en `vorigeSpelerX`/`Z`/`vorigeVloerY`
+resynct bij elke standpunt-teleport, dezelfde discipline als de
+bestaande `visueleBevriesTijd`/`lampDipFactor`-reset), 46/46 groen.
+Volledige regressiesuite: **64/64 groen, 0 FAIL**.
+
+**Tuning-noot (na speeltest, vóór T93-T95).** De eerste implementatie
+(bovenstaande waarden) voelde in de praktijk heftiger dan bedoeld — een
+cosmetische laag die opvalt in plaats van op de achtergrond blijft, is
+het omgekeerde van het doel uit dit hoofdstuk. Alle vier amplitudes zijn
+teruggebracht, verhoudingsgewijs gelijk (ruwweg naar iets meer dan de
+helft), zonder de architectuur aan te raken: `BOB_AMPLITUDE` 0,03 → 0,016,
+`LEAN_MAX_HOEK` 0,8° → 0,45°, `LANDING_DIP_MAX` 0,05 → 0,028,
+`WAPEN_SWAY_AMPLITUDE` 0,008 → 0,004. `test-visuele-basislijn.mjs` (46/46)
+en `test-camerabeweging.mjs` (24/24) blijven na de tuning groen — de
+band-/klem-checks in die laatste testen relatief gedrag (varieert/keert
+terug/blijft binnen amplitude), niet de absolute oude waarden, dus de
+tuning verplaatst geen enkele test buiten zijn eigen tolerantie.
+
 ### 10.10 Beslissing 85 — De vijand krijgt een eigen lichtrespons (T99, T100, T101)
 
 **Het probleem, en het symptoom dat het al jaren maskeert.** De ondoden
@@ -5244,6 +5332,46 @@ Dit ticket bestaat niet zonder T112 en is een klein detail. Het staat
 erin omdat de koppeling aan `stroomFactor` het van decoratie naar
 verhaal tilt: tijdens een Stroomuitval zie je dat het niet alleen jouw
 pand is.
+
+**Implementatieverslag T93 (uitgevoerd; T111/T112/T113 blijven
+ontwerp-only voor deze ronde).** `FOG_BUITEN = { kleur: FOG_NORMAAL.kleur,
+near: FOG_NORMAAL.near, far: 40 }` — alleen `far` wijkt af, zodat een
+overgang nooit ook de kleur/dichtbij-band laat springen. `ZONE_BUITEN =
+[false, false, false, true, false]` classificeert alleen `zoneVan()`-index
+3 (de Binnenplaats) als buiten; zone 4 (Bijkeuken/"de weg naar de gracht")
+telt bewust als binnen, want die heeft zijn eigen `BIJKEUKEN_PLAFOND` en
+`zoneVan()` zelf is in dit ticket niet herzien — een bekende, geaccepteerde
+vereenvoudiging.
+
+De overgang hergebruikt letterlijk het `mistUitfaseTimer`-sjabloon: een
+nieuw `zoneFogTimer`/`zoneFogVan`/`zoneFogDoel`-drietal, `2 s`
+(`ZONE_FOG_OVERGANG_DUUR`), en een `updateZoneFog(dt)` die `scene.fog.near`/
+`far`/`color` lineair interpoleert. De trigger zit in het BESTAANDE
+zone-wissel-blok van `gameLoop` (dezelfde plek die het HUD-zonelabel al
+bijwerkt), niet in een nieuwe per-frame check, en vuurt alleen bij een
+echte binnen/buiten-*profielwissel* — twee binnenzones na elkaar (bv.
+Woonkamer → Gang) laten `zoneFogTimer` op 0 staan.
+
+**Het samenspel met de Mistgolf** was de kern van het ticket: een
+Mistgolf blijft tijdens zijn hele duur leidend (de trigger hierboven is
+expliciet gegate op `actieveEventGolf !== 'mist'`, dus een zone-wissel
+tijdens mist doet niets), en `eindigEventGolf()` berekent zijn
+terugkeerdoel nu dynamisch — `ZONE_BUITEN[zoneVan(speler.positie.x,
+speler.positie.z)] ? FOG_BUITEN : FOG_NORMAAL` — in plaats van de oude
+hardgecodeerde `FOG_NORMAAL`. Een Mistgolf die eindigt terwijl de speler
+buiten staat, keert dus terug naar `FOG_BUITEN`, niet naar de krappere
+binnenwaarde.
+
+`test-fogdiepte.mjs` (21 checks, nieuw) bevestigt: de structuur van beide
+profielen, dat alle vijf zones na de overgang op het juiste profiel
+uitkomen, dat de overgang zelf zacht is (een tussenwaarde strikt tussen
+24 en 40, geen instant-snap), dat twee binnenzones na elkaar geen
+overgang triggeren, en het volledige Mistgolf-samenspel (blijft
+`FOG_MIST` ongeacht zonewissels tijdens de golf; keert na afloop terug
+naar het profiel van de HUIDIGE zone, getest zowel eindigend-binnen als
+eindigend-buiten). Volledige regressiesuite ná T93+T94 samen: **65/66
+groen** — de ene aanvankelijke fail was `test-camerabeweging.mjs`'s
+schotenreeks-test, root-cause en fix hieronder bij T94/T95.
 
 ### 10.14 Beslissing 89 — Levend water zonder tweede scene-render (T114)
 
@@ -5711,3 +5839,136 @@ smal en concreet: **elke bewering over runtime-gedrag die een ticket
 draagt, hoort gemeten te zijn vóór hij als beslissing wordt
 opgeschreven** — niet omdat redeneren onbetrouwbaar is, maar omdat het
 hier drie keer een claim opleverde die overtuigend klonk en fout was.
+
+### 10.19 Implementatieverslagen T94 en T95 (Directe winst, uitgevoerd)
+
+T94 en T95 staan zonder eigen beslissingsnummer in dit hoofdstuk (zie de
+tabel in §10.15: beide vallen onder "Directe winst" — nul afhankelijkheden,
+nul fragment-kosten). Ze zijn kleine, in zichzelf besloten
+gevoel-verbeteringen op bestaand gedrag (respectievelijk de inslagen van
+`schiet()` en de dood van een ondode), niet architecturale beslissingen
+die een eigen §10.x rechtvaardigen. Dit verslag documenteert wat er is
+gebouwd.
+
+**T94 — Rijkere inslagen.** `spawnImpact(punt, kleur, aantal, normaal =
+null)` kreeg een optioneel vierde argument. Zonder normaal (de bestaande
+aanroep in `raakOndode()`, voor ondode-treffers) is het gedrag
+byte-identiek aan vóór dit ticket — bewust, want "uit het oppervlak" is
+geen betekenisvol concept voor een lichaamstreffer. Mét een normaal (de
+wereld-raycast in `schiet()`, tegen muren/vloer/plafond) krijgen de
+deeltjes een snelheidscomponent langs die normaal (`normaal * 1,5-3,0 +
+spreiding`) en een langgerekte "vonk"-vorm (`scale(0,012, 0,012,
+0,09+rand)`) via dezelfde lookAt-georiënteerde truc die `spawnTracer()`
+al gebruikte. Een nieuwe `langgerekt`-vlag per actief effect laat
+`updateEffecten()` de vonk ELK frame opnieuw op zijn (door zwaartekracht
+kromme) baan richten, niet alleen bij het spawnen.
+
+Een tweede, kleine pool (`rookPool`, `ROOK_MAX = 8`) geeft elke
+wereld-inslag ook een korte (`ROOK_LEVENSDUUR = 0,4 s`) opzwellende
+rookpluim: een camera-facing `PlaneGeometry` met een canvas-gegenereerde
+radiale gradient-textuur (dezelfde canvas-textuurtechniek als eerdere
+tickets), eenmalig `lookAt(camera.position)` bij het spawnen — bij zo'n
+korte levensduur is een per-frame billboard-update de moeite niet waard.
+`schiet()`'s wereld-treffer-tak berekent de wereldruimte-normaal via
+`raak[0].face.normal` getransformeerd met `raak[0].object.matrixWorld`
+(een nieuwe scratch-vector `_tmpVecNormaal`, naast de bestaande
+`_tmpVecA/B/C` — geen allocatie in de hot path) en geeft die door aan
+zowel `spawnImpact()` als de nieuwe `spawnRook()`.
+
+`test-inslagen-rijker.mjs` (17 checks, nieuw) bevestigt: het
+achterwaarts-compatibele gedrag zonder normaal, het directionele/
+langgerekte gedrag mét normaal, de per-frame heroriëntatie, de volledige
+rookpluim-levenscyclus, een ECHT schot op een muur dat beide effecten
+met eindige (niet-NaN) snelheden spawnt, en een stress-test van 200
+schoten die bevestigt dat `impactPool`/`rookPool`/`tracerPool` nooit
+groeien.
+
+**T95 — De kill als gebeurtenis.** Elke dodelijke treffer krijgt een
+korte emissive flits op de ondode zelf plus een groter impact-burst, zodat
+een kill een zichtbaar moment is in plaats van dat de ondode stilletjes
+verdwijnt. Twee architecturale keuzes bepaalden waar de code moest komen:
+
+1. **`ontploiBrander()`'s kettingreactie roept `doodOndode()` rechtstreeks
+   aan**, bewust langs `raakOndode()` heen (geen speler-treffer, dus geen
+   geld/kill-bonus voor een kettingkill). Dat betekent dat de
+   flits/burst-logica in `doodOndode()` zelf moet zitten — niet in
+   `raakOndode()` — anders zou een Brander-kettingreactie nooit een
+   burst/flits krijgen.
+2. **`maakOndodeModel()` maakt torso/bochel/buik/hoofd/arm-materialen
+   allemaal per instantie** (`new THREE.MeshStandardMaterial(...)` per
+   ondode), maar `kernMateriaal` (de Brander-kern) en de been-/
+   vod-materialen (via de gedeelde `mat()`-cache) zijn dat expliciet
+   NIET. Een nieuwe `delen.huidMaterialen`-array verzamelt alleen de
+   per-instance materialen tijdens het bouwen (elke `.push()` direct na
+   de materiaal-constructie, zie de vijf plekken in
+   `maakOndodeModel()`) — `oogMateriaal` is bewust buiten deze lijst
+   gehouden (die heeft al zijn eigen T89-Signaal-systeem; een tweede,
+   overlappende control-laag daarop voegt niets toe).
+
+`doodOndode(ondode, punt = null, kop = false)` kreeg twee nieuwe
+parameters (`punt`/`kop` — bekend bij een speler-treffer via
+`raakOndode()`, onbekend/`null`/`false` bij een Brander-kettingkill, dan
+valt de burst terug op `ondode.groep.position`). De functie roept nu
+altijd eerst `spawnKillBurst(punt ?? ondode.groep.position, kop)` aan
+(vóór de Brander-early-return, dus ook een Branderdood krijgt zijn
+burst), en flitst daarna — alleen voor niet-Branders — elk material in
+`delen.huidMaterialen` naar `emissive = wit`, `emissiveIntensity =
+KILL_FLITS_PIEK (3)`. Branders slaan de flits over: hun `groep` is al
+bovenaan `doodOndode()` onvoorwaardelijk uit `ondodenGroep` verwijderd,
+dus een material-flits zou toch niet renderen. De flits-timer
+(`KILL_FLITS_DUUR = 0,15 s`) en de materiaal-referenties reizen mee in
+de bestaande `stervenden`-entry en worden afgeteld in
+`updateStervenden()`, ruim binnen de val-animatie (`STERVEN_DUUR`).
+
+`raakOndode()`'s oude, onvoorwaardelijke `spawnImpact()`-aanroep aan het
+eind is verplaatst naar uitsluitend de overlevende-treffer-tak — een
+dodelijke treffer loopt nu via `doodOndode()`'s eigen, grotere burst, dus
+een kill kreeg zonder deze verplaatsing TWEE bursts.
+
+**Het samenvalvenster.** `spawnKillBurst()` degradeert de burst-grootte
+van `KILL_BURST_AANTAL_GROOT` (10) naar `KILL_BURST_AANTAL_KLEIN` (4)
+zodra `klok - laatsteKillBurstTijd < KILL_BURST_SAMENVAL_VENSTER` (0,06 s
+— zelfde sjabloon en zelfde grootte-orde als de bestaande
+`HITMARKER_SAMENVAL_VENSTER`). Zonder dit zou een Brander die vier
+buren binnen bereik meesleurt in één synchrone kettingreactie in
+potentie 5×10 = 50 deeltjes claimen uit een pool van 24 — met degradatie
+wordt dat 10 + 4×4 = 26, nog steeds boven de poolgrootte, maar de
+bestaande recycle-strategie in `pakEffectSlot()` (oudste actieve slot
+hergebruiken i.p.v. een nieuw object alloceren) ving dat al af vóór dit
+ticket; T95 verkleint alleen hoeveel er per keer wordt aangevraagd.
+
+`test-hitmarker-audio.mjs` is uitgebreid (in plaats van een nieuw
+bestand — de ticket-spec vroeg expliciet om het bestaande kill-/
+hitmarker-testscript uit te breiden) met 12 nieuwe checks: de
+structuur van de nieuwe constanten, dat één kill exact de vier
+verwachte per-instance materialen (torso/hoofd/armL/armR bij een
+neutraal-profiel "normaal"-ondode) naar `KILL_FLITS_PIEK` flitst terwijl
+`kernMateriaal` daar nooit tussen zit, dat de flits binnen een handvol
+`updateStervenden()`-ticks weer op 0 staat, dat twee kills vlak na
+elkaar (buiten resp. binnen het venster) `GROOT` resp. `KLEIN`
+opleveren, en — de scenario die het ticket zelf vroeg — een ECHTE
+Brander-kettingreactie met vier slachtoffers binnen
+`BRANDER_EXPLOSIE_RADIUS`: alle 5 sterven zonder fouten, `impactPool`
+blijft exact zijn vaste grootte, de gezamenlijke burst-omvang blijft
+ruim onder het "5× de volle burst"-scenario, en de Brander zelf slaat
+de material-flits aantoonbaar over.
+
+**Een niet-gerelateerde, maar door dit werk blootgelegde test-flake.**
+`test-camerabeweging.mjs`'s schotenreeks-integratietest (§10.9) spawnt
+een ondode recht vooruit zonder expliciete traits en verwacht dat een
+kaarsrechte raycast 'm altijd raakt. `kiesOndodeTraits()` loot echter een
+`lengte`-multiplier (0,9-1,12) die de HELE groep, inclusief hoofdhoogte,
+schaalt — bij een ongelukkige (korte) worp zakt het hoofd ver genoeg
+onder de camera-ooghoogte (1,7 m) dat de ray het net mist. Gemeten via
+een geïsoleerde probe: bij een concrete worp stond het hoofd op
+wereld-y 1,824 met een verticale straal van ~0,21 (RNG-afhankelijk),
+ruim binnen de marge om te missen bij een kortere worp. Dit is
+RNG-gedreven testflakiness in een T92-testbestand, losstaand van T93,
+T94 of T95 zelf — maar hij blokkeerde de volledige-suite-validatie van
+dit werk, dus is meteen gefixt: de test spawnt de ondode nu met
+expliciete neutrale traits (`lengte: 1`, zelfde patroon als
+`test-ondode-hitreacties.mjs`'s `NEUTRALE_TRAITS`), waarmee de treffer
+deterministisch wordt.
+
+Volledige regressiesuite ná T93+T94+T95 (en de bovenstaande testfix):
+**66/66 groen, 0 FAIL.**

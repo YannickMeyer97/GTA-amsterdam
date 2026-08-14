@@ -177,6 +177,201 @@ const leegCue = await page.evaluate(() => {
 check('Schieten met een leeg magazijn zet de "leeg"-knipperklasse op de ammo-UI',
   leegCue.klasse.includes('leeg'), leegCue);
 
+// --- 7. Ticket 95 (De kill als gebeurtenis): kill-flits + kill-burst -----
+// Elke dodelijke treffer krijgt een korte emissive flits op de PER-INSTANCE
+// huidmaterialen (nooit kernMateriaal, nooit de gedeelde been-/vod-
+// materialen via mat()) plus een groter impact-burst dan een gewone
+// treffer. KILL_BURST_SAMENVAL_VENSTER (zelfde sjabloon als
+// HITMARKER_SAMENVAL_VENSTER hierboven) degradeert de burst-grootte bij
+// snel-op-elkaar-volgende kills, zodat een Brander-kettingreactie de
+// 24-slots impactPool niet in één klap leegtrekt.
+const NEUTRALE_TRAITS_STR_T95 =
+  "{ profiel: 'standaard', kromme: false, slepend: 0, armVerschil: 0, lengte: 1, strompelt: false }";
+
+const structuurT95 = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  return {
+    KILL_FLITS_PIEK: d.KILL_FLITS_PIEK, KILL_FLITS_DUUR: d.KILL_FLITS_DUUR,
+    KILL_BURST_AANTAL_GROOT: d.KILL_BURST_AANTAL_GROOT, KILL_BURST_AANTAL_KLEIN: d.KILL_BURST_AANTAL_KLEIN,
+    KILL_BURST_SAMENVAL_VENSTER: d.KILL_BURST_SAMENVAL_VENSTER,
+  };
+});
+check('KILL_BURST_AANTAL_GROOT > KILL_BURST_AANTAL_KLEIN (het samenval-venster degradeert echt naar minder)',
+  structuurT95.KILL_BURST_AANTAL_GROOT > structuurT95.KILL_BURST_AANTAL_KLEIN, structuurT95);
+check('KILL_FLITS_PIEK/KILL_FLITS_DUUR/KILL_BURST_SAMENVAL_VENSTER zijn positieve, eindige waarden',
+  structuurT95.KILL_FLITS_PIEK > 0 && structuurT95.KILL_FLITS_DUUR > 0 && structuurT95.KILL_BURST_SAMENVAL_VENSTER > 0, structuurT95);
+
+// --- 7a. Eén kill: de PER-INSTANCE huidmaterialen flitsen naar
+// KILL_FLITS_PIEK, kernMateriaal (gedeeld) zit er nooit tussen, en de
+// burst is groter dan een gewone (overlevende) treffer -------------------
+const eenKill = await page.evaluate((traitsStr) => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  d.eliminatiemodusTimer = 0;
+  d.laatsteKillBurstTijd = -999;   // buiten elk samenval-venster: gegarandeerd de volle burst
+  // CI-fix: eerdere secties in dit bestand kunnen nog niet-vervallen impact-
+  // deeltjes in de pool hebben staan (IMPACT_LEVENSDUUR/0,3s verstrijkt alleen
+  // via echte rAF-frames, die tussen twee synchrone evaluate()-blokken door
+  // niet gegarandeerd zijn) — expliciet leegvegen i.p.v. op reële frametijd
+  // gokken, zodat de exacte burst-grootte-checks hieronder niet flaky worden.
+  for (let i = d.actieveEffecten.length - 1; i >= 0; i--) {
+    if (d.actieveEffecten[i].soort === 'impact') {
+      d.actieveEffecten[i].slot.actief = false;
+      d.actieveEffecten[i].slot.mesh.visible = false;
+      d.actieveEffecten.splice(i, 1);
+    }
+  }
+  d.speler.positie.set(0, 0, 0);
+  const impactVoor = d.actieveEffecten.filter(e => e.soort === 'impact').length;
+  const o = d.spawnOndode(0, 'normaal', eval(`(${traitsStr})`));
+  o.hp = d.schadePerTreffer;   // exact genoeg voor een dodelijke lichaamstreffer
+  o.groep.position.set(0, 0, -10);
+  const materialen = o.delen.huidMaterialen;
+  const kernNietErbij = !materialen.includes(d.kernMateriaal);
+  d.raakOndode(o, o.groep.position, false);   // kill
+  const impactNa = d.actieveEffecten.filter(e => e.soort === 'impact').length;
+  return {
+    kernNietErbij, aantalMaterialen: materialen.length,
+    intensiteitenNaKill: materialen.map(m => m.emissiveIntensity),
+    burstGrootte: impactNa - impactVoor,
+    KILL_BURST_AANTAL_GROOT: d.KILL_BURST_AANTAL_GROOT, KILL_FLITS_PIEK: d.KILL_FLITS_PIEK,
+  };
+}, NEUTRALE_TRAITS_STR_T95);
+check('delen.huidMaterialen bevat de verwachte 4 per-instance materialen (torso/hoofd/armL/armR) voor een normaal/standaard-ondode',
+  eenKill.aantalMaterialen === 4, eenKill);
+check('kernMateriaal (gedeeld) zit nooit in delen.huidMaterialen',
+  eenKill.kernNietErbij, eenKill);
+check('Direct na de kill staan ALLE huidmaterialen op KILL_FLITS_PIEK emissiveIntensity',
+  eenKill.intensiteitenNaKill.every(i => i === eenKill.KILL_FLITS_PIEK), eenKill);
+check('De kill-burst spawnt precies KILL_BURST_AANTAL_GROOT nieuwe impact-deeltjes (buiten het samenval-venster)',
+  eenKill.burstGrootte === eenKill.KILL_BURST_AANTAL_GROOT, eenKill);
+
+// --- 7b. De flits dooft weer uit via updateStervenden(), ruim vóór
+// STERVEN_DUUR (de val-animatie) klaar is ---------------------------------
+const flitsDooft = await page.evaluate((traitsStr) => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  d.eliminatiemodusTimer = 0;
+  d.laatsteKillBurstTijd = -999;
+  d.speler.positie.set(0, 0, 0);
+  const o = d.spawnOndode(0, 'normaal', eval(`(${traitsStr})`));
+  o.hp = d.schadePerTreffer;
+  o.groep.position.set(0, 0, -10);
+  const materialen = o.delen.huidMaterialen;
+  d.raakOndode(o, o.groep.position, false);   // impactPool-bezetting is hier niet relevant (geen burst-grootte-check in dit blok)
+  const stervende = d.stervenden[d.stervenden.length - 1];
+  const piek = materialen[0].emissiveIntensity;
+  let tikken = 0;
+  while (stervende.killFlitsTimer > 0 && tikken < 30) { d.updateStervenden(0.02); tikken++; }
+  const naDoven = materialen.map(m => m.emissiveIntensity);
+  return { piek, naDoven, tikken, KILL_FLITS_PIEK: d.KILL_FLITS_PIEK, STERVEN_DUUR: d.STERVEN_DUUR };
+}, NEUTRALE_TRAITS_STR_T95);
+check('De flits start op KILL_FLITS_PIEK', flitsDooft.piek === flitsDooft.KILL_FLITS_PIEK, flitsDooft);
+check('...en dooft binnen een handvol updateStervenden()-ticks volledig uit (emissiveIntensity -> 0)',
+  flitsDooft.naDoven.every(i => i === 0) && flitsDooft.tikken < 30, flitsDooft);
+
+// --- 7c. Samenval-venster: twee kills vlak na elkaar (zelfde klok binnen
+// hetzelfde synchrone testblok) degraderen de tweede burst -----------------
+const samenvalKills = await page.evaluate((traitsStr) => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  d.eliminatiemodusTimer = 0;
+  d.laatsteKillBurstTijd = -999;
+  for (let i = d.actieveEffecten.length - 1; i >= 0; i--) {   // zie de CI-fix-toelichting bij 7a
+    if (d.actieveEffecten[i].soort === 'impact') {
+      d.actieveEffecten[i].slot.actief = false;
+      d.actieveEffecten[i].slot.mesh.visible = false;
+      d.actieveEffecten.splice(i, 1);
+    }
+  }
+  d.speler.positie.set(0, 0, 0);
+  const impact0 = d.actieveEffecten.filter(e => e.soort === 'impact').length;
+
+  const o1 = d.spawnOndode(0, 'normaal', eval(`(${traitsStr})`));
+  o1.hp = d.schadePerTreffer;
+  o1.groep.position.set(0, 0, -10);
+  d.raakOndode(o1, o1.groep.position, false);   // eerste kill: buiten het venster -> volle burst
+  const impact1 = d.actieveEffecten.filter(e => e.soort === 'impact').length;
+
+  const o2 = d.spawnOndode(0, 'normaal', eval(`(${traitsStr})`));
+  o2.hp = d.schadePerTreffer;
+  o2.groep.position.set(0, 0, -10);
+  d.raakOndode(o2, o2.groep.position, false);   // meteen daarna, zelfde klok -> binnen het venster
+  const impact2 = d.actieveEffecten.filter(e => e.soort === 'impact').length;
+
+  return {
+    eersteBurst: impact1 - impact0, tweedeBurst: impact2 - impact1,
+    GROOT: d.KILL_BURST_AANTAL_GROOT, KLEIN: d.KILL_BURST_AANTAL_KLEIN,
+  };
+}, NEUTRALE_TRAITS_STR_T95);
+check('De eerste kill (buiten het venster) krijgt de volle KILL_BURST_AANTAL_GROOT-burst',
+  samenvalKills.eersteBurst === samenvalKills.GROOT, samenvalKills);
+check('Een tweede kill vlak daarna (binnen het samenval-venster) degradeert naar KILL_BURST_AANTAL_KLEIN',
+  samenvalKills.tweedeBurst === samenvalKills.KLEIN, samenvalKills);
+
+// --- 7d. Echte Brander-kettingreactie: 5 gelijktijdige kills (Brander +
+// 4 slachtoffers binnen BRANDER_EXPLOSIE_RADIUS) via ontploiBrander()'s
+// bestaande directe doodOndode()-aanroepen (bypassen raakOndode() geheel,
+// zie ARCHITECTURE_NOTES) — het scenario dat de samenval-degradatie
+// motiveert. Bevestigt: geen crash, alle 5 sterven, en de impactPool blijft
+// exact zijn vaste grootte (geen groei, ook niet als de aangevraagde
+// burst-som de pool-capaciteit zou overschrijden zonder degradatie).
+const branderKetting = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  d.eliminatiemodusTimer = 0;
+  d.laatsteKillBurstTijd = -999;
+  for (let i = d.actieveEffecten.length - 1; i >= 0; i--) {   // zie de CI-fix-toelichting bij 7a
+    if (d.actieveEffecten[i].soort === 'impact') {
+      d.actieveEffecten[i].slot.actief = false;
+      d.actieveEffecten[i].slot.mesh.visible = false;
+      d.actieveEffecten.splice(i, 1);
+    }
+  }
+  d.speler.positie.set(999, 0, 999);   // ver weg: geen spelerschade/afleiding in deze test
+
+  const brander = d.spawnOndode(0, 'brander');
+  brander.hp = d.schadePerTreffer;   // sterft op de eerstvolgende treffer
+  brander.groep.position.set(0, 0, -10);
+  const branderMaterialen = brander.delen.huidMaterialen;
+
+  const slachtoffers = [];
+  for (let i = 0; i < 4; i++) {
+    const o = d.spawnOndode(0, 'normaal');
+    o.hp = d.BRANDER_EXPLOSIE_SCHADE_ONDODE;   // exact genoeg om te sterven aan de kettingexplosie
+    o.groep.position.set(-0.9 + i * 0.6, 0, -10);   // ruim binnen BRANDER_EXPLOSIE_RADIUS (3.0)
+    slachtoffers.push(o);
+  }
+
+  const ondodenVoor = d.ondoden.length;   // 5: de Brander + 4 slachtoffers
+  const impactVoor = d.actieveEffecten.filter(e => e.soort === 'impact').length;
+  const impactPoolMaatVoor = d.impactPool.length;
+  let fout = null;
+  try {
+    d.raakOndode(brander, brander.groep.position, false);   // dodelijk -> doodOndode() -> ontploiBrander() -> kettingreactie
+  } catch (e) { fout = String(e); }
+  const ondodenNa = d.ondoden.length;
+  const impactNa = d.actieveEffecten.filter(e => e.soort === 'impact').length;
+
+  return {
+    fout, ondodenVoor, ondodenNa, kills: ondodenVoor - ondodenNa,
+    impactVoor, impactNa, impactPoolMaatVoor, impactPoolMaatNa: d.impactPool.length,
+    IMPACT_MAX: d.IMPACT_MAX, GROOT: d.KILL_BURST_AANTAL_GROOT,
+    branderNietGeflitst: branderMaterialen.every(m => m.emissiveIntensity !== d.KILL_FLITS_PIEK),
+  };
+});
+check('De Brander-kettingreactie loopt zonder fouten (geen throw in doodOndode()/ontploiBrander())',
+  branderKetting.fout === null, branderKetting);
+check('Alle 5 ondoden (Brander + 4 slachtoffers) sterven in deze ene kettingreactie',
+  branderKetting.kills === 5, branderKetting);
+check('impactPool blijft exact IMPACT_MAX groot (geen groei door de 5 gelijktijdige kill-bursts)',
+  branderKetting.impactPoolMaatNa === branderKetting.impactPoolMaatVoor && branderKetting.impactPoolMaatNa === branderKetting.IMPACT_MAX,
+  branderKetting);
+check('De gezamenlijke burst-omvang blijft ruim onder het "5x de volle burst"-scenario (het samenval-venster degradeert echt)',
+  (branderKetting.impactNa - branderKetting.impactVoor) < 5 * branderKetting.GROOT, branderKetting);
+check('De Brander zelf slaat de material-flits over (mesh is al uit de scene voordat dat blok zou lopen)',
+  branderKetting.branderNietGeflitst, branderKetting);
+
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);

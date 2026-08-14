@@ -615,6 +615,17 @@ scene.background = new THREE.Color(0x05080b);
 // Ticket 7: FOG_NORMAAL vangt deze standaardwaarden zodat een Mistgolf
 // (FOG_MIST) later altijd exact terug kan naar de normale sfeer.
 const FOG_NORMAAL = { kleur: 0x060a0e, near: 6, far: 24 };
+// Ticket 93 (v0.22, §10.13-beslissing 88): de Binnenplaats (zone 3) is de
+// enige "buiten"-zone — opent naar ~40m. Kleur/near bewust gelijk aan
+// FOG_NORMAAL gehouden (alleen far staat expliciet in de spec); dat
+// voorkomt een extra, ongeteste visuele variabele op de zonegrens.
+const FOG_BUITEN = { kleur: FOG_NORMAAL.kleur, near: FOG_NORMAAL.near, far: 40 };
+// Index = zoneVan()-resultaat (0-4). Alleen index 3 (Binnenplaats) is
+// buiten; zone 4 (Bijkeuken) heeft een eigen plafond (BIJKEUKEN_PLAFOND)
+// en telt dus als binnen, ook al voert de "weg naar de gracht" er verderop
+// vandaan — zoneVan() zelf splitst dat niet, en dit ticket breidt die
+// granulariteit bewust niet uit.
+const ZONE_BUITEN = [false, false, false, true, false];
 // Gebruikersfeedback: 15% dichterbij dan de eerste versie (near 2.5->2.13,
 // far 11->9.35), voor een tastbaardere Mistgolf.
 const FOG_MIST = { kleur: 0x39443f, near: 2.13, far: 9.35 };
@@ -623,6 +634,16 @@ const FOG_MIST = { kleur: 0x39443f, near: 2.13, far: 9.35 };
 const MIST_UITFADE_DUUR = 4;
 let mistUitfaseTimer = 0;
 let mistUitfaseVan = null;   // fog-waarden op het moment dat de uitfade begon
+// Ticket 93: zone-fog-overgang, zelfde sjabloon als mistUitfaseTimer
+// hierboven, maar getriggerd door een binnen/buiten-zonewissel i.p.v. een
+// Mistgolf-einde. zoneFogDoel is ALTIJD "waar de fog nu naartoe hoort te
+// staan" — ook updateMistUitfade() hieronder leest 'm als terugkeerpunt na
+// een Mistgolf, precies de eis dat de fog terugkeert naar het profiel van
+// de HUIDIGE zone, niet naar een vaste FOG_NORMAAL.
+const ZONE_FOG_OVERGANG_DUUR = 2;
+let zoneFogTimer = 0;
+let zoneFogVan = null;
+let zoneFogDoel = FOG_NORMAAL;   // start in zone 0 (Woonkamer, binnen)
 scene.fog = new THREE.Fog(FOG_NORMAAL.kleur, FOG_NORMAAL.near, FOG_NORMAAL.far);
 
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 50);
@@ -3710,7 +3731,6 @@ const speler = {
   hoogte: 1.7,
   straal: 0.35,
   snelheid: 4.5,
-  bobTijd: 0,
 };
 
 const ingedrukt = {};
@@ -3989,7 +4009,6 @@ function updateSpeler(dt) {
 
       speler.positie.x += bewegingX * speler.snelheid * dt;
       speler.positie.z += bewegingZ * speler.snelheid * dt;
-      speler.bobTijd += dt * 9;
     }
   }
 
@@ -4005,7 +4024,7 @@ function updateSpeler(dt) {
 
   camera.position.set(
     speler.positie.x,
-    speler.positie.y + speler.hoogte + Math.sin(speler.bobTijd) * 0.03,
+    speler.positie.y + speler.hoogte,
     speler.positie.z
   );
   camera.rotation.y = speler.yaw;
@@ -4013,6 +4032,16 @@ function updateSpeler(dt) {
   // de bron van waarheid (speler.pitch) blijft ongemoeid, dus geen blijvende
   // aim-drift na een schot.
   camera.rotation.x = speler.pitch + cameraKick;
+  // Ticket 92 (v0.22, §10.9): expliciete reset, ELK frame, vóór schiet()'s
+  // raycast deze tick kan lopen. camera.rotation.z is de enige as die de
+  // cosmetische T92-zone (loopwiegen/lean, ná schiet() in dezelfde tick)
+  // aanraakt — zonder deze reset zou een shot de LEAN VAN VORIG FRAME nog
+  // zien staan (rotation.z wordt anders nergens teruggezet). Dit is zelf
+  // geen camerabeweging (geen nieuwe term, geen interpolatie) — het is
+  // precies dezelfde "camera is elk frame vers vanuit speler-state"-discipline
+  // die x/y/rotation.x/rotation.y hierboven al hebben, nu compleet voor alle
+  // assen. Zie ARCHITECTURE_NOTES.md §10.9 voor de volledige redenering.
+  camera.rotation.z = 0;
 }
 
 // Snelspanner-/Ratelaar-status hier (i.p.v. pas bij hun eigen STAP 9-code)
@@ -4298,9 +4327,43 @@ let cameraKick = 0;
 // bijbehorende herlaad-dip-amplitude — beide wapens delen dezelfde
 // rust-y (-0.22, zie wapenDrukspuit/wapenRatelaar.position.set hierboven).
 const WAPEN_BASIS_Y = -0.22;
+const WAPEN_BASIS_X = 0.26;   // zelfde rust-x als wapenDrukspuit/wapenRatelaar.position.set hierboven
 const WAPEN_HERLAAD_DIP_AMPLITUDE = 0.05;
 const WISSEL_DUUR = 0.16;
 let wisselTimer = 0;
+
+// Ticket 92 (v0.22, §10.9-beslissing 84): camerabeweging als cosmetische
+// laag — loopwiegen, landingsdip en lean bij strafen. Alle state hier is
+// puur cosmetisch en leeft UITSLUITEND in de cosmetische gameLoop-zone
+// (samen met terugslag/cameraKick/wisselTimer hierboven): updateSpeler()
+// zet camera.position/rotation.x/y elk frame vers vanuit speler.positie/
+// hoogte/pitch (en nu ook expliciet rotation.z = 0, zie updateSpeler()) —
+// dus wat híér wordt opgeteld is per definitie weg vóórdat de volgende
+// schiet()-aanroep zijn raycast opbouwt. Dat is de hele garantie achter
+// "raycast-oorsprong beweegt niet mee": schiet() loopt in dezelfde
+// gameLoop-tick vóór dit blok (zie de schietKnopIngedrukt-check hoger in
+// gameLoop), dus ziet nooit iets anders dan de kale, ongewiegde baseline.
+let bobFase = 0;               // spatiale fase, alleen opgehoogd door ECHT afgelegde afstand (niet door tijd)
+let vorigeSpelerX = speler.positie.x, vorigeSpelerZ = speler.positie.z;
+const BOB_FREQUENTIE_PER_METER = 2;   // rad/m — zelfde impliciete frequentie als de oude bobTijd-aanpak (9 rad/s bij snelheid 4.5 m/s)
+// Feedback na speeltest: het oorspronkelijke 3 cm/0,8°/5 cm voelde te heftig
+// in de praktijk (ondanks dat elke waarde ruim binnen de eigen §10.9-eisen
+// bleef). Alle vier amplitudes ~45-50% verlaagd — puur een tuning-pas,
+// architectuur/garanties ongewijzigd.
+const BOB_AMPLITUDE = 0.016;          // was 0,03 — nu 1,6 cm
+let leanHoek = 0;              // camera.rotation.z, geïnterpoleerd naar het zijwaartse-invoer-doel
+const LEAN_MAX_HOEK = 0.45 * Math.PI / 180;   // was 0,8° — nu 0,45°
+const LEAN_INTERPOLATIE_SNELHEID = 8;        // 1/s, hoe snel leanHoek het doel volgt
+let vorigeVloerY = speler.positie.y;
+let pieksnelheidDaling = 0;    // meest-negatieve verticale snelheid tijdens een lopende daling
+let landingsDipTimer = 0;
+let landingsDipSterkte = 0;
+const LANDING_TRIGGER_SNELHEID = 0.3;   // m/s — onder deze daalsnelheid telt het niet als een "landing"
+const LANDING_DIP_MAX = 0.028;          // was 0,05 — nu 2,8 cm
+const LANDING_DIP_SCHAAL = 0.03;        // dipsterkte per (m/s) daalsnelheid, geklemd op LANDING_DIP_MAX
+const LANDING_DIP_DUUR = 0.35;          // s — zelfde sin(voortgang·π)-boog als de herlaad-/wisseldip
+const WAPEN_SWAY_AMPLITUDE = 0.004;     // was 0,008 — nu 0,4 cm zijwaartse tegenwiegeling op het wapenmodel
+const WAPEN_LEAN_TEGENWICHT = 0.4;      // fractie van leanHoek die het wapen TEGENgesteld meeneemt
 
 // --- Wapendefinities + actieve wapen-staat --------------------------
 // Elk wapen: naam (HUD), munitiestats, vuursnelheid en de bijbehorende
@@ -4525,7 +4588,40 @@ const tracerPool = [];
 for (let i = 0; i < TRACER_MAX; i++) tracerPool.push(bouwEffectSlot());
 const impactPool = [];
 for (let i = 0; i < IMPACT_MAX; i++) impactPool.push(bouwEffectSlot());
-const actieveEffecten = [];   // { slot, timer, duur, soort: 'tracer' | 'impact' }
+// Ticket 94 (v0.22): tweede pool voor korte, opzwellende rookquads — eigen
+// pool i.p.v. hergebruik van impactPool, want rook heeft een andere
+// geometrie (vlak i.p.v. kubus) en ander gedrag (opzwellen i.p.v. vallen).
+const ROOK_MAX = 8;
+const ROOK_LEVENSDUUR = 0.4;
+const ROOK_SCHAAL_BEGIN = 0.06;
+const ROOK_SCHAAL_EIND = 0.24;
+function bouwRookTextuur() {
+  const n = 32;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = n;
+  const ctx = canvas.getContext('2d');
+  const midden = n / 2;
+  const gradient = ctx.createRadialGradient(midden, midden, 0, midden, midden, midden);
+  gradient.addColorStop(0, 'rgba(180,180,180,0.55)');
+  gradient.addColorStop(1, 'rgba(180,180,180,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, n, n);
+  return new THREE.CanvasTexture(canvas);
+}
+const ROOK_TEXTUUR = bouwRookTextuur();
+const ROOK_GEOMETRY = new THREE.PlaneGeometry(1, 1);
+function bouwRookSlot() {
+  const mesh = new THREE.Mesh(ROOK_GEOMETRY, new THREE.MeshBasicMaterial({
+    map: ROOK_TEXTUUR, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  }));
+  mesh.visible = false;
+  scene.add(mesh);
+  return { mesh, actief: false };
+}
+const rookPool = [];
+for (let i = 0; i < ROOK_MAX; i++) rookPool.push(bouwRookSlot());
+const actieveEffecten = [];   // { slot, timer, duur, soort: 'tracer' | 'impact' | 'rook' }
+const _tmpVecImpact = new THREE.Vector3();   // scratch: lookAt-doelpunt voor langgerekte vonken
 
 // Module-scope temp-vectors: _tmpVecA is de "vanWereldPos" die schiet() zelf
 // vasthoudt over de hele functie-aanroep heen; _tmpVecB is UITSLUITEND
@@ -4535,6 +4631,7 @@ const actieveEffecten = [];   // { slot, timer, duur, soort: 'tracer' | 'impact'
 const _tmpVecA = new THREE.Vector3();
 const _tmpVecB = new THREE.Vector3();
 const _tmpVecC = new THREE.Vector3();
+const _tmpVecNormaal = new THREE.Vector3();   // Ticket 94: scratch voor de wereld-ruimte inslagnormaal
 
 // Geeft een vrije slot terug, of recyclet de slot met de kortste resterende
 // levensduur uit `pool` — nooit een nieuw object alloceren.
@@ -4570,25 +4667,57 @@ function spawnTracer(vanWereldPos, naarPunt, kleur) {
 }
 
 // 3-5 kleine deeltjes vanaf `punt`, met een korte val + zwaartekracht (0.3s).
-function spawnImpact(punt, kleur, aantal) {
+// Ticket 94: met een wereld-normaal (de face.normal die schiet() al uit de
+// wereld-raycast krijgt) krijgen de deeltjes een snelheidscomponent langs
+// die normaal — uit het oppervlak, i.p.v. willekeurig alle kanten op — en
+// worden ze langgerekt in hun EIGEN bewegingsrichting (dezelfde lookAt+
+// scale-truc als spawnTracer()): snelle, gerichte vonken i.p.v. een radiale
+// wolk stipjes. Zonder normaal (de ondode-treffer-aanroep in raakOndode(),
+// waar "uit het oppervlak" geen betekenisvol concept is) blijft het
+// bestaande, volledig willekeurige gedrag exact ongewijzigd.
+function spawnImpact(punt, kleur, aantal, normaal = null) {
   for (let i = 0; i < aantal; i++) {
     const slot = pakEffectSlot(impactPool);
     slot.actief = true;
     slot.mesh.position.copy(punt);
-    slot.mesh.scale.setScalar(0.035);
     slot.mesh.rotation.set(0, 0, 0);
     slot.mesh.material.color.setHex(kleur);
     slot.mesh.material.opacity = 1;
     slot.mesh.visible = true;
-    slot.vx = (Math.random() - 0.5) * 1.5;
-    slot.vy = Math.random() * 1.5;
-    slot.vz = (Math.random() - 0.5) * 1.5;
-    actieveEffecten.push({ slot, timer: IMPACT_LEVENSDUUR, duur: IMPACT_LEVENSDUUR, soort: 'impact' });
+    if (normaal) {
+      const snelheid = 1.5 + Math.random() * 1.5;
+      slot.vx = normaal.x * snelheid + (Math.random() - 0.5) * 1.2;
+      slot.vy = normaal.y * snelheid + Math.random() * 1.2;
+      slot.vz = normaal.z * snelheid + (Math.random() - 0.5) * 1.2;
+      slot.mesh.scale.set(0.012, 0.012, 0.09 + Math.random() * 0.05);   // langgerekte vonk
+    } else {
+      slot.mesh.scale.setScalar(0.035);
+      slot.vx = (Math.random() - 0.5) * 1.5;
+      slot.vy = Math.random() * 1.5;
+      slot.vz = (Math.random() - 0.5) * 1.5;
+    }
+    actieveEffecten.push({ slot, timer: IMPACT_LEVENSDUUR, duur: IMPACT_LEVENSDUUR, soort: 'impact', langgerekt: !!normaal });
   }
 }
 
-// Loopt alle actieve effecten af (fade + val voor impacts); geroepen vanuit
-// de `spelActief`-tak van gameLoop, dus bevriest netjes tijdens pauze.
+// Ticket 94: korte, opzwellende rookpluim (rookPool, apart van impactPool —
+// eigen geometrie/gedrag). Eenmalig richting de camera georiënteerd bij het
+// spawnen (lookAt) — bij zo'n korte levensduur (ROOK_LEVENSDUUR) is een
+// per-frame billboard-update niet de moeite waard.
+function spawnRook(punt) {
+  const slot = pakEffectSlot(rookPool);
+  slot.actief = true;
+  slot.mesh.position.copy(punt);
+  slot.mesh.lookAt(camera.position);
+  slot.mesh.scale.setScalar(ROOK_SCHAAL_BEGIN);
+  slot.mesh.material.opacity = 0.5;
+  slot.mesh.visible = true;
+  actieveEffecten.push({ slot, timer: ROOK_LEVENSDUUR, duur: ROOK_LEVENSDUUR, soort: 'rook' });
+}
+
+// Loopt alle actieve effecten af (fade + val voor impacts, opzwellen voor
+// rook); geroepen vanuit de `spelActief`-tak van gameLoop, dus bevriest
+// netjes tijdens pauze.
 function updateEffecten(dt) {
   for (let i = actieveEffecten.length - 1; i >= 0; i--) {
     const eff = actieveEffecten[i];
@@ -4605,6 +4734,16 @@ function updateEffecten(dt) {
       eff.slot.mesh.position.x += eff.slot.vx * dt;
       eff.slot.mesh.position.y += eff.slot.vy * dt;
       eff.slot.mesh.position.z += eff.slot.vz * dt;
+      if (eff.langgerekt) {
+        // Volgt het (door zwaartekracht kromme) pad elk frame i.p.v. alleen
+        // bij het spawnen — anders wijkt de langgerekte richting zichtbaar
+        // af van de echte baan tegen het einde van de levensduur.
+        _tmpVecImpact.set(eff.slot.vx, eff.slot.vy, eff.slot.vz).add(eff.slot.mesh.position);
+        eff.slot.mesh.lookAt(_tmpVecImpact);
+      }
+    } else if (eff.soort === 'rook') {
+      const groei = 1 - eff.timer / eff.duur;   // 0 -> 1 over de levensduur
+      eff.slot.mesh.scale.setScalar(ROOK_SCHAAL_BEGIN + groei * (ROOK_SCHAAL_EIND - ROOK_SCHAAL_BEGIN));
     }
   }
 }
@@ -4698,7 +4837,13 @@ function schiet() {
   }
   spawnTracer(_tmpVecA, raak[0].point, MATERIAAL_KLEUREN.steen);
   const familie = raak[0].object.userData.materiaalFamilie ?? 'steen';
-  spawnImpact(raak[0].point, MATERIAAL_KLEUREN[familie] ?? MATERIAAL_KLEUREN.steen, 3);
+  // Ticket 94: face.normal staat in de LOKALE ruimte van het geraakte object
+  // — transformDirection() naar wereldruimte (alleen rotatie, geen
+  // translatie/schaal) zodat spawnImpact() 'm rechtstreeks als richting kan
+  // gebruiken. _tmpVecNormaal is scratch-ruimte, geen bewaarde referentie.
+  _tmpVecNormaal.copy(raak[0].face.normal).transformDirection(raak[0].object.matrixWorld);
+  spawnImpact(raak[0].point, MATERIAAL_KLEUREN[familie] ?? MATERIAAL_KLEUREN.steen, 3, _tmpVecNormaal);
+  spawnRook(raak[0].point);
 }
 
 /* ================================================================
@@ -5756,6 +5901,11 @@ kernMateriaal.userData.gedeeld = true;   // Ticket 70: ruimGroepOp() mag dit noo
 function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTraits()) {
   const groep = new THREE.Group();
   const delen = {};
+  // Ticket 95 (De kill als gebeurtenis): alleen de PER-INSTANCE huid-
+  // materialen komen hierin — nooit kernMateriaal (gedeeld) of de
+  // been-/vod-materialen (via mat(), ook gedeeld). doodOndode() flitst
+  // deze kort emissive bij een dodelijke treffer.
+  delen.huidMaterialen = [];
   const tint = 0.85 + Math.random() * 0.3;   // kleine kleurvariatie per ondode
   const huidKleur = new THREE.Color(typeInfo.kleur).multiplyScalar(tint);
   // Ticket 86 (Het stadsarchief): ontgrendelde kleurset — puur een extra
@@ -5813,6 +5963,7 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
     new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
   torso.scale.x = (vorm.rompBreedte ?? 1) * (profiel.rompFactor ?? 1);   // Ticket 69: maatvariatie via scale i.p.v. geometrie
   romp.add(torso);
+  delen.huidMaterialen.push(torso.material);
   // Bochel (Sjouwer-vorm en/of 'gebocheld'-profiel): één bult hoog op de
   // rug, in de romp-groep zodat hij met de kromme rug meedraait.
   // Ticket 61 (v0.19, §7.4.4-beslissing 53): meer segmenten voor een
@@ -5822,6 +5973,7 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
       new THREE.MeshStandardMaterial({ color: huidKleur.clone().multiplyScalar(0.85), roughness: 0.9 }));
     bochel.position.set(0, 0.16, -0.13);
     romp.add(bochel);
+    delen.huidMaterialen.push(bochel.material);
   }
   // Buikige romp + gloeiende kern (Brander): de kern is een emissive mesh,
   // bewust GEEN PointLight (budget: 0 lights per ondode, §4.9). Geen
@@ -5831,6 +5983,7 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
       new THREE.MeshStandardMaterial({ color: huidKleur, roughness: 0.85 }));
     buik.position.set(0, -0.1, 0.06);
     romp.add(buik);
+    delen.huidMaterialen.push(buik.material);
     const kern = new THREE.Mesh(geo('kern', () => new THREE.SphereGeometry(0.07, 12, 10)), kernMateriaal);
     kern.position.set(0, -0.1, 0.19);
     romp.add(kern);
@@ -5870,6 +6023,7 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
     new THREE.MeshStandardMaterial({ color: huidKleur.clone().multiplyScalar(1.15), roughness: 0.8 }));
   hoofd.userData.lichaamsdeel = 'kop';   // treffer hier = headshot (dubbele schade)
   hoofdGroep.add(hoofd);
+  delen.huidMaterialen.push(hoofd.material);
   // Twee kleine gloeiende oogjes: het enige griezelige lichtaccent. Kleur
   // verschilt per type (v0.7), zodat een variant al op afstand herkenbaar is.
   // Ticket 89: start op OOG_INTENSITEIT_BASIS (Bron-niveau, §10.5); schiet
@@ -5924,6 +6078,7 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
     pivot.add(arm);
     groep.add(pivot);
     delen[naam] = pivot;
+    delen.huidMaterialen.push(arm.material);
   }
 
   groep.scale.set(
@@ -7000,22 +7155,57 @@ function ruimGroepOp(object3D) {
   });
 }
 
-function doodOndode(ondode) {
+// Ticket 95 (De kill als gebeurtenis): een dodelijke treffer krijgt een
+// groter impact-burst dan een gewone treffer, zodat de kill zelf een
+// zichtbaar moment is i.p.v. de ondode die stilletjes verdwijnt.
+// KILL_BURST_SAMENVAL_VENSTER (zelfde sjabloon als HITMARKER_SAMENVAL_VENSTER)
+// degradeert de burst-grootte bij snel-op-elkaar-volgende kills (bv. een
+// Brander-kettingreactie via ontploiBrander()) zodat de 24-slots impactPool
+// niet in één klap leegloopt aan één enkele explosie.
+const KILL_FLITS_PIEK = 3;
+const KILL_FLITS_DUUR = 0.15;
+const KILL_BURST_AANTAL_GROOT = 10;
+const KILL_BURST_AANTAL_KLEIN = 4;
+const KILL_BURST_SAMENVAL_VENSTER = 0.06;
+let laatsteKillBurstTijd = -999;
+
+function spawnKillBurst(punt, kop) {
+  const binnenVenster = klok - laatsteKillBurstTijd < KILL_BURST_SAMENVAL_VENSTER;
+  laatsteKillBurstTijd = klok;
+  const aantal = binnenVenster ? KILL_BURST_AANTAL_KLEIN : KILL_BURST_AANTAL_GROOT;
+  spawnImpact(punt, kop ? MATERIAAL_KLEUREN.vijandKop : MATERIAAL_KLEUREN.vijand, aantal);
+}
+
+// `punt` = wereldpositie van de kill (bekend bij een speler-treffer via
+// raakOndode(); onbekend bij een Brander-kettingreactie, die doodOndode()
+// direct aanroept — dan valt dit terug op de eigen positie van de ondode).
+// `kop` = headshot-kill (alleen betekenisvol bij een speler-treffer).
+function doodOndode(ondode, punt = null, kop = false) {
   // Ticket 30: een dodelijke treffer tijdens de wind-up mag het aanvalsslot
   // niet laten lekken (anders daalt actieveAanvallers nooit meer terug).
   if (ondode.aanvalStaat === 'windup') actieveAanvallers--;
   ondodenGroep.remove(ondode.groep);
   const i = ondoden.indexOf(ondode);
   if (i !== -1) ondoden.splice(i, 1);
+  spawnKillBurst(punt ?? ondode.groep.position, kop);
   // v0.7: een Brander ontploft bij overlijden, ongeacht de doodsoorzaak (dus
   // ook bij een kettingreactie door een andere explosie in bereik). Geen
   // lijk (ontwerpbeslissing 17): de groep is hierboven al uit ondodenGroep
   // gehaald en wordt nergens anders aan toegevoegd, dus verdwijnt gewoon.
   if (ondode.type === 'brander') { ontploiBrander(ondode); return; }
+  // Ticket 95: korte emissive flits op de PER-INSTANCE huidmaterialen (nooit
+  // op kernMateriaal of de gedeelde been-/vod-materialen — zie
+  // maakOndodeModel()). updateStervenden() telt 'm af. Branders slaan dit
+  // over: hun mesh is hierboven al uit de scene gehaald, dus een flits zou
+  // toch niet zichtbaar zijn.
+  for (const mat of ondode.delen.huidMaterialen) {
+    mat.emissive.setHex(0xffffff);
+    mat.emissiveIntensity = KILL_FLITS_PIEK;
+  }
   // Ticket 22 (Z5): geen Brander -> zichtbaar neervallen i.p.v. verdwijnen.
   const stijl = VAL_STIJLEN[Math.floor(Math.random() * VAL_STIJLEN.length)];
   stervendenGroep.add(ondode.groep);
-  stervenden.push({ groep: ondode.groep, timer: STERVEN_DUUR, stijl });
+  stervenden.push({ groep: ondode.groep, timer: STERVEN_DUUR, stijl, killFlitsTimer: KILL_FLITS_DUUR, huidMaterialen: ondode.delen.huidMaterialen });
 }
 
 // Ticket 22 (Z5): lerpt de valanimatie van elk lijk af en verwijdert het
@@ -7030,6 +7220,13 @@ function updateStervenden(dt) {
     else if (s.stijl === 'achterover') s.groep.rotation.x = -hoek;
     else if (s.stijl === 'zijwaarts') s.groep.rotation.z = hoek;
     else s.groep.position.y = -voortgang * 0.9;   // inzakken: zakt weg i.p.v. omvallen
+    // Ticket 95: de kill-flits dooft binnen KILL_FLITS_DUUR, ruim vóór de
+    // val-animatie (STERVEN_DUUR) klaar is.
+    if (s.killFlitsTimer > 0) {
+      s.killFlitsTimer = Math.max(0, s.killFlitsTimer - dt);
+      const intensiteit = KILL_FLITS_PIEK * (s.killFlitsTimer / KILL_FLITS_DUUR);
+      for (const mat of s.huidMaterialen) mat.emissiveIntensity = intensiteit;
+    }
     if (s.timer <= 0) {
       stervendenGroep.remove(s.groep);
       ruimGroepOp(s.groep);   // Ticket 70: geometrie is gedeeld (T69) en overgeslagen; per-ondode materialen (huidKleur, oogMateriaal) worden hier gedisposed
@@ -7114,7 +7311,11 @@ function raakOndode(ondode, punt, kop = false) {
     spelStaat.geld += killGeld;
     runStats.geldTotaal += killGeld;
     const dropPos = ondode.groep.position.clone();
-    doodOndode(ondode);
+    // Ticket 95: doodOndode() zelf verzorgt nu de kill-feedback (grotere
+    // impact-burst + emissive flits) — geen aparte spawnImpact()-aanroep
+    // hier meer nodig (zie de else-tak hieronder, voor de overlevende-
+    // treffer-variant, die dat WEL nog doet).
+    doodOndode(ondode, punt, kop);
     if (Math.random() < POWERUP_DROP_KANS) spawnPowerupDrop(dropPos.x, dropPos.z, kiesPowerupType());
   } else {
     // Ticket 33: een overlevende treffer is 'kop' (headshot) of 'lichaam'.
@@ -7141,11 +7342,13 @@ function raakOndode(ondode, punt, kop = false) {
         actieveAanvallers--;
       }
     }
+    // Ticket 32: impact-deeltjes i.p.v. de oude bloedvonk-mesh — een headshot
+    // krijgt meer deeltjes én een lichtere tint als visuele feedback. Alleen
+    // hier (overlevende treffer): een dodelijke treffer krijgt sinds Ticket 95
+    // zijn eigen, grotere burst via spawnKillBurst() binnen doodOndode().
+    spawnImpact(punt, kop ? MATERIAAL_KLEUREN.vijandKop : MATERIAAL_KLEUREN.vijand, kop ? 5 : 3);
   }
   updateHUD();
-  // Ticket 32: impact-deeltjes i.p.v. de oude bloedvonk-mesh — een headshot
-  // krijgt meer deeltjes én een lichtere tint als visuele feedback.
-  spawnImpact(punt, kop ? MATERIAAL_KLEUREN.vijandKop : MATERIAAL_KLEUREN.vijand, kop ? 5 : 3);
 }
 
 /* ================================================================
@@ -7590,6 +7793,7 @@ function startEventGolf(type) {
   actieveEventGolf = type;
   if (type === 'mist') {
     mistUitfaseTimer = 0;   // een eventueel nog lopende uitfade meteen afbreken
+    zoneFogTimer = 0;       // Ticket 93: idem voor een eventueel lopende zone-overgang — FOG_MIST wint
     scene.fog.color.setHex(FOG_MIST.kleur);
     scene.fog.near = FOG_MIST.near;
     scene.fog.far = FOG_MIST.far;
@@ -7615,11 +7819,15 @@ function startEventGolf(type) {
 function eindigEventGolf(direct = false) {
   if (actieveEventGolf === 'mist') {
     toonMelding('De mist trekt weg');
+    // Ticket 93: terug naar het profiel van de HUIDIGE zone (binnen/buiten),
+    // niet naar een vaste FOG_NORMAAL — zoneFogDoel is precies dat, en
+    // updateMistUitfade() hieronder leest 'm als het interpolatiedoel.
+    zoneFogDoel = ZONE_BUITEN[zoneVan(speler.positie.x, speler.positie.z)] ? FOG_BUITEN : FOG_NORMAAL;
     if (direct) {
       mistUitfaseTimer = 0;
-      scene.fog.color.setHex(FOG_NORMAAL.kleur);
-      scene.fog.near = FOG_NORMAAL.near;
-      scene.fog.far = FOG_NORMAAL.far;
+      scene.fog.color.setHex(zoneFogDoel.kleur);
+      scene.fog.near = zoneFogDoel.near;
+      scene.fog.far = zoneFogDoel.far;
     } else {
       mistUitfaseVan = { kleur: scene.fog.color.getHex(), near: scene.fog.near, far: scene.fog.far };
       mistUitfaseTimer = MIST_UITFADE_DUUR;
@@ -7638,16 +7846,31 @@ function eindigEventGolf(direct = false) {
   actieveEventGolf = null;
 }
 
-// Laat de fog geleidelijk terugvloeien naar FOG_NORMAAL nadat een Mistgolf
-// is afgelopen (zie eindigEventGolf). Wordt elke frame aangeroepen vanuit de
-// game-loop, net als updateGolf/updatePowerups.
+// Laat de fog geleidelijk terugvloeien naar zoneFogDoel (het profiel van de
+// HUIDIGE zone, Ticket 93) nadat een Mistgolf is afgelopen (zie
+// eindigEventGolf). Wordt elke frame aangeroepen vanuit de game-loop, net
+// als updateGolf/updatePowerups.
 function updateMistUitfade(dt) {
   if (mistUitfaseTimer <= 0) return;
   mistUitfaseTimer = Math.max(0, mistUitfaseTimer - dt);
   const t = 1 - (mistUitfaseTimer / MIST_UITFADE_DUUR);
-  scene.fog.near = mistUitfaseVan.near + (FOG_NORMAAL.near - mistUitfaseVan.near) * t;
-  scene.fog.far = mistUitfaseVan.far + (FOG_NORMAAL.far - mistUitfaseVan.far) * t;
-  scene.fog.color.set(mistUitfaseVan.kleur).lerp(new THREE.Color(FOG_NORMAAL.kleur), t);
+  scene.fog.near = mistUitfaseVan.near + (zoneFogDoel.near - mistUitfaseVan.near) * t;
+  scene.fog.far = mistUitfaseVan.far + (zoneFogDoel.far - mistUitfaseVan.far) * t;
+  scene.fog.color.set(mistUitfaseVan.kleur).lerp(new THREE.Color(zoneFogDoel.kleur), t);
+}
+
+// Ticket 93 (v0.22, §10.13-beslissing 88): zachte fog-overgang bij een
+// binnen/buiten-zonewissel — zelfde sjabloon als updateMistUitfade()
+// hierboven. Wordt getriggerd vanuit de bestaande zone-wisseldetectie in
+// gameLoop (zie daar), nooit tijdens een actieve Mistgolf (die fog blijft
+// leidend tot hij eindigt).
+function updateZoneFog(dt) {
+  if (zoneFogTimer <= 0) return;
+  zoneFogTimer = Math.max(0, zoneFogTimer - dt);
+  const t = 1 - (zoneFogTimer / ZONE_FOG_OVERGANG_DUUR);
+  scene.fog.near = zoneFogVan.near + (zoneFogDoel.near - zoneFogVan.near) * t;
+  scene.fog.far = zoneFogVan.far + (zoneFogDoel.far - zoneFogVan.far) * t;
+  scene.fog.color.set(zoneFogVan.kleur).lerp(new THREE.Color(zoneFogDoel.kleur), t);
 }
 
 // Ticket 85: golfmijlpaal-trigger voor de etalageramen. Idempotent via
@@ -9016,6 +9239,7 @@ function gameLoop(nu) {
     updateBootHoornHerhaling(dt);        // Feedback: herhaalde gerichte hoorn (boot-aankondiging optie 3)
     updatePowerups(dt);
     updateMistUitfade(dt);
+    updateZoneFog(dt);   // Ticket 93
     updateSpelerRegen(dt);
     updateInteracties();
     updateWinkelMarkeringen(dt);   // Ticket 37: status-animatie + winkelLicht
@@ -9043,6 +9267,16 @@ function gameLoop(nu) {
         // onderdrukt alleen de grote aankondigingsbanner.
         if (zoneNu !== 1) toonGolfBanner(ZONE_NAMEN[zoneNu], ZONE_FLAVOUR[zoneNu]);
       }
+      // Ticket 93 (§10.13-beslissing 88): fog-profiel per zone. Alleen bij
+      // een ECHTE binnen/buiten-grensovergang (twee binnenzones na elkaar
+      // wisselen niets) en nooit tijdens een actieve Mistgolf — die fog
+      // blijft leidend tot hij eindigt (zie eindigEventGolf()).
+      const doelProfiel = ZONE_BUITEN[zoneNu] ? FOG_BUITEN : FOG_NORMAAL;
+      if (doelProfiel !== zoneFogDoel && actieveEventGolf !== 'mist') {
+        zoneFogVan = { kleur: scene.fog.color.getHex(), near: scene.fog.near, far: scene.fog.far };
+        zoneFogTimer = ZONE_FOG_OVERGANG_DUUR;
+      }
+      zoneFogDoel = doelProfiel;
     }
 
     // Zone-sfeergeluiden (Ticket V8): eenmalige triggers bij de eerste stap
@@ -9210,6 +9444,67 @@ function gameLoop(nu) {
     }
   }
 
+  // Ticket 92 (v0.22, §10.9): camerabeweging. Alles hieronder is een pure
+  // ADDITIE op de baseline die updateSpeler() dit tick al vers gezet heeft —
+  // schiet() (hierboven, zelfde tick) heeft die baseline al gebruikt, dus
+  // niets hier kan een raycast nog raken.
+  {
+    // 1. Loopwiegen: fase loopt uitsluitend mee met ECHT afgelegde afstand
+    // (Pythagoras op de positiedelta), niet met dt — bij stilstand verandert
+    // bobFase dus niet, en Math.sin() daarvan blijft dan letterlijk constant.
+    // Geklemd op wat snelheid×dt-clamp (0,05s) maximaal toelaat: een
+    // teleport (bijv. een debug-herpositionering) zou anders in één tick
+    // als een enorme sprint worden gelezen en bobFase een onnatuurlijke
+    // sprong geven.
+    const dx = speler.positie.x - vorigeSpelerX, dz = speler.positie.z - vorigeSpelerZ;
+    const afgelegdeAfstand = Math.min(Math.hypot(dx, dz), speler.snelheid * 0.05);
+    bobFase += afgelegdeAfstand * BOB_FREQUENTIE_PER_METER;
+    vorigeSpelerX = speler.positie.x; vorigeSpelerZ = speler.positie.z;
+    const bobOffset = Math.sin(bobFase) * BOB_AMPLITUDE;
+
+    // 2. Landingsdip: volgt de verticale snelheid van speler.positie.y (al
+    // door updateSpeler() ververst via berekenVloerY()). Triggert zodra een
+    // noemenswaardige daling weer afvlakt — dat gebeurt zowel onderaan de
+    // kelder-ramp/vlieringtrap als wanneer je halverwege een helling stopt.
+    const verticaleSnelheid = dt > 0 ? (speler.positie.y - vorigeVloerY) / dt : 0;
+    if (verticaleSnelheid < 0) {
+      pieksnelheidDaling = Math.min(pieksnelheidDaling, verticaleSnelheid);
+    } else {
+      if (pieksnelheidDaling < -LANDING_TRIGGER_SNELHEID) {
+        landingsDipSterkte = Math.min(LANDING_DIP_MAX, -pieksnelheidDaling * LANDING_DIP_SCHAAL);
+        landingsDipTimer = LANDING_DIP_DUUR;
+      }
+      pieksnelheidDaling = 0;
+    }
+    vorigeVloerY = speler.positie.y;
+    let landingsDipOffset = 0;
+    if (landingsDipTimer > 0) {
+      landingsDipTimer = Math.max(0, landingsDipTimer - dt);
+      const voortgang = 1 - landingsDipTimer / LANDING_DIP_DUUR;
+      landingsDipOffset = -landingsDipSterkte * Math.sin(voortgang * Math.PI);
+    }
+
+    camera.position.y += bobOffset + landingsDipOffset;
+
+    // 3. Lean: interpoleert naar het zijwaartse-invoerdoel (A/D), leest
+    // `ingedrukt` rechtstreeks — geen aanraking van updateSpeler() nodig.
+    const zijwaartsInvoer = (ingedrukt['KeyD'] ? 1 : 0) - (ingedrukt['KeyA'] ? 1 : 0);
+    const leanDoel = zijwaartsInvoer * LEAN_MAX_HOEK;
+    leanHoek += (leanDoel - leanHoek) * Math.min(1, dt * LEAN_INTERPOLATIE_SNELHEID);
+    camera.rotation.z = leanHoek;
+
+    // 4. Het wapenmodel wiegt TEGEN: eigen, onafhankelijke zijwaartse sway
+    // plus een tegengestelde fractie van de lean, zodat het niet 1-op-1 met
+    // de camera meebeweegt (dat zou als star/vastgeschroefd ogen) maar ook
+    // niet het richten verstoort (spreadNdc/pitch/yaw blijven ongemoeid).
+    // Bewust sin(), niet cos(): bij bobFase=0 (in rust) moet dit exact 0
+    // zijn, anders staat het wapen ook in volledige stilstand permanent
+    // verschoven t.o.v. WAPEN_BASIS_X — precies dat verschoof T88's
+    // vliering-mediaan met bijna 5% (gemeten, niet aangenomen).
+    wapenStaat.definitie.groep.position.x = WAPEN_BASIS_X + Math.sin(bobFase) * WAPEN_SWAY_AMPLITUDE;
+    wapenStaat.definitie.groep.rotation.z = -leanHoek * WAPEN_LEAN_TEGENWICHT;
+  }
+
   composer.render();
 }
 herbouwNavTabel();   // Ticket 28: eenmalige initiële tabel (lijn-graaf, alle deuren dicht)
@@ -9252,6 +9547,11 @@ window.AmsterdamUndeadDebug = {
   updateOndoden, raakOndode, doodOndode,
   // Ticket 22: doodsanimaties (Z5)
   stervenden, stervendenGroep, updateStervenden, VAL_STIJLEN, STERVEN_DUUR,
+  // Ticket 95: de kill-flits + het grotere kill-burst
+  KILL_FLITS_PIEK, KILL_FLITS_DUUR, KILL_BURST_AANTAL_GROOT, KILL_BURST_AANTAL_KLEIN, KILL_BURST_SAMENVAL_VENSTER,
+  spawnKillBurst,
+  get laatsteKillBurstTijd() { return laatsteKillBurstTijd; },
+  set laatsteKillBurstTijd(v) { laatsteKillBurstTijd = v; },
   // Ticket 23: wave-variatie-limiter (Z6)
   golfProfielBuffer, kiesOndodeTraitsVoorGolf, GOLF_PROFIEL_BUFFER_LENGTE, GOLF_PROFIEL_MAX_HERLOTINGEN,
   spelerStaat, spelerSchade, updateSpelerRegen, updateVignet, updateHUD,
@@ -9310,6 +9610,13 @@ window.AmsterdamUndeadDebug = {
   FOG_NORMAAL, FOG_MIST, MIST_UITFADE_DUUR, updateMistUitfade,
   get mistUitfaseTimer() { return mistUitfaseTimer; },
   set mistUitfaseTimer(v) { mistUitfaseTimer = v; },
+  // Ticket 93 (v0.22, §10.13): fog-profiel per zone
+  FOG_BUITEN, ZONE_BUITEN, ZONE_FOG_OVERGANG_DUUR, updateZoneFog,
+  get zoneFogTimer() { return zoneFogTimer; },
+  set zoneFogTimer(v) { zoneFogTimer = v; },
+  get zoneFogVan() { return zoneFogVan; },
+  get zoneFogDoel() { return zoneFogDoel; },
+  set zoneFogDoel(v) { zoneFogDoel = v; },
   interactiePunten, updateInteracties, activeerHuidigeInteractie,
   koopDeur, koopAmmo, koopUpgrade,
   get deurGekocht() { return deurGekocht; },
@@ -9495,6 +9802,8 @@ window.AmsterdamUndeadDebug = {
   // Ticket 32 (Feedback F1): effecten-pool (tracers + impact-deeltjes)
   TRACER_MAX, IMPACT_MAX, MATERIAAL_KLEUREN, spawnTracer, spawnImpact, updateEffecten,
   tracerPool, impactPool, actieveEffecten,
+  // Ticket 94 (v0.22): rookpool + directionele/langgerekte impact-vonken
+  ROOK_MAX, ROOK_LEVENSDUUR, ROOK_SCHAAL_BEGIN, ROOK_SCHAAL_EIND, spawnRook, rookPool,
   // Ticket 38 (Sfeer S1): materiaal-families + impactkleuren
   matFamilie, MATERIAAL_FAMILIES, matFamilieCache,
   // Ticket 58 (v0.19): PALET-systeem; Ticket 59 (v0.19): procedurele
@@ -9645,6 +9954,23 @@ window.AmsterdamUndeadDebug = {
   get vlamNetGezet() { return vlamNetGezet; },
   // Ticket 91 (v0.22, §10.7): contactschaduwen
   CONTACTSCHADUW_GEO, CONTACTSCHADUW_MAT, CONTACTSCHADUW_Y_OFFSET, bouwContactschaduw,
+  // Ticket 92 (v0.22, §10.9): camerabeweging
+  ingedrukt,
+  BOB_FREQUENTIE_PER_METER, BOB_AMPLITUDE, LEAN_MAX_HOEK, LEAN_INTERPOLATIE_SNELHEID,
+  LANDING_TRIGGER_SNELHEID, LANDING_DIP_MAX, LANDING_DIP_SCHAAL, LANDING_DIP_DUUR,
+  WAPEN_BASIS_X, WAPEN_SWAY_AMPLITUDE, WAPEN_LEAN_TEGENWICHT,
+  get bobFase() { return bobFase; },
+  set bobFase(v) { bobFase = v; },   // testhaak: isoleer een testsectie van eerder-opgebouwde loopfase
+  get leanHoek() { return leanHoek; },
+  get landingsDipTimer() { return landingsDipTimer; },
+  set landingsDipTimer(v) { landingsDipTimer = v; },
+  get landingsDipSterkte() { return landingsDipSterkte; },
+  set landingsDipSterkte(v) { landingsDipSterkte = v; },
+  get pieksnelheidDaling() { return pieksnelheidDaling; },
+  set pieksnelheidDaling(v) { pieksnelheidDaling = v; },   // testhaak: forceer een landingstrigger zonder een echte helling te hoeven belopen
+  set vorigeVloerY(v) { vorigeVloerY = v; },
+  set vorigeSpelerX(v) { vorigeSpelerX = v; },
+  set vorigeSpelerZ(v) { vorigeSpelerZ = v; },
 };
 clearTimeout(window.__cdnFoutTimer);   // Ticket 74: laden is gelukt, de faalmodus-timer is niet meer nodig
 </script>

@@ -189,6 +189,15 @@ export async function berekenVisueleStandpunten(page) {
 // testonderdeel in dezelfde page een golf/Stroomuitval startte).
 // mistUitfaseTimer wordt hier ook gezet, maar is met openVoorVisueleMeting()
 // (spelActief permanent false) sowieso nooit meer dan de initiële 0.
+// Ticket 92: dezelfde discipline voor de nieuwe camerabeweging — een
+// standpunt-`.set()` is een TELEPORT, geen echte stap, maar bobFase/
+// landingsdip lezen positiedelta's en zouden een teleport anders (ondanks de
+// dt-clamp-achtige begrenzing in de game zelf) als een sprint of een val
+// kunnen lezen — precies genoeg om de mediane helderheid een fractie te
+// verschuiven op een standpunt met een gevoelige framing (empirisch
+// gevonden: binnenplaats -3,7%, vliering +7,9%, allebei buiten de 2%-band).
+// Vóór updateSpeler(0) resetten, zodat de eerste post-teleport-frame een
+// echt schone lei heeft — net als bobFase/vorigeVloerY hierboven.
 // Gebruikt ALTIJD samen met openVoorVisueleMeting() — niet met
 // simuleerPointerLock, zie de toelichting daar.
 export async function zetVisueelStandpunt(page, standpunt) {
@@ -201,7 +210,16 @@ export async function zetVisueelStandpunt(page, standpunt) {
     d.lampDipFactor = 1;
     d.mistUitfaseTimer = 0;
     d.stroomFactor = 1;
+    d.bobFase = 0;
+    // leanHoek heeft geen setter nodig: hij leest alleen `ingedrukt`, dat in
+    // deze testflow nooit gezet wordt, dus hij staat hier al altijd op 0.
+    d.landingsDipTimer = 0;
+    d.landingsDipSterkte = 0;
+    d.pieksnelheidDaling = 0;
     d.updateSpeler(0);   // synct camera.position/rotation + berekent positie.y via berekenVloerY()
+    d.vorigeVloerY = d.speler.positie.y;
+    d.vorigeSpelerX = d.speler.positie.x;
+    d.vorigeSpelerZ = d.speler.positie.z;
   }, standpunt);
   await frames(page, 3);
 }
