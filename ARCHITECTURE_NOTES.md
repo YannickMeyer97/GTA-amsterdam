@@ -6765,6 +6765,221 @@ Dit ticket staat achteraan omdat het volledig zelfstandig is: zone 4,
 één mesh, geen enkele afhankelijkheid. Het is een goede afsluiter en
 een veilige plek om te stoppen als de ronde uitloopt.
 
+**Implementatieverslag T114 (uitgevoerd — Fase 8, exact de twee lagen uit
+de beslissing, expliciet niet de derde).** `waterMesh` kreeg eerst
+subdivisie (`PlaneGeometry(WATER_BREEDTE, gangDiepte+2, 24, 12)` i.p.v.
+1x1 — zonder subdivisie heeft een plane maar 4 hoekpunten en is
+vertex-deining onzichtbaar), daarna een `bouwWaterMateriaal()`-fabriek:
+dezelfde `MeshStandardMaterial` als voorheen, met een `onBeforeCompile`-
+injectie (zelfde chunk-patroon als `maakOndodeMateriaal()`/de rimlight uit
+T100 — `#include <common>` voor uniform/varying-declaraties,
+`#include <begin_vertex>` voor de deining, `#include <normal_fragment_maps>`
+voor de gebroken specular, three@0.160.0).
+
+**Laag 1 (deining).** Drie gekruiste sinussen op de lokale (pre-rotatie)
+x/y van elke vertex, opgeteld bij `transformed.z` (die as wordt na de
+bestaande `rotation.x=-PI/2` de wereld-hoogte-as — zelfde conventie als
+elke `vlak()`-vloer). Bewust GEEN los `ShaderMaterial`: dat zou fog en
+PBR-lichtrespons opnieuw met de hand moeten regelen (de T110-postmortem),
+terwijl `onBeforeCompile` op de bestaande `MeshStandardMaterial` die twee
+dingen gratis gedaan houdt.
+
+**Brontabel, niet losse constanten.** De drie sinustermen (amplitude/
+frequentie-x/frequentie-z/frequentie-t) staan in `GOLF_AMPLITUDE`/
+`GOLF_FREQ_X`/`GOLF_FREQ_Z`/`GOLF_FREQ_T` — dezelfde tabel voedt zowel de
+gegenereerde GLSL (`GOLF_GLSL`, een `.map()` over de tabel naar
+shader-regels) als een JS-spiegel `golfHoogte(x, z, t)`. Reden: de
+vertex-shader draait op de GPU en is niet terug te lezen vanuit een test
+zonder een render-naar-textuur-omweg; een JS-functie met exact dezelfde
+wiskunde is direct testbaar (`test-levend-water.mjs` verifieert de
+amplitude-grens hiermee) én is meteen bruikbaar voor de twee dingen
+hieronder die WEL in JS moeten gebeuren.
+
+**De randvoorwaarde "nooit boven de vlonderrand".** Som van de drie
+amplitudes = 0,062 m. Water op y=−0,05, vlonderrand-obstakel-top op
+y≈0,4 — een marge van >0,3 m, ruim voorbij wat de golf ooit haalt.
+`test-levend-water.mjs` bewijst dit met een brute-force sweep over
+x/z/t i.p.v. het manueel na te rekenen.
+
+**Laag 2 (gebroken specular).** Een procedurele normal-verstoring uit
+scrollende hash-ruis (zelfde hash-functie-stijl als T111's nachthemel,
+geen nieuwe textuur/asset) toegepast op de reeds-bestaande view-space
+`normal` uit `<normal_fragment_maps>`, vlak vóór de lichtberekening 'm
+gebruikt. Het resultaat: het licht van `grachtLantaarnLicht` breekt in
+een onrustige, bewegende highlight i.p.v. één scherpe vlek.
+
+**Boot-deining, gestapeld — niet vervangen.** `updateBootPositie()`
+(bestaand, elders in `gameLoop`) schrijft uitsluitend `bootGroep.position.x`.
+`updateWaterAnimatie(klokTijd)` — nieuw, in dezelfde `klok`-gedreven
+cosmetische zone direct na `updateSkylineRaampjes` — zet `.position.y` en
+een lichte `.rotation.z`-kanteling via `golfHoogte()` op de boot's eigen
+positie, dus de boot deint in tempo met het water eronder. Omdat de twee
+functies verschillende properties aanraken, stapelen ze zonder conflict —
+`test-levend-water.mjs` bewijst dit expliciet: een `updateBootPositie()`-
+aanroep NA de deining laat `.position.y` ongemoeid.
+
+**De fake lantaarnstreep — bewust GEEN Reflector.** Een losse, kleine,
+handgesubdivideerde `PlaneGeometry` (2,6x0,22 m) met een handgetekend
+vertex-color-verloop (warm in het midden, zwart aan alle vier de randen —
+geen canvas-textuur, geen nieuw asset) als `MeshBasicMaterial`,
+transparant, `depthWrite:false`, plat op het water. "Vervormt met de
+golfnormaal" is geïmplementeerd als een lichte `rotation.z`-wobble
+afgeleid van dezelfde `golfHoogte()` (i.p.v. de GPU-normal terug te lezen,
+wat een render-naar-textuur-omweg zou vergen voor een effect dat de
+architectuurschets zelf al "nauwelijks te onderscheiden" noemt) —
+goedkoop, en precies de "fake variant" die decision 89 vraagt i.p.v. een
+`Reflector` (nieuwe addons-import + tweede scene-render).
+
+`tests/test-levend-water.mjs` (nieuw, 21 checks): structuur (subdivisie,
+`MeshStandardMaterial` met `onBeforeCompile`, fog blijft aan), de
+shader-uniform wordt pas gevuld ná de EERSTE render van `waterMesh`
+(getest door de speler eerst naar het grachtstandpunt te zetten — een
+val die dit testbestand zelf blootlegde: `onBeforeCompile` vuurt lazy, bij
+het eerste daadwerkelijke draw-call, niet bij materiaal-constructie),
+`golfHoogte()`'s amplitude-grens en determinisme, de boot-deining
+gestapeld-niet-vervangen-eis, de reflectiestreep's structuur/wobble,
+bit-voor-bit determinisme onder `openVoorVisueleMeting()` (dezelfde
+klok-bevriezing als T111/T113), zes frames zonder pageerror, en de
+bestaande invarianten (28 lichten, 56 obstakels, 14 interactiepunten).
+
+**Basislijn-impact.** Alleen GRACHT (het enige standpunt met het water in
+beeld), duidelijk DONKERDER (gemiddelde 33,72 → 31,62, −6,2%; mediaan
+25,89 → 25,60, −1,1%, net binnen de band). Twee samenhangende, begrepen
+oorzaken: de gebroken-specular-laag verstrooit het lantaarnlicht over een
+breder, minder fel gebied i.p.v. één scherpe highlight, en de deining
+kantelt een deel van het watervlak weg van de camera — beide precies de
+bedoelde werking (een levend, onrustig oppervlak i.p.v. een vlakke,
+gelijkmatig verlichte plaat), geen bug. Driehoeken/calls: kleine,
+verwachte toename door de watersubdivisie en de nieuwe
+reflectiestreep-mesh, ruim binnen de band, niet bijgewerkt. Volledige
+regressiesuite na T114: groen (zie run-all.mjs-log) — hiermee is Fase 8
+("Water") compleet.
+
+**Feedback-ronde na Fase 8: drie fixes, één gedeelde grondoorzaak.** De
+gebruiker meldde twee losse dingen na het spelen. Ze bleken grotendeels
+hetzelfde probleem, en dat is de moeite van het vastleggen waard: **T111
+maakte bestaande, altijd al aanwezige gaten in de wereldgeometrie voor
+het eerst zichtbaar.** Vóór de nachthemel stond overal de bijna-zwarte
+`scene.background` achter; een kier in een muur toonde zwart-op-zwart en
+viel niemand op. De koepel verving dat door een lichte kleur — en dus
+lichtten al die kieren ineens blauw op. Geen van de gaten was nieuw.
+
+*Fix 1 — de koepel onder de horizon (de grondoorzaak).* De
+fragment-shader deed `float hoogte = clamp(r.y, 0.0, 1.0)`, met in de
+code ernaast de expliciete aanname "de dome is BackSide dus alleen het
+bovenste halfrond is ooit echt zichtbaar". Die aanname is fout: de koepel
+is een volledige bol óm de camera, en de onderste helft is zichtbaar door
+elk gaatje. Door de clamp kreeg die hele onderhelft bovendien de volle,
+relatief lichte horizonkleur (0x2a3a52) — het slechtst denkbare geval.
+Nu zakt alles onder de horizon via een `smoothstep` weg naar een nieuwe
+`kleurGrond`-uniform (0x020406), donkerder dan de donkerste kamer. Dit is
+niet alleen een pleister op de lekken: een hemelkoepel die ónder de
+horizon licht is, is op zichzelf al verkeerd — daar hoort grond of water
+te zijn. De gebruiker verwoordde precies die regel ("vanaf de horizon
+beneden moet de vloer altijd donker zijn").
+
+*Fix 2 — de twee echte kieren dichtmetselen.* Diagnose met een
+tijdelijk **fel-magenta koepel** (alle drie de kleur-uniforms op
+0xff00ff) en een pixelteller over een yaw/pitch-raster: elke magenta
+pixel is per definitie een plek waar je door de wereld heen kijkt. Die
+methode vond precies de twee plekken die de gebruiker noemde. Nieuwe
+helper `bouwVulMuur(x, z, breedte, diepte, vanY, totY, kleur)` — een
+muurstuk tussen twee hoogtes, **zonder** `registreerRechthoek()`, want de
+collision in dit spel is 2D en zou anders een beloopbare doorgang
+blokkeren:
+  * **Boven de gangopening.** Het atelier is `ATELIER_HOOGTE` (3,6) hoog,
+    de gang erachter maar `KAMER_HOOGTE` (3,2). De zuidmuur van het
+    atelier werd in twee segmenten links en rechts van de opening
+    gebouwd, maar er was nooit een bovendorpel — die 40 cm stond open,
+    dus keek je vanuit het atelier over het gangplafond heen de koepel
+    in.
+  * **Onder de zuidmuur van de vliering.** `vlieringMuur()` begint op
+    `VLIERING_Y` (1,2 m), logisch voor een muur óp de vliering, maar
+    daaronder bleef de strook tot de vloer open — en daar ligt geen
+    atelier meer (dat stopt bij `VLIERING_X_OOST`). Vanaf de trap keek je
+    dus ónder die muur door naar buiten. De collisierechthoek was hier al
+    door `vlieringMuur()` geregistreerd, dus de vulmuur is puur visueel.
+
+*Fix 3 — het water doortrekken.* Melding: "bij de boot is maar een
+rechthoekig stuk water, je ziet de huizen erachter." Klopt: het watervlak
+was 8x4 m (alleen het vaarwater tot `BOOT_VERTREK_X`) en eindigde in het
+niets, terwijl de T112-skyline op ~47 m staat. Alles daartussen was leeg.
+Twee nieuwe constanten (`WATER_VLAK_LENGTE` 28 m, `WATER_VLAK_DIEPTE`
+36 m) beschrijven nu het VISUELE vlak, met het vaarwater erbinnen; het
+loopt door tot net vóór de dichtstbijzijnde skyline-laag, die daarmee op
+de verre oever komt te staan in plaats van achter een zwevende
+rechthoek. Rekenkosten waren de zorg van de gebruiker, maar een plat vlak
+is goedkoop: de kosten zitten in driehoeken, en die groeien alleen omdat
+de subdivisie meeschaalt met de afmeting (~0,7 m per segment — nodig
+omdat de golflengte van de T114-deining 3-5 m is en een grovere stap zou
+gaan aliassen). Dat is één zone (gracht) die de 25%-RENDER_BAND passeert,
+verder niets.
+
+Basislijn: alleen GRACHT verschoof in helderheid (31,62 -> 22,07
+gemiddeld), en door beide fixes dezelfde kant op — waar vroeger lichte
+hemel onder de horizon stond, staat nu donker water en donkere grond. De
+zeven andere standpunten kijken een kamer in en raakten niets. Daarnaast
+zijn de draw calls/driehoeken van alle acht zones ververst: die stonden
+nog op de T112-waarden en waren sinds T113 (raampjes) en T114 (water)
+opgelopen tot net over de band.
+
+**Tweede feedback-ronde: de wereld moest ergens op staan.** Twee nieuwe
+meldingen, allebei over hetzelfde onderliggende gebrek — geometrie die
+in de lucht eindigt in plaats van ergens op te rusten.
+
+*"Bij de boot lijken de huizen in de verte te zweven in het niks."* Dat
+klopte letterlijk. De skylinelagen staan op y=0, maar er lag niets
+ONDER ze: het water hield eerder op en daarachter was leegte, dus je zag
+de onderkant van elke gevel tegen de hemelkoepel aftekenen. Erger nog,
+de dichtstbijzijnde oostlaag (x≈47,25) stond IN het water, dat na de
+vorige fix tot 47,5 doorliep. Opgelost met een verre oever:
+`bouwVerreGrond()` legt één plat vlak per skylinegroep, en het water is
+2 m ingekort (`WATER_VLAK_LENGTE` 28 → 26) zodat de oever ruimte heeft.
+De truc die dit zonder zichtbare "rand van de wereld" laat werken is de
+kleur: de oever krijgt exact `kleurGrond` (0x020406), dezelfde kleur die
+de koepel ónder de horizon heeft sinds de vorige fix. Waar het vlak
+ophoudt gaat het dus naadloos over in de koepel — je ziet nooit een
+overgang, alleen een horizon. De skylinegebouwen zijn een fractie
+lichter en blijven als silhouet leesbaar tegen de lichtere hemel.
+
+*"Het is een beetje gek dat er geen gevel of iets is van de gebouwen."*
+Ook terecht, en een blinde vlek die al sinds de bouw van de binnenplaats
+bestond: de BUURpanden kregen met `bouwAchterGevel()` netjes gevels,
+maar de wand van het eigen pand — de oostmuur van het atelier, de hele
+westzijde van de binnenplaats — was een kale plaat met alleen een
+deurgat. Wat een muur tot gevel maakt is geleding, dus die is
+toegevoegd: een daklijst met overstek (het belangrijkste element; het
+geeft de muur een bovenkant in plaats van hem in het niets te laten
+ophouden), een goot als horizontale lichtlijn eronder, een plint waar
+hij de klinkers raakt, acht kozijnen op twee verdiepingen, en een
+regenpijp als verticale tegenhanger. Daarnaast kreeg
+`bouwBinnenplaatsMuur()` in de fabriek zelf een muurafdekking, zodat
+alle drie de perimetermuren automatisch een bovenkant hebben. Niets
+hiervan registreert collision: de muurrechthoeken bestaan al en alle
+delen steken hooguit 6-25 cm uit (zelfde lijn als de bestaande
+regenpijp-/balkondecoratie).
+
+Twee dingen die het bouwen zelf corrigeerde. Het verlichtingspatroon van
+de kozijnen kwam eerst uit een gezaaide PRNG, maar bij acht ramen geeft
+toeval te vaak een scheve verdeling — de eerste seed liet er 2 van 8
+branden, allebei aan dezelfde kant, waardoor het pand er verlaten
+uitzag. Nu een handgeschreven patroon (5 van 8, beneden vaker dan
+boven). En het "uit"-glas was aanvankelijk bijna zwart, wat als gaten in
+de muur las in plaats van als ramen; onverlicht glas weerspiegelt 's
+nachts de hemel, dus het is nu een koele blauwgrijze tint met lagere
+dekking.
+
+Eén hypothese sneuvelde onderweg, hier vastgelegd omdat de conclusie
+nuttig is: de gracht werd na deze ronde 1,2 punt lichter, en de
+verklaring leek een tone-mapping-verschil (een `MeshBasicMaterial` gaat
+door tone mapping + exposure, de koepel-`ShaderMaterial` schrijft rauw
+weg, dus dezelfde hexwaarde zou twee pixelwaarden kunnen geven).
+`toneMapped: false` op de oever gaf echter **exact dezelfde getallen** —
+de hypothese is dus weerlegd en de wijziging teruggedraaid in plaats van
+als "principiële fix" te blijven staan. De oorzaak is niet verder
+uitgezocht: het gaat om 1,2 helderheidspunt op een donkere zone, het
+beeld is visueel naadloos en er is geen aanwijzing voor een fout.
+
 ### 10.14.1 Beslissing 90 — Declaratievolgorde: elke nieuwe cache vóór regel 833
 
 **Het probleem, en waarom het deze ronde bijna zeker zou toeslaan.** Dit

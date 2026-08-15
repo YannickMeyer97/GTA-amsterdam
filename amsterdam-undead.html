@@ -930,6 +930,11 @@ function bouwNachthemelMateriaal() {
       tijd: { value: 0 },
       kleurHorizon: { value: new THREE.Color(0x2a3a52) },   // donker staalblauw
       kleurZenit: { value: new THREE.Color(0x03050a) },     // bijna-zwart
+      // Alles ONDER de horizon: donkerder dan de donkerste kamer, zodat een
+      // eventuele kier in de geometrie nooit oplicht (zie de toelichting in
+      // de fragment-shader hieronder). Bewust nóg donkerder dan de oude
+      // `scene.background` (0x05080b) die hier vóór T111 stond.
+      kleurGrond: { value: new THREE.Color(0x020406) },
     },
     vertexShader: `
       varying vec3 vRichting;
@@ -942,6 +947,7 @@ function bouwNachthemelMateriaal() {
       uniform float tijd;
       uniform vec3 kleurHorizon;
       uniform vec3 kleurZenit;
+      uniform vec3 kleurGrond;
       varying vec3 vRichting;
 
       // Standaard hash-ruis (geen textuur, geen CDN-asset) — deterministisch
@@ -975,10 +981,27 @@ function bouwNachthemelMateriaal() {
       void main() {
         vec3 r = normalize(vRichting);
         // Verticale gradient: r.y loopt van -1 (recht omlaag) tot +1 (recht
-        // omhoog) — de dome is BackSide dus alleen het bovenste halfrond is
-        // ooit echt zichtbaar, maar clamp toch defensief.
+        // omhoog).
         float hoogte = clamp(r.y, 0.0, 1.0);
         vec3 hemel = mix(kleurHorizon, kleurZenit, pow(hoogte, 0.55));
+        // Feedback-fix (gebruiker: "ik zie soms de blauwe lucht op de vloer;
+        // vanaf de horizon beneden moet de vloer altijd donker zijn"). Dit
+        // stond hier eerst met de aanname "de dome is BackSide dus alleen het
+        // bovenste halfrond is ooit zichtbaar" — die aanname is FOUT. De dome
+        // is een volledige bol om de camera; de onderste helft is zichtbaar
+        // door elk gaatje in de wereldgeometrie (kier boven een deurkozijn,
+        // naad bij een trapgat). Met clamp(r.y, 0, 1) kreeg die hele
+        // onderste helft de volle, relatief lichte horizonkleur (0x2a3a52) —
+        // dus zo'n kier lichtte fel blauw op. Vóór T111 viel dat niet op,
+        // want daar stond de bijna-zwarte scene.background achter.
+        //
+        // Twee dingen gebeuren hier daarom, en het is bewust NIET alleen het
+        // dichtmetselen van de gaten (dat gebeurt ook, zie de kierdichting
+        // elders): een hemelkoepel die ONDER de horizon licht is, is op
+        // zichzelf al fout — daar hoort grond/water te zijn, niet lucht. Deze
+        // fix maakt het lek dus onschadelijk én de koepel fysiek juister.
+        float onderHorizon = clamp(-r.y, 0.0, 1.0);
+        hemel = mix(hemel, kleurGrond, smoothstep(0.0, 0.10, onderHorizon));
 
         // Sterrenveld: een fijn hash-raster op de richtingsvector (twee
         // assen van de eenheidsbol, genoeg voor een stilstaand sterrenveld
@@ -2227,6 +2250,29 @@ function bouwMuur(x, z, breedte, diepte, kleur = BAKSTEEN, hoogte = KAMER_HOOGTE
   wereld.add(muur);
   registreerRechthoek(x - breedte / 2, x + breedte / 2, z - diepte / 2, z + diepte / 2);
 }
+// Feedback-fix (gebruiker: "boven de deur naar de beginruimte zie ik blauwe
+// lucht"). Een doorgang tussen twee ruimtes met VERSCHILLENDE plafondhoogtes
+// laat boven het lágere plafond een open kier staan: de opening in de muur
+// loopt door tot het plafond van DEZE kamer, maar de ruimte erachter houdt
+// er lager mee op, dus kijk je over dat lagere plafond heen de leegte in.
+// Vóór T111 keek je daar tegen de bijna-zwarte `scene.background` aan en
+// viel het niet op; sinds de nachthemelkoepel is het een zichtbare vlek.
+//
+// bouwVulMuur() metselt zo'n kier dicht: een muurstuk van `vanY` tot
+// `totY`. BEWUST GEEN registreerRechthoek() — de doorgang eronder moet
+// beloopbaar blijven, en de collision in dit spel is 2D (een rechthoek zou
+// de hele doorgang blokkeren, ongeacht hoogte). Op deze hoogte kan niemand
+// er alsnog tegenaan lopen.
+function bouwVulMuur(x, z, breedte, diepte, vanY, totY, kleur = BAKSTEEN) {
+  const hoogte = totY - vanY;
+  if (hoogte <= 0) return null;
+  const { segX, segZ } = muurSegmenten(breedte, diepte);
+  const dorpel = blok(breedte, hoogte, diepte, kleur, 0.92, 0, segX, SUBDIVISIE_SEGMENTEN, segZ, true);
+  dorpel.position.set(x, vanY + hoogte / 2, z);
+  dorpel.userData.vulMuur = true;   // debug/test-marker
+  wereld.add(dorpel);
+  return dorpel;
+}
 // Noordmuur: twee segmenten met een deurgat (x ∈ [-DEUR_HALF, DEUR_HALF]).
 const noordMuurZ = -HALF_DIEPTE - MUUR_DIKTE / 2;
 {
@@ -2364,6 +2410,11 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
   const zuidZ = GANG_Z_EIND + MUUR_DIKTE / 2;
   bouwMuur(-(DEUR_HALF + zuidBreedte / 2), zuidZ, zuidBreedte, MUUR_DIKTE, BAKSTEEN, ATELIER_HOOGTE);
   bouwMuur(DEUR_HALF + zuidBreedte / 2, zuidZ, zuidBreedte, MUUR_DIKTE, BAKSTEEN, ATELIER_HOOGTE);
+  // Feedback-fix: bovendorpel boven de gangopening. Het atelier is
+  // ATELIER_HOOGTE (3,6) hoog, de gang erachter maar KAMER_HOOGTE (3,2) —
+  // die 40 cm stond open, dus keek je vanuit het atelier over het
+  // gangplafond heen zo de hemelkoepel in (zie bouwVulMuur()).
+  bouwVulMuur(0, zuidZ, DEUR_HALF * 2, MUUR_DIKTE, KAMER_HOOGTE, ATELIER_HOOGTE);
   // Noordmuur: één doorlopende muur die zowel de hoofdruimte als de
   // voorraadnis afsluit (v0.4, L-vorm — zie KAMER2_NIS_* hierboven); ze
   // strekt zich net zo ver uit als de west/oostmuren dik zijn, zodat de
@@ -2688,6 +2739,17 @@ function berekenVloerY(x, z) {
   // MUUR_DIKTE verder naar het oosten, want daar begint de begaanbare
   // ateliervloer en zou hij als onzichtbare drempel in het atelier steken.
   vlieringMuur(centrumX - MUUR_DIKTE / 2, VLIERING_Z_ZUID + MUUR_DIKTE / 2, breedteX + MUUR_DIKTE, MUUR_DIKTE);
+  // Feedback-fix (gebruiker: "ook bij de trap naar de vliering zie ik blauwe
+  // lucht"). vlieringMuur() begint pas op VLIERING_Y (de vlieringvloer, 1,2 m)
+  // — logisch voor een muur ÓP de vliering, maar daaronder bleef de strook
+  // van de begane grond tot 1,2 m open, en daar ligt geen atelier meer (het
+  // atelier stopt bij VLIERING_X_OOST). Vanaf de trap/het trapgat keek je
+  // dus onder de vlieringmuur door het gebouw uit. Zelfde onzichtbaarheid
+  // als de gangkier hierboven: vóór T111 zwart, sindsdien een lichte vlek.
+  // Puur visueel — de 2D-collisierechthoek is hier al geregistreerd door
+  // vlieringMuur() zelf, dus dit verandert niets aan de looproutes.
+  bouwVulMuur(centrumX - MUUR_DIKTE / 2, VLIERING_Z_ZUID + MUUR_DIKTE / 2,
+    breedteX + MUUR_DIKTE, MUUR_DIKTE, 0, VLIERING_Y, VLIERING_BALK);
   // Noordwand van de trapkoker: houdt je op de helling i.p.v. er zijwaarts
   // vanaf te stappen (waar de vloer 1,2 m hoger ligt). Zelfde rol als de
   // kokerWand()-panelen bij de keldertrap. Volle hoogte vanaf de begane
@@ -2827,6 +2889,20 @@ let klinkersMesh;
     muur.receiveShadow = true;
     wereld.add(muur);
     registreerRechthoek(x - breedte / 2, x + breedte / 2, z - diepte / 2, z + diepte / 2);
+    // Feedback-fix (zelfde melding als de achtergevel hieronder): een
+    // binnenplaatsmuur zonder afdekking houdt bovenaan gewoon op en leest
+    // als een losse plaat. Een muurafdekking (ezelsrug) die aan beide kanten
+    // een paar centimeter oversteekt geeft 'm een bovenkant én een
+    // schaduwlijn. Hier in de fabriek, zodat ALLE binnenplaatsmuren (noord,
+    // zuid, oost) 'm automatisch krijgen. Geen eigen collision: de
+    // muurrechthoek hierboven dekt dit al, en de afdekking steekt maar 6 cm uit.
+    const afdek = new THREE.Mesh(
+      new THREE.BoxGeometry(breedte + 0.12, 0.1, diepte + 0.12),
+      matFamilie('steen', 0x3b3630)
+    );
+    afdek.position.set(x, hoogte + 0.05, z);
+    afdek.castShadow = true;
+    wereld.add(afdek);
     return muur;
   }
   bouwBinnenplaatsMuur(PLAATS_CX, PLAATS_Z_NOORD - MUUR_DIKTE / 2, PLAATS_DIEPTE + MUUR_DIKTE * 2, MUUR_DIKTE, 1.85, GANG_PLEISTER);
@@ -2923,6 +2999,83 @@ let klinkersMesh;
   bouwAchterGevel(PLAATS_CX + 3.5, PLAATS_Z_ZUID + 1.05, 4.6, 3.8, Math.PI, { kleur: PALET.gevelKoud[1], ramen: 4, raamKleur: PALET.raamWarmZacht, raamOpacity: 0.4 });
   bouwAchterGevel(PLAATS_X_OOST + 1.0, DEUR2_Z - 3.5, 4.8, 4.5, Math.PI / 2, { kleur: PALET.gevelKoud[2], ramen: 5, raamKleur: PALET.raamKoelLicht, raamOpacity: 0.35 });
   bouwAchterGevel(PLAATS_X_OOST + 1.2, DEUR2_Z + 4.0, 4.2, 3.7, Math.PI / 2, { kleur: PALET.gevelWarm[1], ramen: 3, raamKleur: PALET.raamWarmAmber, raamOpacity: 0.42 });
+
+  // Feedback-fix (gebruiker: "het is een beetje gek dat er geen gevel of iets
+  // is van de gebouwen (atelier en bijkeuken)"). Terecht: de buurpanden
+  // hierboven kregen met bouwAchterGevel() wél gevels, maar de wand van het
+  // EIGEN pand — de oostmuur van het atelier, de hele westzijde van de
+  // binnenplaats — was een kale rode plaat met alleen een deurgat erin. Die
+  // leest als een schutting, niet als de achtergevel van een grachtenpand.
+  //
+  // Wat een muur tot gevel maakt is geleding: een daklijst die overstek
+  // geeft (en dus een schaduwlijn), een plint waar hij de grond raakt, en
+  // kozijnen op ooghoogte. Alle drie hieronder, puur decoratief opgebouwd
+  // uit dezelfde primitieven als de rest van het decor. GEEN
+  // registreerRechthoek(): de collision van de muur zelf staat er al, en
+  // deze delen steken maar 10-25 cm uit (zelfde lijn als de bestaande
+  // regenpijp/lijst/balkon-decoratie).
+  {
+    const gevelX = KAMER2_HALF_B + MUUR_DIKTE;        // 4,8 — het naar de binnenplaats gekeerde vlak
+    const gevelZvan = KAMER2_Z_NOORD, gevelZtot = GANG_Z_EIND;
+    const gevelDiepte = gevelZtot - gevelZvan;
+    const gevelCz = (gevelZvan + gevelZtot) / 2;
+    // Daklijst met overstek: het belangrijkste element: het geeft de muur
+    // een bovenkant i.p.v. hem in het niets te laten ophouden.
+    const daklijst = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.26, gevelDiepte), matFamilie('hout', 0x2a2119));
+    daklijst.position.set(gevelX + 0.06, ATELIER_HOOGTE - 0.13, gevelCz);
+    daklijst.castShadow = true;
+    wereld.add(daklijst);
+    // Goot: dunne, iets lichtere lijst er net onder — vangt het lantaarnlicht
+    // en tekent zo een horizontale lijn over de hele gevel.
+    const goot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, gevelDiepte), mat(0x3c3a35, 0.55, 0.35));
+    goot.position.set(gevelX + 0.12, ATELIER_HOOGTE - 0.32, gevelCz);
+    wereld.add(goot);
+    // Plint: donkere band waar de gevel de klinkers raakt.
+    const plint = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.45, gevelDiepte), matFamilie('steen', 0x241c17));
+    plint.position.set(gevelX + 0.04, 0.225, gevelCz);
+    plint.receiveShadow = true;
+    wereld.add(plint);
+    // Kozijnen op ooghoogte, verdeeld over de gevel maar met een ruime boog
+    // om het deurgat van deur 2 heen (ATELIER_MIDDEN_Z ± DEUR2_HALF).
+    // Twee gedeelde glasmaterialen: één verlicht, één donker. Niet elk raam
+    // brandt — een gevel waar ALLE ramen even hard oplichten leest als een
+    // hotel, niet als een pand waar iemand woont. De keuze is
+    // deterministisch (maakZaadRandom, zelfde patroon als de skyline in
+    // T112/T113), dus het beeld is per load reproduceerbaar.
+    const glasAan = new THREE.MeshBasicMaterial({
+      color: PALET.raamWarmAmber, transparent: true, opacity: 0.34, side: THREE.DoubleSide,
+    });
+    // Donker glas is NIET zwart: een onverlicht raam weerspiegelt 's nachts
+    // de hemel, dus een koele blauwgrijze tint met lagere dekking. Met puur
+    // zwart (eerste poging) lazen ze als gaten in de muur i.p.v. als ramen.
+    const glasUit = new THREE.MeshBasicMaterial({
+      color: 0x1b2532, transparent: true, opacity: 0.62, side: THREE.DoubleSide,
+    });
+    // Welk raam brandt is HANDMATIG gekozen, niet via een PRNG. Bij maar acht
+    // ramen geeft toeval te vaak een scheve verdeling: de eerste (gezaaide)
+    // poging liet er 2 van 8 branden, allebei aan dezelfde kant, wat het
+    // pand er verlaten uit liet zien. Per kolom [begane grond, verdieping] —
+    // beneden brandt vaker dan boven, zoals in een echt huis 's avonds.
+    const raamKolommen = [gevelZvan + 2.2, gevelZvan + 5.0, gevelZtot - 4.6, gevelZtot - 1.9];
+    const raamAan = [[true, false], [true, true], [false, true], [true, false]];
+    raamKolommen.forEach((rz, ki) => {
+      if (Math.abs(rz - ATELIER_MIDDEN_Z) < DEUR2_HALF + 1.2) return;
+      [1.55, 2.75].forEach((ry, ri) => {
+        const kozijn = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.0, 0.78), matFamilie('hout', 0x3a2f24));
+        kozijn.position.set(gevelX + 0.02, ry, rz);
+        wereld.add(kozijn);
+        const glas = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.84), raamAan[ki][ri] ? glasAan : glasUit);
+        glas.rotation.y = Math.PI / 2;
+        glas.position.set(gevelX + 0.09, ry, rz);
+        wereld.add(glas);
+      });
+    });
+    // Regenpijp in de noordhoek — verticale lijn tegen de horizontale van de
+    // goot, zelfde truc als bij de buurpanden hierboven.
+    const pijp = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, ATELIER_HOOGTE - 0.3, 8), mat(0x2e2b26, 0.6, 0.35));
+    pijp.position.set(gevelX + 0.12, (ATELIER_HOOGTE - 0.3) / 2, gevelZvan + 0.5);
+    wereld.add(pijp);
+  }
 
   // Nepdoorgangen: lijken open, maar blijven geblokkeerd door de randcollision.
   // Bewust NIET op dezelfde plek als de poort-/kelderdeur-spawnankers hieronder
@@ -3181,7 +3334,30 @@ const GRACHTGANG_DREMPEL_BINNEN = new THREE.Vector3(GRACHTGANG_X_WEST + 0.7, 0, 
 const BOOT_DOK_X = VLONDER_X_OOST + 1.3;
 const BOOT_VERTREK_X = BOOT_DOK_X + 3.5;
 const WATER_BREEDTE = 8;   // was 3 — verbreed zodat de boot zichtbaar vaarwater heeft richting BOOT_VERTREK_X
+// T114-vervolg (feedback: "bij de boot is maar een rechthoekig stuk water,
+// je ziet de huizen erachter"). WATER_BREEDTE hierboven dekt alleen het
+// VAARWATER (vlonder -> BOOT_VERTREK_X = 24,3). Het zichtbare wateroppervlak
+// moet veel verder doorlopen: vanaf de vlonder kijk je naar +x, en de
+// T112-skyline staat daar op ~47 m. Alles daartussen was leegte, waardoor
+// het water als een losse rechthoek in het niets eindigde. Deze twee
+// constanten beschrijven het VISUELE vlak (het vaarwater ligt er binnenin):
+// door tot net vóór de dichtstbijzijnde skyline-laag, en breed genoeg om
+// het hele blikveld vanaf de vlonder te vullen (op 28 m afstand beslaat een
+// ~75°-FOV ruim 40 m in z).
+// Feedback-vervolg ("de huizen in de verte lijken te zweven in het niks"):
+// dit stond op 28 (water tot 47,5), maar de dichtstbijzijnde oost-skylinelaag
+// staat op x≈47,25 — díé stond dus letterlijk IN het water, en de twee lagen
+// erachter boven leegte. Nu 26 (water tot 45,5), zodat er ruimte is voor een
+// verre oever waar de skyline op staat (zie bouwVerreGrond() in het
+// T112-blok).
+const WATER_VLAK_LENGTE = 26;   // x: van VLONDER_X_OOST (19,5) tot 45,5 — de oost-skyline staat vanaf ~47,25 op de oever
+const WATER_VLAK_DIEPTE = 36;   // z: -18..+18 rond de grachtgang
 let vlonderMesh, waterMesh, bootGroep, grachtLantaarnLicht;   // toegewezen in het geometrie-blok hieronder, debug/test-referenties
+// Ticket 114 (v0.22, §10.14-beslissing 89): levend water — module-scope
+// gedeclareerd (zelfde hoisting-veilige patroon als `updateSkylineRaampjes`
+// in T113) zodat gameLoop 'm kan aanroepen; de bouwfunctie zelf zit lokaal
+// in het gracht-geometrieblok hieronder.
+let updateWaterAnimatie, waterMateriaal, reflectieStreepMesh, golfHoogte;
 
 /* ================================================================
    ZONE E — DE BIJKEUKEN + KELDERHALS (Ticket 24, map-lus M1): geometrie-
@@ -3317,14 +3493,120 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
   wereld.add(vlonderRandMesh);
   registreerRechthoek(vlonderRandX - 0.15, vlonderRandX + 0.15, gangCZ - GRACHTGANG_HALF - 0.1, gangCZ + GRACHTGANG_HALF + 0.1);
 
+  // Ticket 114 (v0.22, §10.14-beslissing 89): levend water — twee lagen,
+  // expliciet NIET een derde (een echte Reflector: nieuwe addons-import +
+  // tweede scene-render voor één vlak dat de speler alleen in het donker
+  // ziet, zie de architectuurtoelichting).
+  //
+  // Laag 1: vertex-deining. Drie gekruiste sinussen op de LOKALE x/y van
+  // elke vertex (vóór de -90°-rotatie hieronder; lokaal-Z is dus de
+  // "hoogte"-as ná rotatie, dezelfde as als vlak()-vloeren gebruiken).
+  // Amplitude bewust klein (som van de drie <= 0,062) — het water zit op
+  // y=-0,05 en mag nooit boven de vlonderrand (obstakel hierboven, top
+  // ~y=0,4, dek ~y=0) uitkomen.
+  //
+  // GOLF_* hieronder is de brontabel: dezelfde drie termen staan ZOWEL in
+  // de GLSL (vertex-shader, hardware-snelheid) ALS hier in JS (golfHoogte(),
+  // hergebruikt door de reflectiestreep-wobble en door
+  // test-levend-water.mjs om de shader-uitkomst te verifiëren zonder de
+  // GPU terug te lezen) — bij een wijziging aan de één, ook de ander
+  // bijwerken.
+  const GOLF_AMPLITUDE = [0.03, 0.02, 0.012];
+  const GOLF_FREQ_X = [1.3, -0.9, 2.1];
+  const GOLF_FREQ_Z = [0.7, 1.6, -0.4];
+  const GOLF_FREQ_T = [1.1, 0.7, 1.6];
+  golfHoogte = function (lokaalX, lokaalZ, klokTijd) {
+    let h = 0;
+    for (let i = 0; i < GOLF_AMPLITUDE.length; i++) {
+      h += Math.sin(lokaalX * GOLF_FREQ_X[i] + lokaalZ * GOLF_FREQ_Z[i] + klokTijd * GOLF_FREQ_T[i]) * GOLF_AMPLITUDE[i];
+    }
+    return h;
+  };
+  const GOLF_GLSL = GOLF_AMPLITUDE.map((a, i) =>
+    `h += sin(lokaalX * ${GOLF_FREQ_X[i].toFixed(2)} + lokaalZ * ${GOLF_FREQ_Z[i].toFixed(2)} + uTijd * ${GOLF_FREQ_T[i].toFixed(2)}) * ${a.toFixed(3)};`
+  ).join('\n          ');
+  // Laag 2: gebroken specular. Een procedurele normal-verstoring uit
+  // scrollende hash-ruis (zelfde hash-stijl als de T111-nachthemel, geen
+  // nieuwe textuur/asset) op de reeds-bestaande view-space `normal` uit
+  // MeshStandardMaterial's eigen `<normal_fragment_maps>`-chunk — precies
+  // de plek waar die variabele al gevuld is, vóór de lichtberekening 'm
+  // gebruikt (zelfde chunk-injectiepatroon als RIM_UNIFORMS/
+  // maakOndodeMateriaal() hierboven). Three.js-shader-chunknamen zijn GEEN
+  // publieke API — vastgelegd hier: chunk `<normal_fragment_maps>`,
+  // three@0.160.0.
+  function bouwWaterMateriaal() {
+    const materiaal = new THREE.MeshStandardMaterial({
+      color: 0x1a3a34, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.85,
+    });
+    materiaal.onBeforeCompile = (shader) => {
+      shader.uniforms.uTijd = { value: 0 };
+      materiaal.userData.shader = shader;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', `
+          uniform float uTijd;
+          varying vec2 vWaterLokaal;
+          #include <common>
+        `)
+        .replace('#include <begin_vertex>', `
+          #include <begin_vertex>
+          {
+            float lokaalX = position.x, lokaalZ = position.y;
+            vWaterLokaal = position.xy;
+            float h = 0.0;
+            ${GOLF_GLSL}
+            transformed.z += h;
+          }
+        `);
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `
+          uniform float uTijd;
+          varying vec2 vWaterLokaal;
+          float waterHash(vec2 p) {
+            p = fract(p * vec2(123.34, 456.21));
+            p += dot(p, p + 45.32);
+            return fract(p.x * p.y);
+          }
+          float waterNoise(vec2 p) {
+            vec2 i = floor(p), f = fract(p);
+            float a = waterHash(i), b = waterHash(i + vec2(1.0, 0.0));
+            float c = waterHash(i + vec2(0.0, 1.0)), d = waterHash(i + vec2(1.0, 1.0));
+            vec2 u = f * f * (3.0 - 2.0 * f);
+            return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+          }
+          #include <common>
+        `)
+        .replace('#include <normal_fragment_maps>', `
+          #include <normal_fragment_maps>
+          {
+            vec2 rimpelCoord = vWaterLokaal * 3.0 + vec2(uTijd * 0.15, uTijd * 0.09);
+            float n1 = waterNoise(rimpelCoord);
+            float n2 = waterNoise(rimpelCoord * 2.3 + 7.0);
+            vec2 rimpel = (vec2(n1, n2) - 0.5) * 0.35;
+            normal = normalize(normal + vec3(rimpel, 0.0));
+          }
+        `);
+    };
+    return materiaal;
+  }
+
   // De gracht: donker blauwgroen watervlak, licht transparant, net voorbij
-  // de vlonderrand.
+  // de vlonderrand, doorlopend tot aan de skyline (zie WATER_VLAK_LENGTE/
+  // WATER_VLAK_DIEPTE). Gesubdivideerd — zonder subdivisie heeft de
+  // PlaneGeometry maar 4 hoekpunten en is de vertex-deining onzichtbaar.
+  // Het segmentaantal is GEKOPPELD aan de afmeting (~0,7 m per segment)
+  // i.p.v. een vast getal: de golflengte van de deining ligt rond 3-5 m
+  // (zie GOLF_FREQ_*), dus bij grovere stappen zou de golf gaan aliassen —
+  // en dit vlak is sinds de feedback-fix ruim 3x zo groot als de eerste
+  // versie (die had 24x12 op 8x4 m).
+  const waterSegX = Math.round(WATER_VLAK_LENGTE / 0.7);
+  const waterSegZ = Math.round(WATER_VLAK_DIEPTE / 0.7);
+  waterMateriaal = bouwWaterMateriaal();
   waterMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(WATER_BREEDTE, gangDiepte + 2),
-    new THREE.MeshStandardMaterial({ color: 0x1a3a34, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.85 })
+    new THREE.PlaneGeometry(WATER_VLAK_LENGTE, WATER_VLAK_DIEPTE, waterSegX, waterSegZ),
+    waterMateriaal
   );
   waterMesh.rotation.x = -Math.PI / 2;
-  waterMesh.position.set(VLONDER_X_OOST + WATER_BREEDTE / 2, -0.05, gangCZ);
+  waterMesh.position.set(VLONDER_X_OOST + WATER_VLAK_LENGTE / 2, -0.05, gangCZ);
   wereld.add(waterMesh);
 
   // De boot: langwerpige, licht afgeronde romp uit simpele prims — puur
@@ -3402,6 +3684,59 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
   gLichtvlek.rotation.x = -Math.PI / 2;
   gLichtvlek.position.set(lantaarnX, 0.012, lantaarnZ);
   wereld.add(gLichtvlek);
+
+  // Ticket 114: de "fake" lantaarnstreep — een verticaal uitgerekte
+  // gradient-quad op het wateroppervlak i.p.v. een echte Reflector (zie de
+  // architectuurtoelichting: dat is een tweede scene-render voor iets dat
+  // toch grotendeels zwart is met één lichtstreep erin). Lang op de as die
+  // de speler vanaf de gracht/vlonder ziet (wereld-X, dezelfde richting
+  // als de kijkrichting op dat standpunt — zie berekenVisueleStandpunten()
+  // in helpers.mjs), smal in Z, kleurverloop via vertex colors (geen
+  // canvas-textuur nodig) van warm in het midden naar zwart aan alle vier
+  // de randen — leest als een zachte gloed, ook zonder echte alpha-fade.
+  const streepGeo = new THREE.PlaneGeometry(2.6, 0.22, 10, 1);
+  const streepPos = streepGeo.getAttribute('position');
+  const streepKleuren = new Float32Array(streepPos.count * 3);
+  for (let i = 0; i < streepPos.count; i++) {
+    const lengteFractie = Math.abs(streepPos.getX(i)) / 1.3;       // 0 midden, 1 einde
+    const breedteFractie = Math.abs(streepPos.getY(i)) / 0.11;     // 0 midden, 1 rand
+    const helder = Math.max(0, 1 - lengteFractie) * Math.max(0, 1 - breedteFractie);
+    streepKleuren[i * 3] = 1.0 * helder;
+    streepKleuren[i * 3 + 1] = 0.75 * helder;
+    streepKleuren[i * 3 + 2] = 0.42 * helder;
+  }
+  streepGeo.setAttribute('color', new THREE.Float32BufferAttribute(streepKleuren, 3));
+  reflectieStreepMesh = new THREE.Mesh(streepGeo,
+    new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.3, depthWrite: false, fog: false }));
+  reflectieStreepMesh.rotation.x = -Math.PI / 2;
+  // Op het water, net voorbij de vlonderrand, richting het midden van de
+  // gracht — geen fysiek-correcte plek onder de lantaarn (die staat op het
+  // dek, niet boven het water), maar dat hoort bij de "fake, nauwelijks te
+  // onderscheiden" aard van dit ticket.
+  reflectieStreepMesh.position.set(VLONDER_X_OOST + 1.6, -0.02, gangCZ);
+  wereld.add(reflectieStreepMesh);
+
+  // Per-frame update: aangeroepen vanuit gameLoop met `klok` (bevriest
+  // automatisch tijdens pauze/measurement-modus, T88 — zelfde patroon als
+  // updateNachthemel/updateSkylineRaampjes).
+  updateWaterAnimatie = function (klokTijd) {
+    // De onBeforeCompile-shader is pas na de EERSTE render van waterMesh
+    // gecompileerd — vóór dat moment bestaat userData.shader nog niet.
+    if (waterMateriaal.userData.shader) waterMateriaal.userData.shader.uniforms.uTijd.value = klokTijd;
+    // Boot-deining: bootGroep.position.y/rotation.z zijn hier de ENIGE
+    // schrijvers — updateBootPositie() (elders in gameLoop) raakt alleen
+    // .position.x aan, dus deze twee stapelen zonder conflict, exact zoals
+    // de architectuurtoelichting eist ("moet daar bovenop komen, niet in
+    // plaats van"). Zelfde golfHoogte() als het water zelf, dus de boot
+    // deint in tempo met de golven eronder.
+    bootGroep.position.y = golfHoogte(bootGroep.position.x - VLONDER_X_OOST, bootGroep.position.z - gangCZ, klokTijd) * 1.4;
+    bootGroep.rotation.z = golfHoogte(bootGroep.position.x - VLONDER_X_OOST + 3, bootGroep.position.z - gangCZ, klokTijd) * 0.6;
+    // Reflectiestreep-wobble: "vervormt met de golfnormaal" — een lichte
+    // rotatie om de eigen lengte-as, afgeleid van dezelfde golfHoogte()
+    // i.p.v. de GPU terug te lezen (goedkoop, zie architectuurtoelichting
+    // "kost een fractie").
+    reflectieStreepMesh.rotation.z = golfHoogte(1.6, 0, klokTijd) * 0.5;
+  };
 }
 
 /* ================================================================
@@ -3618,6 +3953,51 @@ let updateSkylineRaampjes;
   bouwSkylineLaag(skylineRnd, 4, BIJKEUKEN_CZ, 26, grachtStandpuntX + 30, 'z', 0, 8, 12, -Math.PI / 2);
   bouwSkylineLaag(skylineRnd, 4, BIJKEUKEN_CZ, 28, grachtStandpuntX + 36, 'z', 1, 10, 15, -Math.PI / 2);
   bouwSkylineLaag(skylineRnd, 4, BIJKEUKEN_CZ, 32, grachtStandpuntX + 40, 'z', 2, 13, 19, -Math.PI / 2);
+
+  // Feedback-fix ("bij de boot lijken de huizen in de verte te zweven in het
+  // niks"). Klopte: de skylinelagen stonden op y=0 zonder dat er ONDER ze
+  // iets lag — het water hield eerder op, en daarachter was pure leegte waar
+  // je de onderkant van de gevels tegen de hemelkoepel zag aftekenen.
+  //
+  // Oplossing: een verre oever. Eén plat vlak per skylinegroep, in exact
+  // dezelfde kleur als de koepel ONDER de horizon (kleurGrond, 0x020406) en
+  // net als de skyline `fog:false`. Dat is de truc waardoor dit werkt zonder
+  // een zichtbare "rand van de wereld": de oever en de onderste helft van de
+  // hemelkoepel hebben dezelfde kleur, dus waar het vlak ophoudt gaat het
+  // naadloos over in de koepel — je ziet nooit een harde overgang, alleen
+  // een horizon. De skylinegebouwen (0x03050a..0x0b101b) zijn een fractie
+  // LICHTER dan de oever, dus ze blijven als silhouet leesbaar tegen de
+  // lichtere hemel erboven, maar staan nu zichtbaar ergens op.
+  //
+  // Bewust op y = -0,02: onder de begane grond van het pand (0) zodat het
+  // nergens door een vloer heen prikt, maar boven het wateroppervlak
+  // (-0,05) zodat de oever niet in de gracht zakt.
+  function bouwVerreGrond(cx, cz, breedte, diepte) {
+    const grond = new THREE.Mesh(
+      new THREE.PlaneGeometry(breedte, diepte),
+      new THREE.MeshBasicMaterial({ color: 0x020406, fog: false })
+    );
+    grond.rotation.x = -Math.PI / 2;
+    grond.position.set(cx, -0.02, cz);
+    grond.userData.verreGrond = true;   // debug/test-marker
+    wereld.add(grond);
+    return grond;
+  }
+  // Oostoever: begint waar het water ophoudt (VLONDER_X_OOST +
+  // WATER_VLAK_LENGTE = 45,5) en loopt tot voorbij de verste skylinelaag,
+  // maar blijft binnen camera.far vanaf de gracht (17,25 + 46 = 63,25 is
+  // 46 m — net binnen de 50). Ruim in z, zodat de oever het hele blikveld
+  // vanaf de vlonder vult.
+  {
+    const oeverVan = VLONDER_X_OOST + WATER_VLAK_LENGTE;   // 45,5
+    const oeverTot = grachtStandpuntX + 46;                // 63,25
+    bouwVerreGrond((oeverVan + oeverTot) / 2, BIJKEUKEN_CZ, oeverTot - oeverVan, 60);
+  }
+  // Noordoever: onder de noordlaag. Vanaf de binnenplaats zie je de
+  // onderkant hiervan meestal niet (de binnenplaatsmuur en de
+  // bouwAchterGevel()-buurpanden staan ervoor), maar zodra je richting de
+  // noordmuur loopt kwam dezelfde zweefrand in beeld.
+  bouwVerreGrond(PLAATS_CX, -15.5 - 44, 70, 34);
 }
 
 // Ticket 27 (Map-lus M4): zone-E-inhoud — spawn-venster (actief pas na
@@ -11044,6 +11424,10 @@ function gameLoop(nu) {
   // hier al bijgewerkt (zie de Stroomuitval-dimlussen hierboven in
   // dezelfde gameLoop), dus deze aanroep leest altijd de actuele waarde.
   updateSkylineRaampjes(klok, stroomFactor);
+  // Ticket 114: zelfde klok-gedreven cosmetische zone (water/boot-deining +
+  // reflectiestreep-wobble bevriezen automatisch tijdens pauze/
+  // measurement-modus, T88).
+  updateWaterAnimatie(klok);
 
   if (terugslag > 0) {
     terugslag = Math.max(0, terugslag - dt * 6);
@@ -11394,6 +11778,8 @@ window.AmsterdamUndeadDebug = {
   // Ticket 113: raampjes-update (skylineRaampjes zelf blijft lokaal aan
   // het T112/T113-blok — vind ze via wereld.traverse() op userData.skylineRaam).
   updateSkylineRaampjes,
+  // Ticket 114: levend water.
+  updateWaterAnimatie, waterMateriaal, reflectieStreepMesh, golfHoogte,
   // Ticket 20: ledematen-animatie-constanten (voor tests)
   ARM_RUST_ROTATIE_X, BEEN_LOOP_AMPLITUDE, ARM_LOOP_FACTOR, HOOFD_KANTEL_AMPLITUDE,
   ROMP_BOB_HOOGTE, STROMPEL_BEEN_ZWAK, STROMPEL_BEEN_STERK,

@@ -297,15 +297,90 @@ const RENDER_BAND = 0.25;
 // naar 33,72. De overige zeven standpunten (en de ONgegradeerde
 // gracht-meting, die met 1,9% nog net binnen de band viel) bleven
 // ongewijzigd; alleen deze regel is aangepast.
+//
+// Ticket 114 (v0.22, §10.14-beslissing 89): levend water. Weer alleen
+// GRACHT (het enige standpunt met het water in beeld), ditmaal duidelijk
+// DONKERDER (gemiddelde 33,72 -> 31,62, -6,2%; mediaan 25,89 -> 25,60,
+// -1,1%, net binnen de band). Twee samenhangende oorzaken: (1) de
+// gebroken-specular-laag (de procedurele normal-verstoring uit
+// bouwWaterMateriaal()) verstrooit het licht van grachtLantaarnLicht over
+// een breder, minder fel gebied i.p.v. één scherpe speculaire highlight —
+// gemiddeld genomen minder pixels die vol wit oplichten; (2) de
+// vertex-deining kantelt een deel van het watervlak weg van de camera,
+// wat de MeshStandardMaterial-belichting op die vertices verzwakt. Beide
+// zijn precies de bedoelde werking van dit ticket (een levend, onrustig
+// wateroppervlak i.p.v. een vlakke, gelijkmatig verlichte plaat) — geen
+// bug. Calls/triangles bleven ruim binnen de band (kleine, verwachte
+// toename door de watersubdivisie (24x12 i.p.v. 1x1) en de nieuwe
+// reflectiestreep-mesh) en zijn niet bijgewerkt.
+//
+// T111/T114-vervolg (twee feedback-fixes van de gebruiker, samen één
+// verschuiving op GRACHT: gemiddelde 31,62 -> 22,07, mediaan 25,60 ->
+// 15,66). Beide fixes werken dezelfde kant op — donkerder — en beide zijn
+// correcties van een echte fout, geen smaakwijziging:
+//
+//  1. "Ik zie soms de blauwe lucht op de vloer; vanaf de horizon beneden
+//     moet de vloer altijd donker zijn." De nachthemel-koepel gebruikte
+//     clamp(r.y, 0, 1), waardoor de HELE onderste helft van de bol op de
+//     volle horizonkleur (0x2a3a52) stond. De koepel omsluit de camera, dus
+//     die lichte onderhelft scheen door elke kier in de wereldgeometrie —
+//     en, belangrijker voor deze meting, vulde bij een standpunt met
+//     pitch 0 de complete onderste beeldhelft zodra daar geen geometrie
+//     stond. Nu zakt alles onder de horizon weg naar kleurGrond (0x020406).
+//  2. "Bij de boot is maar een rechthoekig stuk water." Het watervlak was
+//     8x4 m en eindigde in het niets; het is nu 28x36 m en loopt door tot
+//     aan de T112-skyline. Waar vroeger (lichte) hemel onder de horizon
+//     stond, staat nu donker water.
+//
+// De gracht is het enige standpunt dat beide raakt: het kijkt met pitch 0
+// recht over het water naar de horizon, dus zijn onderste beeldhelft is
+// precies het gebied dat door allebei de fixes van "lichte hemel" naar
+// "donker water/grond" ging. De overige zeven standpunten kijken een
+// kamer in en zagen die onderhelft toch al niet.
+//
+// Bij dezelfde feedback-ronde zijn ook twee ECHTE gaten in de geometrie
+// dichtgemetseld (bouwVulMuur(): een bovendorpel boven de gangopening,
+// waar het atelier 3,6 m hoog is en de gang 3,2 m; en een vulling onder de
+// zuidmuur van de vliering, die pas op VLIERING_Y begon). Die gaten waren
+// er altijd al — vóór T111 keek je er tegen zwart aan, dus zag niemand ze.
+// Ze raken de gemeten helderheid niet meetbaar (beide zitten buiten het
+// beeld van de acht standpunten of vullen een gebied dat toch al donker
+// was), maar ze tellen wel mee in de render-metrics hieronder.
+//
+// Feedback-vervolg (verre oever + gevels op de binnenplaats). Twee zones
+// schoven opnieuw, allebei klein en allebei door toegevoegde geometrie:
+//  * BINNENPLAATS (mediaan 29,03 -> 29,82): de achtergevel van het eigen
+//    pand kreeg daklijst, goot, plint en acht kozijnen waarvan er vijf
+//    verlicht zijn, en alle binnenplaatsmuren kregen een muurafdekking.
+//    Meer verlicht oppervlak in beeld, dus een iets hogere mediaan.
+//  * GRACHT (gemiddelde 22,07 -> 23,23): het watervlak is 2 m ingekort
+//    (28 -> 26) om ruimte te maken voor de verre oever waar de skyline op
+//    staat, en die oever vult nu het gebied dat daarvoor koepel-onder-de-
+//    horizon was. Beide zijn dezelfde bijna-zwarte kleur (0x020406), dus
+//    het verschil is klein; een poging om het toe te schrijven aan tone
+//    mapping (MeshBasicMaterial gaat er wel doorheen, de koepel-shader
+//    niet) is met een meting WEERLEGD — `toneMapped:false` op de oever gaf
+//    exact dezelfde getallen. De precieze oorzaak is niet verder
+//    uitgezocht: het gaat om 1,2 helderheidspunt op een donkere zone, het
+//    beeld is visueel naadloos, en er is geen aanwijzing voor een fout.
+//
+// Driehoeken/calls van ALLE ACHT zones zijn hier ververst. Ze stonden nog
+// op de T112-waarden en waren sindsdien opgelopen door T113 (de
+// skyline-raampjes, die vanwege frustum-zonder-occlusion in bijna elke
+// zone meetellen — zie de T113-paragraaf hierboven) en T114 (het veel
+// grotere, fijner gesubdivideerde watervlak). Twee zones stonden daardoor
+// nét over de 25%-RENDER_BAND (atelier op calls, gracht op driehoeken);
+// de rest zat er onder maar wel al ver naast. Eén keer goed bijwerken is
+// zuiverder dan per ticket de ene regel bijstellen die toevallig omslaat.
 const BASISLIJN = {
-  woonkamer:    { gemiddelde: 30.57, mediaan: 18.08, calls: 520, triangles: 43771 },
-  gang:         { gemiddelde: 35.14, mediaan: 17.49, calls: 371, triangles: 33137 },
-  atelier:      { gemiddelde: 36.31, mediaan: 20.52, calls: 201, triangles: 23719 },
-  binnenplaats: { gemiddelde: 35.21, mediaan: 29.03, calls: 225, triangles: 24299 },
-  bijkeuken:    { gemiddelde: 29.58, mediaan: 19.20, calls: 475, triangles: 41033 },
-  kelder:       { gemiddelde: 16.38, mediaan: 12.26, calls: 142, triangles: 21803 },
-  vliering:     { gemiddelde: 11.54, mediaan: 1.57,  calls: 209, triangles: 26443 },
-  gracht:       { gemiddelde: 33.72, mediaan: 25.89, calls: 145, triangles: 21698 },
+  woonkamer:    { gemiddelde: 30.57, mediaan: 18.08, calls: 574, triangles: 50007 },
+  gang:         { gemiddelde: 35.14, mediaan: 17.49, calls: 423, triangles: 34973 },
+  atelier:      { gemiddelde: 36.31, mediaan: 20.52, calls: 252, triangles: 25235 },
+  binnenplaats: { gemiddelde: 35.75, mediaan: 29.82, calls: 269, triangles: 25785 },
+  bijkeuken:    { gemiddelde: 29.58, mediaan: 19.20, calls: 528, triangles: 46949 },
+  kelder:       { gemiddelde: 16.38, mediaan: 12.26, calls: 177, triangles: 23258 },
+  vliering:     { gemiddelde: 11.54, mediaan: 1.57,  calls: 253, triangles: 27946 },
+  gracht:       { gemiddelde: 23.23, mediaan: 15.87, calls: 186, triangles: 26905 },
 };
 
 const gemeten = {};
