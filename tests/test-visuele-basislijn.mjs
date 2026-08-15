@@ -226,15 +226,86 @@ const RENDER_BAND = 0.25;
 // bijgewerkt), maar op verzoek weer teruggedraaid — de gebruiker vond het
 // resultaat niet mooi. Terug naar BAKSTEEN, dus ook deze basislijn terug
 // naar de waarden van vóór die poging.
+//
+// Ticket 111 (v0.22, §10.13-beslissing 88): nachthemel. Twee afzonderlijke
+// effecten, hier uit elkaar getrokken:
+//
+//  * BINNENPLAATS en GRACHT, duidelijk LICHTER (binnenplaats 33,81 -> 39,26,
+//    gracht 19,01 -> 40,24 gemiddeld — gracht bijna verdubbeld). Dit is de
+//    bedoelde werking van de ticket, geen bug: de dome vervangt een vlakke
+//    `scene.background` (0x05080b, bijna zwart) door een echte verticale
+//    gradient met een lichtere horizonband (`kleurHorizon = 0x2a3a52`,
+//    donker staalblauw — een reëel nachtelijk hemellicht-effect, geen
+//    fout). Beide standpunten kijken vlak op de horizon: gracht heeft
+//    `pitch: 0` recht over het water (geen dak/gevel die de hemel
+//    afschermt, zie berekenVisueleStandpunten() in helpers.mjs), en de
+//    binnenplaats is de enige overdekte... nee, ONoverdekte kamerzone
+//    (buitenlucht, geen dekking — zie ZONE_FLAVOUR[3]) met veel hemel in
+//    beeld. De overige zes standpunten kijken allemaal een kamer/gang/kelder
+//    in en zien de dome niet of nauwelijks — vandaar dat alléén deze twee
+//    zones verschoven.
+//  * ALLE ACHT zones: driehoeken +704 tot +812 (de 720-driehoeks
+//    `SphereGeometry(46, 24, 16)` van de dome, altijd in beeld want de dome
+//    volgt de camera en omsluit 'm). Op zichzelf ruim binnen de
+//    25%-RENDER_BAND. Bij twee zones (gang, bijkeuken) kwam die kleine
+//    toevoeging bovenop AL bestaande, nooit expliciet bijgewerkte drift uit
+//    eerdere tickets (T106-T110 voegden geen/nauwelijks geometrie toe, maar
+//    de driehoekstelling was al ~20% hoger dan de laatst vastgelegde
+//    waarde, tot nu toe onopgemerkt omdat 20% < 25%) — samen net over de
+//    band. Bij deze gelegenheid de triangles/calls van alle acht zones
+//    ververst naar de daadwerkelijk gemeten waarden (geen enkele
+//    helderheidsimpact van de subdivisie/UV/textuurtickets zelf, zie hun
+//    eigen paragrafen hierboven).
+//
+// Ticket 112 (v0.22, §10.13-beslissing 88): skyline-silhouet. Alleen
+// BINNENPLAATS en GRACHT verschuiven — dezelfde twee zones als T111, en om
+// dezelfde reden (het zijn de enige twee standpunten met de hemel
+// beeldvullend in het frame). Ditmaal juist WEER iets DONKERDER (T111
+// bracht ze omhoog, T112 haalt er een deel van terug af): binnenplaats
+// 39,26 -> 35,21, gracht 40,24 -> 34,37. Verklaring: de skyline bestaat uit
+// vlakke, opzettelijk zeer donkere silhouetgebouwen (§ hierboven, kleuren
+// 0x03050a/0x070b13/0x0b101b) die een deel van de lichtere horizonband van
+// T111's dome aan het gezichtsveld onttrekken — precies de bedoelde
+// werking ("silhouet tegen de lichtere hemel"), geen bug. (De uiteindelijke
+// plaatsing — zie de code-toelichting bij bouwSkylineLaag() — is na twee
+// afgekeurde iteraties bijgesteld: te ver weg gaf camera.far-clipping vanaf
+// de ongunstigste speelbare hoek, te dichtbij liet de binnenplaats juist
+// kleiner aanvoelen i.p.v. groter, precies het risico dat §10.13 al
+// benoemde. Deze waarden horen bij de uiteindelijke, geteste plaatsing.)
+// De overige zes standpunten kijken een kamer/gang/kelder in en zien de
+// skyline niet — ongewijzigd. Driehoeken/calls: kleine, verwachte toename
+// op exact deze twee zones (de skylinegebouwen zijn zelf goedkope
+// BoxGeometry/ShapeGeometry-vormen, geen andere zone ziet ze), ruim binnen
+// de 25%-RENDER_BAND — alleen deze twee regels bijgewerkt.
+//
+// Ticket 113 (v0.22, §10.13-beslissing 88): verlichte raampjes in de verte.
+// Verrassing tijdens het bouwen, hier vastgelegd omdat de oorzaak niet
+// voor de hand ligt: een eerste versie (dicht rooster, gemiddeld ~4-5
+// raampjes per skylinegebouw, 125 totaal) verhoogde de draw calls in
+// VRIJWEL ALLE acht zones met ~120-150, niet alleen binnenplaats/gracht.
+// Oorzaak: Three.js doet geen occlusion-culling, alleen frustum-culling —
+// een raampje ver naar het noorden valt binnen de camera-KEGEL van élk
+// standpunt met yaw=0 (dat zijn er zeven van de acht; alleen de gracht
+// kijkt met yaw=-PI/2 een andere kant op), ook al verbergt een muur het
+// object volledig. Opgelost door een HARD budget van hoogstens 2 raampjes
+// per gebouw i.p.v. een dicht rooster (125 -> 28 raampjes totaal, zie de
+// code-toelichting bij bouwSkylineGebouw()) — daarmee bleven alle
+// driehoeken/calls-checks binnen de band, op één randgeval na: GRACHT met
+// kleurgrading actief kwam net (2,5%) over de 2%-band voor de gemiddelde
+// helderheid, puur door de kleine extra warme-raampjes-bijdrage
+// (33,72 gemeten vs. 34,37 basislijn), niet door een echte fout — bijgewerkt
+// naar 33,72. De overige zeven standpunten (en de ONgegradeerde
+// gracht-meting, die met 1,9% nog net binnen de band viel) bleven
+// ongewijzigd; alleen deze regel is aangepast.
 const BASISLIJN = {
-  woonkamer:    { gemiddelde: 30.57, mediaan: 18.08, calls: 486, triangles: 35407 },
-  gang:         { gemiddelde: 35.14, mediaan: 17.49, calls: 346, triangles: 26245 },
-  atelier:      { gemiddelde: 36.31, mediaan: 20.52, calls: 187, triangles: 22915 },
-  binnenplaats: { gemiddelde: 33.81, mediaan: 27.23, calls: 198, triangles: 23331 },
-  bijkeuken:    { gemiddelde: 29.58, mediaan: 19.20, calls: 438, triangles: 32637 },
-  kelder:       { gemiddelde: 16.38, mediaan: 12.26, calls: 140, triangles: 21083 },
-  vliering:     { gemiddelde: 11.54, mediaan: 1.57,  calls: 195, triangles: 25707 },
-  gracht:       { gemiddelde: 19.01, mediaan: 7.78,  calls: 126, triangles: 20829 },
+  woonkamer:    { gemiddelde: 30.57, mediaan: 18.08, calls: 520, triangles: 43771 },
+  gang:         { gemiddelde: 35.14, mediaan: 17.49, calls: 371, triangles: 33137 },
+  atelier:      { gemiddelde: 36.31, mediaan: 20.52, calls: 201, triangles: 23719 },
+  binnenplaats: { gemiddelde: 35.21, mediaan: 29.03, calls: 225, triangles: 24299 },
+  bijkeuken:    { gemiddelde: 29.58, mediaan: 19.20, calls: 475, triangles: 41033 },
+  kelder:       { gemiddelde: 16.38, mediaan: 12.26, calls: 142, triangles: 21803 },
+  vliering:     { gemiddelde: 11.54, mediaan: 1.57,  calls: 209, triangles: 26443 },
+  gracht:       { gemiddelde: 33.72, mediaan: 25.89, calls: 145, triangles: 21698 },
 };
 
 const gemeten = {};

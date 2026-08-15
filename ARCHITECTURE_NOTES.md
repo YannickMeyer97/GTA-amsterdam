@@ -6449,8 +6449,8 @@ erin omdat de koppeling aan `stroomFactor` het van decoratie naar
 verhaal tilt: tijdens een Stroomuitval zie je dat het niet alleen jouw
 pand is.
 
-**Implementatieverslag T93 (uitgevoerd; T111/T112/T113 blijven
-ontwerp-only voor deze ronde).** `FOG_BUITEN = { kleur: FOG_NORMAAL.kleur,
+**Implementatieverslag T93 (uitgevoerd; T112/T113 blijven ontwerp-only
+voor deze ronde, T111 hieronder).** `FOG_BUITEN = { kleur: FOG_NORMAAL.kleur,
 near: FOG_NORMAAL.near, far: 40 }` — alleen `far` wijkt af, zodat een
 overgang nooit ook de kleur/dichtbij-band laat springen. `ZONE_BUITEN =
 [false, false, false, true, false]` classificeert alleen `zoneVan()`-index
@@ -6488,6 +6488,245 @@ naar het profiel van de HUIDIGE zone, getest zowel eindigend-binnen als
 eindigend-buiten). Volledige regressiesuite ná T93+T94 samen: **65/66
 groen** — de ene aanvankelijke fail was `test-camerabeweging.mjs`'s
 schotenreeks-test, root-cause en fix hieronder bij T94/T95.
+
+**Implementatieverslag T111 (uitgevoerd, Fase 7 — "De wereld buiten").**
+Eén `THREE.Mesh` (`nachthemel`) met `SphereGeometry(NACHTHEMEL_STRAAL=46,
+24, 16)` — de straal ruim onder `camera.far` (50 m), zodat T112's skyline
+(tot ~40 m, zie de eigen implementatieverslag hieronder) er straks nog net
+binnen past zonder dat de dome zelf geclipt wordt. Een eigen
+`ShaderMaterial` (`side: BackSide` — de camera zit
+BINNEN de bol —, `depthWrite: false`, en bewust `fog: false`: de dome IS
+de achtergrond, `fog: true` zou 'm juist naar `scene.background` toe
+laten vervagen in plaats van andersom). De fragment-shader doet drie
+dingen, elk goedkoop gehouden (§10.3, fragment-bound budget): een
+verticale gradient (`mix(kleurHorizon, kleurZenit, pow(hoogte, 0.55))`,
+donker staalblauw naar bijna-zwart), een stilstaand sterrenveld uit een
+enkele hash-sample op de richtingsvector (spaarzaam gedrempeld,
+`step(0.9925, ...)`, dus het overgrote deel van de hemel blijft leeg),
+en een traag scrollende wolkenlaag uit een 3-octaven fbm (uniform `tijd`,
+laag contrast, alleen zichtbaar dicht bij zenit zodat de wolken de
+horizon niet verdringen). Geen enkel CDN-asset — alles hash-/fbm-ruis in
+GLSL, zelfde discipline als de rest van het spel.
+
+De dome volgt de camera (`updateNachthemel()` zet `nachthemel.position =
+camera.position`, elke frame, in de bestaande cosmetische zone van
+`gameLoop` direct na `updateBootPositie()`) — op een straal van "maar"
+46 m zou de parallax bij het lopen anders zichtbaar worden. Het
+`tijd`-uniform wordt gevoed met `klok`, niet `dt`/`nu`: `klok` loopt
+alleen op tijdens `spelActief`, dus de wolken bevriezen automatisch
+tijdens pauze/measurement-modus (T88) zonder dat er een nieuw
+bevries-mechanisme nodig was — hetzelfde patroon als de bootpositie en
+de gracht-lantaarnpuls.
+
+**De T110-postmortem betaalde zich meteen uit.** Na de fog-uniforms-crash
+van T110 (`fog: true` zonder `THREE.UniformsLib.fog` gemerged in de
+uniforms crashte elke frame in een gefogde kamer) is een proactieve
+`page.on('pageerror', ...)`-sweep over alle acht standpunten nu vaste
+prik ná elke nieuwe `ShaderMaterial`. Voor T111 leverde die sweep **nul**
+fouten op — verwacht, want de dome kiest bewust `fog: false` en heeft dus
+geen `THREE.UniformsLib.fog`-uniforms nodig, maar de check bevestigt dat
+in plaats van het aan te nemen.
+
+**Basislijn-impact, twee losse effecten.** `test-visuele-basislijn.mjs`
+(65/65 na bijwerking) moest op twee onafhankelijke punten worden
+aangepast:
+
+  * BINNENPLAATS en GRACHT, gemiddelde helderheid duidelijk OMHOOG
+    (binnenplaats 33,81 → 39,26; gracht 19,01 → 40,24, bijna
+    verdubbeld). Dit is de bedoelde werking van het ticket, geen bug: de
+    dome vervangt een vlakke `scene.background` (`0x05080b`,
+    bijna-zwart) door een echte horizonband die BEWUST lichter is
+    (`kleurHorizon = 0x2a3a52`, een reëel nachtelijk
+    hemellicht-effect). Beide standpunten kijken vlak op die horizon —
+    de gracht heeft `pitch: 0` recht over het water (geen dak dat de
+    hemel afschermt), de binnenplaats is de enige standpunt-zone die
+    letterlijk "buitenlucht, geen dekking" is (`ZONE_FLAVOUR[3]`). De
+    overige zes standpunten kijken een kamer/gang/kelder in en zien de
+    dome nauwelijks — die brightness-checks verschoven dan ook niet. Een
+    voor/na-schermafbeelding van de gracht (zie hieronder) laat het
+    verschil meteen zien: van een vlak zwart niets naar een zichtbare
+    sterrenhemel boven het water.
+  * ALLE ACHT zones, driehoeken +704 tot +812 (de 720-driehoeks
+    bol, altijd in beeld want ze omsluit de camera). Op zichzelf ruim
+    binnen de 25%-RENDER_BAND. Bij twee zones (gang, bijkeuken) kwam die
+    kleine toevoeging bovenop reeds bestaande, nooit expliciet
+    bijgewerkte driehoeksdrift uit eerdere tickets (T106-T110 raakten de
+    telling niet noemenswaardig, maar de laatst vastgelegde
+    BASISLIJN-waarde was daardoor al ~20% achterhaald — onder de
+    25%-grens, dus tot nu toe onopgemerkt) — samen precies over de band.
+    Bij deze gelegenheid zijn de triangles/calls van alle acht zones
+    ververst naar de daadwerkelijk gemeten waarden.
+
+`tests/test-nachthemel.mjs` (nieuw, 15 checks): de dome is een Mesh met
+`SphereGeometry` op de verwachte straal, het materiaal is een eigen
+`ShaderMaterial` met `side:BackSide`/`depthWrite:false`/`fog:false`/niet
+transparant, hangt precies één keer in `wereld`, `updateNachthemel()`
+zet de positie exact gelijk aan `camera.position` en het tijd-uniform
+exact gelijk aan het doorgegeven argument, twee metingen op hetzelfde
+standpunt geven bit-voor-bit identieke screenshots (determinisme onder
+`openVoorVisueleMeting()`), geen van de ronde-brede invarianten (28
+lichten, 56 obstakels, 14 interactiepunten) is geraakt, en zes echte
+frames met de dome actief geven nul pageerrors. Volledige regressiesuite
+na T111: groen (zie run-all.mjs-log).
+
+**Implementatieverslag T112 (uitgevoerd, MET een bewuste afwijking van de
+architectuurschets — zie hieronder).** Drie lagen platte
+silhouetgebouwen: een noordlaag (5 gebouwen per laag, zichtbaar vanaf de
+binnenplaats, voorgevel naar +Z/zuid) en een oostlaag (4 gebouwen per
+laag, zichtbaar vanaf de gracht/vlonder, voorgevel naar -X/west via
+`rotY=-PI/2` op de hele groep) — samen 27 gebouwen. Elk gebouw is een
+`THREE.Group` met een `BoxGeometry`-romp (dezelfde bouwsteen als `blok()`,
+maar zonder `blok()` letterlijk te hergebruiken — zie hieronder) en,
+voor ongeveer een derde van de gebouwen (`rnd() < 0.35`), een
+driehoekige puntgevel via een gedeelde `THREE.Shape`/`ShapeGeometry`.
+Breedte/hoogte/dak-keuze/positie-jitter komen uit een deterministische
+PRNG (`maakZaadRandom(tekstZaad('skyline-v112'))`, hetzelfde patroon als
+T107's klinkerrealisme) — reproduceerbaar per page-load, geen
+`Math.random()`.
+
+**Materiaal: bewust GEEN `blok()`/`matFamilie()`.** Een silhouet moet
+vlak zwart blijven ongeacht scene-lichten (een PBR-materiaal zou op het
+hemisfeerlicht/de puntlichten reageren) én ongeacht fog (`fog: true` zou
+het naar `scene.fog.color` laten vervagen — bij de twee verste lagen zou
+dat het silhouet vrijwel onzichtbaar maken, exact het "oplossen in het
+niets" dat dit ticket vermijdt, dezelfde afweging als de T111-dome). Drie
+gedeelde `MeshBasicMaterial`s (`SKYLINE_KLEUREN`, één per laag, iets
+lichter naar achteren als zachte diepte-cue, altijd ruim donkerder dan
+de hemel-horizon), `side: DoubleSide` zodat de platte geveltop-driehoek
+vanaf elke hoek zichtbaar blijft. `test-skyline.mjs` bevestigt: precies 3
+gedeelde materialen voor 27 gebouwen (geen 27 losse), en dat élk gebouw
+`fog:false`/`MeshBasicMaterial` heeft.
+
+**De schaal-afweging (het risico dat §10.13 al benoemde) kostte twee
+mislukte iteraties, hier vastgelegd omdat het de kern van dit ticket
+is.** De architectuurschets noemt "30/40/45 m" zonder een referentiepunt
+te specificeren. Eerste poging: die afstanden gemeten vanaf de bestaande
+T88-standpunten (binnenplaats/gracht), met een brede horizontale
+spreiding voor een natuurlijke skyline-uitstraling. Dat zag er in een
+screenshot vanaf het standpunt zelf goed uit, maar `camera.far` is een
+vaste, harde grens (50 m, invariant) en de speler staat niet vastgeklonken
+op het standpunt — de binnenplaats is zelf ~17x16 m. Een test die de
+afstand meet vanaf de daadwerkelijke speelbare UITHOEKEN (niet alleen het
+standpunt) tegen elk skyline-gebouw legde bloot dat de verste laag, vanaf
+de ongunstigste hoek, tot ~52 m kon oplopen — voorbij `camera.far`,
+zichtbaar wegklappende gebouwen zodra de speler naar de rand liep. Tweede
+poging: de dieptes drastisch verkleind (20/26/32 m) om ruim binnen de
+grens te blijven. Dat loste de clipping op, maar een beeldverslag-
+screenshot liet meteen zien dat dít precies het risico uit §10.13 was:
+de gebouwen vulden het beeld als een blokkerende muur, de binnenplaats
+voelde kleiner in plaats van groter. Derde, uiteindelijke poging: de
+diepte zo dicht mogelijk bij de architectuurschets gehouden (noordlaag
+26/30/34 m, oostlaag — de smalle gracht/vlonder-strook heeft nauwelijks
+eigen "reikwijdte", dus die blijft dichter bij het origineel — 30/36/40
+m) met een iets smallere spreiding op de verste laag (de dominante factor
+in de wegklap-afstand bleek de spreiding, niet de diepte zelf).
+`test-skyline.mjs` test dit expliciet tegen de vier speelbare
+GRENS-uithoeken van beide zones: elke laag blijft vanaf elke speelbare
+positie minstens 4 m binnen `camera.far`. Twee voor/na-beeldverslagen
+(de mislukte tweede poging vs. de uiteindelijke plaatsing) tonen het
+verschil.
+
+`test-skyline.mjs` (nieuw, 13 checks): 27 gebouwen (9 per laag, 5 noord +
+4 oost), elk precies 1 romp en 0-of-1 dak (consistent met
+`userData.skylineDak`), minstens één maar niet alle gebouwen hebben een
+dak (variatie), 3 gedeelde materialen, `fog:false`/`MeshBasicMaterial`
+overal, de camera.far-marge-check hierboven, en de bestaande
+§10.2-invarianten (56 obstakels, 14 interactiepunten, 28 lichten — de
+skyline zelf is geen lichtbron, dat is T113) blijven intact.
+
+**Basislijn-impact.** Alleen BINNENPLAATS en GRACHT (dezelfde twee zones
+als T111, om dezelfde reden), en ditmaal juist weer een stuk DONKERDER
+(binnenplaats 39,26 → 35,21; gracht 40,24 → 34,37): de donkere
+silhouetten onttrekken een deel van T111's lichtere horizonband aan het
+gezichtsveld — de bedoelde werking. De overige zes standpunten zien de
+skyline niet. Volledige regressiesuite na T112: groen (zie
+run-all.mjs-log).
+
+**Implementatieverslag T113 (uitgevoerd, MET een bewuste
+scope-reductie — zie hieronder).** Kleine `PlaneGeometry`-vlakjes
+(0,32x0,46m) op de voorgevel van T112's silhouetgebouwen, kleur
+`PALET.raamWarmAmber`/`raamWarmZacht` (dezelfde twee kleuren als de
+bestaande gevelraampjes van `bouwAchterGevel()`), `MeshBasicMaterial`
+(`transparent`, `depthWrite:false`, `fog:false` — zelfde afweging als de
+romp/de dome). In tegenstelling tot de romp/het dak (3 gedeelde
+materialen voor 27 gebouwen) krijgt ÉLK raampje een EIGEN
+materiaal-instantie: elk raampje animeert zijn eigen opacity
+onafhankelijk, dat kan niet via één gedeeld materiaal.
+
+**Animatie: sign(sin()) i.p.v. een puls.** Elk raampje krijgt bij het
+bouwen een deterministische fase (`rnd() * 2π`). `updateSkylineRaampjes
+(klokTijd, stroomFactorWaarde)` — aangeroepen vanuit gameLoop's bestaande
+`klok`-gedreven cosmetische zone, direct na `updateNachthemel(klok)` —
+zet de opacity per raampje op `basis * (sin(klok * RAAMPJE_FREQUENTIE +
+fase) > 0 ? 1 : 0) * stroomNormaal`. `RAAMPJE_FREQUENTIE=0,006 rad/s` is
+bewust extreem laag: een sign()-drempel op een trage sinus geeft
+zeldzame, harde aan/uit-wissels ("iemand liet het licht aan of uit"),
+geen puls of ademhaling (dat zou eerder lezen als een signaal dat om
+aandacht vraagt, het tegenovergestelde van een Accent-tier achtergrond-
+detail). Doordat de update op `klok` draait (niet `dt`/`nu`), bevriest
+het patroon automatisch tijdens pauze/measurement-modus (T88) — zelfde
+gratis determinisme als T111's dome, bevestigd in
+`test-skyline-raampjes.mjs` met een bit-voor-bit identieke-opacity-check.
+
+**Stroomuitval: bewust GEEN vloer.** `stroomNormaal` mapt
+`STROOMUITVAL_DIM_FACTOR` (0,12, de bestaande blackout-bodem) naar
+PRECIES 0 — niet naar een kleine restwaarde zoals `BUITEN_STROOM_VLOER`
+(0,5) dat doet voor de lichten van het EIGEN pand. Dat verschil is
+opzettelijk: de eis uit §10.13 is dat de speler tijdens een Stroomuitval
+ziet dat "het niet alleen jouw pand is" — een skyline die net als het
+eigen pand op een vloer bleef doorgloeien zou die pointe tegenspreken.
+`test-skyline-raampjes.mjs` bevestigt: bij `stroomFactor=1` staat een
+natuurlijke deelverzameling aan, bij `stroomFactor=STROOMUITVAL_DIM_FACTOR`
+staat ELK raampje op opacity exact 0.
+
+**De scope-reductie: van een dicht rooster naar een hard budget van 2 per
+gebouw — een performance-verrassing, niet een ontwerpwens.** De eerste
+versie vulde een compleet rooster (kolommen/rijen op basis van
+gebouwbreedte/-hoogte, 65% vulkans) — gemiddeld ~4,6 raampjes per gebouw,
+125 in totaal. Een basislijn-hermeting daarna liet iets onverwachts zien:
+de draw calls stegen niet alleen op binnenplaats/gracht, maar in VRIJWEL
+ELKE zone (woonkamer +149, gang +149, atelier +149, bijkeuken +149,
+kelder +64, vliering +136), inclusief kamers die kilometers ver van de
+skyline af liggen én er met muren en verdiepingen tussenin voor staan.
+Root cause: Three.js doet standaard GEEN occlusion-culling, alleen
+frustum-culling — een object dat binnen de camera-KEGEL van een
+standpunt valt, telt mee als draw call zodra het binnen `camera.far`
+ligt, OOK als een muur het object voor de speler onzichtbaar maakt (de
+GPU depth-test verbergt het correct ACHTER de muur, maar de call zelf is
+al gedaan). Zeven van de acht T88-standpunten hebben toevallig
+`yaw=0` ("kijk naar het noorden") — exact de richting van de
+noordlaag-skyline — dus elk raampje daar viel binnen het frustum van
+bijna elke kamer, ondanks dat de speler het nooit kan zien. Met 125 objecten werd
+dat voor het eerst zichtbaar in de RENDER_BAND (10-16 losse T109/T110-
+objecten eerder deze ronde bleven daar altijd ruim onder). Oplossing:
+géén per-cel-kans meer (die schaalt met roostergrootte), maar een HARD
+budget van hoogstens 2 raampjes per gebouw, willekeurig gekozen uit de
+kandidaat-cellen (15% kans op 0, anders 1, met 40% kans op een 2e) — 125
+→ 28 raampjes. Dat is minder dicht dan de eerste, mooiere schets, maar op
+26-40m afstand is een raampje toch maar een paar pixels; het
+beeldverslag laat zien dat het effect (een paar zichtbare, warme
+lichtjes in de verte) overeind blijft.
+
+`test-skyline-raampjes.mjs` (nieuw, 15 checks): structuur
+(PlaneGeometry/MeshBasicMaterial/transparent/depthWrite/fog), UNIEK
+materiaal per raampje (in tegenstelling tot de gedeelde romp-materialen),
+kleur uit het bestaande `PALET`, bescheiden opacity-bereik (0,2-0,45,
+ruim onder de bloom-threshold van 0,82 na compositie tegen de donkere
+gevel), het volledig-uit-gedrag bij `STROOMUITVAL_DIM_FACTOR` (geen
+vloer), determinisme (dezelfde klok-waarde ⇒ bit-voor-bit dezelfde
+opacities), zes frames zonder pageerror, en de bestaande invarianten
+(56 obstakels, 14 interactiepunten, 28 lichten — de raampjes zijn geen
+lichtbron, puur materiaal-opacity).
+
+**Basislijn-impact (na de scope-reductie naar 28 raampjes).** Alleen
+GRACHT, en alleen de "MET kleurgrading"-gemiddelde-check, kwam nog net
+(2,5%) over de 2%-band (33,72 gemeten vs. 34,37 basislijn) — de kleine
+extra warme-raampjes-bijdrage onder grading. Bijgewerkt naar 33,72; de
+ONgegradeerde gracht-meting (1,9%) en alle andere 63 checks bleven al
+binnen de band. Volledige regressiesuite na T113: groen (zie
+run-all.mjs-log) — hiermee is Fase 7 ("De wereld buiten") compleet:
+T111 (nachthemel), T112 (skyline-silhouet) en T113 (verlichte raampjes)
+zijn alle drie geïmplementeerd, getest en gedocumenteerd.
 
 ### 10.14 Beslissing 89 — Levend water zonder tweede scene-render (T114)
 

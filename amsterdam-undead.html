@@ -913,6 +913,109 @@ addEventListener('resize', () => {
 const wereld = new THREE.Group();
 scene.add(wereld);
 
+// Ticket 111 (v0.22, §10.13-beslissing 88): nachthemel — een grote,
+// camera-volgende `SphereGeometry` (`side: BackSide`, `depthWrite: false`,
+// `fog: false`) met een eigen `ShaderMaterial`: verticale gradient van
+// donker staalblauw (horizon) naar bijna-zwart (zenit), een sterrenveld uit
+// hash-ruis, en een traag scrollende wolkenlaag uit fractale ruis. Bewust
+// GEEN `fog: true` — de dome IS de achtergrond, fog zou 'm juist naar
+// `scene.background` toe laten vervagen i.p.v. andersom.
+//
+// Straal ruim onder camera.far (50m): 46m laat de skyline (T112, tot 45m)
+// er nog net binnen passen zonder dat de dome zelf geclipt wordt.
+const NACHTHEMEL_STRAAL = 46;
+function bouwNachthemelMateriaal() {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      tijd: { value: 0 },
+      kleurHorizon: { value: new THREE.Color(0x2a3a52) },   // donker staalblauw
+      kleurZenit: { value: new THREE.Color(0x03050a) },     // bijna-zwart
+    },
+    vertexShader: `
+      varying vec3 vRichting;
+      void main() {
+        vRichting = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float tijd;
+      uniform vec3 kleurHorizon;
+      uniform vec3 kleurZenit;
+      varying vec3 vRichting;
+
+      // Standaard hash-ruis (geen textuur, geen CDN-asset) — deterministisch
+      // per richting, dus de sterren staan stil t.o.v. de hemel, niet t.o.v.
+      // de camera.
+      float hash(vec2 p) {
+        p = fract(p * vec2(123.34, 456.21));
+        p += dot(p, p + 45.32);
+        return fract(p.x * p.y);
+      }
+      float noise(vec2 p) {
+        vec2 i = floor(p), f = fract(p);
+        float a = hash(i), b = hash(i + vec2(1.0, 0.0));
+        float c = hash(i + vec2(0.0, 1.0)), d = hash(i + vec2(1.0, 1.0));
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+      }
+      // Fractale ruis (3 octaven) voor de wolkenlaag — goedkoop gehouden
+      // (drie samples, geen loop-onafhankelijke kosten) op een
+      // fragment-bound scene (§10.3).
+      float fbm(vec2 p) {
+        float som = 0.0, amp = 0.5;
+        for (int i = 0; i < 3; i++) {
+          som += amp * noise(p);
+          p *= 2.02;
+          amp *= 0.5;
+        }
+        return som;
+      }
+
+      void main() {
+        vec3 r = normalize(vRichting);
+        // Verticale gradient: r.y loopt van -1 (recht omlaag) tot +1 (recht
+        // omhoog) — de dome is BackSide dus alleen het bovenste halfrond is
+        // ooit echt zichtbaar, maar clamp toch defensief.
+        float hoogte = clamp(r.y, 0.0, 1.0);
+        vec3 hemel = mix(kleurHorizon, kleurZenit, pow(hoogte, 0.55));
+
+        // Sterrenveld: een fijn hash-raster op de richtingsvector (twee
+        // assen van de eenheidsbol, genoeg voor een stilstaand sterrenveld
+        // zonder poolvervorming middenin het zichtveld), spaarzaam
+        // gedrempeld zodat het overgrote deel van de hemel leeg blijft.
+        vec2 sterCoord = r.xz / (1.0 + abs(r.y)) * 40.0;
+        float sterWaarde = hash(floor(sterCoord));
+        float ster = step(0.9925, sterWaarde) * hoogte;
+
+        // Wolken: traag scrollend (uniform tijd, geen echte animatie-staat
+        // nodig), laag-contrast, alleen zichtbaar tegen de donkerste band
+        // (dicht bij zenit) zodat ze de horizon niet verdringen.
+        float wolk = fbm(r.xz * 1.6 + vec2(tijd * 0.006, tijd * 0.003));
+        float wolkDekking = smoothstep(0.55, 0.85, wolk) * 0.1 * hoogte;
+
+        vec3 kleur = hemel + vec3(ster) * 0.8 + vec3(wolkDekking);
+        gl_FragColor = vec4(kleur, 1.0);
+      }
+    `,
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+  });
+}
+const nachthemelMateriaal = bouwNachthemelMateriaal();
+const nachthemel = new THREE.Mesh(new THREE.SphereGeometry(NACHTHEMEL_STRAAL, 24, 16), nachthemelMateriaal);
+wereld.add(nachthemel);
+// Camera-volgend: de dome moet met de speler meebewegen (anders wordt de
+// parallax bij het lopen zichtbaar op een straal van "maar" 46m) — bijgewerkt
+// in de bestaande cosmetische zone van gameLoop, niet in updateSpeler() (dat
+// zou een onnodige koppeling met de speler-fysica leggen voor iets dat puur
+// decoratief is).
+function updateNachthemel(klokTijd) {
+  nachthemel.position.copy(camera.position);
+  nachthemelMateriaal.uniforms.tijd.value = klokTijd;
+}
+
 // Ticket 46-fix (feedback): buitenlichten (maanlicht + lantaarns op de
 // binnenplaats) — elektrisch, dimmen dus ook mee tijdens een Stroomuitval,
 // maar met een eigen, hogere vloer dan binnen (zie BUITEN_STROOM_VLOER in
@@ -3299,6 +3402,222 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
   gLichtvlek.rotation.x = -Math.PI / 2;
   gLichtvlek.position.set(lantaarnX, 0.012, lantaarnZ);
   wereld.add(gLichtvlek);
+}
+
+/* ================================================================
+   TICKET 112 (v0.22, §10.13-beslissing 88) — SKYLINE-SILHOUET: drie
+   lagen platte, zwarte verre bebouwing (gemeten vanaf de twee bestaande
+   visuele standpunten T88 al gebruikt: binnenplaats en gracht). Noordlaag
+   zichtbaar vanaf de binnenplaats (open "buitenlucht, geen dekking"-zone,
+   ZONE_FLAVOUR[3]), oostlaag zichtbaar vanaf de gracht/vlonder over het
+   water.
+
+   IP-regel uit CLAUDE.md geldt onverkort: generieke pandvormen, GEEN
+   herkenbare bestaande Amsterdamse gebouwen (geen Westertoren, geen
+   Munttoren) — dezelfde lijn als het verzonnen adres uit T84.
+
+   TICKET 113 (zelfde beslissing) — VERLICHTE RAAMPJES IN DE VERTE: kleine
+   emissieve vlakjes op deze silhouetten, Accent-tier (ruim onder de
+   bloom-threshold 0,82), met zeer trage aan/uit-wissels, en volledig uit
+   tijdens een Stroomuitval ("je ziet dat het niet alleen jouw pand is").
+   Bestaat niet zonder T112, dus in hetzelfde blok — `updateSkylineRaampjes`
+   is module-scope gedeclareerd (zelfde hoisting-veilige patroon als
+   `vlonderMesh` e.d. hierboven) zodat gameLoop 'm kan aanroepen.
+   ================================================================ */
+let updateSkylineRaampjes;
+{
+  // Bewust GEEN matFamilie()/blok()-PBR-materiaal: een silhouet moet vlak
+  // zwart blijven, ongeacht scene-lichten (een PBR-materiaal reageert op
+  // het hemisfeerlicht/de puntlichten — precies wat een verre stadssilhouet
+  // NIET moet doen) én ongeacht fog. `fog:true` zou het silhouet naar
+  // scene.fog.color laten vervagen; bij de verste twee lagen (40 m/45 m,
+  // voorbij FOG_BUITEN.far=40) zou dat het silhouet vrijwel onzichtbaar
+  // maken — exact het "oplossen in het niets" dat dit ticket vermijdt.
+  // Zelfde afweging als de nachthemel-dome in T111. `side: DoubleSide`
+  // omdat de platte geveltop-driehoek anders van bepaalde standpunten
+  // onzichtbaar zou zijn (geen dichte re-check per gebouw nodig).
+  const SKYLINE_KLEUREN = [0x03050a, 0x070b13, 0x0b101b];   // 30 m / 40 m / 45 m — iets lichter naar achteren (zachte diepte-cue), blijft ruim donkerder dan de hemel-horizon (0x2a3a52)
+  const skylineMateriaalCache = new Map();
+  function skylineMateriaal(kleur) {
+    let m = skylineMateriaalCache.get(kleur);
+    if (!m) {
+      m = new THREE.MeshBasicMaterial({ color: kleur, fog: false, side: THREE.DoubleSide });
+      skylineMateriaalCache.set(kleur, m);
+    }
+    return m;
+  }
+  // Eén gedeelde driehoek-Shape per breedte/dakhoogte-combinatie (puntgevel
+  // — generieke vorm, geen kopie van een bestaand pand), i.p.v. per gebouw
+  // opnieuw tekenen.
+  const skylineDakCache = new Map();
+  function skylineDakGeometrie(breedte, dakHoogte) {
+    const sleutel = breedte.toFixed(2) + 'x' + dakHoogte.toFixed(2);
+    let geo = skylineDakCache.get(sleutel);
+    if (!geo) {
+      const vorm = new THREE.Shape();
+      vorm.moveTo(-breedte / 2, 0);
+      vorm.lineTo(breedte / 2, 0);
+      vorm.lineTo(0, dakHoogte);
+      vorm.closePath();
+      geo = new THREE.ShapeGeometry(vorm);
+      skylineDakCache.set(sleutel, geo);
+    }
+    return geo;
+  }
+  // Ticket 113: raampjes. Eén PlaneGeometry per raampje (0,32x0,46m, ruim
+  // kleiner dan de bestaande gevelraam-quads — deze zitten verder weg),
+  // EIGEN materiaal per raampje (geen gedeeld materiaal zoals de romp/het
+  // dak: elk raampje animeert zijn eigen opacity onafhankelijk, dat kan
+  // niet via één gedeeld materiaal). `fog:false`/`depthWrite:false` om
+  // dezelfde reden als de romp; `side:DoubleSide` want de speler nadert
+  // deze gevels nooit recht van voren.
+  const RAAMPJE_FREQUENTIE = 0.006;   // rad/s — extreem trage aan/uit-wissel via sign(sin), geen puls/ademhaling
+  const RAAMPJE_OPACITY_MIN = 0.24;
+  const RAAMPJE_OPACITY_MAX = 0.4;
+  const skylineRaampjes = [];
+  function bouwRaampje(groep, lokaalX, lokaalY, lokaalZ, kleur, rnd) {
+    const materiaal = new THREE.MeshBasicMaterial({
+      color: kleur, transparent: true, opacity: 0, fog: false, side: THREE.DoubleSide, depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.46), materiaal);
+    mesh.position.set(lokaalX, lokaalY, lokaalZ);
+    mesh.userData.raampjeFase = rnd() * Math.PI * 2;
+    mesh.userData.raampjeBasis = RAAMPJE_OPACITY_MIN + rnd() * (RAAMPJE_OPACITY_MAX - RAAMPJE_OPACITY_MIN);
+    // Ticket 113: debug/test-marker, zelfde patroon als groep.userData.skyline
+    // hierboven (test-skyline-raampjes.mjs traverseert `wereld`).
+    mesh.userData.skylineRaam = true;
+    groep.add(mesh);
+    skylineRaampjes.push(mesh);
+  }
+  // Per-frame update, aangeroepen vanuit gameLoop met `klok` (bevriest
+  // automatisch tijdens pauze/measurement-modus, T88 — zelfde patroon als
+  // updateNachthemel) en `stroomFactor`. GEEN vloer zoals BUITEN_STROOM_VLOER
+  // (die geldt voor het EIGEN pand): deze raampjes doven volledig — het
+  // punt van het ticket is juist dat de stad breder getroffen wordt.
+  // `STROOMUITVAL_DIM_FACTOR` wordt hier pas bij AANROEP gelezen (in
+  // gameLoop, ver na module-initialisatie), niet bij functiedefinitie —
+  // zelfde hoisting-veilige verwijzing-naar-latere-const als elders in dit
+  // bestand (zie de WINKEL_STIJLEN-status()-toelichting).
+  updateSkylineRaampjes = function (klokTijd, stroomFactorWaarde) {
+    const stroomNormaal = Math.max(0, (stroomFactorWaarde - STROOMUITVAL_DIM_FACTOR) / (1 - STROOMUITVAL_DIM_FACTOR));
+    for (const raam of skylineRaampjes) {
+      const aan = Math.sin(klokTijd * RAAMPJE_FREQUENTIE + raam.userData.raampjeFase) > 0 ? 1 : 0;
+      raam.material.opacity = raam.userData.raampjeBasis * aan * stroomNormaal;
+    }
+  };
+  // Eén silhouetgebouw: een platte romp (BoxGeometry, dezelfde bouwsteen
+  // als blok()) plus optioneel een driehoekige puntgevel tegen de
+  // voorgevel, plus (Ticket 113) een onregelmatig rooster raampjes op de
+  // voorgevel. `rotY` bepaalt welke wereldrichting de voorgevel op kijkt
+  // (0 = +Z/zuid, naar de binnenplaats toe; -PI/2 = -X/west, naar de
+  // gracht toe) — breedte/diepte blijven lokaal, dus dezelfde
+  // bouwSkylineGebouw()-aanroep werkt voor beide skylines.
+  function bouwSkylineGebouw(x, z, breedte, hoogte, diepte, kleurIndex, dak, rotY, rnd) {
+    const materiaal = skylineMateriaal(SKYLINE_KLEUREN[kleurIndex]);
+    const groep = new THREE.Group();
+    const romp = new THREE.Mesh(new THREE.BoxGeometry(breedte, hoogte, diepte), materiaal);
+    romp.position.y = hoogte / 2;
+    groep.add(romp);
+    if (dak) {
+      const dakHoogte = breedte * 0.32;
+      const dakMesh = new THREE.Mesh(skylineDakGeometrie(breedte, dakHoogte), materiaal);
+      dakMesh.position.set(0, hoogte, diepte / 2 - 0.02);
+      groep.add(dakMesh);
+    }
+    // Rooster van KANDIDAAT-posities (kolommen op ~1,9m hart-op-hart, rijen
+    // op ~2,3m "verdieping"), maar een HARD budget van hoogstens 2 raampjes
+    // per gebouw i.p.v. elke cel onafhankelijk vullen. Reden: op deze
+    // afstand (26-40m) is een raampje toch maar een paar pixels — een dicht
+    // rooster (eerste versie: gemiddeld ~4-5 per gebouw, 125 totaal) bleek
+    // bij het meten véél duurder dan verwacht, ook in kamers die niet eens
+    // naar de skyline kijken. Reden: Three.js doet geen occlusion-culling,
+    // alleen frustum-culling — een raampje dat binnen de camera-KEGEL valt
+    // (ook al kijkt de speler dwars door een muur heen naar het) telt gewoon
+    // mee als draw call, en alle acht T88-standpunten behalve de gracht
+    // hebben toevallig dezelfde yaw=0 ("noord") als de noordlaag-skyline. Een
+    // klein, vast budget per gebouw (i.p.v. per-cel-kans, die met de
+    // roostergrootte meeschaalt) houdt de totale telling laag genoeg om
+    // ruim binnen de RENDER_BAND te blijven, getest in test-skyline-raampjes.mjs.
+    const kolommen = Math.max(1, Math.floor((breedte - 1.0) / 1.9));
+    const rijen = Math.max(1, Math.floor((hoogte - 1.6) / 2.3));
+    const cellen = [];
+    for (let ry = 0; ry < rijen; ry++) for (let rx = 0; rx < kolommen; rx++) cellen.push({ rx, ry });
+    const raamAantal = rnd() < 0.15 ? 0 : (rnd() < 0.4 ? 2 : 1);
+    for (let i = 0; i < raamAantal && cellen.length > 0; i++) {
+      const idx = Math.floor(rnd() * cellen.length);
+      const { rx, ry } = cellen.splice(idx, 1)[0];
+      const lx = -breedte / 2 + (breedte / (kolommen + 1)) * (rx + 1);
+      const ly = 0.9 + ry * 2.3;
+      const kleur = rnd() < 0.5 ? PALET.raamWarmAmber : PALET.raamWarmZacht;
+      bouwRaampje(groep, lx, ly, diepte / 2 + 0.02, kleur, rnd);
+    }
+    groep.position.set(x, 0, z);
+    groep.rotation.y = rotY;
+    // Ticket 112: debug/test-marker (test-skyline.mjs traverseert `wereld`
+    // op deze vlag — de bouwfuncties zelf zijn lokaal aan dit blok, dus niet
+    // rechtstreeks bereikbaar via het debug-hook).
+    groep.userData.skyline = true;
+    groep.userData.skylineLaag = kleurIndex;
+    groep.userData.skylineDak = dak;
+    wereld.add(groep);
+    return groep;
+  }
+  // Eén laag: `aantal` gebouwen, gelijkmatig verspreid over `spreidBreedte`
+  // rond `spreidMid` (met een kleine deterministische jitter zodat het geen
+  // perfect rooster is), op vaste diepte `diepteWaarde`. `spreidAs` kiest
+  // of de spreiding wereld-X (noordlaag) of wereld-Z (oostlaag) is.
+  function bouwSkylineLaag(rnd, aantal, spreidMid, spreidBreedte, diepteWaarde, spreidAs, kleurIndex, hoogteMin, hoogteMax, rotY) {
+    for (let i = 0; i < aantal; i++) {
+      const t = aantal === 1 ? 0.5 : i / (aantal - 1);
+      const jitter = (rnd() - 0.5) * (spreidBreedte / aantal) * 0.5;
+      const spreidPos = spreidMid - spreidBreedte / 2 + t * spreidBreedte + jitter;
+      const breedte = 3.5 + rnd() * 3.5;
+      const hoogte = hoogteMin + rnd() * (hoogteMax - hoogteMin);
+      const dak = rnd() < 0.35;
+      const x = spreidAs === 'x' ? spreidPos : diepteWaarde;
+      const z = spreidAs === 'x' ? diepteWaarde : spreidPos;
+      bouwSkylineGebouw(x, z, breedte, hoogte, 3.5, kleurIndex, dak, rotY, rnd);
+    }
+  }
+
+  // Laagdiepte gemeten vanaf het T88-standpunt — BEWUSTE, kleinere
+  // afwijking t.o.v. de "30/40/45 m" uit de architectuurschets in §10.13:
+  // de speler staat niet vastgeklonken op het standpunt, en camera.far=50m
+  // is een harde grens (invariant, niet aan te passen). Twee eerdere
+  // pogingen bleken allebei fout aan een tegenovergestelde kant: de volle
+  // 30/40/45m met brede spreiding liep vanaf de ONGUNSTIGSTE speelbare
+  // hoek van de binnenplaats (zelf al ~17x16m) tot ~52m — voorbij
+  // camera.far, zichtbaar wegklappende gebouwen; een drastische verkleining
+  // daarna loste dat op maar bracht precies het risico uit §10.13 tot
+  // leven ("staat het silhouet te dichtbij of te groot, dan voelt de
+  // binnenplaats kleiner") — de gebouwen vulden het beeld als een
+  // blokkerende muur i.p.v. een verre skyline (zie het beeldverslag). Deze
+  // waarden zijn het gevonden midden: diepte zo dicht mogelijk bij de
+  // architectuurschets gehouden (een kleine, geen drastische verkleining),
+  // met naar de verste laag toe een iets smallere spreiding (de
+  // dominante factor in de wegklap-afstand, niet de diepte zelf) voor
+  // extra marge. De smalle gracht/vlonder-strook (GRACHTGANG_HALF=1m,
+  // nauwelijks eigen "reikwijdte") houdt vrijwel de volle
+  // architectuurschets-diepte aan. Getest tegen de daadwerkelijke
+  // GRENS-uithoeken (niet alleen het standpunt) in test-skyline.mjs: elke
+  // laag blijft vanaf ELKE speelbare positie >= 4 m binnen camera.far.
+  const skylineRnd = maakZaadRandom(tekstZaad('skyline-v112'));
+  // Noordlaag — zichtbaar vanaf de binnenplaats (standpunt x=PLAATS_CX,
+  // z=(PLAATS_Z_NOORD+PLAATS_Z_ZUID)/2=-15.5). Voorgevel kijkt naar +Z
+  // (zuid, de binnenplaats in) — rotY=0, geen rotatie nodig.
+  bouwSkylineLaag(skylineRnd, 5, PLAATS_CX, 28, -15.5 - 26, 'x', 0, 8, 12, 0);
+  bouwSkylineLaag(skylineRnd, 5, PLAATS_CX, 26, -15.5 - 30, 'x', 1, 10, 15, 0);
+  bouwSkylineLaag(skylineRnd, 5, PLAATS_CX, 16, -15.5 - 34, 'x', 2, 13, 19, 0);
+  // Oostlaag — zichtbaar vanaf de gracht/vlonder (standpunt
+  // x=(VLONDER_X_WEST+VLONDER_X_OOST)/2=17.25, z=BIJKEUKEN_CZ=0). De
+  // gracht/vlonder-strook is smal (GRACHTGANG_HALF=1m) en heeft dus
+  // nauwelijks eigen "reikwijdte" — deze laag blijft daardoor vrijwel op
+  // de oorspronkelijke architectuurschets-diepte. Voorgevel kijkt naar -X
+  // (west, het water/de vlonder in) — rotY=-PI/2.
+  const grachtStandpuntX = (VLONDER_X_WEST + VLONDER_X_OOST) / 2;
+  bouwSkylineLaag(skylineRnd, 4, BIJKEUKEN_CZ, 26, grachtStandpuntX + 30, 'z', 0, 8, 12, -Math.PI / 2);
+  bouwSkylineLaag(skylineRnd, 4, BIJKEUKEN_CZ, 28, grachtStandpuntX + 36, 'z', 1, 10, 15, -Math.PI / 2);
+  bouwSkylineLaag(skylineRnd, 4, BIJKEUKEN_CZ, 32, grachtStandpuntX + 40, 'z', 2, 13, 19, -Math.PI / 2);
 }
 
 // Ticket 27 (Map-lus M4): zone-E-inhoud — spawn-venster (actief pas na
@@ -10716,6 +11035,15 @@ function gameLoop(nu) {
   // de huidige staat, zelfde altijd-lopende cosmetische sectie als de
   // lantaarnpuls hierboven (blijft correct stilstaan tijdens pauze).
   updateBootPositie();
+  // Ticket 111: zelfde `klok`-gedreven cosmetische zone — bevriest
+  // automatisch tijdens pauze/measurement-modus (klok loopt alleen op
+  // tijdens spelActief), dus geen apart bevries-mechanisme nodig voor
+  // deterministische visuele metingen (T88).
+  updateNachthemel(klok);
+  // Ticket 113: zelfde klok-gedreven cosmetische zone; stroomFactor wordt
+  // hier al bijgewerkt (zie de Stroomuitval-dimlussen hierboven in
+  // dezelfde gameLoop), dus deze aanroep leest altijd de actuele waarde.
+  updateSkylineRaampjes(klok, stroomFactor);
 
   if (terugslag > 0) {
     terugslag = Math.max(0, terugslag - dt * 6);
@@ -11061,6 +11389,11 @@ window.AmsterdamUndeadDebug = {
   // Ticket 110: zichtbare lichtkegels.
   bouwLichtkegel, bouwLichtkegelMateriaal, LICHTKEGEL_MAX,
   get lichtkegelTelling() { return lichtkegelTelling; },
+  // Ticket 111: nachthemel.
+  nachthemel, nachthemelMateriaal, NACHTHEMEL_STRAAL, updateNachthemel,
+  // Ticket 113: raampjes-update (skylineRaampjes zelf blijft lokaal aan
+  // het T112/T113-blok — vind ze via wereld.traverse() op userData.skylineRaam).
+  updateSkylineRaampjes,
   // Ticket 20: ledematen-animatie-constanten (voor tests)
   ARM_RUST_ROTATIE_X, BEEN_LOOP_AMPLITUDE, ARM_LOOP_FACTOR, HOOFD_KANTEL_AMPLITUDE,
   ROMP_BOB_HOOGTE, STROMPEL_BEEN_ZWAK, STROMPEL_BEEN_STERK,
