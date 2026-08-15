@@ -1428,6 +1428,317 @@ function bouwCanvasTextuurPaar(patroon, tekenFn, grootte = 512) {
   canvasTextuurPaarCache.set(patroon, paar);
   return paar;
 }
+
+// Ticket 108 (v0.22, §10.11-beslissing 86): normal maps uit dezelfde
+// hoogtebron als T107's ruwheidsinversie — een DONKERE albedo-pixel (voeg,
+// naad) is fysiek een VERDIEPING (voegspecie ligt lager dan het steen-/
+// plankoppervlak), dus dezelfde grijswaarde die daar al voor de ruwheid
+// diende, dient hier als hoogtekaart. Geen aparte hoogtetekenaar nodig.
+//
+// Sobel-achtige gradient (zoals de architectuurbeslissing vooraf al
+// aankondigde): voor elke texel het hoogteverschil met de buren links/
+// rechts/boven/onder, licht gewogen naar de diagonalen — een volwaardige
+// 3x3 Sobel-kernel, niet de goedkopere 2-taps centrale differentie. De
+// texture leest via RepeatWrapping, dus de buren-lookup wrapt óók
+// (modulo), anders zou de rand van elke tegel een zichtbare naad in het
+// reliëf krijgen.
+const NORMAAL_HOOGTE_STERKTE = 1.6;
+function bouwNormaalKaart(bronImageData, grootte) {
+  const bron = bronImageData.data;
+  // Eerst de R-kanaal-hoogtes naar een compact Uint8Array kopiëren: de
+  // eerste (naïeve) versie riep per texel 8x een closure aan die zelf ook
+  // nog een modulo deed (~2 miljoen closure-calls voor 512x512) — dat kostte
+  // ~100ms per kaart, een merkbare laadhitch. Wrap-indices worden nu ÉÉN
+  // keer per rij/kolom vooraf berekend i.p.v. per buur opnieuw, en de
+  // hoogte-lookup is een array-toegang zonder functie-aanroep.
+  const h = new Uint8Array(grootte * grootte);
+  for (let i = 0, p = 0; i < h.length; i++, p += 4) h[i] = bron[p];
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = grootte;
+  const ctx = canvas.getContext('2d');
+  const doel = ctx.createImageData(grootte, grootte);
+  const links = new Int32Array(grootte), rechts = new Int32Array(grootte);
+  for (let x = 0; x < grootte; x++) {
+    links[x] = (x === 0 ? grootte - 1 : x - 1);
+    rechts[x] = (x === grootte - 1 ? 0 : x + 1);
+  }
+  const sterkte = NORMAAL_HOOGTE_STERKTE / 255;
+  for (let y = 0; y < grootte; y++) {
+    const yBoven = (y === 0 ? grootte - 1 : y - 1) * grootte;
+    const yMidden = y * grootte;
+    const yOnder = (y === grootte - 1 ? 0 : y + 1) * grootte;
+    for (let x = 0; x < grootte; x++) {
+      const xl = links[x], xr = rechts[x];
+      const gx = (h[yBoven + xr] + 2 * h[yMidden + xr] + h[yOnder + xr])
+               - (h[yBoven + xl] + 2 * h[yMidden + xl] + h[yOnder + xl]);
+      const gy = (h[yOnder + xl] + 2 * h[yOnder + x] + h[yOnder + xr])
+               - (h[yBoven + xl] + 2 * h[yBoven + x] + h[yBoven + xr]);
+      // -gx/-gy: een OPLOPENDE hoogte naar rechts/onder moet het oppervlak
+      // naar LINKS/BOVEN laten hellen (tangent-ruimte-conventie), dus het
+      // teken van de gradient wordt omgedraaid t.o.v. de rauwe Sobel-output.
+      let nx = -gx * sterkte, ny = -gy * sterkte, nz = 1;
+      const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      nx /= len; ny /= len; nz /= len;
+      const i = (yMidden + x) * 4;
+      doel.data[i] = (nx * 0.5 + 0.5) * 255;
+      doel.data[i + 1] = (ny * 0.5 + 0.5) * 255;
+      doel.data[i + 2] = (nz * 0.5 + 0.5) * 255;
+      doel.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(doel, 0, 0);
+  const textuur = new THREE.CanvasTexture(canvas);
+  textuur.wrapS = textuur.wrapT = THREE.RepeatWrapping;
+  return textuur;
+}
+// Sterkte van de normalScale die op het materiaal komt (naast de hoogte-
+// sterkte hierboven al in de kaart zelf) — bewust "laag" gehouden, zoals de
+// architectuurbeslissing voorschrijft: dit is de duurste per-fragment-
+// richting van de ronde (schaalt met het aantal lichten, hier 28) en de
+// lichte uitvoering is opzettelijk het startpunt, niet het eindpunt.
+const NORMAAL_SCALE = 0.5;
+// Ticket 108: EIGEN cache, want dit is een DERDE map bovenop het T107-paar
+// en wordt — anders dan albedo/roughness — NIET voor elke familie gebouwd
+// (zie matFamilieReliëf() hieronder: alleen 'steen'/'hout', en alleen voor
+// de aanroepers die 'm expliciet opvragen).
+const canvasNormaalCache = new Map();
+function bouwCanvasNormaalKaart(patroon, tekenFn, grootte = 512) {
+  let textuur = canvasNormaalCache.get(patroon);
+  if (textuur) return textuur;
+  // Hergebruikt bouwCanvasTextuurPaar()'s albedo-canvas als hoogtebron i.p.v.
+  // een eigen render — zelfde bron als de ruwheidsinversie, dus de drie maps
+  // (albedo/ruwheid/normaal) corresponderen gegarandeerd (T107-vervolg loste
+  // precies dit type mismatch al eerder op voor het ruwheid-paar).
+  const { albedo } = bouwCanvasTextuurPaar(patroon, tekenFn, grootte);
+  const bron = albedo.image.getContext('2d').getImageData(0, 0, grootte, grootte);
+  textuur = bouwNormaalKaart(bron, grootte);
+  canvasNormaalCache.set(patroon, textuur);
+  return textuur;
+}
+// Ticket 108: de "twin"-clone-pattern van matMetVertexKleur() hergebruikt
+// (WeakMap, nooit het gedeelde origineel muteren) — normalMap wordt NIET
+// aan MATERIAAL_FAMILIES zelf toegevoegd, want dat zou 'm automatisch
+// toepassen op ELKE 'steen'/'hout'-aanroep, ook de kleine (deurpanelen,
+// kratten, kelder-treden) — precies wat de architectuurbeslissing als
+// "alleen grote vlakken" uitsluit. Alleen aanroepers die matFamilieReliëf()
+// expliciet gebruiken (de grote vloeren/muren) krijgen de normalMap.
+const NORMAAL_FAMILIES = new Set(['steen', 'hout']);
+const matFamilieReliëfTweelingen = new WeakMap();
+function matFamilieReliëf(naam, kleur) {
+  const basis = matFamilie(naam, kleur);
+  if (!NORMAAL_FAMILIES.has(naam)) return basis;
+  let tweeling = matFamilieReliëfTweelingen.get(basis);
+  if (!tweeling) {
+    const info = MATERIAAL_FAMILIES[naam];
+    tweeling = basis.clone();
+    tweeling.normalMap = bouwCanvasNormaalKaart(info.textuur, CANVAS_TEXTUUR_TEKENAARS[info.textuur], info.grootte);
+    tweeling.normalScale = new THREE.Vector2(NORMAAL_SCALE, NORMAAL_SCALE);
+    tweeling.userData.gedeeld = true;
+    matFamilieReliëfTweelingen.set(basis, tweeling);
+  }
+  return tweeling;
+}
+
+// Ticket 109 (v0.22, §10.6-beslissing 80): raamprojecties — "licht neemt de
+// vorm van zijn opening aan", de goedkope statische vorm (ná T90, vóór het
+// dure T110). Eén gedeelde canvas-textuur (een kozijnpatroon: een raster
+// van zachte, gloeiende ruiten met donkere kozijnstijlen ertussen) wordt
+// als `map` op dezelfde soort quad geplakt als de bestaande lichtvlek onder
+// elke lantaarn (`MeshBasicMaterial`, transparant, `depthWrite: false`,
+// `DoubleSide`) — alleen met een patroon in plaats van een egale cirkel.
+// Bewust GEEN SpotLight.map (gobo): dat introduceert een nieuw lichttype en
+// breekt invariant 2 (§10.2).
+const RAAM_PROJECTIE_GROOTTE = 128;
+let raamProjectieTextuur = null;
+function bouwRaamProjectiePatroon() {
+  if (raamProjectieTextuur) return raamProjectieTextuur;
+  const n = RAAM_PROJECTIE_GROOTTE;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = n;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, n, n);
+  // Kruisvormig kozijn (roedeverdeling): 2 kolommen x 3 rijen, een gangbare
+  // negentiende-eeuwse Amsterdamse raamindeling — elke ruit een zachte
+  // gloed die naar de rand (en naar de kozijnstijl) uitdooft, zodat het
+  // patroon leesbaar blijft zonder een hard, "geprojecteerd plaatje"-randje.
+  const kolommen = 2, rijen = 3;
+  const marge = n * 0.06, stijl = n * 0.05;
+  const cw = (n - marge * 2 - stijl * (kolommen - 1)) / kolommen;
+  const rh = (n - marge * 2 - stijl * (rijen - 1)) / rijen;
+  for (let r = 0; r < rijen; r++) {
+    for (let c = 0; c < kolommen; c++) {
+      const x = marge + c * (cw + stijl), y = marge + r * (rh + stijl);
+      const cx = x + cw / 2, cy = y + rh / 2;
+      const straal = Math.max(cw, rh) * 0.72;
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, straal);
+      grad.addColorStop(0, 'rgba(255,255,255,1)');
+      grad.addColorStop(0.7, 'rgba(255,255,255,0.55)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(x, y, cw, rh);
+    }
+  }
+  raamProjectieTextuur = new THREE.CanvasTexture(canvas);
+  return raamProjectieTextuur;
+}
+// Statisch: klopt niet meer zodra er iets tussen raam en vloer staat — in
+// een donkere scene met fog een aanvaardbare cheat (§10.6). Daarom bewust
+// alleen op VLAKKE vloeren (nooit de kelder-ramp, nooit de vlieringtrap).
+// `richtingX`/`richtingZ` wijst van het raam DE KAMER IN (genormaliseerd
+// of niet, alleen de richting telt); de projectie valt op
+// RAAM_PROJECTIE_INSET meter van het raam af, alsof het licht schuin naar
+// binnen valt vanaf kozijnhoogte.
+const RAAM_PROJECTIE_INSET = 1.1;
+// Zelfde opaciteit als de bestaande lantaarn-lichtvlek (0,12) net iets
+// terughoudender: een raamprojectie ligt vaak dichter bij de camera dan een
+// buiten-lantaarn, dus hetzelfde percentage zou sneller opvallen als "vlak
+// object op de vloer" i.p.v. als lichtval.
+const RAAM_PROJECTIE_OPACITY = 0.1;
+// Kleur van de gevelraam-projecties: dezelfde koele tint als glasMateriaal's
+// emissive (0x5fa0c8) — de gevelramen zijn overal in het pand dezelfde
+// "koud buitenlicht"-glasplaat, dus één gedeelde constante i.p.v. 'm bij elk
+// raam te herhalen.
+const RAAM_PROJECTIE_KLEUR_KOEL = 0x5fa0c8;
+function bouwRaamProjectie(raamX, raamZ, richtingX, richtingZ, grootte, kleur, opacity, vloerY = 0.012) {
+  const len = Math.hypot(richtingX, richtingZ) || 1;
+  const x = raamX + (richtingX / len) * RAAM_PROJECTIE_INSET;
+  const z = raamZ + (richtingZ / len) * RAAM_PROJECTIE_INSET;
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(grootte, grootte),
+    new THREE.MeshBasicMaterial({
+      map: bouwRaamProjectiePatroon(), color: kleur, transparent: true,
+      opacity, side: THREE.DoubleSide, depthWrite: false,
+    })
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(x, vloerY, z);
+  wereld.add(mesh);
+  return mesh;
+}
+// Dakraam: het licht valt recht naar beneden, dus GEEN inset (x/z ongewijzigd
+// t.o.v. de opening) — de projectie hangt gewoon pal onder het dakraam, iets
+// uitvergroot t.o.v. de dakraam-afmeting zelf (licht spreidt tijdens de val).
+function bouwDakraamProjectie(x, z, dakraamGrootte, kleur, opacity, vloerY = 0.012) {
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(dakraamGrootte * 1.35, dakraamGrootte * 1.35),
+    new THREE.MeshBasicMaterial({
+      map: bouwRaamProjectiePatroon(), color: kleur, transparent: true,
+      opacity, side: THREE.DoubleSide, depthWrite: false,
+    })
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(x, vloerY, z);
+  wereld.add(mesh);
+  return mesh;
+}
+
+// Ticket 110 (v0.22, §10.6-beslissing 81): zichtbare lichtkegels — "licht
+// neemt de vorm van zijn opening aan", de dure vervolgstap ná T90 (nul
+// kosten) en T109 (goedkope statische vloerprojectie). Dit IS de duurste
+// toegelaten richting van de ronde: grote, overlappende, camera-nabije
+// additieve transparantie is puur overdraw, dubbel zo zwaar op
+// pixelRatio 2. Drie eisen volgen daaruit, alle drie hieronder verwerkt:
+//
+//  1. Harde bovengrens, lichte uitvoering als startpunt: precies ZES
+//     kegels (LICHTKEGEL_MAX), statische fresnel-fade, geen noise.
+//  2. De kegel-opacity moet meeliften op buitenLichten/stroomGevoelige-
+//     Daklichten — anders blijft er tijdens een Stroomuitval licht in de
+//     lucht hangen dat nergens vandaan komt. Geen apart per-frame systeem:
+//     bouwLichtkegel() geeft de mesh terug zodat de AANROEPER 'm in
+//     hetzelfde object pusht als het bijbehorende licht (zie
+//     buitenLichten.push({ licht, ..., kegel }) hieronder), en de
+//     BESTAANDE flikkerloop (die buitenFactor/stroomFactor al berekent)
+//     zet kegel.material.uniforms.opacity mee — geen nieuwe loop nodig.
+//  3. De shader moet de fog respecteren: `fog: true` + de standaard
+//     THREE.js fog-chunks, niet een eigen fog-formule (minder foutgevoelig
+//     dan handmatig fogFactor uitrekenen, en automatisch consistent met
+//     scene.fog.near/far/color zoals de rest van de scene die al gebruikt).
+const LICHTKEGEL_MAX = 6;
+let lichtkegelTelling = 0;
+// Fresnel-macht: hoger = scherpere, smallere gloed rond het midden van de
+// kegel (recht op de camera af), lager = een vlakkere, bredere gloed.
+const LICHTKEGEL_FRESNEL_MACHT = 1.6;
+function bouwLichtkegelMateriaal(kleur) {
+  return new THREE.ShaderMaterial({
+    // `fog: true` alleen is niet genoeg voor een eigen ShaderMaterial: de
+    // #include <fog_pars_fragment>-chunk verwacht dat `uniforms.fogColor`/
+    // `fogNear`/`fogFar` daadwerkelijk BESTAAN (Three.js' interne
+    // refreshFogUniforms() schrijft er elk frame in) — zonder
+    // UniformsLib.fog erbij te mergen crasht dat elke frame met
+    // "Cannot read properties of undefined (reading 'value')" zodra er
+    // scene.fog actief is (dus in vrijwel elke kamer).
+    uniforms: THREE.UniformsUtils.merge([
+      THREE.UniformsLib.fog,
+      {
+        kleur: { value: new THREE.Color(kleur) },
+        opacity: { value: 0 },
+        hoogte: { value: 1 },
+        fresnelMacht: { value: LICHTKEGEL_FRESNEL_MACHT },
+      },
+    ]),
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      varying float vLokaalY;
+      #include <fog_pars_vertex>
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vViewDir = normalize(-mvPosition.xyz);
+        vLokaalY = position.y;
+        gl_Position = projectionMatrix * mvPosition;
+        #include <fog_vertex>
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 kleur;
+      uniform float opacity;
+      uniform float hoogte;
+      uniform float fresnelMacht;
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      varying float vLokaalY;
+      #include <fog_pars_fragment>
+      void main() {
+        // Fresnel: recht op de camera af (facing) is het felst, de rand
+        // (grazing angle) dooft uit — "opacity die naar de rand uitfadet".
+        float facing = max(dot(normalize(vViewDir), normalize(vNormal)), 0.0);
+        float fresnel = pow(facing, fresnelMacht);
+        // vLokaalY loopt van +hoogte/2 (de apex, bij de lamp) tot -hoogte/2
+        // (de open basis, onderin) — 1 bovenaan (bij de bron), 0 onderaan:
+        // het licht komt van boven en dooft uit naar beneden.
+        float hoogteFade = clamp(vLokaalY / hoogte + 0.5, 0.0, 1.0);
+        float alpha = opacity * fresnel * hoogteFade;
+        gl_FragColor = vec4(kleur, alpha);
+        #include <fog_fragment>
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    fog: true,
+  });
+}
+// `x, y, z` is de POSITIE VAN DE LAMP ZELF (de apex van de kegel raakt dit
+// punt, de open basis hangt eronder) — dezelfde referentie die de
+// aanroeper toch al gebruikt voor de bol/het PointLight, dus geen aparte
+// offset-berekening per call-site nodig. Retourneert de mesh (voor de
+// buitenLichten/stroomGevoeligeDaklichten-koppeling) of `null` zodra
+// LICHTKEGEL_MAX bereikt is (harde bovengrens, eis 1).
+function bouwLichtkegel(x, y, z, kleur, hoogte, straal, basisOpacity) {
+  if (lichtkegelTelling >= LICHTKEGEL_MAX) return null;
+  lichtkegelTelling++;
+  const materiaal = bouwLichtkegelMateriaal(kleur);
+  materiaal.uniforms.hoogte.value = hoogte;
+  materiaal.uniforms.opacity.value = basisOpacity;
+  const mesh = new THREE.Mesh(new THREE.ConeGeometry(straal, hoogte, 16, 1, true), materiaal);
+  mesh.position.set(x, y - hoogte / 2, z);
+  mesh.userData.basisOpacity = basisOpacity;
+  wereld.add(mesh);
+  return mesh;
+}
+
 const MATERIAAL_FAMILIES = {
   // Ticket 107: `albedo: true` markeert de drie families die de nieuwe
   // paired-texturenset krijgen (map + roughnessMap). `metaal`/`tegel`
@@ -1932,7 +2243,7 @@ let gangVloerMesh;
 }
 // Ticket 38: gang-vloer krijgt de 'steen'-familie (dof, mat) — zelfde kleur
 // (0x1c1a16), alleen roughness/metalness verandert naar de gedeelde familie.
-gangVloerMesh.material = matMetVertexKleur(matFamilie('steen', 0x1c1a16));
+gangVloerMesh.material = matMetVertexKleur(matFamilieReliëf('steen', 0x1c1a16));
 gangVloerMesh.userData.materiaalFamilie = 'steen';
 // Het schildersatelier (zone C, tweede kamer): bewust radicaal anders dan de
 // warme woonkamer — koele grijze plankenvloer i.p.v. warm hout.
@@ -2596,10 +2907,12 @@ let klinkersMesh;
     const licht = new THREE.PointLight(0xffd6a0, 20.4, 13, 1.65);
     licht.position.set(x, 2.45, z);
     wereld.add(licht);
+    // Ticket 110: zichtbare lichtkegel, apex bij de bol (x, 2.5, z).
+    const kegel = bouwLichtkegel(x, 2.5, z, 0xffd6a0, 2.3, 0.55, 0.07);
     // Ticket 46-fix (feedback): de lantaarns zijn elektrisch, dus dimmen
     // net als de binnenlampen mee tijdens een Stroomuitval — met hun eigen
     // (hogere) buiten-vloer, zie de gameLoop-flikkerloop.
-    buitenLichten.push({ licht, basis: 20.4, bolMateriaal: bol.material, bolBasis: lantaarnBolBasis });
+    buitenLichten.push({ licht, basis: 20.4, bolMateriaal: bol.material, bolBasis: lantaarnBolBasis, kegel });
     const lichtvlek = new THREE.Mesh(
       new THREE.CircleGeometry(1.25, 24),
       new THREE.MeshBasicMaterial({ color: 0xffd6a0, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false })
@@ -2879,7 +3192,7 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
   // Vlonder-vloer (x ∈ [VLONDER_X_WEST, VLONDER_X_OOST]) — buiten, eigen
   // houten materiaal (Ticket 38: 'hout'-familie), geen plafond.
   vlonderMesh = vlak(VLONDER_HOUT, VLONDER_DIEPTE, gangDiepte, vlonderMidX, gangCZ, 0.02, false);
-  vlonderMesh.material = matMetVertexKleur(matFamilie('hout', VLONDER_HOUT));
+  vlonderMesh.material = matMetVertexKleur(matFamilieReliëf('hout', VLONDER_HOUT));
   vlonderMesh.userData.materiaalFamilie = 'hout';
 
   // Lage railings langs de vlonder (buiten, dus geen volle muren — houdt de
@@ -2974,7 +3287,11 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
   grachtLantaarnLicht = new THREE.PointLight(0xffd6a0, 34, 13, 1.65);
   grachtLantaarnLicht.position.set(lantaarnX, 2.45, lantaarnZ);
   wereld.add(grachtLantaarnLicht);
-  buitenLichten.push({ licht: grachtLantaarnLicht, basis: 34, bolMateriaal: gBol.material, bolBasis: gBolBasis });
+  // Ticket 110: vijfde kegel (van de zes) — deze lantaarn is de felste op
+  // de kaart (basis 34 t.o.v. 20,4 voor de binnenplaats-lantaarns), dus
+  // een iets prominentere kegel.
+  const gKegel = bouwLichtkegel(lantaarnX, 2.5, lantaarnZ, 0xffd6a0, 2.3, 0.6, 0.08);
+  buitenLichten.push({ licht: grachtLantaarnLicht, basis: 34, bolMateriaal: gBol.material, bolBasis: gBolBasis, kegel: gKegel });
   const gLichtvlek = new THREE.Mesh(
     new THREE.CircleGeometry(1.25, 24),
     new THREE.MeshBasicMaterial({ color: 0xffd6a0, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false })
@@ -3067,6 +3384,9 @@ for (const x of [-2, 2]) {
   const glas = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.3, 0.05), glasMateriaal);
   glas.position.set(x, 1.9, HALF_DIEPTE - 0.18);   // ruim vóór het kozijn, dus altijd zichtbaar
   wereld.add(glas);
+  // Ticket 109: raamprojectie op de vlakke woonkamervloer, de kamer in
+  // (kleinere z, want HALF_DIEPTE is de zuidmuur).
+  bouwRaamProjectie(x, HALF_DIEPTE, 0, -1, 1.7, RAAM_PROJECTIE_KLEUR_KOEL, RAAM_PROJECTIE_OPACITY);
 }
 
 // Atelier-ramen: bewust ASYMMETRISCH (één noordwest, één op de oostmuur) i.p.v.
@@ -3085,6 +3405,8 @@ const ATELIER_NOORDRAAM_X = -3.2;
   const glasNW = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.3, 0.05), glasMateriaal);
   glasNW.position.set(ATELIER_NOORDRAAM_X, 1.9, KAMER2_Z_NOORD + 0.18);
   wereld.add(glasNW);
+  // Ticket 109: noordmuur, de kamer in = grotere z.
+  bouwRaamProjectie(ATELIER_NOORDRAAM_X, KAMER2_Z_NOORD, 0, 1, 1.7, RAAM_PROJECTIE_KLEUR_KOEL, RAAM_PROJECTIE_OPACITY);
 
   const kozijnOost = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.6, 1.3), kozijnMateriaal);
   kozijnOost.position.set(KAMER2_HALF_B - 0.06, 1.9, ATELIER_OOSTRAAM_Z);
@@ -3092,6 +3414,8 @@ const ATELIER_NOORDRAAM_X = -3.2;
   const glasOost = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.3, 1.0), glasMateriaal);
   glasOost.position.set(KAMER2_HALF_B - 0.18, 1.9, ATELIER_OOSTRAAM_Z);
   wereld.add(glasOost);
+  // Ticket 109: oostmuur, de kamer in = kleinere x.
+  bouwRaamProjectie(KAMER2_HALF_B, ATELIER_OOSTRAAM_Z, -1, 0, 1.7, RAAM_PROJECTIE_KLEUR_KOEL, RAAM_PROJECTIE_OPACITY);
 
   // v0.4: derde raam op de westmuur van de nis — een derde, nog flankerender
   // invalshoek zodra de nis-spawn actief wordt (zie VENSTERS_KAMER2 hieronder).
@@ -3101,6 +3425,8 @@ const ATELIER_NOORDRAAM_X = -3.2;
   const glasNis = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.3, 1.0), glasMateriaal);
   glasNis.position.set(KAMER2_NIS_X_WEST + 0.18, 1.9, KAMER2_NIS_CZ);
   wereld.add(glasNis);
+  // Ticket 109: westmuur van de nis, de nis in = grotere x.
+  bouwRaamProjectie(KAMER2_NIS_X_WEST, KAMER2_NIS_CZ, 1, 0, 1.7, RAAM_PROJECTIE_KLEUR_KOEL, RAAM_PROJECTIE_OPACITY);
 }
 
 // Ticket 57: de "steegdeur" (VENSTERS_BIJKEUKEN) had HELEMAAL GEEN eigen
@@ -3116,6 +3442,8 @@ let kozijnSteeg, glasSteeg;
   glasSteeg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.3, 1.0), glasMateriaal);
   glasSteeg.position.set(BIJKEUKEN_X_OOST - 0.18, 1.9, 2);
   wereld.add(glasSteeg);
+  // Ticket 109: oostmuur, de bijkeuken in = kleinere x.
+  bouwRaamProjectie(BIJKEUKEN_X_OOST, 2, -1, 0, 1.7, RAAM_PROJECTIE_KLEUR_KOEL, RAAM_PROJECTIE_OPACITY);
 }
 
 // Warme lampen: een gloeiend bolletje + puntlicht, symmetrisch opgehangen.
@@ -3314,7 +3642,7 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
     const hoogte = KELDER_DIEPTE + KOKER_HOOFDRUIMTE + 0.3;
     const wandGeo = new THREE.BoxGeometry(kokerLengte, hoogte, kelderMuurDikte);
     herschaalUVNaarWereldschaal(wandGeo);   // Ticket 106
-    const wand = new THREE.Mesh(wandGeo, matFamilie('steen', KELDER_TINT));
+    const wand = new THREE.Mesh(wandGeo, matFamilieReliëf('steen', KELDER_TINT));
     wand.position.set(kokerCX, -KELDER_DIEPTE + hoogte / 2, cz);
     wand.castShadow = true;
     wand.receiveShadow = true;
@@ -3335,7 +3663,7 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   const kelderVloerGeo = new THREE.PlaneGeometry(kamerBreedteX, kamerDiepteZ, SUBDIVISIE_SEGMENTEN, SUBDIVISIE_SEGMENTEN);
   bakVlakOcclusie(kelderVloerGeo, kamerBreedteX, kamerDiepteZ);
   herschaalUVNaarWereldschaal(kelderVloerGeo);   // Ticket 106
-  const kelderVloer = new THREE.Mesh(kelderVloerGeo, matMetVertexKleur(matFamilie('steen', 0x423930)));
+  const kelderVloer = new THREE.Mesh(kelderVloerGeo, matMetVertexKleur(matFamilieReliëf('steen', 0x423930)));
   kelderVloer.rotation.x = -Math.PI / 2;
   kelderVloer.position.set(kamerCX, -KELDER_DIEPTE, kamerCZ);
   kelderVloer.receiveShadow = true;
@@ -3352,7 +3680,7 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   function kelderWand(cx, cz, breedte, diepte) {
     const wandGeo = new THREE.BoxGeometry(breedte, KELDER_HOOGTE, diepte);
     herschaalUVNaarWereldschaal(wandGeo);   // Ticket 106
-    const wand = new THREE.Mesh(wandGeo, matFamilie('steen', KELDER_TINT));
+    const wand = new THREE.Mesh(wandGeo, matFamilieReliëf('steen', KELDER_TINT));
     wand.position.set(cx, -KELDER_DIEPTE + KELDER_HOOGTE / 2, cz);
     wand.castShadow = true;
     wand.receiveShadow = true;
@@ -3390,7 +3718,7 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
     const koVloerGeo = new THREE.PlaneGeometry(koBreedteX, koDiepteZ, SUBDIVISIE_SEGMENTEN, SUBDIVISIE_SEGMENTEN);
     bakVlakOcclusie(koVloerGeo, koBreedteX, koDiepteZ);
     herschaalUVNaarWereldschaal(koVloerGeo);   // Ticket 106
-    const koVloer = new THREE.Mesh(koVloerGeo, matMetVertexKleur(matFamilie('steen', 0x423930)));
+    const koVloer = new THREE.Mesh(koVloerGeo, matMetVertexKleur(matFamilieReliëf('steen', 0x423930)));
     koVloer.rotation.x = -Math.PI / 2;
     koVloer.position.set(koCX, -KELDER_DIEPTE, koCZ);
     koVloer.receiveShadow = true;
@@ -3554,7 +3882,13 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   const dakraamLicht = new THREE.PointLight(0xaacdf0, 10.8, 12, 2);
   dakraamLicht.position.set(0, ATELIER_HOOGTE - 0.3, ATELIER_MIDDEN_Z);
   wereld.add(dakraamLicht);
-  stroomGevoeligeDaklichten.push({ licht: dakraamLicht, basis: 10.8 });
+  // Ticket 110: zesde en laatste kegel (LICHTKEGEL_MAX) — "de grootste
+  // dakramen" uit de beslissing, hier alleen het hoofd-dakraam (1,8x1,8m,
+  // veruit het grootste van de vier). Apex bij de dakraam-opening zelf
+  // (niet bij het PointLight, dat iets lager hangt), reikend tot de vloer.
+  const dakraamKegel = bouwLichtkegel(0, ATELIER_HOOGTE - 0.02, ATELIER_MIDDEN_Z, 0xaacdf0, ATELIER_HOOGTE - 0.02, 1.0, 0.055);
+  stroomGevoeligeDaklichten.push({ licht: dakraamLicht, basis: 10.8, kegel: dakraamKegel });
+  bouwDakraamProjectie(0, ATELIER_MIDDEN_Z, 1.8, 0xaacdf0, RAAM_PROJECTIE_OPACITY);
 
   // v0.4: de voorraadnis ligt te ver van het hoofd-dakraam om nog goed
   // verlicht te worden — een eigen, kleiner daklicht (zelfde koele stijl,
@@ -3571,6 +3905,7 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   dakraamNisLicht.position.set(KAMER2_NIS_CX, ATELIER_HOOGTE - 0.3, KAMER2_NIS_CZ);
   wereld.add(dakraamNisLicht);
   stroomGevoeligeDaklichten.push({ licht: dakraamNisLicht, basis: 13.2 });
+  bouwDakraamProjectie(KAMER2_NIS_CX, KAMER2_NIS_CZ, 1.4, 0xaacdf0, RAAM_PROJECTIE_OPACITY);
 
   // v0.6: de hoofdruimte is dieper geworden dan het centrale dakraam kan
   // verlichten. Een derde, kleiner daklicht (zelfde stijl) houdt ook die
@@ -3588,6 +3923,7 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   dakraamNoordLicht.position.set(0.5, ATELIER_HOOGTE - 0.3, ATELIER_MIDDEN_Z - 6);
   wereld.add(dakraamNoordLicht);
   stroomGevoeligeDaklichten.push({ licht: dakraamNoordLicht, basis: 13.2 });
+  bouwDakraamProjectie(0.5, ATELIER_MIDDEN_Z - 6, 1.4, 0xaacdf0, RAAM_PROJECTIE_OPACITY);
 
   // v0.10: en de ruimte is ook 2m breder geworden (9m i.p.v. 7m) — een
   // vierde daklicht aan de zuidoostkant (bij de nieuwe kruk/lijstenstapel)
@@ -3604,6 +3940,7 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   dakraamZuidoostLicht.position.set(3.2, ATELIER_HOOGTE - 0.3, ATELIER_MIDDEN_Z - 3);
   wereld.add(dakraamZuidoostLicht);
   stroomGevoeligeDaklichten.push({ licht: dakraamZuidoostLicht, basis: 10.8 });
+  bouwDakraamProjectie(3.2, ATELIER_MIDDEN_Z - 3, 1.2, 0xaacdf0, RAAM_PROJECTIE_OPACITY);
 }
 
 // Ticket 40 (Sfeer S3, §5.9-sfeer): 2 stofwolken (THREE.Points, <= 30
@@ -10341,6 +10678,12 @@ function gameLoop(nu) {
   // maar dimmen nu wel mee met stroomFactor.
   for (const dl of stroomGevoeligeDaklichten) {
     dl.licht.intensity = dl.basis * stroomFactor * DAKRAAM_STROOM_EXTRA;
+    // Ticket 110, eis 2: de kegel dimt mee met stroomFactor (niet met
+    // DAKRAAM_STROOM_EXTRA, dat is een losse helderheidsbudget-tuning van
+    // het PointLight zelf, geen Stroomuitval-signaal) — bij stroomFactor=1
+    // staat de kegel op zijn volle basisOpacity, bij een blackout dooft
+    // hij evenredig mee uit, precies zoals het licht dat hij verbeeldt.
+    if (dl.kegel) dl.kegel.material.uniforms.opacity.value = dl.kegel.userData.basisOpacity * stroomFactor;
   }
   // Ticket 46-fix: zelfs met alle lampen/dakramen gedimd bleef elke
   // binnenruimte relatief goed zichtbaar door dit algehele hemisfeerlicht
@@ -10359,6 +10702,9 @@ function gameLoop(nu) {
   for (const bl of buitenLichten) {
     bl.licht.intensity = bl.basis * buitenFactor;
     if (bl.bolMateriaal) bl.bolMateriaal.emissiveIntensity = bl.bolBasis * buitenFactor;
+    // Ticket 110, eis 2: exact dezelfde buitenFactor als het licht/de bol
+    // hierboven — de kegel dimt in precies dezelfde verhouding mee.
+    if (bl.kegel) bl.kegel.material.uniforms.opacity.value = bl.kegel.userData.basisOpacity * buitenFactor;
   }
   // Ticket 55: tijdens de boot-aankondiging knippert/pulseert de gracht-
   // lantaarn kort feller — puur cosmetisch, bovenop de zojuist gezette
@@ -10699,6 +11045,22 @@ window.AmsterdamUndeadDebug = {
   bouwCanvasTextuurPaar, T107_ALBEDO_BASIS, T107_RUWHEID_BASIS, canvasTextuurPaarCache,
   // Ticket 107-vervolg (klinkerrealisme): inverse roughness + wereldschaal-tegel.
   T107_RUWHEID_INVERSIE, KLINKER_TEGEL_METERS, KLINKER_CELLEN,
+  // Ticket 108: normal maps (Sobel-achtige gradient uit dezelfde
+  // hoogtebron als T107's ruwheidsinversie), alleen toegepast op 'steen'/
+  // 'hout' via matFamilieReliëf() op de grote vlakken.
+  bouwNormaalKaart, bouwCanvasNormaalKaart, matFamilieReliëf, NORMAAL_FAMILIES,
+  NORMAAL_HOOGTE_STERKTE, NORMAAL_SCALE, canvasNormaalCache,
+  // Ticket 109: raamprojecties. `get raamProjectieTextuur` i.p.v. een
+  // shorthand-property: die zou de waarde van de module-scope `let` op het
+  // MOMENT van dit object-literal vastleggen (hier toevallig al gezet,
+  // want alle bouwRaamProjectie()-aanroepen liepen al — maar een getter is
+  // hier de robuustere keuze, ongeacht toekomstige herordening van dit blok).
+  bouwRaamProjectiePatroon, bouwRaamProjectie, bouwDakraamProjectie,
+  get raamProjectieTextuur() { return raamProjectieTextuur; },
+  RAAM_PROJECTIE_GROOTTE, RAAM_PROJECTIE_INSET, RAAM_PROJECTIE_OPACITY, RAAM_PROJECTIE_KLEUR_KOEL,
+  // Ticket 110: zichtbare lichtkegels.
+  bouwLichtkegel, bouwLichtkegelMateriaal, LICHTKEGEL_MAX,
+  get lichtkegelTelling() { return lichtkegelTelling; },
   // Ticket 20: ledematen-animatie-constanten (voor tests)
   ARM_RUST_ROTATIE_X, BEEN_LOOP_AMPLITUDE, ARM_LOOP_FACTOR, HOOFD_KANTEL_AMPLITUDE,
   ROMP_BOB_HOOGTE, STROMPEL_BEEN_ZWAK, STROMPEL_BEEN_STERK,

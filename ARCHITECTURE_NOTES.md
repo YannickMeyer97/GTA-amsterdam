@@ -4734,6 +4734,131 @@ kosten, direct voelbaar), dan T109 (de goedkope, statische vorm van
 "licht neemt de vorm van zijn opening aan"), dan pas T110. Blijkt T110
 op de doelhardware te duur, dan staat de helft van het effect er al.
 
+**Implementatieverslag T109 (uitgevoerd, MET een bewuste scope-reductie).**
+Eén gedeelde canvas-textuur (`bouwRaamProjectiePatroon()`, 128x128, een
+2x3-roedeverdeling met zachte gloed per ruit) op dezelfde soort quad als
+de bestaande lantaarn-lichtvlek (`MeshBasicMaterial`, transparant,
+`depthWrite: false`, `DoubleSide`) — alleen met een patroon i.p.v. een
+egale cirkel, exact zoals de beslissing vooraf aankondigde. Bewust GEEN
+`SpotLight.map`: geen nieuw lichttype, geen invariant-2-schending.
+
+**Scope: "elk gevelraam" is 6 ramen, niet alle vensterpunten.** De
+`VENSTERS*`-arrays bevatten ook niet-glazen doorgangen (`VENSTERS_PLAATS`
+is de poort-/kelderdeuropening op de binnenplaats) — die kregen bewust
+GEEN projectie, want er is geen raam om te projecteren. De 6 echte
+gevelramen (2 woonkamer, 3 atelier: noordwest/oost/nis, 1 bijkeuken-
+steegdeur) plus de 4 atelier-dakramen zijn wél allemaal gedekt: 10
+projecties in totaal.
+
+**Twee generieke plaatsingsfuncties, twee soorten geometrie.** Een
+dakraam laat licht recht naar beneden vallen: `bouwDakraamProjectie()`
+zet de quad ONGEWIJZIGD onder x/z van de opening, 1,35x uitvergroot
+(spreiding tijdens de val). Een gevelraam zit in een muur op kozijnhoogte
+en het licht valt schuin de kamer in: `bouwRaamProjectie()` neemt een
+richtingsvector (`richtingX`/`richtingZ`, "de kamer in") en zet de quad
+`RAAM_PROJECTIE_INSET` (1,1m) van de muur af in die richting. Voor elk
+gevelraam is die richting handmatig afgeleid uit welke kant van de muur
+de kamer ligt (bv. de woonkamer-zuidramen: richting (0,-1), want
+`HALF_DIEPTE` is de zuidgrens en de kamer ligt bij kleinere z).
+
+**Bewust alleen vlakke vloeren**, zoals de beslissing vooraf al
+vastlegde: geen enkele projectie op de kelder-ramp of de vlieringtrap —
+dat zijn de enige twee niet-vlakke vloeren in het pand, en een statische
+projectie zou daar zichtbaar door de helling heen "zweven".
+
+**Laadtijd-optimalisatie tijdens het bouwen zelf gevonden.** De eerste
+versie van T108's `bouwNormaalKaart()` (zie hieronder) riep per texel 8x
+een closure aan die zelf ook een modulo deed — ~2 miljoen closure-calls
+voor een 512x512 kaart, ~100ms. Herschreven naar vooraf berekende
+wrap-indices (`links`/`rechts`-Int32Array's per rij/kolom) en een platte
+`Uint8Array` als hoogtebron zonder functie-aanroep in de hot loop: 3x
+sneller (~33ms voor beide kaarten samen).
+
+**Geen zichtbaar/meetbaar effect op de helderheidsbasislijn.**
+`test-visuele-basislijn.mjs` bleef **65/65 groen** zonder één enkele
+waarde bij te werken — bij `RAAM_PROJECTIE_OPACITY = 0,1` en een
+oppervlak van hooguit een paar vierkante meter per projectie op een
+kamer van tientallen vierkante meters blijft de bijdrage aan het
+gemeten gemiddelde/mediaan ruim binnen de 2%-band. Dat is geen falen van
+het ticket — het bewijst dat het effect subtiel genoeg is om niet als
+"plotseling een ander licht"-schok te lezen, precies de "cheat, geen
+nieuw lichtmoment"-aard die de beslissing vooraf beschrijft.
+
+`test-raamprojecties.mjs` (8 checks, nieuw) bevestigt: precies 10
+projecties, allemaal op de vaste vloeroffset (y=0,012), de inset-/
+richtinglogica klopt voor zowel een gevelraam als een dakraam, alle
+materialen delen hetzelfde patroon-canvas (geen 10 aparte texturen),
+depthWrite staat overal uit, de obstakel-telling is ongewijzigd (puur
+decoratief) en er is geen enkele `SpotLight` toegevoegd.
+
+**Implementatieverslag T110 (uitgevoerd, exact volgens de drie
+eisen).** Een eigen `THREE.ShaderMaterial` op een open `ConeGeometry`,
+additive, `depthWrite: false`: fresnel-fade (`pow(dot(viewDir, normal), macht)`,
+felst recht op de camera af, dooft uit naar de rand) x hoogte-fade
+(1 bij de apex/lampbron, 0 bij de open basis onderin). Precies zes kegels
+— de vier binnenplaats-lantaarns (`bouwLantaarn()`), de gracht-lantaarn en
+alleen het HOOFD-dakraam van het atelier (1,8x1,8m, veruit het grootste
+van de vier — de drie kleinere daklichten blijven zonder kegel, een
+bewuste toepassing van "de grootste dakramen" uit de beslissing, niet
+alle vier).
+
+**Eis 1 (harde bovengrens) zit in `bouwLichtkegel()` zelf, niet bij de
+aanroepers.** Een module-teller (`lichtkegelTelling`) telt op bij elke
+succesvolle bouw; een aanroep bóven `LICHTKEGEL_MAX` (6) geeft `null`
+terug zonder een mesh te bouwen. Zo kan een latere ronde gerust meer
+`bouwLichtkegel()`-aanroepen toevoegen zonder de bovengrens ergens anders
+te hoeven bewaken — de zevende (en elke latere) aanroep is vanzelf een
+no-op.
+
+**Eis 2 (meeliften op Stroomuitval) hergebruikt de BESTAANDE flikkerloop,
+geen nieuw per-frame-systeem.** `bouwLichtkegel()` geeft de mesh terug;
+de aanroeper stopt 'm in hetzelfde object als het bijbehorende licht
+(`buitenLichten.push({ licht, ..., kegel })`,
+`stroomGevoeligeDaklichten.push({ licht, ..., kegel })`). De twee
+bestaande loops die toch al `bl.licht.intensity`/`dl.licht.intensity`
+herberekenen krijgen één extra regel die `kegel.material.uniforms.
+opacity.value` met exact dezelfde factor schaalt (`buitenFactor` resp.
+`stroomFactor` — bewust NIET `DAKRAAM_STROOM_EXTRA`, dat is een losse
+helderheidsbudget-tuning van het PointLight zelf, geen Stroomuitval-
+signaal). Geen enkele kegel kan dus ooit blijven branden terwijl zijn
+licht uit is.
+
+**Eis 3 (fog) leverde de enige echte bug van dit ticket, gevonden door de
+volledige regressiesuite (niet vooraf voorzien).** `fog: true` alleen is
+NIET genoeg voor een custom `ShaderMaterial`: de `#include <fog_pars_
+fragment>`-chunk verwacht dat `uniforms.fogColor`/`fogNear`/`fogFar`
+daadwerkelijk bestaan, want Three.js' interne `refreshFogUniforms()`
+schrijft er ELK FRAME in zodra er een render met dat materiaal gebeurt.
+Zonder `THREE.UniformsLib.fog` erbij te mergen crashte dat met "Cannot
+read properties of undefined (reading 'value')" — op ELK frame, in ELKE
+kamer met actieve fog (dus vrijwel overal). Effect: de eerste volledige
+regressiesweep na dit ticket gaf 21 FAILs in `test-visuele-basislijn.mjs`
+met exact DEZELFDE gemeten waarde op alle vijf `zoneVan()`-zones (28.67/
+15.59) — een duidelijk signaal dat er geen echte per-zone meting
+plaatsvond, maar een bevroren/kapotte renderstaat. Fix: `uniforms:
+THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { ...eigen uniforms
+}])` — de standaard, door Three.js zelf gedocumenteerde manier om fog aan
+een custom ShaderMaterial te koppelen.
+
+**Geen zichtbaar/meetbaar effect op de helderheidsbasislijn** (65/65
+groen, na de fog-fix, geen enkele waarde bijgewerkt) — op de acht vaste,
+bevroren meetstandpunten (gekozen voor brede zone-representativiteit, niet
+voor een grazing close-up bij een lantaarn) blijft de bijdrage van zes
+lage-opaciteit kegels (0,055-0,08) ruim binnen de 2%-band. Een handmatige
+close-up vlak bij een binnenplaats-lantaarn (buiten de acht meetpunten)
+toont wél een zachte, warme gloed rond de lantaarnvoet — zichtbaar maar
+terughoudend, precies de "lichte uitvoering als startpunt" die de
+beslissing voorschrijft.
+
+`test-lichtkegels.mjs` (17 checks, nieuw) bevestigt: precies 6 kegels, de
+bovengrens wordt daadwerkelijk gehandhaafd (een 7e aanroep bouwt niets),
+alle materialen zijn additive/depthWrite:false/fog:true, alle 5 relevante
+buitenLichten en het dakraam-licht hebben een gekoppelde kegel, een ECHTE
+gesimuleerde Stroomuitval (`startGolf()` op golf 10, zelfde patroon als
+`test-stroomuitval.mjs`) laat zowel het licht als de kegel-opacity
+evenredig dalen, de lichttelling blijft op 28 (geen nieuw lichttype), en
+elke kegel-apex staat exact op de opgegeven lamppositie.
+
 ### 10.7 Beslissing 82 — Waardestructuur zonder licht (T91, T102, T103)
 
 **Het probleem, en waarom dit het belangrijkste gebied van de ronde is.**
@@ -6028,16 +6153,70 @@ wees hier niet op een kapotte grading maar op een te donker geworden zone,
 en de door de gebruiker zelf afgestelde kelder-grading is expres NIET
 aangeraakt.
 
-**Pleisterwerk: grondslag gelegd, niet toegepast.** De vierde tekenaar uit
-de oorspronkelijke T107-opzet bestaat nu als volwaardige `pleister`-familie
-(wolkige ondergrond, afbladderende plekken met een donkerdere onderlaag,
-haarscheuren — alles in wrap-posities getekend, want pleister heeft geen
-eigen periodiciteit die een naad zou kunnen maskeren). Hij wordt
-**nergens** door de wereldopbouw aangeroepen; `test-texturenset.mjs`
-bewaakt dat expliciet. De muur-uitrol (`bouwMuur()` naar
-`matMetVertexKleur(matFamilie(...))` plus een UV-herschaling in `blok()`)
-is een aparte keuze die op beeld beoordeeld moet worden vóór hij vastligt —
-een runtime-preview volstond daarvoor, zonder de wereldopbouw te wijzigen.
+**Pleisterwerk op de atelier-muren: geprobeerd, teruggedraaid (grondslag
+blijft liggen).** De vierde tekenaar uit de oorspronkelijke T107-opzet
+bestaat als volwaardige `pleister`-familie (wolkige ondergrond,
+afbladderende plekken met een donkerdere onderlaag, haarscheuren — alles
+in wrap-posities getekend, want pleister heeft geen eigen periodiciteit
+die een naad zou kunnen maskeren). Op verzoek is dit even ECHT op de 9
+ateliermuur-segmenten toegepast (`BAKSTEEN` -> een nieuwe
+`ATELIER_PLEISTER`-kleur), via een tijdelijke uitbreiding van
+`blok()`/`bouwMuur()` met een optionele `familie`-parameter — de eerste
+echte aanroeper van matFamilie() voor muren, precies het "kandidaat voor
+een latere ronde" waar T106/T107 dit bewust voor openlieten. Na beoordeling
+op beeld beviel het resultaat niet, en is de toepassing volledig
+teruggedraaid: de muren zijn weer `BAKSTEEN`, `blok()`/`bouwMuur()` hebben
+hun oude signatuur terug (geen `familie`-parameter meer — die diende alleen
+deze ene, nu ongedaan gemaakte toepassing), en de helderheidsbasislijn
+staat weer op de waarden van vóór de poging. De `pleister`-familie zelf
+blijft ongewijzigd bestaan als ongebruikte grondslag (`test-texturenset.mjs`
+bewaakt weer expliciet dat 'ie nergens wordt toegepast) — mocht een latere
+ronde 'm alsnog ergens willen inzetten, dan hoeft alleen de toepassing
+teruggebouwd te worden, niet de tekenaar zelf.
+
+**Implementatieverslag T108 (uitgevoerd, MET een bewuste scope-
+reductie).** Normal maps uit dezelfde hoogtebron als T107's
+ruwheidsinversie: een donkere albedo-pixel (voeg, naad) is fysiek een
+verdieping, dus dezelfde grijswaarde die al voor de ruwheid diende, dient
+hier ook als hoogtekaart voor een 3x3-Sobel-gradient — geen aparte
+hoogtetekenaar nodig, en de drie kaarten (albedo/ruwheid/normaal)
+corresponderen daardoor gegarandeerd.
+
+**"Alleen grote vlakken" is hier een PER-MESH-eis, niet een per-familie-
+eis — en dat is een echt architecturaal probleem.** `matFamilie()` cachet
+per (naam, kleur): een normalMap op de familie zelf toevoegen zou 'm
+automatisch ook op elke kleine 'steen'/'hout'-aanroep zetten (deurpanelen,
+kratten, kelder-treden), precies wat de beslissing vooraf uitsluit. De
+oplossing hergebruikt het bestaande "twin"-WeakMap-patroon van
+`matMetVertexKleur()`: `matFamilieReliëf(naam, kleur)` cachet een
+GEKLOONDE tweeling per gedeeld basismateriaal (nooit het origineel
+muteren) met `normalMap`/`normalScale` erop, en alleen de aanroepers die
+dat EXPLICIET opvragen krijgen 'm. Toegepast op: gang-vloer, kelder-vloer
+(x2, incl. kelderoost), kelderwanden (`kelderWand()`/`kokerWand()`), en de
+vlonder — een bewust kleinere set dan "de complete kelder rondom" uit
+T107's eerdere brightness-verslag (kelder-treden, sluitpaneel en koker-dak
+blijven op de kale, ongetextureerde basis; kandidaat voor een latere
+ronde). `NORMAAL_FAMILIES = new Set(['steen', 'hout'])` — 'pleister' (net
+toegevoegd voor het atelier) krijgt dus BEWUST geen normal map deze ronde,
+exact zoals de beslissing alleen baksteen/hout noemt.
+
+Laadtijd was het eerst gemeten risico: de naïeve Sobel-implementatie
+(closure-aanroep + modulo per texel) kostte ~100ms voor twee 512x512-
+kaarten — zie de optimalisatie hierboven bij T109 (dezelfde functie,
+gevonden tijdens hetzelfde debug-moment). Na de optimalisatie: ~33ms.
+`normalScale` staat op 0,5 ("laag" gehouden, zoals voorgeschreven).
+
+Geen enkele helderigheids-/kleurcheck in `test-visuele-basislijn.mjs`
+verschoof (65/65 groen, geen enkele waarde bijgewerkt) — een normalMap
+herverdeelt licht over het oppervlak (richtingsgevoelig), maar
+verandert de GEMIDDELDE gereflecteerde energie over een vlak vlak niet
+genoeg om de 2%-band te raken; precies zoals verwacht voor een subtiel
+reliëf-effect. `test-normal-maps.mjs` (15 checks, nieuw) bevestigt: de
+reliëf-materialen krijgen een normalMap, de gedeelde basismaterialen
+blijven ongemoeid, de vier niet-scope-families (`tegel`/`metaal`/
+`natSteen`/`pleister`) krijgen expliciet GEEN normalMap via
+`matFamilieReliëf()`, de kaart is subtiel (gemiddeld blauw-kanaal > 200/
+255) maar niet vlak, en de bouwtijd blijft ruim onder 100ms.
 
 **Vals alarm tijdens de regressiesweep: `test-camerabeweging.mjs`.** Eén
 volledige `run-all.mjs`-sweep na T107 gaf 72/73 groen met precies deze

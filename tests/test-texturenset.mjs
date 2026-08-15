@@ -185,9 +185,11 @@ check(`De klinkervloer herhaalt per KLINKER_TEGEL_METERS (${tegelTest.tegelMeter
 check('Eén klinkertegel beslaat meerdere meters (anders herhaalt het patroon zichtbaar elke meter over een plaats van 17x16m)',
   tegelTest.tegelMeters >= 3, tegelTest);
 
-// --- 5c. De pleister-familie bestaat als grondslag voor een muur-uitrol,
-// maar wordt (nog) NERGENS door de wereldopbouw aangeroepen — dit ticket
-// levert alleen de tekenaar, niet de toepassing.
+// --- 5c. De pleister-familie bestaat als grondslag voor een eventuele
+// toekomstige muur-uitrol, maar wordt (nog) NERGENS door de wereldopbouw
+// aangeroepen — een eerdere toepassing op de atelier-muren is op verzoek
+// weer teruggedraaid naar baksteen (niet mooi genoeg bevonden), dus dit
+// ticket levert alleen de tekenaar, niet de toepassing.
 const pleisterTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const p = d.matFamilie('pleister', 0x2e332c);
@@ -199,7 +201,7 @@ const pleisterTest = await page.evaluate(() => {
 });
 check("'pleister' bestaat als volwaardige familie (map + roughnessMap, mat en niet-metallic)",
   pleisterTest.heeftMap && pleisterTest.heeftRuwheid && pleisterTest.metaal === 0 && pleisterTest.ruwheid > 0.8, pleisterTest);
-check("'pleister' wordt nog NERGENS in de wereld toegepast (alleen de grondslag is gelegd, de muur-uitrol is een aparte keuze)",
+check("'pleister' wordt nog NERGENS in de wereld toegepast (alleen de grondslag is gelegd)",
   pleisterTest.inGebruik === 0, pleisterTest);
 
 // --- 6. Laadtijd-risico uit ARCHITECTURE_NOTES §10.11 ("tientallen

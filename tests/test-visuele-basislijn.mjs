@@ -220,6 +220,12 @@ const RENDER_BAND = 0.25;
 //
 // De overige zes zones bleven binnen de 2%-band: 'hout' (basisruwheid 0,75)
 // en 'steen' op grotere afstand verschuiven te weinig om de band te raken.
+//
+// Atelier-pleisterwerk: kortstondig geprobeerd (BAKSTEEN -> 'pleister' via
+// blok()/bouwMuur()'s `familie`-parameter, atelier/gang-waarden tijdelijk
+// bijgewerkt), maar op verzoek weer teruggedraaid — de gebruiker vond het
+// resultaat niet mooi. Terug naar BAKSTEEN, dus ook deze basislijn terug
+// naar de waarden van vóór die poging.
 const BASISLIJN = {
   woonkamer:    { gemiddelde: 30.57, mediaan: 18.08, calls: 486, triangles: 35407 },
   gang:         { gemiddelde: 35.14, mediaan: 17.49, calls: 346, triangles: 26245 },
