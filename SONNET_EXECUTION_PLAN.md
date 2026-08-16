@@ -2788,3 +2788,744 @@ ARCHITECTURE_NOTES.md §10.18.
     handmatige meting zijn T108 en T110 op goed vertrouwen gebouwd — en
     T79 laat zien wat er gebeurt met een poort zonder procedure: die is
     nooit doorlopen. Plan de meetsessie in vóór je aan fase 5-6 begint.
+
+---
+
+## Sonnet-prompts per ticket — ronde 9 (v0.23, Zombie V2: renderarchitectuur)
+
+**Deze hele ronde is gepland, nog niet uitgevoerd** (net als ronde 5 destijds):
+elk ticket wacht op een aparte, expliciete opdracht. Niets hierin is al
+gebouwd.
+
+### Herkomst en grondslag
+
+Deze ronde vertaalt een losse opdracht van de eigenaar
+("Zombie V2 — Visual Overhaul + Performance-Safe Rendering Architecture",
+~1700 regels) naar dit project se ticketformaat. Die opdracht stelt zelf
+als hoofdregel **METEN > AANNEMEN** en verbiedt expliciet om
+performancewinst, draw-call-aantallen of Three.js-gedrag te verzinnen.
+Daarom is de architectuur hieronder niet overgetypt maar **gecontroleerd
+tegen de actuele code** (na T116) vóór hij is opgeschreven:
+
+- `maakOndodeModel()` (regel ~8414) bouwt per ondode een `THREE.Group`-
+  hiërarchie van losse pivot-`Group`s (`beenL`, `beenR`, `romp`, `hoofd`,
+  `armL`, `armR`) met tot **13 zichtbare meshes** (2 benen, torso, 2
+  schouders, optioneel bochel, optioneel buik+kern, vod, hoofd, 2 ogen, 2
+  armen, 2 handen) — de "~13 meshes"-aanname uit de opdracht klopt dus
+  met de code, niet alleen met een vermoeden.
+- Elk huid-onderdeel krijgt zijn **eigen** `MeshStandardMaterial`-instantie
+  via `maakOndodeMateriaal()` (nooit gedeeld tussen onderdelen, wél nodig
+  omdat elke ondode een eigen huidtint heeft) — dat is de daadwerkelijke
+  bron van de hoge meshtelling: 13 meshes ⇒ tot 13 materialen ⇒ tot 13
+  draw calls per ondode zónder shadow casting (`castShadow` staat nergens
+  in `maakOndodeModel()` — ondoden werpen al geen schaduw; dat blijft zo).
+  Met `effectiefMaxActief()` tot 18 is dat in de piek tot 234 zombie-draw-
+  calls, bovenop de rest van de scene.
+- `userData.lichaamsdeel === 'kop'` staat uitsluitend op `hoofd` en de
+  twee oog-meshes (ontwerpbeslissing 16, T99); `schiet()` (regel ~7176)
+  raycast met `raycaster.intersectObject(ondodenGroep, true)` en loopt bij
+  een treffer omhoog tot `obj.userData.ondode` bestaat.
+- `RIM_UNIFORMS` (T100) is een **gedeeld** uniform-paar — één schrijf
+  verandert de rim op ALLE ondoden. `maakOndodeMateriaal()`'s
+  `onBeforeCompile` injecteert in chunk `<emissivemap_fragment>`, three@0.160.0
+  (gepind, chunknamen zijn geen publieke API — zelfde discipline als T100/
+  T110/T111/T114).
+- `delen.huidMaterialen` (array) wordt door `doodOndode()`/`raakOndode()`
+  gebruikt om bij een treffer kort te flitsen; `delen.kern` (Brander) en
+  `delen.oogMateriaal` (windup-pulse, T31) zijn losse, met naam
+  aangesproken referenties — geen generieke array.
+- `geoCache`/`geo()` (T69) deelt de ~9 basisvormen al tussen alle ondoden;
+  per-ondode maatvariatie loopt via `mesh.scale`, nooit via nieuwe
+  geometrie-parameters. `ruimGroepOp()` (T70) is het dispose-contract.
+- Renderer: three@0.160.0, `pixelRatio` tot 2, `EffectComposer` met 4
+  passes (Render, Bloom, de eigen naverwerkingspass, Output). 28 lichten
+  (1 hemisfeer + 27 point), precies 1 schaduwwerper — geen enkele daarvan
+  hoort bij een ondode.
+
+Dit is de bron van waarheid voor de architectuurbeslissingen hieronder.
+Waar de opdracht van de eigenaar een keuze openliet (bijv. hoeveel bones,
+welk triangle-budget), staat dat hieronder ook als **open, in de code te
+meten vraag** — niet als vooraf bedachte waarde. Zie ook waarschuwing 80.
+
+### De architectuur in één zin
+
+**Van 13 losse meshes + tot 13 materialen naar 1 `THREE.SkinnedMesh` +
+1 materiaal per ondode**, met de bestaande pivot-`Group`s vervangen door
+echte `THREE.Bone`s — en omdat een `Bone` gewoon een `Object3D`-subklasse
+is, blijven bestaande schrijfpatronen zoals `ondode.delen.armL.rotation.x
+= …` in `updateOndoden()`/`raakOndode()`/`doodOndode()` **syntactisch
+identiek werken**. Dat is de kern-architectuurtruc van deze ronde: de
+render­architectuur verandert fundamenteel, maar het `delen.*`-contract
+dat de rest van het spel al gebruikt, hoeft niet te veranderen — het
+draagvlak eronder (Group → Bone) wordt vervangen, niet het contract zelf.
+
+**Wat WEL nieuw is en dus wél nieuwe code vraagt:**
+1. De hitbox: een `SkinnedMesh` mag NOOIT het raycast-doelwit zijn (§24 van
+   de opdracht, en bevestigd door de eigen regel van dit project "meten,
+   niet aannemen" — Three.js' skinned-raycast-nauwkeurigheid/-kosten zijn
+   hier niet gemeten en hoeven dat ook niet te worden, want onzichtbare
+   proxy-volumes zijn sowieso goedkoper). `schiet()` raycast straks tegen
+   een kleine set proxies, niet tegen `ondodenGroep`'s volledige meshes.
+2. Twee bones die V1 niet had (`pelvis`, `chest`/`neck`) voor de
+   anatomische bewegingswensen uit de opdracht (§8) — géén kinematische
+   ouder-kind-keten (heup→wervelkolom→borst→schouder), want dat zou
+   bestaande onafhankelijke rotatiewrites (kromme rug, scheve nek) laten
+   interfereren met de armen eronder. **Plat** blijft, zoals V1 al is.
+3. Eén gedeeld materiaal per ondode betekent dat wat vroeger "een ander
+   materiaal" was (Brander-kern, oog-emissie) nu een **regio** op
+   hetzelfde materiaal moet worden (emissive mask, vertex color of een
+   kleine losse proxy-mesh — per geval afgewogen in de tickets hieronder,
+   nooit "omdat het kan").
+
+### De zes invarianten van deze ronde — lees ze vóór élk ticket
+
+> 1. **Gameplaygetallen blijven exact gelijk.** HP, snelheid, schade,
+>    headshot-/bodyshot-schade, geldbeloning, typekansen, spawn-pacing,
+>    wave-budget, `effectiefMaxActief()`, Brander-explosiegedrag,
+>    collisionregels, powerups, Kerninslag, zone-logica, event-golven —
+>    niets daarvan wijzigt in deze ronde. Dit is uitsluitend rendering,
+>    animatie-uitvoering en hitdetectie-**architectuur**.
+> 2. **Het lichtaantal blijft 28, met precies 1 schaduwwerper.** Geen
+>    enkel ticket voegt een `Light` toe — ook niet "een klein lichtje" voor
+>    de Brander-kern of de ogen. Dat is exact de fout die §21/§20 van de
+>    bronopdracht verbiedt en die dit project al zes rondes lang bewaakt.
+> 3. **`userData.lichaamsdeel === 'kop'` blijft een expliciete, minimale
+>    markering** — nooit "alles op de SkinnedMesh telt als kop" en nooit
+>    een impliciete afleiding. Een nieuw lichaamsdeel dat per ongeluk als
+>    kop telt, is een balanswijziging vermomd als renderrefactor (T99
+>    waarschuwde hier al voor).
+> 4. **V1 blijft bestaan naast V2 tot de eindbeoordeling (T129/T130) groen
+>    licht geeft.** Eén module-constante stuurt welke gebouwd wordt. Geen
+>    A/B-vergelijking is geldig zonder deze toggle.
+> 5. **Meten, niet aannemen — voor élke claim in deze tickets.** Draw
+>    calls, triangles, materialen, frametijd: als het niet betrouwbaar
+>    meetbaar is (SwiftShader-frametijd, zie §10.3/§8.11), zeg dat
+>    expliciet in het ticketverslag in plaats van een getal te verzinnen.
+> 6. **`geoCache`/`geo()`, `ruimGroepOp()` en het T89-emissiehiërarchie-
+>    contract (Bron/Signaal/Alarm) blijven heel.** Een `SkinnedMesh` se
+>    geometrie en `Skeleton` moeten via hetzelfde dispose-discipline als
+>    T70 worden opgeruimd bij `ruimGroepOp()` — een gemiste
+>    `skeleton.dispose()` is een nieuwe lekklasse die dit project nog niet
+>    kent.
+
+### Uitvoeringsvolgorde (vast)
+
+```
+Fase 0  T117
+Fase 1  T118
+Fase 2  T119
+Fase 3  T120
+Fase 4  T121 → T122 → T123
+Fase 5  T124 → T125
+Fase 6  T126 → T127 → T128
+Fase 7  T129 → T130
+Fase 8  T131
+```
+
+Harde afhankelijkheden: T117 vóór alles (de baseline bestaat pas dan) ·
+T118 vóór T119 (er moet een skelet zijn vóórdat het kan bewegen) · T119
+vóór T120 (hitbox-proxies moeten tegen een ECHT bewegend skelet getest
+worden, niet een rustpose — zie de toelichting bij T120) · T120 vóór T121
+(anatomie/silhouet wijzigen terwijl de hitbox nog niet vaststaat is twee
+keer werk) · T121 vóór T122/T123 (het gedeelde materiaal moet bestaan
+vóórdat je 'm verrijkt) · T124 vóór T125 (geometrie vóór houding) · T121 én
+T124 vóór T126/T127/T128 (typevarianten bouwen op de definitieve
+Base Humanoid, niet op een tussenversie) · T126/T127/T128 vóór T129/T130
+(het eindrapport en de regressiesuite hebben alle types nodig) · T129/T130
+vóór T131 (V1 verwijderen zonder groen licht is onomkeerbaar).
+
+**Nooit combineren met een ander ticket (ronde 9):**
+- **T118** (V2-geometriebasis + skelet) — de eerste fundamentele wissel
+  van de renderarchitectuur; niets anders verandert tegelijk.
+- **T120** (hitbox-/raycast-compatibiliteitslaag) — het hitbox-contract
+  mag maar door één wijziging tegelijk bewegen, exact dezelfde discipline
+  als T18/T28/T30/T61/T65/T99 hiervoor. Headshots/bodyshots zijn de
+  gevoeligste plek in het hele spel; geen andere wijziging in dezelfde
+  commit.
+- **T131** (V1 verwijderen) — onomkeerbaar zonder een aparte, expliciete
+  opdracht bovenop het groene licht uit T129/T130.
+
+**Commitgrenzen:** één commit per ticket, `run-all.mjs` volledig groen
+vóór commit, nooit oud + nieuw systeem tegelijk actief NA T131 (tot dan
+mág de V1/V2-toggle allebei laten bestaan — dat is het hele punt van de
+toggle). Elk ticket vanaf T118 levert, net als ronde 8, een beeldverslag:
+minimaal V1 vs V2 vanaf hetzelfde standpunt, met dezelfde bevriezing als
+`openVoorVisueleMeting()` gebruikt.
+
+---
+
+### Fase 0 — Analyse & meetbasis
+
+### Ticket 117 — Zombie V1-analyse, F3-overlay en de post-T116-baseline
+- **Context:** §0–§4 van de bronopdracht: bouw NIETS aan Zombie V2 voordat
+  V1 en de renderer exact gemeten zijn. De code-analyse hierboven
+  ("Herkomst en grondslag") is het startpunt, geen vervanging van dit
+  ticket — dit ticket meet in de draaiende game, niet in de broncode.
+- **Doel:** een klein, tijdelijk debug-overlay (toggle, geen permanente
+  UI) dat minimaal toont: FPS, gemiddelde frametijd, p95 frametijd,
+  `renderer.info.render.calls/triangles/points/lines`,
+  `renderer.info.memory.geometries/textures`, actieve/zichtbare ondoden,
+  actieve lichten, schaduwwerpende lichten. Plus een document
+  (`ZOMBIE_V2_BASELINE.md`, Nederlands) met de exacte V1-meting.
+- **Stappen:**
+  1. Controleer expliciet of `renderer.info.autoReset` correct staat voor
+     hoe dit project de composer gebruikt (4 passes; T88 gebruikt al
+     `autoReset=false` + handmatige `reset()` in de teststack — hergebruik
+     dat patroon, verzin het niet opnieuw).
+  2. Bouw de overlay als een verborgen HUD-laag (zelfde
+     `display:none`/debug-toggle-patroon als bestaande dev-hulpjes), NIET
+     zichtbaar voor gewone spelers.
+  3. Meet in de draaiende game (niet alleen headless): 1 ondode dichtbij;
+     10 ondoden; 18 ondoden; 18 ondoden tijdens snel schieten. Noteer per
+     scenario: meshes/materialen/geometrieën per ondode (uit de
+     scenegraaf, zelfde traversal-aanpak als `meet-eindtoestand.mjs` uit
+     T116), draw calls, triangles, en — waar betrouwbaar meetbaar — FPS/
+     frametijd/p95. Waar frametijd niet betrouwbaar meetbaar is
+     (headless/SwiftShader), zeg dat expliciet in het document in plaats
+     van een getal te verzinnen (§10.3/§8.11, exact het patroon uit T116).
+  4. Schrijf `ZOMBIE_V2_BASELINE.md`: sectie "Zombie V1" met precies de
+     velden die het latere eindrapport (T129) ook gebruikt (zie de
+     rapportstructuur daar), zodat V1 en V2 straks letterlijk naast elkaar
+     staan.
+- **Acceptatie:** de overlay is uitzetbaar/onzichtbaar voor de speler; het
+  document bevat gemeten (niet geschatte) getallen voor alle vier de
+  scenario's; elke claim die niet gemeten kon worden staat expliciet
+  benoemd als "niet betrouwbaar meetbaar" in plaats van weggelaten of
+  verzonnen.
+- **Test:** `run-all.mjs` blijft groen (de overlay mag geen bestaand
+  gedrag raken); een nieuw, klein `test-perf-overlay.mjs` dat toetst dat
+  de overlay standaard onzichtbaar is en de juiste velden toont zodra hij
+  aan staat.
+- **Niet veranderen:** geen enkele regel in `maakOndodeModel()`,
+  `updateOndoden()`, `raakOndode()`, `doodOndode()` of `schiet()`. Dit
+  ticket meet, het bouwt niets aan de zombie zelf.
+
+---
+
+### Fase 1 — Fundament: geometrie, skelet, gedeeld materiaal, toggle
+
+### Ticket 118 — V2-geometriebasis: SkinnedMesh, plat botskelet, V1/V2-toggle
+- **Context:** de architectuur hierboven ("De architectuur in één zin").
+  `maakOndodeModel()` bouwt vandaag `Group`-pivots; dit ticket vervangt
+  ALLEEN de rest van dat draagvlak (Group → Bone, losse meshes → één
+  samengestelde `BufferGeometry`), niet de bewegingslogica (die staat in
+  `updateOndoden()` en blijft in dit ticket ongewijzigd).
+- **Doel:**
+  1. `ZOMBIE_RENDER_VERSIE`-module-constante (`'v1' | 'v2'`), zelfde
+     schakelaar-discipline als beslissing 92 (T96/T97/T98/T100/T103/
+     T108/T110) — géén query-param, géén runtime-toggle-UI. Debug-hook
+     getter/setter zodat tests 'm kunnen omzetten zonder reload.
+  2. Bestaande `maakOndodeModel()` hernoemen naar `maakOndodeModelV1()`,
+     ONGEWIJZIGD verder. Nieuwe `maakOndodeModelV2()` bouwt:
+     - Eén samengestelde `THREE.BufferGeometry` met de disjuncte
+       "eilanden" torso, 2 schouders, hoofd, 2 armen, 2 handen, 2 benen
+       (Brander-kern/bochel/buik/vod komen in latere tickets — zie T121/
+       T126/T127) — GEEN topologisch gesloten volume nodig (§10 van de
+       bronopdracht staat dit expliciet toe).
+     - `skinIndex`/`skinWeight`-attributen: elke vertex hoort bij precies
+       één bone (geen echte blending nodig voor een low-poly figuur met
+       harde delen — vereenvoudigt bind-pose-berekening en voorkomt
+       naad-vervorming tussen delen die toch nooit hoeven te vervormen).
+     - Eén **platte** `THREE.Skeleton`: `root`, `beenL`, `beenR`, `romp`,
+       `hoofd`, `armL`, `armR` — zelfde namen, zelfde rustpose-transform
+       (positie/rotatie) als de huidige V1-pivots, zodat de rustpose
+       pixel-voor-pixel overeenkomt met een stilstaande V1-ondode.
+     - Eén `MeshStandardMaterial`-instantie PER ONDODE (niet gedeeld
+       tussen ondoden — zelfde per-instance-noodzaak als V1's
+       `maakOndodeMateriaal()`, alleen nu 1 in plaats van tot 9 per
+       ondode). Kleurvariatie per lichaamsdeel (torso vs hoofd iets
+       lichter, zoals V1's `.multiplyScalar()`) via een vertex-color-
+       attribuut op de samengestelde geometrie, zelfde bak-patroon als
+       T104's `bakUniformeTint()`. Geen rim/emissive/normal-map nog — dat
+       is T122/T123.
+  3. `groep.userData.delen = { beenL, beenR, romp, hoofd, armL, armR,
+     huidMaterialen: [materiaal], skinnedMesh, skeleton }` — dezelfde
+     sleutelnamen als V1, dus `ondode.delen.armL` bestaat in beide
+     versies en verwijst in V2 naar een `Bone` i.p.v. een `Group`.
+  4. `spawnOndode()`/`updateOndoden()`/`raakOndode()`/`doodOndode()`
+     blijven in DIT ticket op hun bestaande code — geen enkele van die
+     functies wordt aangepast. Ze lezen/schrijven `delen.*`, en omdat een
+     `Bone` een `Object3D`-subklasse is, werken hun bestaande
+     `.rotation.x = …`/`.position.y = …`-writes al identiek tegen V2 —
+     dat is precies de kern-architectuurtruc, en dit ticket is de plek
+     waar die voor het eerst wordt aangetoond, niet alleen beweerd.
+- **Stappen:** bouw eerst de geometrie-samensteller als pure functie
+  (input: per-deel offset/rotatie/schaal, output: gecombineerde
+  `BufferGeometry` + skin-attributen) zodat hij testbaar is zonder scene;
+  dan het `Skeleton`/`SkinnedMesh`-bind; dan de toggle-vertakking in
+  `spawnOndode()`. `SkinnedMesh` en `Skeleton` MOETEN via `ruimGroepOp()`
+  correct disposen (invariant 6) — controleer expliciet of het bestaande
+  T70-dispose-pad een `Skeleton` al meeneemt of dat dit een nieuwe
+  disposeregel nodig heeft.
+- **Acceptatie:** met de toggle op `'v1'` is het spel bit-voor-bit
+  identiek aan vóór dit ticket (volledige regressiesuite groen). Met de
+  toggle op `'v2'`: een V2-ondode laadt zonder fout, staat in exact de
+  V1-rustpose (screenshot-vergelijking, geen mechanische assert nodig
+  voor "ziet er hetzelfde uit"), en `ondode.delen.armL` bestaat en is een
+  `THREE.Bone`. Meshes/materialen/geometrieën per V2-ondode gemeten en
+  naast de T117-baseline gezet in `ZOMBIE_V2_BASELINE.md`.
+- **Test:** `test-ondode-model-v2.mjs` (nieuw) — structuurchecks
+  (skinIndex/skinWeight aanwezig, `skeleton.bones.length` klopt, `delen.*`
+  bestaat met de juiste types) + een expliciete test dat het
+  `raakOndode()`/`doodOndode()`-flash-pad nog steeds werkt met
+  `huidMaterialen.length === 1` (was tot 9). GEEN gameplay-asserts hier
+  (die komen in T119/T120) — dit ticket toetst uitsluitend structuur.
+- **Niet veranderen:** `spawnOndode()`'s buitenkant (signature, `type`/
+  `traits`-parameters), `updateOndoden()`, `raakOndode()`, `doodOndode()`,
+  `schiet()`, elk balansgetal.
+- **Let op:** dit is het risicovolste ticket van de ronde — de eerste
+  fundamentele wissel van de renderarchitectuur. Nooit combineren met
+  iets anders (zie boven).
+
+---
+
+### Fase 2 — Animatie
+
+### Ticket 119 — Nieuwe anatomische bones + hun procedurele beweging
+- **Context:** T118 leverde de 7 bones die V1 al had (via zijn pivots).
+  Bestaande beweging (lopen, aanval, flinch, dood — allemaal in
+  `updateOndoden()`/`raakOndode()`/`doodOndode()`) werkt daardoor al
+  ONGEWIJZIGD tegen een V2-ondode; dit ticket voegt UITSLUITEND toe wat
+  V1 nooit had: §8 van de bronopdracht vraagt een pelvis die apart
+  beweegt tijdens het lopen, een borstkas die licht achterloopt, en een
+  hoofd dat niet star aan de romp gekoppeld is (het laatste bestaat al
+  gedeeltelijk via `hoofdGroep`'s eigen rotatie — dit ticket beoordeelt
+  of dat voldoende is of dat een extra `neck`-bone meerwaarde heeft).
+- **Doel:** twee nieuwe, PLATTE bones (`pelvis`, `chest`) naast de
+  bestaande 7 — géén kinematische ouder-kind-keten (zie de toelichting in
+  "De architectuur in één zin": een echte keten zou de bestaande
+  onafhankelijke arm-/beenrotaties laten meebewegen met elke chest-
+  rotatie, en dat verandert het silhouet tijdens exact de bewegingen die
+  `updateOndoden()` al met zorg timet). Nieuwe, kleine procedurele
+  bijdrages in `updateOndoden()`'s V2-tak: een lichte pelvis-sway in fase
+  met de bestaande loop-cyclus, een chest-offset die met een korte
+  vertraging achter de pelvis-sway aanloopt (het "loopt iets achter"-
+  effect uit de bronopdracht, via een phase-lag op DEZELFDE sinus die de
+  loop-cyclus al aanstuurt — geen nieuwe klok).
+- **Stappen:** meet eerst of `hoofdGroep`'s bestaande rotatie het
+  "hoofd niet star gekoppeld"-doel al voldoende dekt (kromme rug + scheve
+  nek zitten er al) vóórdat een aparte `neck`-bone wordt toegevoegd — als
+  het antwoord "ja" is, blijft `neck` weg en levert dit ticket alleen
+  `pelvis`/`chest`. Voeg de twee nieuwe bones toe aan het `Skeleton` uit
+  T118 (skinIndex/skinWeight van een klein deel van de torso-vertices
+  verschuiven naar `chest`, van de heupregio naar `pelvis` — dus WEL een
+  kleine geometrie-aanpassing t.o.v. T118, maar geen nieuwe zichtbare
+  meshes). Exact dezelfde TIMING als de bestaande loop-/aanval-/flinch-/
+  death-animatie (invariant 1) — dit voegt beweging toe, het verandert
+  geen enkele bestaande snelheid of duur.
+- **Acceptatie:** met de toggle op `'v2'` is een lopende ondode
+  zichtbaar "voller" bewogen dan V1 (screenshot-reeks tijdens het lopen,
+  V1 naast V2) zonder dat de voetstap-cyclus-duur, aanvalstiming of
+  flinch-duur is veranderd (die blijven letterlijk dezelfde getallen als
+  V1 — meetbaar via de bestaande timing-constanten, niet via ogenschouw).
+  Bones die `updateOndoden()` niet expliciet aanstuurt (b.v. tijdens
+  `strompelt`) reageren nog steeds correct op de bestaande strompel-code.
+- **Test:** uitbreiding van de bestaande animatie-testsuite
+  (`test-ondode-animatie.mjs`-stijl) met V2-varianten: pelvis/chest-
+  posities verschuiven binnen de loop-cyclus, keren terug naar rust bij
+  stilstand, en — cruciaal — de BESTAANDE V1-animatietests blijven
+  ongewijzigd groen (ze testen de `delen.*`-writes, niet de
+  renderarchitectuur eronder).
+- **Niet veranderen:** looppas-snelheid, aanvalstiming, flinch-duur,
+  `STERVEN_DUUR`, `VAL_STIJLEN` — dit ticket verrijkt de UITVOERING, niet
+  de gameplaytiming (invariant 1).
+
+---
+
+### Fase 3 — Hitbox & raycasting
+
+### Ticket 120 — Onzichtbare hitbox-proxies + `schiet()`/`raakOndode()` op V2
+- **Context:** §24 van de bronopdracht is hier hard: de high-detail
+  `SkinnedMesh` mag NOOIT de raycast-hitbox zijn. Dit project se eigen
+  regel ("meten, niet aannemen") maakt de vraag "is Three.js' skinned-
+  raycast wel accuraat/snel genoeg" irrelevant — onzichtbare
+  proxy-volumes zijn sowieso goedkoper om te raycasten dan een volledige
+  getrianguleerde mesh, dus die vraag hoeft niet eens gemeten te worden
+  om de keuze te rechtvaardigen. Komt bewust NA T119 (animatie), zodat de
+  proxies tegen een ECHT bewegend skelet gebouwd en getest worden — een
+  proxy die alleen in de rustpose klopt en tijdens het lopen achterblijft,
+  is een onzichtbare bug die precies headshots/bodyshots raakt.
+- **Doel:** twee kleine, onzichtbare `Mesh`-proxies per V2-ondode (kop:
+  sphere, lichaam: capsule of eenvoudige box), elk als kind van de
+  bijbehorende bone (kop-proxy kind van `hoofd`, lichaam-proxy kind van
+  `romp`) zodat ze automatisch de posed bone volgen zonder eigen
+  update-code. `userData.lichaamsdeel` staat op deze proxies (`'kop'`
+  resp. `'lichaam'`) — de daadwerkelijke `SkinnedMesh` krijgt GEEN
+  `userData.lichaamsdeel` meer en wordt uit het raycast-pad gehaald via
+  `THREE.Layers` (proxies op een aparte layer die `schiet()`'s raycaster
+  wél doorzoekt; de zichtbare `SkinnedMesh` op de layer die de camera wél
+  rendert maar de raycaster niet doorzoekt — controleer de exacte
+  Three.js-laagconventie in r160 vóór je bouwt, verzin 'm niet).
+  `schiet()`'s `raycaster.intersectObject(ondodenGroep, true)` blijft
+  syntactisch identiek (die vindt de proxies gewoon, want ze zitten in
+  dezelfde `ondodenGroep`-subboom) — geen wijziging nodig aan `schiet()`
+  zelf zolang de layer-filtering op de raycaster staat, niet op de
+  aanroep.
+- **Stappen:** bouw de proxies als onzichtbare (`visible: false` ÉN op de
+  raycast-only layer — beide, voor het geval een toekomstig ticket per
+  ongeluk `visible` toggelt) meshes met een minimaal aantal driehoeken
+  (een sphere/capsule op lage segmentcount is voldoende, dit is geen
+  zichtbare geometrie). Test expliciet tijdens: lopen, voorover buigen
+  (kromme rug), aanval, flinch, death-animatie — bij elke staat moet een
+  recht-vooruit-schot op ooghoogte (1.7m, zelfde aanname als V1's
+  hoofd-hoogte-anker) de kop-proxy raken.
+- **Acceptatie:** met de toggle op `'v2'` zijn headshots en bodyshots
+  betrouwbaar tijdens ALLE bewegingsstaten hierboven (test-matrix, geen
+  losse steekproef); de zichtbare `SkinnedMesh` wordt NOOIT geraakt door
+  `raycaster.intersectObject(ondodenGroep, true)` (expliciete test:
+  richt op een plek die alleen de mesh raakt en niet een proxy — als dat
+  een treffer geeft, lekt de mesh alsnog het raycast-pad in). Raycasting
+  in V2 is niet duurder dan V1 gemeten in draw-call-equivalente termen
+  (twee simpele primitieven per ondode i.p.v. 13 getrianguleerde meshes).
+- **Test:** `test-ondode-hitreacties.mjs`/`test-schaderichting.mjs`-stijl
+  uitgebreid met een V2-tak die de volledige bewegingsstaten-matrix
+  hierboven doorloopt; een aparte, expliciete test dat de `SkinnedMesh`
+  zelf geen `userData.lichaamsdeel` draagt en niet op de raycast-layer
+  zit.
+- **Niet veranderen:** `schiet()`'s buitenkant, headshot-/bodyshot-schade,
+  de `while (obj && !obj.userData.ondode) obj = obj.parent;`-klim-logica
+  (die blijft werken zolang de proxies ook een pad omhoog naar
+  `userData.ondode` hebben, exact zoals V1's meshes dat nu hebben).
+- **Let op:** het hitbox-contract mag maar door één wijziging tegelijk
+  bewegen — nooit combineren met een ander ticket (zie boven).
+
+---
+
+### Fase 4 — Anatomie, houding en materiaalverrijking
+
+### Ticket 121 — Anatomie- en silhouetupgrade + triangle-budgetonderzoek
+- **Context:** §6/§7/§11 van de bronopdracht: dit is de stap waar de
+  zombie daadwerkelijk "veel mooier" wordt. Komt NA de hitbox (T120), niet
+  ervoor — anatomie/silhouet wijzigen terwijl de hitbox-proxies nog niet
+  vaststaan, is twee keer werk als de proxy-ankerpunten (bone-posities)
+  meeveranderen.
+- **Doel:** de Base Humanoid-geometrie uit T118 (functioneel maar
+  bewust nog grof) vervangen door een anatomisch overtuigender vorm:
+  schedelvorm/kaak/jukbeenderen op het hoofd, een geloofwaardige
+  schouderlijn/borstkas/taille op de romp, onderscheid bovenarm/
+  onderarm/pols, onderscheid bovenbeen/knie/onderbeen/voet. Geen nieuwe
+  ZICHTBARE meshes (dat zou de draw-call-winst van T118 ongedaan maken) —
+  extra detail komt uit MEER driehoeken binnen dezelfde samengestelde
+  `BufferGeometry`, niet uit meer objecten.
+- **Stappen:** onderzoek de drie ranges uit de bronopdracht
+  (2.000–4.000 / 4.000–8.000 / 8.000–15.000 triangles) als
+  ONDERZOEKSRANGES, geen doelwaarden: bouw een middenvariant (4.000–8.000)
+  eerst, vergelijk met screenshots tegen zowel V1 als een 2.000–4.000-
+  variant, en verhoog alleen als het verschil op scherm aantoonbaar is
+  (close-up ÉN op speelafstand). Besteed extra driehoeken waar de
+  bronopdracht ze noemt: hoofd, gezichtssilhouet, schouders, handen,
+  knieën, voeten, kledingranden, anatomische overgangen — niet aan
+  vrijwel vlakke gebieden. Werk de bind-pose/skin-gewichten bij zodra de
+  vertexverdeling verandert (nieuwe vertices horen bij dezelfde bones als
+  hun buren, anders scheurt de mesh bij een pose).
+- **Acceptatie:** een gekozen triangle-budget, ONDERBOUWD met een
+  screenshot-vergelijking (niet alleen een getal) tegen zowel V1 als een
+  lager-poly V2-kandidaat; draw calls per ondode blijven ongewijzigd
+  t.o.v. T118/T119/T120 (dit ticket voegt vertices toe, geen objecten);
+  de hitbox-proxies uit T120 blijven kloppen (regressietest T120 blijft
+  groen — bones-posities zijn niet verschoven, alleen de mesh eromheen is
+  gedetailleerder).
+- **Test:** `run-all.mjs` inclusief T120's hitbox-matrix; nieuwe
+  beeldverslag-set (V1 vs V2, close-up + speelafstand, zelfde standpunten
+  als T88's acht bevroren standpunten waar een ondode zichtbaar is).
+- **Niet veranderen:** bone-posities/-rotaties uit T118/T119, het
+  hitbox-contract uit T120, elk balansgetal.
+
+### Ticket 122 — Materiaalverrijking: rim-light, Bron/Signaal-emissie, ogen, Brander-kern
+- **Context:** T118 leverde één vlak, ongekleurd materiaal per ondode.
+  Dit ticket zet V1's bestaande, WERKENDE emissie-systemen over: de
+  rim-light (T100, gedeelde `RIM_UNIFORMS`), de Bron/Signaal-
+  emissiehiërarchie (T89, `OOG_INTENSITEIT_BASIS`/alarm-schaal via
+  `delen.oogMateriaal`), en de Brander-kernpuls (`delen.kern`,
+  `EMISSIE_BRON_MAX`, aangestuurd door `raakOndode()`). Dit is waar de
+  "1 materiaal in plaats van tot 9"-belofte tegen echte complexiteit
+  wordt getoetst — niet alles kan zomaar op één materiaal.
+- **Doel, met de afweging per feature expliciet gemaakt (§16 van de
+  bronopdracht: "is de zichtbare winst groot genoeg voor de fragmentkosten"):**
+  - **Rim-light:** blijft `onBeforeCompile` op het (nu enkelvoudige)
+    materiaal, zelfde `RIM_UNIFORMS`-gedeelde-uniform-patroon als V1 —
+    geen wijziging in de aard van de techniek, alleen in hoeveel
+    materialen 'm dragen (1 i.p.v. tot 9 per ondode, dus GOEDKOPER, niet
+    duurder).
+  - **Ogen:** GEEN losse mesh (dat zou de 1-materiaal-belofte meteen
+    doorbreken voor een detail dat de bronopdracht expliciet als
+    "geen extra draw call" markeert, §20). Los een emissive-mask-regio
+    op via een vertexattribuut (of een klein, toegewezen UV-gebied als
+    T107's texture-aanpak dat makkelijker maakt) die in de fragment-
+    shader de oogkleur/-intensiteit apart aanstuurt. `delen.oogMateriaal`
+    (het bestaande T31-windup-pulse-contract, dat leest/schrijft
+    `.emissiveIntensity`) wordt een lichte FACADE — een gewoon
+    JS-object met een `emissiveIntensity`-property die bij het schrijven
+    een uniform op het gedeelde materiaal bijwerkt — zodat T31's
+    bestaande code (`delen.oogMateriaal.emissiveIntensity = …`)
+    ongewijzigd blijft werken. Dit uniform is PER ONDODE (niet gedeeld
+    zoals `RIM_UNIFORMS`), want elke ondode heeft zijn eigen windup-
+    timing.
+  - **Brander-kern:** blijft een LOSSE, kleine mesh (net als V1) — dit is
+    de bronopdracht se eigen uitzondering (§9: "2 draw calls = zeer goed,
+    3 = alleen met duidelijke visuele reden"). De reden is hier concreet:
+    `raakOndode()` schaalt `delen.kern` onafhankelijk voor de kernpuls-
+    animatie, en het schalen van een REGIO binnen één samengestelde
+    `SkinnedMesh` (in plaats van een los object) is niet mogelijk via
+    object-transforms. Brander is bovendien het enige type met dit
+    detail — de kostenpost geldt niet voor de andere vier types. Blijft
+    op `kernMateriaal` (gedeeld, zoals nu), GEEN `PointLight` (invariant
+    2).
+- **Acceptatie:** een V2-ondode heeft precies 1 draw call (normale/Loper/
+  Sjouwer/Sluiper) of 2 (Brander, kern meegerekend) — gemeten, niet
+  aangenomen; `RIM_UNIFORMS`-writes werken nog steeds globaal op alle
+  ondoden tegelijk (V1 én V2 gemengd, mocht de toggle ooit per-spawn
+  variëren tijdens testen); `delen.oogMateriaal.emissiveIntensity = x`
+  verandert zichtbaar en uitsluitend DIE ene ondode se ogen; de
+  T88-visuele-basislijn blijft binnen band (dit raakt licht/materiaal,
+  dus die test hoort bij dit ticket te draaien — invariant uit ronde 8,
+  nog steeds geldig).
+- **Test:** `test-rimlight.mjs`/T89-emissietests uitgebreid met een
+  V2-tak; nieuwe check dat de oog-facade het bestaande T31-contract
+  (lezen ÉN schrijven van `.emissiveIntensity`) volledig dekt; Brander-
+  kernpuls-test (bestaande `delen.kern`-assert) blijft ongewijzigd groen.
+- **Niet veranderen:** `RIM_STERKTE_BASIS`, `OOG_INTENSITEIT_BASIS`,
+  `EMISSIE_BRON_MAX`, de alarm-/Signaal-opschaling uit T89 — dit ticket
+  verhuist waar de emissie vandaan komt, niet de waarden zelf.
+
+### Ticket 123 — Normal-map A/B-test (verplicht, apart)
+- **Context:** §18 van de bronopdracht eist dit EXPLICIET als eigen,
+  losstaande stap — nooit stilzwijgend meegenomen in T121/T122. Met 28
+  lichten kan fragmentkosten van een extra textuursample per licht
+  relevant zijn (waarschuwing 60 uit ronde 8 geldt hier onverkort: deze
+  scene is fragment-bound, niet draw-call-bound).
+- **Doel:** normal maps op de plekken die de bronopdracht noemt (§18):
+  huidplooien, ribben, littekens, wonden, scheuren. Puur een detaillaag
+  bovenop het T121/T122-materiaal — geen nieuwe geometrie, geen nieuwe
+  draw call.
+- **Stappen:** bouw exact twee varianten van hetzelfde V2-materiaal (A:
+  zonder normal map, B: met), zelfde scene/camera/zombies/pixelRatio/
+  verlichting voor allebei — geen enkel ander verschil. Meet, met de
+  overlay uit T117: gemiddelde frametijd, p95, calls, triangles, voor
+  beide varianten, in minimaal het 18-zombies-scenario.
+- **Acceptatie:** als de visuele winst duidelijk is EN de frametime-
+  impact klein: normal map behouden, met het gemeten verschil
+  gedocumenteerd in `ZOMBIE_V2_BASELINE.md`. Als de kosten opvallend
+  zijn: vereenvoudigen (bijv. alleen op het hoofd, niet op de hele
+  romp) of weglaten — met de reden erbij, niet stilzwijgend.
+- **Test:** de A/B-meting zelf is het testplan van dit ticket (geen
+  aparte assert-suite nodig bovenop de bestaande visuele/render-tests,
+  die blijven vanzelf groen zolang de materiaalstructuur niet breekt).
+- **Niet veranderen:** niets buiten het materiaal van T121/T122 — dit
+  ticket voegt precies één laag toe of laat 'm expliciet weg.
+
+---
+
+### Fase 5 — Types
+
+### Ticket 124 — Loper en Sjouwer op de V2-basis
+- **Context:** §14 van de bronopdracht: types moeten VISUEEL duidelijker
+  worden, ZONDER gameplaystats te veranderen (`ONDODE_TYPES.loper`/
+  `.sjouwer` blijven letterlijk ongewijzigd — snelheid/HP/geld/schaal).
+  V1 differentieert nu via `typeInfo.vorm` (`rompBreedte`, `voorover`,
+  `bochel`) op `mesh.scale` — dat mechanisme blijft grotendeels bruikbaar
+  op de V2-bones (scale werkt op een Bone net als op een Group).
+- **Doel:** Loper (mager, pezig, smallere torso, voorovergebogen, diepe
+  oogkassen — via de T121-anatomie plus bone-scale) en Sjouwer (brede
+  torso, dikke nek, grote schouders, gebogen rug, bochel, lager
+  zwaartepunt) herkenbaar op de nieuwe basis. De Sjouwer-bochel: zelfde
+  afweging als de Brander-kern in T122 — losse mesh of vertexregio? Hier
+  is het antwoord waarschijnlijk ANDERS, want de bochel heeft geen eigen
+  onafhankelijke animatie nodig (in tegenstelling tot de kernpuls) — meet
+  of een vertexregio-aanpak (mesh-geometrie, geen apart object) volstaat
+  vóór je een losse mesh bouwt.
+- **Stappen:** bouw beide types, vergelijk per type een V1- en
+  V2-screenshot vanaf hetzelfde standpunt/dezelfde pose; laat een
+  onbevooroordeelde blik (of jezelf, koud, zonder de code erbij) binnen
+  1 seconde het type benoemen — dat is de facto-acceptatietest uit §14
+  ("moet onmiddellijk zwaar/snel voelen").
+- **Acceptatie:** `ONDODE_TYPES.loper`/`.sjouwer` ongewijzigd (diff-check
+  op die twee object-literals); beide types binnen hetzelfde draw-call-
+  budget als de normale V2-ondode uit T121/T122 (tenzij de bochel-keuze
+  hierboven een 2e draw call rechtvaardigt — dan expliciet beargumenteerd
+  zoals bij de Brander-kern).
+- **Test:** bestaande varianten-/typetests (`test-varianten.mjs`-stijl)
+  uitgebreid met een V2-tak; geen nieuwe balans-asserts (die bestaan al
+  en moeten ONGEWIJZIGD groen blijven — dat IS de test dat gameplay niet
+  is veranderd).
+- **Niet veranderen:** `ONDODE_TYPES.loper`/`.sjouwer`, `ONDODE_TYPE_MIN_GOLF`.
+
+### Ticket 125 — Brander en Sluiper op de V2-basis
+- **Context:** zelfde opzet als T124, voor de resterende twee types.
+  Brander leunt zwaar op T122's kernmesh-beslissing; Sluiper is vooral
+  een houdings-/silhouetvraag (ingedoken kop, schouders omhoog) die al
+  grotendeels in `vorm.ingedokenKop` bestaat.
+- **Doel:** Brander (vervormde buik, gebarsten/verbrande huid via de
+  vertexregio-aanpak uit T122, kern ongewijzigd als losse mesh) en
+  Sluiper (zeer mager, ingedoken torso, opvallende nekhouding, leesbare
+  ogen — de oog-facade uit T122 maakt "leesbaar" hier makkelijk: hogere
+  basis-`emissiveIntensity` voor dit type, geen nieuwe techniek nodig).
+- **Stappen/Acceptatie/Test:** zelfde structuur als T124, toegepast op
+  deze twee types. Brander-explosiegedrag (`BRANDER_EXPLOSIE_*`) blijft
+  volledig ongewijzigd — dit ticket raakt alleen hoe hij eruitziet vóór
+  hij ontploft, nooit de explosie zelf.
+- **Niet veranderen:** `ONDODE_TYPES.brander`/`.sluiper`,
+  `BRANDER_EXPLOSIE_RADIUS`/`_SCHADE_SPELER`/`_SCHADE_ONDODE`,
+  de Sluiper-gating in `ondodeTypeGewichten()` (uitsluitend tijdens een
+  Mistgolf).
+
+### Ticket 126 — Cosmetische variatieprofielen op de V2-basis
+- **Context:** §15 van de bronopdracht vraagt expliciet om variatie via
+  bone-scaling/-positionering en vertexkleuren, NIET via unieke geometrie
+  per ondode — precies hoe `VARIATIE_PROFIELEN` (T19) en `kiesOndodeTraits()`
+  vandaag al werken (`rompFactor`, `armDikteFactor`, `lengteMin/Max`,
+  `mistArmL`, plus de losse traits `kromme`/`slepend`/`armVerschil`/
+  `strompelt`). Dit mechanisme verhuist grotendeels 1:1 naar V2 omdat het
+  al op `.scale`/`.rotation` werkt, niet op geometrie-parameters (T69
+  heeft dat al zo gebouwd).
+- **Doel:** alle zeven profielen (standaard/mager/breed/gebocheld/lang/
+  kort/eenarmig) + de vier losse traits (kromme houding, slepend been,
+  armlengteverschil, strompelen) werken op de V2-bones met exact dezelfde
+  kansverdeling en hetzelfde zichtbare effect als V1. `eenarmig`
+  (`mistArmL`) is de enige die een BONE laat ontbreken i.p.v. een mesh —
+  controleer dat een `Skeleton` met een bone die geen enkele vertex bindt
+  (of helemaal afwezig is) geen renderfout geeft.
+- **Acceptatie:** `VARIATIE_PROFIELEN`/`kiesOndodeTraits()`/
+  `GOLF_PROFIEL_*` ongewijzigd; 200-samples-kansverdelingstest (zelfde
+  patroon als T2/T19) blijft groen voor beide versies; screenshot-reeks
+  van alle zeven profielen, V1 naast V2.
+- **Test:** bestaande `test-varianten.mjs`/profieltests uitgebreid met
+  een V2-tak, GEEN nieuwe kansverdeling.
+- **Niet veranderen:** `VARIATIE_PROFIELEN`, `kiesOndodeTraits()`,
+  `GOLF_PROFIEL_BUFFER_LENGTE`/`_MAX_HERLOTINGEN`.
+
+---
+
+### Fase 6 — Eindbeoordeling
+
+### Ticket 127 — Volledig benchmarkprotocol + eindrapport
+- **Context:** §33–§35/§41 van de bronopdracht. Dit is het
+  beslismoment: haalt V2 de acceptatiecriteria, en zo ja/nee, waarom.
+- **Doel:** de zeven scenario's uit de bronopdracht (§35: 1 ondode
+  dichtbij; 10; 18; 18 + snel schieten; 18 in representatieve
+  binnenomgeving; zware binnenplaats-scene met T110-lichtkegels; zware
+  gracht-scene met T114-water) elk gemeten voor V1 én V2, met de overlay
+  uit T117, deterministisch (zelfde camera/posities/types/lighting/
+  pixelRatio/postprocessing/gameplaystate per paar — zie het
+  benchmarkprotocol in §34: opwarmen, dan minimaal enkele honderden
+  frames meten, meerdere runs waar praktisch).
+- **Stappen:** vul EXACT de rapportstructuur uit §41 van de bronopdracht
+  in `ZOMBIE_V2_BASELINE.md` (secties "Zombie V1"/"Zombie V2" met meshes/
+  draw calls/triangles/vertices/materialen/geometrieën/transformnodes-of-
+  bones/raycast-targets/texture memory; een "Benchmark"-tabel met alle
+  zeven scenario's × FPS/frametime/p95/calls/triangles voor beide
+  versies; "CPU"/"GPU"-secties met wat goedkoper/duurder/gelijk is
+  geworden; "Visuele verbetering"; "Performancekosten per visuele
+  feature" met de classificatie vrijwel-gratis/goedkoop/merkbaar/
+  bewust-afgewezen; "Conclusie" die letterlijk de vragen uit §41
+  beantwoordt). Pas de interpretatieregels uit §5 van de bronopdracht toe
+  (gelijke frametime + duidelijk mooier = succes; enkele procenten kost
+  bij duidelijke visuele winst = kan acceptabel zijn; ~10% = eerst de
+  oorzaak analyseren; ~20-30% = STOP en niet verder bouwen voordat het
+  begrepen is).
+- **Acceptatie:** alle acceptatiecriteria uit §40 van de bronopdracht
+  langsgelopen met een expliciet ja/nee per punt (visueel, rendering,
+  gameplay, performance, resources — inclusief geen memory-leak over
+  herhaalde spawn/kill-cycles, zie T70-discipline). Het rapport bevat een
+  expliciete aanbeveling: V2 vervangt V1 (→ T131), of V2 heeft nog een
+  gerichte optimalisatieronde nodig (→ terug naar het relevante eerdere
+  ticket, niet naar T131).
+- **Test:** `run-all.mjs` volledig groen op zowel `'v1'` als `'v2'`.
+- **Niet veranderen:** niets in `amsterdam-undead.html` — dit ticket
+  meet, speelt en schrijft (zelfde discipline als T116).
+
+### Ticket 128 — Volledige regressietestsuite
+- **Context:** §38 van de bronopdracht somt een brede lijst scenario's
+  op die dit project al grotendeels als losse testscripts heeft (T18/
+  T30/T94/T95-tests) — dit ticket is het uitbreiden van die bestaande
+  scripts met een V2-tak, geen herschrijven.
+- **Doel:** elk item uit §38 gedekt, met de toggle op `'v2'`: alle vijf
+  types, alle zeven variatieprofielen + vier losse traits, bodyshot/
+  headshot/attack/flinch/death, Brander-explosie, Kerninslag/powerup-
+  kills, Mistgolf, Stroomuitval, cleanup/respawn, 18 zombies (+ schieten),
+  resource-cleanup/memory-groei over herhaalde golven, fog/bloom/
+  lichtkegels/postprocessing-interactie.
+- **Acceptatie:** elk item uit de lijst heeft een aanwijsbare test (bestaand,
+  uitgebreid, of — waar er echt geen precedent is — nieuw); geen enkel
+  item is stilzwijgend overgeslagen.
+- **Test:** dit ticket IS de test-uitbreiding; `run-all.mjs` volledig
+  groen als resultaat.
+- **Niet veranderen:** gameplaygedrag — puur testdekking.
+
+---
+
+### Fase 7 — Opschonen
+
+### Ticket 129 — V1 verwijderen
+- **Context:** alleen uitvoeren met een expliciete opdracht bovenop het
+  groene licht uit T127/T128 — dit is de onomkeerbare stap.
+- **Doel:** `maakOndodeModelV1()`, de `ZOMBIE_RENDER_VERSIE`-toggle en elk
+  V1-only codepad verwijderen; V2 wordt de enige renderarchitectuur.
+- **Stappen:** verwijder in één commit (zelfde discipline als ronde 3's
+  "nooit oud+nieuw tegelijk"): geen dode V1-functie laten hangen "voor de
+  zekerheid". Werk `ARCHITECTURE_NOTES.md`/`ROADMAP.md` bij met de
+  nieuwe zombie-architectuur (nieuwe sectie, zelfde patroon als §10 voor
+  ronde 8).
+- **Acceptatie:** `run-all.mjs` volledig groen; geen enkele referentie
+  naar `maakOndodeModelV1`/`ZOMBIE_RENDER_VERSIE` meer in de codebase
+  (`grep`-controle); het spel is functioneel en visueel identiek aan de
+  laatst goedgekeurde V2-staat uit T127.
+- **Niet veranderen:** niets aan V2 zelf — dit ticket ruimt uitsluitend
+  V1 op.
+
+---
+
+### Extra waarschuwingen ronde 9
+
+80. **De bronopdracht van de eigenaar is een methode, geen kant-en-klaar
+    ontwerp.** Elke concrete architectuurkeuze hierboven (platte
+    botstructuur, oog-facade, Brander-kern als losse mesh, welke
+    triangle-range) is AFGELEID en tegen de actuele code gecontroleerd,
+    niet overgenomen. Waar een ticket hierboven "meet eerst" zegt, is dat
+    letterlijk bedoeld — de opdracht verbiedt zelf het verzinnen van
+    performancewinst, en dat geldt evenzeer voor Sonnet als voor de
+    architect die dit plan schreef.
+81. **`Bone` is drop-in-compatibel met de bestaande `delen.*`-writes,
+    maar alleen zolang de botstructuur PLAT blijft.** Zodra een latere
+    wijziging een echte ouder-kind-keten introduceert (bijv. armen onder
+    `chest` hangen), gaan bestaande onafhankelijke rotatiewrites in
+    `updateOndoden()` zich anders gedragen (ze stapelen dan op de
+    chest-rotatie). Dat is precies waarom T119 expliciet plat blijft —
+    verander dat niet zonder elke bestaande animatie-aanroep opnieuw te
+    doorlopen.
+82. **Eén materiaal per ondode is GOEDKOPER dan V1's tot 9, niet duurder
+    — zolang het per-instance blijft.** De verleiding is om het
+    materiaal (net als `RIM_UNIFORMS`) te DELEN tussen ondoden voor nog
+    minder GL-state-switches. Doe dat niet voor de huidkleur/oog-uniform:
+    die zijn per ondode verschillend, en een gedeeld materiaal zou (net
+    als `RIM_UNIFORMS` bewust wél doet voor de rim) één schrijf op alle
+    ondoden tegelijk laten inwerken — voor huidkleur/oogpuls is dat een
+    zichtbare bug, geen optimalisatie.
+83. **`SkinnedMesh`/`Skeleton` zijn een nieuwe dispose-categorie.** T70's
+    bestaande contract (`ruimGroepOp()`) is geschreven vóór dit project
+    ooit een `Skeleton` had. Controleer in T118 expliciet of
+    `skeleton.dispose()` nodig is naast de gebruikelijke geometrie-/
+    materiaaldispose, en of `geoCache`/`matMetVertexKleur`-achtige
+    gedeelde-resource-markeringen (`userData.gedeeld`) van toepassing
+    zijn op iets in de nieuwe structuur (de samengestelde geometrie is
+    PER ONDODE uniek qua skin-data, dus vermoedelijk NIET gedeeld/
+    gecachet zoals `geoCache`'s basisvormen — maar meet/controleer dat,
+    verzin het niet).
+84. **De hitbox-/raycastwijziging (T120) is de gevoeligste van de hele
+    ronde, gevoeliger dan T118.** T118 kan fout zijn en "alleen" lelijk
+    renderen; T120 kan fout zijn en headshots stil laten missen — een bug
+    die een speler pas na tientallen frustrerende schoten opmerkt en
+    nooit aan de renderarchitectuur zal wijten. De bewegingsstaten-matrix
+    in T120's testplan (lopen/bukken/aanval/flinch/dood) is daarom geen
+    "nice to have" maar de kern-acceptatie-eis van dat ticket.
+85. **Geen enkel ticket in deze ronde voegt een `Light` toe — ook niet
+    voor de Brander-kern of de ogen.** Dezelfde waarschuwing als ronde 8
+    se nummer 61, hier extra relevant omdat "een klein lichtje voor de
+    gloed" precies de intuïtieve, foute eerste ingeving is die §21/§20
+    van de bronopdracht al preventief afwijst.
+86. **T131 (V1 verwijderen) is de enige stap in deze ronde die geen weg
+    terug heeft binnen de ronde zelf.** Alles daarvoor kan door de
+    V1/V2-toggle worden teruggedraaid zonder code-archeologie. Wacht op
+    een aparte, expliciete opdracht bovenop het groene licht uit T127/
+    T128 — "de tests zijn groen" is niet hetzelfde als "de eigenaar wil
+    nu dat V1 weg is".
