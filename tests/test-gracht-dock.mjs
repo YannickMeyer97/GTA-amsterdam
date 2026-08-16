@@ -168,6 +168,8 @@ const meshes = await page.evaluate(() => {
     waterWestrand,
     waterOostrand,
     VLONDER_X_OOST: d.VLONDER_X_OOST,
+    VLONDER_X_WEST: d.VLONDER_X_WEST,
+    WATER_VLAK_OOST: d.WATER_VLAK_OOST,
     BOOT_VERTREK_X: d.BOOT_VERTREK_X,
     bootGroep: !!d.bootGroep,
     bootVoorbijVlonder: d.bootGroep.position.x > d.VLONDER_X_OOST,
@@ -175,14 +177,22 @@ const meshes = await page.evaluate(() => {
   };
 });
 check('vlonderMesh bestaat', meshes.vlonderMesh === true, meshes);
-check('waterMesh bestaat en ligt voorbij de vlonderrand', meshes.waterMesh && meshes.waterVoorbijVlonder, meshes);
+check('waterMesh bestaat', meshes.waterMesh === true, meshes);
 check('bootGroep bestaat en ligt voorbij de vlonderrand (bij het water)', meshes.bootGroep && meshes.bootVoorbijVlonder, meshes);
 check("vlonderMesh gebruikt de 'hout'-materiaalfamilie (Ticket 38)", meshes.vlonderMeshFamilie === 'hout', meshes);
-// Feedback: WATER_BREEDTE verbreed zodat de boot zichtbaar vaarwater heeft —
-// de westrand (bij de vlonder) blijft ONGEWIJZIGD op VLONDER_X_OOST, alleen
-// de oostrand (verweg) is verder opgeschoven om BOOT_VERTREK_X te bevatten.
-check('De westrand van het (verbrede) water staat nog steeds precies op VLONDER_X_OOST (ongewijzigde vlonderrand-overgang)',
-  Math.abs(meshes.waterWestrand - meshes.VLONDER_X_OOST) < 1e-9, meshes);
+// Feedback-fix (gebruiker: "tijdens de mistgolf zie ik duidelijk dat er
+// geen water om de vlonder heen ligt"). De westrand stond hier eerst op
+// VLONDER_X_OOST (19,5) — precies waar dat vroeger een bewuste keuze was
+// ("WATER_BREEDTE verbreed... de westrand blijft ongewijzigd"), maar het
+// gaf een echt gat: de steiger zelf (vlonderMesh, x ∈ [15, 19,5]) had dan
+// GEEN water onder of naast zich, alleen ervoor. Nu begint het water bij
+// VLONDER_X_WEST (15) — exact waar de overdekte gang ophoudt — zodat de
+// steiger, net als in het echt, water rondom en eronder heeft. Zie de
+// toelichting bij WATER_VLAK_OOST in amsterdam-undead.html.
+check('De westrand van het water staat nu bij VLONDER_X_WEST (onder én naast de steiger, niet pas erachter)',
+  Math.abs(meshes.waterWestrand - meshes.VLONDER_X_WEST) < 1e-9, meshes);
+check('De oostrand van het water blijft ongewijzigd op WATER_VLAK_OOST (de oever/skyline-aansluiting van Fix A verschuift niet mee)',
+  Math.abs(meshes.waterOostrand - meshes.WATER_VLAK_OOST) < 1e-9, meshes);
 check('De oostrand van het water reikt voorbij BOOT_VERTREK_X (de boot past met marge in het verweg-vaarwater)',
   meshes.waterOostrand > meshes.BOOT_VERTREK_X + 1, meshes);
 

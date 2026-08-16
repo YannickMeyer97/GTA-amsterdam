@@ -3615,6 +3615,18 @@ deur3Mesh.position.set(DEUR3_X, (ZUIDMUUR_HOOGTE - 0.2) / 2, PLAATS_Z_ZUID + MUU
 deur3Mesh.castShadow = true;
 deur3Mesh.userData.materiaalFamilie = 'hout';
 wereld.add(deur3Mesh);
+// Feedback-fix (gebruiker: "de deur naar de bijkeuken is net niet hoog
+// genoeg vanaf de binnenplaats, kan je het gat weg maken"). Terecht: het
+// deurgat in de zuidmuur is ZUIDMUUR_HOOGTE (2,25 m) hoog, maar deur3Mesh
+// is bewust 0,2 m korter dan zijn kozijn (zelfde "past net in de opening"-
+// marge als elke andere deur in dit pand) — zonder lintel bleef die 0,2 m
+// hierboven open, en daar keek je zo de onverlichte kelderhals in. Dat las
+// als een gat in de muur, niet als een deuropening. Zelfde
+// bouwVulMuur()-patroon als de gang-lintel (T87-fix); kleur GANG_PLEISTER
+// om bij de rest van de zuidmuur te matchen (die is met dezelfde kleur
+// gebouwd, niet BAKSTEEN — de vulmuur-default).
+bouwVulMuur(DEUR3_X, PLAATS_Z_ZUID + MUUR_DIKTE / 2, DEUR3_HALF * 2, MUUR_DIKTE,
+  ZUIDMUUR_HOOGTE - 0.2, ZUIDMUUR_HOOGTE, GANG_PLEISTER);
 const deur3Klink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), matFamilie('metaal', 0xd8c47a));
 deur3Klink.position.set(DEUR3_X + (DEUR3_HALF - 0.25), 1.0, PLAATS_Z_ZUID + MUUR_DIKTE / 2 - 0.1);
 deur3Klink.userData.materiaalFamilie = 'metaal';
@@ -3724,7 +3736,24 @@ const WATER_BREEDTE = 8;   // was 3 — verbreed zodat de boot zichtbaar vaarwat
 // erachter boven leegte. Nu 26 (water tot 45,5), zodat er ruimte is voor een
 // verre oever waar de skyline op staat (zie bouwVerreGrond() in het
 // T112-blok).
-const WATER_VLAK_LENGTE = 26;   // x: van VLONDER_X_OOST (19,5) tot 45,5 — de oost-skyline staat vanaf ~47,25 op de oever
+// Feedback-fix (gebruiker: "tijdens de mistgolf zie ik duidelijk dat er
+// geen water om de vlonder heen ligt"). Klopte: het watervlak begon pas op
+// VLONDER_X_OOST (19,5), dus alleen recht VOOR de steiger. De steiger zelf
+// (vlonderMesh) is een smal dek van 4,5 x 2 m (x ∈ [15, 19,5], z ∈ [-1, 1])
+// — naast dat dek, dus x binnen datzelfde bereik maar |z| > 1, lag NIETS:
+// geen vloer, geen water. In de normale fog viel dat niet op (de hemelkoepel
+// se kleurGrond vult zo'n gat onopvallend), maar de mistgolf trekt de
+// zichtbaarheid zo dichtbij dat je precies op die grens staat te kijken.
+// Een steiger heeft in het echt water rondom én eronder — het watervlak
+// begint daarom nu bij VLONDER_X_WEST (15) i.p.v. VLONDER_X_OOST, exact waar
+// de OVERDEKTE gang ophoudt (dat stuk blijft droog/interieur, terecht). Het
+// dek zelf (y=0,02) blijft boven het water (y=-0,05) uitsteken, dus dit is
+// puur een correcte dekking, geen wijziging aan de steiger zelf. Het
+// oostelijke eindpunt (45,5, waar de oever/skyline op aansluit) blijft
+// ONGEWIJZIGD — alleen de westrand schuift op, dus Fix A (de verre oever)
+// blijft naadloos zoals hij was.
+const WATER_VLAK_OOST = VLONDER_X_OOST + 26;   // = 45,5 — vast eindpunt, zie de toelichting bij bouwVerreGrond()
+const WATER_VLAK_LENGTE = WATER_VLAK_OOST - VLONDER_X_WEST;   // x: van VLONDER_X_WEST (15) tot 45,5
 const WATER_VLAK_DIEPTE = 36;   // z: -18..+18 rond de grachtgang
 let vlonderMesh, waterMesh, bootGroep, grachtLantaarnLicht;   // toegewezen in het geometrie-blok hieronder, debug/test-referenties
 // Ticket 114 (v0.22, §10.14-beslissing 89): levend water — module-scope
@@ -3963,9 +3992,10 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
     return materiaal;
   }
 
-  // De gracht: donker blauwgroen watervlak, licht transparant, net voorbij
-  // de vlonderrand, doorlopend tot aan de skyline (zie WATER_VLAK_LENGTE/
-  // WATER_VLAK_DIEPTE). Gesubdivideerd — zonder subdivisie heeft de
+  // De gracht: donker blauwgroen watervlak, licht transparant. Begint bij
+  // VLONDER_X_WEST — dus ONDER en NAAST de steiger, niet pas erachter (zie de
+  // toelichting bij WATER_VLAK_OOST/WATER_VLAK_LENGTE hierboven) — en loopt
+  // door tot aan de skyline. Gesubdivideerd — zonder subdivisie heeft de
   // PlaneGeometry maar 4 hoekpunten en is de vertex-deining onzichtbaar.
   // Het segmentaantal is GEKOPPELD aan de afmeting (~0,7 m per segment)
   // i.p.v. een vast getal: de golflengte van de deining ligt rond 3-5 m
@@ -3980,7 +4010,7 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
     waterMateriaal
   );
   waterMesh.rotation.x = -Math.PI / 2;
-  waterMesh.position.set(VLONDER_X_OOST + WATER_VLAK_LENGTE / 2, -0.05, gangCZ);
+  waterMesh.position.set((VLONDER_X_WEST + WATER_VLAK_OOST) / 2, -0.05, gangCZ);
   wereld.add(waterMesh);
 
   // De boot — puur decor (Ticket 53 koppelt 'm aan de ontsnappings-
@@ -4509,14 +4539,15 @@ let updateSkylineRaampjes, updateVerteMist;
     wereld.add(grond);
     return grond;
   }
-  // Oostoever: begint waar het water ophoudt (VLONDER_X_OOST +
-  // WATER_VLAK_LENGTE = 45,5) en loopt tot voorbij de verste skylinelaag,
-  // maar blijft binnen camera.far vanaf de gracht (17,25 + 46 = 63,25 is
-  // 46 m — net binnen de 50). Ruim in z, zodat de oever het hele blikveld
-  // vanaf de vlonder vult.
+  // Oostoever: begint waar het water ophoudt (WATER_VLAK_OOST = 45,5, een
+  // vast eindpunt — zie de toelichting bij WATER_VLAK_OOST hierboven, de
+  // vlonder-waterfix schuift alleen de WESTrand van het watervlak op) en
+  // loopt tot voorbij de verste skylinelaag, maar blijft binnen camera.far
+  // vanaf de gracht (17,25 + 46 = 63,25 is 46 m — net binnen de 50). Ruim in
+  // z, zodat de oever het hele blikveld vanaf de vlonder vult.
   {
-    const oeverVan = VLONDER_X_OOST + WATER_VLAK_LENGTE;   // 45,5
-    const oeverTot = grachtStandpuntX + 46;                // 63,25
+    const oeverVan = WATER_VLAK_OOST;         // 45,5
+    const oeverTot = grachtStandpuntX + 46;   // 63,25
     bouwVerreGrond((oeverVan + oeverTot) / 2, BIJKEUKEN_CZ, oeverTot - oeverVan, 60);
   }
   // Noordoever: onder de noordlaag. Vanaf de binnenplaats zie je de
@@ -12545,6 +12576,9 @@ window.AmsterdamUndeadDebug = {
   GRACHTGANG_DREMPEL_BUITEN, GRACHTGANG_DREMPEL_BINNEN,
   VLONDER_X_WEST, VLONDER_X_OOST, VLONDER_DIEPTE,
   vlonderMesh, waterMesh, bootGroep, grachtLantaarnLicht,
+  // Feedback-fix (mist: geen water rond de vlonder) — zie de toelichting bij
+  // WATER_VLAK_OOST in het T114-blok.
+  WATER_VLAK_OOST, WATER_VLAK_LENGTE, WATER_VLAK_DIEPTE,
   // Ticket 50: zone-naambanners + HUD-zonelabel
   ZONE_NAMEN, ZONE_FLAVOUR, bezochteZones,
   get laatsteZone() { return laatsteZone; },

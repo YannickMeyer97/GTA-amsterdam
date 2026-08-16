@@ -7898,3 +7898,48 @@ muren een verschillend vuilpatroon, en alleen zo is te zien of een muur
 werkelijk op een vloer staat. Muren die dat niet doen — de vulmuren boven de
 deuropeningen, die per definitie zweven — vallen daardoor automatisch buiten
 de aanslagband, zonder dat hun bouwcode iets van B6 hoeft te weten.
+
+### 10.22 Twee kleine feedback-fixes: het deur3-gat en het watervlak rond de vlonder
+
+**Fix 1 — de deur naar de bijkeuken was net niet hoog genoeg.** Klopte
+letterlijk: het deurgat in de binnenplaats-zuidmuur is `ZUIDMUUR_HOOGTE`
+(2,25 m) hoog, maar `deur3Mesh` is bewust 0,2 m korter dan zijn kozijn —
+dezelfde "past net in de opening"-marge als elke andere deur in dit pand.
+Zonder lintel bleef die 0,2 m er ONgevuld, en daar keek de speler zo de
+onverlichte kelderhals in. Dat las als een gat in de muur, niet als een
+deuropening. Opgelost met dezelfde `bouwVulMuur()` die de gang-lintel
+(T87-fix) al gebruikt: een strook van 2,05 m tot 2,25 m, breedte
+`DEUR3_HALF*2`, kleur `GANG_PLEISTER` (de zuidmuur zelf is met die kleur
+gebouwd, niet met de `bouwVulMuur()`-default `BAKSTEEN`).
+
+**Fix 2 — geen water rond de vlonder tijdens de mistgolf.** Ook terecht,
+en het was structureel, niet mist-specifiek — de mistgolf maakte het
+alleen zichtbaar. De steiger (`vlonderMesh`) is een smal dek van 4,5 x
+2 m (x ∈ [15, 19,5], z ∈ [-1, 1]); het watervlak begon pas bij
+`VLONDER_X_OOST` (19,5), dus alleen recht VOOR de steiger. Naast het dek
+— zelfde x-bereik, maar |z| > 1 — lag helemaal niets: geen vloer, geen
+water. In de normale fog (far 24 m) viel dat niet op, want de
+hemelkoepel se `kleurGrond` vult zo'n gat op afstand onopvallend op. De
+mistgolf (far 9,35 m) trekt de zichtbaarheid zo dichtbij dat de speler
+precies op die grens komt te staan.
+
+Een steiger heeft in het echt water rondom én eronder, dus de fix is de
+westrand van het watervlak te verleggen naar `VLONDER_X_WEST` (15) —
+exact waar de overdekte gang ophoudt, dat stuk blijft terecht droog. De
+oostrand (`WATER_VLAK_OOST`, 45,5, waar Fix A's verre oever op aansluit)
+verschuift bewust NIET mee: die naad stond al goed. Het dek zelf blijft
+op y=0,02 boven het water (y=-0,05) uitsteken — dit is puur een correcte
+dekking eronder/ernaast, geen wijziging aan de steiger.
+
+Eén ding gecontroleerd voordat dit als veilig gold: de boot-deining
+(`bootGroep.position.y/rotation.z` in `updateWaterAnimatie()`) leest
+`golfHoogte(bootGroep.position.x - VLONDER_X_OOST, ...)` — een vaste
+constante, niet `waterMesh.position.x`. Het verschuiven van het watervlak
+raakt die berekening dus op geen enkele manier; alleen het zichtbare
+oppervlak zelf werd breder.
+
+`test-gracht-dock.mjs` had een expliciete check dat de westrand van het
+water op `VLONDER_X_OOST` lag — een vroegere, bewuste beslissing die deze
+fix nu ongedaan maakt. Bijgewerkt naar de nieuwe (en correctere) eis: de
+westrand op `VLONDER_X_WEST`, de oostrand ongewijzigd op
+`WATER_VLAK_OOST`.

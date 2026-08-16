@@ -476,7 +476,19 @@ const BASISLIJN = {
   bijkeuken:    { gemiddelde: 25.11, mediaan: 15.59, calls: 586, triangles: 49583 },
   kelder:       { gemiddelde: 15.81, mediaan: 11.26, calls: 187, triangles: 25832 },
   vliering:     { gemiddelde: 11.35, mediaan: 1.57,  calls: 264, triangles: 30840 },
-  gracht:       { gemiddelde: 24.68, mediaan: 16.52, calls: 197, triangles: 28145 },
+  // Feedback-fix (gebruiker: "tijdens de mistgolf zie ik duidelijk dat er
+  // geen water om de vlonder heen ligt"): het watervlak begon eerst pas bij
+  // VLONDER_X_OOST (recht voor de steiger); naast het smalle dek (|z|>1
+  // binnen hetzelfde x-bereik) lag niets. Het watervlak is verbreed tot
+  // VLONDER_X_WEST, zodat de steiger — net als in het echt — water rondom en
+  // eronder heeft. GRACHT daalt daardoor 18,4% (24,68 -> 20,13): het
+  // standpunt kijkt vanaf de vlonder over het water, en dat water is nu
+  // donkerder dan de houten dekvloer die er voorheen op DEZE plek in beeld
+  // was. Draw calls blijven exact 197 (nog steeds één watermesh, alleen
+  // groter); driehoeken stijgen licht (28145 -> 28859) door de extra
+  // golfsegmenten over het bredere vlak. Geen enkele andere zone beweegt:
+  // alleen de gracht kijkt naar dit vlak.
+  gracht:       { gemiddelde: 20.13, mediaan: 15.59, calls: 197, triangles: 28859 },
 };
 
 const gemeten = {};
