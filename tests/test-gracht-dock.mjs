@@ -115,7 +115,14 @@ const lichten = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const alleLichten = [];
   d.scene.traverse(o => { if (o.isLight) alleLichten.push({ type: o.type, castShadow: o.castShadow }); });
-  const bootLichtEntry = d.buitenLichten.find(bl => bl.licht.parent === d.bootGroep);
+  // Feedback-fix (jetski): dit stond op `bl.licht.parent === d.bootGroep`.
+  // Sinds het vaartuig een eigen romp-subgroep heeft (bootRomp, die binnen
+  // bootGroep om zijn eigen as gedraaid wordt voor de koers) hangt het
+  // lampje één niveau dieper. De EIS is niet "direct kind" maar "vaart mee
+  // met de aan-/wegvaar-animatie", en dat is precies "zit ergens ONDER
+  // bootGroep" — dus toetst dit nu de voorouderketen.
+  const onderBoot = (o) => { for (let p = o.parent; p; p = p.parent) if (p === d.bootGroep) return true; return false; };
+  const bootLichtEntry = d.buitenLichten.find(bl => onderBoot(bl.licht));
   return {
     totaal: alleLichten.length,
     buitenLichtenLengte: d.buitenLichten.length,
@@ -142,7 +149,7 @@ check('De gracht-lantaarn werpt GEEN schaduw (schaduw===1-invariant blijft bij d
   lichten.lantaarnHeeftSchaduw === false, lichten);
 check('De gracht-lantaarn zit NIET in lampLichten (buitenlicht-precedent, zelfde als de binnenplaats-lantaarns)',
   lichten.lantaarnInLampLichten === false, lichten);
-check('Het boot-lichtje is een KIND van bootGroep (vaart automatisch mee met de aan-/wegvaar-animatie) en zit in buitenLichten',
+check('Het boot-lichtje hangt ONDER bootGroep (vaart automatisch mee met de aan-/wegvaar-animatie) en zit in buitenLichten',
   lichten.bootLichtBestaat === true, lichten);
 check('Het boot-lichtje werpt GEEN schaduw (zelfde lichte-buitenlamp-patroon)',
   lichten.bootLichtHeeftSchaduw === false, lichten);

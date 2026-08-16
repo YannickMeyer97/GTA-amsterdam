@@ -97,6 +97,7 @@ const naEchteTick = await page.evaluate(() => {
     exposureFractie: d.renderer.toneMappingExposure / d.EXPOSURE_BASIS,
     buitenFracties: d.buitenLichten.map(bl => bl.licht.intensity / bl.basis),
     buitenTelling: d.buitenLichten.length,
+    buitenVloer: d.BUITEN_STROOM_VLOER,
   };
 });
 check('Na een echte gameLoop-tick tijdens Stroomuitval is de peer-emissive daadwerkelijk gedimd',
@@ -168,8 +169,15 @@ check('buitenLichten bevat de 9 verwachte lichten (maanlicht, maanlichtDeur, pla
   naEchteTick.buitenTelling === 9, naEchteTick);
 // Feedback: binnenplaats tijdens Stroomuitval ~5% helderder — BUITEN_STROOM_
 // VLOER 0.4 -> 0.5 (empirisch geverifieerd via pixelhelderheid: +5.0%).
-check('Alle buitenlichten volgen exact BUITEN_STROOM_VLOER + (1-vloer)*stroomFactor (0.5 + 0.5*0.12 = 0.56)',
-  naEchteTick.buitenFracties.every(f => Math.abs(f - (0.5 + 0.5 * 0.12)) < 0.005), naEchteTick);
+// Feedback-fix (binnenplaats donkerder): de 0,5 stond hier hardgecodeerd,
+// maar BUITEN_STROOM_VLOER is verhoogd naar 0,667 om de binnenplaats in de
+// NORMALE ronde te kunnen dimmen zonder de Stroomuitval-stand mee te
+// verlagen (basis x vloer blijft daardoor vrijwel gelijk). De FORMULE is
+// wat deze test bewaakt, niet het getal — dus leest hij de constante nu uit
+// de game in plaats van hem te dupliceren.
+check('Alle buitenlichten volgen exact BUITEN_STROOM_VLOER + (1-vloer)*stroomFactor',
+  naEchteTick.buitenFracties.every(f => Math.abs(f - (naEchteTick.buitenVloer + (1 - naEchteTick.buitenVloer) * 0.12)) < 0.005),
+  { ...naEchteTick, verwacht: naEchteTick.buitenVloer + (1 - naEchteTick.buitenVloer) * 0.12 });
 check('Buiten blijft merkbaar lichter dan binnen tijdens dezelfde Stroomuitval (buiten-fractie > lamp-fractie)',
   naEchteTick.buitenFracties[0] > naEchteTick.lichtIntensiteitFractie, naEchteTick);
 check('Buiten blijft ook merkbaar lichter dan het atelier (buiten-fractie > dakraam-fractie)',

@@ -372,15 +372,81 @@ const RENDER_BAND = 0.25;
 // nét over de 25%-RENDER_BAND (atelier op calls, gracht op driehoeken);
 // de rest zat er onder maar wel al ver naast. Eén keer goed bijwerken is
 // zuiverder dan per ticket de ene regel bijstellen die toevallig omslaat.
+// Feedback-ronde (binnenplaats dimmen, gevels, nieuwe boot). Dit is de
+// grootste verschuiving van de hele ronde, en op één na zijn ze allemaal
+// terug te voeren op ÉÉN wijziging: de vier binnenplaatslantaarns, beide
+// maanlichten en de vulgloed zijn ~22% omlaag gezet op verzoek ("ik zou de
+// binnenplaats iets donkerder willen hebben, zeg rond de 10-30%").
+//
+//  * BINNENPLAATS zelf: 35,75 -> 30,05 (-16%), mediaan -12%. Precies in de
+//    gevraagde band. Netto, want tegelijk zijn de vloer-lichtvlekken
+//    STERKER in de kern gemaakt (opacity 0,12 -> 0,20) met een radiale
+//    alpha-uitloop i.p.v. een harde rand — de gebruiker vroeg expliciet om
+//    een donkerdere plaats waarin het lichtPUNT juist beter uitspringt.
+//  * GANG (-8%), ATELIER (-7%), BIJKEUKEN (-5,5%), WOONKAMER (-1,8%):
+//    NIET apart getuned. Deze zones krijgen licht dat door deuropeningen
+//    naar binnen lekt van de binnenplaatslampen (maanlicht heeft een bereik
+//    van 28 m, de vulgloed 24 m). Minder licht op de plaats = minder spill
+//    naar binnen. Fysisch correct gevolg, geen aparte ingreep — hoe dichter
+//    bij de binnenplaats, hoe groter het effect, en dat is precies de
+//    volgorde die hierboven staat.
+//  * KELDER: exact 0,00 verschil. De enige zone zonder zichtlijn naar
+//    buiten — een prettige bevestiging dat de spill-verklaring klopt.
+//  * GRACHT: 23,23 -> 26,49 (+14%), de enige die de ANDERE kant op ging.
+//    Dat is de nieuwe boot: die was een cilinder van 2,4 x 0,7 m en is nu
+//    een motorboot van 3,4 x 1,45 m met een lichte romp, vlak naast de
+//    grachtlantaarn. Een eerste, lichtere romptint (0xcfcabf) tilde de zone
+//    zelfs +21%; getemperd naar 0xa39f96 zodat de boot nog steeds uit het
+//    donker springt zonder de hele zone op te blazen. Daarna nog een keer
+//    omhoog naar 29,34 toen de boot LANGSZIJ kwam te liggen i.p.v. met de
+//    kop van de kade af: dat was een herkenbaarheids-fix (je keek eerst
+//    recht op de spiegel, het minst leesbare aanzicht), maar het draait
+//    daarmee wel de volle lichte flank naar de camera i.p.v. alleen de
+//    achterkant. Bewust geaccepteerd — de boot is het doel van de hele run
+//    en mag opvallen.
+//
+// Driehoeken/calls stijgen overal licht door de gevelgeleding (daklijst,
+// goot, plint, kozijnen, muurafdekkingen) en de nieuwe boot; alles ruim
+// binnen de RENDER_BAND, hier meteen meegenomen.
+// Derde feedback-ronde (binnenplaats nog donkerder, muurlek gedicht,
+// jetski als ontsnappingsvaartuig). ALLE ACHT zones schuiven, en er zijn
+// precies drie oorzaken — geen daarvan is een fout:
+//
+//  1. BINNENPLAATS -16% (30,05 -> 25,34). Op verzoek: de lampen daar nog
+//     eens ~25% omlaag, met BUITEN_STROOM_VLOER evenredig omhoog zodat de
+//     Stroomuitval-stand gelijk blijft (zie de code-toelichting daar).
+//  2. SPILL-GEVOLG, niet apart getuned: minder licht op de binnenplaats
+//     betekent minder licht dat door de deuropeningen naar binnen valt.
+//     Vandaar ATELIER -8%, GANG -8,7%, WOONKAMER -2,5%, VLIERING -0,7%.
+//     KELDER blijft exact gelijk (16,37) — de enige zone zonder zichtlijn
+//     naar buiten, en daarmee de beste bevestiging dat deze verklaring
+//     klopt en niet een toevallige samenloop is.
+//  3. LICHTBEREIK ingekort om het muurlek te stoppen (de gebruiker zag
+//     lichtplassen op de klinkers van lampen áchter een muur; een
+//     PointLight wordt in Three.js niet door geometrie tegengehouden).
+//     Dat drukte BIJKEUKEN en GRACHT eerst 21% resp. 18% omlaag, want een
+//     kortere `distance` maakt de lichtval over de eigen kamer veel
+//     steiler. Deels gecompenseerd met meer intensiteit binnen diezelfde
+//     kortere straal (bijkeukenlamp 10 -> 15, grachtlantaarn 34 -> 44);
+//     BIJKEUKEN blijft daarna -8,9%.
+//
+// GRACHT -16% (29,34 -> 24,68) is grotendeels iets anders: het
+// ontsnappingsvaartuig is vervangen. De vorige motorboot was 3,4 x 1,45 m
+// met een lichte romp; de jetski is 3,0 x 1,15 m, dieper rood, en ligt in
+// de WACHTstand (die de meting ziet, want ontsnappingsPunt is dan null)
+// 3,5 m naar links i.p.v. recht voor de vlonder. Minder en donkerder
+// oppervlak dichtbij de camera. Het opkrikken van de lantaarn van 34 naar
+// 44 bewoog deze zone dan ook nauwelijks (24,13 -> 24,68), wat bevestigt
+// dat het vaartuig de dominante factor is, niet het lantaarnbereik.
 const BASISLIJN = {
-  woonkamer:    { gemiddelde: 30.57, mediaan: 18.08, calls: 574, triangles: 50007 },
-  gang:         { gemiddelde: 35.14, mediaan: 17.49, calls: 423, triangles: 34973 },
-  atelier:      { gemiddelde: 36.31, mediaan: 20.52, calls: 252, triangles: 25235 },
-  binnenplaats: { gemiddelde: 35.75, mediaan: 29.82, calls: 269, triangles: 25785 },
-  bijkeuken:    { gemiddelde: 29.58, mediaan: 19.20, calls: 528, triangles: 46949 },
-  kelder:       { gemiddelde: 16.38, mediaan: 12.26, calls: 177, triangles: 23258 },
-  vliering:     { gemiddelde: 11.54, mediaan: 1.57,  calls: 253, triangles: 27946 },
-  gracht:       { gemiddelde: 23.23, mediaan: 15.87, calls: 186, triangles: 26905 },
+  woonkamer:    { gemiddelde: 29.28, mediaan: 17.21, calls: 627, triangles: 50147 },
+  gang:         { gemiddelde: 29.48, mediaan: 15.80, calls: 458, triangles: 35283 },
+  atelier:      { gemiddelde: 31.01, mediaan: 17.01, calls: 273, triangles: 25457 },
+  binnenplaats: { gemiddelde: 25.34, mediaan: 22.09, calls: 273, triangles: 25833 },
+  bijkeuken:    { gemiddelde: 25.44, mediaan: 15.93, calls: 586, triangles: 47119 },
+  kelder:       { gemiddelde: 16.37, mediaan: 12.26, calls: 187, triangles: 23368 },
+  vliering:     { gemiddelde: 11.36, mediaan: 1.57,  calls: 264, triangles: 28068 },
+  gracht:       { gemiddelde: 24.68, mediaan: 16.52, calls: 197, triangles: 27221 },
 };
 
 const gemeten = {};

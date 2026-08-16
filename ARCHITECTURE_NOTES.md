@@ -6980,6 +6980,139 @@ als "principiële fix" te blijven staan. De oorzaak is niet verder
 uitgezocht: het gaat om 1,2 helderheidspunt op een donkere zone, het
 beeld is visueel naadloos en er is geen aanwijzing voor een fout.
 
+**Derde feedback-ronde: donkerder buiten, licht dat door muren lekte, en
+het ontsnappingsvaartuig.**
+
+*De binnenplaats moest donkerder, maar alleen buiten de Stroomuitval.* De
+gebruiker was expliciet: tijdens een lichtuitval-ronde klopte de
+helderheid al, daarbuiten mocht het "een stuk donkerder". Dat is een
+verzoek om de twee standen UIT ELKAAR te trekken, niet om alles te
+dimmen. Uitgevoerd door de basisintensiteiten van de vier lantaarns,
+beide maanlichten en de vulgloed nog eens ~25% te verlagen en
+`BUITEN_STROOM_VLOER` evenredig te VERHOGEN (0,5 -> 0,667): het product
+basis x vloer — de absolute helderheid tijdens een Stroomuitval — blijft
+daardoor vrijwel gelijk (8,90 -> 8,41), terwijl de normale ronde
+merkbaar donkerder werd. Tegelijk kregen de vloer-lichtvlekken een
+radiale alpha-uitloop (gedeelde `LICHTVLEK_TEXTUUR`, zelfde truc als de
+contactschaduw) i.p.v. een vlakke schijf met een harde rand, en een
+STERKERE kern — de gebruiker vroeg om een donkerdere plaats waarin het
+lichtpunt juist beter uitspringt.
+
+*Licht dat door muren scheen.* Melding: lichtplassen op de
+binnenplaatsklinkers zonder zichtbare bron. Oorzaak: een `PointLight` in
+Three.js wordt niet door geometrie tegengehouden — alleen een
+schaduwwerpende lamp doet dat, en daarvan is er per §10.2 maar één
+(perf-invariant). Twee lampen reikten met hun `distance` dwars door de
+buitenmuur: de gracht-lantaarn (bereik 13 m, staat 7,7 m van de
+zuidmuur) en de bijkeukenlamp (bereik 10 m, staat 4 m van die muur). De
+enige goedkope rem is het bereik zelf, dus `hangLamp()` kreeg een
+`afstand`-optie en beide lampen een bereik dat net vóór de muur ophoudt.
+De kelderhals-lamp is bewust ONgemoeid gelaten: die staat pal bij deur 3,
+dus licht dat daar de binnenplaats op valt komt door de deuropening en
+hoort er te zijn.
+
+*Het ontsnappingsvaartuig, in vier iteraties.* De oude boot was een
+liggende cilinder met een plankje — een boomstam. De weg naar het
+eindresultaat is leerzaam genoeg om vast te leggen:
+  1. Vervangen door een motorboot met een `ExtrudeGeometry`-romp (spitse
+     boeg via twee quadratic curves). Beter, maar nog niet herkenbaar.
+  2. De echte oorzaak bleek de ORIËNTATIE, niet het model: hij lag met de
+     kop van de kade af, dus je keek vanaf het ontsnappingspunt recht op
+     de spiegel — het minst leesbare aanzicht van een vaartuig.
+  3. Op verzoek twee kandidaten naast elkaar gebouwd (RIB en jetski) en
+     in het water vergeleken. De jetski won op herkenbaarheid: neus,
+     stuur en zadel lezen ook in het donker, terwijl de donkere drijvers
+     van de RIB tegen het water wegvielen. De RIB-code is daarna
+     VERWIJDERD, niet uitgeschakeld — geen dode tweede variant.
+  4. De hoek is gekozen uit een reeks van acht 45-graden-varianten
+     (`BOOT_HOEK_DOK` = 315 gr).
+
+Twee dingen die het meten zelf opleverde. Ten eerste: de eerste
+inspectie-screenshots lieten de jetski helemaal niet op de aanlegplek
+zien. `updateBootPositie()` draait in de altijd-lopende cosmetische
+sectie en zette de boot elke frame terug naar zijn vertrekpositie, dus
+een handmatige `position`-write vóór de screenshot werd meteen
+overschreven — vandaar dat het vaartuig klein en uit het midden leek. De
+juiste manier is het debug-hook-setter-pad (`ontsnappingsPunt` zetten),
+zodat de functie zélf voor de aanlegplek kiest. Ten tweede: het
+scheepslampje stond op emissie 1,8 en blies met de bloom-pass de vorm van
+zo'n klein vaartuig volledig weg; terug naar 1,25 (midden in Bron, §10.5)
+maakt het een baken zonder het voertuig te overstralen.
+
+Tot slot vaart hij nu SCHUIN aan en draait hij in. `BOOT_VERTREK_Z` legt
+een startpositie links in het water vast, zodat de route diagonaal loopt;
+`updateBootPositie()` interpoleert daarnaast de koers tussen
+`BOOT_HOEK_VAART` (225 gr, exact de richting van de route, dus vooruit
+varend) en `BOOT_HOEK_DOK` (315 gr), waarbij het indraaien pas in de
+laatste 35% van de route gebeurt. Zonder die interpolatie zou hij met een
+vaste koers diagonaal wegschuiven — precies het zijwaartse "crabben" waar
+de gebruiker eerder terecht over viel.
+
+**Vierde feedback-ronde: de mist op de vlonder (`mistDekking()`).**
+
+*"De mist ziet er raar uit als ik op het platform bij de jetski sta."*
+Gereproduceerd met een geforceerd `FOG_MIST`-profiel vanaf het
+gracht-standpunt, en het beeld was inderdaad kapot — maar de oorzaak zat
+niet in de mist. Hij zat in een aanname die T111, T112 en T113 alle drie
+onafhankelijk van elkaar hebben gemaakt, en die alleen bij het NORMALE
+fog-profiel klopt.
+
+Alles wat ver weg staat is namelijk bewust `fog: false`: de hemelkoepel
+(T111), de drie skylinelagen én hun raampjes (T112/T113) en de verre
+oever (T112). Dat is voor de normale fog precies goed — met `far` 24-40 m
+zou een gefogde skyline op 40-45 m compleet oplossen in het niets, exact
+wat T112 wilde vermijden. Maar tijdens een Mistgolf staat `far` op 9,35 m
+en is de fogkleur (0x39443f) veel LICHTER dan de nachtscene. Het water is
+een gewoon `MeshStandardMaterial` en wordt dus wél mistig: het verzadigt
+over zijn volle 26 m naar die grijsgroene tint. De hemel, de silhouetten
+en de oever erachter blijven ondertussen pikzwart. Resultaat: een vlakke,
+lichte waterplaat met een keiharde, uitgesneden horizon erboven, en zwarte
+panden die als gaten in de mistbank staan. Binnen valt dat niet op — daar
+staat elke muur binnen 9,35 m — maar op de vlonder is het het enige wat je
+ziet. De klacht wees dus feilloos naar de enige plek op de kaart waar deze
+combinatie zichtbaar is.
+
+De fix is één gedeelde maat in plaats van drie losse reparaties:
+`mistDekking()` geeft 0 bij `FOG_NORMAAL`/`FOG_BUITEN`, 1 bij `FOG_MIST`,
+en evenredig ertussenin. Bewust afgeleid uit de LIVE `scene.fog.far` en
+niet uit een eigen timer: `mistUitfaseTimer` (T93) en `zoneFogTimer` (T93)
+schrijven daar al in, dus elke bestaande blend loopt automatisch mee en er
+is geen tweede staat die uit de pas kan lopen. Die maat gaat naar drie
+plekken:
+
+  - de koepel-shader krijgt `mistKleur`/`mistDekking` als uniforms en
+    mengt zijn eindkleur ernaartoe. `mistKleur` volgt `scene.fog.color`
+    en niet de `FOG_MIST`-constante — halverwege een uitfade hoort de
+    koepel exact de tint van het gefogde water ervoor te hebben, anders
+    is de naad er alsnog;
+  - `updateVerteMist()` lerpt de vijf `fog:false`-materialen (drie
+    skylinetinten, twee oevers) van hun basiskleur naar de fogkleur. Dat
+    IS wat de fog-pass zelf zou doen; het verschil is dat wij de factor
+    bepalen, zodat de normale fog het silhouet nog steeds niet aanvreet;
+  - `updateSkylineRaampjes()` krijgt een `mistFactor` en dooft de
+    raampjes mee — ze zijn `fog:false` en zouden anders als scherpe
+    oranje stipjes dwars door een mistbank blijven prikken.
+
+Bij `mistDekking() === 0` is elk van deze drie een exacte no-op, dus de
+normale nacht en de T88-basislijn veranderen geen pixel — dat was de
+voorwaarde om dit zonder hermeting te kunnen doen.
+
+Eén detail dat pas uit het beeld bleek. De eerste versie mengde de hele
+koepel volledig naar de misttint, en dan is het scherm over de volle
+hoogte één vlakke kleur: dat leest als dagmist en haalt alle oriëntatie
+weg. Een hoogtedemping (recht omhoog blijft 22% nacht staan) lost dat op,
+maar moet pas BOVEN de skyline inzetten. Met de demping vanaf de horizon
+werd de hemel daar ietsje minder gemist dan de volledig gemiste
+silhouetten ervóór, en tekenden die zich af als LICHTERE vlekken — een
+omkering die in echte mist niet bestaat. Vandaar `smoothstep(0.45, 0.95,
+hoogte)`: tot ruim boven de hoogste gevel is de mix volledig.
+
+`tests/test-verte-mist.mjs` (15 checks) dekt de maat zelf, de doorwerking
+naar alle drie de soorten verte-objecten, het terugkeren naar de exacte
+basiskleuren na een mistbeurt (geen drift), en met echte pixels vanaf de
+vlonder dat de hemelband tijdens een Mistgolf oplicht in plaats van zwart
+te blijven en dat de sprong over de horizon klein is.
+
 ### 10.14.1 Beslissing 90 — Declaratievolgorde: elke nieuwe cache vóór regel 833
 
 **Het probleem, en waarom het deze ronde bijna zeker zou toeslaan.** Dit
@@ -7542,3 +7675,128 @@ deterministisch wordt.
 
 Volledige regressiesuite ná T93+T94+T95 (en de bovenstaande testfix):
 **66/66 groen, 0 FAIL.**
+
+### 10.20 T116 — Eindmeting van ronde 8 (uitgevoerd)
+
+Dit is het opleverproduct van T116 (beslissing 94): geen code, maar een
+meting van de eindtoestand plus een herbeoordeling van laag 3 en 4 tegen
+de gemeten werkelijkheid. Gemeten met `tests/meet-eindtoestand.mjs`,
+hetzelfde harnas (headless Playwright, lokale Chromium, bevroren T88-
+standpunten) als de nulmeting in §10.17.
+
+**Laag 1 — machinaal. Nulmeting → eindtoestand.**
+
+| Meting | Nulmeting (§10.17) | Eindtoestand | Verschil |
+| --- | --- | --- | --- |
+| Regels in `amsterdam-undead.html` | 9.384 | **12.450** | +33% |
+| Objecten in de scene-graph | 606 | **798** | +32% |
+| Meshes (leeg / 14 ondoden) | 523 / 653 | **674 / 852** | +29% / +30% |
+| Unieke geometrie-instanties | 482 / 489 | **616 / 625** | +28% |
+| Unieke materialen | 285 / 361 | **365 / 489** | +28% / +35% |
+| Lichten totaal | 28 | **28** | **gelijk (invariant)** |
+| Schaduwwerpende lichten | 1 | **1** | **gelijk (invariant)** |
+| `castShadow`-meshes | 165 | **179** | +8% |
+| `receiveShadow`-meshes | 108 | **114** | +6% |
+| Transparante meshes | 80 | **159** | +99% |
+| Emissieve meshes | 64 | **64 / 92** | gelijk (leeg) |
+| Driehoeken in de scene-graph | 17.782 / 32.902 | **41.176 / 56.364** | +132% / +71% |
+| **Draw calls per frame (woonkamer)** | **280** | **627** | **+124%** |
+| **Driehoeken per frame (woonkamer)** | **18.092** | **50.147** | **+177%** |
+| Shaderprogramma's | 13 | **33** | +154% |
+| GPU-geometrieën | 83 / 90 | **549** | +510% |
+| Texturen | 16 | **27** | +69% |
+| Collision-obstakels | 56 | **56** | **gelijk (invariant)** |
+| Interactiepunten | 14 | **14** | **gelijk (invariant)** |
+| Post-processing-passes | 3 | **4** | +1 (voorzien) |
+| Canvas-oppervlaktetexturen | 3 | **5** | voorzien was ~8 |
+| Materiaalfamilies | 5 | **6** | +1 |
+
+**Alle vier de harde invarianten staan.** 28 lichten, 1 schaduwwerper, 56
+obstakels, 14 interactiepunten — precies de vier getallen die §10.17
+"moeten gelijk blijven" noemt. De volledige regressiesuite is groen
+(**81/81 scripts**, `test-visuele-basislijn.mjs` 65/65; `test-golf-variatielimiter.mjs` viel één keer om op zijn bekende RNG-gevoeligheid en was groen bij de ingebouwde herkansing én bij drie losse herhalingen).
+
+Draw calls en driehoeken per frame, per standpunt (eindtoestand):
+
+| Standpunt | Draw calls | Driehoeken |
+| --- | --- | --- |
+| woonkamer | 627 | 50.147 |
+| bijkeuken | 586 | 47.119 |
+| gang | 458 | 35.283 |
+| atelier | 273 | 25.457 |
+| binnenplaats | 273 | 25.833 |
+| vliering | 264 | 28.068 |
+| gracht | 197 | 27.221 |
+| kelder | 187 | 23.368 |
+
+**Wat opvalt, en wat het betekent.**
+
+*De grootste stijging zit niet waar §10.3 hem verwachtte.* Dat hoofdstuk
+stelt dat deze ronde **fragment-bound** is: het scherm wordt zes tot acht
+keer per pixel beschreven, en geometrie zou het probleem niet zijn.
+Gemeten is de fragmentkant inderdaad beheerst gebleven (één pass erbij,
+3 → 4, exact zoals gepland), maar de **geometriekant is meer dan
+verdubbeld**: 280 → 627 draw calls en 18k → 50k driehoeken per frame in
+de zwaarste kamer. Dat is geen weerlegging van de fillrate-analyse — het
+is een tweede kostenpost die het hoofdstuk niet had voorzien.
+
+*De oorzaak is bekend en per ticket herleidbaar.* T102 (subdivisie) en
+T103 (hoekocclusie) vermenigvuldigen driehoeken per muurvlak; T105
+(afgeschuinde randen) en T104 (kleurtint per mesh) breken geometrie- en
+materiaaldeling op; T112/T113 voegen losse verre objecten toe. Dat is
+zichtbaar in het cijfer dat er het hardst uitspringt: **GPU-geometrieën
+83 → 549**. Elke gesubdivideerde muur, elk afgeschuind meubel en elke
+per-mesh getinte plank is een eigen buffer geworden.
+
+*Het T113-precedent geldt breder dan T113.* Three.js doet
+frustum-culling maar **geen occlusion-culling**. Dat werd bij T113
+ontdekt (raampjes die je niet kunt zien tellen tóch mee als draw call) en
+verklaart ook waarom de woonkamer met 627 calls de duurste kamer is: die
+kijkt langs de hele gang naar het atelier én heeft de skyline in de
+kegel. Wie hier verder wil optimaliseren, moet daar beginnen — niet bij
+het aantal driehoeken.
+
+*Wat de 14 ondoden kosten, is met dit harnas niet gemeten.* Ze zitten wél
+in de scene (+178 meshes, +15k driehoeken in de graaf), maar de draw
+calls per standpunt zijn met en zonder ondoden **identiek**: de acht
+bevroren T88-standpunten kijken geen van alle naar een spawnvenster, dus
+er valt er nooit één in de camerakegel. Dat is een echte beperking van
+deze meting en hoort niet weggeschreven te worden — de kosten van veertien
+ondoden ín beeld zijn onbekend.
+
+**Laag 2 — handmatig, staat nog open.** De frametijdmeting uit beslissing
+91 (`python3 -m http.server 8000`, spelen tot golf 8, DevTools →
+Performance → 10 s opnemen, mediane frametijd + frames boven 16,7 ms
+noteren) kan in deze omgeving **niet** worden gedaan: de testomgeving
+draait op SwiftShader-softwarerendering, waar frametijd betekenisloos is
+(§8.11/§10.3). Dit is de enige stap in de hele ronde die de eigenaar op
+eigen hardware moet uitvoeren, en gezien de +124% draw calls hierboven is
+het geen formaliteit meer maar de belangrijkste openstaande vraag van de
+ronde. Het meetpunt met de hoogste kans op een probleem is de
+**woonkamer, kijkrichting noord** — hetzelfde punt dat T88 gebruikt.
+
+**Herbeoordeling van laag 3 en 4** (beslissing 94, punt 3), tegen de
+gemeten werkelijkheid in plaats van de schatting vooraf:
+
+| | Richting | Oordeel na meting |
+| --- | --- | --- |
+| **Laag 3** | B6 — vuil en slijtage | **Nog steeds goede prijs.** Werkt via de bestaande vertexkleur-laag van T103, kost geen draw calls en geen fragmentwerk. Beste eerstvolgende kandidaat. |
+| | C3 — vertex-jitter | **Duurder dan gedacht.** "Nul rendertijd" klopt, maar hij breekt geometriedeling verder op — en dát is precies de as die deze ronde met 510% is gestegen. Alleen doen op geometrie die tóch al uniek is. |
+| | F1 — hoogtemist | **Aantrekkelijker geworden.** De verte-mistkoppeling (`mistDekking()`, vierde feedback-ronde) heeft de infrastructuur al gelegd: één gedeelde maat die koepel, silhouetten en oever aanstuurt. Hoogtemist erop is nu een kleinere stap dan de oorspronkelijke schatting. |
+| | F4 — stof per zone | **Onveranderd klein**, maar voegt losse transparante quads toe — en transparante meshes zijn al met 99% gestegen. Klein houden. |
+| | G3 — eventkleuren | **Onveranderd goedkoop.** Zit volledig in de bestaande T98-gradingmatrix, nul extra objecten. |
+| | H3 — blijvende inslagen | **Afgeraden zonder harde limiet.** Elke blijvende inslag is een draw call die nooit meer weggaat, in een scene die al op 627 zit. Alleen met een strikte pool en hergebruik. |
+| | E5 — dissolve bij de dood | **Onveranderd.** Raakt het opruimcontract (T70); dat contract staat en is getest, dus het risico is kleiner dan vooraf ingeschat. |
+| **Laag 4** | A5 — gerichte `DirectionalLight` | **Sterker aan te raden dan vooraf.** De meting bevestigt de aanname onder §7.9.1: er is nog steeds precies 1 schaduwwerper met een cube-shadow (6 passes) en 179 `castShadow`-meshes. Eén gerichte lamp is één pass — bij de nu gemeten geometrie-omvang is dat een grotere besparing dan toen de analyse werd geschreven. |
+| | B5 — procedurele env map | **Blijft onzeker.** Geen nieuw bewijs in beide richtingen. |
+| | D6 — tonemapping-curve | **Afgeraden.** Nul rendertijd, maar de hele helderheidskalibratie is inmiddels over vijf feedbackrondes met pixelmetingen vastgelegd; dit zou álles opnieuw moeten worden gemeten. |
+| | F3 — regen en natte klinkers | **Onveranderd middel.** |
+| | F5 — mistslierten | **Afgeraden in de piek.** De scene is fragment-bound én inmiddels ook geometrie-zwaar; dit is het duurste item uit de hele lijst. De vierde feedback-ronde heeft bovendien juist de goedkope route gekozen (de bestaande fog koppelen aan de verte) en die ziet er goed uit. |
+| | G1 — volledige kleurmigratie | **Onveranderd: nul rendertijd, grote doorlooptijd.** |
+
+**Aanbeveling.** Niet meteen doorbouwen. Eerst laag 2 draaien op echte
+hardware; als de woonkamer daar 60fps haalt, is B6 de beste volgende
+stap en A5 de grootste. Haalt hij het niet, dan wijst de meting de weg:
+de winst zit in dedupliceren van geometrie (T104/T105 terugschroeven op
+objecten waar de variatie toch niet opvalt) en in het beperken van wat er
+in de camerakegel valt, niet in minder fragmentwerk.

@@ -648,6 +648,30 @@ let zoneFogVan = null;
 let zoneFogDoel = FOG_NORMAAL;   // start in zone 0 (Woonkamer, binnen)
 scene.fog = new THREE.Fog(FOG_NORMAAL.kleur, FOG_NORMAAL.near, FOG_NORMAAL.far);
 
+// Feedback-fix (gebruiker: "de mist ziet er raar uit als ik op het platform
+// bij de jetski sta"). Terecht, en de oorzaak is structureel, niet cosmetisch:
+// alles wat VER weg staat is bewust `fog:false` — de hemelkoepel (T111), de
+// drie skylinelagen + hun raampjes (T112/T113) en de verre oever (T112). Dat
+// is precies goed voor de normale fog (far 24-40 m: de skyline zou anders
+// oplossen in het niets), maar tijdens een Mistgolf (far 9,35 m, kleur
+// 0x39443f) breekt het: het water — een gewoon MeshStandardMaterial dat WEL
+// mistig wordt — verzadigt over z'n volle 26 m naar die vrij lichte
+// grijsgroene misttint, terwijl de hemel, de silhouetten en de oever erachter
+// pikzwart blijven. Resultaat: een vlakke, lichte plaat water met een harde,
+// uitgesneden horizon erboven. Binnen valt dat niet op (elke muur staat
+// binnen 9,35 m), op de vlonder is het het enige wat je ziet.
+//
+// Deze factor is de gedeelde maat "hoe ver zit de fog richting het
+// Mistgolf-profiel": 0 bij FOG_NORMAAL/FOG_BUITEN, 1 bij FOG_MIST, en
+// evenredig ertussenin. Bewust afgeleid uit de LIVE `scene.fog.far` en niet
+// uit een eigen timer: alle bestaande overgangen (mistUitfaseTimer,
+// zoneFogTimer) schrijven daar al in, dus dit loopt automatisch met elke
+// blend mee en heeft geen eigen staat die uit de pas kan lopen.
+function mistDekking() {
+  const t = (FOG_NORMAAL.far - scene.fog.far) / (FOG_NORMAAL.far - FOG_MIST.far);
+  return Math.min(1, Math.max(0, t));
+}
+
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 50);
 camera.rotation.order = 'YXZ';
 
@@ -935,6 +959,15 @@ function bouwNachthemelMateriaal() {
       // de fragment-shader hieronder). Bewust nóg donkerder dan de oude
       // `scene.background` (0x05080b) die hier vóór T111 stond.
       kleurGrond: { value: new THREE.Color(0x020406) },
+      // Feedback-fix "de mist ziet er raar uit op het platform": deze koepel
+      // is `fog:false` (zie onderaan), dus zonder deze twee uniforms blijft
+      // hij tijdens een Mistgolf pikdonker terwijl het water ervoor volledig
+      // naar de misttint verzadigt — de harde, uitgesneden horizon uit de
+      // toelichting bij mistDekking(). Een koepel staat effectief op
+      // oneindig, dus bij volle mist hoort hij VOLLEDIG de mistkleur te zijn;
+      // vandaar een rechte mix i.p.v. een hoogte-afhankelijke.
+      mistKleur: { value: new THREE.Color(FOG_MIST.kleur) },
+      mistDekking: { value: 0 },
     },
     vertexShader: `
       varying vec3 vRichting;
@@ -948,6 +981,8 @@ function bouwNachthemelMateriaal() {
       uniform vec3 kleurHorizon;
       uniform vec3 kleurZenit;
       uniform vec3 kleurGrond;
+      uniform vec3 mistKleur;
+      uniform float mistDekking;
       varying vec3 vRichting;
 
       // Standaard hash-ruis (geen textuur, geen CDN-asset) — deterministisch
@@ -1018,6 +1053,24 @@ function bouwNachthemelMateriaal() {
         float wolkDekking = smoothstep(0.55, 0.85, wolk) * 0.1 * hoogte;
 
         vec3 kleur = hemel + vec3(ster) * 0.8 + vec3(wolkDekking);
+        // Mistgolf: de hele koepel (sterren en wolken incluis — die zie je
+        // door dichte mist niet meer) schuift naar de misttint. Bij
+        // mistDekking 0 is dit een exacte no-op, dus de normale nacht en de
+        // T88-basislijnmeting veranderen geen pixel.
+        //
+        // Wél een hoogtedemping: bij de HORIZON moet de mix volledig zijn
+        // (daar raakt de koepel het gefogde water — elke afwijking is precies
+        // de naad die deze fix weghaalt), maar recht omhoog mag een restje
+        // nacht blijven staan. Een mistbank is laag; een scherm dat over de
+        // volle hoogte één vlakke tint is, leest als dagmist en haalt alle
+        // oriëntatie weg.
+        // De demping begint pas BOVEN de skyline (r.y ~ 0,45 is ongeveer 27
+        // graden; de verste silhouetten steken tot ~0,4). Zou hij al bij de
+        // horizon inzetten, dan wordt de hemel dáár ietsje minder gemist dan
+        // de volledig gemiste silhouetten ervoor, en tekenen die zich af als
+        // LICHTERE vlekken — een omkering die in echte mist niet bestaat.
+        float mistHoogteDemping = mix(1.0, 0.78, smoothstep(0.45, 0.95, hoogte));
+        kleur = mix(kleur, mistKleur, mistDekking * mistHoogteDemping);
         gl_FragColor = vec4(kleur, 1.0);
       }
     `,
@@ -1037,6 +1090,12 @@ wereld.add(nachthemel);
 function updateNachthemel(klokTijd) {
   nachthemel.position.copy(camera.position);
   nachthemelMateriaal.uniforms.tijd.value = klokTijd;
+  // Feedback-fix mist: de koepel volgt de LIVE fogkleur, niet een vaste
+  // FOG_MIST-constante — tijdens een uitfade of een zonewissel blendt
+  // scene.fog.color zelf al, en de koepel hoort exact dezelfde tint te
+  // hebben als het gefogde water ervoor. Anders zie je de naad alsnog.
+  nachthemelMateriaal.uniforms.mistKleur.value.copy(scene.fog.color);
+  nachthemelMateriaal.uniforms.mistDekking.value = mistDekking();
 }
 
 // Ticket 46-fix (feedback): buitenlichten (maanlicht + lantaarns op de
@@ -1095,6 +1154,30 @@ const CONTACTSCHADUW_MAT = new THREE.MeshBasicMaterial({
 });
 CONTACTSCHADUW_MAT.userData.gedeeld = true;   // Ticket 70: ruimGroepOp() mag dit nooit disposen
 const CONTACTSCHADUW_Y_OFFSET = 0.012;   // zelfde offset als de bestaande lichtvlek (voorkomt z-fighting)
+// Feedback-fix (gebruiker: "misschien kan het rondje wel een heel klein
+// beetje afzwakken aan de rand zodat het niet een harde overgang is"). De
+// lichtvlekken onder de lantaarns waren een CircleGeometry met een VLAKKE
+// opacity: overal even sterk, en dan aan de omtrek in één pixel naar nul.
+// Dat leest als een uitgesneden schijf op de klinkers, niet als licht.
+// Dezelfde radiale-gradient-truc als de contactschaduw hierboven lost het
+// op: één gedeelde textuur met een zachte alpha-uitloop naar de rand, als
+// `map` op hetzelfde materiaal (dus geen extra draw calls of blending-
+// verandering). Iets sterker in de kern dan de oude vlakke waarde, zodat
+// het lichtPUNT juist beter uitspringt terwijl de rand verdwijnt.
+function bouwLichtvlekTextuur(n = 128) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = n;
+  const ctx = canvas.getContext('2d');
+  const g = ctx.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0.62)');
+  g.addColorStop(0.78, 'rgba(255,255,255,0.18)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, n, n);
+  return new THREE.CanvasTexture(canvas);
+}
+const LICHTVLEK_TEXTUUR = bouwLichtvlekTextuur();
 
 // x/z: middelpunt op de vloer. straalX/straalZ: halve breedte/diepte van de
 // bounding box eronder (gelijk houden geeft een cirkel). rotY lijnt een
@@ -3030,11 +3113,19 @@ let klinkersMesh;
     const goot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, gevelDiepte), mat(0x3c3a35, 0.55, 0.35));
     goot.position.set(gevelX + 0.12, ATELIER_HOOGTE - 0.32, gevelCz);
     wereld.add(goot);
-    // Plint: donkere band waar de gevel de klinkers raakt.
-    const plint = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.45, gevelDiepte), matFamilie('steen', 0x241c17));
-    plint.position.set(gevelX + 0.04, 0.225, gevelCz);
-    plint.receiveShadow = true;
-    wereld.add(plint);
+    // Plint: donkere band waar de gevel de klinkers raakt. Feedback-fix
+    // ("de plint bij het atelier loopt door bij de deuropening"): de plint
+    // liep als één balk over de VOLLE gevelbreedte, dus ook dwars voor het
+    // deurgat van deur 2 langs — je stapte er doorheen. Nu twee segmenten
+    // die bij het deurgat stoppen, net als de muursegmenten zelf.
+    for (const [pVan, pTot] of [[gevelZvan, ATELIER_MIDDEN_Z - DEUR2_HALF], [ATELIER_MIDDEN_Z + DEUR2_HALF, gevelZtot]]) {
+      const pDiepte = pTot - pVan;
+      if (pDiepte <= 0.05) continue;
+      const plint = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.45, pDiepte), matFamilie('steen', 0x241c17));
+      plint.position.set(gevelX + 0.04, 0.225, pVan + pDiepte / 2);
+      plint.receiveShadow = true;
+      wereld.add(plint);
+    }
     // Kozijnen op ooghoogte, verdeeld over de gevel maar met een ruime boog
     // om het deurgat van deur 2 heen (ATELIER_MIDDEN_Z ± DEUR2_HALF).
     // Twee gedeelde glasmaterialen: één verlicht, één donker. Niet elk raam
@@ -3075,6 +3166,88 @@ let klinkersMesh;
     const pijp = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, ATELIER_HOOGTE - 0.3, 8), mat(0x2e2b26, 0.6, 0.35));
     pijp.position.set(gevelX + 0.12, (ATELIER_HOOGTE - 0.3) / 2, gevelZvan + 0.5);
     wereld.add(pijp);
+  }
+
+  // Feedback-vervolg (gebruiker markeerde het bijkeuken-blok): de zuidkant
+  // van de binnenplaats was alleen een lage tuinmuur met poort, met daarboven
+  // een kale donkere massa. Hier komt een bovenverdieping-gevel op, zodat de
+  // bijkeuken van de binnenplaats af ook als gebouw leest i.p.v. als een
+  // schutting met iets erachter.
+  //
+  // Bewust aan de NOORDzijde van de zuidmuur (dus de binnenplaats in) en
+  // pas vanaf ZUIDMUUR_HOOGTE: de ruimte ten zuiden van PLAATS_Z_ZUID is de
+  // kelderhals — een echte, betreedbare binnenruimte. Een volume daar
+  // neerzetten zou als zwevende plaat middenin die kamer verschijnen. Door
+  // 'm aan deze kant en boven de poorthoogte te houden, staat hij vrij van
+  // zowel de kelderhals als deur 3 eronder. Geen collision: alles zit ruim
+  // boven hoofdhoogte.
+  {
+    const bkVan = DEUR2_X + 0.1, bkTot = 12.6;
+    const bkBreedte = bkTot - bkVan, bkCx = (bkVan + bkTot) / 2;
+    // Feedback-fix ("waarom staat de gevel bij de bijkeuken voor de muur?
+    // deze hoort gewoon door te lopen direct boven de muur"). Klopte: hij
+    // stond op PLAATS_Z_ZUID - 0,22, dus een halve meter de binnenplaats IN,
+    // vóór de muur langs — vandaar dat je er langs kon kijken. Nu exact op de
+    // hartlijn van de zuidmuur (PLAATS_Z_ZUID + MUUR_DIKTE/2) en even dik,
+    // zodat de gevel gewoon de muur voortzet.
+    const bkZ = PLAATS_Z_ZUID + MUUR_DIKTE / 2;
+    const bkOnder = ZUIDMUUR_HOOGTE, bkBoven = 3.75;
+    const bkHoogte = bkBoven - bkOnder;
+    // Feedback-fix, tweede poging. De eerste versie was een losse, dunne
+    // plaat in baksteen: hij hield aan de zijkanten zomaar op (je keek er
+    // langs de leegte in) en de bakstenen textuur vloekte met de
+    // grijsgroene pleistermuren eromheen. Nu drie dingen anders:
+    //   1. Zelfde materiaal als de binnenplaatsmuren (GANG_PLEISTER, plat
+    //      `mat()` zonder textuurfamilie) i.p.v. baksteen — hij hoort bij
+    //      dezelfde muren.
+    //   2. Zijwangen die naar achteren teruglopen, zodat de gevel een hoek
+    //      heeft i.p.v. in de lucht af te snijden.
+    //   3. Een dakvlak eroverheen dat naar achteren steekt, zodat er iets
+    //      ACHTER de gevel zit als je er schuin op kijkt.
+    // De diepte blijft bewust beperkt tot boven y=3,2: de kelderhals
+    // (x 9-11) heeft zijn eigen plafond op KAMER_HOOGTE, en het dak ligt
+    // daar met 3,75 ruim boven — de zijwangen staan op x 4,6 en 12,6 en
+    // vallen sowieso buiten die 9-11.
+    const bkDiepte = 1.5;
+    const bkMat = mat(GANG_PLEISTER, 0.92);
+    const bkGevel = new THREE.Mesh(new THREE.BoxGeometry(bkBreedte, bkHoogte, MUUR_DIKTE), bkMat);
+    bkGevel.position.set(bkCx, bkOnder + bkHoogte / 2, bkZ);
+    bkGevel.castShadow = true;
+    bkGevel.receiveShadow = true;
+    wereld.add(bkGevel);
+    for (const zijX of [bkVan + 0.17, bkTot - 0.17]) {
+      const wang = new THREE.Mesh(new THREE.BoxGeometry(MUUR_DIKTE, bkHoogte, bkDiepte), bkMat);
+      wang.position.set(zijX, bkOnder + bkHoogte / 2, bkZ + bkDiepte / 2);
+      wang.castShadow = true;
+      wereld.add(wang);
+    }
+    const bkDak = new THREE.Mesh(new THREE.BoxGeometry(bkBreedte + 0.3, 0.14, bkDiepte + 0.5), matFamilie('hout', 0x241f1a));
+    bkDak.position.set(bkCx, bkBoven + 0.07, bkZ + bkDiepte / 2 - 0.1);
+    bkDak.castShadow = true;
+    wereld.add(bkDak);
+    // Daklijst/goot onder de dakrand: houdt de horizontale lijn die de
+    // atelier-achtergevel ook heeft, nu als overgang naar het dakvlak.
+    const bkLijst = new THREE.Mesh(new THREE.BoxGeometry(bkBreedte + 0.2, 0.16, 0.46), matFamilie('hout', 0x2a2119));
+    bkLijst.position.set(bkCx, bkBoven - 0.08, bkZ - 0.06);
+    bkLijst.castShadow = true;
+    wereld.add(bkLijst);
+    // Drie zolderraampjes; het middelste bewust donker (zelfde reden als bij
+    // de achtergevel: niet elk raam hoort te branden).
+    const bkGlasAan = new THREE.MeshBasicMaterial({
+      color: PALET.raamWarmZacht, transparent: true, opacity: 0.3, side: THREE.DoubleSide,
+    });
+    const bkGlasUit = new THREE.MeshBasicMaterial({
+      color: 0x1b2532, transparent: true, opacity: 0.62, side: THREE.DoubleSide,
+    });
+    const bkAan = [true, false, true];
+    [bkCx - 2.4, bkCx, bkCx + 2.4].forEach((rx, i) => {
+      const kozijn = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.72, 0.12), matFamilie('hout', 0x3a2f24));
+      kozijn.position.set(rx, bkOnder + bkHoogte * 0.52, bkZ - 0.16);
+      wereld.add(kozijn);
+      const glas = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.54), bkAan[i] ? bkGlasAan : bkGlasUit);
+      glas.position.set(rx, bkOnder + bkHoogte * 0.52, bkZ - 0.24);
+      wereld.add(glas);
+    });
   }
 
   // Nepdoorgangen: lijken open, maar blijven geblokkeerd door de randcollision.
@@ -3120,21 +3293,21 @@ let klinkersMesh;
   // hele buitenplaats leesbaar is i.p.v. alleen de directe omgeving.
   // Feedback: binnenplaats ~20% donkerder (was 48/34/22 hieronder) —
   // gemeten via pixelhelderheid, niet alleen de PointLight-waarden zelf.
-  const maanlicht = new THREE.PointLight(0xc8ddff, 28.8, 28, 1.15);
+  const maanlicht = new THREE.PointLight(0xc8ddff, 16.8, 28, 1.15);
   maanlicht.position.set(PLAATS_CX, KAMER_HOOGTE + 1.25, DEUR2_Z - 1.0);
   wereld.add(maanlicht);
-  buitenLichten.push({ licht: maanlicht, basis: 28.8 });
+  buitenLichten.push({ licht: maanlicht, basis: 16.8 });
   // Tweede, zwakker maanlicht bij de deur zodat je 'm bij binnenkomst
   // meteen ziet i.p.v. eerst een paar meter het donker in te moeten lopen.
-  const maanlichtDeur = new THREE.PointLight(0xc8ddff, 20.4, 17, 1.25);
+  const maanlichtDeur = new THREE.PointLight(0xc8ddff, 11.9, 17, 1.25);
   maanlichtDeur.position.set(DEUR2_X + 1.8, KAMER_HOOGTE + 0.7, DEUR2_Z);
   wereld.add(maanlichtDeur);
-  buitenLichten.push({ licht: maanlichtDeur, basis: 20.4 });
+  buitenLichten.push({ licht: maanlichtDeur, basis: 11.9 });
   // Extra zachte vulgloed op de open plaats. Geen shadows, puur leesbaarheid.
-  const plaatsVulling = new THREE.PointLight(0x8fb8e8, 13.2, 24, 1.8);
+  const plaatsVulling = new THREE.PointLight(0x8fb8e8, 7.7, 24, 1.8);
   plaatsVulling.position.set(PLAATS_CX + 3.0, 2.2, DEUR2_Z + 2.5);
   wereld.add(plaatsVulling);
-  buitenLichten.push({ licht: plaatsVulling, basis: 13.2 });
+  buitenLichten.push({ licht: plaatsVulling, basis: 7.7 });
 
   // v0.6: vier lantaarnpalen als belangrijkste lichtbron van de vergrote
   // binnenplaats — schaduwloos (perf), warm-wit, duidelijk anders dan het
@@ -3160,18 +3333,18 @@ let klinkersMesh;
       new THREE.MeshStandardMaterial({ color: 0xffefd0, emissive: 0xffc36a, emissiveIntensity: lantaarnBolBasis }));
     bol.position.set(x, 2.5, z);
     wereld.add(bol);
-    const licht = new THREE.PointLight(0xffd6a0, 20.4, 13, 1.65);
+    const licht = new THREE.PointLight(0xffd6a0, 11.9, 13, 1.65);
     licht.position.set(x, 2.45, z);
     wereld.add(licht);
     // Ticket 110: zichtbare lichtkegel, apex bij de bol (x, 2.5, z).
-    const kegel = bouwLichtkegel(x, 2.5, z, 0xffd6a0, 2.3, 0.55, 0.07);
+    const kegel = bouwLichtkegel(x, 2.5, z, 0xffd6a0, 2.3, 0.55, 0.055);
     // Ticket 46-fix (feedback): de lantaarns zijn elektrisch, dus dimmen
     // net als de binnenlampen mee tijdens een Stroomuitval — met hun eigen
     // (hogere) buiten-vloer, zie de gameLoop-flikkerloop.
-    buitenLichten.push({ licht, basis: 20.4, bolMateriaal: bol.material, bolBasis: lantaarnBolBasis, kegel });
+    buitenLichten.push({ licht, basis: 11.9, bolMateriaal: bol.material, bolBasis: lantaarnBolBasis, kegel });
     const lichtvlek = new THREE.Mesh(
       new THREE.CircleGeometry(1.25, 24),
-      new THREE.MeshBasicMaterial({ color: 0xffd6a0, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false })
+      new THREE.MeshBasicMaterial({ color: 0xffd6a0, map: LICHTVLEK_TEXTUUR, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false })
     );
     lichtvlek.rotation.x = -Math.PI / 2;
     lichtvlek.position.set(x, 0.012, z);
@@ -3333,6 +3506,25 @@ const GRACHTGANG_DREMPEL_BINNEN = new THREE.Vector3(GRACHTGANG_X_WEST + 0.7, 0, 
 // updateBootVertrek() verderop in dit bestand).
 const BOOT_DOK_X = VLONDER_X_OOST + 1.3;
 const BOOT_VERTREK_X = BOOT_DOK_X + 3.5;
+// Feedback-fix: de jetski ligt schuin afgemeerd en vaart dus ook SCHUIN aan
+// i.p.v. recht langs de x-as. Deze z-offset is even groot als de x-offset
+// hierboven, zodat de route exact 45 graden loopt en samenvalt met de
+// richting waar de neus naartoe wijst (bootRomp.rotation.y = 0,75*PI). Zonder
+// dit zou hij zijwaarts "crabben": wel schuin gedraaid, maar recht varend.
+const BOOT_VERTREK_Z = BIJKEUKEN_CZ - 3.5;
+// Twee vaste standen van de waterscooter, allebei gekozen door de gebruiker
+// uit een reeks van acht 45-graden-varianten:
+//   BOOT_HOEK_DOK   (315 gr) — hoe hij AFGEMEERD ligt. Driekwart-aanzicht:
+//                    je ziet neus en flank tegelijk.
+//   BOOT_HOEK_VAART (225 gr) — hoe hij ligt terwijl hij VAART. Dit is exact
+//                    de richting van de route (van BOOT_VERTREK_* naar de
+//                    aanlegplek: -x en +z), zodat hij vooruit vaart i.p.v.
+//                    zijwaarts te schuiven — de eerdere feedback.
+// updateBootPositie() interpoleert tussen deze twee, dus je ziet hem tijdens
+// het naderen indraaien en langszij komen: een aanmeermanoeuvre i.p.v. een
+// schuivend blok.
+const BOOT_HOEK_DOK = Math.PI * 7 / 4;
+const BOOT_HOEK_VAART = Math.PI * 5 / 4;
 const WATER_BREEDTE = 8;   // was 3 — verbreed zodat de boot zichtbaar vaarwater heeft richting BOOT_VERTREK_X
 // T114-vervolg (feedback: "bij de boot is maar een rechthoekig stuk water,
 // je ziet de huizen erachter"). WATER_BREEDTE hierboven dekt alleen het
@@ -3357,7 +3549,7 @@ let vlonderMesh, waterMesh, bootGroep, grachtLantaarnLicht;   // toegewezen in h
 // gedeclareerd (zelfde hoisting-veilige patroon als `updateSkylineRaampjes`
 // in T113) zodat gameLoop 'm kan aanroepen; de bouwfunctie zelf zit lokaal
 // in het gracht-geometrieblok hieronder.
-let updateWaterAnimatie, waterMateriaal, reflectieStreepMesh, golfHoogte;
+let updateWaterAnimatie, waterMateriaal, reflectieStreepMesh, golfHoogte, bootRompGroep;
 
 /* ================================================================
    ZONE E — DE BIJKEUKEN + KELDERHALS (Ticket 24, map-lus M1): geometrie-
@@ -3609,43 +3801,162 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
   waterMesh.position.set(VLONDER_X_OOST + WATER_VLAK_LENGTE / 2, -0.05, gangCZ);
   wereld.add(waterMesh);
 
-  // De boot: langwerpige, licht afgeronde romp uit simpele prims — puur
-  // decor (Ticket 53 koppelt 'm aan de ontsnappings-interactie). Start op
-  // BOOT_VERTREK_X (verweg, "nog niet aangekomen") i.p.v. direct aangemeerd
-  // — updateBootPositie() vaart 'm pas naar BOOT_DOK_X tijdens een
-  // aankondigingsfase (feedback: de boot fysiek zien aankomen).
+  // De boot — puur decor (Ticket 53 koppelt 'm aan de ontsnappings-
+  // interactie). Start op BOOT_VERTREK_X (verweg, "nog niet aangekomen")
+  // i.p.v. direct aangemeerd — updateBootPositie() vaart 'm pas naar
+  // BOOT_DOK_X tijdens een aankondigingsfase (feedback: de boot fysiek zien
+  // aankomen).
+  //
+  // Feedback-fix (gebruiker: "ik vind de boot nu wel heel klein en een
+  // boomstam... misschien iets als een jetski of speedboot"). Terecht: dit
+  // was een liggende cilinder (2,4 x 0,7 m) met een plankje erop en een
+  // kegeltje als boeg — letterlijk een boomstam. Dat is een zwak beeld voor
+  // het object waar de héle run naartoe werkt.
+  //
+  // Nu een echte snelle motorboot, en groter (3,4 x 1,45 m). De romp is
+  // geen doos maar een ExtrudeGeometry van een PLATTEGROND-vorm: vlakke
+  // spiegel achter, en naar voren toe een spitse boeg via twee
+  // quadratic curves. Dat geeft in één mesh het silhouet dat een boot
+  // herkenbaar maakt, van bovenaf én van opzij.
+  //
+  // BOOT_ROMP_OFFSET_X schuift de romp binnen de groep naar voren. De groep
+  // zelf is het ankerpunt dat updateBootPositie() verschuift en waar het
+  // ontsnappingsPunt (BOOT_DOK_X - 1,5) mee rekent, dus dat anker mag niet
+  // verplaatsen; zonder offset zou de langere romp bij BOOT_DOK_X (20,8)
+  // achteruit tot x=19,1 steken en dwars door de vlonderrand (19,5) heen
+  // komen. Met de offset begint de spiegel op 19,6 — net vrij.
+  const BOOT_LENGTE = 3.4, BOOT_BREEDTE = 1.45, BOOT_ROMP_H = 0.5;
+  const BOOT_ROMP_OFFSET_X = 0;
   bootGroep = new THREE.Group();
-  bootGroep.position.set(BOOT_VERTREK_X, 0, gangCZ);
-  const romp = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 2.4, 10), mat(0x3a2a1c, 0.8, 0.05));
-  romp.rotation.z = Math.PI / 2;
-  romp.position.y = 0.05;
-  romp.scale.set(1, 1, 0.7);
-  bootGroep.add(romp);
-  const dek = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.12, 0.55), mat(0x4a3826, 0.75, 0.05));
-  dek.position.y = 0.32;
-  bootGroep.add(dek);
-  const boeg = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.7, 8), mat(0x3a2a1c, 0.8, 0.05));
-  boeg.rotation.z = -Math.PI / 2;
-  boeg.position.set(1.15, 0.1, 0);
-  boeg.scale.set(0.7, 1, 0.5);
-  bootGroep.add(boeg);
+  bootGroep.position.set(BOOT_VERTREK_X, 0, BOOT_VERTREK_Z);
+  // Feedback-fix ("de speedboat is nog niet direct goed te herkennen").
+  // De boot lag met de kop van de steiger AF, dus je keek er vanaf het
+  // ontsnappingspunt recht op de SPIEGEL — het minst herkenbare aanzicht
+  // van een boot (je ziet alleen de motor en een blok). Nu ligt hij
+  // langszij, precies zoals een boot aan een kade afgemeerd ligt: het volle
+  // zijsilhouet naar de speler toe, met de spitse boeg duidelijk in beeld.
+  //
+  // De draaiing zit op een BINNENgroep, niet op bootGroep zelf. bootGroep
+  // blijft het onbewerkte anker dat updateBootPositie() langs x verschuift
+  // en waar updateWaterAnimatie() de deining op zet; die schrijft
+  // rotation.z, en juist doordat de romp nu langs z ligt is rotation.z
+  // precies de rol-as van de boot (zijwaarts wiegen) i.p.v. een stampende
+  // beweging. Wegvaren langs +x leest nu als afduwen van de kade.
+  const bootRomp = new THREE.Group();
+  // Feedback-vervolg: eerst lag hij langszij (rotation.y = -PI/2), want dan
+  // zie je het volle zijsilhouet. Maar updateBootPositie() vaart hem van
+  // BOOT_VERTREK_X (24,3) naar BOOT_DOK_X (20,8) — dus westwaarts, naar de
+  // vlonder toe — en langszij zou dat een ZIJWAARTSE schuifbeweging zijn.
+  // Nu wijst de neus in de vaarrichting (-x), zodat hij normaal komt
+  // aanvaren en de speler hem vanaf het ontsnappingspunt recht van voren
+  // ziet naderen.
+  // Feedback-vervolg: kop-op (PI) was te smal om te herkennen, langszij
+  // (-PI/2) kon niet omdat hij dan zijwaarts zou aanschuiven. 0,75*PI zet 'm
+  // er driekwart op: de boeg wijst naar -x EN -z, dus je ziet neus én flank
+  // tegelijk, en de vaarroute hierboven volgt exact diezelfde diagonaal.
+  bootRomp.rotation.y = BOOT_HOEK_DOK;   // startwaarde; updateBootPositie() stuurt 'm verder
+  bootRompGroep = bootRomp;
+  bootGroep.add(bootRomp);
+  function bootRompVorm(lengte, breedte) {
+    const v = new THREE.Shape();
+    const hl = lengte / 2, hb = breedte / 2;
+    v.moveTo(-hl, -hb);
+    v.lineTo(hl - 1.15, -hb);
+    v.quadraticCurveTo(hl, -hb * 0.5, hl, 0);
+    v.quadraticCurveTo(hl, hb * 0.5, hl - 1.15, hb);
+    v.lineTo(-hl, hb);
+    v.closePath();
+    return v;
+  }
+  // ExtrudeGeometry werkt in het XY-vlak en extrudeert langs +Z; na
+  // rotateX(-PI/2) wordt (x,y,z) -> (x, z, -y), dus de plattegrond komt in
+  // het wereld-XZ-vlak te liggen en de extrusie staat rechtop.
+  // ---- Het ontsnappingsvaartuig: een waterscooter ------------------------
+  // Keuze van de gebruiker uit een vergelijking met een rubberboot (RIB).
+  // Doorslag gaf de herkenbaarheid op steiger-afstand: de drie kenmerken van
+  // een jetski (spitse oplopende neus, stuur, getrapt zadel) lezen ook in het
+  // donker meteen, terwijl de donkere drijvers van een RIB tegen het water
+  // wegvielen. De RIB-variant is daarom weer verwijderd i.p.v. als dode
+  // tweede optie te blijven staan.
+  let bootLichtAnker;
+
+  function bouwJetski() {
+    // Waterscooter: compact, met de drie dingen die 'm meteen verraden —
+    // een spitse, oplopende neus, een getrapt zadel en een stuur.
+    // Feedback: op de steiger-afstand oogde 2,5 x 0,95 te klein om te
+    // herkennen. Een echte waterscooter is ~3,3 m; 3,0 x 1,15 zit daar dicht
+    // tegenaan en vult het beeld vanaf het ontsnappingspunt merkbaar beter.
+    const jsL = 3.0, jsB = 1.15;
+    const rompMat = mat(0xb4442f, 0.5, 0.1);   // signaalrood: klein object, moet opvallen
+    const rompGeo = new THREE.ExtrudeGeometry(bootRompVorm(jsL, jsB), {
+      depth: 0.42, bevelEnabled: true, bevelThickness: 0.07, bevelSize: 0.07, bevelSegments: 2, curveSegments: 6,
+    });
+    rompGeo.rotateX(-Math.PI / 2);
+    const romp = new THREE.Mesh(rompGeo, rompMat);
+    romp.position.set(0, -0.06, 0);
+    romp.castShadow = true;
+    bootRomp.add(romp);
+    // Oplopend voordek richting de neus.
+    const voordek = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.16, jsB - 0.22), rompMat);
+    voordek.rotation.z = -0.16;
+    voordek.position.set(0.62, 0.44, 0);
+    bootRomp.add(voordek);
+    // Zadel.
+    const zadel = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.2, jsB - 0.3), mat(0x24201c, 0.85));
+    zadel.position.set(-0.42, 0.48, 0);
+    bootRomp.add(zadel);
+    const zadelRug = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, jsB - 0.3), mat(0x24201c, 0.85));
+    zadelRug.position.set(-0.96, 0.55, 0);
+    bootRomp.add(zadelRug);
+    // Stuurkolom + stuur: het meest verklappende detail.
+    const kolom = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.3, 0.2), mat(0x2b2f33, 0.6, 0.2));
+    kolom.position.set(0.28, 0.55, 0);
+    bootRomp.add(kolom);
+    const stuur = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.66, 8), mat(0x1b1f24, 0.5, 0.3));
+    stuur.rotation.x = Math.PI / 2;
+    stuur.position.set(0.3, 0.72, 0);
+    bootRomp.add(stuur);
+    for (const zz of [-1, 1]) {
+      const handvat = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.16, 8), mat(0x111417, 0.9));
+      handvat.rotation.x = Math.PI / 2;
+      handvat.position.set(0.3, 0.72, zz * 0.27);
+      bootRomp.add(handvat);
+    }
+    // Spatrand langs de flank.
+    for (const zz of [-1, 1]) {
+      const rand = new THREE.Mesh(new THREE.BoxGeometry(jsL - 0.7, 0.06, 0.05), mat(0xe8e4dc, 0.6));
+      rand.position.set(-0.1, 0.2, zz * (jsB / 2 + 0.01));
+      bootRomp.add(rand);
+    }
+    bootLichtAnker = [-jsL / 2 + 0.2, 0.62, 0.3];
+  }
+
+  bouwJetski();
   // Feedback: "een lichtje erop" — klein lantaarntje op de achtersteven,
   // zelfde bol+PointLight-patroon als de gracht-/binnenplaats-lantaarns,
   // maar nu een KIND van bootGroep zodat het automatisch meevaart. Zit in
   // buitenLichten (dimt mee tijdens Stroomuitval, net als de andere
   // buitenlampen) — de basis/bolBasis-waarden liggen ruim onder die van de
   // gracht-lantaarn (34/2.2): dit is een klein scheepslampje, geen lantaarn.
-  const bootLichtPaal = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.35, 6), mat(0x2a2e30, 0.6, 0.3));
-  bootLichtPaal.position.set(-0.8, 0.5, 0);
-  bootGroep.add(bootLichtPaal);
-  const bootLichtBolBasis = 1.8;   // Ticket 89: net boven Bron-max (§10.5, 1,6) — ongewijzigd, geen zichtbaar-effect-eis
+  // Feedback-fix (boot): meeverplaatst naar de nieuwe, langere romp — het
+  // paaltje stond op de oude cilinder-achtersteven (x=-0,8) en zou nu in de
+  // lucht hangen. Nu op de spiegel naast de motor.
+  const bootLichtPaal = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.42, 6), mat(0x2a2e30, 0.6, 0.3));
+  bootLichtPaal.position.set(bootLichtAnker[0], bootLichtAnker[1], bootLichtAnker[2]);
+  bootRomp.add(bootLichtPaal);
+  // Feedback-fix: was 1,8 (net boven Bron-max). Vlak naast een klein
+  // vaartuig gaf dat met de bloom-pass zo'n flare dat je de vorm van de
+  // jetski er niet meer achter zag. 1,25 zit midden in Bron (§10.5,
+  // 1,2-1,6) en laat het lampje een bakenpunt zijn zonder het voertuig zelf
+  // te overstralen.
+  const bootLichtBolBasis = 1.25;
   const bootLichtBol = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 10),
     new THREE.MeshStandardMaterial({ color: 0xffefd0, emissive: 0xffc36a, emissiveIntensity: bootLichtBolBasis }));
-  bootLichtBol.position.set(-0.8, 0.68, 0);
-  bootGroep.add(bootLichtBol);
+  bootLichtBol.position.set(bootLichtAnker[0], bootLichtAnker[1] + 0.24, bootLichtAnker[2]);
+  bootRomp.add(bootLichtBol);
   const bootLicht = new THREE.PointLight(0xffd6a0, 9, 6, 1.8);
-  bootLicht.position.set(-0.8, 0.68, 0);
-  bootGroep.add(bootLicht);
+  bootLicht.position.set(bootLichtAnker[0], bootLichtAnker[1] + 0.24, bootLichtAnker[2]);
+  bootRomp.add(bootLicht);
   buitenLichten.push({ licht: bootLicht, basis: 9, bolMateriaal: bootLichtBol.material, bolBasis: bootLichtBolBasis });
   wereld.add(bootGroep);
 
@@ -3669,17 +3980,25 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
     new THREE.MeshStandardMaterial({ color: 0xffefd0, emissive: 0xffc36a, emissiveIntensity: gBolBasis }));
   gBol.position.set(lantaarnX, 2.5, lantaarnZ);
   wereld.add(gBol);
-  grachtLantaarnLicht = new THREE.PointLight(0xffd6a0, 34, 13, 1.65);
+  // Feedback-fix: bereik 13 -> 7,5. Deze lantaarn staat 7,7 m van de
+  // binnenplaats-zuidmuur, dus met 13 m legde hij een tweede lichtplas op
+  // de binnenplaatsklinkers — het "licht van bij de boot" uit de feedback.
+  // 7,5 m dekt de hele vlonder en de aangemeerde boot nog ruim.
+  // Zelfde compensatie als bij de bijkeukenlamp: 34 -> 44 omdat het bereik
+  // van 13 naar 7,5 m ging (zie hierboven). Zonder dit werd de grachtzone
+  // 18% donkerder, terwijl de bedoeling alleen was het licht bij de muur te
+  // laten ophouden.
+  grachtLantaarnLicht = new THREE.PointLight(0xffd6a0, 44, 7.5, 1.65);
   grachtLantaarnLicht.position.set(lantaarnX, 2.45, lantaarnZ);
   wereld.add(grachtLantaarnLicht);
   // Ticket 110: vijfde kegel (van de zes) — deze lantaarn is de felste op
   // de kaart (basis 34 t.o.v. 20,4 voor de binnenplaats-lantaarns), dus
   // een iets prominentere kegel.
   const gKegel = bouwLichtkegel(lantaarnX, 2.5, lantaarnZ, 0xffd6a0, 2.3, 0.6, 0.08);
-  buitenLichten.push({ licht: grachtLantaarnLicht, basis: 34, bolMateriaal: gBol.material, bolBasis: gBolBasis, kegel: gKegel });
+  buitenLichten.push({ licht: grachtLantaarnLicht, basis: 44, bolMateriaal: gBol.material, bolBasis: gBolBasis, kegel: gKegel });
   const gLichtvlek = new THREE.Mesh(
     new THREE.CircleGeometry(1.25, 24),
-    new THREE.MeshBasicMaterial({ color: 0xffd6a0, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false })
+    new THREE.MeshBasicMaterial({ color: 0xffd6a0, map: LICHTVLEK_TEXTUUR, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false })
   );
   gLichtvlek.rotation.x = -Math.PI / 2;
   gLichtvlek.position.set(lantaarnX, 0.012, lantaarnZ);
@@ -3759,7 +4078,7 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
    is module-scope gedeclareerd (zelfde hoisting-veilige patroon als
    `vlonderMesh` e.d. hierboven) zodat gameLoop 'm kan aanroepen.
    ================================================================ */
-let updateSkylineRaampjes;
+let updateSkylineRaampjes, updateVerteMist;
 {
   // Bewust GEEN matFamilie()/blok()-PBR-materiaal: een silhouet moet vlak
   // zwart blijven, ongeacht scene-lichten (een PBR-materiaal reageert op
@@ -3773,14 +4092,34 @@ let updateSkylineRaampjes;
   // onzichtbaar zou zijn (geen dichte re-check per gebouw nodig).
   const SKYLINE_KLEUREN = [0x03050a, 0x070b13, 0x0b101b];   // 30 m / 40 m / 45 m — iets lichter naar achteren (zachte diepte-cue), blijft ruim donkerder dan de hemel-horizon (0x2a3a52)
   const skylineMateriaalCache = new Map();
+  // Feedback-fix mist (zie mistDekking()): elk `fog:false`-materiaal in de
+  // verte staat hier in, met zijn ONGEMISTE basiskleur ernaast. De
+  // MeshBasicMaterial-kleur naar de fogkleur lerpen IS wat de fog-pass zelf
+  // ook zou doen (mix(kleur, fogKleur, factor)) — alleen bepalen wij de
+  // factor zelf, zodat de normale fog het silhouet nog steeds niet aanvreet.
+  // Een handvol materialen (3 skylinetinten + 2 oevers), dus dit is één
+  // goedkope lus per frame, geen per-mesh werk.
+  const verteMistMaterialen = [];
+  function registreerVerteMist(materiaal) {
+    verteMistMaterialen.push({ materiaal, basis: materiaal.color.clone() });
+    return materiaal;
+  }
   function skylineMateriaal(kleur) {
     let m = skylineMateriaalCache.get(kleur);
     if (!m) {
-      m = new THREE.MeshBasicMaterial({ color: kleur, fog: false, side: THREE.DoubleSide });
+      m = registreerVerteMist(new THREE.MeshBasicMaterial({ color: kleur, fog: false, side: THREE.DoubleSide }));
       skylineMateriaalCache.set(kleur, m);
     }
     return m;
   }
+  // Aangeroepen vanuit gameLoop, in dezelfde altijd-lopende cosmetische
+  // sectie als updateNachthemel/updateSkylineRaampjes. `dekking` 0 zet elke
+  // kleur exact op zijn basis terug (geen drift na een uitfade).
+  updateVerteMist = function (dekking, mistKleur) {
+    for (const item of verteMistMaterialen) {
+      item.materiaal.color.copy(item.basis).lerp(mistKleur, dekking);
+    }
+  };
   // Eén gedeelde driehoek-Shape per breedte/dakhoogte-combinatie (puntgevel
   // — generieke vorm, geen kopie van een bestaand pand), i.p.v. per gebouw
   // opnieuw tekenen.
@@ -3833,11 +4172,16 @@ let updateSkylineRaampjes;
   // gameLoop, ver na module-initialisatie), niet bij functiedefinitie —
   // zelfde hoisting-veilige verwijzing-naar-latere-const als elders in dit
   // bestand (zie de WINKEL_STIJLEN-status()-toelichting).
-  updateSkylineRaampjes = function (klokTijd, stroomFactorWaarde) {
+  // Feedback-fix mist: `mistFactor` (1 - mistDekking()) dooft de raampjes
+  // mee. Ze zijn `fog:false` en zouden anders als scherpe oranje stipjes
+  // door een dichte mistbank heen blijven prikken — hetzelfde uitgesneden
+  // effect als bij de silhouetten zelf, alleen nog opvallender omdat het de
+  // enige heldere punten in beeld zijn.
+  updateSkylineRaampjes = function (klokTijd, stroomFactorWaarde, mistFactor = 1) {
     const stroomNormaal = Math.max(0, (stroomFactorWaarde - STROOMUITVAL_DIM_FACTOR) / (1 - STROOMUITVAL_DIM_FACTOR));
     for (const raam of skylineRaampjes) {
       const aan = Math.sin(klokTijd * RAAMPJE_FREQUENTIE + raam.userData.raampjeFase) > 0 ? 1 : 0;
-      raam.material.opacity = raam.userData.raampjeBasis * aan * stroomNormaal;
+      raam.material.opacity = raam.userData.raampjeBasis * aan * stroomNormaal * mistFactor;
     }
   };
   // Eén silhouetgebouw: een platte romp (BoxGeometry, dezelfde bouwsteen
@@ -3975,7 +4319,7 @@ let updateSkylineRaampjes;
   function bouwVerreGrond(cx, cz, breedte, diepte) {
     const grond = new THREE.Mesh(
       new THREE.PlaneGeometry(breedte, diepte),
-      new THREE.MeshBasicMaterial({ color: 0x020406, fog: false })
+      registreerVerteMist(new THREE.MeshBasicMaterial({ color: 0x020406, fog: false }))
     );
     grond.rotation.x = -Math.PI / 2;
     grond.position.set(cx, -0.02, cz);
@@ -4196,6 +4540,14 @@ function hangLamp(x, z, schaduw = false, opties = {}) {
   const amp1 = opties.amp1 ?? 0.06;
   const amp2 = opties.amp2 ?? 0.03;
   const minFactor = opties.minFactor ?? 0;   // ondergrens van de flikkerfactor (voorkomt "naar zwart" klappen)
+  // Feedback-fix (gebruiker: "ik zie op de vloer het licht door de muren
+  // heen schijnen van de lamp uit de bijkeuken"). Een PointLight in Three.js
+  // wordt NIET door geometrie tegengehouden — alleen een schaduwwerpende
+  // lamp doet dat, en daar is er per §10.2 maar één van (perf-invariant).
+  // Een binnenlamp met 10 m bereik schijnt dus dwars door de buitenmuur op
+  // de binnenplaatsklinkers. De enige goedkope rem is het BEREIK zelf: zet
+  // het net zo groot als de eigen kamer, dan houdt het licht bij de muur op.
+  const afstand = opties.afstand ?? 10;
 
   const groep = new THREE.Group();
   const koord = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.6, 6), mat(0x1a1410, 0.7));
@@ -4208,7 +4560,7 @@ function hangLamp(x, z, schaduw = false, opties = {}) {
   );
   bol.position.y = KAMER_HOOGTE - 0.62;
   groep.add(bol);
-  const licht = new THREE.PointLight(lichtKleur, intensiteit, 10, 2);
+  const licht = new THREE.PointLight(lichtKleur, intensiteit, afstand, 2);
   licht.position.y = KAMER_HOOGTE - 0.62;
   licht.castShadow = schaduw;
   // Performance-audit (feedback): 512 -> 256. Pixelmeting (voor/na, dezelfde
@@ -4980,7 +5332,18 @@ hangLamp(DEUR3_X, (KELDERHALS_Z_NOORD + KELDERHALS_Z_ZUID) / 2, false, {
 // het keukenblok, iets kouder/witter dan de warme woonkamerlampen.
 hangLamp(BIJKEUKEN_CX, BIJKEUKEN_Z_NOORD + 1.5, false, {
   bolKleur: 0xe8e0c8, emissief: 0xd8c89a, lichtKleur: 0xdccca0,
-  intensiteit: 10, amp1: 0.05, amp2: 0.02, minFactor: 0.7,
+  // Intensiteit 10 -> 15 als COMPENSATIE voor het ingekorte bereik hieronder.
+  // Het bereik terugbrengen van 10 naar 4 m stopte het muurlek, maar maakte
+  // de bijkeuken zelf ook 21% donkerder (Three.js dooft een PointLight naar
+  // 0 op `distance`, dus een kortere afstand maakt de val over de kamer veel
+  // steiler). Meer intensiteit binnen dezelfde, kortere straal herstelt de
+  // kamer zonder dat er ook maar iets over de muur komt.
+  intensiteit: 15, amp1: 0.05, amp2: 0.02, minFactor: 0.7,
+  // Feedback-fix: deze lamp staat op z = -3, de binnenplaatsmuur op
+  // PLAATS_Z_ZUID (-7). Met het standaardbereik van 10 m viel er een
+  // duidelijke lichtplas op de klinkers AAN DE ANDERE KANT van die muur.
+  // 4 m reikt tot precies aan de muur en niet erdoorheen.
+  afstand: 4,
 });
 // Warme lokgloed bij de atelier-drempel: trekt het oog vanuit de donkere gang
 // naar de volgende zone, zonder de gang zelf warm te maken.
@@ -9748,7 +10111,16 @@ const EXPOSURE_STROOM_VLOER = 0.4;
 // donker — empirisch opgehoogd naar 0.5 (pixelmeting: binnenplaats +5.0%),
 // de binnenplaats blijft daarbij nog steeds duidelijk lichter dan zowel het
 // atelier als de woonkamer tijdens dezelfde Stroomuitval.
-const BUITEN_STROOM_VLOER = 0.5;
+// Feedback-fix (gebruiker: "bij lichtuitval-rondes vind ik het al redelijk
+// goed qua helderheid, maar BUITEN deze speciale ronde mag het nog een stuk
+// donkerder"). Dat is een verzoek om de twee standen UIT ELKAAR te trekken,
+// niet om alles te dimmen. De basisintensiteiten van de binnenplaatslampen
+// zijn daarom nog eens ~25% omlaag gegaan, en deze vloer gaat evenredig
+// OMHOOG (0,5 -> 0,667) om dat te compenseren: basis x vloer blijft daardoor
+// vrijwel gelijk (15,9 x 0,56 = 8,90 oud, 11,9 x 0,707 = 8,41 nieuw, -5%),
+// dus de Stroomuitval ziet er nog hetzelfde uit terwijl de normale ronde
+// merkbaar donkerder werd.
+const BUITEN_STROOM_VLOER = 0.667;
 // Ticket 46-fix (feedback 3): de vloerweerkaatsing bleef nog te fel voelen —
 // met name buiten, maar ook in het atelier (dat door z'n vier dakraam-
 // lichten in absolute wattage meer overhoudt dan de andere binnenruimtes,
@@ -11030,16 +11402,31 @@ function updateOntsnappingAankondiging(dt) {
 // gated, dus tijdens pauze blijft dit gewoon een veilige no-op-herhaling
 // (zelfde discipline als terugslag/cameraKick hieronder).
 function updateBootPositie() {
+  // Feedback-fix: ook z wordt geïnterpoleerd, zodat de jetski schuin komt
+  // aanvaren langs dezelfde 45-gradenlijn als waar zijn neus naartoe wijst.
+  // De hoek loopt mee met de fractie: onderweg vaarstand, aangemeerd de
+  // gekozen driekwart-stand. De laatste 35% van de route wordt gebruikt om
+  // in te draaien (vandaar de clamp), zodat hij het grootste deel van de
+  // aanvaart netjes vooruit vaart en pas vlak voor de kade zwenkt.
+  const naarDok = (f) => BOOT_HOEK_VAART + (BOOT_HOEK_DOK - BOOT_HOEK_VAART) * Math.min(1, Math.max(0, (f - 0.65) / 0.35));
   if (ontsnappingAankondigingActief) {
     const fractie = 1 - Math.max(0, ontsnappingAankondigingTimer) / ONTSNAPPING_AANKONDIGING_DUUR;
     bootGroep.position.x = BOOT_VERTREK_X + (BOOT_DOK_X - BOOT_VERTREK_X) * fractie;
+    bootGroep.position.z = BOOT_VERTREK_Z + (BIJKEUKEN_CZ - BOOT_VERTREK_Z) * fractie;
+    if (bootRompGroep) bootRompGroep.rotation.y = naarDok(fractie);
   } else if (bootUitvarenActief) {
     const fractie = 1 - Math.max(0, bootUitvarenTimer) / ONTSNAPPING_AANKONDIGING_DUUR;
     bootGroep.position.x = BOOT_DOK_X + (BOOT_VERTREK_X - BOOT_DOK_X) * fractie;
+    bootGroep.position.z = BIJKEUKEN_CZ + (BOOT_VERTREK_Z - BIJKEUKEN_CZ) * fractie;
+    if (bootRompGroep) bootRompGroep.rotation.y = naarDok(1 - fractie);
   } else if (ontsnappingsPunt) {
     bootGroep.position.x = BOOT_DOK_X;
+    bootGroep.position.z = BIJKEUKEN_CZ;
+    if (bootRompGroep) bootRompGroep.rotation.y = BOOT_HOEK_DOK;
   } else {
     bootGroep.position.x = BOOT_VERTREK_X;
+    bootGroep.position.z = BOOT_VERTREK_Z;
+    if (bootRompGroep) bootRompGroep.rotation.y = BOOT_HOEK_VAART;
   }
 }
 // Per-frame getikt vanuit de spelActief-tak van gameLoop, symmetrisch met
@@ -11078,7 +11465,11 @@ function toonOntsnappingspuntIndienKlaar() {
     // sectie ná deze aanroep) — de vaste dok-constante is dus zowel exact
     // als semantisch correcter dan de op dat moment nog net niet-volledig
     // bijgewerkte transform.
-    positie: new THREE.Vector3(BOOT_DOK_X - 1.5, 0, bootGroep.position.z),
+    // Feedback-fix: was bootGroep.position.z, maar die is sinds de schuine
+    // aanvaarroute NIET meer constant (hij loopt van BOOT_VERTREK_Z naar de
+    // aanlegplek). Het ontsnappingspunt hoort bij de AANGEMEERDE plek, dus
+    // expliciet BIJKEUKEN_CZ i.p.v. een momentopname van de vaarbeweging.
+    positie: new THREE.Vector3(BOOT_DOK_X - 1.5, 0, BIJKEUKEN_CZ),
     radius: 1.4,
     prompt: () => spelStaat.geld < ONTSNAPPING_PRIJS
       ? `Nog €${ONTSNAPPING_PRIJS - spelStaat.geld} nodig om te ontsnappen`
@@ -11420,10 +11811,17 @@ function gameLoop(nu) {
   // tijdens spelActief), dus geen apart bevries-mechanisme nodig voor
   // deterministische visuele metingen (T88).
   updateNachthemel(klok);
+  // Feedback-fix mist: één keer per frame berekend en aan beide verte-
+  // updates doorgegeven (updateNachthemel leest 'm zelf, die staat hierboven
+  // en heeft geen argument nodig). Bewust NIET in de spelActief-tak: de fog
+  // kan ook tijdens een pauze halverwege een uitfade staan, en dan hoort de
+  // verte er nog steeds bij te kleuren.
+  const mistDekkingNu = mistDekking();
+  updateVerteMist(mistDekkingNu, scene.fog.color);
   // Ticket 113: zelfde klok-gedreven cosmetische zone; stroomFactor wordt
   // hier al bijgewerkt (zie de Stroomuitval-dimlussen hierboven in
   // dezelfde gameLoop), dus deze aanroep leest altijd de actuele waarde.
-  updateSkylineRaampjes(klok, stroomFactor);
+  updateSkylineRaampjes(klok, stroomFactor, 1 - mistDekkingNu);
   // Ticket 114: zelfde klok-gedreven cosmetische zone (water/boot-deining +
   // reflectiestreep-wobble bevriezen automatisch tijdens pauze/
   // measurement-modus, T88).
@@ -11638,6 +12036,9 @@ window.AmsterdamUndeadDebug = {
   set mistUitfaseTimer(v) { mistUitfaseTimer = v; },
   // Ticket 93 (v0.22, §10.13): fog-profiel per zone
   FOG_BUITEN, ZONE_BUITEN, ZONE_FOG_OVERGANG_DUUR, updateZoneFog,
+  // Feedback-fix mist ("de mist ziet er raar uit op het platform"): de
+  // verte-mist-koppeling — zie test-verte-mist.mjs.
+  mistDekking, updateVerteMist,
   get zoneFogTimer() { return zoneFogTimer; },
   set zoneFogTimer(v) { zoneFogTimer = v; },
   get zoneFogVan() { return zoneFogVan; },
