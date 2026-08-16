@@ -7800,3 +7800,101 @@ stap en A5 de grootste. Haalt hij het niet, dan wijst de meting de weg:
 de winst zit in dedupliceren van geometrie (T104/T105 terugschroeven op
 objecten waar de variatie toch niet opvalt) en in het beperken van wat er
 in de camerakegel valt, niet in minder fragmentwerk.
+
+### 10.21 B6 — Vuil, aanslag en slijtage (uitgevoerd)
+
+Het eerste ticket ná de T116-eindmeting, en gekozen op grond van die meting:
+§10.20 wees B6 aan als de beste prijs-kwaliteitverhouding uit laag 3, omdat
+het meelift op de vertexkleur-laag die T103 al heeft gelegd.
+
+**Wat het doet.** Drie lagen vuil, alle drie als modulatie van het
+`color`-attribuut dat T103 op elk groot bouwkundig vlak aanmaakt:
+
+1. een **aanslagband** waar de muur de vloer raakt (30% donkerder pal op de
+   vloerlijn, uitdovend over 1,15 m);
+2. een zwakkere **naadschaduw** langs het plafond (9%, 0,5 m);
+3. **grofschalige vuilvlekken** uit een deterministisch ruisveld op
+   wereldcoördinaten, met een periode van 2,6 m — bewust groter dan de
+   baksteentextuur uit T107.
+
+Plus een tintverschuiving die met het vuil meeschaalt: boven de grond naar
+vuilbruin (minder blauw), in de kelder naar vochtig groen (minder rood).
+Alles is multiplicatief en nooit lichter dan 1, dus de emissiehiërarchie uit
+T89 blijft ongemoeid.
+
+**Twee bewuste afwijkingen van de VISUEEL-spec.**
+
+*Vertexkleur in plaats van een tweede canvas-textuur.* VISUEEL stelt laag (3)
+voor als een "grofgeschaalde vuilkaart uit canvas-noise". Dat is hier een
+vertexkleur-veld geworden, en de reden staat in §10.20: de as die deze ronde
+uit de hand liep is geometrie en geheugen (GPU-geometrieën 83 → 549, texturen
+16 → 27), niet fragmentwerk. Een extra textuurkanaal per materiaalfamilie
+kost een tweede sample per fragment én meer texturen; dit kost nul van
+allebei. De prijs is resolutie: met `SUBDIVISIE_SEGMENTEN = 8` ligt er
+ongeveer één vertex per meter, dus dit veld kan variatie op meterschaal en
+geen scherpe vlekranden.
+
+*Geen vochtstreep onder de dakramen, geen sleetplek rond de deurgrepen.* Om
+diezelfde reden. Beide zijn detail van 10-30 cm; op een raster van een meter
+worden dat vage vegen van een halve muur breed. Ze horen bij een textuur- of
+decal-oplossing en zijn dus geen onderdeel van dit ticket — dat is een
+inperking van de spec, geen omissie.
+
+**Wat het bouwen zelf corrigeerde, en waarom dat hier staat.**
+
+*De eerste versie was een dimming, geen vlekkenpatroon.* Waarde-ruis ligt
+symmetrisch rond 0,5, dus `sterkte × ruis` geeft élke vertex ongeveer een
+halve dosis vuil. Het resultaat was een pand dat overal een paar procent
+donkerder was en nergens vuil — de slechtst denkbare uitkomst, want het kost
+de volle basislijnverschuiving zonder één zichtbare vlek. Opgelost met een
+contrastvenster (`VUIL_VLEK_DREMPEL_VAN/TOT`, 0,52-0,92): de onderste helft
+van het ruisbereik blijft volledig schoon, alleen de bovenste staart wordt
+vuil. `test-vuil-slijtage.mjs` bewaakt dat expliciet — meer dan een kwart van
+de bemonsterde wereld moet exact 0 vuil hebben.
+
+*De kelder had helemaal geen vertexkleuren.* Bij het testen bleek dat er nul
+muren met een vuil-markering onder de grond stonden. Oorzaak: `kelderWand()`
+bouwde een kale `BoxGeometry` zonder subdivisie — de enige muren in het pand
+zonder. Dat was al een stil gat in T103 (de randocclusie is daar nooit
+geland; op 8 hoekpunten kán dat ook niet) en B6 zou het overerven. Omdat de
+spec van B6 de kelderwanden expliciet noemt, is dat binnen dit ticket
+gerepareerd: `kelderWand()` gebruikt nu `muurSegmenten()` +
+`bakMuurOcclusie()` + de vertexkleur-tweeling, net als `bouwMuur()`.
+
+*De kelder-tint werd op de verkeerde vertex getoetst.* "Is dit de kelder"
+stond eerst op `maxY < -0.5`, maar een keldermuur staat op -3,3 en reikt tot
+ongeveer -0,1 — de hele kelder viel dus buiten de vochtige tint. Nu op
+`minY`, en de beslissing valt per geometrie, niet per vertex.
+
+**De hoisting-val, en dat beslissing 90 werkt.** Het blok staat vlak achter
+de T103-bakfuncties (~regel 2100), ruim vóór `VLIERING_Y` (~2330) en
+`KELDER_DIEPTE` (~2700). De vloerniveaus stonden er eerst als
+`const VUIL_VLOERNIVEAUS = [0, -KELDER_DIEPTE, VLIERING_Y]` — dat is precies
+de `ReferenceError`-bugklasse die dit project al vier keer heeft gehad. Nu
+een functie (`vuilVloerNiveaus()`), die pas bij de aanroep leest.
+
+**Twee testverwachtingen bijgewerkt.** `test-hoekocclusie.mjs` had een
+harde invariant "elke gebakken occlusie-vertexkleur is grijswaarde" die de
+HELE `wereld` traverseerde — en dat was tot dit ticket ook waar. B6
+verlegt die invariant bewust (vuil is per definitie een kleurverschuiving),
+dus de test toetst nu `bakMuurOcclusie()`/`bakVlakOcclusie()` in isolatie,
+op een verse `blok()`/`vlak()`-aanroep die na de eenmalige vuil-pass wordt
+gedaan en dus nooit vuil krijgt. De volledige "wereld is consistent vuil"-
+garantie staat in `test-vuil-slijtage.mjs` zelf.
+
+**De meting.** Draw calls in alle acht de T88-standpunten **exact
+ongewijzigd** (627/458/273/273/586/187/264/197) — dat is de kernclaim en hij
+houdt. Driehoeken stijgen met 2,4k-3,7k per standpunt, volledig uit de negen
+nu gesubdivideerde keldermuren, niet uit het vuil. Helderheid daalt 0,6% tot
+3,4% per zone; de kelder het meest (-3,4% gemiddeld, -8,2% mediaan), en ook
+dat komt van de gerepareerde occlusie. Gracht en vliering bewegen geen
+duizendste — daar staat geen vuil-gemarkeerd vlak in beeld, wat bevestigt dat
+de pass alleen raakt wat hij hoort te raken.
+
+**Waar de pass draait, en waarom daar.** Op de laatste regel van de
+wereldopbouw, vóór STAP 3. Hij leest WERELDposities, dus hij moet na de
+laatste `wereld.add()` draaien: alleen zo krijgen twee identiek gebouwde
+muren een verschillend vuilpatroon, en alleen zo is te zien of een muur
+werkelijk op een vloer staat. Muren die dat niet doen — de vulmuren boven de
+deuropeningen, die per definitie zweven — vallen daardoor automatisch buiten
+de aanslagband, zonder dat hun bouwcode iets van B6 hoeft te weten.

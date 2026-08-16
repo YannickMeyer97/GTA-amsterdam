@@ -2060,6 +2060,13 @@ function bakRandKleur(geometrie, factorVan) {
 function bakMuurOcclusie(geometrie, hoogte) {
   const pos = geometrie.getAttribute('position');
   bakRandKleur(geometrie, (i) => occlusieFactor(hoogte / 2 - Math.abs(pos.getY(i))));
+  // B6 (vuil en slijtage): merk deze geometrie als "groot bouwkundig vlak".
+  // De vuil-pass verderop draait ná de wereldopbouw en heeft een POSITIEVE
+  // markering nodig: "heeft een color-attribuut" is niet genoeg, want T104
+  // bakt óók een color-attribuut op elk meubelstuk (bakUniformeTint) en de
+  // reflectiestreep bij de gracht gebruikt vertexkleuren als LICHT-gradient
+  // — allebei dingen die geen aanslagband horen te krijgen.
+  geometrie.userData.vuilVlak = 'muur';
 }
 // Vloer/plafond: alle vier de randen doen mee (PlaneGeometry-lokaal X/Y
 // lopen van -breedte/2..breedte/2 resp. -diepte/2..diepte/2, vóór de
@@ -2071,6 +2078,181 @@ function bakVlakOcclusie(geometrie, breedte, diepte) {
     const afstandY = diepte / 2 - Math.abs(pos.getY(i));
     return occlusieFactor(Math.min(afstandX, afstandY));
   });
+  geometrie.userData.vuilVlak = 'vlak';   // B6, zie bakMuurOcclusie()
+}
+
+/* ================================================================
+   B6 (VISUEEL.md §laag 3) — VUIL, AANSLAG EN SLIJTAGE. Het pand ziet
+   eruit alsof het net is opgeleverd: elke muur is over zijn volle hoogte
+   precies dezelfde kleur, en twee identieke muren zijn tot op de pixel
+   identiek. Dit ticket geeft het pand een geschiedenis: een donkere
+   aanslagband waar de muur de vloer raakt, een lichtere naadschaduw langs
+   het plafond, en grofschalige vuilvlekken die op een gróter formaat
+   variëren dan de baksteentextuur uit T107.
+
+   TWEE BEWUSTE AFWIJKINGEN VAN DE OORSPRONKELIJKE SPEC in VISUEEL.md.
+
+   1. VISUEEL stelt laag (2) voor als "een tweede, grofgeschaalde vuilkaart
+      uit canvas-noise die over de basiskleur wordt gemoduleerd". Dat is
+      hier een VERTEXKLEUR-veld geworden in plaats van een textuur. Reden is
+      de T116-eindmeting: de as die deze ronde uit de hand liep is geometrie
+      en geheugen (GPU-geometrieën 83 -> 549, texturen 16 -> 27), niet
+      fragmentwerk. Een extra textuurkanaal per materiaalfamilie kost een
+      tweede sample per fragment én meer texturen; een vertexkleur-veld kost
+      NUL rendertijd en NUL geheugen, omdat het color-attribuut dat T103 hier
+      al aanmaakt gewoon verder wordt gemoduleerd. De prijs is resolutie: met
+      SUBDIVISIE_SEGMENTEN = 8 ligt er ongeveer één vertex per meter, dus dit
+      veld kan alleen variatie op meterschaal. Dat is precies wat "grover dan
+      de baksteentextuur" vraagt, maar het kan géén scherpe vlekranden.
+
+   2. Om diezelfde resolutiereden zitten de vochtstreep onder de dakramen en
+      de sleetplek rond de deurgrepen er NIET in. Beide zijn detail van
+      10-30 cm; op een raster van een meter worden dat vage vegen van een
+      halve muur breed. Ze horen bij een textuur- of decal-oplossing, niet
+      bij deze laag, en staan als zodanig in ARCHITECTURE_NOTES §10.21.
+
+   De pass draait ÉÉN keer, ná de volledige wereldopbouw (zie de aanroep
+   onderaan het bestand), omdat hij WERELDposities nodig heeft: alleen dan
+   krijgen twee identiek gebouwde muren een verschillend vuilpatroon, en
+   alleen dan is te zien of een muur daadwerkelijk op een vloer staat.
+   ================================================================ */
+const VUIL_BAND_HOOGTE = 1.15;       // m — waarbinnen de aanslagband vanaf de vloer uitdooft
+const VUIL_BAND_STERKTE = 0.30;      // max. 30% donkerder pal op de vloerlijn (bovenop T103's 35% randocclusie)
+const VUIL_NAAD_HOOGTE = 0.5;        // m — idem, maar vanaf het plafond
+const VUIL_NAAD_STERKTE = 0.09;      // duidelijk zwakker: stof op een plafondnaad is subtieler dan aanslag op een plint
+const VUIL_VLEK_SCHAAL = 2.6;        // m per ruisperiode — bewust groter dan de baksteentextuur
+const VUIL_VLEK_STERKTE = 0.16;      // max. 16% donkerder in het hart van een vlek
+// Contrastvenster op de vlekruis. Zonder dit is de eerste versie mislukt en
+// dat is de moeite waard om vast te leggen: waarde-ruis ligt symmetrisch rond
+// 0,5, dus "sterkte * ruis" geeft élke vertex ongeveer een halve dosis vuil.
+// Dat is geen vlekkenpatroon maar een uniforme dimming van het hele pand —
+// precies wat dit ticket NIET moet doen (en het zou de hele T88-basislijn
+// verschuiven zonder er iets voor terug te geven). Met dit venster blijft de
+// onderste helft van het ruisbereik volledig SCHOON en wordt alleen de
+// bovenste staart vuil: variatie in plaats van dimming.
+const VUIL_VLEK_DREMPEL_VAN = 0.52;
+const VUIL_VLEK_DREMPEL_TOT = 0.92;
+// Tintverschuiving op vol vuil. Aanslag is niet grijs maar vuilbruin: iets
+// minder blauw, iets minder groen. In de kelder is hij vochtig en dus
+// groeniger — daar gaat juist het rood eruit. Beide blijven multiplicatief
+// (nooit lichter dan 1), zodat vuil altijd donkerder maakt en de
+// emissie-hiërarchie uit T89 nergens wordt aangetast.
+const VUIL_TINT_BOVEN = { r: 1.0, g: 0.97, b: 0.90 };
+const VUIL_TINT_KELDER = { r: 0.90, g: 0.98, b: 0.93 };
+// Vloerniveaus waarop een muur "echt" kan staan. Een muur die hier niet op
+// staat, krijgt géén aanslagband: dat zijn de vulmuren boven deuropeningen
+// (bouwVulMuur) en onder de vlieringvloer, die zweven per definitie.
+// Bewust een FUNCTIE en geen const-array (beslissing 90, §10.14.1): dit blok
+// staat vóór de declaratie van KELDER_DIEPTE (~regel 2700) en VLIERING_Y
+// (~regel 2330), want het hoort bij de T103-bakfuncties waar het op
+// voortbouwt. Een const-array zou die twee bij module-load lezen en exact de
+// `ReferenceError: Cannot access ... before initialization` geven die dit
+// project al vier keer heeft gehad. Als functie worden ze pas gelezen bij de
+// aanroep van bakDecorVuil(), ná de volledige wereldopbouw.
+function vuilVloerNiveaus() { return [0, -KELDER_DIEPTE, VLIERING_Y]; }
+const VUIL_VLOER_MARGE = 0.12;       // m speling bij het herkennen van zo'n niveau
+
+// Waarde-ruis op wereldcoördinaten: hoekpunten van een rooster van
+// VUIL_VLEK_SCHAAL meter, smoothstep-geïnterpoleerd. Deterministisch via de
+// bestaande hashNaarEenheid() (T104) — géén Math.random(), zodat het patroon
+// bij elke paginalaad identiek is en de pixelmetingen van T88 stabiel
+// blijven. Twee octaven: één op de volle schaal, één op de helft met een
+// derde van het gewicht, genoeg om het rooster niet als rooster te lezen.
+function vuilRuis(x, y, z) {
+  const octaaf = (schaal) => {
+    const px = x / schaal, py = y / schaal, pz = z / schaal;
+    const ix = Math.floor(px), iy = Math.floor(py), iz = Math.floor(pz);
+    const fx = px - ix, fy = py - iy, fz = pz - iz;
+    const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy), sz = fz * fz * (3 - 2 * fz);
+    const hoek = (dx, dy, dz) => hashNaarEenheid(ix + dx, iy + dy, iz + dz);
+    const x00 = hoek(0, 0, 0) + (hoek(1, 0, 0) - hoek(0, 0, 0)) * sx;
+    const x10 = hoek(0, 1, 0) + (hoek(1, 1, 0) - hoek(0, 1, 0)) * sx;
+    const x01 = hoek(0, 0, 1) + (hoek(1, 0, 1) - hoek(0, 0, 1)) * sx;
+    const x11 = hoek(0, 1, 1) + (hoek(1, 1, 1) - hoek(0, 1, 1)) * sx;
+    const y0 = x00 + (x10 - x00) * sy;
+    const y1 = x01 + (x11 - x01) * sy;
+    return y0 + (y1 - y0) * sz;
+  };
+  return (octaaf(VUIL_VLEK_SCHAAL) * 3 + octaaf(VUIL_VLEK_SCHAAL / 2)) / 4;
+}
+
+// Hoeveel vuil zit er op dit wereldpunt? 0 = schoon, 1 = vol.
+// `vloerY` is null voor een vlak dat geen vloerreferentie heeft (dan telt
+// alleen de vlekruis), `plafondY` idem voor de naad.
+function vuilSterkte(wx, wy, wz, vloerY, plafondY) {
+  const uitdoving = (afstand, bereik) => {
+    const t = Math.min(1, Math.max(0, afstand) / bereik);
+    return 1 - t * t * (3 - 2 * t);   // 1 pal op de naad, 0 op `bereik` afstand
+  };
+  const ruis = vuilRuis(wx, wy, wz);
+  const t = Math.min(1, Math.max(0, (ruis - VUIL_VLEK_DREMPEL_VAN) / (VUIL_VLEK_DREMPEL_TOT - VUIL_VLEK_DREMPEL_VAN)));
+  let vuil = VUIL_VLEK_STERKTE * (t * t * (3 - 2 * t));
+  if (vloerY !== null) vuil += VUIL_BAND_STERKTE * uitdoving(wy - vloerY, VUIL_BAND_HOOGTE);
+  if (plafondY !== null) vuil += VUIL_NAAD_STERKTE * uitdoving(plafondY - wy, VUIL_NAAD_HOOGTE);
+  return Math.min(1, vuil);
+}
+
+// De pass zelf. Vermenigvuldigt IN het bestaande color-attribuut, dus T103's
+// randocclusie en dit vuil stapelen zonder dat een van beide de ander hoeft
+// te kennen. Eén Set op geometrie-identiteit: mocht een geometrie ooit door
+// twee meshes gedeeld worden, dan wordt hij hier precies één keer bewerkt
+// (twee keer zou het vuil kwadrateren).
+function bakDecorVuil(wortel) {
+  const verwerkt = new Set();
+  const punt = new THREE.Vector3();
+  const niveaus = vuilVloerNiveaus();
+  let vlakken = 0;
+  wortel.traverse((o) => {
+    if (!o.isMesh || !o.geometry || !o.geometry.userData.vuilVlak) return;
+    if (verwerkt.has(o.geometry)) return;
+    verwerkt.add(o.geometry);
+    const pos = o.geometry.getAttribute('position');
+    const kleur = o.geometry.getAttribute('color');
+    if (!pos || !kleur) return;
+    o.updateWorldMatrix(true, false);
+
+    // Wereld-Y-bereik van dit vlak bepalen, zodat "staat dit op een vloer"
+    // en "raakt dit een plafond" één keer per geometrie beslist worden i.p.v.
+    // per vertex.
+    let minY = Infinity, maxY = -Infinity;
+    for (let i = 0; i < pos.count; i++) {
+      punt.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      if (punt.y < minY) minY = punt.y;
+      if (punt.y > maxY) maxY = punt.y;
+    }
+    const opNiveau = (y) => niveaus.some((n) => Math.abs(y - n) < VUIL_VLOER_MARGE);
+    // Een muur krijgt de band alleen als zijn onderkant echt een vloer raakt
+    // (vulmuren boven deuren zweven en vallen hier automatisch buiten), en de
+    // plafondnaad alleen als hij hoog genoeg reikt om er een te hebben.
+    const isMuur = o.geometry.userData.vuilVlak === 'muur';
+    const vloerY = isMuur && opNiveau(minY) ? minY : null;
+    const plafondY = isMuur && maxY - minY > 1.5 ? maxY : null;
+    // Een plat vlak (vloer/plafond) krijgt geen band maar wél de vlekruis:
+    // de aanslag waar vloer en muur elkaar raken zit al in T103's
+    // randocclusie, en die nog eens vertienvoudigen maakt van elke kamer een
+    // donkere lijst.
+    // Kelder-of-niet wordt bepaald op de ONDERkant van het vlak, niet de
+    // bovenkant: een keldermuur staat op -3,3 en reikt tot ongeveer -0,1, dus
+    // op `maxY` getoetst viel de hele kelder buiten de vochtige tint. Eén
+    // beslissing per geometrie (niet per vertex) — een muur die de keldertrap
+    // volgt krijgt dus over zijn volle hoogte de kelder-tint, en dat is ook
+    // waar hij hoort.
+    const kelder = minY < -0.5;
+    const tint = kelder ? VUIL_TINT_KELDER : VUIL_TINT_BOVEN;
+
+    for (let i = 0; i < pos.count; i++) {
+      punt.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      const v = vuilSterkte(punt.x, punt.y, punt.z, vloerY, plafondY);
+      const donker = 1 - v;
+      kleur.setXYZ(i,
+        kleur.getX(i) * donker * (1 - v * (1 - tint.r)),
+        kleur.getY(i) * donker * (1 - v * (1 - tint.g)),
+        kleur.getZ(i) * donker * (1 - v * (1 - tint.b)));
+    }
+    kleur.needsUpdate = true;
+    vlakken++;
+  });
+  return vlakken;
 }
 
 function blok(breedte, hoogte, diepte, kleur, ruwheid = 0.88, metaal = 0, segX = 1, segY = 1, segZ = 1, occlusie = false) {
@@ -4728,10 +4910,22 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   wereld.add(kelderPlafond);
 
   // Perimeter-muren van de kelderruimte (echte obstakels).
+  // B6 (vuil en slijtage), gevonden tijdens het bouwen: deze wanden waren de
+  // ENIGE muren in het pand zonder subdivisie en zonder T103-randocclusie —
+  // een kale BoxGeometry met 8 hoekpunten. Dat was al een gat in T103 (de
+  // kelder was de enige ruimte waar de "muren donkerder waar ze de vloer
+  // raken"-gradient nooit is geland), en B6 zou het overerven: op 8
+  // hoekpunten kún je geen vuilgradient bakken. Nu dezelfde behandeling als
+  // bouwMuur(): muurSegmenten() + bakMuurOcclusie() + de vertexkleur-tweeling.
+  // De spec van B6 noemt de kelderwanden expliciet ("naar onderen toe donkerder
+  // en groeniger"), dus dit hoort binnen de scope van dit ticket en niet in een
+  // los vervolgticket.
   function kelderWand(cx, cz, breedte, diepte) {
-    const wandGeo = new THREE.BoxGeometry(breedte, KELDER_HOOGTE, diepte);
+    const { segX, segZ } = muurSegmenten(breedte, diepte);
+    const wandGeo = new THREE.BoxGeometry(breedte, KELDER_HOOGTE, diepte, segX, SUBDIVISIE_SEGMENTEN, segZ);
+    bakMuurOcclusie(wandGeo, KELDER_HOOGTE);
     herschaalUVNaarWereldschaal(wandGeo);   // Ticket 106
-    const wand = new THREE.Mesh(wandGeo, matFamilieReliëf('steen', KELDER_TINT));
+    const wand = new THREE.Mesh(wandGeo, matMetVertexKleur(matFamilieReliëf('steen', KELDER_TINT)));
     wand.position.set(cx, -KELDER_DIEPTE + KELDER_HOOGTE / 2, cz);
     wand.castShadow = true;
     wand.receiveShadow = true;
@@ -5887,6 +6081,13 @@ const PANTSERDRANK_Z = (KELDER_Z_NOORD + KELDER_Z_ZUID) / 2 + 2;
 }
 const pantserdrankMarkering = winkelMarkering(PANTSERDRANK_X, PANTSERDRANK_Z, 'pantserdrank');
 pantserdrankMarkering.position.y += -KELDER_DIEPTE;
+
+// B6 (vuil en slijtage): hier, op de laatste regel van de wereldopbouw en
+// vóór STAP 3, want de pass leest WERELDposities — hij moet dus na de laatste
+// `wereld.add()` van STAP 2/2b draaien, maar hij hoeft niets te weten van de
+// speler, de wapens of de golven. Eenmalig, ~0,5 ms; daarna is het puur
+// vertexdata die de GPU toch al las.
+const vuilVlakken = bakDecorVuil(wereld);
 
 /* ================================================================
    STAP 3 — DE SPELER: first-person besturing met botsingen
@@ -12147,6 +12348,11 @@ window.AmsterdamUndeadDebug = {
   matMetVertexKleur, vertexKleurTweelingen, bakMuurOcclusie, bakVlakOcclusie,
   // Ticket 104: per-mesh kleurtint-variatie (meubelBox()).
   hashNaarEenheid, TINT_VARIATIE, bakUniformeTint, meubelBox,
+  // B6 (VISUEEL.md laag 3): vuil, aanslag en slijtage — zie test-vuil-slijtage.mjs.
+  VUIL_BAND_HOOGTE, VUIL_BAND_STERKTE, VUIL_NAAD_HOOGTE, VUIL_NAAD_STERKTE,
+  VUIL_VLEK_SCHAAL, VUIL_VLEK_STERKTE, VUIL_TINT_BOVEN, VUIL_TINT_KELDER,
+  VUIL_VLEK_DREMPEL_VAN, VUIL_VLEK_DREMPEL_TOT,
+  vuilVloerNiveaus, vuilRuis, vuilSterkte, bakDecorVuil, vuilVlakken,
   // Ticket 105: afgeschuinde randen (RoundedBoxGeometry, ongecachet — zie
   // toelichting bij geoAfgeschuind()).
   AFSCHUINING_STRAAL, AFSCHUINING_SEGMENTEN, geoAfgeschuind, blokAfgeschuind,

@@ -438,15 +438,45 @@ const RENDER_BAND = 0.25;
 // oppervlak dichtbij de camera. Het opkrikken van de lantaarn van 34 naar
 // 44 bewoog deze zone dan ook nauwelijks (24,13 -> 24,68), wat bevestigt
 // dat het vaartuig de dominante factor is, niet het lantaarnbereik.
+//
+// B6 (vuil, aanslag en slijtage) — de verschuiving hieronder. Twee dingen
+// tegelijk, en het is de moeite waard ze uit elkaar te houden.
+//
+// 1. HELDERHEID omlaag, overal een beetje: -0,6% tot -3,4% op het gemiddelde.
+//    Dat is precies de bedoeling van het ticket (een aanslagband bij de
+//    vloer, een naadschaduw bij het plafond, vuilvlekken) en het is bewust
+//    KLEIN gehouden: het contrastvenster op de vlekruis
+//    (VUIL_VLEK_DREMPEL_VAN/TOT) laat ruim een kwart van de wereld volledig
+//    schoon. De eerste versie had dat venster niet en drukte álles met een
+//    halve dosis — een uniforme dimming die de basislijn zou verschuiven
+//    zonder dat je één vlek zou zien.
+//    De KELDER daalt het meest (-3,4% gemiddeld, -8,2% mediaan) en dat is
+//    geen vuil maar een gerepareerd gat: de keldermuren waren de enige muren
+//    in het pand zonder subdivisie, dus T103's randocclusie is daar nooit
+//    geland. Ze krijgen nu voor het eerst dezelfde donkere vloer-/
+//    plafondaanzet als elke andere muur, en dát is het grootste deel van de
+//    daling. GRACHT en VLIERING bewegen niet (24,68 resp. 11,36 ongewijzigd):
+//    daar staat geen enkel vuil-gemarkeerd vlak in beeld — een nette
+//    bevestiging dat de pass alleen raakt wat hij hoort te raken.
+//
+// 2. DRAW CALLS: in ALLE ACHT de zones exact ongewijzigd (627/458/273/273/
+//    586/187/264/197). Dat is de kernclaim van dit ticket en hij houdt: het
+//    vuil is puur een modulatie van het color-attribuut dat T103 hier al
+//    aanmaakte, dus nul extra objecten, nul extra texturen, nul rendertijd.
+//    DRIEHOEKEN stijgen wél, met 2,4k-3,7k per standpunt, en dat komt
+//    volledig van de negen nu gesubdivideerde keldermuren uit punt 1 — niet
+//    van het vuil. Dat ze ook meetellen in de woonkamer (+3.696) is hetzelfde
+//    frustum-zonder-occlusion-effect dat T113 al blootlegde: de kelder valt
+//    binnen de camerakegel, ook al kijk je door een vloer heen.
 const BASISLIJN = {
-  woonkamer:    { gemiddelde: 29.28, mediaan: 17.21, calls: 627, triangles: 50147 },
-  gang:         { gemiddelde: 29.48, mediaan: 15.80, calls: 458, triangles: 35283 },
-  atelier:      { gemiddelde: 31.01, mediaan: 17.01, calls: 273, triangles: 25457 },
-  binnenplaats: { gemiddelde: 25.34, mediaan: 22.09, calls: 273, triangles: 25833 },
-  bijkeuken:    { gemiddelde: 25.44, mediaan: 15.93, calls: 586, triangles: 47119 },
-  kelder:       { gemiddelde: 16.37, mediaan: 12.26, calls: 187, triangles: 23368 },
-  vliering:     { gemiddelde: 11.36, mediaan: 1.57,  calls: 264, triangles: 28068 },
-  gracht:       { gemiddelde: 24.68, mediaan: 16.52, calls: 197, triangles: 27221 },
+  woonkamer:    { gemiddelde: 28.89, mediaan: 17.08, calls: 627, triangles: 53843 },
+  gang:         { gemiddelde: 29.19, mediaan: 15.80, calls: 458, triangles: 37747 },
+  atelier:      { gemiddelde: 30.62, mediaan: 16.66, calls: 273, triangles: 26381 },
+  binnenplaats: { gemiddelde: 24.98, mediaan: 21.36, calls: 273, triangles: 26757 },
+  bijkeuken:    { gemiddelde: 25.11, mediaan: 15.59, calls: 586, triangles: 49583 },
+  kelder:       { gemiddelde: 15.81, mediaan: 11.26, calls: 187, triangles: 25832 },
+  vliering:     { gemiddelde: 11.35, mediaan: 1.57,  calls: 264, triangles: 30840 },
+  gracht:       { gemiddelde: 24.68, mediaan: 16.52, calls: 197, triangles: 28145 },
 };
 
 const gemeten = {};

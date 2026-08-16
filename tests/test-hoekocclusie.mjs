@@ -87,26 +87,42 @@ check('occlusieFactor() ruim voorbij OCCLUSIE_BEREIK is weer volledig 1 (geen ef
 check('occlusieFactor() klemt een negatieve afstand naar 0 (geen crash, geen waarde > het randmaximum)',
   Math.abs(factorTest.negatieveAfstandGeklemd - factorTest.opDeRand) < 1e-6, factorTest);
 
-// --- 5. Structureel bewijs: elke muur/vloer/plafond-mesh die door blok()/
-// vlak() met occlusie is gebouwd, heeft een GRIJSWAARDE color-attribuut
-// (R===G===B op elke vertex) — nooit een tint, net als T101's eerdere
-// invariant voor de ondode-huid.
+// --- 5. Structureel bewijs: DIRECT NA het bouwen (vóór B6's vuil-pass) is
+// elke muur/vloer/plafond-mesh die door blok()/vlak() met occlusie is
+// gebouwd grijswaarde (R===G===B op elke vertex) — nooit een tint, net als
+// T101's eerdere invariant voor de ondode-huid.
+//
+// B6 (vuil en slijtage, ná dit ticket) moduleert diezelfde color-attributen
+// met een tintverschuiving (vuilbruin boven de grond, vochtig groen in de
+// kelder) — een BEWUSTE, gedocumenteerde uitbreiding van dit contract, geen
+// regressie. Deze test bewaakt daarom bakMuurOcclusie()/bakVlakOcclusie()
+// zelf, geïsoleerd, met een verse geometrie — niet de staat van de wereld ná
+// de volledige opbouw (die grijswaarde-eis is verhuisd naar
+// test-vuil-slijtage.mjs, dat toetst dat SCHONE plekken exact 1 blijven en
+// dat vuile plekken alleen richting de gedefinieerde tinten verschuiven).
 const grijswaardeTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
+  // Verse aanroepen ná het laden: blok()/vlak() voegen toe aan `wereld`, maar
+  // B6's bakDecorVuil() draait precies ÉÉN keer, tijdens de wereldopbouw zelf
+  // — dus deze twee nieuwe meshes bestonden op dat moment nog niet en kregen
+  // (net als elk ander object dat een test achteraf toevoegt) nooit een
+  // vuil-modulatie. Daarmee test dit precies de bakfuncties zelf, geïsoleerd
+  // van B6, zonder de geometrie-constructie hier te dupliceren.
+  const { segX, segZ } = d.muurSegmenten(2, 0.3);
+  const muur = d.blok(2, 3, 0.3, 0xffffff, 0.9, 0, segX, d.SUBDIVISIE_SEGMENTEN, segZ, true);
+  const vlak = d.vlak(0xffffff, 4, 5, 0, 0, 0, false);
   let gecontroleerd = 0, nietGrijs = 0;
-  d.wereld.traverse(kind => {
-    if (!kind.isMesh) return;
-    const kleur = kind.geometry.getAttribute('color');
-    if (!kleur) return;
+  for (const geo of [muur.geometry, vlak.geometry]) {
+    const kleur = geo.getAttribute('color');
     for (let i = 0; i < kleur.count; i++) {
       gecontroleerd++;
       const r = kleur.getX(i), g = kleur.getY(i), b = kleur.getZ(i);
       if (Math.abs(r - g) > 1e-6 || Math.abs(g - b) > 1e-6) nietGrijs++;
     }
-  });
+  }
   return { gecontroleerd, nietGrijs };
 });
-check('Elke gebakken occlusie-vertexkleur is grijswaarde (R=G=B) op elke gecontroleerde vertex',
+check('Direct na bakMuurOcclusie()/bakVlakOcclusie() (vóór B6\'s vuil-pass) is de vertexkleur grijswaarde (R=G=B) op elke vertex',
   grijswaardeTest.gecontroleerd > 0 && grijswaardeTest.nietGrijs === 0, grijswaardeTest);
 
 // --- 6. Geen enkele geometrie/collision-wijziging: obstakels.length en de
