@@ -138,6 +138,52 @@ const perf = await page.evaluate(() => {
 check('14 ondoden x 20 ticks updateOndoden(): geen crash, blijft ruim binnen 500ms (indicatief, headless)',
   perf.aantal === 14 && perf.duur < 500, perf);
 
+// --- 6. Ticket 119 (Zombie V2 fase 2): pelvis-sway/chest-lag — alleen op
+// een V2-ondode (delen.pelvis/delen.chest bestaan niet in V1), gedreven
+// door DEZELFDE ondode.loopFase-sinus als de bestaande been-/armzwaai
+// (geen nieuwe klok), met een vaste faseverschuiving voor de chest. --------
+const pelvisChest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  d.zetZombieRenderVersie('v2');
+  const o = d.spawnOndode(0, 'normaal');
+  o.groep.position.set(0, 0, -10);
+  d.speler.positie.set(0, 0, 0);
+  const voorPelvis = o.delen.pelvis.rotation.z, voorChest = o.delen.chest.rotation.z;
+  d.updateOndoden(0.1);
+  const naPelvis1 = o.delen.pelvis.rotation.z, naChest1 = o.delen.chest.rotation.z;
+  const loopFaseNa1 = o.loopFase;
+  d.updateOndoden(0.1);
+  const naPelvis2 = o.delen.pelvis.rotation.z, naChest2 = o.delen.chest.rotation.z;
+  // Losse V1-ondode in dezelfde run: delen.pelvis/delen.chest moeten
+  // gewoon ontbreken (geen crash, geen bijwerking van de V2-tak hierboven).
+  d.zetZombieRenderVersie('v1');
+  const oV1 = d.spawnOndode(1, 'normaal');
+  oV1.groep.position.set(5, 0, -10);
+  d.updateOndoden(0.1);
+  const v1HeeftPelvis = oV1.delen.pelvis !== undefined;
+  const v1HeeftChest = oV1.delen.chest !== undefined;
+  const verwachtPelvis1 = Math.sin(loopFaseNa1) * d.PELVIS_SWAY_AMPLITUDE;
+  const verwachtChest1 = Math.sin(loopFaseNa1 - d.CHEST_LAG_FASE) * d.CHEST_SWAY_AMPLITUDE;
+  d.doodOndode(o); d.doodOndode(oV1);
+  return {
+    voorPelvis, voorChest, naPelvis1, naChest1, naPelvis2, naChest2,
+    v1HeeftPelvis, v1HeeftChest, verwachtPelvis1, verwachtChest1,
+  };
+});
+check('pelvis.rotation.z beweegt tussen ticks (in fase met de loopcyclus)',
+  pelvisChest.naPelvis1 !== pelvisChest.voorPelvis && pelvisChest.naPelvis2 !== pelvisChest.naPelvis1, pelvisChest);
+check('chest.rotation.z beweegt tussen ticks (fase-vertraagd t.o.v. pelvis, geen nieuwe klok)',
+  pelvisChest.naChest1 !== pelvisChest.voorChest && pelvisChest.naChest2 !== pelvisChest.naChest1, pelvisChest);
+check('pelvis.rotation.z matcht exact sin(loopFase) * PELVIS_SWAY_AMPLITUDE',
+  Math.abs(pelvisChest.naPelvis1 - pelvisChest.verwachtPelvis1) < 1e-9, pelvisChest);
+check('chest.rotation.z matcht exact sin(loopFase - CHEST_LAG_FASE) * CHEST_SWAY_AMPLITUDE (dezelfde sinus, faseverschil)',
+  Math.abs(pelvisChest.naChest1 - pelvisChest.verwachtChest1) < 1e-9, pelvisChest);
+check('pelvis/chest op hetzelfde tijdstip verschillen (de fase-vertraging doet echt iets)',
+  pelvisChest.naPelvis1 !== pelvisChest.naChest1, pelvisChest);
+check('Een V1-ondode krijgt GEEN delen.pelvis/delen.chest (de V2-tak raakt V1 nooit aan)',
+  !pelvisChest.v1HeeftPelvis && !pelvisChest.v1HeeftChest, pelvisChest);
+
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);

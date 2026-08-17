@@ -134,6 +134,16 @@ check('reflectieStreepMesh wobbelt mee met de klok ("vervormt met de golfnormaal
 const { browser: vBrowser, page: vPage } = await openVoorVisueleMeting();
 const punten = await berekenVisueleStandpunten(vPage);
 const gracht = punten.find(p => p.naam === 'gracht');
+// Opwarmronde (Fix 1, ronde 9 — water bleed): dit is een VERSE pagina, dus
+// dokwaterMateriaal (het aparte watervlak naast de vlonder, elk met een
+// eigen onBeforeCompile-injectie) heeft hier nog nooit gerenderd. Onder
+// zware CPU-belasting bleek één zetVisueelStandpunt() (3 frames) soms niet
+// genoeg om de lazy shader-compile van BEIDE watermaterialen vóór de eerste
+// meting te laten landen — dan verschilde meting1 (nog compilerend) van
+// meting2 (al klaar). Eén extra, ongemeten warm-up-ronde eerst voorkomt dat:
+// beide materialen zijn dan al lang klaar tegen de tijd dat de twee
+// vergeleken screenshots genomen worden.
+await zetVisueelStandpunt(vPage, gracht);
 await zetVisueelStandpunt(vPage, gracht);
 const meting1 = await vPage.screenshot({ type: 'png' });
 await zetVisueelStandpunt(vPage, gracht);

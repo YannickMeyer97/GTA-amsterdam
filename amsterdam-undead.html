@@ -236,6 +236,30 @@
     pointer-events: none;
   }
 
+  /* Ticket 117 (v0.23, ronde 9 — Zombie V2 fundament): tijdelijk
+     performance-debug-overlay, F3-toggle. Standaard uit en onzichtbaar
+     voor gewone spelers — dit is een meetinstrument voor de Zombie
+     V2-ronde, geen permanente UI-feature (zie SONNET_EXECUTION_PLAN.md,
+     ronde 9, Ticket 117). */
+  #perfOverlayUI {
+    position: fixed;
+    top: 60px;
+    left: 16px;
+    max-width: 320px;
+    background: rgba(10, 14, 20, 0.78);
+    color: #9fe8b0;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(159, 232, 176, 0.25);
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre;
+    pointer-events: none;
+    z-index: 6;
+    margin: 0;
+  }
+
   /* --- Ticket 97: het rode HP-/Stroomuitval-vignet is verhuisd naar de
        naverwerkingspass (uVignetSterkte/-Kleur/-Radius, ShaderPass) — ligt
        nu ÍN het beeld i.p.v. als DOM-laag erbovenop. Geen #vignet meer. --- */
@@ -480,6 +504,7 @@
   <div id="ontsnappingVensterUI" style="font-size:12px; font-weight:700; margin-top:2px; color:#9fd4ff;"></div>
 </div>
 <canvas id="minimapUI" width="160" height="160" style="display:none"></canvas>
+<pre id="perfOverlayUI" style="display:none"></pre>
 <div id="gameOverScherm">
   <h1>JE BENT GEVALLEN</h1>
   <div>Gehaalde golf: <span id="gameOverGolf">1</span> &nbsp;·&nbsp; Geld: € <span id="gameOverGeld">0</span></div>
@@ -601,6 +626,12 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 // gewoon Standard-materiaallicht, zonder enige vertexkleur-truc nodig te
 // hebben (in tegenstelling tot T103/T104 hierboven).
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+// Ticket 118 (v0.23, ronde 9 — Zombie V2 fundament): één samengestelde
+// BufferGeometry uit losse deelgeometrieën (torso/schouders/hoofd/armen/
+// handen/benen) — zelfde three@0.160.0-pakket, geen los asset. Alleen
+// mergeGeometries() wordt gebruikt; skinIndex/skinWeight/color-attributen
+// worden zelf toegevoegd vóór het samenvoegen (zie bouwOndodeGeometrieV2()).
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 /* ================================================================
    STAP 1 — DE BASIS: scene, camera, renderer en licht
@@ -843,6 +874,128 @@ const NAVERWERKING_SHADER = {
 const naverwerkingsPass = new ShaderPass(NAVERWERKING_SHADER);
 composer.addPass(naverwerkingsPass);
 composer.addPass(new OutputPass());
+
+/* ================================================================
+   TICKET 117 (v0.23, ronde 9 — Zombie V2 fundament): tijdelijk,
+   spelersonzichtbaar performance-debug-overlay (F3). GEEN permanente
+   UI-feature — de Zombie V2-bronopdracht eist "meten, niet aannemen"
+   vóór er iets aan de zombie-renderarchitectuur gebouwd wordt, en dit is
+   het instrument waarmee de eigenaar dat in de DRAAIENDE game (niet
+   alleen headless) kan doen. Uitgezet (perfOverlayActief=false) is de
+   kost exact nul: geen enkele regel in dit blok draait dan.
+
+   renderer.info.autoReset: composer.render() roept intern meerdere
+   keren renderer.render() aan (RenderPass, bloomPass se eigen down-/
+   upsample-passes, de naverwerkingspass, OutputPass). Met de standaard
+   autoReset=true reset elke interne aanroep de teller, dus aan het eind
+   van een frame laat renderer.info.render alleen de LAATSTE interne
+   render-aanroep zien (de output-blit: ~1 call, een paar driehoeken) —
+   niet het hele frame. Zelfde val als T116's meet-eindtoestand.mjs greep
+   vóórdat de reset ervoor stond; T88 (tests/helpers.mjs) lost dit al op
+   met autoReset=false + handmatige reset() vóór de render, lezen erna.
+   Dit blok herhaalt precies dat patroon, nu voor de live game i.p.v. een
+   testpagina.
+   ================================================================ */
+let perfOverlayActief = false;
+const PERF_FRAME_VENSTER = 90;   // ~1,5s aan frames bij 60fps — genoeg voor een stabiele p95
+let perfFrameTijden = [];
+let perfVorigeRuweTijd = null;
+let perfLaatsteSchrijf = 0;
+const PERF_SCHRIJF_INTERVAL_MS = 250;   // 4x/s: leesbaar, en beperkt de DOM-writes (zelfde discipline als T71/updateMinimap)
+// Lichten zijn statisch ná de wereldopbouw (§10.2/§9.2-invariant: 28,
+// waarvan 1 schaduwwerpend) — één keer berekenen bij het aanzetten is dus
+// genoeg, geen per-frame scene.traverse() nodig voor een debug-getal.
+let perfLichtenCache = null;
+
+function berekenPerfLichten() {
+  let totaal = 0, schaduw = 0;
+  scene.traverse((o) => {
+    if (!o.isLight) return;
+    totaal++;
+    if (o.castShadow) schaduw++;
+  });
+  return { totaal, schaduw };
+}
+
+// Grove "zichtbaar"-schatting: positie binnen de camera-frustum. Bewust
+// geen volledige bounding-sphere-test per ondode (dat kost een AABB over
+// de hele group-hiërarchie, elk frame, voor één overlay-getal) — een
+// punt-in-frustum-check op de wortelpositie is voor dit doel ruim genoeg.
+const _perfFrustum = new THREE.Frustum();
+const _perfFrustumMat = new THREE.Matrix4();
+function telZichtbarePerfOndoden() {
+  _perfFrustumMat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  _perfFrustum.setFromProjectionMatrix(_perfFrustumMat);
+  let zichtbaar = 0;
+  for (const o of ondoden) {
+    if (_perfFrustum.containsPoint(o.groep.position)) zichtbaar++;
+  }
+  return zichtbaar;
+}
+
+function zetPerfOverlayActief(actief) {
+  perfOverlayActief = actief;
+  perfOverlayUI.style.display = actief ? 'block' : 'none';
+  renderer.info.autoReset = !actief;   // aan = handmatig beheerd (zie toelichting hierboven), uit = standaardgedrag
+  perfFrameTijden = [];
+  perfVorigeRuweTijd = null;
+  perfLaatsteSchrijf = 0;
+  perfLichtenCache = actief ? berekenPerfLichten() : null;
+  if (!actief) renderer.info.reset();   // laat geen kunstmatig opgehoopte telling achter voor eventuele andere code
+  else schrijfPerfOverlay();            // meteen iets tonen, niet pas na de eerste 250ms
+}
+
+function schrijfPerfOverlay() {
+  const n = perfFrameTijden.length;
+  const info = renderer.info;
+  const lichten = perfLichtenCache ?? berekenPerfLichten();
+  if (n === 0) {
+    // Eerste frame(s) ná het aanzetten: nog geen frametijd-venster, maar de
+    // renderer-tellingen (calls/triangles/geometrieën/texturen) zijn al
+    // vanaf frame 1 betrouwbaar — die dus meteen tonen i.p.v. helemaal niets.
+    perfOverlayUI.textContent =
+`F3-overlay — Zombie V2-meetbasis (T117)
+FPS/frametijd: opwarmen…
+draw calls ${info.render.calls}   triangles ${info.render.triangles}
+points ${info.render.points}   lines ${info.render.lines}
+geometrieën ${info.memory.geometries}   texturen ${info.memory.textures}
+ondoden actief ${ondoden.length}   zichtbaar ~${telZichtbarePerfOndoden()}
+lichten ${lichten.totaal}   schaduwwerpend ${lichten.schaduw}`;
+    return;
+  }
+  const som = perfFrameTijden.reduce((a, b) => a + b, 0);
+  const gemiddelde = som / n;
+  const gesorteerd = [...perfFrameTijden].sort((a, b) => a - b);
+  const p95 = gesorteerd[Math.min(n - 1, Math.ceil(n * 0.95) - 1)];
+  const fps = gemiddelde > 0 ? Math.round(1000 / gemiddelde) : 0;
+  perfOverlayUI.textContent =
+`F3-overlay — Zombie V2-meetbasis (T117)
+FPS ~${fps}   frametijd gem ${gemiddelde.toFixed(1)}ms   p95 ${p95.toFixed(1)}ms
+draw calls ${info.render.calls}   triangles ${info.render.triangles}
+points ${info.render.points}   lines ${info.render.lines}
+geometrieën ${info.memory.geometries}   texturen ${info.memory.textures}
+ondoden actief ${ondoden.length}   zichtbaar ~${telZichtbarePerfOndoden()}
+lichten ${lichten.totaal}   schaduwwerpend ${lichten.schaduw}`;
+}
+
+// Aangeroepen vanuit gameLoop, NA composer.render() (de renderer.info-reset
+// staat vlak VÓÓR composer.render(), zie gameLoop) — dus dit leest de
+// tellingen van het frame dat net gerenderd is, en boekt tegelijk de ruwe
+// (ongeklemde) frametijd bij. Bewust een aparte, ongeklemde meting t.o.v.
+// gameLoop's eigen `dt` (die is met opzet geklemd op 50ms om gameplaylogica
+// te beschermen tegen een tabwissel-stall) — een klem zou precies de
+// haperingen wegpoetsen die dit overlay moet laten zien.
+function verwerkPerfFrame(nu) {
+  if (perfVorigeRuweTijd !== null) {
+    const ruweDt = nu - perfVorigeRuweTijd;
+    perfFrameTijden.push(ruweDt);
+    if (perfFrameTijden.length > PERF_FRAME_VENSTER) perfFrameTijden.shift();
+  }
+  perfVorigeRuweTijd = nu;
+  if (nu - perfLaatsteSchrijf < PERF_SCHRIJF_INTERVAL_MS) return;
+  perfLaatsteSchrijf = nu;
+  schrijfPerfOverlay();
+}
 
 // Ticket 98 (v0.22, §10.8-beslissing 83): per-zone kleurgrading. Dezelfde
 // achtwegs-indeling als T88's berekenVisueleStandpunten() (de vijf
@@ -3744,23 +3897,59 @@ const WATER_BREEDTE = 8;   // was 3 — verbreed zodat de boot zichtbaar vaarwat
 // geen vloer, geen water. In de normale fog viel dat niet op (de hemelkoepel
 // se kleurGrond vult zo'n gat onopvallend), maar de mistgolf trekt de
 // zichtbaarheid zo dichtbij dat je precies op die grens staat te kijken.
-// Een steiger heeft in het echt water rondom én eronder — het watervlak
-// begint daarom nu bij VLONDER_X_WEST (15) i.p.v. VLONDER_X_OOST, exact waar
-// de OVERDEKTE gang ophoudt (dat stuk blijft droog/interieur, terecht). Het
-// dek zelf (y=0,02) blijft boven het water (y=-0,05) uitsteken, dus dit is
-// puur een correcte dekking, geen wijziging aan de steiger zelf. Het
-// oostelijke eindpunt (45,5, waar de oever/skyline op aansluit) blijft
-// ONGEWIJZIGD — alleen de westrand schuift op, dus Fix A (de verre oever)
-// blijft naadloos zoals hij was.
+// Een steiger heeft in het echt water rondom én eronder.
+//
+// Feedback-fix (gebruiker: "ik zie nu af en toe water door de binnenplaats
+// lopen"). De eerste versie van deze fix loste het gat op door de
+// WESTRAND van het bestaande, brede watervlak te verleggen naar
+// VLONDER_X_WEST — maar dat vlak is z ∈ [-18, 18] diep (bewust breed: dat
+// vult op ~28m afstand het hele blikveld vanaf de vlonder). Die diepte was
+// getuned voor het VERRE stuk, niet gecontroleerd tegen wat er NAAST de
+// steiger ligt: de binnenplaats beslaat x ∈ [4,5, 20,5], z ∈ [-24, -7] —
+// dat overlapt het verlengde watervlak in het rechthoekje x ∈ [15, 20,5],
+// z ∈ [-18, -7]. Water zit daar 5cm ONDER de binnenplaatsvloer (y=-0,05
+// resp. y=0) en hoort dus onzichtbaar te zijn, maar de kleinste kier —
+// randocclusie-schaduw, een net-niet-perfecte overlap bij de zuidmuur —
+// leest dan als "water dat door de vloer heen schijnt".
+//
+// Bij het bouwen van de fix bleek de overlap zelfs BREDER dan alleen het
+// nieuw toegevoegde stuk: ook het BESTAANDE brede vlak (x ≥ VLONDER_X_OOST
+// = 19,5) overlapt de binnenplaats al, in de smalle strook x ∈ [19,5,
+// 20,5] — want de binnenplaats-oostmuur (x=20,5) ligt 1m OOST van de
+// vlonderrand. Dat is een latente T114-bug (bestond al vóór deze hele
+// fixronde, als een kier van 1m breed i.p.v. de 5,5m die de eerste versie
+// van deze fix 'm gaf) — "af en toe" i.p.v. "altijd" verklaart zich zo: de
+// kans om er precies doorheen te kijken werd 5,5x groter, maar was nooit
+// nul. Deze fix lost BEIDE overlappen tegelijk op, niet alleen de nieuwe.
+//
+// Oplossing: twee stukken water met elk hun eigen, verantwoorde grens.
+// Het bestaande brede vlak (x ≥ VLONDER_X_OOST) knipt zijn noordrand van
+// z=-18 terug naar z=-5 — 2m marge vóór de binnenplaats-zuidmuur (z=-7),
+// ruim genoeg voor de golf-amplitude (max ~0,06) en de subdivisie-
+// afronding. De zuidrand (z=+18) blijft ongewijzigd: daar staat niets, dus
+// die kant mag breed blijven voor het "vult het blikveld"-effect. Een
+// NIEUW, smal dokwater-vlak (x ∈ [VLONDER_X_WEST, VLONDER_X_OOST], exact
+// de dekbreedte) vult het gat naast de steiger met dezelfde noordgrens
+// (z=-5), zodat de twee stukken een doorlopende, rechte noordoever vormen
+// i.p.v. een knik.
 const WATER_VLAK_OOST = VLONDER_X_OOST + 26;   // = 45,5 — vast eindpunt, zie de toelichting bij bouwVerreGrond()
-const WATER_VLAK_LENGTE = WATER_VLAK_OOST - VLONDER_X_WEST;   // x: van VLONDER_X_WEST (15) tot 45,5
-const WATER_VLAK_DIEPTE = 36;   // z: -18..+18 rond de grachtgang
-let vlonderMesh, waterMesh, bootGroep, grachtLantaarnLicht;   // toegewezen in het geometrie-blok hieronder, debug/test-referenties
+const WATER_VLAK_LENGTE = WATER_VLAK_OOST - VLONDER_X_OOST;   // x: van VLONDER_X_OOST (19,5) tot 45,5 — het brede, verre stuk
+const WATER_VLAK_Z_VAN = -5;    // noordgrens — 2m vóór de binnenplaats-zuidmuur (z=-7)
+const WATER_VLAK_Z_TOT = 18;    // zuidgrens — ongewijzigd, daar staat niets
+const WATER_VLAK_DIEPTE = WATER_VLAK_Z_TOT - WATER_VLAK_Z_VAN;   // = 23
+// Dokwater: exact zo breed als de steiger (geen overlap, geen gat), zelfde
+// noordgrens als het brede vlak hierboven (doorlopende oever), en een
+// zuidgrens die de steiger (die zelf maar z ∈ [-1, 1] beslaat) ruim omringt.
+const DOKWATER_LENGTE = VLONDER_X_OOST - VLONDER_X_WEST;   // = 4,5
+const DOKWATER_Z_VAN = WATER_VLAK_Z_VAN;   // = -5, zelfde oeverlijn
+const DOKWATER_Z_TOT = 5;
+const DOKWATER_DIEPTE = DOKWATER_Z_TOT - DOKWATER_Z_VAN;   // = 10
+let vlonderMesh, waterMesh, dokwaterMesh, bootGroep, grachtLantaarnLicht;   // toegewezen in het geometrie-blok hieronder, debug/test-referenties
 // Ticket 114 (v0.22, §10.14-beslissing 89): levend water — module-scope
 // gedeclareerd (zelfde hoisting-veilige patroon als `updateSkylineRaampjes`
 // in T113) zodat gameLoop 'm kan aanroepen; de bouwfunctie zelf zit lokaal
 // in het gracht-geometrieblok hieronder.
-let updateWaterAnimatie, waterMateriaal, reflectieStreepMesh, golfHoogte, bootRompGroep;
+let updateWaterAnimatie, waterMateriaal, dokwaterMateriaal, reflectieStreepMesh, golfHoogte, bootRompGroep;
 
 /* ================================================================
    ZONE E — DE BIJKEUKEN + KELDERHALS (Ticket 24, map-lus M1): geometrie-
@@ -3992,16 +4181,13 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
     return materiaal;
   }
 
-  // De gracht: donker blauwgroen watervlak, licht transparant. Begint bij
-  // VLONDER_X_WEST — dus ONDER en NAAST de steiger, niet pas erachter (zie de
-  // toelichting bij WATER_VLAK_OOST/WATER_VLAK_LENGTE hierboven) — en loopt
-  // door tot aan de skyline. Gesubdivideerd — zonder subdivisie heeft de
-  // PlaneGeometry maar 4 hoekpunten en is de vertex-deining onzichtbaar.
-  // Het segmentaantal is GEKOPPELD aan de afmeting (~0,7 m per segment)
-  // i.p.v. een vast getal: de golflengte van de deining ligt rond 3-5 m
-  // (zie GOLF_FREQ_*), dus bij grovere stappen zou de golf gaan aliassen —
-  // en dit vlak is sinds de feedback-fix ruim 3x zo groot als de eerste
-  // versie (die had 24x12 op 8x4 m).
+  // De gracht: donker blauwgroen watervlak, licht transparant, net voorbij
+  // de vlonderrand (x ≥ VLONDER_X_OOST), doorlopend tot aan de skyline.
+  // Gesubdivideerd — zonder subdivisie heeft de PlaneGeometry maar 4
+  // hoekpunten en is de vertex-deining onzichtbaar. Het segmentaantal is
+  // GEKOPPELD aan de afmeting (~0,7 m per segment) i.p.v. een vast getal:
+  // de golflengte van de deining ligt rond 3-5 m (zie GOLF_FREQ_*), dus bij
+  // grovere stappen zou de golf gaan aliassen.
   const waterSegX = Math.round(WATER_VLAK_LENGTE / 0.7);
   const waterSegZ = Math.round(WATER_VLAK_DIEPTE / 0.7);
   waterMateriaal = bouwWaterMateriaal();
@@ -4010,8 +4196,31 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
     waterMateriaal
   );
   waterMesh.rotation.x = -Math.PI / 2;
-  waterMesh.position.set((VLONDER_X_WEST + WATER_VLAK_OOST) / 2, -0.05, gangCZ);
+  waterMesh.position.set((VLONDER_X_OOST + WATER_VLAK_OOST) / 2, -0.05, (WATER_VLAK_Z_VAN + WATER_VLAK_Z_TOT) / 2);
   wereld.add(waterMesh);
+
+  // Dokwater: het aparte, SMALLE stuk dat onder/naast de steiger zelf ligt
+  // (zie de toelichting bij DOKWATER_LENGTE/_DIEPTE hierboven) — bewust een
+  // TWEEDE mesh met een EIGEN materiaal-instantie (niet `waterMateriaal`
+  // hergebruikt): `onBeforeCompile` schrijft zijn gecompileerde shader-
+  // referentie in `materiaal.userData.shader`, en twee meshes op ÉÉN
+  // gedeeld materiaal zouden die referentie laten overschrijven door welke
+  // van de twee het laatst compileert — dan animeert `updateWaterAnimatie()`
+  // (die `uTijd` op die ene bewaarde referentie zet) maar één van de twee
+  // stukken water, en staat het andere stil. Twee materialen kost
+  // verwaarloosbaar meer (één extra draw call, geen extra shaderprogramma
+  // — zelfde GLSL-bron, dus Three.js deelt het gecompileerde programma
+  // sowieso) en is de enige manier om dat betrouwbaar te voorkomen.
+  const dokwaterSegX = Math.round(DOKWATER_LENGTE / 0.7);
+  const dokwaterSegZ = Math.round(DOKWATER_DIEPTE / 0.7);
+  dokwaterMateriaal = bouwWaterMateriaal();
+  dokwaterMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(DOKWATER_LENGTE, DOKWATER_DIEPTE, dokwaterSegX, dokwaterSegZ),
+    dokwaterMateriaal
+  );
+  dokwaterMesh.rotation.x = -Math.PI / 2;
+  dokwaterMesh.position.set((VLONDER_X_WEST + VLONDER_X_OOST) / 2, -0.05, (DOKWATER_Z_VAN + DOKWATER_Z_TOT) / 2);
+  wereld.add(dokwaterMesh);
 
   // De boot — puur decor (Ticket 53 koppelt 'm aan de ontsnappings-
   // interactie). Start op BOOT_VERTREK_X (verweg, "nog niet aangekomen")
@@ -4251,9 +4460,12 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
   // automatisch tijdens pauze/measurement-modus, T88 — zelfde patroon als
   // updateNachthemel/updateSkylineRaampjes).
   updateWaterAnimatie = function (klokTijd) {
-    // De onBeforeCompile-shader is pas na de EERSTE render van waterMesh
+    // De onBeforeCompile-shader is pas na de EERSTE render van het mesh
     // gecompileerd — vóór dat moment bestaat userData.shader nog niet.
+    // Twee aparte materialen (zie de toelichting bij dokwaterMateriaal
+    // hierboven), dus twee aparte uTijd-writes.
     if (waterMateriaal.userData.shader) waterMateriaal.userData.shader.uniforms.uTijd.value = klokTijd;
+    if (dokwaterMateriaal.userData.shader) dokwaterMateriaal.userData.shader.uniforms.uTijd.value = klokTijd;
     // Boot-deining: bootGroep.position.y/rotation.z zijn hier de ENIGE
     // schrijvers — updateBootPositie() (elders in gameLoop) raakt alleen
     // .position.x aan, dus deze twee stapelen zonder conflict, exact zoals
@@ -6153,6 +6365,15 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyQ' && !e.repeat && document.pointerLockElement === renderer.domElement) {
     wisselWapen();
   }
+  // Ticket 117 (Zombie V2 fase 0): F3 toggelt het tijdelijke perf-overlay.
+  // Bewust GEEN pointer-lock-vereiste (in tegenstelling tot R/T/Q hierboven)
+  // — dit is een ontwikkelaarshulpmiddel, geen gameplay-actie, en moet ook
+  // vanuit het menu/pauzescherm bruikbaar zijn. preventDefault() omdat
+  // sommige browsers (Firefox) F3 aan "zoeken op pagina" binden.
+  if (e.code === 'F3' && !e.repeat) {
+    e.preventDefault();
+    zetPerfOverlayActief(!perfOverlayActief);
+  }
 });
 addEventListener('keyup', e => { ingedrukt[e.code] = false; });
 
@@ -6217,6 +6438,7 @@ const golfBannerUI = document.getElementById('golfBanner');
 const zoneLabelUI = document.getElementById('zoneLabelUI');   // Ticket 50: klein HUD-zonelabel
 const minimapUI = document.getElementById('minimapUI');       // Ticket 67: minimap
 const minimapCtx = minimapUI.getContext('2d');
+const perfOverlayUI = document.getElementById('perfOverlayUI');   // Ticket 117: F3 perf-debug-overlay
 // Ticket 71 (v0.20, §8.4.1): updateHUD() deed tot nu toe 9x getElementById
 // per aanroep i.p.v. deze eenmalig te cachen — de enige uitzondering op het
 // patroon hierboven.
@@ -7843,6 +8065,14 @@ const BEEN_LOOP_AMPLITUDE  = 0.42;   // rad — normale beenzwaai
 const ARM_LOOP_FACTOR      = 0.6;    // arm-amplitude = beenamplitude x deze factor (tegenfase)
 const HOOFD_KANTEL_AMPLITUDE = 0.025;   // rad — subtiele hoofd-microkantel
 const ROMP_BOB_HOOGTE      = 0.03;   // m — romp-bob boven de rust-y (1.1)
+// Ticket 119 (v0.23, ronde 9 — Zombie V2 fase 2): pelvis-/chest-sway, alleen
+// zichtbaar voor V2 (updateOndoden() schrijft deze via `if (delen.pelvis)`/
+// `if (delen.chest)` — V1 heeft die botten niet, dus deze constanten raken
+// V1 nooit aan). Kleiner dan BEEN_LOOP_AMPLITUDE — dit is een subtiele
+// "voller bewogen"-toevoeging, geen nieuwe hoofdbeweging.
+const PELVIS_SWAY_AMPLITUDE = 0.08;   // rad — heup-sway in fase met de loopcyclus
+const CHEST_SWAY_AMPLITUDE  = 0.05;   // rad — borstkas-sway, kleiner (meer inertie/demping)
+const CHEST_LAG_FASE        = 0.35;   // rad faseverschil t.o.v. de pelvis-sway ("loopt iets achter")
 // Strompelt: vaste, deterministische beenasymmetrie (geen extra state nodig
 // op het ondode-object) — altijd hetzelfde been verzwakt, zodat elke
 // strompelaar zichtbaar mank loopt.
@@ -8388,8 +8618,13 @@ const RIM_UNIFORMS = {
   kleur: { value: RIM_KLEUR },
   sterkte: { value: RIM_STERKTE_BASIS },
 };
-function maakOndodeMateriaal(kleur, ruwheid = 0.85) {
-  const materiaal = new THREE.MeshStandardMaterial({ color: kleur, roughness: ruwheid });
+// `vertexColors` (Ticket 118, default false — V1 blijft ongewijzigd): V2's
+// samengestelde geometrie heeft precies ÉÉN materiaal-instantie voor het
+// hele lichaam en gebruikt vertex colors voor de T104-achtige per-deel
+// helderheidstint (torso vs hoofd) die V1 via losse materiaalinstanties
+// deed.
+function maakOndodeMateriaal(kleur, ruwheid = 0.85, vertexColors = false) {
+  const materiaal = new THREE.MeshStandardMaterial({ color: kleur, roughness: ruwheid, vertexColors });
   materiaal.onBeforeCompile = (shader) => {
     shader.uniforms.uRimKleur = RIM_UNIFORMS.kleur;
     shader.uniforms.uRimSterkte = RIM_UNIFORMS.sterkte;
@@ -8411,7 +8646,12 @@ function maakOndodeMateriaal(kleur, ruwheid = 0.85) {
   return materiaal;
 }
 
-function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTraits()) {
+// Ticket 118 (v0.23, ronde 9 — Zombie V2 fundament): hernoemd van
+// maakOndodeModel() naar maakOndodeModelV1() — verder ONGEWIJZIGD. Bouwt
+// Group-pivots (geen botten/skinning); zie maakOndodeModelV2() hieronder
+// voor de nieuwe SkinnedMesh-architectuur en ZOMBIE_RENDER_VERSIE voor de
+// schakelaar tussen beide.
+function maakOndodeModelV1(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTraits()) {
   const groep = new THREE.Group();
   const delen = {};
   // Ticket 95 (De kill als gebeurtenis): alleen de PER-INSTANCE huid-
@@ -8632,6 +8872,286 @@ function maakOndodeModel(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTra
   return groep;
 }
 
+// ================================================================
+// TICKET 118 (v0.23, ronde 9 — Zombie V2 fundament): SkinnedMesh, plat
+// botskelet, V1/V2-toggle.
+//
+// De architectuur in één zin: V1 bouwt per lichaamsdeel een eigen Group
+// (pivot) + eigen Mesh + eigen materiaal-instantie (tot 13 meshes, tot 11
+// materialen per ondode — zie ZOMBIE_V2_BASELINE.md, Ticket 117). V2
+// vervangt ALLEEN dat draagvlak: één samengestelde BufferGeometry, één
+// SkinnedMesh, één materiaal-instantie, en een PLAT THREE.Skeleton (7
+// botten, geen kinematische ouder-kind-keten — elk bot hangt rechtstreeks
+// aan `root`) met EXACT dezelfde botnamen en rustpose-posities als V1's
+// pivots. Omdat THREE.Bone een Object3D-subklasse is, blijven de bestaande
+// `delen.armL.rotation.x = …`-stijl schrijfacties uit updateOndoden()/
+// raakOndode()/doodOndode() ONGEWIJZIGD werken tegen een V2-ondode — dat is
+// de kern-architectuurtruc en de reden dat dit ticket die drie functies
+// (en schiet()) niet hoeft aan te raken.
+//
+// Bewust NIET in dit ticket: bochel/buik/kern (Brander) en de vod — die
+// komen in T121/T126/T127 als extra, optionele geometrie-"eilanden" op
+// dezelfde composietgeometrie. `delen.kern` blijft dus `undefined` voor een
+// V2-ondode; alle aanroepers daarvan (raakOndode/doodOndode) hebben al een
+// `if (delen.kern)`-guard (zie de T21/T95-toelichtingen daar), dus dat is
+// veilig.
+
+// Botnamen in skinIndex-volgorde — 'root' zelf draagt geen geometrie (puur
+// ophangpunt voor de andere zes), dus komt nooit voor als boneNaam in
+// bouwOndodeGeometrieV2()'s invoer.
+// Ticket 119: 'pelvis'/'chest' toegevoegd — twee EXTRA platte botten (ook
+// rechtstreeks kind van 'root', geen kinematische keten met 'romp', zie de
+// toelichting bij bouwOndodeBotstructuurV2()). Nieuw dus geen bestaand
+// V1-gedrag raakt dit (V1 kent deze botten niet), en achteraan toegevoegd
+// zodat de skinIndex-waarden van de bestaande 7 botten ongewijzigd blijven.
+// Geen 'neck'-bot: hoofdGroep/`delen.hoofd`'s bestaande rotatie (kromme rug
+// + scheve nek bij bouw, plus de loop-/aanval-/flinch-microkantel in
+// updateOndoden()/raakOndode()) dekt "hoofd niet star gekoppeld" al
+// volledig — geverifieerd door te lezen wat delen.hoofd al ontvangt, geen
+// enkel writepad ontbreekt dat een aparte nek-bone zou toevoegen.
+const V2_BOTNAMEN = ['root', 'beenL', 'beenR', 'romp', 'hoofd', 'armL', 'armR', 'pelvis', 'chest'];
+
+// Pure functie (geen scene-/materiaal-afhankelijkheden, dus rechtstreeks
+// testbaar zonder scene — zoals de ticket-spec vraagt): bouwt uit losse
+// deel-geometrieën ÉÉN samengestelde BufferGeometry met skinIndex/
+// skinWeight (elke vertex voor 100% aan precies één bot gebonden — geen
+// echte blending nodig voor dit low-poly figuur, zie de ticket-toelichting)
+// en een 'color'-attribuut (T104-achtige helderheidsfactor per deel,
+// gemultipliceerd met material.color — zelfde multiplicatieve conventie als
+// bakUniformeTint()/matMetVertexKleur() elders in dit bestand).
+// `delen`: [{ boneNaam, geometrie: BufferGeometry (al lokaal getransleerd
+// t.o.v. het rustpunt van dat bot), tint: getal }].
+// `boneNaam` mag ook een FUNCTIE zijn: `(vertexIndex, positionAttribute) =>
+// boneNaam` — Ticket 119 gebruikt dit om de torso-vertices van ÉÉN
+// deelgeometrie over drie botten te verdelen (romp/pelvis/chest), zonder
+// een nieuwe zichtbare mesh (zie de toelichting bij de torso-opbouw in
+// maakOndodeModelV2()). De meeste delen blijven gewoon een vaste string
+// (100% naar één bot, ongewijzigd t.o.v. Ticket 118).
+function bouwOndodeGeometrieV2(delen) {
+  const stukken = delen.map(({ geometrie, boneNaam, tint }) => {
+    const stuk = geometrie.clone();
+    const n = stuk.attributes.position.count;
+    const pos = stuk.attributes.position;
+    const skinIndex = new Float32Array(n * 4);
+    const skinWeight = new Float32Array(n * 4);
+    const kleur = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      const naam = typeof boneNaam === 'function' ? boneNaam(i, pos) : boneNaam;
+      skinIndex[i * 4] = V2_BOTNAMEN.indexOf(naam);   // slots 1-3 blijven 0 (weight 0, dus zonder effect)
+      skinWeight[i * 4] = 1;
+      kleur[i * 3] = kleur[i * 3 + 1] = kleur[i * 3 + 2] = tint;
+    }
+    stuk.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndex, 4));
+    stuk.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeight, 4));
+    stuk.setAttribute('color', new THREE.Float32BufferAttribute(kleur, 3));
+    return stuk;
+  });
+  return mergeGeometries(stukken, false);
+}
+
+// Bouwt het platte 7-botskelet in rustpose — exact dezelfde posities als
+// V1's pivots bij traits/vorm op hun baseline (rugHoek 0, geen slepend/
+// ingedokenKop/scheve-nek-loting): beenL/beenR/romp/hoofd/armL/armR liggen
+// in V1 AL rechtstreeks als kinderen van de top-level `groep` (geen nesting
+// tussen pivots onderling), dus de "platte keten"-eis van dit ticket is
+// hier gratis — V1 was zelf al plat.
+function bouwOndodeBotstructuurV2() {
+  // Zelfde formule als V1's schouderY/schouderZ hierboven (het echte,
+  // geroteerde schouderpunt bij ARM_RUST_ROTATIE_X).
+  const schouderY = 1.13 + 0.25 * Math.cos(0.5);
+  const schouderZ = 0.06 - 0.25 * Math.sin(0.5);
+  const rustPosities = {
+    beenL: [-0.075, 0.8, 0],
+    beenR: [0.075, 0.8, 0],
+    romp: [0, 1.1, 0],
+    hoofd: [0, 1.58, 0.02],
+    armL: [-0.24, schouderY, schouderZ],
+    armR: [0.24, schouderY, schouderZ],
+    // Ticket 119: platte extra botten, elk rechtstreeks kind van root (geen
+    // ouder-kind-keten met 'romp' — een echte keten zou de al onafhankelijke
+    // arm-/beenrotaties laten meebewegen met elke chest-rotatie, zie de
+    // ticket-toelichting). Rustpositie op de torso-band die straks naar dit
+    // bot verschuift (zie de torso-vertex-split in maakOndodeModelV2()):
+    // pelvis bij de heuplijn (y=0,85, net boven de beenpivots op 0,8),
+    // chest bij de schouderlijn (y=1,35, vlak bij de schouders op 1,34).
+    pelvis: [0, 0.85, 0],
+    chest: [0, 1.35, 0],
+  };
+  const root = new THREE.Bone();
+  root.name = 'root';
+  const bones = { root };
+  for (const naam of V2_BOTNAMEN) {
+    if (naam === 'root') continue;
+    const bone = new THREE.Bone();
+    bone.name = naam;
+    bone.position.fromArray(rustPosities[naam]);
+    if (naam === 'armL' || naam === 'armR') bone.rotation.x = ARM_RUST_ROTATIE_X;
+    root.add(bone);
+    bones[naam] = bone;
+  }
+  // Ticket 20-conventie (romp-bob/hoofd-microkantel in updateOndoden()):
+  // dezelfde rustwaarden, nu als botveld i.p.v. Group-veld.
+  bones.romp.userData.baseY = bones.romp.position.y;
+  bones.hoofd.userData.baseRotX = bones.hoofd.rotation.x;
+  return bones;
+}
+
+function maakOndodeModelV2(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTraits()) {
+  const groep = new THREE.Group();
+  const delen = {};
+
+  const tint = 0.85 + Math.random() * 0.3;   // zelfde per-ondode kleurvariatie als V1
+  const huidKleur = new THREE.Color(typeInfo.kleur).multiplyScalar(tint);
+  if (stadsarchiefOntgrendelingen().kleurset && stadsarchief.actief.kleurset) {
+    huidKleur.multiply(STADSARCHIEF_KLEURSET_TINT);
+  }
+
+  const bones = bouwOndodeBotstructuurV2();
+
+  // Deel-geometrieën, elk getransleerd naar zijn ABSOLUTE rustpose-positie
+  // (dezelfde wereldpositie als de corresponderende V1-mesh) — NIET naar de
+  // positie t.o.v. zijn eigen bot. Cruciaal verschil met hoe V1's Group-
+  // nesting werkt: skinning-wiskunde rendert een vertex in de rustpose op
+  // precies zijn AUTHORED (mesh-space) positie, ongeacht welk bot 'm
+  // beïnvloedt (bone.matrixWorld * boneInverse is bij bind-tijd voor elk bot
+  // de eenheidsmatrix — het bot bepaalt pas iets zodra zijn transform WIJZIGT
+  // t.o.v. de bind-pose). Elk bot se `.position`/`.rotation` (zie
+  // bouwOndodeBotstructuurV2()) is dus het DRAAIPUNT voor toekomstige
+  // animatie, niet een offset die hier nog eens opgeteld moet worden.
+  //
+  // Armen/handen: de arm-pivot staat in bouwOndodeBotstructuurV2() op
+  // schouderY/schouderZ MET rotation.x = ARM_RUST_ROTATIE_X — exact V1's
+  // "geroteerde-pivot"-truc (zie de toelichting daar). Het rotatie-effect
+  // daarvan op de arm-/hand-positie is al volledig verrekend in schouderY/
+  // schouderZ zelf; de mesh landt daardoor op precies dezelfde absolute
+  // punten als V1's ONgeroteerde model van vóór die refactor gebruikte
+  // (y=1.13/z=0.06 voor de arm — zie de toelichting bij schouderY/schouderZ
+  // in maakOndodeModelV1()). Geverifieerd met een losse Group-hiërarchie
+  // (dezelfde opbouw als V1) die exact deze getallen teruggaf.
+  const beenGeoL = new THREE.BoxGeometry(0.13, 0.8, 0.16).translate(-0.075, 0.4, 0);
+  const beenGeoR = new THREE.BoxGeometry(0.13, 0.8, 0.16).translate(0.075, 0.4, 0);
+  // Ticket 119: heightSegments 2 (i.p.v. T118's ongesegmenteerde box) geeft
+  // een middelste vertex-rij op y=1,1 naast de bestaande boven-/onderrand op
+  // y=1,4/y=0,8 — nodig om de torso straks over drie botten te verdelen
+  // (zie de boneNaam-functie hieronder) zonder de bovenkant (schouderlijn)
+  // en onderkant (heuplijn) meteen HELEMAAL van 'romp' los te maken. `romp`
+  // behoudt zo de middelste band en daarmee zijn bestaande bob-/twist-/
+  // wobbel-effecten (updateOndoden()/raakOndode() schrijven nog steeds naar
+  // delen.romp, ongewijzigd) — alleen de randen krijgen de nieuwe sway.
+  const torsoGeo = new THREE.BoxGeometry(0.36, 0.6, 0.22, 1, 2, 1).translate(0, 1.1, 0);
+  const schouderGeoL = new THREE.BoxGeometry(0.14, 0.14, 0.16).translate(-0.19, 1.34, 0.01);
+  const schouderGeoR = new THREE.BoxGeometry(0.14, 0.14, 0.16).translate(0.19, 1.34, 0.01);
+  const hoofdGeo = new THREE.SphereGeometry(0.18, 20, 16).translate(0, 1.58, 0.02);
+  const armGeoL = new THREE.BoxGeometry(0.09, 0.5, 0.09).translate(-0.24, 1.13, 0.06);
+  const armGeoR = new THREE.BoxGeometry(0.09, 0.5, 0.09).translate(0.24, 1.13, 0.06);
+  // Hand = de volle armlengte vanaf de pivot i.p.v. de halve — zelfde
+  // rotatierichting, dubbele afstand vanaf schouderY/schouderZ, dus
+  // 2*(armpunt) - pivot (lineair, want rotatie is lineair in de offset).
+  const handY = 2 * 1.13 - (1.13 + 0.25 * Math.cos(0.5));
+  const handZ = 2 * 0.06 - (0.06 - 0.25 * Math.sin(0.5));
+  const handGeoL = new THREE.BoxGeometry(0.08, 0.08, 0.08).translate(-0.24, handY, handZ);
+  const handGeoR = new THREE.BoxGeometry(0.08, 0.08, 0.08).translate(0.24, handY, handZ);
+
+  // Benen (broek) krijgen bewust GEEN aparte kleur zoals V1's losse, vaste
+  // mat(0x2c2620) — één gedeeld, vertex-getint materiaal kan alleen
+  // HELDERHEID per deel geven (multiplicatief t.o.v. material.color), geen
+  // andere KLEUR. Een merkbaar donkerder beenpaar (0,55x) is de
+  // dichtstbijzijnde benadering binnen die beperking; een eigen broektint is
+  // polish voor een latere ronde (T121+), niet iets dit fundament-ticket
+  // hoeft op te lossen.
+  // Torso-vertices over drie botten verdelen op basis van hun (al absolute)
+  // wereld-Y: de bovenrand (y=1,4, schouderlijn) naar 'chest', de onderrand
+  // (y=0,8, heuplijn) naar 'pelvis', de middelste rij (y=1,1) blijft op
+  // 'romp'. Drempels op 1,05/1,15 i.p.v. exact 1,1 om float-afronding nooit
+  // een vertex de verkeerde kant op te laten vallen.
+  const torsoBoneVoorVertex = (i, pos) => {
+    const y = pos.getY(i);
+    if (y > 1.15) return 'chest';
+    if (y < 1.05) return 'pelvis';
+    return 'romp';
+  };
+  const composietGeo = bouwOndodeGeometrieV2([
+    { boneNaam: 'beenL', geometrie: beenGeoL, tint: 0.55 },
+    { boneNaam: 'beenR', geometrie: beenGeoR, tint: 0.55 },
+    { boneNaam: torsoBoneVoorVertex, geometrie: torsoGeo, tint: 1 },
+    { boneNaam: 'romp', geometrie: schouderGeoL, tint: 1 },
+    { boneNaam: 'romp', geometrie: schouderGeoR, tint: 1 },
+    { boneNaam: 'hoofd', geometrie: hoofdGeo, tint: 1.15 },   // zelfde 1,15x als V1's hoofd
+    { boneNaam: 'armL', geometrie: armGeoL, tint: 1 },
+    { boneNaam: 'armL', geometrie: handGeoL, tint: 1 },
+    { boneNaam: 'armR', geometrie: armGeoR, tint: 1 },
+    { boneNaam: 'armR', geometrie: handGeoR, tint: 1 },
+  ]);
+  // De bronvormen zijn na het samenvoegen niet meer nodig — bouwOndode-
+  // GeometrieV2() kloont elke deel-geometrie vóór het toevoegen van skin-
+  // attributen, dus deze zijn nooit gedeeld/gecachet (geen geo()-aanroep,
+  // in tegenstelling tot V1) en moeten hier expliciet weg.
+  for (const g of [beenGeoL, beenGeoR, torsoGeo, schouderGeoL, schouderGeoR, hoofdGeo, armGeoL, armGeoR, handGeoL, handGeoR]) g.dispose();
+
+  // Eén materiaal-instantie voor het HELE lichaam (i.p.v. V1's tot 11 per
+  // ondode) — vertexColors:true zodat het 'color'-attribuut hierboven de
+  // per-deel helderheid aanstuurt. Zelfde rimlight-injectie (T100) als V1,
+  // hergebruikt via dezelfde fabriek.
+  const materiaal = maakOndodeMateriaal(huidKleur, 0.85, true);
+  delen.huidMaterialen = [materiaal];   // Ticket 95: kill-flash itereert deze array — nu lengte 1
+
+  const skinnedMesh = new THREE.SkinnedMesh(composietGeo, materiaal);
+  const skeleton = new THREE.Skeleton(V2_BOTNAMEN.map(naam => bones[naam]));
+  skinnedMesh.add(bones.root);
+  // matrixWorld van skinnedMesh + alle botten moet kloppen VÓÓR bind():
+  // Skeleton berekt zijn inverse bindmatrices uit bone.matrixWorld, en die
+  // staan zonder deze aanroep nog op hun (ongeldige) identity-default.
+  skinnedMesh.updateMatrixWorld(true);
+  skinnedMesh.bind(skeleton);
+  groep.add(skinnedMesh);
+  delen.skinnedMesh = skinnedMesh;
+  delen.skeleton = skeleton;
+
+  // Ogen: eigen materiaal (moet los kunnen gloeien — een vertex-getint
+  // huidmateriaal kan geen per-vertex EMISSIVE geven, alleen per-vertex
+  // helderheid op de diffuse kleur), dus gewoon twee losse Mesh-kinderen
+  // van het hoofd-bot. Bone is een Object3D-subklasse, dus `.add()` werkt
+  // hier identiek aan V1's `hoofdGroep.add(oog)`.
+  const oogMateriaal = new THREE.MeshStandardMaterial({ color: typeInfo.oogKleur, emissive: typeInfo.oogKleur, emissiveIntensity: OOG_INTENSITEIT_BASIS });
+  delen.oogMateriaal = oogMateriaal;
+  for (const kant of [-1, 1]) {
+    const oog = new THREE.Mesh(geo('oog', () => new THREE.SphereGeometry(0.02, 12, 8)), oogMateriaal);
+    oog.position.set(kant * 0.06, 0.01, 0.165);
+    oog.userData.lichaamsdeel = 'kop';
+    bones.hoofd.add(oog);
+  }
+
+  // Zelfde sleutelnamen als V1 (zie de ticket-spec) — updateOndoden()/
+  // raakOndode()/doodOndode() lezen/schrijven deze zonder aanpassing.
+  delen.beenL = bones.beenL;
+  delen.beenR = bones.beenR;
+  delen.romp = bones.romp;
+  delen.hoofd = bones.hoofd;
+  delen.armL = bones.armL;
+  delen.armR = bones.armR;
+  // Ticket 119: alleen V2 heeft deze twee — updateOndoden() schrijft ernaar
+  // via `if (delen.pelvis)`/`if (delen.chest)`, dus V1 (waar deze sleutels
+  // ontbreken) blijft vanzelf ongemoeid.
+  delen.pelvis = bones.pelvis;
+  delen.chest = bones.chest;
+
+  groep.scale.set(
+    (0.94 + Math.random() * 0.16) * typeInfo.schaal,
+    (0.94 + Math.random() * 0.16) * typeInfo.schaal * traits.lengte,
+    (0.94 + Math.random() * 0.16) * typeInfo.schaal
+  );
+  groep.userData.delen = delen;
+  return groep;
+}
+
+// Ticket 118: renderarchitectuur-schakelaar — zelfde discipline als
+// beslissing 92 (T96/T97/T98/T100/T103/T108/T110): geen query-param, geen
+// runtime-toggle-UI, alleen via de debug-hook omzetbaar (voor tests). Nooit
+// tijdens een lopend spel omschakelen — bestaande ondoden blijven op hun
+// bouwtijd-versie staan, dit bepaalt alleen welke maakOndodeModelV*() een
+// NIEUWE spawnOndode()-aanroep gebruikt.
+let ZOMBIE_RENDER_VERSIE = 'v1';
+
 const ondodenGroep = new THREE.Group();
 scene.add(ondodenGroep);
 const ondoden = [];
@@ -8682,7 +9202,9 @@ function zetOndodeSpawnRichting(ondode) {
 function spawnOndode(vensterIndex, type = 'normaal', traits = kiesOndodeTraits()) {
   const venster = VENSTERS[vensterIndex % VENSTERS.length];
   const typeInfo = ONDODE_TYPES[type] || ONDODE_TYPES.normaal;
-  const groep = maakOndodeModel(typeInfo, traits);
+  // Ticket 118: renderarchitectuur-toggle — buitenkant/signature van deze
+  // functie blijft ongewijzigd (zie de ticket-spec).
+  const groep = ZOMBIE_RENDER_VERSIE === 'v2' ? maakOndodeModelV2(typeInfo, traits) : maakOndodeModelV1(typeInfo, traits);
   groep.position.set(venster.x, 0, venster.z);
   const ondode = {
     // HP: multiplier op de trap-basis, minimaal 1 (Loper/Sluiper) en gecapt
@@ -9613,6 +10135,15 @@ function updateOndoden(dt) {
     // v0.8: strompelende loop — de wiebel zat op de hele root (verstoorde
     // rotation.y-kijkrichting); Ticket 20 verhuist 'm naar de romp-groep.
     if (ondode.strompelt) delen.romp.rotation.z = faseL * 0.12;
+    // Ticket 119 (Zombie V2 fase 2): pelvis-sway in fase met de bestaande
+    // loopcyclus + een chest-sway die er met een korte fase-vertraging
+    // achteraan hobbelt — GEEN nieuwe klok, gewoon dezelfde ondode.loopFase-
+    // sinus met een faseverschil (CHEST_LAG_FASE). Puur additioneel: V1 heeft
+    // deze botten niet (delen.pelvis/delen.chest bestaan dan niet), dus dit
+    // raakt V1 nooit aan en de loop-/aanval-/flinch-/death-timing hierboven
+    // (faseL/loopFase zelf, beenAmp, ARM_LOOP_FACTOR, enz.) is ongewijzigd.
+    if (delen.pelvis) delen.pelvis.rotation.z = faseL * PELVIS_SWAY_AMPLITUDE;
+    if (delen.chest) delen.chest.rotation.z = Math.sin(ondode.loopFase - CHEST_LAG_FASE) * CHEST_SWAY_AMPLITUDE;
 
     // Ticket 39 (Sfeer S2): geluidsprofiel op een random timer — 1
     // decrement per ondode per frame (performancevoorwaarde). De Sluiper
@@ -9711,6 +10242,12 @@ function ruimGroepOp(object3D) {
     for (const m of materialen) {
       if (m && !m.userData?.gedeeld) m.dispose();
     }
+    // Ticket 118 (Zombie V2): een SkinnedMesh's Skeleton bezit een eigen
+    // boneTexture (DataTexture, GPU-skinning-uniform) die de geometrie-/
+    // materiaal-dispose hierboven niet raakt — Skeleton.dispose() ruimt die
+    // apart op. De botten zelf (gewone Object3D-nodes zonder geometrie/
+    // materiaal) verdwijnen al vanzelf mee met de rest van de group.
+    if (kind.isSkinnedMesh) kind.skeleton.dispose();
   });
 }
 
@@ -12147,17 +12684,30 @@ function gameLoop(nu) {
     wapenStaat.definitie.groep.rotation.z = -leanHoek * WAPEN_LEAN_TEGENWICHT;
   }
 
+  // Ticket 117: reset VÓÓR de render (niet erna) — renderer.info.render
+  // telt anders het vorige frame mee in dit frame se "calls sinds reset".
+  if (perfOverlayActief) renderer.info.reset();
   composer.render();
+  if (perfOverlayActief) verwerkPerfFrame(nu);
 }
 herbouwNavTabel();   // Ticket 28: eenmalige initiële tabel (lijn-graaf, alle deuren dicht)
 requestAnimationFrame(gameLoop);
 
 // Debug-hooks voor Playwright-tests (zelfde patroon als DamChaosDebug).
 window.AmsterdamUndeadDebug = {
+  // Ticket 118: THREE zelf, zodat tests bijv. bouwOndodeGeometrieV2() (een
+  // pure functie die kant-en-klare BufferGeometry-instanties als invoer
+  // neemt) rechtstreeks kunnen aanroepen zonder een ondode te hoeven spawnen.
+  THREE,
   scene, camera, speler, obstakels, isVrijePlek, GRENS, losBotsingenOp,
   // Ticket 60: post-processing-pipeline (voor tests: composer/bloomPass bestaan
   // en composer.render() wordt daadwerkelijk gebruikt i.p.v. renderer.render()).
   composer, bloomPass,
+  // Ticket 117 (Zombie V2 fase 0): F3 perf-debug-overlay — zie test-perf-overlay.mjs.
+  get perfOverlayActief() { return perfOverlayActief; },
+  zetPerfOverlayActief, schrijfPerfOverlay, berekenPerfLichten, telZichtbarePerfOndoden,
+  get perfFrameTijden() { return perfFrameTijden; },
+  PERF_FRAME_VENSTER, PERF_SCHRIJF_INTERVAL_MS, perfOverlayUI,
   // Ticket 96: de eigen naverwerkingspass (filmkorrel + chromatische
   // aberratie; T97/T98 breiden dezelfde pass uit met vignet/kleurgrading).
   naverwerkingsPass, KORREL_STERKTE, ABERRATIE_STERKTE, ABERRATIE_START_RADIUS,
@@ -12367,7 +12917,16 @@ window.AmsterdamUndeadDebug = {
   // v0.7: ondode-varianten (Loper/Sjouwer/Brander):
   ONDODE_TYPES, ONDODE_TYPE_MIN_GOLF, kiesOndodeType, ondodeTypeGewichten,
   kiesOndodeTraits,   // v0.8: cosmetische per-ondode variatie
-  VARIATIE_PROFIELEN, maakOndodeModel,   // Ticket 19: silhouetten + variatieprofielen
+  VARIATIE_PROFIELEN, maakOndodeModelV1,   // Ticket 19: silhouetten + variatieprofielen (Ticket 118: hernoemd van maakOndodeModel)
+  // Ticket 118 (Zombie V2 fundament): SkinnedMesh/botskelet-architectuur +
+  // de V1/V2-toggle. Geen setter via `set`-accessor (project-conventie,
+  // zie zetPerfOverlayActief() e.a.): een expliciete zetZombieRenderVersie().
+  maakOndodeModelV2, bouwOndodeGeometrieV2, bouwOndodeBotstructuurV2, V2_BOTNAMEN,
+  // Ticket 119: pelvis-/chest-sway-constanten (voor tests: amplitude/fase
+  // rechtstreeks verifiëren i.p.v. magische getallen te herhalen).
+  PELVIS_SWAY_AMPLITUDE, CHEST_SWAY_AMPLITUDE, CHEST_LAG_FASE,
+  get ZOMBIE_RENDER_VERSIE() { return ZOMBIE_RENDER_VERSIE; },
+  zetZombieRenderVersie(versie) { ZOMBIE_RENDER_VERSIE = versie; },
   geoCache, kernMateriaal,   // Ticket 69: gedeelde geometrie-cache (voor tests: cache-grootte + hergebruik)
   // Ticket 100: de ondode-materiaalfabriek (rimlight) + het gedeelde
   // uniform-paar dat alle ondode-materialen tegelijk aanstuurt.
@@ -12579,6 +13138,10 @@ window.AmsterdamUndeadDebug = {
   // Feedback-fix (mist: geen water rond de vlonder) — zie de toelichting bij
   // WATER_VLAK_OOST in het T114-blok.
   WATER_VLAK_OOST, WATER_VLAK_LENGTE, WATER_VLAK_DIEPTE,
+  // Feedback-fix (water zichtbaar door de binnenplaatsvloer): het aparte,
+  // smalle dokwater-stuk naast de steiger — zie de toelichting bij
+  // DOKWATER_LENGTE/_DIEPTE in het T114-blok.
+  DOKWATER_LENGTE, DOKWATER_DIEPTE, dokwaterMesh, dokwaterMateriaal,
   // Ticket 50: zone-naambanners + HUD-zonelabel
   ZONE_NAMEN, ZONE_FLAVOUR, bezochteZones,
   get laatsteZone() { return laatsteZone; },
