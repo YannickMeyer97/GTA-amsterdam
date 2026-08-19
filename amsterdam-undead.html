@@ -703,8 +703,26 @@ function mistDekking() {
   return Math.min(1, Math.max(0, t));
 }
 
+// Ticket 120 (v0.23, ronde 9 — Zombie V2 fase 3): twee THREE.Layers-nummers
+// voor de hitbox-proxy-architectuur. §24 van de bronopdracht is hier hard:
+// de high-detail SkinnedMesh mag NOOIT de raycast-hitbox zijn. Layer 0
+// (default) blijft voor alles wat vandaag al bestaat (wereld, V1-ondoden,
+// enz.) ONGEWIJZIGD zichtbaar én raycastbaar — deze twee nummers komen er
+// puur BOVENOP, op zowel de camera als de raycaster (`.enable()`, niet
+// `.set()`, dus layer 0 blijft ook actief):
+//  - ONDODE_MESH_LAYER: de zichtbare V2-SkinnedMesh staat HIER (en dus NIET
+//    meer op layer 0) — de camera rendert 'm nog gewoon (enable hieronder),
+//    de raycaster (die deze layer nooit enablet) vindt 'm nooit meer.
+//  - ONDODE_HITBOX_LAYER: de onzichtbare kop-/lichaamsproxies staan HIER —
+//    de raycaster vindt ze (enable verderop, bij de raycaster-declaratie),
+//    de camera rendert ze nooit (layer niet enabled + `visible:false` als
+//    tweede, onafhankelijke vangrail).
+const ONDODE_MESH_LAYER = 1;
+const ONDODE_HITBOX_LAYER = 2;
+
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 50);
 camera.rotation.order = 'YXZ';
+camera.layers.enable(ONDODE_MESH_LAYER);   // Ticket 120: V2-SkinnedMesh blijft zichtbaar
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
@@ -2591,6 +2609,18 @@ const VLIERINGTRAP_HALF_BREEDTE = 0.9;
 const VLIERINGTRAP_CZ = VLIERING_Z_ZUID - VLIERINGTRAP_HALF_BREEDTE;
 const VLIERINGTRAP_X_OOST = VLIERING_X_OOST;   // onderaan: atelierniveau (y = 0)
 const VLIERINGTRAP_X_WEST = -8;                // bovenaan: vlieringniveau (1,2 m over 3,5 m = 19°, flauwer dan de keldertrap)
+// Vervolg (op verzoek): TWEEDE trap, aan de NOORDkant van de vliering, komt
+// uit in het noordelijkste stuk van de borstwering-wandsectie (vlak bij de
+// nis-hoek — dat is het noordwestelijke deel van het atelier dat de
+// vliering-oostmuur daadwerkelijk raakt; de LETTERLIJKE noordwesthoek van
+// het atelier ligt achter de nis-doorgang, waar geen wand tegen de vliering
+// aan staat). Maakt van de vliering een echte LUS i.p.v. een doodlopende
+// zijruimte — dus ook ondoden kunnen 'm gebruiken (zie ZONE_WAYPOINTS/
+// zoekWaypoint verderop). Zelfde maat/helling als de bestaande trap.
+const VLIERINGTRAP2_HALF_BREEDTE = 0.9;
+const VLIERINGTRAP2_CZ = KAMER2_NIS_Z_ZUID + VLIERINGTRAP2_HALF_BREEDTE + 0.3;
+const VLIERINGTRAP2_X_OOST = VLIERING_X_OOST;   // onderaan: atelierniveau (y = 0)
+const VLIERINGTRAP2_X_WEST = -8;                // zelfde helling als de bestaande trap
 // De Zelflader-vlag staat hier zo vroeg omdat updateHUD() 'm in het
 // wapenlabel leest, en updateHUD() draait al één keer bij module-load — ver
 // vóór koopAutoHerlader() verderop gedeclareerd wordt. Zelfde TDZ-reden als
@@ -2857,8 +2887,17 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
   // dus niemand loopt er alsnog doorheen — alleen de zichtlijn is nieuw.
   {
     const stompX = -KAMER2_HALF_B - MUUR_DIKTE / 2;
-    const borstweringDiepte = (VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE) - KAMER2_NIS_Z_ZUID;
-    bouwMuur(stompX, KAMER2_NIS_Z_ZUID + borstweringDiepte / 2, MUUR_DIKTE, borstweringDiepte,
+    // Vervolg (tweede trap, noordkant): de borstwering splitst nu in TWEE
+    // stukken rond het nieuwe trapgat — zelfde segmentpatroon als de
+    // bestaande splitsing rond het zuidelijke trapgat verderop.
+    const trap2ZVan = VLIERINGTRAP2_CZ - VLIERINGTRAP2_HALF_BREEDTE;
+    const trap2ZTot = VLIERINGTRAP2_CZ + VLIERINGTRAP2_HALF_BREEDTE;
+    const borstweringNoordDiepte = trap2ZVan - KAMER2_NIS_Z_ZUID;
+    bouwMuur(stompX, KAMER2_NIS_Z_ZUID + borstweringNoordDiepte / 2, MUUR_DIKTE, borstweringNoordDiepte,
+      BAKSTEEN, VLIERING_BORSTWERING_Y);
+    const borstweringMiddenTot = VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE;
+    const borstweringMiddenDiepte = borstweringMiddenTot - trap2ZTot;
+    bouwMuur(stompX, trap2ZTot + borstweringMiddenDiepte / 2, MUUR_DIKTE, borstweringMiddenDiepte,
       BAKSTEEN, VLIERING_BORSTWERING_Y);
     const zuidDiepte = GANG_Z_EIND - (VLIERINGTRAP_CZ + VLIERINGTRAP_HALF_BREEDTE);
     bouwMuur(stompX, GANG_Z_EIND - zuidDiepte / 2, MUUR_DIKTE, zuidDiepte, BAKSTEEN, ATELIER_HOOGTE);
@@ -3015,6 +3054,13 @@ function berekenVlieringY(x, z) {
     const fractie = (VLIERINGTRAP_X_OOST - x) / (VLIERINGTRAP_X_OOST - VLIERINGTRAP_X_WEST);
     return VLIERING_Y * fractie;
   }
+  // Vervolg (tweede trap, noordkant): zelfde formule, andere koker-z-band.
+  if (x > VLIERINGTRAP2_X_WEST &&
+      z > VLIERINGTRAP2_CZ - VLIERINGTRAP2_HALF_BREEDTE &&
+      z < VLIERINGTRAP2_CZ + VLIERINGTRAP2_HALF_BREEDTE) {
+    const fractie = (VLIERINGTRAP2_X_OOST - x) / (VLIERINGTRAP2_X_OOST - VLIERINGTRAP2_X_WEST);
+    return VLIERING_Y * fractie;
+  }
   return VLIERING_Y;
 }
 
@@ -3104,9 +3150,20 @@ function berekenVloerY(x, z) {
     m.receiveShadow = true;
     wereld.add(m);
   }
+  const trap2ZVan = VLIERINGTRAP2_CZ - VLIERINGTRAP2_HALF_BREEDTE;
+  const trap2ZTot = VLIERINGTRAP2_CZ + VLIERINGTRAP2_HALF_BREEDTE;
   {
-    const noordDiepte = kokerZNoord - VLIERING_Z_NOORD;
-    vlieringVloer(breedteX, noordDiepte, centrumX, VLIERING_Z_NOORD + noordDiepte / 2);
+    // Vervolg (tweede trap, noordkant): het noordelijke vlak splitst nu in
+    // drie stukken rond het nieuwe trapgat — zelfde aanpak als de bestaande
+    // splitsing rond het zuidelijke trapgat (west-strook hieronder).
+    const noordVanTrap2Diepte = trap2ZVan - VLIERING_Z_NOORD;
+    vlieringVloer(breedteX, noordVanTrap2Diepte, centrumX, VLIERING_Z_NOORD + noordVanTrap2Diepte / 2);
+    const zuidVanTrap2Diepte = kokerZNoord - trap2ZTot;
+    vlieringVloer(breedteX, zuidVanTrap2Diepte, centrumX, trap2ZTot + zuidVanTrap2Diepte / 2);
+    const trap2WestBreedte = VLIERINGTRAP2_X_WEST - VLIERING_X_WEST;
+    vlieringVloer(trap2WestBreedte, VLIERINGTRAP2_HALF_BREEDTE * 2,
+      VLIERING_X_WEST + trap2WestBreedte / 2, VLIERINGTRAP2_CZ);
+
     const westBreedte = VLIERINGTRAP_X_WEST - VLIERING_X_WEST;
     const zuidDiepte = VLIERING_Z_ZUID - kokerZNoord;
     vlieringVloer(westBreedte, zuidDiepte, VLIERING_X_WEST + westBreedte / 2, kokerZNoord + zuidDiepte / 2);
@@ -3130,6 +3187,22 @@ function berekenVloerY(x, z) {
         new THREE.BoxGeometry(tredeDiepte, topY, VLIERINGTRAP_HALF_BREEDTE * 2),
         matFamilie('hout', VLIERING_BALK));
       trede.position.set(x, topY / 2, VLIERINGTRAP_CZ);
+      trede.receiveShadow = true;
+      wereld.add(trede);
+    }
+  }
+  // Vervolg (tweede trap, noordkant): zelfde trededozen-techniek, andere z.
+  {
+    const TREDEN = 8;
+    const lengte = VLIERINGTRAP2_X_OOST - VLIERINGTRAP2_X_WEST;
+    const tredeDiepte = lengte / TREDEN;
+    for (let i = 0; i < TREDEN; i++) {
+      const topY = VLIERING_Y * ((i + 1) / TREDEN);
+      const x = VLIERINGTRAP2_X_OOST - tredeDiepte * (i + 0.5);
+      const trede = new THREE.Mesh(
+        new THREE.BoxGeometry(tredeDiepte, topY, VLIERINGTRAP2_HALF_BREEDTE * 2),
+        matFamilie('hout', VLIERING_BALK));
+      trede.position.set(x, topY / 2, VLIERINGTRAP2_CZ);
       trede.receiveShadow = true;
       wereld.add(trede);
     }
@@ -3182,6 +3255,47 @@ function berekenVloerY(x, z) {
     const kokerBreedte = VLIERINGTRAP_X_OOST - VLIERINGTRAP_X_WEST;
     bouwMuur(VLIERINGTRAP_X_WEST + kokerBreedte / 2, kokerZNoord - MUUR_DIKTE / 2,
       kokerBreedte, MUUR_DIKTE, VLIERING_BALK, ATELIER_HOOGTE);
+  }
+  // Vervolg (tweede trap, noordkant): dezelfde koker-wand-rol, maar nu op
+  // BEIDE zijden — trap 2 ligt midden in het open vlak (niet tegen de
+  // zuidmuur aan zoals trap 1), dus zowel de noord- als de zuidkant van de
+  // koker grenst aan de (1,2 m hogere) vlieringvloer.
+  //
+  // De muren stoppen 1 m vóór VLIERINGTRAP2_X_OOST (de ateliervoet), i.p.v.
+  // door te lopen tot aan de deur zelf zoals trap1's kokerwand doet — geeft
+  // wat extra ruimte vlak bij de deur, al is dit GEEN volledige oplossing
+  // voor de hoekbug hieronder (zie de toelichting bij ZONE_WAYPOINTS[2] se
+  // niveau-2-entry en tests/test-navigatie-dekking.mjs). Bij het
+  // ateliereinde van de helling is de hoogte toch al bijna 0 (vlak bij
+  // atelierniveau), dus het ontbreken van de muur daar geeft geen zichtbare
+  // val naar de vlakke vloer ernaast.
+  //
+  // BEKENDE BEPERKING (T130, uitgebreid onderzocht, niet opgelost): de
+  // bestaande T87-borstwering tussen trap1 en trap2's deurgat (het
+  // "zuidelijke segment" hierboven bij de weststomp-splitsing) vormt samen
+  // met trap2's deur een scherpe hoek. Een ondode die via trap2 binnenkomt
+  // en dan naar een doel ten zuidwesten van die hoek moet — dus precies op
+  // die hoek van richting moet veranderen — blijft daar (bewegend, niet
+  // letterlijk bevroren) ronddraaien; de lokale ontwijklogica rondt die
+  // bocht niet af. Rechtdoor lopen langs dezelfde muur (bijv. verder naar de
+  // nis) werkt wél. Geprobeerd zonder blijvend succes: waypoint-drempels op
+  // diverse plekken (elke poging verplaatste het geflapper alleen), deze
+  // muur inkorten (hierboven, geen fix), een aparte kokeroversteek à la
+  // trap1's BOVEN_BUITEN/BINNEN (nieuwe geflapper op de nieuwe drempel). Een
+  // echte fix vereist waarschijnlijk een aanpassing aan de gedeelde
+  // ontwijklogica in updateOndoden() zelf (die alleen per-frame-verplaatsing
+  // meet, geen netto voortgang over een langer venster) — buiten de scope
+  // van dit ticket. Vastgelegd als bewuste, geïsoleerde uitzondering in
+  // tests/test-navigatie-dekking.mjs (speler = "vlieringOost"), niet
+  // stilzwijgend weggefilterd.
+  {
+    const koker2Overlap = 1;
+    const koker2XOost = VLIERINGTRAP2_X_OOST - koker2Overlap;
+    const koker2Breedte = koker2XOost - VLIERINGTRAP2_X_WEST;
+    bouwMuur(VLIERINGTRAP2_X_WEST + koker2Breedte / 2, trap2ZVan - MUUR_DIKTE / 2,
+      koker2Breedte, MUUR_DIKTE, VLIERING_BALK, ATELIER_HOOGTE);
+    bouwMuur(VLIERINGTRAP2_X_WEST + koker2Breedte / 2, trap2ZTot + MUUR_DIKTE / 2,
+      koker2Breedte, MUUR_DIKTE, VLIERING_BALK, ATELIER_HOOGTE);
   }
 
   // --- Decor: een paar dakbalken en een emissief olielampje (geen licht) ---
@@ -7137,6 +7251,7 @@ function updateSmederijVisuals(dt) {
 // --- Het schot zelf ------------------------------------------------
 const raycaster = new THREE.Raycaster();
 raycaster.far = 30;   // kamer is klein, verder dan dit hoeft niet
+raycaster.layers.enable(ONDODE_HITBOX_LAYER);   // Ticket 120: vindt de V2-hitbox-proxies (layer 0 blijft ook enabled: wereld/V1 ongewijzigd)
 
 let laatsteSchotTijd = -999;
 let klok = 0;
@@ -8073,6 +8188,22 @@ const ROMP_BOB_HOOGTE      = 0.03;   // m — romp-bob boven de rust-y (1.1)
 const PELVIS_SWAY_AMPLITUDE = 0.08;   // rad — heup-sway in fase met de loopcyclus
 const CHEST_SWAY_AMPLITUDE  = 0.05;   // rad — borstkas-sway, kleiner (meer inertie/demping)
 const CHEST_LAG_FASE        = 0.35;   // rad faseverschil t.o.v. de pelvis-sway ("loopt iets achter")
+// Vervolg-fix (speeltest: "loopt houterig"): V2's benen zijn platte
+// enkelvoudige botten zonder knie (T119 se platte-structuur-eis staat geen
+// aparte knie-/scheenbeen-keten toe) — een volledig stijf been dat als een
+// pendel door de lucht zwaait is een klassieke "houten speelgoedsoldaat"-
+// tell, ongeacht hoe vloeiend de fase zelf al is. Zonder nieuwe botten: het
+// beenbot verkort tijdens de zwaaihelft van zijn eigen cyclus (voet deelt
+// hetzelfde bot, komt dus vanzelf mee omhoog) en strekt weer bij de landing
+// — zie de formule bij de aanroep. 0,16 = 16% korter op het hoogtepunt van
+// de zwaai, subtiel genoeg om niet als een apart "hupje" te lezen.
+const KNIE_BUIG_FACTOR      = 0.16;
+// Zelfde illusie, nu op de armen (op verzoek na de kniebuig-fix). Arm L
+// zwaait in tegenfase t.o.v. been L (dus IN fase met been R) — de
+// piek-formule van been R hergebruikt voor arm L, en omgekeerd. Iets
+// subtieler dan de knie (0,13 i.p.v. 0,16): een arm die zichtbaar
+// verkort ÉN de hand meesleept oogt sneller overdreven dan een been.
+const ELLEBOOG_BUIG_FACTOR  = 0.13;
 // Strompelt: vaste, deterministische beenasymmetrie (geen extra state nodig
 // op het ondode-object) — altijd hetzelfde been verzwakt, zodat elke
 // strompelaar zichtbaar mank loopt.
@@ -8528,54 +8659,6 @@ function geo(sleutel, fabriek) {
 // gedragswijziging).
 const kernMateriaal = new THREE.MeshStandardMaterial({ color: 0xff9a3d, emissive: 0xff7a1f, emissiveIntensity: EMISSIE_BRON_MAX, roughness: 0.4 });
 kernMateriaal.userData.gedeeld = true;   // Ticket 70: ruimGroepOp() mag dit nooit disposen
-// Ticket 99: de vod-kleur was al gedeeld (mat(0x40331f, 0.95), geen
-// per-instance tint) — de nieuwe geometrie heeft alleen `side: DoubleSide`
-// nodig (één vlak, van beide kanten zichtbaar), en `mat()`'s `extra`-
-// parameter forceert altijd een VERSE instantie (bestaand contract, zie
-// T104-toelichting) — dus hier een eigen gedeelde module-constante,
-// zelfde patroon als kernMateriaal hierboven, i.p.v. `mat()` met `extra`.
-const VOD_MATERIAAL = new THREE.MeshStandardMaterial({ color: 0x40331f, roughness: 0.95, side: THREE.DoubleSide });
-VOD_MATERIAAL.userData.gedeeld = true;   // Ticket 70: ruimGroepOp() mag dit nooit disposen
-
-// Ticket 99 (v0.22, §10.10-beslissing 85): een handgeschreven BufferGeometry
-// voor de voddenstrook — GEEN PlaneGeometry (expliciet vereist door de
-// ticket-spec), want een rechte rand leest op 10m als "speelgoedfiguur";
-// een gerafelde onderrand leest als "iets dat op je afkomt". Één vlak
-// (voorkant), `side: THREE.DoubleSide` op het material maakt 'm ook van
-// achteren zichtbaar — een los achtervlak zou het driehoekstal verdubbelen
-// voor een verschil dat je op een dun lapje toch niet ziet. Puur gedeelde
-// geometrie (via geo() hieronder aangeroepen): dezelfde kartelvorm voor
-// elke ondode, geen per-instance willekeur nodig voor dit silhouetdetail.
-function bouwGerafeldeVodGeometry() {
-  const breedte = 0.06, hoogte = 0.32, diepte = 0.02;
-  const tanden = 5;   // aantal kartels langs de onderrand
-  const basis = -hoogte / 2;
-  const tandDiepte = 0.05;
-  const xs = [];
-  for (let i = 0; i <= tanden; i++) xs.push(-breedte / 2 + (breedte * i) / tanden);
-  // Afwisselend een "vallei" (op de basislijn) en een "tand" (dieper) —
-  // een klassiek gerafeld-lapje-silhouet.
-  const onderY = xs.map((_, i) => basis - (i % 2 === 1 ? tandDiepte : 0));
-
-  const posities = [];
-  const uvs = [];
-  const index = [];
-  for (let i = 0; i <= tanden; i++) {
-    posities.push(xs[i], hoogte / 2, diepte / 2, xs[i], onderY[i], diepte / 2);
-    uvs.push(i / tanden, 1, i / tanden, 0);
-  }
-  for (let i = 0; i < tanden; i++) {
-    const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
-    index.push(a, b, c, b, d, c);
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(posities, 3));
-  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  geometry.setIndex(index);
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
 // Ticket 100 (v0.22, §10.10-beslissing 85): materiaalfabriek voor de
 // ondode-huid — MOEST eerst gebouwd worden, want `onBeforeCompile` hoort
 // per §7.9 (materiaal-mutatiediscipline) in de fabriek te zitten, nooit
@@ -8623,15 +8706,210 @@ const RIM_UNIFORMS = {
 // hele lichaam en gebruikt vertex colors voor de T104-achtige per-deel
 // helderheidstint (torso vs hoofd) die V1 via losse materiaalinstanties
 // deed.
-function maakOndodeMateriaal(kleur, ruwheid = 0.85, vertexColors = false) {
+// Ticket 122 (v0.23, ronde 9 — Zombie V2 fase 4): `oogUniforms` (optioneel,
+// alleen V2) verhuist de gloeiende ogen van twee losse mesh-objecten naar
+// een emissieve REGIO in ditzelfde materiaal. Dat is de laatste stap naar de
+// "1 draw call per ondode"-belofte: V1 (en V2 t/m T121) tekende naast het
+// lichaam nog twee oogbolletjes.
+//
+// De regio wordt in de FRAGMENT-shader bepaald, niet via een vertex-
+// attribuut-masker. Dat is een bewuste keuze: een oog is ~3 cm breed terwijl
+// de vertexafstand op het hoofd bij het gekozen detailniveau ~5,7 cm is, dus
+// een vertexmasker zou het oog niet eens kunnen opvangen (het zou per
+// ondode wisselend vlekkerig of onzichtbaar zijn). Een fragment-test is
+// tessellatie-ONafhankelijk en levert een scherp oog bij elk detailniveau.
+//
+// Als coördinaat gebruikt de shader `position` — het RUSTposeatribuut, dus
+// vóór skinning. Het hoofd is star aan het hoofd-bot gebonden, dus die
+// coördinaat is een stabiel "hoofd-lokaal" stelsel dat met de pose meedraait
+// zonder dat de shader iets van de pose hoeft te weten.
+const OOG_REGIO_X = 0.068;    // halve afstand tussen de twee ogen (rustpose)
+const OOG_REGIO_Y = 1.592;    // ooghoogte in rustpose (hoofdcentrum 1,58)
+const OOG_REGIO_RX = 0.032;   // halve breedte van één oog
+const OOG_REGIO_RY = 0.024;   // halve hoogte van één oog
+const OOG_REGIO_Z_MIN = 0.08; // alleen de voorkant van de schedel (achterhoofd ligt op z < 0)
+
+// ================================================================
+// TICKET 123 (v0.23, ronde 9 — Zombie V2 fase 4): normal-map A/B-test.
+// §18 van de bronopdracht eist dit als EIGEN, losstaande stap: nooit
+// stilzwijgend meeliften op T121/T122. De reden is concreet — deze scene is
+// fragment-bound, niet draw-call-bound (waarschuwing 60 uit ronde 8), en met
+// 28 lichten kan een extra textuursample per licht wél degelijk tellen.
+//
+// De hoogtebron is een procedurele canvas-tekening (huidplooien, ribben,
+// littekens, scheuren — precies wat §18 noemt), die via de BESTAANDE
+// T108-pijplijn bouwCanvasNormaalKaart() naar een normal map wordt omgezet.
+// Geen nieuw mechanisme dus, alleen een nieuwe tekenaar.
+function tekenOndodeHuidVerval(ctx, n, basisWit, rnd = Math.random) {
+  ctx.fillStyle = `rgb(${basisWit},${basisWit},${basisWit})`;
+  ctx.fillRect(0, 0, n, n);
+  const lijn = (x0, y0, x1, y1, dikte, wit) => {
+    ctx.strokeStyle = `rgb(${wit},${wit},${wit})`;
+    ctx.lineWidth = dikte;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+  };
+  // Vervolg-fix (speeltest: "meer mummie- dan zombie-achtig, niet goed
+  // zichtbaar"): de T123-versie hieronder loste de letterlijke zwachtel-
+  // banden op, maar bleef qua KARAKTER een geweven textuur — veel kleine,
+  // dunne, gelijkmatig verspreide tekens lezen als stof, ongeacht de
+  // sterkte waarop je 'm zet. Twee dingen veranderen dat: een paar GROTE
+  // onregelmatige plekken (necrose) i.p.v. alleen kleine lijntjes, en een
+  // paar clusterpunten waar de bestaande plooien/scheuren zich omheen
+  // verdichten i.p.v. overal even dun verspreid te liggen — dat laatste
+  // is precies wat een geweven patroon van een beschadigd oppervlak
+  // onderscheidt.
+  const clusters = [];
+  const clusterAantal = 2 + Math.floor(rnd() * 2);   // 2-3 beschadigde zones
+  for (let c = 0; c < clusterAantal; c++) clusters.push({ x: rnd() * n, y: rnd() * n });
+  const kiesPositie = () => {
+    if (rnd() < 0.55) {
+      const c = clusters[Math.floor(rnd() * clusters.length)];
+      const straal = n * 0.14;
+      return { x: c.x + (rnd() - 0.5) * straal, y: c.y + (rnd() - 0.5) * straal };
+    }
+    return { x: rnd() * n, y: rnd() * n };
+  };
+  // Necrotische plekken: grote, onregelmatige veelhoeken met een donkerder
+  // kern — het silhouet-schaal-verval dat de kleine tekens hieronder niet
+  // kunnen geven. Op de clusterpunten zelf (grootste kans op overlap met de
+  // plooien/scheuren die er zich omheen verdichten), dus het leest als één
+  // beschadigde zone, niet als los-van-elkaar staande decoraties.
+  for (const c of clusters) {
+    const straal = n * (0.07 + rnd() * 0.05);
+    const hoeken = 10 + Math.floor(rnd() * 5);
+    ctx.beginPath();
+    for (let h = 0; h <= hoeken; h++) {
+      const hoek = (h / hoeken) * Math.PI * 2;
+      const r = straal * (0.55 + rnd() * 0.55);
+      const px = c.x + Math.cos(hoek) * r, py = c.y + Math.sin(hoek) * r;
+      if (h === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    const wit = basisWit - 42 - rnd() * 20;
+    ctx.fillStyle = `rgb(${wit},${wit},${wit})`;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, straal * 0.4, 0, Math.PI * 2);
+    ctx.fillStyle = `rgb(${wit - 28},${wit - 28},${wit - 28})`;
+    ctx.fill();
+  }
+  // Huidplooien: korte, WILLEKEURIG GERICHTE rimpels. De eerste versie
+  // tekende ze allemaal horizontaal en voegde daar zeven lange, evenwijdige
+  // "ribben"-bogen aan toe. Op papier klopte dat (§18 noemt ribben
+  // expliciet), maar de romp/armen/benen krijgen hun uv cilindrisch — u is
+  // de hoek rondom — dus élke horizontale lijn wordt een band die helemaal
+  // om het lichaam heen loopt. Het resultaat las als mummiezwachtels, niet
+  // als vergane huid (zie de A/B-opnamen bij dit ticket). Ribben moeten uit
+  // GEOMETRIE komen (T121 se ribbenkastprofiel doet dat al), niet uit een
+  // cilindrisch geprojecteerde textuur; wat hier overblijft is een
+  // richtingloze huidstructuur die geen enkele band kan vormen.
+  for (let i = 0; i < 110; i++) {
+    const { x, y } = kiesPositie();
+    const hoek = rnd() * Math.PI * 2, len = n * (0.03 + rnd() * 0.07);
+    const dwars = hoek + Math.PI / 2;
+    const wit = basisWit - 22 - rnd() * 16;
+    ctx.strokeStyle = `rgb(${wit},${wit},${wit})`;
+    ctx.lineWidth = Math.max(1, n / 340);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(
+      x + Math.cos(hoek) * len / 2 + Math.cos(dwars) * n * 0.012,
+      y + Math.sin(hoek) * len / 2 + Math.sin(dwars) * n * 0.012,
+      x + Math.cos(hoek) * len,
+      y + Math.sin(hoek) * len
+    );
+    ctx.stroke();
+  }
+  // Jaap-gapingen (voorheen "littekens"): heftiger dan een net litteken —
+  // een gerafelde, meerdelige jaap (kleine hoekafwijking per segment i.p.v.
+  // één rechte lijn) met veel hardere donkerte (voorheen -55, nu -95..-120)
+  // en een dunne, ongelijke lichtrand — leest als opengereten vlees i.p.v.
+  // een oud, dichtgeheeld litteken.
+  for (let i = 0; i < 6; i++) {
+    const { x: x0, y: y0 } = kiesPositie();
+    const hoek = rnd() * Math.PI, lenTotaal = n * (0.10 + rnd() * 0.17);
+    const segmenten = 3 + Math.floor(rnd() * 2);
+    const donker = basisWit - 95 - rnd() * 25;
+    let x = x0, y = y0;
+    for (let s = 0; s < segmenten; s++) {
+      const segHoek = hoek + (rnd() - 0.5) * 0.6;
+      const segLen = lenTotaal / segmenten;
+      const nx = x + Math.cos(segHoek) * segLen, ny = y + Math.sin(segHoek) * segLen;
+      lijn(x, y, nx, ny, Math.max(2, n / 140) * (0.7 + rnd() * 0.7), donker);
+      lijn(x + 2, y + 2, nx + 2, ny + 2, Math.max(1, n / 320), Math.min(255, basisWit + 26));
+      x = nx; y = ny;
+    }
+  }
+  // Scheuren: fijne vertakkende barsten in de huid.
+  for (let i = 0; i < 16; i++) {
+    let { x, y } = kiesPositie();
+    for (let seg = 0; seg < 4; seg++) {
+      const nx = x + (rnd() - 0.5) * n * 0.06, ny = y + (rnd() - 0.5) * n * 0.06;
+      lijn(x, y, nx, ny, Math.max(1, n / 420), basisWit - 40);
+      x = nx; y = ny;
+    }
+  }
+  // Fijne korrel: geeft de huid onder direct lamplicht een matte structuur
+  // i.p.v. een plastic-glad oppervlak.
+  for (let i = 0; i < n * 5; i++) {
+    const wit = basisWit + (rnd() - 0.5) * 26;
+    ctx.fillStyle = `rgb(${wit},${wit},${wit})`;
+    ctx.fillRect(rnd() * n, rnd() * n, 1, 1);
+  }
+}
+// A/B-schakelaar: `true` = variant B (mét normal map), `false` = variant A.
+// De gemeten uitkomst en de keuze die eruit volgde staan in
+// ZOMBIE_V2_BASELINE.md; zie ook de toelichting bij de aanroep hieronder.
+let ZOMBIE_V2_NORMAL_MAP = true;
+// Vervolg-fix: 0,28 was gekozen tegen de EERSTE (te sterke, mummie-achtige)
+// tekenaar — bij 0,55 overstemde die het silhouet. De nieuwe tekenaar
+// hierboven is lager-frequent (grote, schaarse necroseplekken i.p.v. veel
+// kleine gelijkmatige lijntjes), dus dezelfde overweldig-vorm-fout ligt bij
+// een hogere sterkte minder snel op de loer — opnieuw gemeten (zie
+// scratchpad/meet-verval-ab.mjs) vóór dit definitief vast te zetten.
+const V2_NORMAAL_STERKTE = 0.4;
+function ondodeHuidNormaalKaart() {
+  return bouwCanvasNormaalKaart('ondodeHuidVerval', tekenOndodeHuidVerval, 256);
+}
+// `oogSchaal` (Ticket 125): vergroot de oogREGIO voor de Sluiper, die volgens
+// §14 "leesbare ogen" moet hebben. Bewust NIET via een hogere
+// emissiveIntensity: die waarde is per ondode gameplay-state die
+// updateOndoden()/zetOogBasis() elke tick terugzetten naar
+// `ondode.oogBasisIntensiteit`, dus een bump daar zou stilletjes weer
+// verdwijnen én de T89-emissiehiërarchie vertroebelen. De regiogrootte is
+// puur geometrie in de shader en raakt geen enkele state.
+function maakOndodeMateriaal(kleur, ruwheid = 0.85, vertexColors = false, oogUniforms = null, oogSchaal = 1) {
   const materiaal = new THREE.MeshStandardMaterial({ color: kleur, roughness: ruwheid, vertexColors });
+  // Ticket 123: alleen V2 (die `oogUniforms` meekrijgt) doet mee aan de
+  // normal-map-A/B — V1 blijft in beide varianten byte-voor-byte gelijk,
+  // anders zou de vergelijking twee dingen tegelijk veranderen.
+  if (oogUniforms && ZOMBIE_V2_NORMAL_MAP) {
+    materiaal.normalMap = ondodeHuidNormaalKaart();
+    materiaal.normalScale = new THREE.Vector2(V2_NORMAAL_STERKTE, V2_NORMAAL_STERKTE);
+  }
   materiaal.onBeforeCompile = (shader) => {
     shader.uniforms.uRimKleur = RIM_UNIFORMS.kleur;
     shader.uniforms.uRimSterkte = RIM_UNIFORMS.sterkte;
+    if (oogUniforms) {
+      // PER ONDODE (niet gedeeld zoals RIM_UNIFORMS): elke ondode heeft zijn
+      // eigen windup-/misttiming, zie het T31-contract.
+      shader.uniforms.uOogKleur = oogUniforms.kleur;
+      shader.uniforms.uOogIntensiteit = oogUniforms.intensiteit;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', 'varying vec3 vRustPos;\n#include <common>')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\n  vRustPos = position;');
+    }
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `
         uniform vec3 uRimKleur;
         uniform float uRimSterkte;
+        ${oogUniforms ? `
+        uniform vec3 uOogKleur;
+        uniform float uOogIntensiteit;
+        varying vec3 vRustPos;` : ''}
         #include <common>
       `)
       .replace('#include <emissivemap_fragment>', `
@@ -8641,260 +8919,48 @@ function maakOndodeMateriaal(kleur, ruwheid = 0.85, vertexColors = false) {
           float rimFresnel = pow(1.0 - max(dot(normal, rimViewDir), 0.0), 3.0);
           totalEmissiveRadiance += uRimKleur * rimFresnel * uRimSterkte;
         }
+        ${oogUniforms ? `
+        if (vRustPos.z > ${OOG_REGIO_Z_MIN.toFixed(3)}) {
+          vec2 oogDelta = vec2(abs(vRustPos.x) - ${OOG_REGIO_X.toFixed(3)}, vRustPos.y - ${OOG_REGIO_Y.toFixed(3)});
+          float oogAfstand = length(oogDelta / vec2(${(OOG_REGIO_RX * oogSchaal).toFixed(4)}, ${(OOG_REGIO_RY * oogSchaal).toFixed(4)}));
+          totalEmissiveRadiance += uOogKleur * uOogIntensiteit * (1.0 - smoothstep(0.65, 1.0, oogAfstand));
+        }` : ''}
       `);
   };
   return materiaal;
 }
 
-// Ticket 118 (v0.23, ronde 9 — Zombie V2 fundament): hernoemd van
-// maakOndodeModel() naar maakOndodeModelV1() — verder ONGEWIJZIGD. Bouwt
-// Group-pivots (geen botten/skinning); zie maakOndodeModelV2() hieronder
-// voor de nieuwe SkinnedMesh-architectuur en ZOMBIE_RENDER_VERSIE voor de
-// schakelaar tussen beide.
-function maakOndodeModelV1(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTraits()) {
-  const groep = new THREE.Group();
-  const delen = {};
-  // Ticket 95 (De kill als gebeurtenis): alleen de PER-INSTANCE huid-
-  // materialen komen hierin — nooit kernMateriaal (gedeeld) of de
-  // been-/vod-materialen (via mat(), ook gedeeld). doodOndode() flitst
-  // deze kort emissive bij een dodelijke treffer.
-  delen.huidMaterialen = [];
-  const tint = 0.85 + Math.random() * 0.3;   // kleine kleurvariatie per ondode
-  const huidKleur = new THREE.Color(typeInfo.kleur).multiplyScalar(tint);
-  // Ticket 86 (Het stadsarchief): ontgrendelde kleurset — puur een extra
-  // kleurvermenigvuldiging bovenop de bestaande formule, raakt geometrie/
-  // silhouet/type-identificatie niet, dus geen enkel mechanisch effect.
-  if (stadsarchiefOntgrendelingen().kleurset && stadsarchief.actief.kleurset) {
-    huidKleur.multiply(STADSARCHIEF_KLEURSET_TINT);
-  }
-  // Ticket 19 (Z2): silhouetdata van het type + het gelote variatieprofiel.
-  const vorm = typeInfo.vorm ?? {};
-  const profiel = VARIATIE_PROFIELEN[traits.profiel] ?? {};
-  // Kromme rug: voorovergebogen; vorm.voorover (Loper) komt daar bovenop.
-  // Maximum blijft 0.34 + 0.18 = 0.52 — het hoofd zakt dan 0.026, binnen de
-  // ±0.03-band van het hoofd-hoogte-anker in tests/test-ondode-model.mjs.
-  const rugHoek = (traits.kromme ? 0.22 + Math.random() * 0.12 : 0) + (vorm.voorover ?? 0);
-
-  // Hoogtes zo gekozen dat het hoofd rond de ooghoogte van de speler (1.7m,
-  // zie speler.hoogte) uitkomt — anders mist een recht vooruit gericht schot
-  // de ondode altijd, ongeacht de afstand.
-
-  // Benen: twee losse been-meshes in eigen pivot-Groups op heuphoogte
-  // (samen hetzelfde silhouet als het oude ene blok van 0.28 breed). Het
-  // slepend-trait behoudt zijn oude uiterlijk: de kanteling zit op het MESH
-  // (zelfde draaipunt als vroeger, het beencentrum), de zijwaartse
-  // verschuiving op de pivots.
-  for (const [naam, kant] of [['beenL', -1], ['beenR', 1]]) {
-    const pivot = new THREE.Group();
-    pivot.position.set(kant * 0.075 + traits.slepend * 0.05, 0.8, 0);
-    const been = new THREE.Mesh(geo('been', () => new THREE.BoxGeometry(0.13, 0.8, 0.16)),
-      mat(0x2c2620, 0.9));
-    been.position.y = -0.4;
-    // Feedback: vóór deze fix kregen BEIDE benen dezelfde kanteling zodra
-    // slepend != 0 (in het oude één-blok-model was dat één mesh, dus onschuldig;
-    // na de T18-splitsing in losse benen zag dat er als een compleet scheef,
-    // "vallend" onderlijf uit). Alleen het bedoelde slepende been kantelt nu.
-    if (traits.slepend !== 0 && kant === traits.slepend) been.rotation.z = traits.slepend * 0.14;
-    pivot.add(been);
-    groep.add(pivot);
-    delen[naam] = pivot;
-  }
-
-  // Romp-groep: torso + vod. De kromme rug zit nu op de groep i.p.v. op het
-  // torso-mesh (zelfde draaipunt, zelfde eindbeeld); de vod draait daardoor
-  // subtiel mee met een kromme rug — hij hangt aan het middel, dus dat is
-  // eerder een verbetering dan een afwijking.
-  const romp = new THREE.Group();
-  romp.position.set(0, 1.1, rugHoek * 0.08);
-  romp.userData.baseY = romp.position.y;   // Ticket 20: rust-y voor de romp-bob
-  romp.rotation.x = rugHoek;
-  // Ticket 19: rompbreedte = type-silhouet x profielfactor (beide 1 als ze
-  // ontbreken). De armen blijven op vaste x = ±0.24 — een brede romp groeit
-  // er desnoods tegenaan (gedrongen schouders), zodat de arm-raycasts op
-  // een vast punt betrouwbaar blijven.
-  const torso = new THREE.Mesh(geo('torso', () => new THREE.BoxGeometry(0.36, 0.6, 0.22)),
-    maakOndodeMateriaal(huidKleur));
-  torso.scale.x = (vorm.rompBreedte ?? 1) * (profiel.rompFactor ?? 1);   // Ticket 69: maatvariatie via scale i.p.v. geometrie
-  romp.add(torso);
-  delen.huidMaterialen.push(torso.material);
-  // Ticket 99: schouderpartij — twee kleine, gedeelde blokken die de
-  // silhouet-overgang tussen romp en arm dichten. Zonder dit oogt een
-  // ondode op afstand als een dunne staaf met twee losse stokjes eraan;
-  // met een schoudermassa leest het silhouet in het donker als figuur.
-  // Kind van `romp` (niet van de arm-pivot): schouders horen bij de romp
-  // en mogen niet met de arm meependelen. Geen 'kop'-markering.
-  for (const kant of [-1, 1]) {
-    const schouder = new THREE.Mesh(geo('schouder', () => new THREE.BoxGeometry(0.14, 0.14, 0.16)),
-      maakOndodeMateriaal(huidKleur));
-    schouder.position.set(kant * 0.19, 0.24, 0.01);
-    romp.add(schouder);
-    delen.huidMaterialen.push(schouder.material);
-  }
-  // Bochel (Sjouwer-vorm en/of 'gebocheld'-profiel): één bult hoog op de
-  // rug, in de romp-groep zodat hij met de kromme rug meedraait.
-  // Ticket 61 (v0.19, §7.4.4-beslissing 53): meer segmenten voor een
-  // vloeiender bolvorm — straal/positie ongewijzigd, puur tessellatie.
-  if (vorm.bochel || profiel.bochel) {
-    const bochel = new THREE.Mesh(geo('bochel', () => new THREE.SphereGeometry(0.14, 14, 10)),
-      maakOndodeMateriaal(huidKleur.clone().multiplyScalar(0.85), 0.9));
-    bochel.position.set(0, 0.16, -0.13);
-    romp.add(bochel);
-    delen.huidMaterialen.push(bochel.material);
-  }
-  // Buikige romp + gloeiende kern (Brander): de kern is een emissive mesh,
-  // bewust GEEN PointLight (budget: 0 lights per ondode, §4.9). Geen
-  // 'kop'-markering, dus een treffer erop is gewoon een lichaamstreffer.
-  if (vorm.buik) {
-    const buik = new THREE.Mesh(geo('buik', () => new THREE.SphereGeometry(0.16, 16, 12)),
-      maakOndodeMateriaal(huidKleur));
-    buik.position.set(0, -0.1, 0.06);
-    romp.add(buik);
-    delen.huidMaterialen.push(buik.material);
-    const kern = new THREE.Mesh(geo('kern', () => new THREE.SphereGeometry(0.07, 12, 10)), kernMateriaal);
-    kern.position.set(0, -0.1, 0.19);
-    romp.add(kern);
-    delen.kern = kern;   // Ticket 21 (Z4): referentie voor de kern-puls bij een treffer
-  }
-  // Gerafelde voddenstrook aan het middel — eigen, herkenbaar "tattered"
-  // detail. Ticket 99: de onderrand is nu echt gekarteld (bouwGerafeldeVodGeometry(),
-  // een handgeschreven BufferGeometry) i.p.v. de rechte rand van de oude
-  // BoxGeometry — vandaar ook de aparte, expliciete `matFamilie`-achtige
-  // material hier met `side: THREE.DoubleSide` (één vlak, van beide kanten
-  // zichtbaar; zie de toelichting bij bouwGerafeldeVodGeometry()).
-  const vod = new THREE.Mesh(geo('vodGerafeld', bouwGerafeldeVodGeometry), VOD_MATERIAAL);
-  vod.position.set(0.1, -0.32, 0.12);
-  vod.rotation.z = 0.3;
-  romp.add(vod);
-  groep.add(romp);
-  delen.romp = romp;
-
-  // Hoofd-groep: hoofd-mesh + de twee gloeiende ogen. Scheve nek en de
-  // kromme-rug-kanteling zitten op de groep, zodat de ogen (v0.8: losse
-  // siblings die niet meekantelden) nu netjes het hoofd volgen.
-  const hoofdGroep = new THREE.Group();
-  hoofdGroep.position.set(0, 1.58 - rugHoek * 0.05, 0.02 + rugHoek * 0.35);   // volgt de kromme rug een beetje mee
-  hoofdGroep.rotation.z = (Math.random() - 0.5) * 0.5;   // scheve nek: een eigen, herkenbare "ondode"-houding
-  hoofdGroep.rotation.x = rugHoek * 0.6;
-  // Ticket 19: ingedoken kop (Sluiper) — nek naar voren, blik omlaag. De
-  // hoogte zakt maar 0.01: samen met de kromme rug (max 0.017) blijft het
-  // hoofd binnen de ±0.03-band van het hoofd-hoogte-anker. Het hoofd zelf
-  // wordt NOOIT verkleind (ontwerpbeslissing 16).
-  if (vorm.ingedokenKop) {
-    hoofdGroep.position.y -= 0.01;
-    hoofdGroep.position.z += 0.1;
-    hoofdGroep.rotation.x += 0.3;
-  }
-  hoofdGroep.userData.baseRotX = hoofdGroep.rotation.x;   // Ticket 20: rust-hoek voor de hoofd-microkantel
-  // Ticket 61 (v0.19, §7.4.4-beslissing 53): 20x16 i.p.v. 8x8 segmenten —
-  // straal (0.18) en positie ONGEWIJZIGD, dus het hoofd-hoogte-anker
-  // (ontwerpbeslissing 16) en de headshot-hitbox blijven exact hetzelfde;
-  // alleen de tessellatie is vloeiender.
-  const hoofd = new THREE.Mesh(geo('hoofd', () => new THREE.SphereGeometry(0.18, 20, 16)),
-    maakOndodeMateriaal(huidKleur.clone().multiplyScalar(1.15), 0.8));
-  hoofd.userData.lichaamsdeel = 'kop';   // treffer hier = headshot (dubbele schade)
-  hoofdGroep.add(hoofd);
-  delen.huidMaterialen.push(hoofd.material);
-  // Twee kleine gloeiende oogjes: het enige griezelige lichtaccent. Kleur
-  // verschilt per type (v0.7), zodat een variant al op afstand herkenbaar is.
-  // Ticket 89: start op OOG_INTENSITEIT_BASIS (Bron-niveau, §10.5); schiet
-  // naar Signaal tijdens elk alarm — zie de toelichting bij die constante.
-  const oogMateriaal = new THREE.MeshStandardMaterial({ color: typeInfo.oogKleur, emissive: typeInfo.oogKleur, emissiveIntensity: OOG_INTENSITEIT_BASIS });
-  delen.oogMateriaal = oogMateriaal;   // Ticket 31 (Aanval A2): windup-oogpuls leest/schrijft dit gedeelde material
-  for (const kant of [-1, 1]) {
-    const oog = new THREE.Mesh(geo('oog', () => new THREE.SphereGeometry(0.02, 12, 8)), oogMateriaal);
-    // Ticket 61: z 0.14->0.165. Bij het oude 8x8-hoofd staken de ogen door
-    // een facet-deuk in het lage-poly-oppervlak heen zichtbaar naar buiten;
-    // het nieuwe, vloeiende 20x16-hoofd volgt de wiskundige bolvorm overal
-    // nauwkeurig, waardoor de ogen op hun oude positie (afstand 0.153 tot
-    // het hoofdcentrum, ruim binnen straal 0.18) volledig verzwolgen raakten
-    // en onzichtbaar werden. Nieuwe afstand ≈0.171 — net onder de straal,
-    // dus de ogen liggen weer zichtbaar op het oppervlak.
-    oog.position.set(kant * 0.06, 0.01, 0.165);   // t.o.v. het hoofdcentrum (was wereld 1.59/0.16)
-    oog.userData.lichaamsdeel = 'kop';   // ogen horen bij het hoofd -> ook een headshot
-    hoofdGroep.add(oog);
-  }
-  groep.add(hoofdGroep);
-  delen.hoofd = hoofdGroep;
-
-  // Arm-pivots aan de schouder. Het oude model roteerde de arm om zijn
-  // eigen centrum; het echte (geroteerde) schouderpunt lag daardoor op
-  // y = 1.13 + 0.25·cos(0.5), z = 0.06 − 0.25·sin(0.5). Door de pivot dáár
-  // te leggen en het mesh een halve lengte naar beneden te hangen, blijft
-  // het silhouet gelijk (afwijking < 0.01 bij armlengte-variatie).
-  const schouderY = 1.13 + 0.25 * Math.cos(0.5);
-  const schouderZ = 0.06 - 0.25 * Math.sin(0.5);
-  for (const [naam, kant] of [['armL', -1], ['armR', 1]]) {
-    // Ticket 19: het 'eenarmig'-profiel laat ALTIJD de linkerarm weg
-    // (delen.armL blijft dan undefined) — de raycast-regressietests mikken
-    // op de rechterarm, dus die moet er onvoorwaardelijk zijn.
-    if (kant === -1 && profiel.mistArmL) continue;
-    // Verschillende armlengtes (v0.8): elke arm krijgt een onafhankelijke
-    // lengte-multiplier; het schouder-aanhechtpunt blijft gelijk doordat
-    // het mesh vanaf de pivot naar beneden hangt.
-    const armLengteMultiplier = 1 + (kant === 1 ? traits.armVerschil : -traits.armVerschil);
-    const armLengte = 0.5 * armLengteMultiplier;
-    const armDikteFactor = profiel.armDikteFactor ?? 1;   // Ticket 19: 'mager' heeft dunnere armen
-    const pivot = new THREE.Group();
-    pivot.position.set(kant * 0.24, schouderY, schouderZ);
-    pivot.rotation.x = ARM_RUST_ROTATIE_X;   // naar voren uitgestrekt
-    // Ticket 69: basisgeometrie (dikte 0.09, lengte 0.5) gedeeld via geoCache;
-    // de per-ondode armlengte/-dikte komt nu uit mesh.scale i.p.v. uit de
-    // geometrie-parameters zelf — visueel identiek (dikte 0.09*factor,
-    // lengte 0.5*multiplier), positie.y-formule dus ongewijzigd.
-    const arm = new THREE.Mesh(geo('arm', () => new THREE.BoxGeometry(0.09, 0.5, 0.09)),
-      maakOndodeMateriaal(huidKleur));
-    arm.scale.set(armDikteFactor, armLengteMultiplier, armDikteFactor);
-    arm.position.y = -armLengte / 2;
-    pivot.add(arm);
-    // Ticket 99: een hand aan het uiteinde van de arm — sluitstuk van het
-    // silhouet (een arm die zomaar "afgekapt" eindigt, oogt op afstand
-    // onnatuurlijk). Sibling van `arm`, niet een kind ervan: `arm.scale`
-    // (dikte/lengte-variatie) mag de handgrootte niet meeschalen. Eigen
-    // (kleine) gedeelde geometrie; positie op de volle armlengte onder de
-    // pivot, dus die volgt automatisch de per-instance armLengte. Geen
-    // 'kop'-markering.
-    const hand = new THREE.Mesh(geo('hand', () => new THREE.BoxGeometry(0.08, 0.08, 0.08)),
-      maakOndodeMateriaal(huidKleur));
-    hand.position.y = -armLengte;
-    pivot.add(hand);
-    delen.huidMaterialen.push(hand.material);
-    groep.add(pivot);
-    delen[naam] = pivot;
-    delen.huidMaterialen.push(arm.material);
-  }
-
-  groep.scale.set(
-    (0.94 + Math.random() * 0.16) * typeInfo.schaal,
-    (0.94 + Math.random() * 0.16) * typeInfo.schaal * traits.lengte,
-    (0.94 + Math.random() * 0.16) * typeInfo.schaal
-  );
-  groep.userData.delen = delen;
-  return groep;
-}
-
 // ================================================================
-// TICKET 118 (v0.23, ronde 9 — Zombie V2 fundament): SkinnedMesh, plat
-// botskelet, V1/V2-toggle.
-//
-// De architectuur in één zin: V1 bouwt per lichaamsdeel een eigen Group
-// (pivot) + eigen Mesh + eigen materiaal-instantie (tot 13 meshes, tot 11
-// materialen per ondode — zie ZOMBIE_V2_BASELINE.md, Ticket 117). V2
-// vervangt ALLEEN dat draagvlak: één samengestelde BufferGeometry, één
-// SkinnedMesh, één materiaal-instantie, en een PLAT THREE.Skeleton (7
-// botten, geen kinematische ouder-kind-keten — elk bot hangt rechtstreeks
-// aan `root`) met EXACT dezelfde botnamen en rustpose-posities als V1's
-// pivots. Omdat THREE.Bone een Object3D-subklasse is, blijven de bestaande
+// DE ZOMBIE-RENDERARCHITECTUUR (oorspronkelijk Ticket 118, sindsdien
+// uitgebreid door T119-T130; T129 verwijderde de vroegere V1-architectuur
+// en de bijbehorende V1/V2-toggle — dit IS de architectuur, geen keuze
+// meer). Eén samengestelde BufferGeometry, één SkinnedMesh, één materiaal-
+// instantie per ondode, en een PLAT THREE.Skeleton (geen kinematische
+// ouder-kind-keten — elk bot hangt rechtstreeks aan `root`). Omdat
+// THREE.Bone een Object3D-subklasse is, werken de bestaande
 // `delen.armL.rotation.x = …`-stijl schrijfacties uit updateOndoden()/
-// raakOndode()/doodOndode() ONGEWIJZIGD werken tegen een V2-ondode — dat is
-// de kern-architectuurtruc en de reden dat dit ticket die drie functies
-// (en schiet()) niet hoeft aan te raken.
-//
-// Bewust NIET in dit ticket: bochel/buik/kern (Brander) en de vod — die
-// komen in T121/T126/T127 als extra, optionele geometrie-"eilanden" op
-// dezelfde composietgeometrie. `delen.kern` blijft dus `undefined` voor een
-// V2-ondode; alle aanroepers daarvan (raakOndode/doodOndode) hebben al een
-// `if (delen.kern)`-guard (zie de T21/T95-toelichtingen daar), dus dat is
-// veilig.
+// raakOndode()/doodOndode() gewoon tegen een bot — dat is de kern-
+// architectuurtruc en de reden dat die drie functies (en schiet()) nooit
+// zelf iets van bones hoefden te weten.
+
+// Ticket 120: gedeeld, onzichtbaar materiaal voor de hitbox-proxies — nooit
+// echt gerenderd (visible:false ÉN op ONDODE_HITBOX_LAYER, zie hierboven),
+// dus één triviale gedeelde instantie volstaat (zelfde patroon als
+// kernMateriaal hierboven).
+const ONDODE_HITBOX_MATERIAAL = new THREE.MeshBasicMaterial({ visible: false });
+ONDODE_HITBOX_MATERIAAL.userData.gedeeld = true;   // Ticket 70: ruimGroepOp() mag dit nooit disposen
+// Kop-proxy: straal 0.18, dezelfde headshot-grootte als vóór T120 (toen nog
+// het zichtbare hoofd-mesh zelf) — nu een los, onzichtbaar object. Lichaam-
+// proxy: een enkele box die ruwweg het
+// hele silhouet (voeten tot net onder het hoofd) dekt — dit ticket vraagt
+// geen anatomische precisie, alleen een betrouwbare bodyshot-hitbox; de
+// wereld-Y is het midden van de box (voeten~0 tot ~1,45), als LOKALE
+// offset t.o.v. het romp-bot (dat op wereld-y=1,1 zit) hieronder herrekend.
+const HITBOX_KOP_STRAAL = 0.18;
+const HITBOX_LICHAAM_BREEDTE = 0.55;
+const HITBOX_LICHAAM_DIEPTE = 0.45;
+const HITBOX_LICHAAM_HOOGTE = 1.45;
+const HITBOX_LICHAAM_WERELD_Y = HITBOX_LICHAAM_HOOGTE / 2;   // = 0.725 — voeten (0) tot net onder het hoofd
 
 // Botnamen in skinIndex-volgorde — 'root' zelf draagt geen geometrie (puur
 // ophangpunt voor de andere zes), dus komt nooit voor als boneNaam in
@@ -8937,9 +9003,41 @@ function bouwOndodeGeometrieV2(delen) {
     const kleur = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
       const naam = typeof boneNaam === 'function' ? boneNaam(i, pos) : boneNaam;
-      skinIndex[i * 4] = V2_BOTNAMEN.indexOf(naam);   // slots 1-3 blijven 0 (weight 0, dus zonder effect)
-      skinWeight[i * 4] = 1;
-      kleur[i * 3] = kleur[i * 3 + 1] = kleur[i * 3 + 2] = tint;
+      // Ticket 121: `naam` mag nu ook een LIJST [{naam, gewicht}, …] zijn —
+      // echte skin-blending over maximaal 4 botten. T118 bond elke vertex
+      // hard aan één bot; dat kon met 3 vertexrijen in de torso nog net,
+      // maar met de veel fijnere anatomie van dit ticket zou een harde
+      // grens tussen pelvis/romp/chest bij elke sway een zichtbare knik
+      // (feitelijk een scheur) in het oppervlak geven — precies waar de
+      // ticket-spec voor waarschuwt. Gewichten worden hier genormaliseerd,
+      // zodat de aanroeper ze niet zelf hoeft op te tellen tot 1.
+      if (Array.isArray(naam)) {
+        let som = 0;
+        for (const b of naam) som += b.gewicht;
+        let slot = 0;
+        for (const b of naam) {
+          if (slot >= 4 || b.gewicht <= 0) continue;
+          skinIndex[i * 4 + slot] = V2_BOTNAMEN.indexOf(b.naam);
+          skinWeight[i * 4 + slot] = som > 0 ? b.gewicht / som : 0;
+          slot++;
+        }
+      } else {
+        skinIndex[i * 4] = V2_BOTNAMEN.indexOf(naam);   // slots 1-3 blijven 0 (weight 0, dus zonder effect)
+        skinWeight[i * 4] = 1;
+      }
+      // `tint` mag eveneens een functie zijn (per-vertex helderheid) — Ticket
+      // 121 gebruikt dat voor kledingranden/schaduwrichels binnen één deel.
+      // Vervolg-fix: een tint-functie mag nu ook een {r,g,b}-object teruggeven
+      // i.p.v. alleen een scalar — nodig voor de rottingsvlekken hieronder,
+      // die G/B sterker onderdrukken dan R (een echte kleurverschuiving,
+      // geen helderheid alleen). Bestaande scalar-tints (getal of functie die
+      // een getal teruggeeft) blijven ongewijzigd werken.
+      const t = typeof tint === 'function' ? tint(i, pos) : tint;
+      if (t !== null && typeof t === 'object') {
+        kleur[i * 3] = t.r; kleur[i * 3 + 1] = t.g; kleur[i * 3 + 2] = t.b;
+      } else {
+        kleur[i * 3] = kleur[i * 3 + 1] = kleur[i * 3 + 2] = t;
+      }
     }
     stuk.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndex, 4));
     stuk.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeight, 4));
@@ -8947,6 +9045,60 @@ function bouwOndodeGeometrieV2(delen) {
     return stuk;
   });
   return mergeGeometries(stukken, false);
+}
+
+// Vervolg-fix (speeltest: "kan het huidverval heftiger/duidelijker?" +
+// "optie 6, vertex-color decay-vlekken, gekozen na preview"): een paar
+// donkere, vuil-bruine rottingsvlekken bovenop de bestaande scalar-tint,
+// via ECHTE kleur (R relatief minder onderdrukt dan G/B) i.p.v. alleen
+// helderheid — dat is precies waarom T121's tint-mechanisme hierboven nu
+// ook een {r,g,b}-object mag teruggeven.
+//
+// Bewust GEEN bloedrood: vertex colors zijn een VERMENIGVULDIGING op de
+// basismateriaalkleur (voor een normale ondode ruwweg r≈0.11/g≈0.17/b≈0.09
+// — al donker en arm aan rood), en vermenigvuldigen kan alleen donkerder
+// maken, nooit rood TOEVOEGEN dat er niet al zit. Geverifieerd met een
+// preview-render vóór dit in de echte modelopbouw kwam (zie de sessie-
+// scratchpad): het bereikbare plafond is een donkere, vuilbruine plek, geen
+// bloedrode. Echt rood zou een eigen emissief kanaal nodig hebben zoals de
+// ogen dat hebben — dat is een nieuwe categorie in T89's emissiehiërarchie
+// en dus een grotere beslissing dan deze ticket, niet iets om er stilzwijgend
+// bij te plakken.
+const VERVAL_VLEK_KLEUR = { r: 1.3, g: 0.12, b: 0.10 };
+function vervalVlekkenTint(basisTint, plekken) {
+  return (i, pos) => {
+    const vx = pos.getX(i), vy = pos.getY(i), vz = pos.getZ(i);
+    let sterkte = 0;
+    for (const p of plekken) {
+      const d2 = (vx - p.x) ** 2 + (vy - p.y) ** 2 + (vz - p.z) ** 2;
+      const r2 = p.straal * p.straal;
+      if (d2 < r2) sterkte = Math.max(sterkte, 1 - Math.sqrt(d2 / r2));
+    }
+    if (sterkte <= 0) return basisTint;
+    sterkte = sterkte * sterkte * (3 - 2 * sterkte);   // smoothstep: zachte rand, geen harde cirkel
+    return {
+      r: basisTint + (VERVAL_VLEK_KLEUR.r * basisTint - basisTint) * sterkte,
+      g: basisTint + (VERVAL_VLEK_KLEUR.g * basisTint - basisTint) * sterkte,
+      b: basisTint + (VERVAL_VLEK_KLEUR.b * basisTint - basisTint) * sterkte,
+    };
+  };
+}
+// Willekeurige, plausibele plekken op de romp (voorkant, borst/buikhoogte) —
+// 2-3 per ondode, absolute wereldcoördinaten (zelfde conventie als de rest
+// van de V2-geometrie). Puur cosmetisch, dus gewoon Math.random() zoals de
+// andere per-instance variatie (huidtint, scheve nek) in maakOndodeModelV2().
+function kiesVervalPlekken() {
+  const aantal = 2 + Math.floor(Math.random() * 2);   // 2-3
+  const plekken = [];
+  for (let i = 0; i < aantal; i++) {
+    plekken.push({
+      x: (Math.random() - 0.5) * 0.30,
+      y: 0.90 + Math.random() * 0.42,
+      z: 0.04 + Math.random() * 0.14,
+      straal: 0.10 + Math.random() * 0.07,
+    });
+  }
+  return plekken;
 }
 
 // Bouwt het platte 7-botskelet in rustpose — exact dezelfde posities als
@@ -8992,8 +9144,334 @@ function bouwOndodeBotstructuurV2() {
   // Ticket 20-conventie (romp-bob/hoofd-microkantel in updateOndoden()):
   // dezelfde rustwaarden, nu als botveld i.p.v. Group-veld.
   bones.romp.userData.baseY = bones.romp.position.y;
+  // Ticket 129-fix (V2 beweegt slapper dan V1): pelvis/chest krijgen ook een
+  // baseY, zodat updateOndoden() de romp-bob straks op alle drie de
+  // torsobotten identiek kan zetten — zie de toelichting daar.
+  bones.pelvis.userData.baseY = bones.pelvis.position.y;
+  bones.chest.userData.baseY = bones.chest.position.y;
+  // Vervolg-fix (speeltest: "armen lijken soms los van de romp te staan"):
+  // de arm-botten hangen bij de schouder (chest-gewogen gebied, zie
+  // v2RompGewichten()) maar zijn zelf nooit aan chest gekoppeld — chest se
+  // sway/bob hierboven beweegt dus het schoudervlak weg van de statische
+  // arm. armL/armR krijgen een eigen baseY zodat updateOndoden() straks
+  // chest se bob ook op de armen kan zetten (zie daar).
+  if (bones.armL) bones.armL.userData.baseY = bones.armL.position.y;
+  bones.armR.userData.baseY = bones.armR.position.y;
   bones.hoofd.userData.baseRotX = bones.hoofd.rotation.x;
   return bones;
+}
+
+// ================================================================
+// TICKET 121 (v0.23, ronde 9 — Zombie V2 fase 4): anatomie- en
+// silhouetupgrade. T118 leverde bewust een grove "Base Humanoid" (bol als
+// hoofd, dozen als romp/armen/benen). Dit ticket vervangt die vormen door
+// anatomisch overtuigender geometrie ZONDER ook maar één extra zichtbare
+// mesh: alle extra detail zit in méér driehoeken bínnen dezelfde
+// samengestelde BufferGeometry, dus de draw-call-winst van T118 blijft
+// exact intact.
+//
+// GEEN enkele botpositie/-rotatie verandert (T118/T119-contract) en de
+// hitbox-proxies uit T120 hangen aan die botten, dus die blijven ook
+// ongewijzigd kloppen — alleen de huid eromheen is gedetailleerder.
+//
+// Detailniveau: de ticket-spec noemt drie ONDERZOEKSranges (2-4k / 4-8k /
+// 8-15k driehoeken) en vraagt expliciet om eerst een middenvariant te
+// bouwen en die met screenshots tegen een lagere variant af te wegen, i.p.v.
+// blind een getal te kiezen. Vandaar twee echte, schakelbare niveaus met
+// dezelfde vormen maar een andere tessellatie — zie ZOMBIE_V2_BASELINE.md
+// voor de gemeten uitkomst en de keuze die eruit volgde.
+const V2_DETAIL_NIVEAUS = {
+  laag:   { hoofdW: 20, hoofdH: 14, rompRadiaal: 14, rompSlices: 12, limbRadiaal: 10, armSlices: 8,  handSlices: 4, beenSlices: 10, voetSlices: 4 },
+  midden: { hoofdW: 32, hoofdH: 24, rompRadiaal: 24, rompSlices: 18, limbRadiaal: 14, armSlices: 11, handSlices: 5, beenSlices: 13, voetSlices: 5 },
+};
+// GEKOZEN: 'laag' (~2.320 driehoeken/ondode). Dit is een MEETuitkomst, geen
+// voorkeur. Beide niveaus zijn gebouwd en gefotografeerd (close-up op 1,15 m
+// = meleeafstand, en op 8,7 m = de overkant van een kamer), waarna de
+// pixelverschillen zijn geteld met tests/vergelijk-opnamen.mjs:
+//   T118-basis  -> 'laag'   : 9,8 % van de pixels verschilt (close-up)
+//   'laag'      -> 'midden' : 1,4 % close-up, 0,11 % op speelafstand
+// De ticket-regel is expliciet "verhoog alleen als het verschil op scherm
+// aantoonbaar is (close-up ÉN op speelafstand)" — en die EN-voorwaarde
+// haalt 'midden' niet: op speelafstand is 0,11 % niet waarneembaar, terwijl
+// het budget wél verdubbelt (2.324 -> 4.668 driehoeken per ondode, en bij
+// 18 gelijktijdige ondoden is dat ~42.000 extra driehoeken per frame).
+// De grote winst van dit ticket zit dus in de VORM, niet in de tessellatie:
+// bijna 10 % beeldverandering bij de eerste stap, nog geen 1,5 % bij de
+// tweede. 'midden' blijft staan als schakelbare variant, zodat deze afweging
+// later opnieuw te maken is zonder de code terug te hoeven bouwen.
+let ZOMBIE_V2_DETAIL = 'laag';
+
+// Bouwt een gesloten "loft": een reeks horizontale ringen (elk met een eigen
+// halve breedte rx, halve diepte rz en optionele z-verschuiving dz) verbonden
+// tot één gesloten oppervlak met dop boven en onder. Dit is het werkpaard
+// van dit ticket — romp, armen, handen, benen en voeten zijn allemaal
+// hetzelfde principe met een ander profiel, wat betekent dat er precies één
+// stuk geometrie-code te begrijpen en te onderhouden valt.
+//
+// Ringen lopen van BOVEN naar BENEDEN; de driehoek-winding hieronder is daar
+// op afgestemd (naar buiten wijzende normalen). De naadvertex wordt bewust
+// gedupliceerd (i <= radiaal) zodat de uv-naad niet over de hele mantel
+// terugloopt.
+function bouwLoftGeometrie(ringen, radiaal) {
+  const posities = [], uvs = [], index = [];
+  const perRing = radiaal + 1;
+  for (let s = 0; s < ringen.length; s++) {
+    const r = ringen[s];
+    for (let i = 0; i <= radiaal; i++) {
+      const a = (i / radiaal) * Math.PI * 2;
+      posities.push(Math.cos(a) * r.rx + (r.dx ?? 0), r.y, Math.sin(a) * r.rz + (r.dz ?? 0));
+      uvs.push(i / radiaal, 1 - s / (ringen.length - 1));
+    }
+  }
+  for (let s = 0; s < ringen.length - 1; s++) {
+    for (let i = 0; i < radiaal; i++) {
+      const a = s * perRing + i, b = a + 1;
+      const c = (s + 1) * perRing + i, d = c + 1;
+      index.push(a, b, c, b, d, c);
+    }
+  }
+  // Dop boven (normaal +Y) en onder (normaal -Y): één centrumvertex + waaier.
+  const boven = ringen[0], onder = ringen[ringen.length - 1];
+  const cBoven = posities.length / 3;
+  posities.push(boven.dx ?? 0, boven.y, boven.dz ?? 0);
+  uvs.push(0.5, 1);
+  for (let i = 0; i < radiaal; i++) index.push(cBoven, i + 1, i);
+  const cOnder = posities.length / 3;
+  posities.push(onder.dx ?? 0, onder.y, onder.dz ?? 0);
+  uvs.push(0.5, 0);
+  const laatste = (ringen.length - 1) * perRing;
+  for (let i = 0; i < radiaal; i++) index.push(cOnder, laatste + i, laatste + i + 1);
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(posities, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  g.setIndex(index);
+  g.computeVertexNormals();
+  return g;
+}
+
+// Bemonstert een profiel (sleutelringen op genormaliseerde diepte t=0..1)
+// naar `aantal` gelijkmatig verdeelde ringen tussen yVan (t=0) en yTot
+// (t=1). Smoothstep tussen sleutels i.p.v. lineair: dat is precies het
+// verschil tussen "een stapel kokers" en een vloeiende anatomische overgang.
+function bemonsterProfiel(sleutels, aantal, yVan, yTot) {
+  const uit = [];
+  for (let s = 0; s < aantal; s++) {
+    const t = s / (aantal - 1);
+    let k = 0;
+    while (k < sleutels.length - 2 && sleutels[k + 1].t < t) k++;
+    const a = sleutels[k], b = sleutels[k + 1];
+    const spanne = b.t - a.t;
+    const f = spanne <= 0 ? 0 : Math.min(1, Math.max(0, (t - a.t) / spanne));
+    const e = f * f * (3 - 2 * f);
+    uit.push({
+      y: yVan + (yTot - yVan) * t,
+      rx: a.rx + (b.rx - a.rx) * e,
+      rz: a.rz + (b.rz - a.rz) * e,
+      dz: (a.dz ?? 0) + ((b.dz ?? 0) - (a.dz ?? 0)) * e,
+    });
+  }
+  return uit;
+}
+
+// --- Hoofd: schedel, jukbeenderen, wenkbrauwboog, kaaklijn, oogkassen -----
+// Vertrekt van een bol met de ONGEWIJZIGDE V1-straal (0,18) en vervormt die
+// per vertex. De straal blijft expres gelijk: het hoofd-hoogte-anker
+// (ontwerpbeslissing 16) en de kop-hitbox-proxy uit T120 rekenen er beide
+// mee, dus alleen de VORM binnen die bol verandert, niet de maat ervan.
+const V2_HOOFD_STRAAL = 0.18;
+function bouwV2HoofdGeometrie(detail) {
+  const g = new THREE.SphereGeometry(V2_HOOFD_STRAAL, detail.hoofdW, detail.hoofdH);
+  const pos = g.attributes.position;
+  const r = V2_HOOFD_STRAAL;
+  for (let i = 0; i < pos.count; i++) {
+    let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const ny = y / r;
+    // 1. Kaaklijn: de onderste helft loopt taps toe naar een kin die iets
+    //    naar voren steekt — het verschil tussen "bol" en "gezicht".
+    if (ny < 0) {
+      const k = Math.pow(-ny, 1.4);
+      x *= 1 - 0.42 * k;
+      z *= 1 - 0.26 * k;
+      y *= 1 + 0.10 * k;
+      z += 0.038 * r * k * 6;
+    }
+    // 2. Schedeldak iets hoger, achterhoofd platter (een bol leest van opzij
+    //    als een ballon; een echte schedel is achter afgevlakt).
+    if (ny > 0.25) y += 0.10 * r * (ny - 0.25);
+    if (z < -0.45 * r) z += 0.18 * (z / r + 0.45) * -r * 0.55;
+    // 3. Jukbeenderen: smalle band net onder ooghoogte iets breder.
+    x *= 1 + 0.11 * Math.exp(-Math.pow((ny + 0.04) / 0.20, 2));
+    // 4. Wenkbrauwboog: alleen op de voorkant, net boven ooghoogte.
+    if (z > 0) z += 0.13 * r * Math.exp(-Math.pow((ny - 0.24) / 0.12, 2));
+    // 5. Oogkassen: twee ellipsvormige indeukingen op de plek waar de
+    //    oog-meshes zitten, zodat die in een holte liggen i.p.v. als
+    //    knikkers op een bol te plakken.
+    if (z > 0.25 * r) {
+      for (const kant of [-1, 1]) {
+        const dx = (x - kant * 0.068) / 0.062;
+        const dy = (y - 0.012) / 0.050;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < 1) z -= (1 - d2) * 0.030;
+      }
+    }
+    pos.setXYZ(i, x, y, z);
+  }
+  g.computeVertexNormals();
+  return g.translate(0, 1.58, 0.02);
+}
+
+// --- Romp: nek, schouderlijn, ribbenkast, taille, heup -------------------
+// Eén doorlopend profiel van de nekaanzet (verstopt in het hoofd) tot onder
+// de heup. Vervangt zowel de oude torso-doos ALS de twee losse schouder-
+// dozen uit T118 — de schouderlijn is nu onderdeel van hetzelfde oppervlak,
+// wat meteen de lelijke naad tussen romp en schouder wegneemt.
+const V2_ROMP_PROFIEL = [
+  { t: 0.00, rx: 0.070, rz: 0.070 },   // nekaanzet
+  { t: 0.06, rx: 0.080, rz: 0.078 },
+  { t: 0.12, rx: 0.115, rz: 0.094 },   // nek loopt over in de schouder
+  { t: 0.19, rx: 0.196, rz: 0.110 },   // schouderlijn
+  { t: 0.25, rx: 0.232, rz: 0.117 },   // breedste punt (deltoïde-aanzet)
+  { t: 0.35, rx: 0.216, rz: 0.119 },   // borstkas
+  { t: 0.47, rx: 0.194, rz: 0.115 },   // onderste ribben
+  { t: 0.60, rx: 0.166, rz: 0.103 },
+  { t: 0.70, rx: 0.148, rz: 0.093 },   // taille (smalste punt)
+  { t: 0.82, rx: 0.170, rz: 0.100 },   // heup
+  { t: 0.92, rx: 0.186, rz: 0.106 },
+  { t: 1.00, rx: 0.170, rz: 0.099 },
+];
+const V2_ROMP_Y_BOVEN = 1.50, V2_ROMP_Y_ONDER = 0.76;
+// `breedte` (Ticket 124/126) = typeInfo.vorm.rompBreedte x profiel.rompFactor,
+// exact dezelfde twee getallen die V1 op `torso.scale.x` zet. De diepte volgt
+// op HALVE sterkte mee: een Sjouwer die alleen in de breedte groeit oogt als
+// een kartonnen plaat, terwijl V1's losse schouderdozen die indruk vroeger
+// verhulden. Zelfde brondata, betere vertaling naar een gesloten oppervlak.
+function bouwV2RompGeometrie(detail, breedte = 1) {
+  const fx = breedte, fz = 1 + (breedte - 1) * 0.5;
+  const ringen = bemonsterProfiel(V2_ROMP_PROFIEL, detail.rompSlices, V2_ROMP_Y_BOVEN, V2_ROMP_Y_ONDER)
+    .map(r => ({ ...r, rx: r.rx * fx, rz: r.rz * fz }));
+  return bouwLoftGeometrie(ringen, detail.rompRadiaal);
+}
+
+// Bochel (Sjouwer-vorm en/of het 'gebocheld'-profiel) en buik (Brander).
+// Ticket 124 vraagt expliciet om te METEN of een vertexregio volstaat i.p.v.
+// een losse mesh: dat is hier zo. In tegenstelling tot de Brander-KERN (die
+// raakOndode() onafhankelijk moet kunnen schalen voor de kernpuls, en dus wél
+// een eigen object blijft) heeft de bochel geen eigen animatie — hij hoeft
+// alleen met de rug mee te bewegen, en dat doet hij vanzelf als hij aan het
+// chest-bot hangt. Dus: gewoon extra driehoeken in dezelfde samengestelde
+// geometrie, en het draw-call-budget van T122 (1 per ondode) blijft staan.
+// Posities zijn 1:1 die van V1 (romp-lokaal (0, 0.16, -0.13) resp.
+// (0, -0.1, 0.06), met het romp-bot op wereld-y 1,1).
+function bouwV2BochelGeometrie(detail) {
+  const seg = Math.max(8, Math.round(detail.limbRadiaal * 0.9));
+  return new THREE.SphereGeometry(0.14, seg, Math.round(seg * 0.7))
+    .scale(1.05, 0.85, 1).translate(0, 1.26, -0.13);
+}
+function bouwV2BuikGeometrie(detail) {
+  const seg = Math.max(8, Math.round(detail.limbRadiaal * 0.9));
+  return new THREE.SphereGeometry(0.16, seg, Math.round(seg * 0.7))
+    .scale(1, 0.9, 1).translate(0, 1.0, 0.06);
+}
+
+// --- Arm: deltoïde, bovenarm, elleboog, onderarm, pols -------------------
+// Wordt langs -Y gebouwd en daarna met ARM_RUST_ROTATIE_X gedraaid en naar
+// het schouderpunt verplaatst — exact dezelfde "geroteerde pivot"-truc als
+// V1/T118, dus de arm belandt op precies dezelfde plek als voorheen.
+const V2_ARM_LENGTE = 0.46;
+// Vervolg-fix (speeltest: "armen lijken soms los van de romp te staan",
+// ook na de sway/bob-sync-fix): het schoudergewricht (t=0,00) was SMALLER
+// dan de deltoïde eronder, en de arm draait tijdens de loopcyclus om zijn
+// pivot (die vlak bij, niet IN, het rompoppervlak zit — gemeten: ~2 cm
+// afstand in rust). Bij een naar-achteren-swing draait die kleine ring dan
+// zichtbaar los van de romp (bevestigd met een render op loopFase=π/2 — een
+// gat, terwijl de tegenovergestelde swing-richting wél verbonden oogt). V1
+// had dit probleem niet: zijn schouderblok (T99) is een STILSTAAND, apart
+// object dat nooit met de arm meedraait en dus altijd overlapt. V2 heeft
+// geen los blok — dus het schoudergewricht zelf moet groot genoeg zijn om
+// bij ELKE swing-hoek in het rompoppervlak te blijven steken, niet alleen
+// in rust. Vergroot naar het formaat van de deltoïde (i.p.v. eronder).
+const V2_ARM_PROFIEL = [
+  { t: 0.00, rx: 0.085, rz: 0.080 },   // schoudergewricht — groot genoeg om bij elke swing-hoek te blijven overlappen
+  { t: 0.07, rx: 0.080, rz: 0.074 },   // deltoïde
+  { t: 0.22, rx: 0.053, rz: 0.049 },   // bovenarm
+  { t: 0.40, rx: 0.046, rz: 0.043 },
+  { t: 0.49, rx: 0.050, rz: 0.047 },   // elleboog
+  { t: 0.60, rx: 0.044, rz: 0.041 },   // onderarm
+  { t: 0.80, rx: 0.037, rz: 0.034 },
+  { t: 0.93, rx: 0.030, rz: 0.026 },   // pols
+  { t: 1.00, rx: 0.029, rz: 0.025 },
+];
+const V2_HAND_PROFIEL = [
+  { t: 0.00, rx: 0.030, rz: 0.026 },   // pols
+  { t: 0.25, rx: 0.045, rz: 0.031 },   // handpalm
+  { t: 0.60, rx: 0.047, rz: 0.033 },
+  { t: 0.85, rx: 0.038, rz: 0.027 },   // vingers
+  { t: 1.00, rx: 0.026, rz: 0.019 },   // vingertoppen
+];
+// Schouderpunt: identiek aan bouwOndodeBotstructuurV2()/V1 (zie daar).
+const V2_SCHOUDER_Y = 1.13 + 0.25 * Math.cos(0.5);
+const V2_SCHOUDER_Z = 0.06 - 0.25 * Math.sin(0.5);
+// `lengteMult` = V1's armLengteMultiplier (1 ± traits.armVerschil),
+// `dikteMult` = profiel.armDikteFactor. De hand krijgt bewust ALLEEN de
+// lengte mee, niet de dikte — exact V1's keuze daar ("arm.scale mag de
+// handgrootte niet meeschalen"), want een magere ondode heeft dunne armen
+// met normale handen, geen miniatuurhandjes.
+function bouwV2ArmGeometrie(detail, kant, lengteMult = 1, dikteMult = 1) {
+  const ringen = bemonsterProfiel(V2_ARM_PROFIEL, detail.armSlices, 0, -V2_ARM_LENGTE * lengteMult)
+    .map(r => ({ ...r, rx: r.rx * dikteMult, rz: r.rz * dikteMult }));
+  return bouwLoftGeometrie(ringen, detail.limbRadiaal)
+    .rotateX(ARM_RUST_ROTATIE_X).translate(kant * 0.24, V2_SCHOUDER_Y, V2_SCHOUDER_Z);
+}
+function bouwV2HandGeometrie(detail, kant, lengteMult = 1) {
+  const van = (-V2_ARM_LENGTE + 0.01) * lengteMult, tot = (-V2_ARM_LENGTE - 0.11) * lengteMult;
+  return bouwLoftGeometrie(bemonsterProfiel(V2_HAND_PROFIEL, detail.handSlices, van, tot), detail.limbRadiaal)
+    .rotateX(ARM_RUST_ROTATIE_X).translate(kant * 0.24, V2_SCHOUDER_Y, V2_SCHOUDER_Z);
+}
+
+// --- Been: dij, knie, kuit, enkel + een aparte voet ----------------------
+// Rechtstreeks in absolute wereldcoördinaten (het been-bot heeft geen
+// rustrotatie, dus er valt niets te draaien).
+const V2_BEEN_PROFIEL = [
+  { t: 0.00, rx: 0.080, rz: 0.090 },   // heupaanzet
+  { t: 0.12, rx: 0.077, rz: 0.087 },   // dij
+  { t: 0.32, rx: 0.066, rz: 0.074 },
+  { t: 0.46, rx: 0.057, rz: 0.063 },   // net boven de knie
+  { t: 0.54, rx: 0.060, rz: 0.068 },   // knieschijf
+  { t: 0.62, rx: 0.057, rz: 0.069 },   // kuit (achterkant boller)
+  { t: 0.72, rx: 0.051, rz: 0.061 },
+  { t: 0.86, rx: 0.039, rz: 0.045 },
+  { t: 0.95, rx: 0.033, rz: 0.036 },   // enkel
+  { t: 1.00, rx: 0.032, rz: 0.034 },
+];
+const V2_VOET_PROFIEL = [
+  { t: 0.00, rx: 0.034, rz: 0.040, dz: 0.004 },   // enkel
+  { t: 0.45, rx: 0.041, rz: 0.070, dz: 0.030 },   // wreef
+  { t: 0.80, rx: 0.045, rz: 0.086, dz: 0.043 },   // voetblad
+  { t: 1.00, rx: 0.041, rz: 0.081, dz: 0.045 },   // zool
+];
+function bouwV2BeenGeometrie(detail, kant) {
+  return bouwLoftGeometrie(bemonsterProfiel(V2_BEEN_PROFIEL, detail.beenSlices, 0.80, 0.02), detail.limbRadiaal)
+    .translate(kant * 0.075, 0, 0);
+}
+function bouwV2VoetGeometrie(detail, kant) {
+  return bouwLoftGeometrie(bemonsterProfiel(V2_VOET_PROFIEL, detail.voetSlices, 0.075, 0.004), detail.limbRadiaal)
+    .translate(kant * 0.075, 0, 0);
+}
+
+// Skin-gewichten voor de romp: vloeiende blend pelvis → romp → chest op
+// basis van de wereld-Y van de vertex. Overlappende overgangszones i.p.v.
+// T118's harde grenzen — zie de toelichting bij bouwOndodeGeometrieV2().
+function v2RompGewichten(i, pos) {
+  const y = pos.getY(i);
+  const stap = (van, tot) => {
+    const f = Math.min(1, Math.max(0, (y - van) / (tot - van)));
+    return f * f * (3 - 2 * f);
+  };
+  const wPelvis = 1 - stap(0.90, 1.08);
+  const wChest = stap(1.14, 1.34);
+  const wRomp = Math.max(0, 1 - wPelvis - wChest);
+  return [{ naam: 'pelvis', gewicht: wPelvis }, { naam: 'romp', gewicht: wRomp }, { naam: 'chest', gewicht: wChest }];
 }
 
 function maakOndodeModelV2(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeTraits()) {
@@ -9020,16 +9498,37 @@ function maakOndodeModelV2(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeT
   // animatie, niet een offset die hier nog eens opgeteld moet worden.
   //
   // Armen/handen: de arm-pivot staat in bouwOndodeBotstructuurV2() op
-  // schouderY/schouderZ MET rotation.x = ARM_RUST_ROTATIE_X — exact V1's
+  // schouderY/schouderZ MET rotation.x = ARM_RUST_ROTATIE_X — een
   // "geroteerde-pivot"-truc (zie de toelichting daar). Het rotatie-effect
   // daarvan op de arm-/hand-positie is al volledig verrekend in schouderY/
   // schouderZ zelf; de mesh landt daardoor op precies dezelfde absolute
-  // punten als V1's ONgeroteerde model van vóór die refactor gebruikte
-  // (y=1.13/z=0.06 voor de arm — zie de toelichting bij schouderY/schouderZ
-  // in maakOndodeModelV1()). Geverifieerd met een losse Group-hiërarchie
-  // (dezelfde opbouw als V1) die exact deze getallen teruggaf.
-  const beenGeoL = new THREE.BoxGeometry(0.13, 0.8, 0.16).translate(-0.075, 0.4, 0);
-  const beenGeoR = new THREE.BoxGeometry(0.13, 0.8, 0.16).translate(0.075, 0.4, 0);
+  // punten als het ONgeroteerde model van vóór die refactor gebruikte
+  // (y=1.13/z=0.06 voor de arm). Geverifieerd met een losse Group-hiërarchie
+  // die exact deze getallen teruggaf.
+  // Ticket 121: alle onderstaande vormen komen nu uit de anatomie-bouwers
+  // hierboven (loft-profielen + een vervormde schedel) i.p.v. uit kale
+  // dozen/bollen. De ABSOLUTE-rustpose-regel uit T118 (zie de lange
+  // toelichting hieronder) geldt onverkort — de bouwers leveren hun
+  // geometrie al op de juiste wereldplek af.
+  const detail = V2_DETAIL_NIVEAUS[ZOMBIE_V2_DETAIL] ?? V2_DETAIL_NIVEAUS.midden;
+  // Ticket 124/125/126: exact dezelfde brondata als V1 (ONDODE_TYPES[..].vorm
+  // en VARIATIE_PROFIELEN[..]) en exact dezelfde formules — alleen de
+  // TOEPASSING verschilt, want V2 heeft geen losse meshes om te schalen.
+  // Vormverschillen (breedte, bochel, buik, armmaat, ontbrekende arm) gaan
+  // in de GEOMETRIE; houdingsverschillen (kromme rug, ingedoken kop, slepend
+  // been, scheve nek) gaan als bot-transform NA skinnedMesh.bind() — vóór
+  // bind() zouden ze in de bind-pose gebakken worden en dus niets doen.
+  const vorm = typeInfo.vorm ?? {};
+  const profiel = VARIATIE_PROFIELEN[traits.profiel] ?? {};
+  const rugHoek = (traits.kromme ? 0.22 + Math.random() * 0.12 : 0) + (vorm.voorover ?? 0);
+  const rompBreedte = (vorm.rompBreedte ?? 1) * (profiel.rompFactor ?? 1);
+  const armDikteFactor = profiel.armDikteFactor ?? 1;
+  const heeftBochel = !!(vorm.bochel || profiel.bochel);
+
+  const beenGeoL = bouwV2BeenGeometrie(detail, -1);
+  const beenGeoR = bouwV2BeenGeometrie(detail, 1);
+  const voetGeoL = bouwV2VoetGeometrie(detail, -1);
+  const voetGeoR = bouwV2VoetGeometrie(detail, 1);
   // Ticket 119: heightSegments 2 (i.p.v. T118's ongesegmenteerde box) geeft
   // een middelste vertex-rij op y=1,1 naast de bestaande boven-/onderrand op
   // y=1,4/y=0,8 — nodig om de torso straks over drie botten te verdelen
@@ -9038,61 +9537,79 @@ function maakOndodeModelV2(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeT
   // behoudt zo de middelste band en daarmee zijn bestaande bob-/twist-/
   // wobbel-effecten (updateOndoden()/raakOndode() schrijven nog steeds naar
   // delen.romp, ongewijzigd) — alleen de randen krijgen de nieuwe sway.
-  const torsoGeo = new THREE.BoxGeometry(0.36, 0.6, 0.22, 1, 2, 1).translate(0, 1.1, 0);
-  const schouderGeoL = new THREE.BoxGeometry(0.14, 0.14, 0.16).translate(-0.19, 1.34, 0.01);
-  const schouderGeoR = new THREE.BoxGeometry(0.14, 0.14, 0.16).translate(0.19, 1.34, 0.01);
-  const hoofdGeo = new THREE.SphereGeometry(0.18, 20, 16).translate(0, 1.58, 0.02);
-  const armGeoL = new THREE.BoxGeometry(0.09, 0.5, 0.09).translate(-0.24, 1.13, 0.06);
-  const armGeoR = new THREE.BoxGeometry(0.09, 0.5, 0.09).translate(0.24, 1.13, 0.06);
-  // Hand = de volle armlengte vanaf de pivot i.p.v. de halve — zelfde
-  // rotatierichting, dubbele afstand vanaf schouderY/schouderZ, dus
-  // 2*(armpunt) - pivot (lineair, want rotatie is lineair in de offset).
-  const handY = 2 * 1.13 - (1.13 + 0.25 * Math.cos(0.5));
-  const handZ = 2 * 0.06 - (0.06 - 0.25 * Math.sin(0.5));
-  const handGeoL = new THREE.BoxGeometry(0.08, 0.08, 0.08).translate(-0.24, handY, handZ);
-  const handGeoR = new THREE.BoxGeometry(0.08, 0.08, 0.08).translate(0.24, handY, handZ);
+  const torsoGeo = bouwV2RompGeometrie(detail, rompBreedte);
+  const hoofdGeo = bouwV2HoofdGeometrie(detail);
+  // Ticket 126: armlengteverschil per kant, identieke formule als V1.
+  // Het 'eenarmig'-profiel laat ALTIJD de linkerarm weg (delen.armL blijft
+  // undefined) — updateOndoden()/de aanvalcode hebben daar al `if
+  // (delen.armL)`-guards voor, en de raycast-regressietests mikken bewust
+  // op de rechterarm.
+  const armLengteL = 1 - traits.armVerschil, armLengteR = 1 + traits.armVerschil;
+  const armGeoL = profiel.mistArmL ? null : bouwV2ArmGeometrie(detail, -1, armLengteL, armDikteFactor);
+  const armGeoR = bouwV2ArmGeometrie(detail, 1, armLengteR, armDikteFactor);
+  const handGeoL = profiel.mistArmL ? null : bouwV2HandGeometrie(detail, -1, armLengteL);
+  const handGeoR = bouwV2HandGeometrie(detail, 1, armLengteR);
+  const bochelGeo = heeftBochel ? bouwV2BochelGeometrie(detail) : null;
+  const buikGeo = vorm.buik ? bouwV2BuikGeometrie(detail) : null;
 
   // Benen (broek) krijgen bewust GEEN aparte kleur zoals V1's losse, vaste
   // mat(0x2c2620) — één gedeeld, vertex-getint materiaal kan alleen
   // HELDERHEID per deel geven (multiplicatief t.o.v. material.color), geen
   // andere KLEUR. Een merkbaar donkerder beenpaar (0,55x) is de
-  // dichtstbijzijnde benadering binnen die beperking; een eigen broektint is
-  // polish voor een latere ronde (T121+), niet iets dit fundament-ticket
-  // hoeft op te lossen.
-  // Torso-vertices over drie botten verdelen op basis van hun (al absolute)
-  // wereld-Y: de bovenrand (y=1,4, schouderlijn) naar 'chest', de onderrand
-  // (y=0,8, heuplijn) naar 'pelvis', de middelste rij (y=1,1) blijft op
-  // 'romp'. Drempels op 1,05/1,15 i.p.v. exact 1,1 om float-afronding nooit
-  // een vertex de verkeerde kant op te laten vallen.
-  const torsoBoneVoorVertex = (i, pos) => {
+  // dichtstbijzijnde benadering binnen die beperking, met de voeten (schoeisel)
+  // nog een stap donkerder — Ticket 121 gebruikt daarnaast de nieuwe
+  // per-vertex tintfunctie om de broeksrand op de dij zichtbaar te maken
+  // zonder er geometrie voor toe te voegen.
+  const broekTint = (i, pos) => {
     const y = pos.getY(i);
-    if (y > 1.15) return 'chest';
-    if (y < 1.05) return 'pelvis';
-    return 'romp';
+    // Boven de broeksrand (dij) donker stof; eronder loopt het geleidelijk
+    // iets lichter (versleten/vuil), met een korte, scherpe overgang op de
+    // rand zelf zodat je 'm als KLEDINGrand leest, niet als schaduw.
+    if (y > 0.46) return 0.5;
+    if (y > 0.42) return 0.5 + (0.46 - y) / 0.04 * 0.12;
+    return 0.62;
   };
+  const vervalPlekken = kiesVervalPlekken();
   const composietGeo = bouwOndodeGeometrieV2([
-    { boneNaam: 'beenL', geometrie: beenGeoL, tint: 0.55 },
-    { boneNaam: 'beenR', geometrie: beenGeoR, tint: 0.55 },
-    { boneNaam: torsoBoneVoorVertex, geometrie: torsoGeo, tint: 1 },
-    { boneNaam: 'romp', geometrie: schouderGeoL, tint: 1 },
-    { boneNaam: 'romp', geometrie: schouderGeoR, tint: 1 },
+    { boneNaam: 'beenL', geometrie: beenGeoL, tint: broekTint },
+    { boneNaam: 'beenR', geometrie: beenGeoR, tint: broekTint },
+    { boneNaam: 'beenL', geometrie: voetGeoL, tint: 0.38 },
+    { boneNaam: 'beenR', geometrie: voetGeoR, tint: 0.38 },
+    { boneNaam: v2RompGewichten, geometrie: torsoGeo, tint: vervalVlekkenTint(1, vervalPlekken) },
     { boneNaam: 'hoofd', geometrie: hoofdGeo, tint: 1.15 },   // zelfde 1,15x als V1's hoofd
-    { boneNaam: 'armL', geometrie: armGeoL, tint: 1 },
-    { boneNaam: 'armL', geometrie: handGeoL, tint: 1 },
+    // Bochel hangt aan 'chest' (beweegt met de bovenrug mee), buik aan 'romp'
+    // — beide gewoon onderdeel van dezelfde samengestelde geometrie, dus nul
+    // extra draw calls. De bochel is bewust iets donkerder (0,85x), precies
+    // zoals V1's bochel-materiaal.
+    ...(bochelGeo ? [{ boneNaam: 'chest', geometrie: bochelGeo, tint: 0.85 }] : []),
+    ...(buikGeo ? [{ boneNaam: 'romp', geometrie: buikGeo, tint: 1 }] : []),
+    ...(armGeoL ? [{ boneNaam: 'armL', geometrie: armGeoL, tint: 1 }] : []),
+    ...(handGeoL ? [{ boneNaam: 'armL', geometrie: handGeoL, tint: 0.92 }] : []),
     { boneNaam: 'armR', geometrie: armGeoR, tint: 1 },
-    { boneNaam: 'armR', geometrie: handGeoR, tint: 1 },
+    { boneNaam: 'armR', geometrie: handGeoR, tint: 0.92 },
   ]);
   // De bronvormen zijn na het samenvoegen niet meer nodig — bouwOndode-
   // GeometrieV2() kloont elke deel-geometrie vóór het toevoegen van skin-
   // attributen, dus deze zijn nooit gedeeld/gecachet (geen geo()-aanroep,
   // in tegenstelling tot V1) en moeten hier expliciet weg.
-  for (const g of [beenGeoL, beenGeoR, torsoGeo, schouderGeoL, schouderGeoR, hoofdGeo, armGeoL, armGeoR, handGeoL, handGeoR]) g.dispose();
+  for (const g of [beenGeoL, beenGeoR, voetGeoL, voetGeoR, torsoGeo, hoofdGeo,
+                   armGeoL, armGeoR, handGeoL, handGeoR, bochelGeo, buikGeo]) {
+    if (g) g.dispose();   // armL/hand/bochel/buik zijn null bij eenarmig resp. types zonder bochel/buik
+  }
 
   // Eén materiaal-instantie voor het HELE lichaam (i.p.v. V1's tot 11 per
   // ondode) — vertexColors:true zodat het 'color'-attribuut hierboven de
   // per-deel helderheid aanstuurt. Zelfde rimlight-injectie (T100) als V1,
   // hergebruikt via dezelfde fabriek.
-  const materiaal = maakOndodeMateriaal(huidKleur, 0.85, true);
+  // Ticket 122: hetzelfde materiaal draagt nu OOK de oogregio (zie
+  // maakOndodeMateriaal()) — de ogen kosten daardoor geen enkel extra
+  // object meer. De uniforms moeten dus vóór de materiaalfabriek bestaan.
+  // PER ONDODE, niet gedeeld: elke ondode pulseert op zijn eigen timing.
+  const oogUniforms = {
+    kleur: { value: new THREE.Color(typeInfo.oogKleur) },
+    intensiteit: { value: OOG_INTENSITEIT_BASIS },
+  };
+  const materiaal = maakOndodeMateriaal(huidKleur, 0.85, true, oogUniforms, vorm.ingedokenKop ? 1.35 : 1);
   delen.huidMaterialen = [materiaal];   // Ticket 95: kill-flash itereert deze array — nu lengte 1
 
   const skinnedMesh = new THREE.SkinnedMesh(composietGeo, materiaal);
@@ -9106,20 +9623,70 @@ function maakOndodeModelV2(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeT
   groep.add(skinnedMesh);
   delen.skinnedMesh = skinnedMesh;
   delen.skeleton = skeleton;
+  // Ticket 120: de zichtbare mesh verhuist naar zijn EIGEN layer — blijft
+  // zichtbaar (camera.layers enablet deze layer, zie de constante hierboven),
+  // maar wordt door de raycaster nooit meer gevonden (die layer staat daar
+  // niet aan). `userData.lichaamsdeel` wordt hier bewust NOOIT op gezet —
+  // dat hoort alleen op de hitbox-proxies hieronder.
+  skinnedMesh.layers.set(ONDODE_MESH_LAYER);
 
-  // Ogen: eigen materiaal (moet los kunnen gloeien — een vertex-getint
-  // huidmateriaal kan geen per-vertex EMISSIVE geven, alleen per-vertex
-  // helderheid op de diffuse kleur), dus gewoon twee losse Mesh-kinderen
-  // van het hoofd-bot. Bone is een Object3D-subklasse, dus `.add()` werkt
-  // hier identiek aan V1's `hoofdGroep.add(oog)`.
-  const oogMateriaal = new THREE.MeshStandardMaterial({ color: typeInfo.oogKleur, emissive: typeInfo.oogKleur, emissiveIntensity: OOG_INTENSITEIT_BASIS });
-  delen.oogMateriaal = oogMateriaal;
-  for (const kant of [-1, 1]) {
-    const oog = new THREE.Mesh(geo('oog', () => new THREE.SphereGeometry(0.02, 12, 8)), oogMateriaal);
-    oog.position.set(kant * 0.06, 0.01, 0.165);
-    oog.userData.lichaamsdeel = 'kop';
-    bones.hoofd.add(oog);
+  // Ticket 122: `delen.oogMateriaal` is voor V2 geen echt Material meer maar
+  // een FACADE — een klein object met precies één levende property. Alle
+  // bestaande aanroepers (zetOogBasis(), de windup-/herstelpuls in
+  // updateOndoden(), en de testsuite) doen uitsluitend
+  // `oogMateriaal.emissiveIntensity = x` of lezen die waarde; de setter
+  // schrijft dat rechtstreeks door naar het per-ondode shader-uniform.
+  // Zo blijft het complete T31-contract werken zonder dat één regel
+  // aanroepcode iets van de nieuwe implementatie hoeft te weten.
+  delen.oogUniforms = oogUniforms;
+  delen.oogMateriaal = {
+    isOogFacade: true,
+    get emissiveIntensity() { return oogUniforms.intensiteit.value; },
+    set emissiveIntensity(v) { oogUniforms.intensiteit.value = v; },
+    // Alleen-lezen spiegels van wat V1's echte material op deze plek bood,
+    // zodat een toekomstige lezer geen `undefined` krijgt.
+    get color() { return oogUniforms.kleur.value; },
+    get emissive() { return oogUniforms.kleur.value; },
+  };
+
+  // Ticket 122: Brander-kern blijft, net als in V1, een LOSSE kleine mesh.
+  // Dat is de bewuste uitzondering op "1 draw call per ondode" en de reden
+  // is concreet: raakOndode() schaalt `delen.kern` onafhankelijk voor de
+  // kernpuls, en een REGIO binnen één samengestelde SkinnedMesh laat zich
+  // niet met een object-transform schalen. Alleen de Brander betaalt die
+  // tweede draw call; de andere vier types blijven op één. Gedeeld
+  // kernMateriaal, geen PointLight (invariant 2), en op de mesh-layer zodat
+  // de hitbox-proxies uit T120 de enige raycast-doelen blijven.
+  if (typeInfo.vorm?.buik) {
+    const kern = new THREE.Mesh(geo('kern', () => new THREE.SphereGeometry(0.07, 12, 10)), kernMateriaal);
+    kern.position.set(0, -0.1, 0.19);
+    kern.layers.set(ONDODE_MESH_LAYER);
+    bones.romp.add(kern);
+    delen.kern = kern;
   }
+
+  // Ticket 120: onzichtbare hitbox-proxies. Kind van hun bot (net als de
+  // ogen hierboven, GEEN skinning) zodat ze de posed bone automatisch
+  // volgen — tijdens lopen, kromme rug, aanval-windup, flinch, sterven,
+  // zonder eigen update-code. `userData.lichaamsdeel` staat UITSLUITEND
+  // hierop (nooit op de zichtbare skinnedMesh, zie hierboven) — dat is wat
+  // schiet() leest om een headshot van een bodyshot te onderscheiden.
+  const kopProxy = new THREE.Mesh(geo('hitboxKop', () => new THREE.SphereGeometry(HITBOX_KOP_STRAAL, 8, 6)), ONDODE_HITBOX_MATERIAAL);
+  kopProxy.visible = false;
+  kopProxy.layers.set(ONDODE_HITBOX_LAYER);
+  kopProxy.userData.lichaamsdeel = 'kop';
+  bones.hoofd.add(kopProxy);
+
+  const lichaamProxy = new THREE.Mesh(
+    geo('hitboxLichaam', () => new THREE.BoxGeometry(HITBOX_LICHAAM_BREEDTE, HITBOX_LICHAAM_HOOGTE, HITBOX_LICHAAM_DIEPTE)),
+    ONDODE_HITBOX_MATERIAAL
+  );
+  lichaamProxy.visible = false;
+  lichaamProxy.layers.set(ONDODE_HITBOX_LAYER);
+  lichaamProxy.position.y = HITBOX_LICHAAM_WERELD_Y - bones.romp.position.y;   // lokaal t.o.v. het romp-bot
+  bones.romp.add(lichaamProxy);
+  delen.kopProxy = kopProxy;
+  delen.lichaamProxy = lichaamProxy;
 
   // Zelfde sleutelnamen als V1 (zie de ticket-spec) — updateOndoden()/
   // raakOndode()/doodOndode() lezen/schrijven deze zonder aanpassing.
@@ -9134,6 +9701,57 @@ function maakOndodeModelV2(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeT
   // ontbreken) blijft vanzelf ongemoeid.
   delen.pelvis = bones.pelvis;
   delen.chest = bones.chest;
+  // Ticket 126: het 'eenarmig'-profiel. De BOT blijft in het skelet staan
+  // (een bone waar geen enkele vertex aan gebonden is, is voor Three.js
+  // volstrekt onschuldig — geverifieerd in test-varianten.mjs), maar
+  // `delen.armL` verdwijnt, precies zoals in V1. Alle schrijvers hebben
+  // daar al een guard voor.
+  if (profiel.mistArmL) delen.armL = undefined;
+  // Ticket 124/125/126: de afgeleide vormparameters expliciet bewaren. Ze
+  // zijn niet uit de samengestelde geometrie terug te meten (een bounding
+  // box wordt door de ARMEN bepaald, niet door de romp), dus zonder dit veld
+  // is "past de Sjouwer-breedte echt toe?" alleen met het oog te toetsen.
+  delen.vormParams = { rompBreedte, rugHoek, armDikteFactor, heeftBochel, heeftBuik: !!vorm.buik, mistArmL: !!profiel.mistArmL };
+
+  // === Houding (Ticket 124/125/126) ============================================
+  // MOET na skinnedMesh.bind() gebeuren: bind() legt de huidige bot-standen
+  // vast ALS rustpose, dus alles wat je ervóór zet is per definitie
+  // onzichtbaar. Dit blok is de V2-tegenhanger van wat V1 rechtstreeks op
+  // zijn pivot-Groups doet, met dezelfde getallen.
+  //
+  // Kromme rug: V1 kantelt één romp-Group. V2 heeft de torso over drie
+  // botten geblend, dus de kanteling wordt verdeeld — chest volledig, romp
+  // op 60 %, pelvis blijft recht. Dat is precies wat een gebogen rug is: de
+  // heup staat rechtop, de bovenrug buigt. Eén bot kantelen zou de torso
+  // afschuiven i.p.v. buigen.
+  if (rugHoek !== 0) {
+    bones.chest.rotation.x = rugHoek;
+    bones.romp.rotation.x = rugHoek * 0.6;
+    bones.romp.position.z = rugHoek * 0.08;   // zelfde compensatie als V1
+  }
+  // Hoofd: volgt de kromme rug mee en krijgt zijn eigen scheve nek. LET OP —
+  // `userData.baseRotX` moet mee, want updateOndoden()/de windup-/flinch-code
+  // rekenen allemaal RELATIEF daaraan; zonder deze regel trekt de eerste
+  // animatietick de kop weer recht.
+  bones.hoofd.position.y = 1.58 - rugHoek * 0.05;
+  bones.hoofd.position.z = 0.02 + rugHoek * 0.35;
+  bones.hoofd.rotation.z = (Math.random() - 0.5) * 0.5;   // scheve nek, zelfde spreiding als V1
+  bones.hoofd.rotation.x = rugHoek * 0.6;
+  if (vorm.ingedokenKop) {   // Sluiper: nek naar voren, blik omlaag
+    bones.hoofd.position.y -= 0.01;
+    bones.hoofd.position.z += 0.1;
+    bones.hoofd.rotation.x += 0.3;
+  }
+  bones.hoofd.userData.baseRotX = bones.hoofd.rotation.x;
+  // Slepend been: zijwaartse verschuiving op het bot + kanteling op het
+  // been zelf, alleen bij het been dat daadwerkelijk sleept (V1 had hier
+  // ooit de bug dat BEIDE benen kantelden — zie de toelichting daar).
+  if (traits.slepend !== 0) {
+    for (const [naam, kant] of [['beenL', -1], ['beenR', 1]]) {
+      bones[naam].position.x = kant * 0.075 + traits.slepend * 0.05;
+      if (kant === traits.slepend) bones[naam].rotation.z = traits.slepend * 0.14;
+    }
+  }
 
   groep.scale.set(
     (0.94 + Math.random() * 0.16) * typeInfo.schaal,
@@ -9143,14 +9761,6 @@ function maakOndodeModelV2(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeT
   groep.userData.delen = delen;
   return groep;
 }
-
-// Ticket 118: renderarchitectuur-schakelaar — zelfde discipline als
-// beslissing 92 (T96/T97/T98/T100/T103/T108/T110): geen query-param, geen
-// runtime-toggle-UI, alleen via de debug-hook omzetbaar (voor tests). Nooit
-// tijdens een lopend spel omschakelen — bestaande ondoden blijven op hun
-// bouwtijd-versie staan, dit bepaalt alleen welke maakOndodeModelV*() een
-// NIEUWE spawnOndode()-aanroep gebruikt.
-let ZOMBIE_RENDER_VERSIE = 'v1';
 
 const ondodenGroep = new THREE.Group();
 scene.add(ondodenGroep);
@@ -9202,9 +9812,7 @@ function zetOndodeSpawnRichting(ondode) {
 function spawnOndode(vensterIndex, type = 'normaal', traits = kiesOndodeTraits()) {
   const venster = VENSTERS[vensterIndex % VENSTERS.length];
   const typeInfo = ONDODE_TYPES[type] || ONDODE_TYPES.normaal;
-  // Ticket 118: renderarchitectuur-toggle — buitenkant/signature van deze
-  // functie blijft ongewijzigd (zie de ticket-spec).
-  const groep = ZOMBIE_RENDER_VERSIE === 'v2' ? maakOndodeModelV2(typeInfo, traits) : maakOndodeModelV1(typeInfo, traits);
+  const groep = maakOndodeModelV2(typeInfo, traits);
   groep.position.set(venster.x, 0, venster.z);
   const ondode = {
     // HP: multiplier op de trap-basis, minimaal 1 (Loper/Sluiper) en gecapt
@@ -9708,6 +10316,14 @@ function inVlieringKokerBand(z) {
   return z > VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE &&
     z < VLIERINGTRAP_CZ + VLIERINGTRAP_HALF_BREEDTE;
 }
+// Zelfde band, voor de tweede (noord-)trap — T130. Puur gebruikt om trap2's
+// eigen hellingband uit te sluiten van de vlieringvlak-waypoint hieronder
+// (die band ligt anders al binnen isVlieringVlak()'s z-bereik, zie de
+// toelichting daar).
+function inVlieringKoker2Band(z) {
+  return z > VLIERINGTRAP2_CZ - VLIERINGTRAP2_HALF_BREEDTE &&
+    z < VLIERINGTRAP2_CZ + VLIERINGTRAP2_HALF_BREEDTE;
+}
 // Het VLAKKE deel van de vliering = alles ten noorden van de kokerband. De
 // scheidslijn is bewust een Z-lijn en geen X-lijn: de kokernoordwand loopt
 // oost-west en houdt op bij x = VLIERINGTRAP_X_WEST, dus een ondode kruist
@@ -9740,6 +10356,27 @@ const VLIERINGTRAP_BOVEN_BUITEN = new THREE.Vector3(
   VLIERINGTRAP_X_WEST - 0.5, 0, VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE + 0.25);
 const VLIERINGTRAP_BOVEN_BINNEN = new THREE.Vector3(
   VLIERINGTRAP_X_WEST - 0.5, 0, VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE - 0.55);
+
+// T130 — tweede (noord-)trap: zelfde voet-aanlooppunten als hierboven, maar
+// op de VLIERINGTRAP2_CZ-as.
+const VLIERINGTRAP2_ONDER_BUITEN = new THREE.Vector3(VLIERING_X_OOST + 0.7, 0, VLIERINGTRAP2_CZ);
+const VLIERINGTRAP2_ONDER_BINNEN = new THREE.Vector3(VLIERING_X_OOST - 0.9, 0, VLIERINGTRAP2_CZ);
+// Smalle aanloopstrook (zie de toelichting bij ZONE_WAYPOINTS[2] hieronder)
+// — ruim genoeg om muurgrens-geflapper bij het echt binnenlopen te dempen,
+// smal genoeg om niet te overlappen met de natuurlijke "muur hug"-afstand
+// (~0,7 m) van ondoden die gewoon LANGS de deur naar elders lopen. Moet ook
+// ruimer zijn dan de botsings-uitstulping van de resterende weststomp-muur
+// vlak ernaast (ONDODE_STRAAL ≈ 0,4 m voorbij x = VLIERING_X_OOST - 0,3, dus
+// het omslagpunt op MARGE = 0,2 zat nog middenin die uitstulping) — anders
+// slaat de vlag om terwijl de ondode nog met botsingsweerstand tegen die
+// muur worstelt, en blijft hij daar heen-en-weer geflapperd hangen. Gemeten
+// met een trajectory-trace (binnen via trap2, doel zuidelijk op het vlakke
+// deel): op 0,2 permanent vast, op 0,45 vrij.
+const VLIERINGTRAP2_AANLOOP_MARGE = 0.45;
+// Een eigen "boven"-doorgang voor trap2 (symmetrisch aan trap1's eigen
+// kokeroversteek hieronder) werd overwogen en weer verworpen — zie de
+// toelichting bij ZONE_WAYPOINTS[2] se niveau-2-entry verderop in dit
+// bestand voor waarom.
 
 // Aanlooppunten voor de nis-doorgang, midden in de 6 m brede opening en ruim
 // ten noorden van het uiteinde van de borstwering (z = KAMER2_NIS_Z_ZUID),
@@ -9808,11 +10445,76 @@ const ZONE_WAYPOINTS = {
     // werken: een ondode in die strook geldt weliswaar als "binnen het
     // vlieringcomplex", maar niet als "op het vlakke deel", dus hij wordt
     // netjes verder gerouteerd langs de kokeras.
+    // T130: sinds de tweede (noord-)trap bestaan er twee ingangen tot de
+    // vliering. `kandidaten` laat doorgangPunt() de dichtstbijzijnde van de
+    // twee kiezen i.p.v. altijd trap1; puntBuiten/puntBinnen blijven ALS
+    // FALLBACK op trap1 staan (voor code/tests die rechtstreeks bij deze
+    // twee velden lezen, zie test-waypoint-navigatie.mjs).
+    //
+    // Trap2 krijgt een VEEL SMALLERE eigen aanloopstrook dan trap1
+    // (VLIERINGTRAP2_AANLOOP_MARGE, 0,2 m i.p.v. trap1's volle 0,7 m tot aan
+    // zijn eigen puntBuiten). Twee tegengestelde bugs, allebei gemeten met
+    // een echte trajectory-trace, bepaalden die breedte:
+    // (a) HELEMAAL GEEN strook: een ondode die daadwerkelijk via trap2 naar
+    //     binnen loopt, pingpongt op de fysieke muurgrens (x = VLIERING_X_
+    //     OOST) zelf — exact de bug die trap1's eigen strook hieronder al
+    //     oplost, en om dezelfde reden nodig (de vlag slaat instant om bij
+    //     het fysieke muurvlak, waar botsingscorrectie 'm net zo hard weer
+    //     terugduwt, dus hij flapt op die exacte lijn).
+    // (b) trap1's VOLLE strookbreedte (tot aan puntBuiten, x < -3,8 ofwel
+    //     0,7 m van de muur) hergebruikt voor trap2: een ondode die gewoon
+    //     LANGS de deur naar een ander doel loopt (bijv. via trap1 naar
+    //     buiten, dan zuidwaarts langs de weststomp naar de nis) hugt de
+    //     muur van nature op ~0,7 m — precies de breedte van die strook —
+    //     en werd zo halverwege zijn eigen niet-vliering-route alsnog als
+    //     "binnen het vlieringcomplex" gemerkt, sloeg om op x =
+    //     VLIERINGTRAP2_ONDER_BUITEN.x (strikte `<`, dus jitter liet de vlag
+    //     elke frame omslaan) en bleef daar voor altijd muurvast staan.
+    // Trap1 hoeft dit conflict niet te vermijden (zijn deurgat ligt in een
+    // doodlopende hoek waar niets anders passeert), dus zijn eigen strook
+    // hieronder blijft op de volle 0,7 m. isVliering(x,z) zelf (de echte
+    // rampfootprint) blijft voor beide trappen gewoon meetellen.
     { niveau: 1,
       binnen: (x, z) => isVliering(x, z) ||
-        (inVlieringKokerBand(z) && x > VLIERING_X_OOST && x < VLIERINGTRAP_ONDER_BUITEN.x),
-      puntBuiten: VLIERINGTRAP_ONDER_BUITEN, puntBinnen: VLIERINGTRAP_ONDER_BINNEN },
-    { niveau: 2, binnen: (x, z) => isVlieringVlak(x, z),
+        (inVlieringKokerBand(z) && x > VLIERING_X_OOST && x < VLIERINGTRAP_ONDER_BUITEN.x) ||
+        (inVlieringKoker2Band(z) && x > VLIERING_X_OOST && x < VLIERING_X_OOST + VLIERINGTRAP2_AANLOOP_MARGE),
+      puntBuiten: VLIERINGTRAP_ONDER_BUITEN, puntBinnen: VLIERINGTRAP_ONDER_BINNEN,
+      kandidaten: [
+        { buiten: VLIERINGTRAP_ONDER_BUITEN, binnen: VLIERINGTRAP_ONDER_BINNEN },
+        { buiten: VLIERINGTRAP2_ONDER_BUITEN, binnen: VLIERINGTRAP2_ONDER_BINNEN },
+      ] },
+    // Ongewijzigd sinds T87 (trap1's eigen kokeroversteek). T130 overwoog
+    // hier een uitzondering voor trap2's eigen hellingband (die anders ook
+    // als "vlak" telt, zie de toelichting bij VLIERINGTRAP2_ONDER_BUITEN),
+    // plus een symmetrische tweede entry voor trap2's westelijke overgang —
+    // maar ELKE geprobeerde variant daarvan (uitzondering met/zonder x-
+    // toets, een aparte entry met de aanlooppunten op de fysieke rampgrens,
+    // dezelfde punten met een z-offset zoals hier) gaf een NIEUW geflapper
+    // op de gekozen drempel zodra een ondode daar precies aankwam — het
+    // patroon leek zich telkens te verplaatsen, nooit op te lossen. In
+    // plaats daarvan blijft dit niveau puur op isVlieringVlak() (dus trap2's
+    // helling telt gewoon mee als "vlak", geen tussenstap): het WEL bekende
+    // compromis (een enkele, ver-van-trap2 route komt vlak tegen de 60s-
+    // tijdslimiet aan i.p.v. ruim eronder, gemeten via test-navigatie-
+    // dekking.mjs) is aantoonbaar veiliger dan een permanente vastloper.
+    // Trap2's eigen zuidmuur (kokerwand) wordt aan de lokale ontwijklogica
+    // overgelaten — dezelfde die het schuurtje op de binnenplaats al zonder
+    // waypoint kan omzeilen — in plaats van een expliciet tussenpunt.
+    //
+    // De OR-clause met de trap2-aanloopstrook (identiek aan niveau 1
+    // hierboven) is geen optionele extra maar bewaakt een echte, apart
+    // gemeten vastloper: zonder deze regel disagreeën niveau 1 en niveau 2
+    // op x = VLIERING_X_OOST tot VLIERING_X_OOST + AANLOOP_MARGE (isVliering
+    // eist x <= -4,5, dus buiten die grens is niveau 2 "niet-vlak", terwijl
+    // niveau 1's eigen strook diezelfde 0,2 m juist WEL als "binnen het
+    // complex" telt). Een ondode die daar precies binnenloopt (trap2's
+    // deurgat) kruist bij toeval steeds heen en weer over x = -4,5, en met
+    // twee niveaus die het daar oneens zijn slaat het doel elke keer om
+    // tussen trap2's eigen (nabije) punt en trap1's (verre) BOVEN-punt — een
+    // permanente vastloper, niet zomaar een tragere route. Met deze regel
+    // erbij vallen niveau 1 en niveau 2 weer samen in exact dezelfde strook.
+    { niveau: 2, binnen: (x, z) => isVlieringVlak(x, z) ||
+        (inVlieringKoker2Band(z) && x > VLIERING_X_OOST && x < VLIERING_X_OOST + VLIERINGTRAP2_AANLOOP_MARGE),
       puntBuiten: VLIERINGTRAP_BOVEN_BUITEN, puntBinnen: VLIERINGTRAP_BOVEN_BINNEN },
   ],
   4: [
@@ -9842,19 +10544,39 @@ const ZONE_WAYPOINTS = {
 // Zolang hij nog verder van de overkant staat dan de doorgang zelf lang is
 // (plus een marge) mikt hij op zijn eigen kant; daarna steekt hij over.
 const DOORGANG_MARGE = 0.4;
+// T130: een deelruimte kan meerdere ingangen hebben (`wp.kandidaten`, bv. de
+// twee vlieringtrappen). doorgangPunt() kiest dan de kandidaat wiens BUITEN-
+// punt het dichtst bij vanPos ligt — dat is monotoon voor een ondode die
+// ernaartoe loopt, dezelfde reden waarom de omschakeling hieronder ook op de
+// afstand tot de overkant werkt i.p.v. de eigen kant (zie de toelichting
+// erboven). Een wp zonder `kandidaten` gedraagt zich exact als voorheen: één
+// candidate, gebouwd uit zijn eigen puntBuiten/puntBinnen.
 function doorgangPunt(wp, vanPos, vanBinnen) {
-  const eigenKant = vanBinnen ? wp.puntBinnen : wp.puntBuiten;
-  const overkant = vanBinnen ? wp.puntBuiten : wp.puntBinnen;
+  let k = wp._kandidaten[0];
+  if (wp._kandidaten.length > 1) {
+    let besteKw = Infinity;
+    for (const kand of wp._kandidaten) {
+      const dx = kand.buiten.x - vanPos.x, dz = kand.buiten.z - vanPos.z;
+      const kw = dx * dx + dz * dz;
+      if (kw < besteKw) { besteKw = kw; k = kand; }
+    }
+  }
+  const eigenKant = vanBinnen ? k.binnen : k.buiten;
+  const overkant = vanBinnen ? k.buiten : k.binnen;
   const dx = overkant.x - vanPos.x, dz = overkant.z - vanPos.z;
-  return (dx * dx + dz * dz) > wp.drempelKw ? eigenKant : overkant;
+  return (dx * dx + dz * dz) > k.drempelKw ? eigenKant : overkant;
 }
-// Voorberekende omschakeldrempel per doorgang: de lengte van de doorgang zelf
-// plus DOORGANG_MARGE, gekwadrateerd (zodat doorgangPunt() zonder sqrt werkt).
+// Voorberekende omschakeldrempel per doorgang (per kandidaat): de lengte van
+// de doorgang zelf plus DOORGANG_MARGE, gekwadrateerd (zodat doorgangPunt()
+// zonder sqrt werkt).
 for (const zone in ZONE_WAYPOINTS) {
   for (const wp of ZONE_WAYPOINTS[zone]) {
-    const lx = wp.puntBuiten.x - wp.puntBinnen.x, lz = wp.puntBuiten.z - wp.puntBinnen.z;
-    const drempel = Math.hypot(lx, lz) + DOORGANG_MARGE;
-    wp.drempelKw = drempel * drempel;
+    wp._kandidaten = wp.kandidaten || [{ buiten: wp.puntBuiten, binnen: wp.puntBinnen }];
+    for (const k of wp._kandidaten) {
+      const lx = k.buiten.x - k.binnen.x, lz = k.buiten.z - k.binnen.z;
+      const drempel = Math.hypot(lx, lz) + DOORGANG_MARGE;
+      k.drempelKw = drempel * drempel;
+    }
   }
 }
 
@@ -10109,9 +10831,34 @@ function updateOndoden(dt) {
     const faseR = -faseL;   // linker- en rechterbeen wisselen elkaar af
     delen.beenL.rotation.x = faseL * beenAmpL;
     delen.beenR.rotation.x = faseR * beenAmpR;
+    // Knie-buig-illusie: cos(loopFase) is de hoeksnelheid van faseL
+    // (afgeleide van sin) — dat piekt precies wanneer het been door het
+    // midden zwaait (snelste beweging = midden van de zwaaifase, been dus
+    // het hoogst opgetild) en is 0 bij beide uitersten (hiel-neer/afzet),
+    // exact waar een echte knie ook gestrekt zou zijn. Been R is in
+    // tegenfase, dus het teken keert om. V2-only (`if (delen.pelvis)` als
+    // betrouwbaar V2-signaal, zelfde patroon als de sway/bob-writes
+    // hieronder) — V1's beenanimatie blijft letterlijk ongewijzigd.
+    let kniebuigL = 0, kniebuigR = 0;
+    if (delen.pelvis) {
+      kniebuigL = Math.max(0, Math.cos(ondode.loopFase));
+      kniebuigR = Math.max(0, -Math.cos(ondode.loopFase));
+      delen.beenL.scale.y = 1 - kniebuigL * KNIE_BUIG_FACTOR;
+      delen.beenR.scale.y = 1 - kniebuigR * KNIE_BUIG_FACTOR;
+    }
     // Armen zwaaien in tegenfase t.o.v. het been aan dezelfde kant (Ticket 20).
     if (delen.armL) delen.armL.rotation.x = ARM_RUST_ROTATIE_X - faseL * BEEN_LOOP_AMPLITUDE * ARM_LOOP_FACTOR;
     if (delen.armR) delen.armR.rotation.x = ARM_RUST_ROTATIE_X - faseR * BEEN_LOOP_AMPLITUDE * ARM_LOOP_FACTOR;
+    // Elleboog-buig-illusie: zelfde principe als de knie hierboven. Arm L
+    // volgt -faseL (dus dezelfde fase als been R), dus hergebruikt
+    // kniebuigR — en omgekeerd voor arm R. Op dezelfde as als de arm-
+    // dikte/lengte (scale), maar zonder conflict: V2 bakt lengte/dikte al
+    // in de GEOMETRIE zelf (bouwV2ArmGeometrie), armL/armR se bone-scale
+    // wordt door niets anders gebruikt.
+    if (delen.pelvis) {
+      if (delen.armL) delen.armL.scale.y = 1 - kniebuigR * ELLEBOOG_BUIG_FACTOR;
+      delen.armR.scale.y = 1 - kniebuigL * ELLEBOOG_BUIG_FACTOR;
+    }
     // Ticket 31 (Aanval A2): tijdens de eerste helft van 'herstel' zakken de
     // armen van de windup-houding terug naar rust, en dooft de oogpuls weer
     // — overschrijft de loop-zwaai-writes hierboven voor deze ondode.
@@ -10130,7 +10877,24 @@ function updateOndoden(dt) {
         delen.oogMateriaal.emissiveIntensity = ondode.oogBasisIntensiteit;   // gegarandeerd exact terug op de basiswaarde
       }
     }
-    delen.romp.position.y = delen.romp.userData.baseY + Math.abs(faseL) * ROMP_BOB_HOOGTE * gang.bobFactor;
+    const rompBobNu = Math.abs(faseL) * ROMP_BOB_HOOGTE * gang.bobFactor;
+    delen.romp.position.y = delen.romp.userData.baseY + rompBobNu;
+    // Fix (na T127-speeltest: "V2 beweegt minder goed dan V1"): in V1 is
+    // romp een Group en ouder van torso+schouders+bochel+buik+vod, dus de
+    // bob hierboven beweegt zichtbaar de HELE torsomassa rigide mee. In V2
+    // is diezelfde torsomassa over drie PLATTE botten (pelvis/romp/chest)
+    // verdeeld met skin-weight-blending (T121, v2RompGewichten()) — een
+    // vertex die voor 80% aan pelvis en 20% aan romp hangt kreeg zo maar 20%
+    // van de bob. Gemeten (zie scratchpad/meet-romp-gewicht-profiel.mjs):
+    // van V1's volle bob-hoogte (~0,80-1,41) kreeg slechts een band van 6cm
+    // (1,08-1,14) het volle effect. Lineaire skinning blendt bot-TRANSFORMS
+    // gewogen: als pelvis/romp/chest allemaal DEZELFDE Y-offset krijgen,
+    // valt de weging weg (w_p+w_r+w_c=1, dus w_p*x+w_r*x+w_c*x=x) en bobt de
+    // hele torso weer als geheel — de bestaande pelvis-/chest-sway
+    // (rotation.z, hieronder) blijft intact omdat die verschillend blijft
+    // per bot, alleen deze GEDEELDE beweging wordt nu ook gedeeld toegepast.
+    if (delen.pelvis) delen.pelvis.position.y = delen.pelvis.userData.baseY + rompBobNu;
+    if (delen.chest) delen.chest.position.y = delen.chest.userData.baseY + rompBobNu;
     delen.hoofd.rotation.x = delen.hoofd.userData.baseRotX + faseL * HOOFD_KANTEL_AMPLITUDE;
     // v0.8: strompelende loop — de wiebel zat op de hele root (verstoorde
     // rotation.y-kijkrichting); Ticket 20 verhuist 'm naar de romp-groep.
@@ -10143,7 +10907,20 @@ function updateOndoden(dt) {
     // raakt V1 nooit aan en de loop-/aanval-/flinch-/death-timing hierboven
     // (faseL/loopFase zelf, beenAmp, ARM_LOOP_FACTOR, enz.) is ongewijzigd.
     if (delen.pelvis) delen.pelvis.rotation.z = faseL * PELVIS_SWAY_AMPLITUDE;
-    if (delen.chest) delen.chest.rotation.z = Math.sin(ondode.loopFase - CHEST_LAG_FASE) * CHEST_SWAY_AMPLITUDE;
+    const chestSwayNu = Math.sin(ondode.loopFase - CHEST_LAG_FASE) * CHEST_SWAY_AMPLITUDE;
+    if (delen.chest) {
+      delen.chest.rotation.z = chestSwayNu;
+      // Vervolg-fix (speeltest: "armen lijken soms los van de romp te
+      // staan"): de schouderzone van de romp-mesh hangt vrijwel volledig aan
+      // 'chest' (v2RompGewichten() geeft daar wChest≈1), maar armL/armR zijn
+      // eigen, ongewogen botten die alleen hun eigen swing (rotation.x)
+      // krijgen — chest se sway/bob hierboven trok het schoudervlak dus
+      // zichtbaar los van de statisch blijvende arm. armen krijgen nu
+      // dezelfde sway/bob als chest, op andere assen dan hun swing
+      // (rotation.z/position.y i.p.v. rotation.x), dus geen conflict.
+      if (delen.armL) { delen.armL.rotation.z = chestSwayNu; delen.armL.position.y = delen.armL.userData.baseY + rompBobNu; }
+      delen.armR.rotation.z = chestSwayNu; delen.armR.position.y = delen.armR.userData.baseY + rompBobNu;
+    }
 
     // Ticket 39 (Sfeer S2): geluidsprofiel op een random timer — 1
     // decrement per ondode per frame (performancevoorwaarde). De Sluiper
@@ -10166,6 +10943,12 @@ function updateOndoden(dt) {
     // (dus nooit door een muur). Raakt melee-timer/pathing niet aan: alleen
     // een extra positie-offset bovenop de al berekende beweging.
     delen.romp.rotation.y = 0;
+    if (delen.pelvis) delen.pelvis.rotation.y = 0;
+    if (delen.chest) {
+      delen.chest.rotation.y = 0;
+      if (delen.armL) delen.armL.rotation.y = 0;
+      delen.armR.rotation.y = 0;
+    }
     if (ondode.flinch) {
       ondode.flinch.timer -= dt;
       if (ondode.flinch.timer <= 0) {
@@ -10174,7 +10957,21 @@ function updateOndoden(dt) {
       } else {
         const fractie = ondode.flinch.timer / FLINCH_DUUR;
         if (ondode.flinch.soort === 'kop') delen.hoofd.rotation.x -= FLINCH_HOOFD_HOEK * fractie;
-        else delen.romp.rotation.y = FLINCH_ROMP_TWIST * fractie;
+        else {
+          // Zelfde skin-weight-argument als de bob hierboven: een lichaams-
+          // treffer moet de HELE torso zichtbaar laten twisten, niet alleen
+          // het smalle romp-gewogen bandje.
+          delen.romp.rotation.y = FLINCH_ROMP_TWIST * fractie;
+          if (delen.pelvis) delen.pelvis.rotation.y = FLINCH_ROMP_TWIST * fractie;
+          if (delen.chest) {
+            delen.chest.rotation.y = FLINCH_ROMP_TWIST * fractie;
+            // Zelfde reden als de sway/bob-fix hierboven: de arm moet met
+            // het (chest-gewogen) schoudervlak meetwisten, anders scheurt de
+            // schouder zichtbaar los tijdens de flinch.
+            if (delen.armL) delen.armL.rotation.y = FLINCH_ROMP_TWIST * fractie;
+            delen.armR.rotation.y = FLINCH_ROMP_TWIST * fractie;
+          }
+        }
         if (ondode.flinch.kernPuls && delen.kern) delen.kern.scale.setScalar(1 + fractie * KERNPULS_SCHAAL_BONUS);
         positie.addScaledVector(ondode.flinch.knokRichting, (KNOCKBACK_AFSTAND / FLINCH_DUUR) * dt);
         losBotsingenOp(positie, ONDODE_STRAAL, true);
@@ -12404,6 +13201,18 @@ function gameLoop(nu) {
       const doelProfiel = ZONE_BUITEN[zoneNu] ? FOG_BUITEN : FOG_NORMAAL;
       if (doelProfiel !== zoneFogDoel && actieveEventGolf !== 'mist') {
         zoneFogVan = { kleur: scene.fog.color.getHex(), near: scene.fog.near, far: scene.fog.far };
+        // Fix (speeltest: "gebouwen aan de oostkant van de binnenplaats komen
+        // pas na een flink stuk lopen tevoorschijn"): een GROTERE far (naar
+        // buiten, meer zicht) hoeft nooit ingefaset te worden — verder kunnen
+        // zien geeft nooit een lelijke pop, alleen een KLEINERE far (naar
+        // binnen, minder zicht) verdient de geleidelijke overgang, anders
+        // klapt er ineens een mistwand dicht. Bij een toename springt far dus
+        // meteen naar het doel; near/kleur blijven wel geleidelijk (die kunnen
+        // wél een merkbare sprong geven, zie de FOG_NORMAAL/FOG_BUITEN-kleuren).
+        if (doelProfiel.far > zoneFogVan.far) {
+          scene.fog.far = doelProfiel.far;
+          zoneFogVan.far = doelProfiel.far;   // interpolatiebasis = doel: updateZoneFog() laat far met rust
+        }
         zoneFogTimer = ZONE_FOG_OVERGANG_DUUR;
       }
       zoneFogDoel = doelProfiel;
@@ -12730,6 +13539,7 @@ window.AmsterdamUndeadDebug = {
   smederijVisualsDrukspuit, smederijVisualsRatelaar, updateSmederijVisuals,
   get smederijVisualsZichtbaar() { return { drukspuit: smederijVisualsDrukspuit.visible, ratelaar: smederijVisualsRatelaar.visible }; },
   herladen, probeerTeSchieten, schiet, updateWapen, updateSpeler,
+  raycaster,   // Ticket 120: voor tests — layer-membership rechtstreeks controleren
   // Ticket 33: hitmarker + treffer-/herlaad-audio
   ammoUI, hitmarker, toonHitmarker, updateHitmarker,
   HITMARKER_TIERS, HITMARKER_RANG, HITMARKER_SAMENVAL_VENSTER,
@@ -12871,9 +13681,12 @@ window.AmsterdamUndeadDebug = {
   VLIERING_X_WEST, VLIERING_X_OOST, VLIERING_Z_NOORD, VLIERING_Z_ZUID,
   VLIERING_Y, VLIERING_BORSTWERING_Y,
   VLIERINGTRAP_CZ, VLIERINGTRAP_HALF_BREEDTE, VLIERINGTRAP_X_OOST, VLIERINGTRAP_X_WEST,
+  // Vervolg: tweede trap (noordkant).
+  VLIERINGTRAP2_CZ, VLIERINGTRAP2_HALF_BREEDTE, VLIERINGTRAP2_X_OOST, VLIERINGTRAP2_X_WEST,
   isVliering, isVlieringVlak, inVlieringKokerBand, ATELIER_HOOGTE,
   VLIERINGTRAP_ONDER_BUITEN, VLIERINGTRAP_ONDER_BINNEN,
   VLIERINGTRAP_BOVEN_BUITEN, VLIERINGTRAP_BOVEN_BINNEN,
+  VLIERINGTRAP2_ONDER_BUITEN, VLIERINGTRAP2_ONDER_BINNEN,
   // De Zelflader (auto-herlader, koopbaar op de vliering)
   AUTOHERLADER_PRIJS, AUTOHERLADER_X, AUTOHERLADER_Z, koopAutoHerlader,
   autoHerladerPunt, autoHerladerMarkering,
@@ -12917,20 +13730,30 @@ window.AmsterdamUndeadDebug = {
   // v0.7: ondode-varianten (Loper/Sjouwer/Brander):
   ONDODE_TYPES, ONDODE_TYPE_MIN_GOLF, kiesOndodeType, ondodeTypeGewichten,
   kiesOndodeTraits,   // v0.8: cosmetische per-ondode variatie
-  VARIATIE_PROFIELEN, maakOndodeModelV1,   // Ticket 19: silhouetten + variatieprofielen (Ticket 118: hernoemd van maakOndodeModel)
-  // Ticket 118 (Zombie V2 fundament): SkinnedMesh/botskelet-architectuur +
-  // de V1/V2-toggle. Geen setter via `set`-accessor (project-conventie,
-  // zie zetPerfOverlayActief() e.a.): een expliciete zetZombieRenderVersie().
+  VARIATIE_PROFIELEN,   // Ticket 19: silhouetten + variatieprofielen
+  // Ticket 118 (Zombie V2 fundament): SkinnedMesh/botskelet-architectuur.
   maakOndodeModelV2, bouwOndodeGeometrieV2, bouwOndodeBotstructuurV2, V2_BOTNAMEN,
   // Ticket 119: pelvis-/chest-sway-constanten (voor tests: amplitude/fase
   // rechtstreeks verifiëren i.p.v. magische getallen te herhalen).
   PELVIS_SWAY_AMPLITUDE, CHEST_SWAY_AMPLITUDE, CHEST_LAG_FASE,
-  get ZOMBIE_RENDER_VERSIE() { return ZOMBIE_RENDER_VERSIE; },
-  zetZombieRenderVersie(versie) { ZOMBIE_RENDER_VERSIE = versie; },
+  // Ticket 121: anatomie-bouwers + het schakelbare detailniveau (voor de
+  // beeldvergelijking laag/midden en de driehoeksmeting in de tests).
+  V2_DETAIL_NIVEAUS, bouwLoftGeometrie, bemonsterProfiel, v2RompGewichten,
+  bouwV2HoofdGeometrie, bouwV2RompGeometrie, bouwV2ArmGeometrie,
+  bouwV2HandGeometrie, bouwV2BeenGeometrie, bouwV2VoetGeometrie,
+  get ZOMBIE_V2_DETAIL() { return ZOMBIE_V2_DETAIL; },
+  zetZombieV2Detail(niveau) { ZOMBIE_V2_DETAIL = niveau; },
+  // Ticket 123: normal-map A/B-schakelaar + de procedurele hoogtebron.
+  tekenOndodeHuidVerval, ondodeHuidNormaalKaart, V2_NORMAAL_STERKTE,
+  get ZOMBIE_V2_NORMAL_MAP() { return ZOMBIE_V2_NORMAL_MAP; },
+  zetZombieV2NormalMap(aan) { ZOMBIE_V2_NORMAL_MAP = aan; },
+  // Vervolg-fix: vertex-color rottingsvlekken (voor tests: kleurformule +
+  // plek-verdeling rechtstreeks verifiëren i.p.v. via een gespawnde ondode).
+  vervalVlekkenTint, kiesVervalPlekken, VERVAL_VLEK_KLEUR,
   geoCache, kernMateriaal,   // Ticket 69: gedeelde geometrie-cache (voor tests: cache-grootte + hergebruik)
   // Ticket 100: de ondode-materiaalfabriek (rimlight) + het gedeelde
   // uniform-paar dat alle ondode-materialen tegelijk aanstuurt.
-  maakOndodeMateriaal, RIM_UNIFORMS, RIM_KLEUR, RIM_STERKTE_BASIS, VOD_MATERIAAL,
+  maakOndodeMateriaal, RIM_UNIFORMS, RIM_KLEUR, RIM_STERKTE_BASIS,
   wereld,   // Ticket 100 (voor tests): de kaartgeometrie-group, om wereldmaterialen te steekproeven
   // Ticket 102/103: subdivisie-/occlusie-infrastructuur voor grote vlakken.
   SUBDIVISIE_SEGMENTEN, muurSegmenten, blok, vlak,

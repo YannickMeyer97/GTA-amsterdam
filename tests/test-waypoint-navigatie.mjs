@@ -372,6 +372,58 @@ const chokepointViaWaypoint = await page.evaluate(() => {
 check('De ad-hoc special-case is vervangen zonder gedragswijziging: de eerste stap wijst nog steeds naar het (nu generieke) waypoint',
   Math.abs(chokepointViaWaypoint.hoekBeweging - chokepointViaWaypoint.hoekNaarWaypoint) < 0.01, chokepointViaWaypoint);
 
+// --- 12. T130: de vliering heeft sinds de tweede (noord-)trap TWEE ingangen.
+// De niveau-1 waypoint-entry (index 4, "de vlieringtak") heeft nu
+// `kandidaten`; doorgangPunt() moet daarvan de kandidaat kiezen wiens BUITEN-
+// punt het dichtst bij de ondode ligt, in plaats van altijd trap 1 (index 0)
+// te pakken. Dit dekt zowel de dataset-vorm (zelfterminatie geldt voor BEIDE
+// kandidaten) als het daadwerkelijke keuzegedrag en een echte trajectory. ---
+const vlieringTweeIngangen = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const wp = d.ZONE_WAYPOINTS[2].find(w => w.niveau === 1 && w.kandidaten);
+  const zelfterminatieBeideKandidaten = wp.kandidaten.every(k =>
+    wp.binnen(k.buiten.x, k.buiten.z) === false &&
+    wp.binnen(k.binnen.x, k.binnen.z) === true);
+
+  const doelInVlak = { x: d.VLIERING_X_WEST + 2, z: d.VLIERING_Z_NOORD + 1 };
+  const bijTrap1 = { x: d.VLIERINGTRAP_ONDER_BUITEN.x + 1, z: d.VLIERINGTRAP_ONDER_BUITEN.z };
+  const bijTrap2 = { x: d.VLIERINGTRAP2_ONDER_BUITEN.x + 1, z: d.VLIERINGTRAP2_ONDER_BUITEN.z };
+  const puntVanuitTrap1 = d.zoekWaypoint(2, bijTrap1, doelInVlak);
+  const puntVanuitTrap2 = d.zoekWaypoint(2, bijTrap2, doelInVlak);
+
+  return {
+    zelfterminatieBeideKandidaten,
+    kiestTrap1BijTrap1: puntVanuitTrap1 === d.VLIERINGTRAP_ONDER_BUITEN || puntVanuitTrap1 === d.VLIERINGTRAP_ONDER_BINNEN,
+    kiestTrap2BijTrap2: puntVanuitTrap2 === d.VLIERINGTRAP2_ONDER_BUITEN || puntVanuitTrap2 === d.VLIERINGTRAP2_ONDER_BINNEN,
+  };
+});
+check('Vliering-niveau-1-waypoint: zelfterminatie geldt voor beide trap-kandidaten (buiten ligt buiten, binnen erbinnen)',
+  vlieringTweeIngangen.zelfterminatieBeideKandidaten === true, vlieringTweeIngangen);
+check('Een ondode bij trap 1 (zuid) mikt op trap 1, niet op trap 2',
+  vlieringTweeIngangen.kiestTrap1BijTrap1 === true, vlieringTweeIngangen);
+check('Een ondode bij trap 2 (noord) mikt op trap 2, niet altijd op trap 1 (de kern van deze fix)',
+  vlieringTweeIngangen.kiestTrap2BijTrap2 === true, vlieringTweeIngangen);
+
+// Echte trajectory: een ondode die in het atelier vlak bij de noordtrap
+// staat, met de speler op het vlakke deel van de vliering, moet daadwerkelijk
+// via trap 2 naar boven lopen (i.p.v. eerst helemaal naar trap 1 om te lopen).
+const trap2Traject = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.ondoden.length = 0;
+  d.spawnWillekeurigeOndode();
+  const ondode = d.ondoden[0];
+  ondode.groep.position.set(d.VLIERINGTRAP2_ONDER_BUITEN.x + 0.5, 0, d.VLIERINGTRAP2_CZ);
+  const doel = { x: d.VLIERING_X_WEST + 2, z: d.VLIERING_Z_NOORD + 1 };
+  d.speler.positie.set(doel.x, d.VLIERING_Y, doel.z);
+  for (let i = 0; i < 900; i++) d.updateOndoden(1 / 60);   // 15s
+  const afstandNa = Math.hypot(ondode.groep.position.x - doel.x, ondode.groep.position.z - doel.z);
+  return { afstandNa, eindY: ondode.groep.position.y };
+});
+check('Trajectory-trace trap 2: een ondode vlak bij de noordtrap bereikt de speler op het vlakke deel binnen 15s',
+  trap2Traject.afstandNa < 1.5, trap2Traject);
+check('...en komt daadwerkelijk boven aan (y dicht bij VLIERING_Y, niet op atelierniveau blijven hangen)',
+  trap2Traject.eindY > 0.9, trap2Traject);
+
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);

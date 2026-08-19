@@ -4,6 +4,9 @@
 // (3) het hitbox-contract op elke type x profiel-combinatie (hoofd nooit
 // kleiner dan sphere 0.18 — ontwerpbeslissing 16), (4) raycast-sweep per
 // type x 3 profielen, en (5) dat de gameplay-stats onaangeraakt zijn.
+// Ticket 129: de vroegere V1-architectuur is verwijderd — de vorm-/hitbox-
+// checks lezen nu rechtstreeks de SkinnedMesh-architectuur (delen.vormParams,
+// de vaste hitbox-proxies uit Ticket 120) i.p.v. losse geschaalde meshes.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
@@ -34,50 +37,45 @@ check('Elk geloot profiel bestaat in VARIATIE_PROFIELEN', loting.ongeldig === 0,
 check('Er zijn 6-8 variatieprofielen gedefinieerd',
   loting.totaalProfielen >= 6 && loting.totaalProfielen <= 8, loting);
 
-// --- 2. Vorm-kenmerken per type (met neutraal 'standaard'-profiel) -------
+// --- 2. Vorm-kenmerken per type, via delen.vormParams (Ticket 124/125/126:
+// een klein, met opzet bewaard veld dat de afgeleide vormparameters
+// blootgeeft die anders alleen met het oog te toetsen zouden zijn — een
+// bounding box wordt door de ARMEN bepaald, niet door de romp, dus is geen
+// betrouwbare torsobreedte-meting) -----------------------------------------
 const vormen = await page.evaluate((vasteTraitsStandaard) => {
   const d = window.AmsterdamUndeadDebug;
   const uit = {};
   for (const type of ['normaal', 'loper', 'sjouwer', 'brander', 'sluiper']) {
     for (const o of [...d.ondoden]) d.doodOndode(o);
     const o = d.spawnOndode(0, type, eval(`(${vasteTraitsStandaard})`));
-    let torsoBreedte = null, bollen = 0, emissiveKern = false, lights = 0, meshes = 0;
-    o.groep.traverse(kind => {
-      if (kind.isLight) lights++;
-      if (!kind.isMesh) return;
-      meshes++;
-      const p = kind.geometry.parameters;
-      // Ticket 69: de geometrie zelf is nu altijd de gedeelde basisvorm
-      // (width 0.36) — de rompbreedte-variatie per type/profiel zit sinds
-      // T69 in mesh.scale.x, dus de EFFECTIEVE breedte is width * scale.x.
-      if (kind.geometry.type === 'BoxGeometry' && p.height === 0.6) torsoBreedte = p.width * kind.scale.x;
-      if (kind.geometry.type === 'SphereGeometry' && p.radius > 0.05 && p.radius < 0.18) bollen++;
-      if (kind.material.emissiveIntensity === 1.6) emissiveKern = true;
-    });
-    uit[type] = { torsoBreedte, bollen, emissiveKern, lights, meshes, hoofdZ: o.delen.hoofd.position.z, hoofdRotX: o.delen.hoofd.rotation.x };
+    uit[type] = {
+      rompBreedte: o.delen.vormParams.rompBreedte,
+      heeftBochel: o.delen.vormParams.heeftBochel,
+      heeftBuik: o.delen.vormParams.heeftBuik,
+      heeftKern: !!o.delen.kern,
+      hoofdZ: o.delen.hoofd.position.z,
+      hoofdRotX: o.delen.hoofd.rotation.x,
+    };
     d.doodOndode(o);
   }
   return uit;
 }, vasteTraits('standaard'));
-check('Loper-torso is smaller dan normaal, Sjouwer-torso breder',
-  vormen.loper.torsoBreedte < vormen.normaal.torsoBreedte && vormen.sjouwer.torsoBreedte > vormen.normaal.torsoBreedte, vormen);
-check('Sjouwer heeft een bochel (extra bol), normaal niet',
-  vormen.sjouwer.bollen === 1 && vormen.normaal.bollen === 0, vormen);
-check('Brander heeft een buik + gloeiende kern (emissive mesh)',
-  vormen.brander.bollen === 2 && vormen.brander.emissiveKern === true, vormen);
-check('Geen enkel type draagt een light (kern is emissive, geen PointLight)',
-  TYPES.every(t => vormen[t].lights === 0), vormen);
+check('Loper-torso is smaller dan normaal, Sjouwer-torso breder (vormParams.rompBreedte)',
+  vormen.loper.rompBreedte < vormen.normaal.rompBreedte &&
+  vormen.sjouwer.rompBreedte > vormen.normaal.rompBreedte, vormen);
+check('Sjouwer heeft een bochel, normaal niet',
+  vormen.sjouwer.heeftBochel === true && vormen.normaal.heeftBochel === false, vormen);
+check('Brander heeft een buik + een losse gloeiende kern-mesh (delen.kern)',
+  vormen.brander.heeftBuik === true && vormen.brander.heeftKern === true, vormen);
+check('Alleen Brander heeft delen.kern (de bewuste uitzondering op één-SkinnedMesh-per-ondode)',
+  TYPES.filter(t => vormen[t].heeftKern).join(',') === 'brander', vormen);
 check('Sluiper-kop is ingedoken (naar voren en omlaag gekanteld)',
   vormen.sluiper.hoofdZ > vormen.normaal.hoofdZ && vormen.sluiper.hoofdRotX > vormen.normaal.hoofdRotX, vormen);
-// Ticket 99 (v0.22, §10.10-beslissing 85) voegde vier gedeelde meshes per
-// ondode toe (twee schouders + twee handen) — de budgetgrens hieronder is
-// dienovereenkomstig meeverhoogd van 14 naar 15 (het nieuwe echte maximum
-// voor het standaard-profiel: Brander, met zijn eigen buik+kern-bollen
-// bovenop de T99-toevoegingen).
-check('Mesh-budget: elk type blijft op <= 15 meshes (standaard-profiel)',
-  TYPES.every(t => vormen[t].meshes <= 15), vormen);
 
-// --- 3. Hitbox-contract op ELKE type x profiel-combinatie ----------------
+// --- 3. Hitbox-contract op ELKE type x profiel-combinatie: de kop-hitbox is
+// een VASTE straal (HITBOX_KOP_STRAAL), niet per type/profiel afgeleide
+// geometrie — een headshot moet voor elk type/profiel exact even groot
+// blijven. -------------------------------------------------------------
 const contract = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const slecht = [];
@@ -86,26 +84,16 @@ const contract = await page.evaluate(() => {
       for (const o of [...d.ondoden]) d.doodOndode(o);
       const traits = { profiel, kromme: profiel === 'gebocheld', slepend: 0, armVerschil: 0, lengte: 1, strompelt: false };
       const o = d.spawnOndode(0, type, traits);
-      let kop = 0, meshes = 0, hoofdRadius = null;
-      o.groep.traverse(kind => {
-        if (!kind.isMesh) return;
-        meshes++;
-        if (kind.userData.lichaamsdeel === 'kop') {
-          kop++;
-          if (kind.geometry.parameters.radius > 0.1) hoofdRadius = kind.geometry.parameters.radius;
-        }
-      });
-      if (kop !== 3 || hoofdRadius !== 0.18 || meshes > 16) slecht.push({ type, profiel, kop, hoofdRadius, meshes });
+      const kopOk = o.delen.kopProxy?.userData.lichaamsdeel === 'kop' &&
+        o.delen.kopProxy.geometry.parameters.radius === 0.18;
+      const lichaamOk = !!o.delen.lichaamProxy;
+      if (!kopOk || !lichaamOk) slecht.push({ type, profiel, kopOk, lichaamOk });
       d.doodOndode(o);
     }
   }
   return slecht;
 });
-// Ticket 99: het echte maximum over alle 35 combinaties is nu 16, niet 14 —
-// 'gebocheld' forceert altijd zijn eigen bochel-mesh (VARIATIE_PROFIELEN.
-// gebocheld.bochel), dus een Brander (die al zijn eigen buik+kern-bollen
-// heeft) met het gebocheld-profiel stapelt tot 15 (standaard) + 1 = 16.
-check("Alle 35 type x profiel-combinaties: precies 3 'kop'-meshes, hoofdradius 0.18, <= 16 meshes",
+check("Alle 35 type x profiel-combinaties: kopProxy is 'kop' met straal 0.18, lichaamProxy bestaat",
   contract.length === 0, contract);
 
 // --- 4. Raycast-sweep: headshot per type x 3 profielen, en de rechterarm
@@ -147,24 +135,26 @@ for (const type of TYPES) {
   check(`${type} x eenarmig: de rechterarm (0.24, 1.13) blijft een lichaamstreffer (schade 1)`, arm.schade === 1, arm);
 }
 
-// --- 5. Eenarmig-profiel: linkerarm ontbreekt echt (delen + mesh-telling) -
-const eenarmig = await page.evaluate((traitsStr) => {
+// --- 5. Eenarmig-profiel: delen.armL ontbreekt, en de samengestelde
+// geometrie heeft minder vertices dan het standaard-profiel (armGeoL +
+// handGeoL worden simpelweg niet toegevoegd) -------------------------------
+const eenarmig = await page.evaluate(({ traitsStr, standaardStr }) => {
   const d = window.AmsterdamUndeadDebug;
   for (const o of [...d.ondoden]) d.doodOndode(o);
+  const standaard = d.spawnOndode(0, 'normaal', eval(`(${standaardStr})`));
+  const vertexStandaard = standaard.delen.skinnedMesh.geometry.attributes.position.count;
+  d.doodOndode(standaard);
   const o = d.spawnOndode(0, 'normaal', eval(`(${traitsStr})`));
-  let meshes = 0;
-  o.groep.traverse(kind => { if (kind.isMesh) meshes++; });
-  const uit = { armL: o.delen.armL === undefined, armR: !!o.delen.armR, meshes };
+  const uit = {
+    armL: o.delen.armL === undefined, armR: !!o.delen.armR,
+    vertexEenarmig: o.delen.skinnedMesh.geometry.attributes.position.count,
+    vertexStandaard,
+  };
   d.doodOndode(o);
   return uit;
-}, vasteTraits('eenarmig'));
-// Ticket 99: de ontbrekende linkerarm neemt sinds dit ticket ook zijn eigen
-// hand mee (sibling van de arm binnen dezelfde pivot-Group, zie
-// maakOndodeModel()) — twee meshes minder dan het standaard-profiel, niet
-// één. Schouders blijven WEL bestaan (die zijn kind van de romp-groep, niet
-// van de arm-pivot), dus alleen arm+hand vallen weg.
-check('Eenarmig: delen.armL ontbreekt, delen.armR bestaat, twee meshes minder (11)',
-  eenarmig.armL && eenarmig.armR && eenarmig.meshes === 11, eenarmig);
+}, { traitsStr: vasteTraits('eenarmig'), standaardStr: vasteTraits('standaard') });
+check('Eenarmig: delen.armL ontbreekt, delen.armR bestaat, minder vertices dan het standaard-profiel',
+  eenarmig.armL && eenarmig.armR && eenarmig.vertexEenarmig < eenarmig.vertexStandaard, eenarmig);
 
 // --- 6. Stats blijven byte-voor-byte ongewijzigd --------------------------
 const stats = await page.evaluate(() => {

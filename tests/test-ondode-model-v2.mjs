@@ -1,20 +1,18 @@
 // Ticket 118 (v0.23, ronde 9 — Zombie V2 fundament): structuurchecks voor de
-// nieuwe SkinnedMesh-/botskelet-architectuur en de V1/V2-toggle. Uitsluitend
-// structuur — GEEN gameplay-asserts (schade/hitdetectie komen in T120, zie
-// de ticket-spec in SONNET_EXECUTION_PLAN.md).
+// SkinnedMesh-/botskelet-architectuur. Uitsluitend structuur — GEEN
+// gameplay-asserts (schade/hitdetectie komen in T120, zie de ticket-spec in
+// SONNET_EXECUTION_PLAN.md).
 // Ticket 119 voegde 'pelvis'/'chest' toe aan het skelet (9 botten i.p.v. 7)
 // — de bonecount-checks hieronder zijn bijgewerkt naar die nieuwe telling;
 // de animatiechecks zelf (pelvis-sway/chest-lag) staan in
 // test-ondode-animatie.mjs, bij de rest van de loop-animatietests.
+// Ticket 129: de vroegere V1-architectuur en de V1/V2-toggle zijn verwijderd
+// — spawnOndode() bouwt altijd deze architectuur, dus de tests hieronder
+// spawnen gewoon rechtstreeks (geen zetZombieRenderVersie() meer nodig).
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
 const { check, report } = makeChecker();
-
-// --- 1. Default blijft 'v1' — de toggle mag de bestaande game niet per
-// ongeluk in V2-modus laten starten -----------------------------------------
-const defaultVersie = await page.evaluate(() => window.AmsterdamUndeadDebug.ZOMBIE_RENDER_VERSIE);
-check("Default ZOMBIE_RENDER_VERSIE is 'v1'", defaultVersie === 'v1', { defaultVersie });
 
 // --- 2. bouwOndodeGeometrieV2()/bouwOndodeBotstructuurV2() zijn pure
 // functies: testbaar zonder een ondode te spawnen, zonder scene ------------
@@ -55,7 +53,6 @@ check("V2_BOTNAMEN = ['root','beenL','beenR','romp','hoofd','armL','armR','pelvi
 // --- 4. Een echte V2-spawn: SkinnedMesh + Skeleton + delen.*-contract ------
 const spawnStructuur = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  d.zetZombieRenderVersie('v2');
   const ondode = d.spawnOndode(0, 'normaal');
   const delen = ondode.delen;
   const uit = {
@@ -83,7 +80,6 @@ const spawnStructuur = await page.evaluate(() => {
     groepInOndodenGroep: d.ondodenGroep.children.includes(ondode.groep),
   };
   d.doodOndode(ondode);
-  d.zetZombieRenderVersie('v1');   // opruimen: volgende tests in dezelfde page mogen niet per ongeluk V2 zien
   return uit;
 });
 check('delen.skinnedMesh is een echte THREE.SkinnedMesh', spawnStructuur.isSkinnedMesh, spawnStructuur);
@@ -118,13 +114,11 @@ check('De V2-groep staat gewoon in ondodenGroep (zelfde contract als V1)', spawn
 // hier machinaal gevangen i.p.v. op ooghoogte gecontroleerd.
 const hoogteAnker = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  d.zetZombieRenderVersie('v2');
   const ondode = d.spawnOndode(0, 'normaal');
   ondode.groep.scale.set(1, 1, 1);   // vaste schaal, geen willekeurige variatie voor deze meting
   ondode.delen.skinnedMesh.geometry.computeBoundingBox();
   const bb = ondode.delen.skinnedMesh.geometry.boundingBox;
   d.ondodenGroep.remove(ondode.groep);
-  d.zetZombieRenderVersie('v1');
   return { minY: bb.min.y, maxY: bb.max.y };
 });
 check('De RUWE (ongeskinde) geometrie staat al op de juiste rustpose-hoogte: voeten bij y≈0',
@@ -138,7 +132,6 @@ check('De RUWE (ongeskinde) geometrie staat al op de juiste rustpose-hoogte: hoo
 // in dit ticket, dit toetst dat het bestaande V1-pad ook tegen V2 werkt. ---
 const gameplayPad = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  d.zetZombieRenderVersie('v2');
 
   // Overlevende treffer: flinch-state moet gezet worden, geen crash.
   const overlevend = d.spawnOndode(0, 'normaal');
@@ -162,7 +155,6 @@ const gameplayPad = await page.evaluate(() => {
   for (let i = 0; i < 60; i++) d.updateStervenden(1 / 60);   // laat STERVEN_DUUR (0.7s) volledig aflopen
   const stervendenOpgeruimd = d.stervenden.length === 0;
 
-  d.zetZombieRenderVersie('v1');
   return { flinchGezet, nogInOndodenNaFlinch, killFlitsGezet, nietMeerInOndoden, inStervenden, stervendenOpgeruimd };
 });
 check('Een overlevende treffer zet flinch op een V2-ondode (raakOndode() ongewijzigd, werkt tegen een bot)',
@@ -181,7 +173,6 @@ check('Na STERVEN_DUUR is de V2-ondode volledig opgeruimd (ruimGroepOp() dispose
 // boneTexture moeten allemaal disposed zijn na ruimGroepOp(). --------------
 const disposeContract = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  d.zetZombieRenderVersie('v2');
   const ondode = d.spawnOndode(0, 'normaal');
   const { skinnedMesh, skeleton, huidMaterialen } = ondode.delen;
   // Forceer een boneTexture (Skeleton bouwt 'm lazy, bij updateMatrixWorld/
@@ -190,7 +181,6 @@ const disposeContract = await page.evaluate(() => {
   const boneTextureVoorDispose = skeleton.boneTexture;
   d.ondodenGroep.remove(ondode.groep);   // zelfde eerste stap als doodOndode()
   d.ruimGroepOp(ondode.groep);
-  d.zetZombieRenderVersie('v1');
   return {
     boneTextureBestondVoorDispose: !!boneTextureVoorDispose,
     boneTextureNaDispose: skeleton.boneTexture,

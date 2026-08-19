@@ -7943,3 +7943,196 @@ water op `VLONDER_X_OOST` lag — een vroegere, bewuste beslissing die deze
 fix nu ongedaan maakt. Bijgewerkt naar de nieuwe (en correctere) eis: de
 westrand op `VLONDER_X_WEST`, de oostrand ongewijzigd op
 `WATER_VLAK_OOST`.
+
+## 11. Ronde 9 (v0.23) — Zombie V2-architectuur
+
+### 11.1 Scope en aanleiding
+
+Waar ronde 8 de wereld herzag, herziet deze ronde de ondode zelf.
+`SONNET_EXECUTION_PLAN.md` opende ronde 9 met een diagnose die niet uit
+een bugmelding kwam maar uit de structuur zelf: `maakOndodeModel()` (nu
+`maakOndodeModelV1()`) bouwde elke ondode op uit tot 13 losse
+`THREE.Mesh`-objecten, elk met een eigen materiaalinstantie en een eigen
+`THREE.Group`-pivot voor animatie — tot 11 materiaalinstanties, 13
+raycast-doelen en 20 transformnodes per ondode, terwijl T69's gedeelde
+`geoCache` de geometrie al wél deelde. Bij `effectiefMaxActief()`'s
+praktische piek van 18 ondoden is dat tot 234 losse draw calls die
+uitsluitend uit ÉÉN vijandtype voortkomen.
+
+Het plan koos een parallelle-bouw-strategie in plaats van een rewrite ter
+plekke: V2 (één samengestelde `SkinnedMesh` + botskelet) werd naast V1
+gebouwd achter een module-toggle (`ZOMBIE_RENDER_VERSIE`), fase voor fase
+tot pariteit, gemeten tegen een expliciete V1-baseline (T117,
+`ZOMBIE_V2_BASELINE.md`), en pas na een eigen eindrapport (T127) en een
+speeltest door de eigenaar ter beoordeling voorgelegd. T129 — het
+onderwerp van dit hoofdstuk se slotparagraaf — is de daadwerkelijke,
+onomkeerbare stap: V1 verwijderen en V2 tot de enige architectuur maken.
+Net als ronde 7 en 8 verandert geen enkel ticket in deze ronde een
+gameplaygetal — dit is uitsluitend hoe de ondode gebouwd en getekend
+wordt, nooit hoe hij zich gedraagt.
+
+### 11.2 De architectuur
+
+Eén ondode is nu:
+
+- **Eén `SkinnedMesh`** met één samengestelde `BufferGeometry`
+  (`bouwOndodeGeometrieV2()`) die romp, armen, benen, hoofd en (voor de
+  Sjouwer) een bochel in dezelfde vertex-buffer samenvoegt, plus
+  `skinIndex`/`skinWeight`-attributen voor de skinning en een
+  `color`-attribuut voor per-deel-helderheid (het "multiplicatieve
+  vertex-color-model": de per-instance huidkleur wordt vermenigvuldigd
+  met een per-vertex factor, niet met een tweede materiaal).
+- **Eén `THREE.Skeleton`, PLAT** — elk bot (`root`, `pelvis`, `romp`,
+  `chest`, `hoofd`, `beenL`/`beenR`, `armL`/`armR`) hangt rechtstreeks
+  aan `root`, geen kinematische ouder-kind-keten zoals V1's
+  Group-hiërarchie. Omdat `THREE.Bone` een `Object3D`-subklasse is,
+  werken de bestaande `delen.armL.rotation.x = …`-schrijfacties uit
+  `updateOndoden()`/`raakOndode()`/`doodOndode()`/`schiet()` gewoon tegen
+  een bot — dat is de kernarchitectuurtruc en de reden dat geen van die
+  functies zelf iets van bones hoefde te weten.
+- **Eén materiaalinstantie** per ondode (`maakOndodeMateriaal()`), met de
+  T100-rimlight-injectie via `onBeforeCompile` —§7.9's
+  materiaal-mutatiediscipline (injectie hoort in de fabriek, nooit
+  achteraf op een instantie) gold dus al vóór dit hoofdstuk en bleef
+  ongewijzigd staan.
+- **Vaste, onzichtbare hitbox-proxies** (`HITBOX_KOP_STRAAL = 0,18`,
+  losse lichaam-proxy) op een eigen `ONDODE_HITBOX_LAYER`, gescheiden van
+  de zichtbare mesh se `ONDODE_MESH_LAYER` — `schiet()` raycast tegen de
+  proxies, nooit tegen de zichtbare geometrie. Twee raycast-doelen per
+  ondode in plaats van V1's dertien, en de headshot-straal (0,18) is
+  bewust identiek aan V1's vroegere zichtbare hoofd-mesh, dus geen
+  balansverschuiving.
+- **Eén erkende uitzondering**: de Brander se gloeiende kern blijft een
+  losse mesh (2 draw calls voor dat type), omdat `raakOndode()` de kern
+  onafhankelijk van de romp moet kunnen opschalen voor de kernpuls — een
+  regio binnen één `SkinnedMesh` staat dat niet toe.
+
+Vorm en houding zijn expliciet gesplitst: **vorm** (rompbreedte, bochel,
+buik, arm-dikte/-lengte, ontbrekende arm) is een GEOMETRIE-parameter en
+moet vóór het samenvoegen van de `BufferGeometry` vaststaan; **houding**
+(kromme rug, ingedoken kop, slepend been, scheve nek) is een
+BOT-transform die pas ná `skinnedMesh.bind()` gezet mag worden, omdat
+`bind()` de dan geldende botstanden vastlegt als rustpose — alles wat
+ervóór op een bot gezet wordt is per definitie onzichtbaar. `delen.
+vormParams` bewaart de toegepaste vormparameters expliciet voor
+toetsbaarheid, omdat een bounding box door de ARMEN bepaald wordt, niet
+door de romp, en dus geen betrouwbare torsobreedte-meting oplevert.
+
+### 11.3 Hoe de fasering liep (T118–T128)
+
+Volledige cijfers, per-fase tabellen en de A/B-metingen staan in
+`ZOMBIE_V2_BASELINE.md` (opgeleverd door T117/T127/T129); hier de
+samenvatting van de beslissingen die de architectuur bepaald hebben:
+
+- **T118 (fundament).** SkinnedMesh + plat skelet + de
+  `ZOMBIE_RENDER_VERSIE`-toggle. Structuur meteen naar 3 meshes/2
+  materialen (tegenover V1's 11-13/tot 11).
+- **T119 (animatie).** Pelvis-/chest-sway en -bob, gedreven door
+  dezelfde `loopFase`-sinus als de bestaande been-/armzwaai (geen nieuwe
+  klok), met een vaste faseverschuiving voor de chest.
+- **T120 (hitdetectie).** De onzichtbare hitbox-proxies en de
+  layer-scheiding tussen raycast-doel en zichtbare mesh, getest over een
+  matrix van zes bewegingsstaten (rust, loopcyclus, kromme rug,
+  aanval-windup, flinch, sterven).
+- **T121 (anatomie/triangle-budget).** Twee kandidaat-detailniveaus echt
+  gebouwd, gefotografeerd en pixel-vergeleken op close-up ÉN
+  speelafstand; `midden` verdubbelde het budget voor 0,11% zichtbaar
+  verschil op speelafstand en is afgewezen. Gekozen: `laag` (~2.320
+  driehoeken/ondode), met `zetZombieV2Detail('midden')` als schakelbare
+  achterdeur voor later.
+- **T122 (1-draw-call-belofte).** De ogen verhuisden van twee losse
+  meshes naar een emissieve fragment-shader-regio; `delen.oogMateriaal`
+  werd een facade-object met alleen een levende `emissiveIntensity`-
+  property, zodat het bestaande T31-oogcontract ongewijzigd bleef
+  werken zonder dat de callers ooit wisten dat het geen echt
+  `THREE.Material` meer is.
+- **T123 (normal map).** Eén A/B-meting (huidplooien met/zonder
+  hoogtekaart), teruggedraaid van de eerste versie (horizontale
+  "zwachtel"-banden door de cilindrische UV) naar willekeurig
+  georiënteerde plooien op sterkte 0,28 — structureel: één gedeelde
+  textuur, nul extra draw calls, nul extra driehoeken.
+- **T124–T126 (types/profielen).** `ONDODE_TYPES[..].vorm` en
+  `VARIATIE_PROFIELEN` verwerkt op de V2-basis, met dezelfde brondata en
+  formules als V1, alleen anders toegepast (bochel als vertexregio i.p.v.
+  losse mesh; Sluiper-oogleesbaarheid via de regiogrootte, niet via
+  `emissiveIntensity`, om niet in conflict te komen met de per-tick
+  gameplay-state die die waarde stuurt).
+- **T127 (eindrapport, "meten niet aannemen").** Zeven scenario's
+  paarsgewijs gemeten (`meet-zombie-v2-benchmark.mjs`, inmiddels
+  verwijderd — zie §11.4). Resultaat: 25–41% minder draw calls in elk
+  scenario met meerdere ondoden, 85% minder raycast-doelen (13 → 2),
+  tegenover 11–21% meer driehoeken; geen geheugenlek in 60 spawn/kill-
+  cycli op beide versies; `ONDODE_TYPES` diff-bevestigd onaangeraakt.
+  Conclusie: V2 kan V1 vervangen, met één voorbehoud — frametijd is in
+  headless SwiftShader niet meetbaar (§10.3/§8.11), dus moest de
+  eigenaar de F3-overlay (T117) zelf in een echte browser draaien vóór
+  T129 de onomkeerbare stap zet.
+- **Speeltest-fixes (na T127, vóór T129).** Na een echte speelsessie
+  meldde de eigenaar dat V2 merkbaar houteriger bewoog dan V1 en dat de
+  T123-huidtextuur als mummie las in plaats van zombie. Beide zijn
+  onderzocht en gefixt zonder V1 aan te raken (volledige onderbouwing in
+  `ZOMBIE_V2_BASELINE.md`): de romp-bob/-twist bereikte via
+  skin-weight-demping maar een band van 6 cm van torso, gefixt door
+  pelvis/chest dezelfde offset als romp te geven; de armen kregen
+  daardoor zichtbaar loshangende schouders, gefixt door ze chest se
+  sway/bob/twist te laten spiegelen; het schoudergewricht bleek ook
+  STATISCH te klein (0,058 tegenover een deltoïde van 0,067) en trok los
+  tijdens de swing, vergroot naar 0,085/0,080; de huidtextuur kreeg
+  grotere onregelmatige necroseplekken en een sterkte van 0,28 → 0,4,
+  plus een echte kleurverschuiving via vertex-color-rottingsvlekken; en
+  de loopcyclus kreeg een knie-illusie (`beenL/R.scale.y` verkort tijdens
+  de zwaaihelft) plus dezelfde illusie kruislings op de armen.
+
+### 11.4 Beslissing 95 (T129) — V1 verwijderen: V2 wordt de enige architectuur
+
+Dit is de onomkeerbare stap die T127's rapport aankondigde en die
+uitdrukkelijk een aparte, expliciete opdracht van de eigenaar vereiste
+bovenop het groene licht uit T127/T128 — geen ticket in deze ronde mag
+zichzelf de vrijheid geven om V1 te slopen. Die opdracht is gegeven ná de
+speeltest-fixes in §11.3.
+
+**Wat verdween.** `maakOndodeModelV1()` (de complete, ~225 regels tellende
+per-body-part-Group-bouwer), de `ZOMBIE_RENDER_VERSIE`-moduleconstante en
+zijn laadtijd-override (`ZOMBIE_VERSIE_OVERRIDE`,
+`window.__AMSTERDAM_UNDEAD_ZOMBIE_VERSIE__`), `zetZombieRenderVersie()`,
+en de twee V1-EXCLUSIEVE geometrie-/materiaalhulpen die nergens anders
+gebruikt werden: `VOD_MATERIAAL` en `bouwGerafeldeVodGeometry()` (de
+vodrand-mesh — V2 heeft, en had, geen vod; dat blijft een bewust
+geaccepteerd verschil, geen nieuwe schuld). `spawnOndode()` bouwt nu
+onvoorwaardelijk `maakOndodeModelV2(typeInfo, traits)`.
+
+**Wat uitdrukkelijk NIET veranderde.** De ticketopdracht was scherp: "niets
+aan V2 zelf — dit ticket ruimt uitsluitend V1 op." Een paar plekken die
+door de opruiming permanent "dood-waar" werden — zoals
+`maakOndodeMateriaal()`'s `if (oogUniforms && ZOMBIE_V2_NORMAL_MAP)`, en
+elke `if (delen.pelvis)`/`if (delen.chest)`-guard in `updateOndoden()`/
+`raakOndode()` die ooit ook een V1-pad moest overslaan — zijn bewust
+ongemoeid gelaten. Het opruimen van permanent-ware voorwaarden is een
+aparte, kleinere herstructurering die dit ticket niet claimt.
+
+**Twee tools die met V1 verdwenen.** `meet-zombie-v2-benchmark.mjs` en
+`maak-zombie-beeldverslag.mjs` bestonden uitsluitend om V1 en V2
+paarsgewijs te vergelijken (T123/T127) — zonder V1 kunnen ze niet meer
+draaien en zijn ze verwijderd, niet aangepast. `meet-normalmap-ab.mjs`
+(de A/B tussen wél/geen normal map) bleef, met alleen de overbodig
+geworden `zetZombieRenderVersie()`-aanroepen eruit: die vergelijking
+gaat niet over V1/V2 en blijft zinvol.
+
+**Testsuite.** Elk regressiebestand dat tegen de toggle of tegen V1's
+mesh-structuur testte is bijgewerkt naar de enige overgebleven
+werkelijkheid: `test-ondode-model-v2.mjs`, `test-stadsarchief.mjs`,
+`test-hitmarker-audio.mjs`, `test-ondode-vormen.mjs`,
+`test-ondode-animatie.mjs`, `test-ondode-hitreacties.mjs`,
+`test-ondode-model.mjs` (de V1-only hitbox-/silhouet-secties die tegen
+inmiddels-verwijderde `geoCache`-sleutels als `'schouder'`/`'vodGerafeld'`
+testten zijn vervallen, niet vervangen — die geometrie bestaat niet meer,
+op geen enkele versie), `test-varianten.mjs` en `test-rimlight.mjs` (waar
+`VOD_MATERIAAL` als los controlepunt verdween en de
+`oogMateriaal`-injectie-check een guard kreeg voor V2's facade-object,
+dat — anders dan een echt `THREE.Material` — geen `onBeforeCompile`
+draagt). `tests/helpers.mjs` verloor de bijbehorende
+`AMSTERDAM_UNDEAD_ZOMBIE_VERSIE`-omgevingsvariabele-hook.
+
+**Resultaat.** Functioneel en visueel identiek aan de laatst goedgekeurde
+V2-staat uit T127/de speeltest-fixes — dit ticket verplaatst geen enkele
+pixel, het verwijdert alleen het pad dat toch al niet meer gekozen werd.

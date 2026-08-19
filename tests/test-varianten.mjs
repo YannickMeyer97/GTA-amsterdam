@@ -141,6 +141,124 @@ const golfSpawnType = await page.evaluate(() => {
 check('golfSpawnStap() produceert op golf 10 meerdere verschillende types over 60 spawns',
   golfSpawnType.length > 1, golfSpawnType);
 
+// === Ticket 124/125/126 (Zombie V2 fase 5): types en variatieprofielen op
+// de V2-basis. Ticket 129 verwijderde V1 en de V1/V2-toggle — elke ondode is
+// nu een V2-ondode, dus de asserts hierboven (gameplay-stats, geen mesh-
+// structuur) en dit blok (visuele verwerking) draaien allebei op dezelfde,
+// enige werkelijkheid. ======================================================
+const v2Types = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const uit = {};
+  const traits = { profiel: 'standaard', kromme: false, slepend: 0, armVerschil: 0, lengte: 1, strompelt: false };
+  for (const type of ['normaal', 'loper', 'sjouwer', 'brander', 'sluiper']) {
+    for (const o of [...d.ondoden]) { d.ondodenGroep.remove(o.groep); d.ruimGroepOp(o.groep); }
+    d.ondoden.length = 0;
+    const o = d.spawnOndode(0, type, { ...traits });
+    let zichtbaar = 0;
+    o.groep.traverse((k) => { if (k.isMesh && k.visible) zichtbaar++; });
+    const g = o.delen.skinnedMesh.geometry;
+    g.computeBoundingBox();
+    uit[type] = {
+      zichtbareMeshes: zichtbaar,
+      // De bbox van de HELE mesh wordt door de armen bepaald (x = ±0,30),
+      // niet door de romp — vandaar de expliciet bewaarde vormparameters.
+      rompBreedte: o.delen.vormParams.rompBreedte,
+      heeftBochel: o.delen.vormParams.heeftBochel,
+      heeftKern: !!o.delen.kern,
+      // Kromme rug / ingedoken kop komen als BOT-rotatie ná bind(), dus
+      // meetbaar op het bot zelf i.p.v. op de geometrie.
+      chestKanteling: +o.delen.chest.rotation.x.toFixed(3),
+      hoofdKanteling: +o.delen.hoofd.userData.baseRotX.toFixed(3),
+    };
+  }
+  return uit;
+});
+// Toetst de bouwer los van het model: reageert het rompprofiel echt op de
+// breedteparameter? (Het model levert de parameter, dit levert de vorm.)
+const v2RompBreedtes = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const detail = d.V2_DETAIL_NIVEAUS[d.ZOMBIE_V2_DETAIL];
+  const meet = (f) => {
+    const g = d.bouwV2RompGeometrie(detail, f);
+    g.computeBoundingBox();
+    const b = +(g.boundingBox.max.x - g.boundingBox.min.x).toFixed(4);
+    g.dispose();
+    return b;
+  };
+  return { smal: meet(0.78), normaal: meet(1), breed: meet(1.3) };
+});
+
+check('V2: elk van de vijf types kost 1 zichtbare draw call, behalve de Brander (2: + losse kernmesh)',
+  ['normaal', 'loper', 'sjouwer', 'sluiper'].every(t => v2Types[t].zichtbareMeshes === 1) &&
+  v2Types.brander.zichtbareMeshes === 2, v2Types);
+check('V2: alleen de Brander heeft een losse kern-mesh (delen.kern)',
+  v2Types.brander.heeftKern && ['normaal', 'loper', 'sjouwer', 'sluiper'].every(t => !v2Types[t].heeftKern), v2Types);
+check('V2: Sjouwer past rompBreedte 1,3 toe en heeft een bochel, Loper 0,78 (exact ONDODE_TYPES[..].vorm)',
+  v2Types.sjouwer.rompBreedte === 1.3 && v2Types.sjouwer.heeftBochel === true &&
+  v2Types.loper.rompBreedte === 0.78 && v2Types.normaal.rompBreedte === 1, v2Types);
+check('V2: bouwV2RompGeometrie() vertaalt die breedte ook echt naar een breder oppervlak',
+  v2RompBreedtes.breed > v2RompBreedtes.normaal * 1.15 &&
+  v2RompBreedtes.smal < v2RompBreedtes.normaal * 0.9, v2RompBreedtes);
+check('V2: Loper leunt voorover (vorm.voorover 0,18 -> chest-kanteling > 0), normaal staat rechtop',
+  v2Types.loper.chestKanteling > 0.1 && v2Types.normaal.chestKanteling === 0, v2Types);
+check('V2: Sluiper heeft een ingedoken kop (extra hoofdkanteling t.o.v. normaal)',
+  v2Types.sluiper.hoofdKanteling > v2Types.normaal.hoofdKanteling + 0.2, v2Types);
+
+const v2Profielen = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const uit = {};
+  for (const profiel of Object.keys(d.VARIATIE_PROFIELEN)) {
+    for (const o of [...d.ondoden]) { d.ondodenGroep.remove(o.groep); d.ruimGroepOp(o.groep); }
+    d.ondoden.length = 0;
+    const p = d.VARIATIE_PROFIELEN[profiel];
+    const traits = { profiel, kromme: !!p.forceerKromme, slepend: 0, armVerschil: 0, lengte: 1, strompelt: false };
+    let fout = null, o = null;
+    try { o = d.spawnOndode(0, 'normaal', traits); } catch (e) { fout = String(e); }
+    if (!o) { uit[profiel] = { fout }; continue; }
+    const g = o.delen.skinnedMesh.geometry;
+    g.computeBoundingBox();
+    // Loopanimatie draaien: een bot zonder gebonden vertices (eenarmig) mag
+    // geen renderfout of NaN opleveren.
+    o.groep.position.set(0, 0, -10);
+    try { for (let i = 0; i < 5; i++) d.updateOndoden(0.05); } catch (e) { fout = String(e); }
+    uit[profiel] = {
+      fout,
+      rompBreedte: o.delen.vormParams.rompBreedte,
+      armDikte: o.delen.vormParams.armDikteFactor,
+      heeftBochel: o.delen.vormParams.heeftBochel,
+      heeftArmL: o.delen.armL !== undefined,
+      botAantal: o.delen.skeleton.bones.length,
+    };
+  }
+  return uit;
+});
+check('V2: alle zeven variatieprofielen bouwen en animeren zonder fout',
+  Object.values(v2Profielen).every(p => p.fout === null), v2Profielen);
+check("V2: 'mager' krijgt rompFactor 0,8 + dunnere armen, 'breed' rompFactor 1,2 (exact VARIATIE_PROFIELEN)",
+  v2Profielen.mager.rompBreedte === 0.8 && v2Profielen.mager.armDikte === 0.85 &&
+  v2Profielen.breed.rompBreedte === 1.2 && v2Profielen.standaard.rompBreedte === 1, v2Profielen);
+check("V2: 'gebocheld' levert daadwerkelijk een bochel op",
+  v2Profielen.gebocheld.heeftBochel === true && v2Profielen.standaard.heeftBochel === false, v2Profielen);
+check("V2: alleen 'eenarmig' mist delen.armL; het SKELET houdt al zijn botten (een bot zonder gebonden vertices is onschuldig)",
+  v2Profielen.eenarmig.heeftArmL === false &&
+  Object.entries(v2Profielen).every(([n, p]) => n === 'eenarmig' || p.heeftArmL === true) &&
+  Object.values(v2Profielen).every(p => p.botAantal === 9), v2Profielen);
+
+// Regressie-anker: de type-definities zelf mogen door fase 5 NIET zijn
+// aangeraakt — dit ticket verandert uitsluitend hoe ze eruitzien.
+const typeData = await page.evaluate(() => {
+  const t = window.AmsterdamUndeadDebug.ONDODE_TYPES;
+  const plat = (x) => ({ s: x.snelheidMultiplier, hp: x.hpMultiplier, hpMax: x.hpMax ?? null, geld: x.geldMultiplier, schaal: x.schaal });
+  return { loper: plat(t.loper), sjouwer: plat(t.sjouwer), brander: plat(t.brander), sluiper: plat(t.sluiper) };
+});
+check('ONDODE_TYPES.loper ongewijzigd (snelheid 1.47, hp 0.5, geld 0.6, schaal 0.9)',
+  JSON.stringify(typeData.loper) === JSON.stringify({ s: 1.47, hp: 0.5, hpMax: null, geld: 0.6, schaal: 0.9 }), typeData.loper);
+check('ONDODE_TYPES.sjouwer ongewijzigd (snelheid 0.55, hp 2.5, hpMax 8, geld 2.2, schaal 1.35)',
+  JSON.stringify(typeData.sjouwer) === JSON.stringify({ s: 0.55, hp: 2.5, hpMax: 8, geld: 2.2, schaal: 1.35 }), typeData.sjouwer);
+check('ONDODE_TYPES.brander/.sluiper ongewijzigd',
+  JSON.stringify(typeData.brander) === JSON.stringify({ s: 1, hp: 1, hpMax: null, geld: 1.3, schaal: 1 }) &&
+  JSON.stringify(typeData.sluiper) === JSON.stringify({ s: 1.35, hp: 0.75, hpMax: null, geld: 1.1, schaal: 0.75 }), typeData);
+
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);

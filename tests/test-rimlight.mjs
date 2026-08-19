@@ -30,8 +30,10 @@ const injectie = await page.evaluate(() => {
   // `typeof === 'function'`-check zou dus altijd waar zijn, ongeacht of dit
   // ticket 'm ooit heeft aangeraakt. De echte marker is de INHOUD: alleen
   // materialen die door maakOndodeMateriaal() gebouwd zijn, hebben de
-  // `uRimSterkte`-uniform-naam in hun onBeforeCompile-broncode.
-  const heeftInjectie = (m) => m.onBeforeCompile.toString().includes('uRimSterkte');
+  // `uRimSterkte`-uniform-naam in hun onBeforeCompile-broncode. Ticket 122's
+  // V2 `delen.oogMateriaal` is geen echt Material (geen onBeforeCompile) —
+  // zo'n object kan per definitie geen eigen injectie dragen.
+  const heeftInjectie = (m) => !!m.onBeforeCompile && m.onBeforeCompile.toString().includes('uRimSterkte');
 
   // Wereldmaterialen: verzamel een steekproef via `wereld` (de group die
   // alle kaartgeometrie bevat, nooit via de ondode-fabriek gebouwd, dus mag
@@ -43,7 +45,6 @@ const injectie = await page.evaluate(() => {
   const huidMaterialenHebbenInjectie = o.delen.huidMaterialen.every(heeftInjectie);
   const kernHeeftGeenInjectie = !heeftInjectie(d.kernMateriaal);
   const oogHeeftGeenInjectie = !heeftInjectie(o.delen.oogMateriaal);
-  const vodHeeftGeenInjectie = !heeftInjectie(d.VOD_MATERIAAL);
 
   const uit = {
     wereldMaterialenAantal: wereldMaterialen.size,
@@ -52,21 +53,18 @@ const injectie = await page.evaluate(() => {
     huidMaterialenHebbenInjectie,
     kernHeeftGeenInjectie,
     oogHeeftGeenInjectie,
-    vodHeeftGeenInjectie,
   };
   d.doodOndode(o);
   return uit;
 });
 check('Geen enkel wereldmateriaal (kaartgeometrie) heeft de rimlight-injectie',
   injectie.wereldMaterialenAantal > 0 && injectie.wereldHeeftInjectie === false, injectie);
-check('ALLE per-instance huidmaterialen van een verse ondode hebben de injectie (torso/schouders/hoofd/armen/handen)',
+check('ALLE per-instance huidmaterialen van een verse ondode hebben de injectie (V2: één hele-lichaam-materiaal)',
   injectie.huidMaterialenAantal > 0 && injectie.huidMaterialenHebbenInjectie, injectie);
 check('kernMateriaal (gedeeld, Brander-kern) blijft ongemoeid — geen injectie',
   injectie.kernHeeftGeenInjectie, injectie);
 check('oogMateriaal (eigen T89-Signaal-systeem) krijgt geen tweede, overlappende laag',
   injectie.oogHeeftGeenInjectie, injectie);
-check('VOD_MATERIAAL (gedeeld) blijft ongemoeid — geen injectie',
-  injectie.vodHeeftGeenInjectie, injectie);
 
 // --- 3. Rimkleur wijkt zichtbaar af van warm lamplicht én koel maanlicht --
 const kleur = await page.evaluate(() => {

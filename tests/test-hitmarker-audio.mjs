@@ -201,9 +201,9 @@ check('KILL_BURST_AANTAL_GROOT > KILL_BURST_AANTAL_KLEIN (het samenval-venster d
 check('KILL_FLITS_PIEK/KILL_FLITS_DUUR/KILL_BURST_SAMENVAL_VENSTER zijn positieve, eindige waarden',
   structuurT95.KILL_FLITS_PIEK > 0 && structuurT95.KILL_FLITS_DUUR > 0 && structuurT95.KILL_BURST_SAMENVAL_VENSTER > 0, structuurT95);
 
-// --- 7a. Eén kill: de PER-INSTANCE huidmaterialen flitsen naar
-// KILL_FLITS_PIEK, kernMateriaal (gedeeld) zit er nooit tussen, en de
-// burst is groter dan een gewone (overlevende) treffer -------------------
+// --- 7a. Eén kill: het (enige) huidmateriaal flitst naar KILL_FLITS_PIEK,
+// kernMateriaal (gedeeld) zit er nooit tussen, en de burst is groter dan
+// een gewone (overlevende) treffer -------------------------------------
 const eenKill = await page.evaluate((traitsStr) => {
   const d = window.AmsterdamUndeadDebug;
   for (const o of [...d.ondoden]) d.doodOndode(o);
@@ -237,15 +237,13 @@ const eenKill = await page.evaluate((traitsStr) => {
     KILL_BURST_AANTAL_GROOT: d.KILL_BURST_AANTAL_GROOT, KILL_FLITS_PIEK: d.KILL_FLITS_PIEK,
   };
 }, NEUTRALE_TRAITS_STR_T95);
-// Ticket 99/100 breidden delen.huidMaterialen uit met twee schouders en
-// twee handen (elk een eigen per-instance maakOndodeMateriaal()-materiaal,
-// zie ARCHITECTURE_NOTES §10.10) — van 4 naar 8 voor een normaal/standaard-
-// ondode (torso/schouderL/schouderR/hoofd/armL/armR/handL/handR).
-check('delen.huidMaterialen bevat de verwachte 8 per-instance materialen (torso/schouders/hoofd/armen/handen) voor een normaal/standaard-ondode',
-  eenKill.aantalMaterialen === 8, eenKill);
+// Ticket 122: precies 1 per-instance materiaal (het hele lichaam deelt er
+// één, met vertexColors voor de per-deel helderheid).
+check('delen.huidMaterialen bevat precies 1 per-instance materiaal (het hele-lichaam-materiaal)',
+  eenKill.aantalMaterialen === 1, eenKill);
 check('kernMateriaal (gedeeld) zit nooit in delen.huidMaterialen',
   eenKill.kernNietErbij, eenKill);
-check('Direct na de kill staan ALLE huidmaterialen op KILL_FLITS_PIEK emissiveIntensity',
+check('Direct na de kill staat het huidmateriaal op KILL_FLITS_PIEK emissiveIntensity',
   eenKill.intensiteitenNaKill.every(i => i === eenKill.KILL_FLITS_PIEK), eenKill);
 check('De kill-burst spawnt precies KILL_BURST_AANTAL_GROOT nieuwe impact-deeltjes (buiten het samenval-venster)',
   eenKill.burstGrootte === eenKill.KILL_BURST_AANTAL_GROOT, eenKill);
@@ -375,7 +373,6 @@ check('De gezamenlijke burst-omvang blijft ruim onder het "5x de volle burst"-sc
   (branderKetting.impactNa - branderKetting.impactVoor) < 5 * branderKetting.GROOT, branderKetting);
 check('De Brander zelf slaat de material-flits over (mesh is al uit de scene voordat dat blok zou lopen)',
   branderKetting.branderNietGeflitst, branderKetting);
-
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);

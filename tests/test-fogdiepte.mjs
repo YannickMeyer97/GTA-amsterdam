@@ -70,29 +70,57 @@ for (const [naam, [x, z]] of Object.entries(zones)) {
     staat.timer === 0, staat);
 }
 
-// --- 3. Zachte overgang: middenin niet al op de eindwaarde ----------------
+// --- 3. Zachte overgang naar BINNEN (kleinere far): middenin niet al op de
+// eindwaarde. Vervolg-fix (speeltest: "gebouwen aan de oostkant van de
+// binnenplaats komen pas na een flink stuk lopen tevoorschijn"): een
+// GROTERE far (naar buiten) mag/moet nu WEL meteen snappen — zie sectie 3b
+// hieronder — maar een KLEINERE far (naar binnen, minder zicht) verdient
+// nog steeds de geleidelijke overgang, anders klapt er een mistwand dicht.
+// Deze sectie test daarom de omgekeerde richting (buiten -> binnen) dan
+// voorheen: die blijft ongewijzigd geleidelijk.
 const overgang = await page.evaluate(async () => {
   const d = window.AmsterdamUndeadDebug;
-  // Begin binnen (woonkamer), dan naar buiten (binnenplaats) stappen.
-  d.speler.positie.set(0, 0, d.DEUR_Z + 2);
+  // Begin buiten (binnenplaats), dan naar binnen (woonkamer) stappen.
+  d.speler.positie.set(d.DEUR2_X + 2, 0, d.PLAATS_Z_ZUID - 2);
   d.updateSpeler(0);
   await new Promise(res => requestAnimationFrame(res));
   const voorFar = d.scene.fog.far;
-  d.speler.positie.set(d.DEUR2_X + 2, 0, d.PLAATS_Z_ZUID - 2);
+  d.speler.positie.set(0, 0, d.DEUR_Z + 2);
   d.updateSpeler(0);
   await new Promise(res => requestAnimationFrame(res));   // 1 frame: net getriggerd
   const netNaTrigger = { far: d.scene.fog.far, timer: d.zoneFogTimer };
   // Nog een handvol frames, ruim vóór ZONE_FOG_OVERGANG_DUUR (2s) verstreken is.
   for (let i = 0; i < 10; i++) await new Promise(res => requestAnimationFrame(res));
   const middenin = { far: d.scene.fog.far, timer: d.zoneFogTimer };
-  return { voorFar, netNaTrigger, middenin, FOG_BUITEN_far: d.FOG_BUITEN.far };
+  return { voorFar, netNaTrigger, middenin, FOG_NORMAAL_far: d.FOG_NORMAAL.far };
 });
-check('Direct na het oversteken is de overgang getriggerd (zoneFogTimer > 0)',
+check('Direct na het oversteken (buiten -> binnen) is de overgang getriggerd (zoneFogTimer > 0)',
   overgang.netNaTrigger.timer > 0, overgang);
-check('Middenin de overgang zit far tussen binnen (24) en buiten (40) in — geen instant-snap',
-  overgang.middenin.far > 24 && overgang.middenin.far < 40, overgang);
+check('Middenin de overgang naar binnen zit far tussen buiten (40) en binnen (24) in — geen instant-snap',
+  overgang.middenin.far < 40 && overgang.middenin.far > 24, overgang);
 check('Middenin de overgang loopt de timer nog steeds af (nog niet klaar)',
   overgang.middenin.timer > 0, overgang);
+
+// --- 3b. Overgang naar BUITEN (grotere far): far snapt WEL meteen ---------
+// De reden staat bij de fix hierboven: verder kunnen zien geeft nooit een
+// lelijke pop, dus de speler hoeft niet 2s te wachten tot de skyline/gevels
+// aan de horizon uit de mist "tevoorschijn komen" terwijl hij al lang in de
+// buiten-zone staat.
+const overgangBuiten = await page.evaluate(async () => {
+  const d = window.AmsterdamUndeadDebug;
+  d.speler.positie.set(0, 0, d.DEUR_Z + 2);   // binnen (woonkamer)
+  d.updateSpeler(0);
+  await new Promise(res => requestAnimationFrame(res));
+  d.speler.positie.set(d.DEUR2_X + 2, 0, d.PLAATS_Z_ZUID - 2);   // buiten (binnenplaats)
+  d.updateSpeler(0);
+  await new Promise(res => requestAnimationFrame(res));   // 1 frame: net getriggerd
+  const netNaTrigger = { far: d.scene.fog.far, timer: d.zoneFogTimer };
+  return { netNaTrigger, FOG_BUITEN_far: d.FOG_BUITEN.far };
+});
+check('Direct na het oversteken (binnen -> buiten) staat far al meteen op het volle buiten-bereik (40), geen 2s-vertraging',
+  overgangBuiten.netNaTrigger.far === overgangBuiten.FOG_BUITEN_far, overgangBuiten);
+check('...ook al is de overgang zelf nog wel "actief" (timer > 0, voor near/kleur)',
+  overgangBuiten.netNaTrigger.timer > 0, overgangBuiten);
 
 // --- 4. Twee binnenzones na elkaar triggeren GEEN overgang -----------------
 const geenOverbodigeOvergang = await page.evaluate(async () => {

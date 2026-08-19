@@ -249,8 +249,15 @@ check('De helling zelf is ook begaanbaar (de route ernaartoe bestaat echt)',
   bereikbaarheid.opHelling > 0, bereikbaarheid);
 
 // --- 8. Obstakelbudget: exact vastgelegd (performancevoorwaarde) ----------
-check('obstakels.length is exact 56 (52 vóór T87 + 4: gesplitste weststomp, vliering-west, vliering-zuid, kokerwand)',
-  obstakelsBijStart === 56, { obstakelsBijStart });
+// T130 (tweede vlieringtrap, noordkant): +3 t.o.v. de T87-baseline van 56 —
+// de weststomp splitst nu in 3 segmenten i.p.v. 2 (een tweede deurgat, +1),
+// en de nieuwe trap staat middenin open vloer aan BEIDE kanten (in
+// tegenstelling tot trap 1, die maar aan één kant open vloer grenst), dus die
+// krijgt twee kokerwanden i.p.v. één (+2). De vloerpanelen zelf (wel
+// gesplitst voor de nieuwe trapopening) zijn geen obstakels — alleen echte
+// collision-primitieven tellen hier mee.
+check('obstakels.length is exact 59 (56 na T87 + 3: extra weststomp-segment, twee kokerwanden i.p.v. één bij de noordtrap)',
+  obstakelsBijStart === 59, { obstakelsBijStart });
 
 // --- 9. Geen extra PointLight (performancevoorwaarde: budget blijft 26) ---
 const lichtTest = await page.evaluate(() => {

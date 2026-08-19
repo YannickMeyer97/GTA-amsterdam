@@ -304,6 +304,10 @@ check('Klikken op een nog-verborgen (niet-ontgrendelde) knop heeft geen effect (
   uiGeblokkeerdKlikTest.actief === false, uiGeblokkeerdKlikTest);
 
 // --- 10. Cosmetische toepassing: kleurset-tint op de ondode-huidskleur -----
+// De huidkleur zit op het ENE gedeelde materiaal van de hele SkinnedMesh,
+// blootgelegd via `delen.huidMaterialen` (zie Ticket 95's kill-flash-array).
+// De vermenigvuldiging met STADSARCHIEF_KLEURSET_TINT gebeurt in
+// maakOndodeModelV2() vóór de materiaalfabriek.
 const kleursetToepassingTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const traits = d.kiesOndodeTraits();
@@ -312,11 +316,11 @@ const kleursetToepassingTest = await page.evaluate(() => {
 
   d.stadsarchief = { ontsnappingen: 0, headshotsTotaal: 0, hoogsteGolf: 0, actief: { kleurset: false, vlamTint: false, introMelodie: false } };
   const zonder = d.spawnOndode(0, 'normaal', traits);
-  const kleurZonder = zonder.delen.romp.children[0].material.color.clone();
+  const kleurZonder = zonder.delen.huidMaterialen[0].color.clone();
 
   d.stadsarchief = { ontsnappingen: 3, headshotsTotaal: 0, hoogsteGolf: 0, actief: { kleurset: true, vlamTint: false, introMelodie: false } };
   const met = d.spawnOndode(0, 'normaal', traits);
-  const kleurMet = met.delen.romp.children[0].material.color.clone();
+  const kleurMet = met.delen.huidMaterialen[0].color.clone();
 
   Math.random = origRandom;
   return {
@@ -326,7 +330,7 @@ const kleursetToepassingTest = await page.evaluate(() => {
   };
 });
 const EPS = 1e-4;
-check('Ontgrendeld+actief: de ondode-huidskleur is exact de basis-kleur vermenigvuldigd met STADSARCHIEF_KLEURSET_TINT',
+check('Ontgrendeld+actief: de ondode-huidskleur (huidMaterialen[0]) is exact de basis-kleur x STADSARCHIEF_KLEURSET_TINT',
   Math.abs(kleursetToepassingTest.met.r - kleursetToepassingTest.zonder.r * kleursetToepassingTest.tint.r) < EPS &&
   Math.abs(kleursetToepassingTest.met.g - kleursetToepassingTest.zonder.g * kleursetToepassingTest.tint.g) < EPS &&
   Math.abs(kleursetToepassingTest.met.b - kleursetToepassingTest.zonder.b * kleursetToepassingTest.tint.b) < EPS,

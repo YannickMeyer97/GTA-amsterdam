@@ -107,8 +107,11 @@ check('Alle nieuwe zone-E-muren staan geregistreerd met exact de verwachte bound
 // Band opnieuw opgehoogd naar 58 (was 52): Ticket 87 (De Vliering) voegt er 4
 // toe (gesplitste atelier-weststomp + vliering-west/-zuid + kokerwand),
 // 52 -> 56. De exacte telling staat in tests/test-vliering.mjs.
-check('Obstakel-count-test (bijgewerkt voor Ticket 24 + Ticket 62 + Ticket 87): totaal blijft in een ruime, verwachte bandbreedte',
-  probes.obstakelAantal >= 20 && probes.obstakelAantal <= 58, probes);
+// Band opnieuw opgehoogd naar 62 (was 58): Ticket 130 (tweede vlieringtrap)
+// voegt er 3 toe (extra weststomp-segment + twee kokerwanden i.p.v. één),
+// 56 -> 59.
+check('Obstakel-count-test (bijgewerkt voor Ticket 24 + Ticket 62 + Ticket 87 + Ticket 130): totaal blijft in een ruime, verwachte bandbreedte',
+  probes.obstakelAantal >= 20 && probes.obstakelAantal <= 62, probes);
 
 const fails = report(errs);
 await browser.close();

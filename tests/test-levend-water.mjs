@@ -167,7 +167,7 @@ const invarianten = await page.evaluate(() => {
   return { lichten, obstakels: d.obstakels.length, interactiePunten: d.interactiePunten.length };
 });
 check('Lichttelling blijft op 28', invarianten.lichten === 28, invarianten);
-check('obstakels.length blijft 56', invarianten.obstakels === 56, invarianten);
+check('obstakels.length blijft 59 (T130-baseline)', invarianten.obstakels === 59, invarianten);
 check('interactiePunten.length blijft 14', invarianten.interactiePunten === 14, invarianten);
 
 const fails = report(errs);

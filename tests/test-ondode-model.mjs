@@ -1,7 +1,11 @@
 // Ondode-model (Ticket 18, Z1): hitbox-/headshot-contract en silhouet-ankers.
-// Dit bestand is EERST geschreven tegen het oude één-blok-model en moet na
-// de pivot-refactor ONGEWIJZIGD groen blijven — dat is het regressie-anker
-// van de herwerking (zie ontwerpbeslissing 16 en ROADMAP Ticket 18).
+// Oorspronkelijk geschreven tegen het oude één-blok-model, later uitgebreid
+// (Ticket 128) met een parallelle V2-sectie tegen T120's layer-gebaseerde
+// hitbox-proxies. Ticket 129 verwijderde de vroegere V1-architectuur en de
+// V1/V2-toggle — dit bestand toetst nu uitsluitend de (enige) V2-werkelijkheid;
+// de V1-only silhouet-/geoCache-secties (schouder/hand/vodGerafeld — geometrie
+// die alleen door de verwijderde maakOndodeModelV1() werd opgebouwd) zijn
+// vervallen, niet vervangen.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
@@ -9,8 +13,8 @@ const { check, report } = makeChecker();
 
 const TYPES = ['normaal', 'loper', 'sjouwer', 'brander', 'sluiper'];
 
-// --- 1. Hitbox-contract: precies 3 'kop'-meshes (hoofd + 2 ogen) per model,
-// al het andere ongemarkeerd — voor elk van de vijf types -------------------
+// --- 1. Hitbox-contract: precies 1 'kop'-hitbox (kopProxy) per model, al het
+// andere ongemarkeerd — voor elk van de vijf types --------------------------
 const contract = await page.evaluate((TYPES) => {
   const d = window.AmsterdamUndeadDebug;
   const uit = {};
@@ -29,10 +33,10 @@ const contract = await page.evaluate((TYPES) => {
   }
   return uit;
 }, TYPES);
-check("Elk type heeft precies 3 'kop'-meshes (hoofd + 2 ogen)",
-  TYPES.every(t => contract[t].kop === 3), contract);
+check("Elk type heeft precies 1 'kop'-hitbox (kopProxy — geen losse oog-meshes meer, die zijn shader-region)",
+  TYPES.every(t => contract[t].kop === 1), contract);
 check("Geen enkel ander mesh-deel draagt een lichaamsdeel-markering",
-  TYPES.every(t => contract[t].anders === 0 && contract[t].lichaam >= 5), contract);
+  TYPES.every(t => contract[t].anders === 0), contract);
 
 // --- 2. Hoofd-hoogte-anker: het hoofd-mesh zit op ±1.58 (schaal 1) --------
 const hoofdHoogte = await page.evaluate((TYPES) => {
@@ -127,58 +131,6 @@ const geschaald = await page.evaluate(new Function(`
 `));
 check('Sluiper op schaal 0.75: headshot op 1.58 x 0.75 blijft een headshot (schade 2)',
   geschaald.schade === 2, geschaald);
-
-// --- Ticket 99 (v0.22, §10.10-beslissing 85): silhouet-uitbreiding —
-// schouders, handen, gerafelde vod. Alle drie via de gedeelde geo()-cache,
-// geen van drie draagt ooit 'kop' (sectie 1 hierboven dekt dat al generiek
-// via traverse(); dit is de EXPLICIETE, naam-gebonden versie die de
-// ticket-spec zelf vraagt).
-const silhouet = await page.evaluate((TYPES) => {
-  const d = window.AmsterdamUndeadDebug;
-  for (const o of [...d.ondoden]) d.doodOndode(o);
-  const NEUTRALE_TRAITS = { profiel: 'standaard', kromme: false, slepend: 0, armVerschil: 0, lengte: 1, strompelt: false };
-  const uit = {};
-  for (const type of TYPES) {
-    const o = d.spawnOndode(0, type, NEUTRALE_TRAITS);
-    const schouderGeo = d.geoCache.get('schouder');
-    const handGeo = d.geoCache.get('hand');
-    const vodGeo = d.geoCache.get('vodGerafeld');
-    let schouders = 0, handen = 0, kopOpNieuweDelen = 0;
-    o.groep.traverse(kind => {
-      if (!kind.isMesh) return;
-      if (kind.geometry === schouderGeo) { schouders++; if (kind.userData.lichaamsdeel === 'kop') kopOpNieuweDelen++; }
-      if (kind.geometry === handGeo) { handen++; if (kind.userData.lichaamsdeel === 'kop') kopOpNieuweDelen++; }
-      if (kind.geometry === vodGeo && kind.userData.lichaamsdeel === 'kop') kopOpNieuweDelen++;
-    });
-    uit[type] = { schouders, handen, heeftVod: !!vodGeo, kopOpNieuweDelen };
-    d.doodOndode(o);
-  }
-  return uit;
-}, TYPES);
-check('Elk type krijgt exact 2 schouders (gedeelde geometrie, geen kop-markering)',
-  TYPES.every(t => silhouet[t].schouders === 2), silhouet);
-check('Elk type krijgt 2 handen (standaard-profiel: beide armen aanwezig, geen kop-markering)',
-  TYPES.every(t => silhouet[t].handen === 2), silhouet);
-check('De vod gebruikt de nieuwe gedeelde gerafelde geometrie (vodGerafeld bestaat in geoCache)',
-  TYPES.every(t => silhouet[t].heeftVod), silhouet);
-check('Schouders/handen/vod dragen NOOIT een kop-markering, voor geen enkel type',
-  TYPES.every(t => silhouet[t].kopOpNieuweDelen === 0), silhouet);
-
-// --- 50 spawn/kill-cycli: de gedeelde geoCache-omvang voor de drie nieuwe
-// vormen groeit niet mee (blijft precies 1 entry per sleutel, ongeacht
-// hoeveel ondoden ooit gespawned zijn) ---------------------------------
-const cacheStabiliteit = await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  for (const o of [...d.ondoden]) d.doodOndode(o);
-  const grootteVoor = d.geoCache.size;
-  for (let i = 0; i < 50; i++) {
-    const o = d.spawnOndode(0, 'normaal');
-    d.doodOndode(o);
-  }
-  return { grootteVoor, grootteNa: d.geoCache.size };
-});
-check('geoCache.size groeit niet over 50 spawn/kill-cycli (schouder/hand/vodGerafeld blijven gedeeld)',
-  cacheStabiliteit.grootteNa === cacheStabiliteit.grootteVoor, cacheStabiliteit);
 
 const fails = report(errs);
 await browser.close();

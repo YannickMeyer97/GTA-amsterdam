@@ -8,7 +8,7 @@
 //   1. De pixelhelderheid op acht vaste standpunten blijft binnen een SMALLE
 //      band (orde 1-2%) van de vastgelegde waarde.
 //   2. De zes ronde-brede invarianten uit §10.2 blijven intact: 28 lichten,
-//      1 schaduwwerper, 56 obstakels, 14 interactiepunten, 4 composer-
+//      1 schaduwwerper, 59 obstakels (T130-baseline), 14 interactiepunten, 4 composer-
 //      passes (3 t/m T95, sinds T96 de eigen naverwerkingspass erbij; T97/
 //      T98 breiden diezelfde pass uit, dus blijft 4 voor de rest van de ronde).
 //
@@ -540,7 +540,7 @@ const invarianten = await page.evaluate(() => {
 });
 check('Invariant 2: precies 28 lichten (1 hemisfeer + 27 point)', invarianten.lichten === 28, invarianten);
 check('Invariant 2: precies 1 schaduwwerpend licht', invarianten.schaduwwerpers === 1, invarianten);
-check('Invariant 5: obstakels.length blijft 56', invarianten.obstakels === 56, invarianten);
+check('Invariant 5: obstakels.length blijft 59 (T130-baseline)', invarianten.obstakels === 59, invarianten);
 check('interactiePunten.length blijft 14', invarianten.interactiePunten === 14, invarianten);
 check('Post-processing: 4 passes (RenderPass/Bloom/naverwerking/Output, sinds T96 — blijft 4 voor de rest van de ronde, T97/T98 breiden de bestaande naverwerkingspass uit)', invarianten.composerPasses === 4, invarianten);
 

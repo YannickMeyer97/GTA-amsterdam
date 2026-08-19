@@ -128,7 +128,7 @@ const invarianten = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   return { obstakels: d.obstakels.length, interactiePunten: d.interactiePunten.length };
 });
-check('obstakels.length blijft 56 (de skyline heeft geen collision)', invarianten.obstakels === 56, invarianten);
+check('obstakels.length blijft 59 (T130-baseline; de skyline heeft geen collision)', invarianten.obstakels === 59, invarianten);
 check('interactiePunten.length blijft 14', invarianten.interactiePunten === 14, invarianten);
 
 // --- 6. Geen enkel silhouetgebouw is een licht: puur geometrie (T113

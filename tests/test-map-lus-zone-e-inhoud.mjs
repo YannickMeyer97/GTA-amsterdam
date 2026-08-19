@@ -138,8 +138,8 @@ check('bijkeukenBetreden gaat van false naar true (eenmalige vlag, zelfde patroo
 // elders in de kaart (52 -> 56). Zoals hierboven gaat deze check over "dít
 // ticket voegt geen collision-decor toe", niet over het absolute getal. ----
 const obstakelCount = await page.evaluate(() => window.AmsterdamUndeadDebug.obstakels.length);
-check('Obstakel-count blijft in de door Ticket 24 + Ticket 62 + Ticket 87 vastgestelde bandbreedte (20-58): geen collision-decor toegevoegd',
-  obstakelCount >= 20 && obstakelCount <= 58, { obstakelCount });
+check('Obstakel-count blijft in de door Ticket 24 + Ticket 62 + Ticket 87 + Ticket 130 vastgestelde bandbreedte (20-62): geen collision-decor toegevoegd',
+  obstakelCount >= 20 && obstakelCount <= 62, { obstakelCount });
 
 // --- 5. Spawn-camping-risico: het venster (11.6, 2) staat ruim (>5m) van
 // het deur4-kooppunt (bijkeuken-kant, x ≈ 5.2) vandaan ---------------------

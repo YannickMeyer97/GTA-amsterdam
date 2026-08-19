@@ -95,7 +95,7 @@ const invariantenTest = await page.evaluate(() => {
   return { lichten, obstakels: d.obstakels.length, interactiePunten: d.interactiePunten.length };
 });
 check('Lichttelling blijft op 28 (de dome is geen licht)', invariantenTest.lichten === 28, invariantenTest);
-check('obstakels.length blijft 56 (de dome heeft geen collision)', invariantenTest.obstakels === 56, invariantenTest);
+check('obstakels.length blijft 59 (T130-baseline; de dome heeft geen collision)', invariantenTest.obstakels === 59, invariantenTest);
 check('interactiePunten.length blijft 14', invariantenTest.interactiePunten === 14, invariantenTest);
 
 // --- 7. Zes echte frames draaien zonder pageerror (dezelfde proactieve

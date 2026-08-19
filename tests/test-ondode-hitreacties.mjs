@@ -304,6 +304,115 @@ const dropsRegressie = await page.evaluate(() => {
 check('Power-up-drops uit raakOndode() blijven werken na de flinch-toevoeging (>= 1 drop over 60 kills)',
   dropsRegressie.drops >= 1, dropsRegressie);
 
+// --- Ticket 120 (Zombie V2 fase 3): onzichtbare hitbox-proxies + schiet()
+// op V2 — een test-matrix over bewegingsstaten (rust, midden-loopcyclus,
+// kromme rug, aanval-windup, flinch, sterven), telkens: een recht-vooruit-
+// schot op de ACTUELE wereldpositie van de kop-bone raakt de kop-proxy
+// (headshot-schade), en de zichtbare SkinnedMesh zelf wordt NOOIT geraakt
+// (structureel via de layer-check, niet via geluk met de geometrie). Mikt op
+// de LEVENDE botpositie (getWorldPosition) i.p.v. een vaste constante —
+// robuust tegen elke build-tijd-positieverschuiving (kromme rug, scheve nek)
+// zonder aannames over de exacte getallen te hoeven herhalen. --------------
+const V2_STAAT_MATRIX = ['rust', 'loopcyclusMidden', 'krommeRug', 'windup', 'flinch', 'sterven'];
+const v2HitboxMatrix = await page.evaluate((staten) => {
+  const d = window.AmsterdamUndeadDebug;
+  const uit = {};
+  for (const staat of staten) {
+    for (const o of [...d.ondoden]) d.doodOndode(o);
+    for (const s of [...d.stervenden]) {}   // stervenden ruimen zichzelf op via updateStervenden, niet hier nodig
+    d.schadePerTreffer = 1;
+    d.eliminatiemodusTimer = 0;
+    d.wapenStaat.magazijn = 8;
+    const traits = staat === 'krommeRug'
+      ? { profiel: 'standaard', kromme: true, slepend: 0, armVerschil: 0, lengte: 1, strompelt: false }
+      : { profiel: 'standaard', kromme: false, slepend: 0, armVerschil: 0, lengte: 1, strompelt: false };
+    const o = d.spawnOndode(0, 'normaal', traits);
+    o.hp = 1000;
+    o.groep.position.set(0, 0, -3);
+    o.groep.rotation.y = Math.PI;
+    o.groep.scale.set(1, 1, 1);
+    d.speler.positie.set(0, 0, 0);
+
+    if (staat === 'loopcyclusMidden') {
+      for (let i = 0; i < 6; i++) d.updateOndoden(0.08);
+    } else if (staat === 'windup') {
+      o.aanvalStaat = 'windup';
+      o.aanvalTimer = 0.5;
+      d.updateOndoden(0.05);
+    } else if (staat === 'flinch') {
+      d.raakOndode(o, o.groep.position, false);   // niet-dodelijke treffer -> flinch-state
+      d.updateOndoden(0.02);
+    } else if (staat === 'sterven') {
+      // Eigen, aparte ondode voor de val-animatie: die verhuist bij het
+      // sterven naar stervendenGroep/stervenden (niet meer in ondodenGroep
+      // onder dezelfde vlag), maar blijft wél een levende SkinnedMesh + botten
+      // — schiet() raycast toch tegen ondodenGroep, dus deze staat toetst
+      // vooral "geen crash + de proxy bestaat nog" i.p.v. een echte
+      // headshot (een lijk hoort geen kogels meer te vangen, zie T22/T70).
+    }
+
+    // Wereldpositie van de kop-bone NU (na de staat hierboven) — robuust
+    // tegen elke build-/animatie-tijd-verschuiving.
+    o.delen.hoofd.updateMatrixWorld(true);
+    const kopWereld = new d.THREE.Vector3();
+    o.delen.hoofd.getWorldPosition(kopWereld);
+    o.delen.lichaamProxy.updateMatrixWorld(true);
+    const lichaamWereld = new d.THREE.Vector3();
+    o.delen.lichaamProxy.getWorldPosition(lichaamWereld);
+
+    function mikEnSchiet(doelPunt) {
+      const dx = doelPunt.x - d.speler.positie.x, dz = doelPunt.z - d.speler.positie.z;
+      const afstandXZ = Math.hypot(dx, dz);
+      // yaw=0 kijkt naar -z (projectconventie, zie updateSpeler()'s
+      // bewegingsformule): camera.rotation.y=θ geeft forward=(-sinθ,-cosθ),
+      // dus θ = atan2(-dx, -dz) om op (dx,dz) te mikken.
+      d.speler.yaw = Math.atan2(-dx, -dz);
+      d.speler.pitch = Math.atan2(doelPunt.y - d.speler.hoogte, afstandXZ);
+      d.camera.position.set(d.speler.positie.x, d.speler.hoogte, d.speler.positie.z);
+      d.camera.rotation.y = d.speler.yaw;
+      d.camera.rotation.x = d.speler.pitch;
+      o.groep.updateMatrixWorld(true);
+      d.camera.updateMatrixWorld(true);
+      const hpVoor = o.hp;
+      d.schiet();
+      return hpVoor - o.hp;
+    }
+
+    const kopSchade = staat === 'sterven' ? null : mikEnSchiet(kopWereld);
+    const lichaamSchade = staat === 'sterven' ? null : mikEnSchiet(lichaamWereld);
+    const skinnedMeshOpRaycastLayer = o.delen.skinnedMesh.layers.test(d.raycaster.layers);
+    const kopProxyOpRaycastLayer = o.delen.kopProxy.layers.test(d.raycaster.layers);
+    const lichaamProxyOpRaycastLayer = o.delen.lichaamProxy.layers.test(d.raycaster.layers);
+    const kopProxyHeeftLichaamsdeel = o.delen.kopProxy.userData.lichaamsdeel === 'kop';
+    const skinnedMeshHeeftLichaamsdeel = 'lichaamsdeel' in o.delen.skinnedMesh.userData;
+
+    uit[staat] = {
+      kopSchade, lichaamSchade,
+      skinnedMeshOpRaycastLayer, kopProxyOpRaycastLayer, lichaamProxyOpRaycastLayer,
+      kopProxyHeeftLichaamsdeel, skinnedMeshHeeftLichaamsdeel,
+    };
+    if (staat !== 'sterven') d.doodOndode(o);
+  }
+  return uit;
+}, V2_STAAT_MATRIX);
+
+for (const staat of ['rust', 'loopcyclusMidden', 'krommeRug', 'windup', 'flinch']) {
+  const r = v2HitboxMatrix[staat];
+  check(`[${staat}] Een recht-vooruit-schot op de kop-bone-positie geeft headshot-schade (2)`,
+    r.kopSchade === 2, { staat, ...r });
+  check(`[${staat}] Een recht-vooruit-schot op de lichaam-proxy-positie geeft lichaamsschade (1)`,
+    r.lichaamSchade === 1, { staat, ...r });
+}
+for (const staat of V2_STAAT_MATRIX) {
+  const r = v2HitboxMatrix[staat];
+  check(`[${staat}] De zichtbare SkinnedMesh staat NOOIT op de raycast-layer (kan nooit geraakt worden)`,
+    r.skinnedMeshOpRaycastLayer === false, { staat, ...r });
+  check(`[${staat}] Kop-/lichaam-proxy staan WEL op de raycast-layer`,
+    r.kopProxyOpRaycastLayer === true && r.lichaamProxyOpRaycastLayer === true, { staat, ...r });
+  check(`[${staat}] De kop-proxy draagt userData.lichaamsdeel='kop', de SkinnedMesh draagt dat veld NOOIT`,
+    r.kopProxyHeeftLichaamsdeel && !r.skinnedMeshHeeftLichaamsdeel, { staat, ...r });
+}
+
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);

@@ -101,8 +101,8 @@ check('Alle 10 raamprojecties delen hetzelfde patroon-canvas (bouwRaamProjectieP
 // decoratief, geen invloed op collision/gameplay (obstakel-telling ongewijzigd
 // t.o.v. de bestaande, vastgelegde bandbreedte).
 const obstakelTest = await page.evaluate(() => window.AmsterdamUndeadDebug.obstakels.length);
-check('Obstakel-telling blijft in de bestaande bandbreedte (20-58): raamprojecties zijn geen collision-decor',
-  obstakelTest >= 20 && obstakelTest <= 58, obstakelTest);
+check('Obstakel-telling blijft in de bestaande bandbreedte (20-62, T130-bijgewerkt): raamprojecties zijn geen collision-decor',
+  obstakelTest >= 20 && obstakelTest <= 62, obstakelTest);
 
 // --- 7. Bewust GEEN SpotLight.map (gobo) — dat zou invariant 2 (§10.2, het
 // vastgelegde lichttype-repertoire) breken. De raamprojecties zijn allemaal
