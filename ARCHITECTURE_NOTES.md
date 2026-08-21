@@ -8411,3 +8411,395 @@ T132 datamodel (gedragsneutraal, suite groen)
 T136 is bewust een eigen ticket: pas als het complete Fix 6-pad speelbaar is
 kun je meten hoe lang €450 bij elkaar messen duurt, en dat is een
 balansvraag die je meet en niet gokt.
+
+---
+
+## 13. Ronde 11 (v0.25) — Gunfeel, de finale, vijandanimatie en audio
+
+Deze ronde is geschreven ná Ronde 10 (§12) maar vóórdat T132 was uitgevoerd.
+Ze doet twee dingen: vijf nieuwe productdoelen architectureel uitwerken, en —
+belangrijker — drie bevindingen vastleggen die de **bestaande, goedgekeurde
+Ronde 10-tickets raken**. Zie §13.12 voor precies wat er aan Ronde 10 wijzigt.
+
+### 13.1 Scope en aanleiding
+
+Vijf doelen, in de volgorde waarin ze in de roadmap terechtkomen:
+
+- **A — Gunfeel.** De twee bestaande vuurwapens veel meer eigen identiteit
+  geven. AMSTEL-9: precies, gecontroleerd, skill-based, bevredigende
+  headshots. Canal Ripper: agressief, hoge output, korte bursts beheersbaar,
+  volgehouden vuur steeds moeilijker. **Geen nieuw vuurwapen.**
+- **B — De escape-finale.** De aankomende boot een echte climax van 20-45
+  seconden maken, in plaats van "vereisten halen → boot bereiken → T → gewonnen".
+- **C — Animatie- en visuele polish.** Ondode-locomotie, gevechtsleesbaarheid,
+  type-persoonlijkheid; wapenanimatie; wereldmaterialen.
+- **D — Professionele audio**, zonder de procedurele stijl blind weg te gooien.
+- **E — Incrementeel betere structuur**, zonder big-bang rewrite.
+
+### 13.2 Auditbevindingen in de bestaande code
+
+Gemeten, niet aangenomen. Regelnummers zijn een momentopname.
+
+**Wapensysteem — sterk op data, zwak op presentatie.** `WAPEN_DRUKSPUIT`/
+`WAPEN_RATELAAR` dragen al een echte behaviour-laag (`kickSterkte`,
+`spreadNdc`, `terugslagSterkte`, `schotToon`, `schotCooldown`,
+`herlaadDuur*`, `magazijnMax`, `reserve`, `smederijConfig[]`), geborgd door
+`test-wapen-identiteit.mjs`. Wat ontbreekt voor gunfeel: `spreadNdc` is een
+constante die per schot gelezen wordt (geen opbouw), `cameraKick` is één
+module-scalar met exponentieel verval (geen patroon, geen per-wapen
+recovery-curve), en er is **nergens** een `rotation.x`-write op een
+wapen-Group — model-recoil bestaat dus niet.
+
+**De cosmetische wapenlaag heeft vier eigenaren.** Vier losse plekken
+schrijven naar dezelfde drie transform-properties van dezelfde Group:
+
+| Plek | Schrijft | Wanneer |
+|---|---|---|
+| `updateWapen()` | `groep.position.y` | herlaad-dip |
+| gameLoop, cosmetische zone | `groep.position.z` | terugslag |
+| gameLoop, cosmetische zone | `groep.position.y` | wisseldip |
+| gameLoop, cosmetische zone | `groep.position.x`, `groep.rotation.z` | sway/lean |
+
+`position.y` heeft dus twee schrijvers. Ze botsen vandaag niet, maar alleen
+door een **niet-uitgesproken invariant**: `wisselWapen()` doet
+`if (wapenStaat.herladen) return;`. Model-recoil zou de vijfde schrijver zijn.
+
+Bijkomend: `WAPEN_BASIS_Y` (-0.22) en `WAPEN_BASIS_X` (0.26) zijn gedeelde
+constanten die aannemen dat elk wapen op dezelfde rustpositie hangt. Een
+tier-model met een ander silhouet breekt die aanname.
+
+**De wapenmodellen zijn niet adresseerbaar.** `wapenDrukspuit` en
+`wapenRatelaar` bouwen hun onderdelen in een blok waarin alleen
+`meterDrukspuit` en `tandwielRatelaar` naar buiten gehoist worden — precies
+de twee die de Smederij nodig had. Tank, mondstuk, greep, loop, chassis,
+magazijnkast en kolf zijn na de bouw **onbereikbaar**. Elke reload-, recoil-
+of tier-animatie heeft er meer nodig.
+
+**De escape-flow is rijker dan hij oogt.** Aanwezig: aankondigingsfase met
+eigen timer (`ONTSNAPPING_AANKONDIGING_DUUR` 5s), fysieke aan-/afvaart met
+positie- én rotatie-interpolatie (`updateBootPositie()`), gerichte herhaalde
+hoorn met pan/volume (`berekenBootHoornPanVolume()`, pure functie),
+minimap-marker, objective-regel `#ontsnappingVensterUI`, vertrek-tell.
+Wat ontbreekt: **er escaleert niets**. De golf loopt gewoon door, en
+`probeerOntsnapping()` gaat rechtstreeks naar `toonWinScherm()`.
+
+**Vijandanimatie is volledig procedureel en heeft al parametrische
+variatie.** Geen `AnimationMixer`, geen keyframes; alles in `updateOndoden()`
+op `ondode.loopFase` met een platte `THREE.Skeleton`. Er is al
+`ONDODE_TYPES[x].gang` (`pasFactor`/`bobFactor`/`ampFactor`), `.vorm`, en
+`kiesOndodeTraits()` per individu, plus knie-/elleboogbuiging, pelvis/chest-
+sway met faseverschil, flinch met rompTwist en vier valstijlen. Het budget is
+hard: **≤ 10 transform-writes per ondode per frame** (§4.9).
+
+Eén structureel gat: `loopFase` loopt op **tijd**
+(`dt * (4 + snelheid * 2) * gang.pasFactor`), terwijl de root op **afstand**
+beweegt (`positie.addScaledVector(richting, snelheidNu * dt)`). Die twee zijn
+niet gekoppeld, dus voetslip is structureel — en een geblokkeerde ondode
+loopt ter plekke door.
+
+**Audio: ~40 handgeschreven `speel*()`-functies boven één `piep()`-primitieve,
+geen registry, geen asset-pad.** Dertien testtellers (`herlaadStartTeller`,
+`wisselTeller`, `raakTikTeller`, `kopTikTeller`, `killKnakTeller`,
+`aanvalGromTeller`, `slagRaakTeller`, `slagMisTeller`, `stroomklapTeller`,
+`bootHoornTeller`, `bootHoornHerhaalTeller`, `druppelTikTeller`,
+`dreigingsGainSchrijfTeller`) **zijn** het testcontract — headless tests
+kunnen Web Audio niet horen.
+
+### 13.3 De null-`wapenStaat`: waarom T134 vandaag zou crashen
+
+Dit is de belangrijkste bevinding van deze ronde, en hij raakt een al
+goedgekeurd ticket.
+
+`wapenStaat` wordt op **14 plekken onvoorwaardelijk gedereferenced**. De
+kritieke is de sway/lean-write in de cosmetische gameLoop-zone: die draait
+**elke frame, zonder enige conditie**. T134 zet `wapenStaten.drukspuit` op
+`null` en `actiefWapenNaam` op `'mes'`. Zoals nu gespecificeerd crasht het
+spel daarmee op frame 1.
+
+Volledige inventaris, naar risico gerangschikt:
+
+| Categorie | Plekken |
+|---|---|
+| Per-frame, ongeguard | gameLoop sway/lean (`position.x`, `rotation.z`) |
+| Per-frame, achter een conditie die na een schot/wissel waar wordt | gameLoop terugslag (`terugslag > 0`), wisseldip (`wisselTimer > 0`), vlamdoving (`vlamTimer > 0`), `updateWapen()` (auto-herlader + herlaadtimer) |
+| Op aanroep | `updateAmmoUI()`, `herladen()`, `wisselWapen()`, `probeerTeSchieten()`, `schiet()` (11 dereferences), `speelSchot()`, `updateHUD()`, `koopSmederij()`, `smederijPunt.prompt()` + `WINKEL_STIJLEN.smederij.status()`, ammo-kist, werkbank, twee debug-getters |
+
+§12.3 stelt dat een aparte `mesStaat` "de vuurwapen-code letterlijk
+ongewijzigd" houdt. Dat klopt voor het **schade- en munitiepad**, maar niet
+voor het per-frame **presentatiepad** en de HUD.
+
+**Ontwerpbeslissing 100: splits de referentie in `wapenStaat` en
+`inHandGroep`.** Ontwerpbeslissing 95's argument is dat het mes geen van de
+zeven gameplayvelden zinnig invult en dat het in `wapenStaten` persen elke
+lezer tot `if (actiefWapenNaam === 'mes')` dwingt. Dat argument geldt voor het
+gameplaypad. Het geldt **niet** voor het presentatiepad, dat alleen een Group
+nodig heeft om te bewegen. Daarom:
+
+- `wapenStaat` blijft exact wat OB95 bedoelt: de actieve *vuurwapen*-staat,
+  `null` als je geen vuurwapen vasthoudt. Eén early return bovenaan
+  `updateWapen()` / `probeerTeSchieten()` / `herladen()` dekt het hele
+  gameplaypad.
+- Een nieuwe, **altijd niet-null** `inHandGroep` wijst naar de Group die op
+  dit moment aan de camera hangt (mes of vuurwapen). De vier cosmetische
+  blokken lezen die. Nul extra `if`-takken.
+- De HUD krijgt precies één mes-tak — exact wat §12.6 al voorschrijft
+  (label `Mes`, munitie `0 / 0`).
+
+Dit is een **verfijning** van OB95, geen omkering. En het is gedragsneutraal:
+vandaag wijst `inHandGroep` naar dezelfde Group als
+`wapenStaat.definitie.groep`. Daarom hoort het in T132 en niet in T134.
+
+### 13.4 De wapenpresentatielaag: één eigenaar
+
+**Ontwerpbeslissing 101: alle cosmetische transform-writes op het
+wapen-in-de-hand krijgen één eigenaar, vóórdat er een vijfde schrijver bij
+komt.** Vier bestaande schrijvers naar drie properties, met een
+niet-uitgesproken invariant tussen twee ervan (§13.2), is al fragiel. Model-
+recoil eraan toevoegen zonder eerst te consolideren is vragen om precies het
+soort bug dat in dit project moeilijk te vinden is.
+
+De vorm: één `updateWapenPresentatie(dt)` die de herlaad-dip, wisseldip,
+terugslag, sway en lean als **optelling van offsets op één basispositie**
+toepast, en per property precies één keer per frame schrijft. Bestaande
+decay-formules en amplitudes worden letterlijk overgenomen, niet hergetuned.
+
+Twee dingen verhuizen mee:
+- De herlaad-dip uit `updateWapen()`; die functie houdt alleen nog de timer
+  en de munitie-overheveling.
+- `WAPEN_BASIS_X`/`WAPEN_BASIS_Y` naar een `presentatie`-entry per wapen in
+  ARSENAAL, met vandaag voor beide wapens dezelfde waarde. Dat maakt een
+  afwijkende rustpositie per wapen of per tier later mogelijk zonder een
+  gedeelde constante te breken.
+
+Daarnaast een **onderdelenconventie**: elk wapenmodel legt zijn onderdelen
+vast in `groep.userData.onderdelen` met semantische namen, zodat animatie ze
+kan adresseren. `meterDrukspuit` en `tandwielRatelaar` verhuizen daarheen.
+
+**Vangrail.** Het wapenmodel hangt op `(0.26, -0.22, -0.5)` aan de camera en
+valt binnen het 15-85%-meetvenster van `pixelstats()`. Een sway-offset die
+per ongeluk `cos()` in plaats van `sin()` gebruikt staat in rust niet op 0 en
+verschuift de vliering-mediaan met bijna 5% — dat is in dit project al
+gemeten (zie de toelichting bij de sway-write in de gameLoop). Als
+`test-visuele-basislijn.mjs` ná deze refactor verschuift, is de refactor
+**niet** gedragsneutraal en moet de oorzaak gevonden worden, niet de
+basislijn bijgewerkt.
+
+### 13.5 Gunfeel: behaviour en presentation, en waarom de spec vóór het model komt
+
+De opdracht onderscheidt twee lagen, en dat onderscheid valt in deze codebase
+netjes samen met bestaande grenzen:
+
+- **Weapon Behaviour** — accuracy, spread, recoil, recovery, cadans,
+  schade-interacties. Woont in de `WAPEN_*`-definities en `wapenStaat`.
+- **Weapon Presentation** — camera kick, weapon kick, animaties, muzzle-VFX,
+  hit-VFX, audio. Woont na OB101 in `updateWapenPresentatie()` en de
+  effect-pools.
+
+Twee bestaande garanties blijven **onaangetast** door alle gunfeel-tickets:
+`speler.pitch` wordt nooit gemuteerd (geborgd door
+`test-wapen-identiteit.mjs`), en `schiet()` loopt in dezelfde gameLoop-tick
+vóór de cosmetische zone, dus geen enkel recoil-effect kan de raycast-
+oorsprong raken.
+
+**Ontwerpbeslissing 102: de gunfeel-spec bepaalt welke modelonderdelen moeten
+bewegen, en komt daarom vóór de visuele spec.** Dit is de rework-preventie
+van deze hele ronde. De situatie zonder deze beslissing:
+
+> T138 bouwt een definitief AMSTEL-9-model → een later gunfeel-ticket ontdekt
+> dat er een slede moet terugslaan → het model moet opnieuw.
+
+De volgorde die dat voorkomt: presentatielaag (welke plek) → gunfeel-spec
+(welke onderdelen bewegen, met getallen en curves) → gunfeel-implementatie
+(bewijs dat het werkt) → visuele spec → modellen bouwen. Zo zijn de eisen bij
+het bouwen niet alleen gespecificeerd maar geïmplementeerd en gemeten.
+
+**Progressive spread heeft per-wapen runtimestate nodig** (`spreadOpbouw`,
+`recoilFase`). Die hoort in `nieuweWapenStaat()` — de functie die T132 én
+T134 al verbouwen. De velden daar meteen reserveren (op 0, nergens gelezen)
+kost niets en voorkomt dat die functie een derde keer open moet.
+
+### 13.6 De finale: een uitbreiding, geen encounter-engine
+
+**Ontwerpbeslissing 103: de finale is één extra state in de bestaande
+ontsnappingsmachine, niet een nieuw systeem.** De machine heeft al een
+timer-gedreven fase met fysieke bootbeweging, gerichte audio, objective-UI en
+een vertrek-tell (§13.2). Wat ontbreekt is dat er niets escaleert en dat `T`
+instant wint.
+
+De vorm die het minste nieuwe code kost: **`T` (met €2500) start een
+instapfase in plaats van meteen te winnen.** Je stapt aan boord, de boot moet
+losgooien, en dat kost tijd waarin je je moet verdedigen. Dat hergebruikt het
+hele bestaande aankomst-/vertrekapparaat en voegt één state toe.
+
+Duur: richtwaarde ~30 s, midden in de gevraagde 20-45 s, en passend bij de
+bestaande ritmes — `GOLF_RUST_TIJD` is 8 s, `ONTSNAPPING_AANKONDIGING_DUUR`
+is 5 s, `effectiefSpawnInterval()` is 1,1 s basis. Bij ~30 s past een surge
+van ~25 spawns binnen `effectiefMaxActief()` (max 26).
+
+Faalgedrag: **geen aparte faalstaat**. Doodgaan tijdens de instapfase is
+gewoon game over via het bestaande pad.
+
+Escalatie loopt uitsluitend via bestaande kanalen: `spelStaat.budget`-injectie
+door `golfSpawnStap()`, `scene.fog`, `OOG_INTENSITEIT_*`, `dreigingsGainNode`,
+`lampDipFactor`, `vignetFlits`, boothoorn-frequentie. **Geen nieuwe
+effect-pools, geen nieuwe lichten, geen nieuw spawnpad.**
+
+**Bekende valkuil.** Elk escalatiekanaal moet op élk exitpad herstellen, ook
+bij game over midden in de fase. `scene.fog` heeft dit precedent al: de
+Mistgolf moest een expliciete restore in `gameOver()` krijgen omdat het
+death-scherm anders in de mist hing (§1). Twee open punten die het
+ontwerpticket moet beslissen: wat er gebeurt als de speler het instapgebied
+verlaat, en wat er gebeurt als de golf eindigt tijdens de instapfase (de
+wave-complete-tak van `updateGolf()` sluit vandaag het venster).
+
+### 13.7 Vijandanimatie: parametrisch blijven
+
+**Ontwerpbeslissing 104: geen keyframes, geen `AnimationMixer`, geen tweede
+animatiesysteem per type.** De procedurele laag met `gang`/`vorm`/`traits`
+werkt, is getest en past binnen het 10-writes-budget. Verbeteringen zijn
+uitbreidingen op die parameterset, niet een nieuwe laag ernaast. Een nieuw
+vijandtype hoort ook onder deze ronde puur data te blijven.
+
+**De grootste kwaliteitswinst per regel code is de voetslip-koppeling.**
+`loopFase` op tijd voeden terwijl de root op afstand beweegt (§13.2) maakt
+voetslip structureel. `loopFase` koppelen aan werkelijk afgelegde afstand —
+exact zoals `bobFase` bij de speler al doet — lost dat op én zorgt dat een
+tegen een muur geblokkeerde ondode niet langer ter plekke doorloopt.
+
+**Valkuil.** `loopFase` voedt óók de arm-, hoofd-, knie-, elleboog- en
+bob-writes. Hem anders voeden verandert het ritme van alles tegelijk;
+`gang.pasFactor` per type moet daarna nog steeds het bedoelde verschil geven.
+`test-vijand-leesbaarheid.mjs` is de vangrail.
+
+**De aanvalstimings blijven ongemoeid.** `AANVAL_PROFIELEN` (windup/herstel
+per type) is getuned en geborgd door `test-aanval-machine.mjs`. Animatiewerk
+verandert alleen de presentatie *binnen* bestaande timings — nooit de timings,
+de schade, het bereik, de raakhoek of `MAX_AANVALLERS`.
+
+### 13.8 Audio: eerst de assetregel, dan pas architectuur
+
+**Ontwerpbeslissing 105: "professionele audio" is hier eerst een
+projectregelvraag, geen implementatievraag.** `CLAUDE.md` verbiedt externe
+assets; er is dan ook geen loader, geen preload en geen buffer-cache. Samples
+zouden base64 data-URI's in het HTML-bestand moeten worden. Ruwe orde van
+grootte: OGG/MP3 mono op ~64 kbps ≈ 8 KB/s, base64 ≈ +33%, dus ~11 KB per
+seconde audio; twintig korte samples van gemiddeld 1 s ≈ 220 KB op een bestand
+van nu ~785 KB (+28%). WAV is een veelvoud en valt af. **Deze getallen zijn
+een schatting en horen gemeten te worden vóór de vraag beantwoord wordt.**
+
+Daarom is het eerste audioticket een **audit- en beslissingsticket**: elk
+geluid classificeren als SYNTH KEEP / SAMPLE / HYBRID, de regelvraag expliciet
+aan de eigenaar voorleggen met alternatieven, en pas dán bepalen welke
+architectuur (registry, preload, categorie-gains, concurrency, voice-limits,
+variants, pitch-variatie, positional, fallback, autoplay) werkelijk nodig is.
+Uitgangspunt: de procedurele stijl is een **bewuste keuze**, geen
+tekortkoming — de bewijslast ligt bij "dit móét een sample worden".
+
+**Twee harde migratie-eisen** voor elke audioverbouwing: de dertien
+testtellers uit §13.2 moeten exact blijven tellen, en `test-geluidsknop.mjs`
+rekent op de kale keten `osc → gain → masterGainNode` bij `pan === 0`. En een
+bekende valkuil: de `setTimeout`-vervolgtonen (`speelExplosie`,
+`speelGolfStart`, `speelGolfKlaar`, `speelGameOver`, `speelGrachtklok`,
+`speelStroomklap`) lopen door tijdens pauze — dat is in dit project al eerder
+een bug geweest (T33 moest `speelHerlaad` daarom splitsen).
+
+### 13.9 Architectuur binnen de single-file-regel
+
+**Ontwerpbeslissing 106: "incrementeel beter structureren" betekent hier
+data-driven consolidatie binnen het ene bestand, niet modulesplitsing.**
+`CLAUDE.md` en §0 van dit document eisen één zelfstandig HTML-bestand zonder
+build-stap. Dat is de reden dat het spel op een kale `file://`-load draait en
+dat de hele testsuite werkt. Extractie naar aparte modules zou die regel
+breken en wordt daarom niet voorgesteld.
+
+Wat de doelen achter §E wél haalt, binnen de regel:
+- **Data-driven tabellen** i.p.v. vertakte functies (ARSENAAL, GELUIDEN):
+  minder branching, minder duplicatie, makkelijker balanceren en testen.
+- **Eén eigenaar per cross-cutting concern** (OB101 voor wapenpresentatie).
+- De debug-hook `window.AmsterdamUndeadDebug` fungeert al als de facto
+  publieke API-grens en is de plek waar ownership zichtbaar wordt.
+
+Consolidatietickets komen **ná** de features die ze consolideren. Eerder
+vastleggen wat er in ARSENAAL of GELUIDEN hoort, betekent die vorm daarna nog
+drie keer wijzigen.
+
+Ook expliciet: **"parallel" kan in dit project niet letterlijk.** Alle
+gamecode staat in één bestand, dus twee gelijktijdige branches conflicteren
+gegarandeerd, ook bij logisch onafhankelijke features. In de roadmap betekent
+"kan parallel" daarom **herordenbaar**, niet **gelijktijdig**. OB101 is de
+enige wijziging in deze ronde die toekomstige parallellisatie echt veiliger
+maakt: daarna raken de gunfeel- en tier-tickets elkaar niet meer in dezelfde
+gameLoop-regels.
+
+### 13.10 Architecture Timing Matrix
+
+| Subsystem | Classificatie | Waarom |
+|---|---|---|
+| Arsenal/weapons (datamodel) | **Extract Before Change** | T132 doet dit al; elk volgend wapenticket bouwt erop. Zonder stabiele `nieuweWapenStaat()`-vorm wordt elke wapenticket een migratie. |
+| Weapon presentation | **Extract Before Change** | Vier schrijvers, drie properties, één niet-uitgesproken invariant (§13.2). Een vijfde toevoegen zonder eigenaar is aantoonbaar riskanter. Klein ticket. |
+| Enemy animation | **Change Then Extract** | De parametrische laag werkt al. Vooraf extraheren churnt een goed geteste structuur zonder te weten welke parameters nodig zijn. |
+| Waves / threat budget | **Leave For Now** | Budget-gedreven en stabiel sinds T13. Niets in deze ronde vraagt om verandering; de finale haakt aan zonder te verbouwen. |
+| Escape / boat | **Change Then Extract** | Compact, één duidelijke eigenaar. De finale is een uitbreiding van dezelfde machine. Extractie vooraf legt een vorm vast die de uitbreiding meteen wijzigt. |
+| Audio | **Extract Before Change**, maar ná de beslissing | Registry vóór samples is noodzakelijk; registry vóór classificatie is voorbarig. Dus: beslissen → extraheren → veranderen. |
+| Rendering / materials | **Leave For Now** | `MATERIAAL_FAMILIES` + `matFamilie()`-cache + `bouwCanvasTextuurPaar()` zijn al data-driven met dispose-contract. Polish is data toevoegen. |
+| HUD / UI | **Leave For Now** | `updateHUD()` heeft al een dirty-check (T71) en de per-systeem HUD-functies zijn al gescheiden. De mes-tak is één branch. |
+
+### 13.11 Rework traps
+
+| # | Trap | Betrokken | Volgorde die het voorkomt |
+|---|---|---|---|
+| 1 | Wapenmodel gebouwd vóór de animatie-eisen bekend zijn | T138/T139 vs. gunfeel | Presentatielaag → gunfeel-spec → gunfeel-implementatie → visuele spec → modellen |
+| 2 | Weapon behaviour vóór de statestructuur stabiel is | T132/T134 vs. gunfeel | T132 reserveert de runtimevelden (op 0); gunfeel vult ze pas ná T136 |
+| 3 | Samples integreren vóór de assetbeslissing | Nieuwe geluiden vs. audiospoor | Audit+beslissing → registry → uitrol. Tot dan blijft elk nieuw geluid `piep()`-gebaseerd |
+| 4 | Finale bouwen vlak vóór dezelfde wave-code verbouwd wordt | Finale vs. golfsysteem | **Laag risico** — geen wave-verbouwing gepland. Wel: finale en T134 raken allebei de `interactiePunten`-invariant; per ticket bijwerken, nooit samen |
+| 5 | Materials polish op meshes die vervangen worden | Wereldmateriaal vs. wapenmateriaal | Wereldmateriaal is vrij plaatsbaar; wapenmateriaal hoort **uitsluitend binnen** de tier-tickets |
+| 6 | Refactor en daarna dezelfde code zwaar wijzigen | Audioregistry vs. finale-audio; ARSENAAL-consolidatie vs. gunfeel | Features vóór hun consolidatieticket |
+
+### 13.12 Wat er aan Ronde 10 verandert
+
+Geen enkele Ronde 10-requirement vervalt of verhuist naar een ander
+ticketnummer. Drie tickets wijzigen:
+
+**T132 — uitgebreid.** Alle bestaande scope blijft, inclusief
+ontwerpbeslissing 99 (gedragsneutraal, hele suite groen zonder één aangepaste
+assertie). Toegevoegd: de `inHandGroep`-indirectie (OB100, verplicht — anders
+crasht T134), gereserveerde runtimevelden `spreadOpbouw`/`recoilFase` op 0,
+`presentatie`/`audio`-subobjecten in ARSENAAL, en de §13.3-inventaris als
+**testbaar** acceptatiecriterium in plaats van als notitie.
+
+**T137 — uitgebreid en verplaatst.** Alle bestaande scope blijft (vormtaal per
+tier, ≤5 meshes / 0 lichten, basislijn vooraf begroten, `vlam` blijft een
+Group van exact 2 vlakken, mes-look). Toegevoegd: welke
+`userData.onderdelen`-sleutels elke tier moet blijven leveren, de rustpositie
+per tier, en of de recoil-amplitude per tier meeschaalt. Verplaatst naar ná de
+gunfeel-implementatie (OB102).
+
+**T138/T139 — verplaatst, scope volledig ongewijzigd.** Relatieve volgorde
+t.o.v. T137 identiek. Eén extra acceptatiecriterium: elke tier levert de
+afgesproken onderdeel-sleutels.
+
+**§12.9's bindende volgorde blijft gerespecteerd.** Die eist "T132 t/m T136
+(Fix 6) volledig af vóór T137 begint (Fix 7)". Extra tickets ertussen schuiven
+is daarmee verenigbaar.
+
+### 13.13 Volgorde en afhankelijkheden
+
+```
+T132 (datamodel + inHandGroep + gereserveerde velden)   ← Ronde 10, uitgebreid
+ ├─ T133 mes ─ T134 kooppunt ─ T135 randgevallen ─ T136 balans   ← Ronde 10
+ │                                                  └─ M1
+ └─ T140 presentatielaag
+      └─ T141 gunfeel-spec + animatie-eisen
+           ├─ T142 AMSTEL-9 ─ T143 Canal Ripper ─ T144 trefferfeedback
+           │                                        └─ M2
+           └─ T137 visuele spec ─ T138 tiers ─ T139 tiers   ← Ronde 10, verplaatst
+
+T145 finale-ontwerp ─ T146 holdout ─ T147 escalatie ──┐
+T148 locomotie ─ T149 leesbaarheid ─ T150 persoonlijkheid ─┤── M3
+T151 wereldmateriaal   ← vrij plaatsbaar, geen dependencies ┘
+T152 audio-audit ─ T153 registry ─ T154 uitrol ── M4
+T155 ARSENAAL-consolidatie   (na T144, T139, T153)
+```
+
+Harde, niet-omkeerbare blokkades: T132→T134 (crash), T140→T141→T137,
+T141→T142/T143, T145→T146→T147, T152→T153→T154, en T144+T139+T153→T155.

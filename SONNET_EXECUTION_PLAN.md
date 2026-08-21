@@ -3542,6 +3542,12 @@ Architectuur: `ARCHITECTURE_NOTES.md` §12. Ontwerpbeslissingen 95-99.
 
 ### Ticket 132 — Wapendatamodel: één arsenaal, twee schakelklassen
 
+> **UITGEBREID IN RONDE 11 — lees dat eerst.** Alles hieronder blijft gelden,
+> maar er komen vier gedragsneutrale toevoegingen bij, waarvan één
+> **verplicht**: zonder de `inHandGroep`-indirectie (ontwerpbeslissing 100)
+> crasht T134 op frame 1. Zie `ARCHITECTURE_NOTES.md` §13.3 en het
+> T132-amendement in de Ronde 11-sectie hieronder.
+
 **Doel.** De drie invarianten uit §12.2 opheffen zonder één gram
 gedragsverandering. Na dit ticket start de speler nog steeds met de AMSTEL-9
 in de hand en werkt alles exact zoals nu — alleen de structuur eronder is
@@ -3681,6 +3687,14 @@ met de meting.
 
 ### Ticket 137 — Visuele spec en budget voor de tier-visuals
 
+> **UITGEBREID EN VERPLAATST IN RONDE 11.** Alle scope hieronder blijft
+> gelden. Toegevoegd: de animeerbare onderdelen per tier, de rustpositie per
+> tier, en of de recoil-amplitude per tier meeschaalt. **Nieuwe positie: ná
+> T144** (de gunfeel-implementatie), zodat de animatie-eisen niet alleen
+> gespecificeerd maar bewezen zijn — zie ontwerpbeslissing 102 en
+> `ARCHITECTURE_NOTES.md` §13.5. De bindende Fix 6-vóór-Fix 7-volgorde uit
+> §12.9 blijft daarbij gerespecteerd.
+
 **Doel.** Vóór er één model gebouwd wordt: vastleggen hoe basis / 1x gesmeed
 / 2x gesmeed er per wapen uitzien, en wat dat mag kosten.
 
@@ -3704,6 +3718,10 @@ zonder dat er nog ontwerpkeuzes open staan.
 
 ### Ticket 138 — AMSTEL-9 in drie tiers
 
+> **VERPLAATST IN RONDE 11, scope volledig ongewijzigd.** Volgt T137 op zijn
+> nieuwe positie (ná T144). Eén extra acceptatiecriterium: elke tier levert de
+> in T140/T141 afgesproken `userData.onderdelen`-sleutels.
+
 Bouwt de spec uit T137 voor de AMSTEL-9. Additief per tier (beslissing 98).
 Acceptatie: de drie tiers zijn visueel duidelijk te onderscheiden;
 mesh-/lichtbudget gehaald; `test-smederij.mjs` en `test-mondingsvlam.mjs`
@@ -3713,6 +3731,938 @@ groen; basislijn bijgewerkt mét gemeten onderbouwing als hij verschuift.
 
 ### Ticket 139 — Canal Ripper in drie tiers
 
+> **VERPLAATST IN RONDE 11, scope volledig ongewijzigd.** Direct na T138.
+> Zelfde extra acceptatiecriterium als T138 (onderdeel-sleutels per tier).
+
 Idem voor de Canal Ripper, plus de mes-look als T137 daartoe besloot.
 Afsluitend: volledige regressiesuite + een voor/na-beeldverslag van alle
 tiers naast elkaar, in de stijl van de eerdere fase-beeldverslagen.
+
+---
+
+# Ronde 11 (v0.25) — Gunfeel, de finale, vijandanimatie en audio
+
+Architectuur: `ARCHITECTURE_NOTES.md` §13. Ontwerpbeslissingen 100-106.
+
+Deze ronde is geschreven vóórdat T132 was uitgevoerd. Ze bevat naast de
+nieuwe tickets T140-T155 ook **amendementen op vier Ronde 10-tickets**
+(T132, T137, T138, T139). Geen enkele Ronde 10-requirement vervalt of
+verhuist naar een ander nummer — zie `ARCHITECTURE_NOTES.md` §13.12.
+
+**Uitvoeringsvolgorde.**
+
+```
+[Fase 1, Ronde 10] T132* → T133 → T134 → T135 → T136 → M1
+[Fase 2] T140 → T141 → T142 → T143 → T144 → M2
+[Fase 3] T137* → T138* → T139*
+[Fase 4] T145 → T146 → T147
+[Fase 5] T148 → T149 → T150                        → M3
+[Fase 6] T151   (vrij plaatsbaar, geen dependencies)
+[Fase 7] T152 → T153 → T154                        → M4
+[Fase 8] T155
+```
+`*` = Ronde 10-ticket, geamendeerd in deze ronde.
+
+**"Parallel" bestaat hier niet letterlijk.** Alle gamecode staat in één
+bestand; twee gelijktijdige branches conflicteren gegarandeerd, ook bij
+logisch onafhankelijke features. Waar hieronder "vrij plaatsbaar" staat,
+betekent dat **herordenbaar**, niet **gelijktijdig** (§13.9).
+
+---
+
+## Amendement op Ticket 132 — vier gedragsneutrale toevoegingen
+
+De bestaande T132-specificatie blijft **volledig** gelden, inclusief
+ontwerpbeslissing 99: gedragsneutraal, hele suite groen, **nul** aangepaste of
+versoepelde asserties. Alle vier toevoegingen hieronder vallen onder diezelfde
+eis.
+
+**Werk (aanvullend).**
+- **A — `inHandGroep`-indirectie (verplicht).** Voer een module-let
+  `inHandGroep` in die altijd naar de Group wijst die aan de camera hangt.
+  Laat de vier cosmetische blokken uit §13.2 daaruit lezen in plaats van uit
+  `wapenStaat.definitie.groep`. In dit ticket wijst hij naar hetzelfde object
+  als voorheen — nul gedragsverandering. Zonder deze wijziging crasht T134 op
+  frame 1 (§13.3). Respecteert ontwerpbeslissing 95: het gameplaypad houdt
+  `wapenStaat`, het presentatiepad krijgt alleen een Group.
+- **B — gereserveerde runtimevelden.** `nieuweWapenStaat()` krijgt
+  `spreadOpbouw: 0` en `recoilFase: 0`. Nergens gelezen, nergens geschreven.
+  Consumenten zijn T142/T143.
+- **C — `presentatie`/`audio`-subobjecten.** Elke ARSENAAL-entry krijgt een
+  `presentatie: {}` en `audio: {}`, in dit ticket gevuld met verwijzingen naar
+  de bestaande waarden. Consumenten zijn T140, T137 en T153.
+- **D — de null-inventaris wordt testbaar.** Het bestaande ticket zegt
+  "Inventariseer die lezers expliciet in de ticket-afronding". Leg de
+  §13.3-lijst vast als commentaarblok bij `wapenStaat`, en voeg aan
+  `tests/test-wapen-identiteit.mjs` een check toe die `wapenStaat = null` zet,
+  één frame draait en verifieert dat er **geen** console-error valt.
+
+**Acceptatie (aanvullend).**
+- `inHandGroep` is nooit `null`/`undefined`, ook niet vóór de eerste frame.
+- Grep bevestigt: geen enkele cosmetische wapen-write leest nog
+  `wapenStaat.definitie.groep`.
+- Met `wapenStaat = null` draait één frame zonder console-error.
+- `spreadOpbouw`/`recoilFase` bestaan, staan op 0, en grep bevestigt nul lezers.
+- Debug-hook exporteert `inHandGroep` en het ARSENAAL-model.
+
+**Valkuil.** De verleiding is om nu ook al `drukspuit: null` te zetten. Niet
+doen — dat blijft T134, en de bestaande T132-waarschuwing geldt onverkort.
+
+**Uitvoeringsadvies.** Opus 5 · xhigh · extended thinking On.
+14-plekken-brede dereference-audit plus een hot-path-splitsing, volledig
+gedragsneutraal, met een 2%-pixelvangrail eromheen — en fout gaan maakt twaalf
+vervolgtickets ongeldig. *Escaleer naar Opus 5 Max* alleen wanneer de suite ná
+de refactor rood blijft zonder aanwijsbare oorzaak: dan klopt de aanname
+"gedragsneutraal" niet en is dát belangrijker dan het ticket. Review: Sonnet 5
+High, na ticket (grep-audit). Vertrouwen in dit advies: hoog.
+
+---
+
+### Ticket 140 — Wapenpresentatielaag: één eigenaar, benoemde onderdelen
+
+**Doel.** Eén functie wordt eigenaar van álle cosmetische transform-writes op
+het wapen-in-de-hand, en elk wapenmodel krijgt benoemde, adresseerbare
+onderdelen. Gedragsneutraal: na dit ticket ziet en voelt het spel exact
+hetzelfde.
+
+**Werk.**
+- `updateWapenPresentatie(dt)` — één functie, aangeroepen vanuit de bestaande
+  cosmetische gameLoop-zone, die herlaad-dip, wisseldip, terugslag, sway en
+  lean toepast als **optelling van offsets op één basispositie**. Eén write
+  per property per frame. Bestaande decay-formules en amplitudes worden
+  **letterlijk overgenomen**, niet hergetuned.
+- De herlaad-dip verhuist uit `updateWapen()`; die functie houdt alleen nog de
+  herlaadtimer en de munitie-overheveling.
+- **Onderdelenconventie:** elk wapenmodel legt zijn onderdelen vast in
+  `groep.userData.onderdelen` met semantische namen. `meterDrukspuit` en
+  `tandwielRatelaar` verhuizen daarheen. Welke sleutels er minimaal in moeten,
+  bepaalt T141 — houd de conventie hier open genoeg.
+- `WAPEN_BASIS_X`/`WAPEN_BASIS_Y` verhuizen naar de ARSENAAL-`presentatie`-
+  entry (uit T132 toevoeging C), met vandaag voor beide wapens dezelfde waarde.
+- Het mes doet mee: `inHandGroep` kan de mes-Group zijn en krijgt dezelfde
+  sway/lean.
+
+**Buiten scope.** Nieuwe animaties (T142-T144). Nieuwe modelonderdelen bouwen
+(T138/T139). Camera-effecten (`cameraKick`, bob, lean op de camera zelf).
+`speler.pitch` blijft onaangeraakt.
+
+**Acceptatie.**
+- Grep bevestigt: precies één plek schrijft `inHandGroep.position.*` en
+  `.rotation.*`.
+- `test-wapen-identiteit.mjs`, `test-camerabeweging.mjs`,
+  `test-mondingsvlam.mjs` groen zonder aangepaste asserties.
+- `test-visuele-basislijn.mjs` blijft binnen de 2%-band op alle acht
+  standpunten. **Verschuift hij, dan is de refactor niet gedragsneutraal en
+  moet de oorzaak gevonden worden — niet de basislijn bijgewerkt.**
+- Herladen tijdens sway/lean eindigt exact op `WAPEN_BASIS_Y`.
+- `groep.userData.onderdelen` bestaat op beide wapens en het mes.
+- Rustpositie komt uit ARSENAAL, niet uit een gedeelde module-constante.
+- Nieuwe test: een geforceerd gelijktijdige herlaad-dip en wisseldip geeft een
+  voorspelbare, gedocumenteerde uitkomst in plaats van een race.
+- F3: p95 frametijd niet gestegen.
+- Handmatige speeltest van vijf minuten (schieten, herladen, wisselen,
+  strafen): er mag **niets** merkbaar veranderd zijn.
+
+**Valkuil.** Het wapenmodel hangt op `(0.26, -0.22, -0.5)` aan de camera en
+valt binnen het meetvenster van `pixelstats()`. Een sway-offset met `cos()` in
+plaats van `sin()` staat in rust niet op 0 en verschuift de vliering-mediaan
+met bijna 5% — dat is in dit project al gemeten; lees de toelichting bij de
+bestaande sway-write vóór je 'm aanraakt. Tweede valkuil: `position.y` heeft
+vandaag twee schrijvers die alleen niet botsen door
+`if (wapenStaat.herladen) return;` in `wisselWapen()`. Die impliciete
+invariant moet expliciet worden, niet stilzwijgend overgenomen.
+
+**Uitvoeringsadvies.** Opus 5 · xhigh · extended thinking On.
+Cross-cutting refactor van een per-frame hot path met vier bestaande
+schrijvers, een niet-uitgesproken invariant ertussen en een pixelvangrail
+eromheen — en de uitkomst bepaalt of T137-T144 zonder modelherbouw kunnen.
+*Escaleer naar Opus 5 Max* alleen wanneer de basislijn verschuift en de
+oorzaak na een serieuze xhigh-poging onduidelijk blijft. Review: Opus 5 High,
+na ticket. Vertrouwen: hoog.
+
+---
+
+### Ticket 141 — Gunfeel-spec en meetbare basislijn
+
+**Doel.** Vastleggen wat "precies en gecontroleerd" (AMSTEL-9) en "agressief
+met oplopende straf" (Canal Ripper) **in getallen en curves** betekenen, meten
+waar het spel vandaag staat, en vastleggen welke modelonderdelen moeten kunnen
+bewegen. Dat laatste is de input voor T137.
+
+**Werk.**
+- **Meten** (headless, reproduceerbaar, als `tests/meet-gunfeel.mjs` in de
+  stijl van de bestaande `meet-*.mjs`):
+  - Time-to-kill per wapen per HP-trap (1/2/3/4), lichaam en kop, per
+    Smederij-tier (0/1/2) — 2 × 4 × 2 × 3 = 48 cellen.
+  - Effectieve schotcadans en magazijnduur.
+  - Huidige spreidingskegel in graden (uit `spreadNdc` en de camera-FOV).
+  - Recoil-hersteltijd tot binnen 5%.
+- **Specificeren per wapen:** recoil impulse (eerste schot) en eventueel
+  patroon; recovery-curve en -tijd; verdeling camera-recoil vs. model-recoil
+  met amplitudes; first-shot accuracy; spread-opbouw per volgehouden schot en
+  afbouwsnelheid; cadans en animatietiming.
+- **De output die T137 consumeert:** welke `userData.onderdelen`-sleutels per
+  wapen moeten bewegen, en waarvoor.
+
+**Randvoorwaarden.** `speler.pitch` wordt nooit gemuteerd. De AMSTEL-9 houdt
+`spreadNdc = 0` bij schot 1 — dat is zijn hele identiteit. `schiet()` loopt in
+dezelfde tick vóór de cosmetische zone, dus geen recoil-effect mag de
+raycast-oorsprong raken. De HP-trap blijft ongemoeid (ontwerpbeslissing 10).
+
+**Buiten scope.** Implementatie. Dit ticket levert een document en een
+meetscript, geen gameplaywijziging.
+
+**Acceptatie.**
+- TTK-tabel van 48 cellen gemeten en vastgelegd.
+- Per wapen een spec met concrete getallen en curves voor elk punt hierboven.
+- Lijst van animeerbare onderdelen per wapen, direct bruikbaar als T137-input.
+- Expliciet vastgelegd waarin de twee wapens **meetbaar** verschillen.
+- Meetscript herbruikbaar zodat T142/T143 hun eigen resultaat kunnen aftoetsen.
+- Handmatige toets: beide wapens vijf minuten spelen met de meetwaarden erbij,
+  om te controleren of de getallen overeenkomen met wat je voelt.
+
+**Valkuil.** Een spec die alleen adjectieven bevat ("voelt zwaarder") maakt
+T142/T143 onbouwbaar. Dwing getallen af.
+
+**Uitvoeringsadvies.** Opus 5 · High · extended thinking On.
+Puur decision complexity: wapenidentiteit vertalen naar curves en beoordelen
+welke onderdelen bewegen. Bepaalt vier vervolgtickets (T142, T143, T144,
+T137); het meetwerk zelf is triviaal, het oordeel niet. Geen escalatie
+verwacht. Review: milestone M2 (achteraf, samen met het resultaat).
+Vertrouwen: hoog.
+
+---
+
+### Ticket 142 — AMSTEL-9 behaviour: de precisie-identiteit
+
+**Doel.** De AMSTEL-9 laten aanvoelen als precies, gecontroleerd en
+doelbewust, met bevredigende headshots. Goed richten wordt beloond.
+
+**Werk.**
+- First-shot accuracy vastleggen als **contract** in plaats van als
+  toevalligheid (bij `spreadNdc = 0` is die er al).
+- Recoil impulse en recovery volgens de T141-curve, gesplitst over camera-kick
+  en model-kick (`rotation.x` via de T140-laag).
+- Cadans en animatietiming afstemmen op de recovery, zodat "zo snel mogelijk
+  klikken" **meetbaar** minder oplevert dan wachten op het herstel — dat is
+  wat skill-based betekent.
+- Muzzle-feedback en reload-pacing per T141-spec.
+- Headshot-feedback aanscherpen binnen de bestaande hitmarker-tiers.
+
+**Buiten scope.** `speler.pitch` muteren (nooit). Nieuwe modelonderdelen
+(T138). De Canal Ripper (T143). Schadewaarden of de HP-trap.
+
+**Acceptatie.**
+- Gemeten waarden binnen de T141-doelbanden, aangetoond met `meet-gunfeel.mjs`.
+- `test-wapen-identiteit.mjs`'s "20 identieke raakpunten"-check blijft groen.
+- `speler.pitch` ongemoeid na 20 schoten (bestaande check groen).
+- Model-recoil is zichtbaar en keert exact terug naar de rustpositie.
+- `test-smederij.mjs` groen — de Fix 5-explosie- en Doorboringtakken in
+  `schiet()` blijven ongemoeid.
+- Basislijn binnen band, of bijgewerkt mét gemeten onderbouwing.
+- Handmatige toets: golf 5-10 met alleen de AMSTEL-9. Voelt een headshot als
+  een beloning? Is snel klikken meetbaar slechter dan getimed vuren?
+- Geen nieuwe allocaties in `schiet()` (hot-path-regel §7.9).
+
+**Valkuil.** `schiet()` draagt sinds Fix 5 al drie vertakkingen. Extra logica
+daar moet die takken letterlijk ongemoeid laten.
+
+**Uitvoeringsadvies.** Sonnet 5 · xhigh · extended thinking On.
+Requirements liggen na T141 vast — dit is execution. Maar het raakt `schiet()`
+(drie bestaande takken), de nieuwe presentatielaag en een pixelvangrail.
+*Escaleer naar Opus 5 High* wanneer de T141-doelwaarden in de praktijk niet
+blijken te werken en er opnieuw een designoordeel nodig is. Review: milestone
+M2. Vertrouwen: gemiddeld — herzien zodra T141 laat zien hoeveel er werkelijk
+verandert.
+
+---
+
+### Ticket 143 — Canal Ripper behaviour: agressie met oplopende straf
+
+**Doel.** Korte bursts blijven beheersbaar, volgehouden vuur wordt steeds
+moeilijker. Handling die onmiskenbaar anders is dan de AMSTEL-9.
+
+**Werk.**
+- `spreadNdc` wordt de **basis**; `wapenStaat.spreadOpbouw` (gereserveerd in
+  T132) telt per schot op en bouwt af met een eigen snelheid, per T141-curve.
+- Sustained-fire recoil: de kick loopt op met `spreadOpbouw` in plaats van per
+  schot constant te zijn.
+- Burst recovery: een expliciete drempel waaronder de opbouw snel terugvalt,
+  zodat korte bursts belonend blijven.
+- Model movement: continue, ritmische beweging tijdens vuren, via de T140-laag.
+- Penetration feedback: de Doorboring uit Fix 5 tier 2 mag hoorbaar/zichtbaar
+  anders zijn dan een gewone treffer — vandaag is die alleen in schade merkbaar.
+- Reload pacing per T141.
+
+**Buiten scope.** `speler.pitch`. De AMSTEL-9. De Doorboring-**schade**
+(Fix 5-waarden blijven). Nieuwe modelonderdelen.
+
+**Acceptatie.**
+- Spread bij schot 1 gelijk aan de vastgelegde basiswaarde; spread na een vol
+  magazijn meetbaar groter, binnen de T141-band.
+- Spread bouwt aantoonbaar af tijdens een vuurpauze.
+- `test-wapen-identiteit.mjs`'s "Ratelaar geeft meer dan 1 unieke x-waarde"
+  blijft groen.
+- `test-smederij.mjs`'s Doorboring-tests groen.
+- Meetbaar verschil in handling t.o.v. de AMSTEL-9, vastgelegd met
+  `meet-gunfeel.mjs`.
+- Handmatige toets: golf 8+ met alleen de Canal Ripper. Voelt een burst van
+  4-5 schoten beheersbaar en een vol magazijn wild?
+
+**Valkuil.** De Doorboring-lus in `schiet()` doet een tweede
+`raycaster.intersectObject(wereld, true)`. Een gewijzigde spread verandert de
+straal en dus die tweede raycast. `test-smederij.mjs` is hier al bekend
+fragiel geweest (vaste spawn-traits, camera-pitch -0.3) — lees die toelichting
+vóór je iets wijzigt.
+
+**Uitvoeringsadvies.** Sonnet 5 · xhigh · extended thinking On.
+Zelfde profiel als T142, plus een bekend fragiel raakvlak met de
+Doorboringtests. *Escaleer naar Opus 5 High* bij een niet-verklaarbare
+wisselwerking tussen progressive spread en de Doorboring-raycast. Review:
+milestone M2. Vertrouwen: gemiddeld.
+
+---
+
+### Ticket 144 — Treffer-, kill- en headshotfeedback per wapen
+
+**Doel.** Hit-, headshot- en killfeedback die per wapen anders leest, zodat de
+identiteit ook in de terugkoppeling zit en niet alleen in de handling.
+
+**Werk.** Differentieer per wapen **binnen de bestaande pools en tiers**:
+muzzle-feedback, impact-karakter, hitmarker-timing, kill-burst. Hergebruikt
+`HITMARKER_TIERS`/`HITMARKER_RANG`/`HITMARKER_SAMENVAL_VENSTER`,
+`speelRaakTik`/`speelKopTik`/`speelKillKnak` met `pitchVariatie()`,
+`spawnImpact`/`spawnRook`/`spawnTracer`, `KILL_BURST_AANTAL_GROOT/KLEIN`.
+
+**Buiten scope.** Nieuwe effect-pools of -slots (`TRACER_MAX` 8, `IMPACT_MAX`
+24, `ROOK_MAX` 8 blijven). Extra `PointLight`s. Audio-samples (T154).
+Schadewaarden.
+
+**Acceptatie.**
+- `test-effecten-pool.mjs`, `test-inslagen-rijker.mjs`,
+  `test-hitmarker-audio.mjs` groen.
+- `test-resources.mjs` groen: geen geometrie-/materiaalgroei over 25 golven.
+- Poolgroottes ongewijzigd; aantal lichten blijft 28.
+- De twee wapens zijn blind aan hun trefferfeedback te onderscheiden — toets
+  met de ogen dicht op het geluid, en met het geluid uit op het beeld.
+- F3 tijdens een drukke golf: geen poolverzadiging.
+
+**Valkuil.** De effect-pools zijn eindig en gedeeld. Een fellere kill-burst
+per wapen kan de 24-slots `impactPool` sneller leegtrekken bij een
+Brander-kettingreactie — `KILL_BURST_SAMENVAL_VENSTER` bestaat precies
+daarvoor en moet blijven werken.
+
+**Uitvoeringsadvies.** Sonnet 5 · High · extended thinking Default.
+Visuele/audiopolish met een heldere spec en bestaande, goed getestte pools.
+Geen escalatie verwacht. Review: milestone M2. Vertrouwen: hoog.
+
+---
+
+### Ticket 145 — Finale-ontwerp op de bestaande escape-flow
+
+**Doel.** Vastleggen hoe de aankomende boot een climax van 20-45 seconden
+wordt, **als uitbreiding van de bestaande machine** (ontwerpbeslissing 103) —
+niet als nieuw encounter-systeem.
+
+**Werk — de zes beslissingen die dit ticket moet nemen.**
+1. **Wat doet `T`?** Aanbevolen richting: `T` (met €2500) start de
+   **instapfase** in plaats van meteen te winnen. Dat hergebruikt het hele
+   bestaande aankomst-/vertrekapparaat en voegt één state toe.
+2. **Duur.** Aanbevolen ~30 s, met onderbouwing tegen de bestaande ritmes
+   (`GOLF_RUST_TIJD` 8 s, `ONTSNAPPING_AANKONDIGING_DUUR` 5 s,
+   `effectiefSpawnInterval()` 1,1 s, `effectiefMaxActief()` max 26).
+3. **Faalgedrag.** Aanbevolen: geen aparte faalstaat — doodgaan is gewoon game
+   over. Wél te beslissen: wat gebeurt er als de speler het instapgebied
+   verlaat (timer doorlopen, pauzeren, of instap afbreken)?
+4. **Escalatiebronnen.** Welke bestaande kanalen meelopen:
+   `spelStaat.budget`-injectie, `scene.fog`, `OOG_INTENSITEIT_*`,
+   `dreigingsGainNode`, `lampDipFactor`, `vignetFlits`, boothoornfrequentie.
+5. **Objective-UI.** Hoe de resterende tijd getoond wordt, hergebruikend
+   `#ontsnappingVensterUI` en `toonGolfBanner()`.
+6. **Golfgrens.** Wat er gebeurt als de golf afloopt tijdens de instapfase —
+   vandaag sluit de wave-complete-tak van `updateGolf()` het venster.
+
+**Buiten scope.** Implementatie. Een generieke encounter-engine. Wijzigingen
+aan het golf-/budgetsysteem zelf. Nieuwe vijandtypen.
+
+**Acceptatie.**
+- Elk van de zes beslissingen expliciet vastgelegd met onderbouwing.
+- Aangetoond welke bestaande functies hergebruikt worden en welke nieuwe state
+  er precies bijkomt (minimaal).
+- Vooraf begroot: `interactiePunten`-invariant, aantal lichten, poolgebruik.
+- Testimpact geïnventariseerd over `test-ontsnapping.mjs`,
+  `test-ontsnapping-vensters.mjs`, `test-boot-aankondiging.mjs`,
+  `test-vluchtroute.mjs`, `test-eventgolven.mjs`.
+- Expliciet beantwoord waarom hier géén nieuwe encounter-engine nodig is.
+
+**Valkuil.** Te veel willen. Bouw geen generieke encounter-engine als één
+kleine uitbreiding volstaat — dat is de expliciete opdracht.
+
+**Uitvoeringsadvies.** Opus 5 · High · extended thinking On.
+Zes samenhangende ontwerpbeslissingen die de climax van het hele spel bepalen,
+met over-engineering als grootste risico. Oordeelsvraag, geen
+uitvoeringsvraag. Geen escalatie verwacht. Review: milestone M3 (achteraf, met
+T146/T147). Vertrouwen: hoog.
+
+---
+
+### Ticket 146 — Instap-holdout: finale-state-machine en objective-UI
+
+**Doel.** De state-machine en de UI van de finale, zonder escalatie. Na dit
+ticket werkt de instapfase mechanisch: `T` start 'm, de timer loopt, hij
+eindigt in winst, en de speler ziet in beeld wat er gebeurt.
+
+**Werk.**
+- De finale-state en -timer, in de stijl van de bestaande
+  `ontsnappingAankondigingActief`/`-Timer` (spelActief-gated, dus pauzeerbaar).
+- `probeerOntsnapping()` splitsen in "start instapfase" en "voltooi
+  ontsnapping".
+- Objective-UI met resterende tijd via `#ontsnappingVensterUI`.
+- Het randgeval uit T145-beslissing 6 (golf eindigt tijdens de instapfase).
+- Het gedrag uit T145-beslissing 3 (instapgebied verlaten).
+- `toonWinScherm()` blijft ongewijzigd het eindpunt.
+
+**Buiten scope.** Escalatie (T147). Nieuwe geluiden — gebruik hier de
+bestaande `piep()`-geluiden.
+
+**Acceptatie.**
+- `T` met €2500 start de instapfase; geld wordt op het juiste, gedocumenteerde
+  moment afgeschreven.
+- Timer loopt alleen tijdens `spelActief` (pauze werkt).
+- Fase eindigt in `toonWinScherm()` met ongewijzigde score- en statsberekening.
+- Doodgaan tijdens de fase geeft normale game over.
+- Golf-einde tijdens de fase gedraagt zich zoals T145 vastlegde.
+- Nieuw `tests/test-finale.mjs`; `test-ontsnapping.mjs`,
+  `test-ontsnapping-vensters.mjs`, `test-boot-aankondiging.mjs`,
+  `test-vluchtroute.mjs` groen (bijgewerkt waar het gedrag bewust wijzigt).
+- `interactiePunten`-invariant bijgewerkt mét onderbouwing als hij wijzigt.
+- Handmatige toets: volledige run tot golf 10 met 3/3 en €2500. Is duidelijk
+  wat er gebeurt en hoeveel tijd er nog is?
+
+**Valkuil.** De wave-complete-tak van `updateGolf()` sluit vandaag het venster.
+Een instapfase die over een golfgrens heen loopt raakt precies die code.
+`test-ontsnapping-vensters.mjs` (432 regels) is de vangrail — lees 'm vóór je
+begint.
+
+**Uitvoeringsadvies.** Sonnet 5 · xhigh · extended thinking On.
+Nieuwe state-machine die aanhaakt op golf-, boot-, HUD- en win-logica
+tegelijk, met randgevallen rond golfgrenzen. Requirements liggen na T145 vast.
+*Escaleer naar Opus 5 xhigh* wanneer de interactie met de wave-complete-tak
+conflicten oplevert die niet lokaal op te lossen zijn. Review: Sonnet 5 High,
+na ticket. Vertrouwen: hoog.
+
+---
+
+### Ticket 147 — Finale-escalatie en vertrek
+
+**Doel.** De instapfase van T146 laten oplopen tot een climax: meer druk, meer
+geluid, meer beeld, en een vertrek dat als een ontsnapping voelt.
+
+**Werk.**
+- Budget-injectie voor de finale-surge, via het bestaande spawnpad
+  (`spelStaat.budget` + `golfSpawnStap()`) — **geen** nieuw spawnsysteem.
+- Audio-escalatie via de bestaande dreigingslaag en boothoorn.
+- VFX-escalatie via de bestaande fog-, oog-, vignet- en lampkanalen.
+- De laatste kritieke seconden als expliciet herkenbaar moment.
+- Vertrek via het bestaande `updateBootPositie()`-uitvaarpad.
+
+**Buiten scope.** Nieuwe vijandtypen. Nieuwe effect-pools of lichten. Nieuwe
+audio-**assets** (T154). Permanente wijzigingen aan het golfsysteem.
+
+**Acceptatie.**
+- Spawn-surge loopt volledig via `golfSpawnStap()`/`spelStaat.budget`; grep
+  bevestigt nul nieuwe spawnpaden.
+- `ondoden.length` overschrijdt nooit `effectiefMaxActief()`.
+- Aantal lichten blijft 28; poolgroottes ongewijzigd.
+- **Alle escalatiekanalen keren na afloop exact terug naar hun rustwaarde**
+  (fog, ogen, dreigingsgain, `lampDipFactor`, vignet) — ook bij game over
+  midden in de fase.
+- `test-resources.mjs` groen; `test-finale.mjs` uitgebreid met escalatie- én
+  herstelasserties.
+- F3 tijdens de piek: p95 binnen het bestaande budget, vastgelegd in het ticket.
+- Handmatige toets: drie volledige finales. Bouwt de spanning op, en is het
+  einde een opluchting?
+
+**Valkuil.** Escalatiekanalen die niet herstellen. `scene.fog` heeft dit
+precedent al: de Mistgolf moest een expliciete restore in `gameOver()` krijgen
+omdat het death-scherm anders in de mist hing (§1). Elk kanaal dat dit ticket
+aanraakt heeft datzelfde probleem, op élk exitpad.
+
+**Uitvoeringsadvies.** Sonnet 5 · High · extended thinking On.
+Uitbreiding op bestaande, goed gedocumenteerde kanalen met een duidelijke spec
+uit T145; het risico (herstelpaden) is bekend en heeft een precedent om te
+volgen. *Escaleer naar Sonnet 5 xhigh* wanneer meer dan drie kanalen tegelijk
+op meerdere exitpaden moeten herstellen. Review: Sonnet 5 High, milestone M3.
+Vertrouwen: hoog.
+
+---
+
+### Ticket 148 — Locomotion-kwaliteit: gewichtsoverdracht en voetslip
+
+**Doel.** Ondoden laten lopen alsof ze gewicht hebben: minder voetslip,
+zichtbare gewichtsoverdracht, meer torso-beweging.
+
+**Werk.**
+- **Voetslip dichten.** `loopFase` loopt op tijd, de root beweegt op afstand;
+  die twee zijn niet gekoppeld, dus voetslip is structureel. Koppel `loopFase`
+  aan werkelijk afgelegde afstand — exact zoals `bobFase` bij de speler al
+  doet. Grootste kwaliteitswinst per regel code in dit ticket, en het lost
+  meteen op dat een geblokkeerde ondode ter plekke doorloopt.
+- **Gewichtsoverdracht.** Lichte zijwaartse verschuiving van pelvis naar het
+  steunbeen, in fase met de bestaande `faseL`. Hergebruikt de bestaande
+  pelvis-write.
+- **Torso-beweging** verder uitwerken op de bestaande `chest`-sway.
+
+**Buiten scope.** `AnimationMixer` of keyframes — de procedurele architectuur
+blijft (ontwerpbeslissing 104). Nieuwe botten. Aanvals- en flinchstaten
+(T149). Het transform-budget verhogen.
+
+**Acceptatie.**
+- Transform-writes per ondode per frame blijven **≤ 10**, geteld en vastgelegd.
+- Een tegen een muur geblokkeerde ondode beweegt zijn benen niet of nauwelijks.
+- Gemeten voetslip (voetpositie t.o.v. grondverplaatsing) meetbaar kleiner dan
+  de nulmeting.
+- `test-ondode-animatie.mjs` en `test-ondode-model-v2.mjs` groen, uitgebreid
+  met de loopFase-koppeling en de write-telling.
+- F3 met 26 actieve ondoden: p95 ongewijzigd.
+- Alle vijf typen (normaal/loper/sjouwer/brander/sluiper) blijven herkenbaar.
+
+**Valkuil.** `loopFase` voedt óók de arm-, hoofd-, knie-, elleboog- en
+bob-writes. Hem anders voeden verandert het ritme van alles tegelijk;
+`gang.pasFactor` per type moet daarna nog steeds het bedoelde verschil geven.
+`test-vijand-leesbaarheid.mjs` is de vangrail.
+
+**Uitvoeringsadvies.** Sonnet 5 · xhigh · extended thinking On.
+Eén wijziging (de loopFase-bron) plant door in acht afgeleide writes en vijf
+vijandtypen, met een hard writes-budget. Veel regressieoppervlak, maar de
+aanpak is bekend (het speler-`bobFase`-patroon bestaat al). *Escaleer naar
+Opus 5 High* wanneer de afstandskoppeling het per-type gang-ritme onherkenbaar
+maakt. Review: geen apart moment — automatische tests + F3. Vertrouwen: hoog.
+
+---
+
+### Ticket 149 — Gevecht-leesbaarheid: anticipatie, impact, hitreacties
+
+**Doel.** De aanvals- en trefferstaten leesbaarder en zwaarder maken:
+duidelijkere anticipatie, hardere impact, betere hitreacties, herkenbare
+headshot-reacties en overtuigender neervallen.
+
+**Werk.** Anticipatie in de windup (aanloop naar de arm-heffing in plaats van
+lineair), zwaardere impact op het slagmoment, duidelijker herstel, kop- versus
+lichaamsflinch sterker onderscheiden, meer variatie in de valstijlen.
+
+**Buiten scope — hard.** De **timings** van de state-machine
+(`AANVAL_PROFIELEN`: windup/herstel per type) zijn getuned en geborgd door
+`test-aanval-machine.mjs`. Dit ticket verandert alleen de presentatie *binnen*
+bestaande timings. Ook buiten scope: schade, bereik, raakhoek, `MAX_AANVALLERS`.
+
+**Acceptatie.**
+- Alle timings uit `AANVAL_PROFIELEN` ongewijzigd; `test-aanval-machine.mjs`
+  groen zonder aangepaste asserties.
+- `test-aanval-tells.mjs`, `test-ondode-hitreacties.mjs`,
+  `test-ondode-doodsanimaties.mjs`, `test-vijand-leesbaarheid.mjs` groen.
+- Oogintensiteit keert exact terug op `ondode.oogBasisIntensiteit` (bestaand
+  randgeval).
+- Transform-budget ≤ 10 per ondode per frame gehandhaafd.
+- Kop- en lichaamstreffer zijn zonder HUD van elkaar te onderscheiden — toets
+  met een golf alleen op lichamen en een golf alleen op koppen.
+- F3 met volle kaart tijdens meerdere gelijktijdige windups.
+
+**Valkuil.** `test-ondode-hitreacties.mjs` is 418 regels en bekend gevoelig
+(de knockback-tegen-een-muur-tests gebruiken een synthetische speler op 0,1 m).
+De flinch-code heeft recent al een `if (!ondode.flinch)`-guard nodig gehad om
+niet met de nadering-klem te vechten. Lees die toelichting in `updateOndoden()`
+vóór je de flinch aanraakt.
+
+**Uitvoeringsadvies.** Sonnet 5 · xhigh · extended thinking On.
+Raakt de aanvals-state-machine en de flinch-code — allebei gebieden met een
+geschiedenis van subtiele interacties en de grootste testsuite van het
+project. Duidelijke spec, dus geen Opus, maar de hoogste zorgvuldigheid.
+*Escaleer naar Opus 5 xhigh* wanneer de flinch opnieuw met de nadering-klem of
+de knockback-muurklaring blijkt te interfereren. Review: Sonnet 5 High, na
+ticket. Vertrouwen: hoog.
+
+---
+
+### Ticket 150 — Type-persoonlijkheid via ONDODE_TYPES
+
+**Doel.** De vijf typen sterker van elkaar onderscheiden — puur via parameters
+in de bestaande tabel, zonder per type een eigen animatiesysteem
+(ontwerpbeslissing 104).
+
+**Werk.** De `gang`-parameterset uitbreiden met wat T148/T149 hebben
+toegevoegd (gewichtsoverdracht-amplitude, anticipatie-curve,
+flinch-gevoeligheid) en per type invullen. De Sluiper blijft stil — stilte is
+zíjn tell.
+
+**Buiten scope.** Nieuwe vijandtypen. Gameplaywaarden (snelheid, HP, geld,
+`hpMax`). `ondodeTypeGewichten()` en de introductiegolven.
+
+**Acceptatie.**
+- Elk type is aan zijn beweging herkenbaar zonder kleur of grootte te zien.
+- Nul nieuwe animatiecodepaden — grep bevestigt dat de verschillen uit
+  `ONDODE_TYPES` komen.
+- Alle gameplaymultipliers ongewijzigd.
+- `test-varianten.mjs`, `test-ondode-vormen.mjs`,
+  `test-golf-variatielimiter.mjs` groen.
+- Transform-budget ≤ 10 gehandhaafd.
+
+**Valkuil.** `spawnOndode()` spawnt standaard `'normaal'` voor tests en
+debug-tools — dat contract niet breken (§1 waarschuwt hier expliciet voor).
+
+**Uitvoeringsadvies.** Sonnet 5 · High · extended thinking Default.
+Data invullen in een bestaande, goed begrepen tabel, met de mechaniek al
+gebouwd in T148/T149. Geen escalatie verwacht. Review: alleen automatische
+tests. Vertrouwen: hoog.
+
+---
+
+### Ticket 151 — Wereldmateriaal-pas: vocht, slijtage, schade
+
+**Doel.** De Amsterdamse grachtenpand-identiteit versterken in de materialen:
+natte oppervlakken, slijtage, vuil en schade — binnen de bestaande texturenset.
+
+**Positie.** Bewust **vrij plaatsbaar**: dit ticket heeft geen dependencies en
+raakt geen ander ticket in deze ronde. Schuif 'm naar voren wanneer er na twee
+zware technische tickets iets zichtbaars nodig is.
+
+**Werk.**
+- **De `pleister`-familie daadwerkelijk uitrollen.** Die is in T107 gebouwd
+  maar wordt nergens aangeroepen — de `GANG_PLEISTER`-muren zijn de beoogde
+  afnemer. Goedkoopste zichtbare winst in dit ticket, want de tekenaar bestaat
+  al.
+- Vocht-, slijtage- en schadevariatie binnen de bestaande tekenaars
+  (`CANVAS_TEXTUUR_TEKENAARS`, `bakDecorVuil()` + `VUIL_*`).
+
+**Buiten scope.** Nieuwe fullscreen shaders. Nieuwe realtime lichten (blijft
+28). Nieuwe materiaalfamilies zonder aantoonbare noodzaak. Wapenmaterialen
+(die horen uitsluitend in T138/T139 — rework-trap 5).
+
+**Acceptatie.**
+- Aantal unieke materialen groeit met een vooraf begroot, klein aantal;
+  `test-resources.mjs` groen.
+- Draw calls binnen de 25%-RENDER_BAND; aantal lichten blijft 28.
+- `test-visuele-basislijn.mjs` bijgewerkt mét gemeten onderbouwing per
+  verschoven zone.
+- `test-materiaal-families.mjs`, `test-texturenset.mjs`,
+  `test-normal-maps.mjs`, `test-vuil-slijtage.mjs` groen.
+- Handmatige toets: alle acht standpunten aflopen. Leest het als een oud,
+  vochtig Amsterdams pand?
+
+**Valkuil.** Materiaalwijzigingen raken de helderheidsbasislijn direct — T107
+verschoof vijf van de acht standpunten. Verwacht basislijnwerk en begroot het
+vooraf.
+
+**Uitvoeringsadvies.** Sonnet 5 · High · extended thinking Default.
+Visuele polish op een bestaande, data-driven materiaallaag met duidelijke
+budgetten en een bestaande meetprocedure. *Escaleer naar Sonnet 5 xhigh*
+wanneer meer dan vier standpunten buiten de band vallen — dan is de ingreep
+groter dan bedoeld. Review: automatische tests + basislijn. Vertrouwen: hoog.
+
+---
+
+### Ticket 152 — Audio-audit, classificatie en de assetregel-beslissing
+
+**Doel.** Elk bestaand geluid classificeren als **SYNTH KEEP** / **SAMPLE** /
+**HYBRID**, en de projectregelvraag beantwoorden die daaronder ligt
+(ontwerpbeslissing 105).
+
+**Positie.** Bij voorkeur ná T147, zodat de finale-audio al bestaat en
+meegeclassificeerd kan worden (rework-trap 6).
+
+**Werk.**
+1. **Inventaris** van elk geluid met aanroeppad, frequentie, en of er een
+   testteller aan hangt.
+2. **Classificatie** per geluid, met reden. Uitgangspunt: de procedurele stijl
+   is een bewuste keuze, geen tekortkoming — de bewijslast ligt bij "dit móét
+   een sample worden".
+3. **De assetbeslissing, met gemeten getallen.** Meet de werkelijke
+   base64-omvang van een representatief sample in OGG en MP3 op enkele
+   bitrates; zet die af tegen de huidige bestandsgrootte (~785 KB) en de
+   laadtijd. Formuleer de keuze expliciet als **projectregelwijziging die de
+   eigenaar moet goedkeuren**, met minstens twee alternatieven ernaast (alles
+   procedureel houden; alleen de hoogste-impact geluiden samplen; hybride).
+4. **Architectuurbehoefte bepalen, niet bouwen:** welke van registry, preload,
+   categorie-gains, concurrency, voice-limits, variants, pitch-variatie,
+   positional audio, fallback en autoplay-afhandeling werkelijk nodig zijn —
+   en expliciet welke **niet**.
+
+**Buiten scope.** Elke implementatie. Dit ticket levert een document en een
+meting.
+
+**Acceptatie.**
+- Elk bestaand geluid geclassificeerd met onderbouwing.
+- Gemeten bestandsgroottes voor minstens twee codecs en twee bitrates.
+- De projectregelvraag expliciet gesteld, met aanbeveling en alternatieven.
+- Lijst van benodigde audio-architectuuronderdelen, elk met reden — en
+  expliciet welke niet nodig zijn.
+- Alle 13 testtellers geïnventariseerd met hun testbestand.
+
+**Valkuil.** Een classificatie die te makkelijk "SAMPLE" zegt en daarmee een
+projectregel omver duwt voor marginale winst. Over-engineering van de
+architectuurlijst is de tweede valkuil — de opdracht waarschuwt daar expliciet
+voor.
+
+**Uitvoeringsadvies.** Opus 5 · High · extended thinking On.
+De kernvraag is een projectregelbeslissing met een
+kwaliteits-versus-omvang-afweging, plus een classificatie waarbij de
+verleiding groot is om de bestaande, bewuste stijl weg te gooien. Puur
+oordeelswerk. *Geen escalatie* — leg de regelvraag bij de eigenaar neer in
+plaats van te escaleren. Review: milestone M4 (achteraf). Vertrouwen: hoog.
+
+---
+
+### Ticket 153 — Audioregistry: data-driven en gedragsneutraal
+
+**Doel.** De ~40 `speel*()`-functies achter één data-driven `GELUIDEN`-tabel
+en één `speelGeluid(naam, opties)` brengen, **zonder één hoorbaar verschil**
+en zonder één testteller te breken.
+
+**Werk.**
+- `GELUIDEN`-tabel: per geluid type, frequenties, duur, volume, categorie, en
+  optioneel de vervolgtoon die nu via `setTimeout` gaat.
+- `speelGeluid(naam, opties)` met optionele `pan` en pitch-variatie.
+- Categorie-gains **alleen** als T152 die nodig achtte.
+- De bestaande `speel*()`-functies blijven als dunne wrappers bestaan,
+  inclusief hun tellers — dat houdt de hele testsuite ongewijzigd geldig.
+- De eigen ketens (dreigingslaag, achtergrondmuziek, `speelBootHoornGericht`)
+  blijven buiten de tabel tenzij T152 anders concludeerde; ze hebben eigen
+  levenscyclus-eisen.
+
+**Buiten scope.** Samples laden. Nieuwe geluiden. De mix veranderen.
+
+**Acceptatie.**
+- Alle 13 testtellers tellen exact zoals voorheen; alle audiotests groen
+  zonder aangepaste asserties. **Dat ís de acceptatie.**
+- `test-geluidsknop.mjs` groen — die rekent op de kale keten
+  `osc → gain → masterGainNode` bij `pan === 0`; die vorm moet blijven.
+- Elk `piep()`-argument uit de oude functies is één-op-één terug te vinden in
+  `GELUIDEN` (diff-audit oud vs. nieuw).
+- Geen nieuwe per-frame audio-writes; `dreigingsGainSchrijfTeller` ongewijzigd.
+- Audio-node-churn per seconde niet gestegen.
+- Handmatige toets: vijf minuten spelen met geluid aan. Er mag niets anders
+  klinken.
+
+**Valkuil.** De `setTimeout`-vervolgtonen (`speelExplosie`, `speelGolfStart`,
+`speelGolfKlaar`, `speelGameOver`, `speelGrachtklok`, `speelStroomklap`) lopen
+door tijdens pauze en zijn in dit project al eerder een bug geweest
+(`speelHerlaad` moest daarom in T33 gesplitst worden). De registry moet dat
+gedrag exact reproduceren óf het bewust en gedocumenteerd verbeteren.
+
+**Uitvoeringsadvies.** Sonnet 5 · xhigh · extended thinking On.
+Mechanische migratie van 40 functies met 13 tellers als hard contract en zes
+bekende `setTimeout`-valkuilen. Execution complexity, geen ontwerpvragen —
+maar één gemist argument is een stil hoorbaar verschil dat geen test vangt.
+*Escaleer naar Opus 5 High* wanneer T152 concludeerde dat voice-limits of
+concurrency-beheer nodig zijn: dan verandert de registry van een tabel in een
+resource-manager. Review: Sonnet 5 High, na ticket. Vertrouwen: gemiddeld —
+hangt volledig af van T152's uitkomst.
+
+---
+
+### Ticket 154 — Audio-uitrol volgens de T152-classificatie
+
+**Doel.** De geluiden die T152 als SAMPLE of HYBRID classificeerde
+daadwerkelijk vervangen of verrijken, en de SYNTH KEEP-geluiden waar nodig
+bijstellen.
+
+**Werk.** Volledig bepaald door T152. Concludeerde T152 "alles blijft
+procedureel", dan is dit ticket een **kwaliteitspas op de bestaande
+synth-geluiden** (wapens, ondoden, omgeving, feedback/objectives) in plaats
+van een integratieticket — en dat is een volwaardige, legitieme uitkomst.
+
+**Buiten scope.** De classificatie zelf herzien. Architectuur bouwen die T152
+niet nodig achtte.
+
+**Acceptatie.**
+- Elke wijziging is te herleiden tot een T152-classificatieregel.
+- Alle 13 testtellers intact; volledige audiosuite groen.
+- Bestandsgrootte en laadtijd binnen de in T152 vastgelegde grenzen, gemeten
+  vóór/ná.
+- De geluidsknop dempt alles, inclusief het nieuwe materiaal.
+- Handmatige toets: volledige run met koptelefoon. Klinkt het als één
+  samenhangende mix, niet als twee stijlen naast elkaar?
+
+**Valkuil.** Mixbalans. De volumes in dit project zijn stuk voor stuk met de
+hand afgesteld (er staan letterlijk feedbackpercentages in het commentaar,
+bv. "+15%" bij de druppeltik). Nieuw materiaal ertussen zetten verschuift de
+hele balans.
+
+**Dependency.** T152, T153. **En, als T152 een regelwijziging voorstelt:
+expliciete goedkeuring van de eigenaar vóórdat dit ticket begint.**
+
+**Uitvoeringsadvies.** Sonnet 5 · High · extended thinking Default.
+Assetintegratie of tuning met een dichtgetimmerde spec uit T152 en een
+bestaande registry uit T153. *Escaleer naar Sonnet 5 xhigh* wanneer de
+mixbalans niet met losse volumecorrecties te herstellen blijkt. Review:
+Opus 5 High, milestone M4 (een mix hoort als geheel beoordeeld te worden).
+Vertrouwen: **laag** — de scope is pas bekend na T152 en kan van "integratie"
+naar "tuning" verschuiven. Herzie dit advies dan.
+
+---
+
+### Ticket 155 — ARSENAAL-consolidatie en het wapenregressiepakket
+
+**Doel.** De ARSENAAL-tabel afmaken nu bekend is wat er definitief in moet, en
+het wapensysteem afsluiten met één samenhangend regressiepakket.
+
+**Positie.** Bewust laatst (rework-trap 6). Na T144, T139 en T153 is pas
+duidelijk welke velden een wapen echt heeft: gameplay, presentatie,
+tier-visuals, audio, gunfeel-curves.
+
+**Werk.**
+- Alle wapengegevens die nog los rondslingeren naar ARSENAAL brengen.
+- Grep-audit: nul overgebleven wapennaam-vergelijkingen buiten de tabel. De
+  Fix 5-takken in `schiet()` (`actiefWapenNaam === 'drukspuit'` voor de
+  explosie, `=== 'ratelaar'` voor de Doorboring) zijn de meest concrete
+  kandidaten om data-driven te maken.
+- Eén `tests/test-arsenaal.mjs` dat het volledige contract per wapen vastlegt.
+- Debug-hook opschonen volgens de projectregel: elk verwijderd systeem wordt
+  daar ook opgeruimd.
+
+**Buiten scope.** Gedragsverandering. Balanswijzigingen. Nieuwe wapens.
+
+**Acceptatie.**
+- Volledige suite groen zonder één aangepaste assertie. **Dat is de enige
+  slaagvoorwaarde.**
+- Grep bevestigt: nul wapennaam-vergelijkingen buiten ARSENAAL en
+  `wisselWapen()`.
+- `test-arsenaal.mjs` dekt per wapen: gameplay, presentatie, tiers, audio,
+  gunfeel.
+- `test-visuele-basislijn.mjs` binnen band (gedragsneutraal).
+- Debug-hook bevat geen dode wapenexports meer.
+
+**Valkuil.** Scope creep. "Nu we toch bezig zijn" is hier de vijand.
+
+**Uitvoeringsadvies.** Sonnet 5 · xhigh · extended thinking On.
+Brede maar mechanische consolidatie met een objectieve slaagvoorwaarde; zelfde
+profiel als T132's kern, maar met de ontwerpvragen al beantwoord. *Escaleer
+naar Opus 5 xhigh* wanneer de Fix 5-vertakkingen in `schiet()` niet
+data-driven te maken blijken zonder gedragsverandering. Review: Sonnet 5 High,
+na ticket. Vertrouwen: gemiddeld — de scope hangt af van wat T137-T144
+achterlaten.
+
+---
+
+## Herordenbaarheid — welk ticket mag je verschuiven?
+
+Nogmaals: "parallel" betekent hier **herordenbaar**, niet **gelijktijdig**
+(§13.9). Deze tabel beantwoordt één praktische vraag: *mag ik dit ticket naar
+voren halen zonder iets kapot te maken?*
+
+| Ticket | Herordenbaar t.o.v. | Niet losmaken van | Codegebied / conflict |
+|---|---|---|---|
+| T132 | — | alles | `nieuweWapenStaat()`, `wisselWapen()`, gameLoop-cosmetisch |
+| T133 | T145, T148, T151, T152 | T132, T134, T140 | `raakOndode()`, raycast, keyhandlers |
+| T134 | T145, T148, T151, T152 | T132, T133, T146 | `interactiePunten`, HUD, 21 tests, basislijn |
+| T135 | T145, T148, T151, T152 | T134 | HUD, `koopSmederij()`, reset |
+| T136 | T145, T148, T151, T152 | — | alleen meting |
+| T140 | T145, T148, T151, T152 | T132, T142, T143, T137-T139 | gameLoop-cosmetisch, `updateWapen()`, wapenmodellen |
+| T141 | alles | — | alleen meting + document |
+| T142 | T145, T148, T151, T152 | T140, T143, T144, T138 | `schiet()`, `updateWapenPresentatie()` |
+| T143 | T145, T148, T151, T152 | T142, T144, T139 | `schiet()`, Doorboring-raycast |
+| T144 | T145, T148, T151, T152 | T142, T143 | effect-pools, hitmarker |
+| T137 | T145, T148, T151, T152 | T140, T138, T139 | alleen document |
+| T138 | T145, T148, T151, T152 | T137, T139, T142 | wapenmodel, basislijn, `smederijVisuals*` |
+| T139 | T145, T148, T151, T152 | T137, T138, T143 | idem |
+| T145 | alles | — | alleen document |
+| T146 | T148, T151, T152, arsenaalspoor | T134, T147 | `updateGolf()`, ontsnappingsblok, `interactiePunten` |
+| T147 | T148, T151, arsenaalspoor | T146, T152 | budget-injectie, fog/oog/vignet, herstelpaden |
+| T148 | alles behalve T149/T150 | T149, T150 | `updateOndoden()`-animatieblok, writes-budget |
+| T149 | alles behalve T148/T150 | T148, T150 | aanvalsmachine, flinch |
+| T150 | — | T148, T149 | `ONDODE_TYPES` |
+| T151 | **alles** | — | `MATERIAAL_FAMILIES`, texturen, basislijn |
+| T152 | alles | T147 (wacht op finale-audio) | alleen document |
+| T153 | T148-T151, arsenaalspoor | T152, T154, T133, T147 | alle `speel*()`, tellers |
+| T154 | T148-T151 | T153 | `GELUIDEN`, mixbalans |
+| T155 | — | T142-T144, T137-T139, T153 | ARSENAAL, debug-hook |
+
+**Drie invarianten worden door meerdere tickets geraakt en verdienen
+coördinatie:** `test-visuele-basislijn.mjs` (T134, T138, T139, T147, T151), de
+`interactiePunten`-telling (T134, T146) en de effect-pools (T144, T147).
+Wijzig die **per ticket, met meting** — nooit twee tickets samen.
+
+**T140 is het enige ticket dat toekomstige parallellisatie echt veiliger
+maakt:** daarna heeft de cosmetische wapenlaag één eigenaar, waardoor
+T142/T143/T144 en T138/T139 elkaar niet meer in dezelfde gameLoop-regels raken.
+
+---
+
+## Execution Model Matrix — Ronde 10 + 11
+
+Bedoeld om vóór elk ticket direct de juiste modelinstelling te kunnen kiezen.
+
+| Ticket | Model | Effort | Review | Vertrouwen | Kernreden |
+|---|---|---|---|---|---|
+| T132 | **Opus 5** | xhigh | Sonnet 5 High, na ticket | Hoog | 14-plekken dereference-audit + hot-path-splitsing; bepaalt T133-T155 |
+| T133 | Sonnet 5 | xhigh | Geen | Hoog | Nieuw wapen raakt raycast, `raakOndode()`, keyhandler; spec ligt vast |
+| T134 | Sonnet 5 | xhigh | Sonnet 5 High, na ticket | Hoog | 21 testbestanden + nieuwe start-staat; execution, geen design |
+| T135 | Sonnet 5 | High | Geen | Hoog | Zeven dichtgetimmerde randgevallen, één test per rij |
+| T136 | **Opus 5** | High | M1 | Hoog | Balansoordeel over de hele openingservaring |
+| T140 | **Opus 5** | xhigh | Opus 5 High, na ticket | Hoog | Cross-cutting hot-path-refactor, 4 schrijvers + pixelvangrail |
+| T141 | **Opus 5** | High | M2 | Hoog | Wapenidentiteit naar curves; bepaalt T142/T143/T144/T137 |
+| T142 | Sonnet 5 | xhigh | M2 | Gemiddeld | Spec ligt vast; raakt `schiet()` met 3 bestaande takken |
+| T143 | Sonnet 5 | xhigh | M2 | Gemiddeld | Idem, plus bekend fragiele Doorboringtests |
+| T144 | Sonnet 5 | High | M2 | Hoog | Polish binnen bestaande pools en tiers |
+| T137 | **Opus 5** | High | M3 | Hoog | Bepaalt T138/T139 volledig, binnen 3 harde budgetten |
+| T138 | Sonnet 5 | High | M3 | Hoog | Modelbouw met dichtgetimmerde spec |
+| T139 | Sonnet 5 | High | Sonnet 5 High, M3 | Hoog | Idem + beeldverslag; sluit Fix 7 af |
+| T145 | **Opus 5** | High | M3 | Hoog | Zes ontwerpbeslissingen; risico is over-engineering |
+| T146 | Sonnet 5 | xhigh | Sonnet 5 High, na ticket | Hoog | Nieuwe state-machine op golf/boot/HUD/win tegelijk |
+| T147 | Sonnet 5 | High | Sonnet 5 High, M3 | Hoog | Bekende kanalen; risico zit in de herstelpaden |
+| T148 | Sonnet 5 | xhigh | Geen | Hoog | Eén wijziging plant door in 8 writes en 5 typen, hard budget |
+| T149 | Sonnet 5 | xhigh | Sonnet 5 High, na ticket | Hoog | Raakt aanvalsmachine + flinch, grootste testsuite |
+| T150 | Sonnet 5 | High | Geen | Hoog | Data invullen in bestaande tabel |
+| T151 | Sonnet 5 | High | Geen | Hoog | Materiaalpolish met bestaande meetprocedure |
+| T152 | **Opus 5** | High | M4 | Hoog | Projectregelbeslissing + classificatie-oordeel |
+| T153 | Sonnet 5 | xhigh | Sonnet 5 High, na ticket | Gemiddeld | 40 functies, 13 tellers als contract, 6 `setTimeout`-valkuilen |
+| T154 | Sonnet 5 | High | Opus 5 High, M4 | **Laag** | Scope pas bekend na T152 |
+| T155 | Sonnet 5 | xhigh | Sonnet 5 High, na ticket | Gemiddeld | Mechanische consolidatie; scope hangt af van T137-T144 |
+
+**Verdeling over 24 tickets:** Sonnet 5 High 8 (33%), Sonnet 5 xhigh 9 (38%),
+Opus 5 High 5 (21%), Opus 5 xhigh 2 (8%), **Opus 5 Max 0**.
+
+Opus-aandeel **29%** — aan de bovengrens van de 25-30%-richtlijn. Knelt het
+budget, dan is **T137 het ticket om naar Sonnet 5 xhigh te degraderen**: de
+architectuur legt de vrijheidsgraden daar al zwaar vast (≤5 meshes, 0 lichten,
+additief, Bron-niveau emissie), mits T141 de animeerbare onderdelen volledig
+heeft dichtgetimmerd. Dat brengt het aandeel op 25%.
+
+**Max staat nergens als startinstelling** — alleen als escalatie op T132 en
+T140, allebei met dezelfde voorwaarde: een onopgelost probleem ná een serieuze
+xhigh-poging, waarbij een stille aanname (gedragsneutraliteit, write-volgorde)
+gebroken blijkt. Dat is de enige categorie waarin Max gerechtvaardigd is.
+
+---
+
+## Milestone reviews
+
+| # | Na | Model | Effort | Waarom en scope |
+|---|---|---|---|---|
+| **M1** | T136 | Opus 5 | High | Eerste keer dat de openingservaring fundamenteel anders is. Of "eerst messen, dan kopen" leuk is weet je pas door te spelen — en als het niet leuk is, moet dat nú blijken, niet na acht tickets op dit fundament. Scope: speelbaarheid golf 1-8; klopt de T136-meting met wat je voelt; is de mes-naar-vuurwapen-overgang bevredigend; is de start-staat robuust. |
+| **M2** | T144 | Opus 5 | High | Twee apart getunede wapens moeten sámen kloppen. Scope: cross-check beide wapens over alle drie Smederij-tiers en vier HP-trappen; T141-doelwaarden tegen de praktijk; voelen Fix 5's explosie en Doorboring nog als een echte tier-2-beloning naast de nieuwe gunfeel? |
+| **M3** | T139 + T147 | Opus 5 | High | De game is hier voor het eerst compleet: begin, midden en einde hebben hun definitieve vorm. Scope: één volledige run van golf 1 tot ontsnapping; pacing over de hele run; visuele basislijn integraal nalopen (vijf tickets hebben 'm mogelijk verschoven); F3 tijdens de finale-piek. |
+| **M4** | T154 | Opus 5 | High | Een audiomix hoort als geheel beoordeeld te worden, niet per geluid. Scope: volledige run met koptelefoon; mixbalans; klinkt het als één stijl; zijn de handmatig afgestelde volumeverhoudingen nog intact? |
+
+Bewust **géén** apart reviewmoment na T132, T140, T150 en T151: daar volstaan
+de grep-audit, de automatische tests en de visuele basislijn als objectieve
+poortwachters.
+
+---
+
+## Risicoregister — Ronde 11
+
+| # | Risico | Kans | Impact | Mitigatie |
+|---|---|---|---|---|
+| R1 | T134 crasht op frame 1 door `wapenStaat === null` | **Hoog** zonder mitigatie | Kritiek | T132 toevoeging A (`inHandGroep`) + de null-frame-test als acceptatiecriterium |
+| R2 | T138/T139 leveren modellen die T142-T144 niet kunnen animeren | Hoog in de oude volgorde | Hoog | T140 + T141 vóór T137; onderdelenconventie als acceptatiecriterium in alle drie |
+| R3 | Visuele basislijn verschuift door vijf tickets, oorzaak onherleidbaar | Middel | Middel | Per ticket bijwerken mét meting; nooit twee tickets tegelijk; M3 loopt 'm integraal na |
+| R4 | Audio-samples breken de "geen externe assets"-projectregel | Middel | Hoog | T152 is een beslissingsticket; eigenaarsgoedkeuring is expliciete dependency van T154 |
+| R5 | T153 verandert stilzwijgend een geluid dat geen test dekt | Middel | Middel | Diff-audit van alle `piep()`-argumenten; 13 tellers als hard contract |
+| R6 | T148's loopFase-koppeling verpest het per-type gang-ritme | Middel | Middel | `gang.pasFactor` per type hertoetsen; `test-vijand-leesbaarheid.mjs` als vangrail |
+| R7 | Finale-escalatiekanalen herstellen niet bij game over midden in de fase | Middel | Middel | Expliciet acceptatiecriterium in T147; het fog-restore-precedent uit `gameOver()` volgen |
+| R8 | Progressive spread (T143) breekt de Doorboring-raycast uit Fix 5 | Middel | Middel | `test-smederij.mjs` groen als acceptatiecriterium; de bekende fragiliteit vooraf lezen |
+| R9 | T149 raakt de flinch en botst opnieuw met de nadering-klem | Laag | Hoog | De code-toelichting in `updateOndoden()` verplicht lezen; `test-ondode-hitreacties.mjs` als vangrail |
+| R10 | Effect-pools raken verzadigd tijdens de finale-piek | Laag | Middel | `KILL_BURST_SAMENVAL_VENSTER` blijft actief; F3-meting verplicht in T147 |
+| R11 | T155 scope creep | Middel | Laag | "Suite groen zonder één aangepaste assertie" als enige slaagvoorwaarde |
+| R12 | De roadmap wordt te lang vóór er zichtbare waarde is | Laag | Middel | Fase 1 is meteen spelerswaarde; T140/T141 zijn samen de enige twee opeenvolgende niet-zichtbare tickets in het hele plan |
