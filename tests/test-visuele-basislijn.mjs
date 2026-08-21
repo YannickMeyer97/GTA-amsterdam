@@ -8,7 +8,7 @@
 //   1. De pixelhelderheid op acht vaste standpunten blijft binnen een SMALLE
 //      band (orde 1-2%) van de vastgelegde waarde.
 //   2. De zes ronde-brede invarianten uit §10.2 blijven intact: 28 lichten,
-//      1 schaduwwerper, 59 obstakels (T130-baseline), 14 interactiepunten, 4 composer-
+//      1 schaduwwerper, 58 obstakels (T131-baseline), 13 interactiepunten, 4 composer-
 //      passes (3 t/m T95, sinds T96 de eigen naverwerkingspass erbij; T97/
 //      T98 breiden diezelfde pass uit, dus blijft 4 voor de rest van de ronde).
 //
@@ -468,6 +468,33 @@ const RENDER_BAND = 0.25;
 //    van het vuil. Dat ze ook meetellen in de woonkamer (+3.696) is hetzelfde
 //    frustum-zonder-occlusion-effect dat T113 al blootlegde: de kelder valt
 //    binnen de camerakegel, ook al kijk je door een vloer heen.
+// T131 (tweede vlieringtrap verplaatst naar de noordkant): het
+// vliering-standpunt (-10, -12,95) kijkt met yaw 0 recht naar het NOORDEN —
+// en daar staat sindsdien de nieuwe trap. Waar de camera eerst tegen een
+// vlakke, vrijwel onverlichte vlieringvloer aankeek, kijkt hij nu de
+// trapkoker in en door het gat in de nis-afsluitmuur heen de VERLICHTE nis
+// in. Vandaar de sprong in de mediaan (1,57 -> 7,69): een veel groter deel
+// van het beeld is nu niet-zwart. Het gemiddelde schuift veel minder
+// (11,35 -> 11,82), want de totale lichtinhoud verandert nauwelijks — er is
+// geen lichtbron bij gekomen (het budget staat nog steeds op 28). Bewust
+// bijgewerkt: dit is exact de bedoelde geometriewijziging, niet een
+// ongemerkt lichter geworden scene.
+//
+// Naamswijzigingen (AMSTEL-9/Canal Ripper/etc.): openVoorVisueleMeting()
+// toont de HUD (nodig voor andere metingen in dit bestand) en roept éénmalig
+// updateHUD() aan, die het wapenlabel ("Wapen: <naam>") schrijft op basis
+// van het ACTIEVE wapen — bij het laden altijd de Drukspuit/AMSTEL-9. Bij
+// de bijna-zwarte vliering-baseline (mediaan 7,69) valt dat lichte HUD-
+// tekstlabel binnen het gesampelde middenblok (15-85% van breedte/hoogte,
+// zie pixelstats()) zwaar genoeg op om de mediaan merkbaar te verschuiven
+// zodra de tekst zelf verandert: "AMSTEL-9" i.p.v. "Drukspuit" tilt 'm naar
+// 9,06. Geverifieerd met een directe A/B-vergelijking (alleen de naam
+// teruggezet, verder identieke build): calls/triangles blijven exact gelijk
+// (273/32280 — de kleine, onschuldige +1 call/+112 driehoeken t.o.v. de
+// vorige 272/32168 is een net zo onschuldige nevenwaarde van dezelfde HUD-
+// tekst-run, ruim binnen de 25%-RENDER_BAND), alleen de mediaan verschuift.
+// Geen geometrie- of lichtwijziging — puur de HUD-tekstinhoud. Bewust
+// bijgewerkt, geen ongemerkte scene-wijziging.
 const BASISLIJN = {
   woonkamer:    { gemiddelde: 28.89, mediaan: 17.08, calls: 627, triangles: 53843 },
   gang:         { gemiddelde: 29.19, mediaan: 15.80, calls: 458, triangles: 37747 },
@@ -475,7 +502,7 @@ const BASISLIJN = {
   binnenplaats: { gemiddelde: 24.98, mediaan: 21.36, calls: 273, triangles: 26757 },
   bijkeuken:    { gemiddelde: 25.11, mediaan: 15.59, calls: 586, triangles: 49583 },
   kelder:       { gemiddelde: 15.81, mediaan: 11.26, calls: 187, triangles: 25832 },
-  vliering:     { gemiddelde: 11.35, mediaan: 1.57,  calls: 264, triangles: 30840 },
+  vliering:     { gemiddelde: 11.89, mediaan: 9.06,  calls: 273, triangles: 32280 },
   // Feedback-fix 1 (gebruiker: "tijdens de mistgolf zie ik duidelijk dat er
   // geen water om de vlonder heen ligt"): het watervlak begon eerst pas bij
   // VLONDER_X_OOST (recht voor de steiger); naast het smalle dek (|z|>1
@@ -540,8 +567,8 @@ const invarianten = await page.evaluate(() => {
 });
 check('Invariant 2: precies 28 lichten (1 hemisfeer + 27 point)', invarianten.lichten === 28, invarianten);
 check('Invariant 2: precies 1 schaduwwerpend licht', invarianten.schaduwwerpers === 1, invarianten);
-check('Invariant 5: obstakels.length blijft 59 (T130-baseline)', invarianten.obstakels === 59, invarianten);
-check('interactiePunten.length blijft 14', invarianten.interactiePunten === 14, invarianten);
+check('Invariant 5: obstakels.length blijft 58 (T131-baseline)', invarianten.obstakels === 58, invarianten);
+check('interactiePunten.length blijft 13', invarianten.interactiePunten === 13, invarianten);
 check('Post-processing: 4 passes (RenderPass/Bloom/naverwerking/Output, sinds T96 — blijft 4 voor de rest van de ronde, T97/T98 breiden de bestaande naverwerkingspass uit)', invarianten.composerPasses === 4, invarianten);
 
 // --- 4. Bronvorm van de assertie: een band, geen exact getal --------------

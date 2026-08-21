@@ -177,10 +177,8 @@ const leegCue = await page.evaluate(() => {
 check('Schieten met een leeg magazijn zet de "leeg"-knipperklasse op de ammo-UI',
   leegCue.klasse.includes('leeg'), leegCue);
 
-// --- 7. Ticket 95 (De kill als gebeurtenis): kill-flits + kill-burst -----
-// Elke dodelijke treffer krijgt een korte emissive flits op de PER-INSTANCE
-// huidmaterialen (nooit kernMateriaal, nooit de gedeelde been-/vod-
-// materialen via mat()) plus een groter impact-burst dan een gewone
+// --- 7. Ticket 95 (De kill als gebeurtenis): kill-burst -------------------
+// Elke dodelijke treffer krijgt een groter impact-burst dan een gewone
 // treffer. KILL_BURST_SAMENVAL_VENSTER (zelfde sjabloon als
 // HITMARKER_SAMENVAL_VENSTER hierboven) degradeert de burst-grootte bij
 // snel-op-elkaar-volgende kills, zodat een Brander-kettingreactie de
@@ -191,19 +189,18 @@ const NEUTRALE_TRAITS_STR_T95 =
 const structuurT95 = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   return {
-    KILL_FLITS_PIEK: d.KILL_FLITS_PIEK, KILL_FLITS_DUUR: d.KILL_FLITS_DUUR,
     KILL_BURST_AANTAL_GROOT: d.KILL_BURST_AANTAL_GROOT, KILL_BURST_AANTAL_KLEIN: d.KILL_BURST_AANTAL_KLEIN,
     KILL_BURST_SAMENVAL_VENSTER: d.KILL_BURST_SAMENVAL_VENSTER,
   };
 });
 check('KILL_BURST_AANTAL_GROOT > KILL_BURST_AANTAL_KLEIN (het samenval-venster degradeert echt naar minder)',
   structuurT95.KILL_BURST_AANTAL_GROOT > structuurT95.KILL_BURST_AANTAL_KLEIN, structuurT95);
-check('KILL_FLITS_PIEK/KILL_FLITS_DUUR/KILL_BURST_SAMENVAL_VENSTER zijn positieve, eindige waarden',
-  structuurT95.KILL_FLITS_PIEK > 0 && structuurT95.KILL_FLITS_DUUR > 0 && structuurT95.KILL_BURST_SAMENVAL_VENSTER > 0, structuurT95);
+check('KILL_BURST_SAMENVAL_VENSTER is een positieve, eindige waarde',
+  structuurT95.KILL_BURST_SAMENVAL_VENSTER > 0, structuurT95);
 
-// --- 7a. Eén kill: het (enige) huidmateriaal flitst naar KILL_FLITS_PIEK,
-// kernMateriaal (gedeeld) zit er nooit tussen, en de burst is groter dan
-// een gewone (overlevende) treffer -------------------------------------
+// --- 7a. Eén kill: het (enige) huidmateriaal blijft het per-instance
+// materiaal, kernMateriaal (gedeeld) zit er nooit tussen, en de burst is
+// groter dan een gewone (overlevende) treffer -------------------------------------
 const eenKill = await page.evaluate((traitsStr) => {
   const d = window.AmsterdamUndeadDebug;
   for (const o of [...d.ondoden]) d.doodOndode(o);
@@ -232,9 +229,8 @@ const eenKill = await page.evaluate((traitsStr) => {
   const impactNa = d.actieveEffecten.filter(e => e.soort === 'impact').length;
   return {
     kernNietErbij, aantalMaterialen: materialen.length,
-    intensiteitenNaKill: materialen.map(m => m.emissiveIntensity),
     burstGrootte: impactNa - impactVoor,
-    KILL_BURST_AANTAL_GROOT: d.KILL_BURST_AANTAL_GROOT, KILL_FLITS_PIEK: d.KILL_FLITS_PIEK,
+    KILL_BURST_AANTAL_GROOT: d.KILL_BURST_AANTAL_GROOT,
   };
 }, NEUTRALE_TRAITS_STR_T95);
 // Ticket 122: precies 1 per-instance materiaal (het hele lichaam deelt er
@@ -243,34 +239,8 @@ check('delen.huidMaterialen bevat precies 1 per-instance materiaal (het hele-lic
   eenKill.aantalMaterialen === 1, eenKill);
 check('kernMateriaal (gedeeld) zit nooit in delen.huidMaterialen',
   eenKill.kernNietErbij, eenKill);
-check('Direct na de kill staat het huidmateriaal op KILL_FLITS_PIEK emissiveIntensity',
-  eenKill.intensiteitenNaKill.every(i => i === eenKill.KILL_FLITS_PIEK), eenKill);
 check('De kill-burst spawnt precies KILL_BURST_AANTAL_GROOT nieuwe impact-deeltjes (buiten het samenval-venster)',
   eenKill.burstGrootte === eenKill.KILL_BURST_AANTAL_GROOT, eenKill);
-
-// --- 7b. De flits dooft weer uit via updateStervenden(), ruim vóór
-// STERVEN_DUUR (de val-animatie) klaar is ---------------------------------
-const flitsDooft = await page.evaluate((traitsStr) => {
-  const d = window.AmsterdamUndeadDebug;
-  for (const o of [...d.ondoden]) d.doodOndode(o);
-  d.eliminatiemodusTimer = 0;
-  d.laatsteKillBurstTijd = -999;
-  d.speler.positie.set(0, 0, 0);
-  const o = d.spawnOndode(0, 'normaal', eval(`(${traitsStr})`));
-  o.hp = d.schadePerTreffer;
-  o.groep.position.set(0, 0, -10);
-  const materialen = o.delen.huidMaterialen;
-  d.raakOndode(o, o.groep.position, false);   // impactPool-bezetting is hier niet relevant (geen burst-grootte-check in dit blok)
-  const stervende = d.stervenden[d.stervenden.length - 1];
-  const piek = materialen[0].emissiveIntensity;
-  let tikken = 0;
-  while (stervende.killFlitsTimer > 0 && tikken < 30) { d.updateStervenden(0.02); tikken++; }
-  const naDoven = materialen.map(m => m.emissiveIntensity);
-  return { piek, naDoven, tikken, KILL_FLITS_PIEK: d.KILL_FLITS_PIEK, STERVEN_DUUR: d.STERVEN_DUUR };
-}, NEUTRALE_TRAITS_STR_T95);
-check('De flits start op KILL_FLITS_PIEK', flitsDooft.piek === flitsDooft.KILL_FLITS_PIEK, flitsDooft);
-check('...en dooft binnen een handvol updateStervenden()-ticks volledig uit (emissiveIntensity -> 0)',
-  flitsDooft.naDoven.every(i => i === 0) && flitsDooft.tikken < 30, flitsDooft);
 
 // --- 7c. Samenval-venster: twee kills vlak na elkaar (zelfde klok binnen
 // hetzelfde synchrone testblok) degraderen de tweede burst -----------------
@@ -335,7 +305,6 @@ const branderKetting = await page.evaluate(() => {
   const brander = d.spawnOndode(0, 'brander');
   brander.hp = d.schadePerTreffer;   // sterft op de eerstvolgende treffer
   brander.groep.position.set(0, 0, -10);
-  const branderMaterialen = brander.delen.huidMaterialen;
 
   const slachtoffers = [];
   for (let i = 0; i < 4; i++) {
@@ -359,7 +328,6 @@ const branderKetting = await page.evaluate(() => {
     fout, ondodenVoor, ondodenNa, kills: ondodenVoor - ondodenNa,
     impactVoor, impactNa, impactPoolMaatVoor, impactPoolMaatNa: d.impactPool.length,
     IMPACT_MAX: d.IMPACT_MAX, GROOT: d.KILL_BURST_AANTAL_GROOT,
-    branderNietGeflitst: branderMaterialen.every(m => m.emissiveIntensity !== d.KILL_FLITS_PIEK),
   };
 });
 check('De Brander-kettingreactie loopt zonder fouten (geen throw in doodOndode()/ontploiBrander())',
@@ -371,8 +339,6 @@ check('impactPool blijft exact IMPACT_MAX groot (geen groei door de 5 gelijktijd
   branderKetting);
 check('De gezamenlijke burst-omvang blijft ruim onder het "5x de volle burst"-scenario (het samenval-venster degradeert echt)',
   (branderKetting.impactNa - branderKetting.impactVoor) < 5 * branderKetting.GROOT, branderKetting);
-check('De Brander zelf slaat de material-flits over (mesh is al uit de scene voordat dat blok zou lopen)',
-  branderKetting.branderNietGeflitst, branderKetting);
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);

@@ -342,8 +342,8 @@ check(`(f) renderer.info.memory.geometries groeit niet door de etalage-mijlpalen
   golfSimulatie.geometrieenNa === golfSimulatie.geometrieenVoor, golfSimulatie);
 // De kern is "voor === na" (niets groeit tijdens het spelen); het absolute
 // getal is een kaartbrede teller, door T87 (De Vliering) van 52 naar 56.
-check('(f) obstakels.length blijft ongewijzigd tijdens 25 golven (kaartbreed 59, T130-baseline; geen collision toegevoegd door de etalage-mijlpalen)',
-  golfSimulatie.obstakelsVoor === golfSimulatie.obstakelsNa && golfSimulatie.obstakelsNa === 59, golfSimulatie);
+check('(f) obstakels.length blijft ongewijzigd tijdens 25 golven (kaartbreed 58, T131-baseline; geen collision toegevoegd door de etalage-mijlpalen)',
+  golfSimulatie.obstakelsVoor === golfSimulatie.obstakelsNa && golfSimulatie.obstakelsNa === 58, golfSimulatie);
 check(`(f) Alle drie de etalageramen zijn dichtgetimmerd binnen de 25 golven (etalageVoltooid: ${golfSimulatie.etalageVoltooid})`,
   golfSimulatie.etalageVoltooid === 3, golfSimulatie);
 

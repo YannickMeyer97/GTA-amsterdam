@@ -127,9 +127,9 @@ check('De RUWE (ongeskinde) geometrie staat al op de juiste rustpose-hoogte: hoo
   Math.abs(hoogteAnker.maxY - 1.76) < 0.05, hoogteAnker);
 
 // --- 5. raakOndode()/doodOndode() blijven ONGEWIJZIGD werken tegen een V2-
-// ondode: flinch bij een overlevende treffer, kill-flash + val-animatie +
-// dispose bij een dodelijke treffer — geen van beide functies is aangepast
-// in dit ticket, dit toetst dat het bestaande V1-pad ook tegen V2 werkt. ---
+// ondode: flinch bij een overlevende treffer, val-animatie + dispose bij een
+// dodelijke treffer — geen van beide functies is aangepast in dit ticket,
+// dit toetst dat het bestaande V1-pad ook tegen V2 werkt. ---
 const gameplayPad = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
 
@@ -142,26 +142,22 @@ const gameplayPad = await page.evaluate(() => {
   const nogInOndodenNaFlinch = d.ondoden.includes(overlevend);
   d.doodOndode(overlevend);
 
-  // Dodelijke treffer: kill-flash op het (enige) huidmateriaal, ondode
-  // verhuist naar stervenden, en de val-animatie/dispose loopt af zonder fout.
+  // Dodelijke treffer: ondode verhuist naar stervenden, en de
+  // val-animatie/dispose loopt af zonder fout.
   const dodelijk = d.spawnOndode(0, 'normaal');
   dodelijk.hp = 1;
   dodelijk.groep.position.set(4, 0, 4);
-  const huidMateriaal = dodelijk.delen.huidMaterialen[0];
   d.raakOndode(dodelijk, dodelijk.groep.position.clone(), true);   // headshot, hp=1 -> gegarandeerd dodelijk
-  const killFlitsGezet = huidMateriaal.emissiveIntensity > 1;   // KILL_FLITS_PIEK (3), rust is 1
   const nietMeerInOndoden = !d.ondoden.includes(dodelijk);
   const inStervenden = d.stervenden.some(s => s.huidMaterialen === dodelijk.delen.huidMaterialen);
   for (let i = 0; i < 60; i++) d.updateStervenden(1 / 60);   // laat STERVEN_DUUR (0.7s) volledig aflopen
   const stervendenOpgeruimd = d.stervenden.length === 0;
 
-  return { flinchGezet, nogInOndodenNaFlinch, killFlitsGezet, nietMeerInOndoden, inStervenden, stervendenOpgeruimd };
+  return { flinchGezet, nogInOndodenNaFlinch, nietMeerInOndoden, inStervenden, stervendenOpgeruimd };
 });
 check('Een overlevende treffer zet flinch op een V2-ondode (raakOndode() ongewijzigd, werkt tegen een bot)',
   gameplayPad.flinchGezet, gameplayPad);
 check('Na een overlevende treffer staat de V2-ondode nog gewoon in ondoden', gameplayPad.nogInOndodenNaFlinch, gameplayPad);
-check("Een dodelijke treffer flitst het (enige) huidmateriaal (huidMaterialen.length===1 breekt de T95-flash-loop niet)",
-  gameplayPad.killFlitsGezet, gameplayPad);
 check('Na een dodelijke treffer staat de V2-ondode niet meer in ondoden', gameplayPad.nietMeerInOndoden, gameplayPad);
 check('De V2-ondode verhuist naar stervenden (val-animatie-pad ongewijzigd)', gameplayPad.inStervenden, gameplayPad);
 check('Na STERVEN_DUUR is de V2-ondode volledig opgeruimd (ruimGroepOp() disposet SkinnedMesh + Skeleton zonder fout)',

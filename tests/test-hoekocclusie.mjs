@@ -128,8 +128,8 @@ check('Direct na bakMuurOcclusie()/bakVlakOcclusie() (vóór B6\'s vuil-pass) is
 // --- 6. Geen enkele geometrie/collision-wijziging: obstakels.length en de
 // vertrouwde geometrie-invarianten blijven exact zoals vóór T102/T103.
 const obstakelsTest = await page.evaluate(() => window.AmsterdamUndeadDebug.obstakels.length);
-check('obstakels.length blijft 59 (T130-baseline; T102/T103 raken alleen visuele geometrie/materiaal, nooit collision)',
-  obstakelsTest === 59, { obstakelsTest });
+check('obstakels.length blijft 58 (T131-baseline; T102/T103 raken alleen visuele geometrie/materiaal, nooit collision)',
+  obstakelsTest === 58, { obstakelsTest });
 
 const fails = report(errs);
 await browser.close();

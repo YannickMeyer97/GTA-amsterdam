@@ -63,8 +63,8 @@ check('ZONE_WAYPOINTS heeft precies twee zone-entries (2, atelier/kelder-trap/ke
 // Zone 2 is inmiddels een BOOM van deelruimtes: nis-tak (die het hele
 // keldercomplex omvat) -> keldercomplex -> kelderruimte -> kelderoost, plus
 // een aparte vlieringtak (complex -> vlak deel). Zes doorgangen in totaal.
-check('Zone 2 heeft precies zes waypoints (nis, keldercomplex, kelderruimte, kelderoost, vliering, vlieringvlak)',
-  dataset.zone2Lengte === 6, dataset);
+check('Zone 2 heeft precies acht waypoints (nis, keldercomplex, kelderruimte, kelderoost, vliering-complex + de drie vliering-ketenschakels)',
+  dataset.zone2Lengte === 8, dataset);
 check('Zone 4 heeft precies één waypoint (de gang-drempel)', dataset.zone4Lengte === 1, dataset);
 check('De gracht-aanlooppunten zijn dezelfde Vector3-instanties als de constanten (hergebruikte data, geen kopie)',
   dataset.grachtPuntenZijnDeConstantes === true, dataset);
@@ -74,8 +74,12 @@ check('De kelderoost-aanlooppunten liggen aan weerszijden van de isKelderoost-dr
   dataset.kelderoostPuntenRondDeDrempel === true, dataset);
 check('ELK waypoint: puntBuiten ligt buiten zijn deelruimte en puntBinnen erbinnen (zelfterminatie-eis)',
   dataset.alleAanlooppuntenAanDeJuisteKant === true, dataset);
-check('De zone-2-niveaus lopen op volgens de boomstructuur (nis 1, kelder 2/3/4, vliering 1/2)',
-  dataset.niveausOplopend === '1,2,3,4,1,2', dataset);
+// T131: de vliering is geen enkele geneste deelruimte meer maar een KETEN
+// van drie schakels (lob 1 - vlak - koker 2), die alle drie op niveau 2
+// staan onder het vliering-complex op niveau 1. Ze sluiten elkaar uit, dus
+// gelijke niveaus botsen nooit bij de "diepste eerst"-regel.
+check('De zone-2-niveaus kloppen (nis 1, kelder 2/3/4, vliering-complex 1 + drie ketenschakels op 2)',
+  dataset.niveausOplopend === '1,2,3,4,1,2,2,2', dataset);
 
 // --- 2. zoekWaypoint(): unit-achtige lookup-checks op bekende testposities --
 const lookup = await page.evaluate(() => {
@@ -387,7 +391,7 @@ const vlieringTweeIngangen = await page.evaluate(() => {
 
   const doelInVlak = { x: d.VLIERING_X_WEST + 2, z: d.VLIERING_Z_NOORD + 1 };
   const bijTrap1 = { x: d.VLIERINGTRAP_ONDER_BUITEN.x + 1, z: d.VLIERINGTRAP_ONDER_BUITEN.z };
-  const bijTrap2 = { x: d.VLIERINGTRAP2_ONDER_BUITEN.x + 1, z: d.VLIERINGTRAP2_ONDER_BUITEN.z };
+  const bijTrap2 = { x: d.VLIERINGTRAP2_ONDER_BUITEN.x, z: d.VLIERINGTRAP2_ONDER_BUITEN.z - 1 };
   const puntVanuitTrap1 = d.zoekWaypoint(2, bijTrap1, doelInVlak);
   const puntVanuitTrap2 = d.zoekWaypoint(2, bijTrap2, doelInVlak);
 
@@ -401,10 +405,10 @@ check('Vliering-niveau-1-waypoint: zelfterminatie geldt voor beide trap-kandidat
   vlieringTweeIngangen.zelfterminatieBeideKandidaten === true, vlieringTweeIngangen);
 check('Een ondode bij trap 1 (zuid) mikt op trap 1, niet op trap 2',
   vlieringTweeIngangen.kiestTrap1BijTrap1 === true, vlieringTweeIngangen);
-check('Een ondode bij trap 2 (noord) mikt op trap 2, niet altijd op trap 1 (de kern van deze fix)',
+check('Een ondode bij trap 2 (noord, in de nis) mikt op trap 2, niet altijd op trap 1 (de kern van deze fix)',
   vlieringTweeIngangen.kiestTrap2BijTrap2 === true, vlieringTweeIngangen);
 
-// Echte trajectory: een ondode die in het atelier vlak bij de noordtrap
+// Echte trajectory: een ondode die in de nis vlak bij de noordtrap
 // staat, met de speler op het vlakke deel van de vliering, moet daadwerkelijk
 // via trap 2 naar boven lopen (i.p.v. eerst helemaal naar trap 1 om te lopen).
 const trap2Traject = await page.evaluate(() => {
@@ -412,8 +416,11 @@ const trap2Traject = await page.evaluate(() => {
   d.ondoden.length = 0;
   d.spawnWillekeurigeOndode();
   const ondode = d.ondoden[0];
-  ondode.groep.position.set(d.VLIERINGTRAP2_ONDER_BUITEN.x + 0.5, 0, d.VLIERINGTRAP2_CZ);
-  const doel = { x: d.VLIERING_X_WEST + 2, z: d.VLIERING_Z_NOORD + 1 };
+  // T131: trap 2 komt nu in de NIS uit (langs de Z-as), dus de aanloop ligt
+  // ten noorden van de nis-afsluitmuur i.p.v. ten oosten van de borstwering.
+  ondode.groep.position.set(d.VLIERINGTRAP2_ONDER_BUITEN.x, 0, d.VLIERINGTRAP2_ONDER_BUITEN.z - 0.5);
+  // Doel op het VLAKKE deel, ruim voorbij de bovenkant van trap 2.
+  const doel = { x: d.VLIERING_X_WEST + 2, z: d.VLIERINGTRAP2_Z_ZUID + 1.5 };
   d.speler.positie.set(doel.x, d.VLIERING_Y, doel.z);
   for (let i = 0; i < 900; i++) d.updateOndoden(1 / 60);   // 15s
   const afstandNa = Math.hypot(ondode.groep.position.x - doel.x, ondode.groep.position.z - doel.z);

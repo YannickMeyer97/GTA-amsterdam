@@ -185,7 +185,7 @@ const bronAssertieTest = await page.evaluate(() => {
     'golfBudget', 'GOLF_BUDGET_BASIS', 'GOLF_BUDGET_GROEI', 'ONDODE_THREAT_KOSTEN',
     'GOLF_MAX_ACTIEF', 'ONDODE_HP_TRAPPEN', 'AANVAL_PROFIELEN', '_PRIJS',
     'GELD_PER_HIT', 'GELD_PER_KILL', 'POWERUP_DROP_KANS', 'SPELER_HP_MAX',
-    'schadePerTreffer', 'WAPEN_SCHADE_MAX',
+    'schadePerTreffer',
   ];
   const gevonden = [];
   for (const bron of bronnen) {

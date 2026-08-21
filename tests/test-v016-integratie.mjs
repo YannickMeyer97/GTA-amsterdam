@@ -83,8 +83,8 @@ check('Actieve impact-deeltjes blijven binnen IMPACT_MAX, ook na de stress-golf'
 // De getallen zijn kaartbrede tellers (+1 elk sinds De Zelflader resp. het
 // vliering-traplampje); de strekking is onveranderd: ze GROEIEN NIET tijdens
 // combat-stress.
-check('Winkelmarkeringen groeien niet mee met combat-stress (blijft 14, incl. deur5 + deur6 + De Zelflader)',
-  stressTest.winkelMarkeringenLengte === 14, stressTest);
+check('Winkelmarkeringen groeien niet mee met combat-stress (blijft 13, incl. deur5 + deur6 + De Zelflader)',
+  stressTest.winkelMarkeringenLengte === 13, stressTest);
 check('lampLichten groeit niet mee met combat-stress (blijft 10, incl. kelder (3) + kelderoost (1) + vliering (1))',
   stressTest.lampLichtenLengte === 10, stressTest);
 check('stofwolken groeit niet mee met combat-stress (blijft 2)',

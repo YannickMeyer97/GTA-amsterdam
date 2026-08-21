@@ -1,6 +1,6 @@
-// De Smederij (Tickets 11-12): per-wapen schadeformule, gesmeed-status,
-// herbalanceerde globale schade-upgrade. Zie ROADMAP.md Ticket 11/12 en
-// ARCHITECTURE_NOTES.md §1 "Wapenschade" / §2 punt 7-8.
+// De Smederij (Tickets 11-12): per-wapen schadeformule, gesmeed-status.
+// Zie ROADMAP.md Ticket 11/12 en ARCHITECTURE_NOTES.md §1 "Wapenschade" /
+// §2 punt 7-8.
 //
 // Let op: wisselWapen() neemt GEEN argument — het is een pure toggle. Elke
 // evaluate() hieronder die een specifiek wapen nodig heeft, toggelt dus
@@ -10,27 +10,33 @@ import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 const { browser, page, errs } = await openAmsterdamUndead();
 const { check, report } = makeChecker();
 
-// --- Ticket 11: globale schade-upgrade is kleiner geworden ----------------
-const globaleUpgrade = await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  return { start: d.schadePerTreffer, max: d.WAPEN_SCHADE_MAX };
-});
-check('Globale schade start op 1 en WAPEN_SCHADE_MAX is nu 1.5 (was 2)',
-  globaleUpgrade.start === 1 && globaleUpgrade.max === 1.5, globaleUpgrade);
+// --- Ticket 11: schadePerTreffer start op 1 --------------------------------
+const globaleSchade = await page.evaluate(() => window.AmsterdamUndeadDebug.schadePerTreffer);
+check('schadePerTreffer start op 1', globaleSchade === 1, { globaleSchade });
 
-// --- Ticket 11: smederijConfig per wapen -----------------------------------
+// --- Ticket 11 / Fix 5: smederijConfig per wapen, nu 2 niveaus (array) -----
 const configs = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   return { drukspuit: d.WAPEN_DRUKSPUIT.smederijConfig, ratelaar: d.WAPEN_RATELAAR.smederijConfig };
 });
-check('Drukspuit-smederijConfig: schadeBonus 1.5, magazijnMax 12',
-  configs.drukspuit.schadeBonus === 1.5 && configs.drukspuit.magazijnMax === 12, configs.drukspuit);
-check('Ratelaar-smederijConfig: schadeBonus 1, magazijnMax 24',
-  configs.ratelaar.schadeBonus === 1 && configs.ratelaar.magazijnMax === 24, configs.ratelaar);
+check('Drukspuit-smederijConfig[0] (niveau 1): schadeBonus 1.5, magazijnMax 12',
+  configs.drukspuit[0].schadeBonus === 1.5 && configs.drukspuit[0].magazijnMax === 12, configs.drukspuit);
+check('Ratelaar-smederijConfig[0] (niveau 1): schadeBonus 1, magazijnMax 24',
+  configs.ratelaar[0].schadeBonus === 1 && configs.ratelaar[0].magazijnMax === 24, configs.ratelaar);
+check('Drukspuit-smederijConfig[1] (niveau 2, Fix 5): meer schade dan niveau 1, groter magazijn',
+  configs.drukspuit[1].schadeBonus > configs.drukspuit[0].schadeBonus &&
+  configs.drukspuit[1].magazijnMax > configs.drukspuit[0].magazijnMax, configs.drukspuit);
+check('Ratelaar-smederijConfig[1] (niveau 2, Fix 5): meer schade dan niveau 1, groter magazijn',
+  configs.ratelaar[1].schadeBonus > configs.ratelaar[0].schadeBonus &&
+  configs.ratelaar[1].magazijnMax > configs.ratelaar[0].magazijnMax, configs.ratelaar);
 
-// --- Ticket 11: nieuweWapenStaat() begint ongesmeed ------------------------
-const gesmeedStart = await page.evaluate(() => window.AmsterdamUndeadDebug.wapenStaat.gesmeed);
-check('Een nieuwe wapenstaat begint met gesmeed=false', gesmeedStart === false, { gesmeedStart });
+// --- Ticket 11 / Fix 5: nieuweWapenStaat() begint op beide niveaus ongesmeed
+const gesmeedStart = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  return { gesmeed: d.wapenStaat.gesmeed, gesmeedNiveau2: d.wapenStaat.gesmeedNiveau2 };
+});
+check('Een nieuwe wapenstaat begint met gesmeed=false', gesmeedStart.gesmeed === false, gesmeedStart);
+check('Een nieuwe wapenstaat begint met gesmeedNiveau2=false', gesmeedStart.gesmeedNiveau2 === false, gesmeedStart);
 
 // koopRatelaar() vereist geld; zet dat hier vast zodat de Ratelaar-staat bestaat.
 await page.evaluate(() => {
@@ -42,7 +48,7 @@ await page.evaluate(() => {
 });
 
 // --- Ticket 11: 16-combinaties-schadetest ----------------------------------
-// wapen x gesmeed x headshot x globale-upgrade-staat. Elke ondode krijgt
+// wapen x gesmeed x headshot x schadePerTreffer-waarde. Elke ondode krijgt
 // hoge HP zodat hij nooit sterft — zo meten we de exacte schade i.p.v. een
 // afgekapte overkill-waarde.
 function verwachteSchade(schadePerTreffer, gesmeed, schadeBonus, headshot) {
@@ -79,21 +85,21 @@ const schadeCombos = await page.evaluate(() => {
 const bonussen = { drukspuit: 1.5, ratelaar: 1 };
 const alle16Kloppen = schadeCombos.length === 16 && schadeCombos.every(r =>
   Math.abs(r.schade - verwachteSchade(r.schadePerTreffer, r.gesmeed, bonussen[r.wapenNaam], r.headshot)) < 1e-9);
-check('Alle 16 combinaties (wapen x gesmeed x headshot x upgrade-staat) geven de verwachte schade',
+check('Alle 16 combinaties (wapen x gesmeed x headshot x schadePerTreffer-waarde) geven de verwachte schade',
   alle16Kloppen, schadeCombos);
 
 // Losse, leesbare kern-asserts uit de schadebalans-tabel (ROADMAP Ticket 11/12):
 const vind = (wapenNaam, gesmeed, schadePerTreffer, headshot) =>
   schadeCombos.find(r => r.wapenNaam === wapenNaam && r.gesmeed === gesmeed && r.schadePerTreffer === schadePerTreffer && r.headshot === headshot).schade;
-check('Drukspuit zonder upgrades: bodyshot 1, headshot 2',
+check('Drukspuit ongesmeed op basisschade 1: bodyshot 1, headshot 2',
   vind('drukspuit', false, 1, false) === 1 && vind('drukspuit', false, 1, true) === 2, schadeCombos);
-check('Drukspuit gesmeed zonder globale upgrade: bodyshot 2.5, headshot 3.5',
+check('Drukspuit gesmeed op basisschade 1: bodyshot 2.5, headshot 3.5',
   vind('drukspuit', true, 1, false) === 2.5 && vind('drukspuit', true, 1, true) === 3.5, schadeCombos);
-check('Drukspuit gesmeed MET globale upgrade: bodyshot 3, headshot 4',
+check('Drukspuit gesmeed op basisschade 1.5: bodyshot 3, headshot 4',
   vind('drukspuit', true, 1.5, false) === 3 && vind('drukspuit', true, 1.5, true) === 4, schadeCombos);
-check('Ratelaar gesmeed zonder globale upgrade: bodyshot 2, headshot 3',
+check('Ratelaar gesmeed op basisschade 1: bodyshot 2, headshot 3',
   vind('ratelaar', true, 1, false) === 2 && vind('ratelaar', true, 1, true) === 3, schadeCombos);
-check('Ratelaar gesmeed MET globale upgrade: bodyshot 2.5, headshot 3.5',
+check('Ratelaar gesmeed op basisschade 1.5: bodyshot 2.5, headshot 3.5',
   vind('ratelaar', true, 1.5, false) === 2.5 && vind('ratelaar', true, 1.5, true) === 3.5, schadeCombos);
 
 // --- Ticket 11: Eliminatiemodus-override blijft boven de Smederij-bonus ---
@@ -188,20 +194,27 @@ check('Drukspuit smeden: gesmeed=true, magazijn 8->12 (direct volledig bijgevuld
   drukspuitKoop.na.gesmeed === true && drukspuitKoop.na.magazijnMax === 12 &&
   drukspuitKoop.na.magazijn === 12 && drukspuitKoop.na.geld === 0, drukspuitKoop.na);
 
-// --- Dubbele-aankoop-guard: nogmaals kopen doet niets ---------------------
-const dubbeleAankoop = await page.evaluate(() => {
+// --- Fix 5: koopSmederij() een tweede keer koopt nu niveau 2 i.p.v. een
+// pure no-op — met te weinig geld voor het (duurdere) niveau 2 gebeurt er
+// nog steeds niets, en het wapen blijft op niveau 1 staan. Het echte
+// niveau-2-kooppad zelf staat verderop in dit bestand (Fix 5-sectie).
+const tweedeAankoopTeWeinig = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  d.spelStaat.geld = 3000;
+  d.spelStaat.geld = 3000;   // genoeg voor niveau 1 (al gekocht), NIET voor niveau 2
   d.koopSmederij();
-  return { gesmeed: d.wapenStaat.gesmeed, geld: d.spelStaat.geld };
+  return {
+    gesmeed: d.wapenStaat.gesmeed, gesmeedNiveau2: d.wapenStaat.gesmeedNiveau2,
+    magazijnMax: d.wapenStaat.magazijnMax, geld: d.spelStaat.geld,
+  };
 });
-check('koopSmederij() een tweede keer op hetzelfde wapen doet niets (geen dubbele afschrijving)',
-  dubbeleAankoop.gesmeed === true && dubbeleAankoop.geld === 3000, dubbeleAankoop);
+check('Een tweede koopSmederij()-aanroep met te weinig geld voor niveau 2 verandert niets',
+  tweedeAankoopTeWeinig.gesmeed === true && tweedeAankoopTeWeinig.gesmeedNiveau2 === false &&
+  tweedeAankoopTeWeinig.magazijnMax === 12 && tweedeAankoopTeWeinig.geld === 3000, tweedeAankoopTeWeinig);
 
 // --- Schade na smeden: Drukspuit bodyshot 2.5, headshot 3.5 (Ticket 11) --
 const drukspuitSchade = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  d.schadePerTreffer = 1;   // geen globale upgrade
+  d.schadePerTreffer = 1;
   const o = d.spawnOndode(0, 'normaal');
   o.hp = 1000;
   const voor = o.hp;
@@ -210,7 +223,7 @@ const drukspuitSchade = await page.evaluate(() => {
   d.doodOndode(o);
   return { schade };
 });
-check('Gesmede Drukspuit zonder globale upgrade: bodyshot 2.5', drukspuitSchade.schade === 2.5, drukspuitSchade);
+check('Gesmede Drukspuit op basisschade 1: bodyshot 2.5', drukspuitSchade.schade === 2.5, drukspuitSchade);
 
 // --- Ratelaar onafhankelijk: smeden van de Drukspuit raakt de Ratelaar niet ---
 const ratelaarOnafhankelijk = await page.evaluate(() => {
@@ -274,15 +287,16 @@ const hudMerkteken = await page.evaluate(() => {
 check('HUD toont een sterretje bij de wapennaam als het actieve wapen gesmeed is',
   hudMerkteken.metSter.includes('★') && !hudMerkteken.zonderSter.includes('★'), hudMerkteken);
 
-// --- Balanscheck (ontwerpbeslissing 13): golf 12-15 blijft uitspeelbaar ---
-// zonder De Smederij — met alleen de globale MAX-upgrade (1.5) kost een
-// normale ondode (HP-trap 3 op golf 11-15) 2 bodyshots, een eindig en
-// voorspelbaar aantal, geen bullet sponge.
+// --- Schadeformule bij een verhoogde basisschade (voorheen ontwerpbeslissing
+// 13, toen nog bereikbaar via de inmiddels verwijderde globale upgrade): op
+// schadePerTreffer 1.5 kost een normale ondode (HP-trap 3 op golf 11-15) 2
+// bodyshots — zuivere regressiedekking van de schadeformule, geen
+// bewering meer dat 1.5 zonder De Smederij in het echte spel bereikbaar is.
 const balansGolf12 = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   for (const o of [...d.ondoden]) d.doodOndode(o);
   d.spelStaat.golf = 12;
-  d.schadePerTreffer = d.WAPEN_SCHADE_MAX;   // MAX globale upgrade, GEEN Smederij
+  d.schadePerTreffer = 1.5;   // verhoogde basisschade, GEEN Smederij
   const o = d.spawnOndode(0, 'normaal');
   const hpBasis = o.hp;
   d.raakOndode(o, o.groep.position, false);
@@ -292,7 +306,7 @@ const balansGolf12 = await page.evaluate(() => {
   d.schadePerTreffer = 1;
   return { hpBasis, naEen, naTwee };
 });
-check('Golf 12 (HP-trap 3): zonder Smederij kost een normale ondode op MAX-schade 2 bodyshots (eindige TTK)',
+check('Golf 12 (HP-trap 3): op schadePerTreffer 1.5 kost een normale ondode 2 bodyshots (eindige TTK)',
   balansGolf12.hpBasis === 3 && balansGolf12.naEen.leeft === true && balansGolf12.naTwee.leeft === false, balansGolf12);
 
 // =====================================================================
@@ -432,6 +446,267 @@ check('Budget: Ratelaar-visuals ≤ 5 meshes + 0 lichten (ember-licht verwijderd
 check('updateSmederijVisuals(dt) draait het tandwiel merkbaar door over tijd',
   budgetEnFlikker.rotatieNa !== budgetEnFlikker.rotatieVoor, budgetEnFlikker);
 
+// =====================================================================
+// Fix 5: tweede Smederij-niveau (duurder, meer schade) + de per-wapen
+// niveau-2-effecten — AMSTEL-9 (kleine ontploffing per schot) en Canal
+// Ripper (Doorboring: een tweede, doorboord doel per schot).
+// =====================================================================
+
+// Frisse start: beide wapens terug naar hun basisstaat (geen niveau 1/2).
+await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const kiesWapen = (naam) => { if (d.actiefWapenNaam !== naam) d.wisselWapen(); };
+  for (const naam of ['drukspuit', 'ratelaar']) {
+    kiesWapen(naam);
+    d.wapenStaat.gesmeed = false;
+    d.wapenStaat.gesmeedNiveau2 = false;
+    d.wapenStaat.magazijnMax = (naam === 'drukspuit' ? d.WAPEN_DRUKSPUIT : d.WAPEN_RATELAAR).magazijnMax;
+    d.wapenStaat.magazijn = d.wapenStaat.magazijnMax;
+  }
+  kiesWapen('drukspuit');
+  d.schadePerTreffer = 1;
+});
+
+// --- Volledig kooppad (niveau 1 -> niveau 2) op de AMSTEL-9 (Drukspuit) ---
+const volledigTraject = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const kiesWapen = (naam) => { if (d.actiefWapenNaam !== naam) d.wisselWapen(); };
+  kiesWapen('drukspuit');
+  d.spelStaat.geld = 100000;
+
+  const statusVoor = d.WINKEL_STIJLEN.smederij.status();
+  const promptVoor = d.smederijPunt.prompt();
+
+  const geldVoorT1 = d.spelStaat.geld;
+  d.koopSmederij();
+  const kostT1 = geldVoorT1 - d.spelStaat.geld;
+  const statusNaT1 = d.WINKEL_STIJLEN.smederij.status();
+  const promptNaT1 = d.smederijPunt.prompt();
+  const magazijnNaT1 = d.wapenStaat.magazijnMax;
+
+  const geldVoorT2 = d.spelStaat.geld;
+  d.koopSmederij();
+  const kostT2 = geldVoorT2 - d.spelStaat.geld;
+  const statusNaT2 = d.WINKEL_STIJLEN.smederij.status();
+  const promptNaT2 = d.smederijPunt.prompt();
+  const magazijnNaT2 = d.wapenStaat.magazijnMax;
+
+  // Derde aanroep: écht een no-op (beide niveaus al gekocht).
+  const geldVoorT3 = d.spelStaat.geld;
+  d.koopSmederij();
+  const geldNaT3 = d.spelStaat.geld;
+
+  d.updateHUD();
+  const wapenLabel = document.getElementById('wapenTekst').textContent;
+
+  // Cumulatieve schade: som van beide niveaus, gemeten via raakOndode().
+  const o = d.spawnOndode(0, 'normaal');
+  o.hp = 1000;
+  d.raakOndode(o, o.groep.position, false);
+  const schadeBeideNiveaus = 1000 - o.hp;
+  d.doodOndode(o);
+
+  return {
+    statusVoor, promptVoor, kostT1, statusNaT1, promptNaT1, magazijnNaT1,
+    kostT2, statusNaT2, promptNaT2, magazijnNaT2,
+    derdeAanroepNoOp: geldVoorT3 === geldNaT3,
+    wapenLabel, schadeBeideNiveaus,
+    SMEDERIJ_PRIJS: d.SMEDERIJ_PRIJS, SMEDERIJ2_PRIJS: d.SMEDERIJ2_PRIJS,
+    t1Bonus: d.WAPEN_DRUKSPUIT.smederijConfig[0].schadeBonus,
+    t2Bonus: d.WAPEN_DRUKSPUIT.smederijConfig[1].schadeBonus,
+  };
+});
+check('Vóór smeden: status "beschikbaar", prompt noemt SMEDERIJ_PRIJS',
+  volledigTraject.statusVoor === 'beschikbaar' && volledigTraject.promptVoor.includes(String(volledigTraject.SMEDERIJ_PRIJS)),
+  volledigTraject);
+check('Niveau 1 kost exact SMEDERIJ_PRIJS', volledigTraject.kostT1 === volledigTraject.SMEDERIJ_PRIJS, volledigTraject);
+check('Na niveau 1: status blijft "beschikbaar" (niveau 2 nog te koop), prompt noemt nu SMEDERIJ2_PRIJS',
+  volledigTraject.statusNaT1 === 'beschikbaar' && volledigTraject.promptNaT1.includes(String(volledigTraject.SMEDERIJ2_PRIJS)),
+  volledigTraject);
+check('Niveau 1: magazijnMax naar smederijConfig[0].magazijnMax', volledigTraject.magazijnNaT1 === 12, volledigTraject);
+check('Niveau 2 kost exact SMEDERIJ2_PRIJS, en dat is duurder dan niveau 1',
+  volledigTraject.kostT2 === volledigTraject.SMEDERIJ2_PRIJS && volledigTraject.SMEDERIJ2_PRIJS > volledigTraject.SMEDERIJ_PRIJS,
+  volledigTraject);
+check('Na niveau 2: status "gekocht" (volledig gesmeed), prompt zegt dat met zoveel woorden',
+  volledigTraject.statusNaT2 === 'gekocht' && volledigTraject.promptNaT2.includes('volledig gesmeed'), volledigTraject);
+check('Niveau 2: magazijnMax naar smederijConfig[1].magazijnMax', volledigTraject.magazijnNaT2 === 16, volledigTraject);
+check('Een derde koopSmederij()-aanroep is nu wél een echte no-op (beide niveaus al gekocht)',
+  volledigTraject.derdeAanroepNoOp, volledigTraject);
+check('HUD toont ★★ bij een volledig gesmeed (niveau 2) wapen', volledigTraject.wapenLabel.includes('★★'), volledigTraject);
+check('Cumulatieve schadebonus = som van niveau 1 + niveau 2 (niveau 2 is het grootste deel)',
+  Math.abs(volledigTraject.schadeBeideNiveaus - (1 + volledigTraject.t1Bonus + volledigTraject.t2Bonus)) < 1e-9 &&
+  volledigTraject.t2Bonus > volledigTraject.t1Bonus, volledigTraject);
+
+// --- AMSTEL-9 niveau 2: kleine ontploffing beschadigt OMLIGGENDE ondoden --
+// (rechtstreeks via schotExplosie(), zoals schiet() 'm ook aanroept — een
+// volledige camera-raycast-integratietest staat verderop bij Doorboring.)
+const explosieEffect = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  const o = d.spawnOndode(0, 'normaal');
+  o.groep.position.set(1, 0, 0);   // binnen AMSTEL9_EXPLOSIE_RADIUS van (0,0)
+  o.hp = 1000;
+  const explosiesVoor = d.explosies.length;
+  d.schotExplosie(0, 0, null);   // simuleert een grond-/muur-raakpunt vlak bij `o`
+  return {
+    schade: 1000 - o.hp, explosiesGespawnd: d.explosies.length - explosiesVoor,
+    binnenBereik: Math.hypot(1, 0) <= d.AMSTEL9_EXPLOSIE_RADIUS,
+  };
+});
+check('schotExplosie() beschadigt een nabije ondode die niet rechtstreeks geraakt werd',
+  explosieEffect.schade > 0, explosieEffect);
+check('schotExplosie() spawnt precies 1 nieuwe visuele flits (explosies-array)', explosieEffect.explosiesGespawnd === 1, explosieEffect);
+
+// --- schiet() roept schotExplosie() alleen aan bij AMSTEL-9 MET niveau 2 --
+// (bijstander vlak bij het GERAAKTE doel, binnen AMSTEL9_EXPLOSIE_RADIUS —
+// zelfde soort opstelling als schotExplosie() hierboven, nu via schiet()
+// zelf, zodat ook de gating-conditie in schiet() meetelt.)
+const explosieGating = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const kiesWapen = (naam) => { if (d.actiefWapenNaam !== naam) d.wisselWapen(); };
+  kiesWapen('drukspuit');
+  d.speler.positie.set(0, 0, 0);
+  // pitch=0 (recht vooruit, ooghoogte 1,7) mikt boven de brede lichaams-
+  // hitbox (HITBOX_LICHAAM_HOOGTE 1,45, dus tot y=1,45) uit en raakt alleen
+  // de kleine kop-hitbox (straal 0,18) — een haarlijn-precieze treffer die
+  // soms net mist. -0,3 rad mikt op de rompkern (HITBOX_LICHAAM_WERELD_Y
+  // 0,725) en blijft, geverifieerd over 40 losse spawns, elke keer binnen
+  // de lichaams-hitbox op zowel 2, 3 als 4m — een veel robuustere treffer.
+  d.speler.yaw = 0; d.speler.pitch = -0.3;
+  d.cameraKick = 0;
+  d.updateSpeler(0);
+  d.camera.updateMatrixWorld(true);
+
+  // kiesOndodeTraits() (het default 3e argument van spawnOndode()) loot een
+  // WILLEKEURIGE lengte (0,82x-1,18x) en houding (kromme rug, eenarmig...)
+  // per ondode — bij een korte/kromme "doel" kan de vaste horizontale
+  // schiet()-raycast (yaw=0, pitch=0) zijn hitbox soms net missen. Expliciete,
+  // vaste traits maken de rechtstreekse treffer hier deterministisch.
+  const VASTE_TRAITS = { profiel: 'standaard', kromme: false, slepend: 0, armVerschil: 0, lengte: 1.0, strompelt: false };
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  const doel = d.spawnOndode(0, 'normaal', VASTE_TRAITS);
+  doel.groep.position.set(0, 0, -3);   // recht voor de loop: rechtstreeks geraakt
+  doel.groep.updateMatrixWorld(true);
+  const bijstander = d.spawnOndode(0, 'normaal', VASTE_TRAITS);
+  bijstander.groep.position.set(1, 0, -3);   // binnen AMSTEL9_EXPLOSIE_RADIUS van `doel`, niet zelf op het schotpad
+  bijstander.groep.updateMatrixWorld(true);
+  doel.hp = 1000; bijstander.hp = 1000;
+  d.wapenStaat.magazijn = d.wapenStaat.magazijnMax;
+  d.wapenStaat.herladen = false;
+
+  // Alleen niveau 1: geen explosie, bijstander blijft ongemoeid.
+  d.wapenStaat.gesmeedNiveau2 = false;
+  d.schiet();
+  const hpNaNiveau1 = bijstander.hp;
+
+  // Niveau 2: nu wél een explosie op het raakpunt van `doel`.
+  doel.hp = 1000;   // opnieuw vol, zodat schot 2 hem ook weer rechtstreeks raakt
+  d.wapenStaat.magazijn = d.wapenStaat.magazijnMax;
+  d.wapenStaat.herladen = false;
+  d.wapenStaat.gesmeedNiveau2 = true;
+  d.schiet();
+  const hpNaNiveau2 = bijstander.hp;
+
+  return { hpNaNiveau1, hpNaNiveau2, hpVoor: 1000 };
+});
+check('schiet() met alleen niveau 1: geen ontploffing, de bijstander blijft ongemoeid',
+  explosieGating.hpNaNiveau1 === explosieGating.hpVoor, explosieGating);
+check('schiet() met niveau 2: de ontploffing raakt de bijstander alsnog',
+  explosieGating.hpNaNiveau2 < explosieGating.hpNaNiveau1, explosieGating);
+
+// --- Canal Ripper niveau 2 (Doorboring): een schot door zombie A raakt ook
+// een colineaire zombie B erachter, met minder schade dan A. Beide ruim
+// binnen de woonkamer (HALF_DIEPTE=5) zodat er geen muur tussen A en B in
+// staat — de Doorboring-wandcheck in schiet() moet hier NIET blokkeren. ---
+const doorboring = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.spelStaat.geld = 100000;
+  if (!d.ratelaarGekocht) d.koopRatelaar();
+  const kiesWapen = (naam) => { if (d.actiefWapenNaam !== naam) d.wisselWapen(); };
+  kiesWapen('ratelaar');
+  d.wapenStaat.gesmeed = true;
+  d.wapenStaat.gesmeedNiveau2 = true;
+  d.wapenStaat.magazijn = d.wapenStaat.magazijnMax;
+  d.wapenStaat.herladen = false;
+  // Ratelaar heeft een kleine, willekeurige spread (Ticket 34) — voor een
+  // deterministische test op een exact colineair doel B tijdelijk op 0.
+  const origSpread = d.WAPEN_RATELAAR.spreadNdc;
+  d.WAPEN_RATELAAR.spreadNdc = 0;
+
+  // kiesOndodeTraits() (het default 3e argument van spawnOndode()) loot een
+  // WILLEKEURIGE lengte (0,82x-1,18x) en houding (kromme rug, eenarmig...)
+  // per ondode — bij een korte/kromme A kan de vaste horizontale schiet()-
+  // raycast (yaw=0, pitch=0) zijn hitbox soms net missen en in plaats daarvan
+  // dieper doorschieten naar B (het EIGENLIJKE doorboringspad, maar dan al
+  // vanaf het eerste doel — niet wat deze test wil isoleren). Expliciete,
+  // vaste traits + loopFase=0 (willekeurige ledemaat-zwaai, v0.8, "niet
+  // synchroon") maken de rechtstreekse treffer op A deterministisch.
+  const VASTE_TRAITS = { profiel: 'standaard', kromme: false, slepend: 0, armVerschil: 0, lengte: 1.0, strompelt: false };
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  const a = d.spawnOndode(0, 'normaal', VASTE_TRAITS);
+  const b = d.spawnOndode(0, 'normaal', VASTE_TRAITS);
+  a.groep.position.set(0, 0, -2);   // rechtstreeks geraakt
+  b.groep.position.set(0, 0, -4);   // erachter, op dezelfde lijn (doorboord), nog ruim binnen de kamer
+  a.loopFase = 0; b.loopFase = 0;
+  a.hp = 1000; b.hp = 1000;
+  a.groep.updateMatrixWorld(true); b.groep.updateMatrixWorld(true);
+
+  d.speler.positie.set(0, 0, 0);
+  // pitch -0.3: mikt op de brede rompkern i.p.v. de kleine kop-hitbox, zie
+  // de toelichting bij de eerste pitch-aanpassing hierboven in dit bestand.
+  d.speler.yaw = 0; d.speler.pitch = -0.3;
+  d.cameraKick = 0;
+  d.updateSpeler(0);
+  d.camera.updateMatrixWorld(true);
+
+  d.schiet();
+  d.WAPEN_RATELAAR.spreadNdc = origSpread;
+  return {
+    schadeA: 1000 - a.hp, schadeB: 1000 - b.hp,
+    factor: d.RIPPER_DOORBORING_SCHADEFACTOR,
+  };
+});
+check('Doorboring: het rechtstreeks geraakte doel (A) neemt schade',
+  doorboring.schadeA > 0, doorboring);
+check('Doorboring: het TWEEDE, doorboorde doel (B) neemt ook schade, maar minder dan A',
+  doorboring.schadeB > 0 && doorboring.schadeB < doorboring.schadeA, doorboring);
+check('Doorboring-schade op B komt overeen met RIPPER_DOORBORING_SCHADEFACTOR (binnen afronding)',
+  Math.abs(doorboring.schadeB / doorboring.schadeA - doorboring.factor) < 0.05, doorboring);
+
+// --- Doorboring gebeurt NIET met alleen niveau 1 (geen gesmeedNiveau2) ----
+const geenDoorboringNiveau1 = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.wapenStaat.gesmeedNiveau2 = false;   // terug naar alleen niveau 1
+  const origSpread = d.WAPEN_RATELAAR.spreadNdc;
+  d.WAPEN_RATELAAR.spreadNdc = 0;
+
+  const VASTE_TRAITS = { profiel: 'standaard', kromme: false, slepend: 0, armVerschil: 0, lengte: 1.0, strompelt: false };
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  const a = d.spawnOndode(0, 'normaal', VASTE_TRAITS);
+  const b = d.spawnOndode(0, 'normaal', VASTE_TRAITS);
+  a.groep.position.set(0, 0, -2);
+  b.groep.position.set(0, 0, -4);
+  a.loopFase = 0; b.loopFase = 0;   // deterministische rusthouding, zie hierboven
+  a.groep.updateMatrixWorld(true); b.groep.updateMatrixWorld(true);
+  a.hp = 1000; b.hp = 1000;
+
+  d.speler.positie.set(0, 0, 0);
+  // pitch -0.3: mikt op de brede rompkern i.p.v. de kleine kop-hitbox, zie
+  // de toelichting bij de eerste pitch-aanpassing hierboven in dit bestand.
+  d.speler.yaw = 0; d.speler.pitch = -0.3;
+  d.cameraKick = 0;
+  d.updateSpeler(0);
+  d.camera.updateMatrixWorld(true);
+  d.wapenStaat.magazijn = d.wapenStaat.magazijnMax;
+  d.wapenStaat.herladen = false;
+
+  d.schiet();
+  d.WAPEN_RATELAAR.spreadNdc = origSpread;
+  return { schadeA: 1000 - a.hp, schadeB: 1000 - b.hp };
+});
+check('Zonder niveau 2 raakt de Canal Ripper alleen doel A, B blijft ongemoeid (geen Doorboring)',
+  geenDoorboringNiveau1.schadeA > 0 && geenDoorboringNiveau1.schadeB === 0, geenDoorboringNiveau1);
+
 // Opruimen voor eventuele volgende testruns op dezelfde page.
 await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
@@ -439,6 +714,7 @@ await page.evaluate(() => {
   for (const naam of ['drukspuit', 'ratelaar']) {
     kiesWapen(naam);
     d.wapenStaat.gesmeed = false;
+    d.wapenStaat.gesmeedNiveau2 = false;
   }
   kiesWapen('drukspuit');
 });

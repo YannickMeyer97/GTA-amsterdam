@@ -249,15 +249,15 @@ check('De helling zelf is ook begaanbaar (de route ernaartoe bestaat echt)',
   bereikbaarheid.opHelling > 0, bereikbaarheid);
 
 // --- 8. Obstakelbudget: exact vastgelegd (performancevoorwaarde) ----------
-// T130 (tweede vlieringtrap, noordkant): +3 t.o.v. de T87-baseline van 56 —
-// de weststomp splitst nu in 3 segmenten i.p.v. 2 (een tweede deurgat, +1),
-// en de nieuwe trap staat middenin open vloer aan BEIDE kanten (in
-// tegenstelling tot trap 1, die maar aan één kant open vloer grenst), dus die
-// krijgt twee kokerwanden i.p.v. één (+2). De vloerpanelen zelf (wel
-// gesplitst voor de nieuwe trapopening) zijn geen obstakels — alleen echte
-// collision-primitieven tellen hier mee.
-check('obstakels.length is exact 59 (56 na T87 + 3: extra weststomp-segment, twee kokerwanden i.p.v. één bij de noordtrap)',
-  obstakelsBijStart === 59, { obstakelsBijStart });
+// T131 (tweede vlieringtrap verplaatst naar de noordkant, door de
+// nis-afsluitmuur): +2 t.o.v. de T87-baseline van 56. De weststomp is weer
+// 2 segmenten (het tweede deurgat daar is vervallen), de nis-afsluitmuur
+// splitst nu wél in 2 (+1), en de nieuwe koker heeft maar één eigen wand
+// nodig (+1) — zijn westkant IS de bestaande vlieringwestmuur. De
+// vloerpanelen en de puur visuele vulmuur tellen niet mee: alleen echte
+// collision-primitieven.
+check('obstakels.length is exact 58 (56 na T87 + 2: gesplitste nis-afsluitmuur, één kokerwand bij de noordtrap)',
+  obstakelsBijStart === 58, { obstakelsBijStart });
 
 // --- 9. Geen extra PointLight (performancevoorwaarde: budget blijft 26) ---
 const lichtTest = await page.evaluate(() => {
@@ -324,20 +324,29 @@ const waypoint = await page.evaluate(() => {
   const opVliering = { x: d.VLIERING_X_WEST + 1.5, z: d.VLIERING_Z_NOORD + 1.5 };
   const inAtelier = { x: 1.5, z: -14 };
   const naarVliering = d.zoekWaypoint(2, inAtelier, opVliering);
-  const binnenVliering = d.zoekWaypoint(2, { x: -10, z: -12 }, opVliering);
+  // T131: twee punten op hetzelfde VLAKKE deel hebben geen tussenstap nodig.
+  // (Een punt op een van de twee trappen telt sindsdien als eigen deelruimte
+  // — daarvoor is een oversteek juist wél de bedoeling, zie hieronder.)
+  const binnenVliering = d.zoekWaypoint(2, { x: -6, z: -12 }, { x: -8, z: -13 });
+  const vlakNaarTrap2 = d.zoekWaypoint(2, { x: -6, z: -12 }, opVliering);
   const binnenAtelier = d.zoekWaypoint(2, inAtelier, { x: -2, z: -12 });
   return {
     zone2Lengte: d.ZONE_WAYPOINTS[2].length,
     naarVlieringIsKokerVoet: naarVliering !== null,
     binnenVlieringGeenWaypoint: binnenVliering === null,
+    vlakNaarTrap2HeeftWaypoint: vlakNaarTrap2 !== null,
     binnenAtelierGeenWaypoint: binnenAtelier === null,
     voetPuntBuitenTeltNietAlsVliering: d.isVliering(d.VLIERINGTRAP_ONDER_BUITEN.x, d.VLIERINGTRAP_ONDER_BUITEN.z) === false,
   };
 });
-check('Zone 2 heeft zes waypoints (nis-tak, drie kelder, en twee voor de vliering)', waypoint.zone2Lengte === 6, waypoint);
+check('Zone 2 heeft acht waypoints (nis-tak, drie kelder, en vier voor de vliering: het complex + de drie ketenschakels)',
+  waypoint.zone2Lengte === 8, waypoint);
 check('Vanuit het atelier naar de vliering routeert zoekWaypoint() via de voet van de helling',
   waypoint.naarVlieringIsKokerVoet === true, waypoint);
-check('Binnen de vliering onderling is er geen tussenstap nodig', waypoint.binnenVlieringGeenWaypoint === true, waypoint);
+check('Binnen hetzelfde vlakke deel van de vliering is er geen tussenstap nodig',
+  waypoint.binnenVlieringGeenWaypoint === true, waypoint);
+check('Van het vlakke deel naar trap 2 is er WEL een tussenstap (de kokeroversteek)',
+  waypoint.vlakNaarTrap2HeeftWaypoint === true, waypoint);
 check('Binnen het atelier onderling verandert er niets (geen nieuwe tussenstap)', waypoint.binnenAtelierGeenWaypoint === true, waypoint);
 // Zelfterminatie-eis (herzien): elke doorgang heeft nu een aanlooppunt aan
 // BEIDE kanten, en het buitenpunt moet aantoonbaar BUITEN de vliering liggen —
@@ -387,7 +396,7 @@ const balans = await page.evaluate(() => {
     'golfBudget', 'GOLF_BUDGET_BASIS', 'GOLF_BUDGET_GROEI', 'ONDODE_THREAT_KOSTEN',
     'GOLF_MAX_ACTIEF', 'ONDODE_HP_TRAPPEN', 'AANVAL_PROFIELEN', '_PRIJS',
     'GELD_PER_HIT', 'GELD_PER_KILL', 'POWERUP_DROP_KANS', 'SPELER_HP_MAX',
-    'schadePerTreffer', 'WAPEN_SCHADE_MAX',
+    'schadePerTreffer',
   ];
   const gevonden = [];
   for (const bron of bronnen) for (const t of verboden) if (bron.includes(t)) gevonden.push(t);
@@ -451,8 +460,8 @@ const zelflader = await page.evaluate(() => {
 });
 check('Het Zelflader-punt reageert NIET vanaf de begane grond onder de vliering',
   zelflader.vanafBeganeGrond === null, zelflader);
-check('Bovenop de vliering biedt het punt zich wél aan ("De Zelflader")',
-  zelflader.opVliering === 'De Zelflader', zelflader);
+check('Bovenop de vliering biedt het punt zich wél aan ("Auto loader")',
+  zelflader.opVliering === 'Auto loader', zelflader);
 check('Met te weinig geld (€999 < €1000) gebeurt er niets en blijft het geld staan',
   zelflader.teWeinig.gekocht === false && zelflader.teWeinig.geld === 999, zelflader);
 check('Met genoeg geld wordt hij gemonteerd en exact €1000 afgeschreven',

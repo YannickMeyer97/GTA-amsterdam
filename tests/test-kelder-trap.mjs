@@ -213,9 +213,9 @@ const pantserdrank = await page.evaluate(() => {
 });
 check('Pantserdrank staat binnen de kelder-footprint', pantserdrank.inKelderFootprint, pantserdrank);
 check('Pantserdrank reageert op de keldervloer (-KELDER_DIEPTE)',
-  pantserdrank.inKelder === 'Pantserdrank', pantserdrank);
+  pantserdrank.inKelder === 'Canal Jug', pantserdrank);
 check('Pantserdrank reageert NIET op y=0 (Y-marge-vangnet)',
-  pantserdrank.opNul !== 'Pantserdrank', pantserdrank);
+  pantserdrank.opNul !== 'Canal Jug', pantserdrank);
 
 // --- 10. Herziening (feedback): de kelder is NIET meer permanent veilig
 // (zie sectie 11 hieronder) — maar ZOLANG DE SPELER BOVEN BLIJFT mag er

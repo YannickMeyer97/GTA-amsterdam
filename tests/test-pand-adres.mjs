@@ -46,8 +46,8 @@ const obstakelTest = await page.evaluate(() => {
 // Het getal zelf is een kaart-brede teller (T87/De Vliering bracht 'm van 52
 // naar 56); de assertie hier gaat onverminderd over hetzelfde: het naambordje
 // voegt er zelf niets aan toe.
-check('obstakels.length blijft de kaartbrede 59 (T130-baseline; het naambordje voegt geen collision toe)',
-  obstakelTest.obstakelAantal === 59, obstakelTest);
+check('obstakels.length blijft de kaartbrede 58 (T131-baseline; het naambordje voegt geen collision toe)',
+  obstakelTest.obstakelAantal === 58, obstakelTest);
 
 // --- 5. Bron-check: bouwNaambordje() maakt precies 1 mesh (performance-eis) -
 const bronTest = await page.evaluate(() => {

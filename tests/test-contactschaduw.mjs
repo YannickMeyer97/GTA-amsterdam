@@ -43,8 +43,8 @@ const invarianten = await page.evaluate(() => {
   d.scene.traverse(o => { if (o.isLight) lichten++; });
   return { obstakels: d.obstakels.length, lichten };
 });
-check('obstakels.length blijft exact 59 (T130-baseline; contactschaduwen zijn puur decor, geen collision)',
-  invarianten.obstakels === 59, invarianten);
+check('obstakels.length blijft exact 58 (T131-baseline; contactschaduwen zijn puur decor, geen collision)',
+  invarianten.obstakels === 58, invarianten);
 check('Lichtaantal blijft 28 (geen nieuw licht toegevoegd door dit ticket)',
   invarianten.lichten === 28, invarianten);
 

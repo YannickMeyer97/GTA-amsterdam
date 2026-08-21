@@ -124,8 +124,8 @@ const invarianten = await page.evaluate(() => {
   d.scene.traverse((k) => { if (k.isLight) lichten++; });
   return { obstakels: d.obstakels.length, interactiePunten: d.interactiePunten.length, lichten };
 });
-check('obstakels.length blijft 59 (T130-baseline)', invarianten.obstakels === 59, invarianten);
-check('interactiePunten.length blijft 14', invarianten.interactiePunten === 14, invarianten);
+check('obstakels.length blijft 58 (T131-baseline)', invarianten.obstakels === 58, invarianten);
+check('interactiePunten.length blijft 13', invarianten.interactiePunten === 13, invarianten);
 check('Lichttelling blijft op 28 (de raampjes zijn geen lichtbron, puur materiaal-opacity)', invarianten.lichten === 28, invarianten);
 
 const fails = report(errs);

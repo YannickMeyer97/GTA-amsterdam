@@ -84,26 +84,19 @@ const matrix = await page.evaluate(({ limietS, aankomst }) => {
 check(`De matrix dekt een substantieel aantal routeparen (${matrix.paren} combinaties, 12 plekken over de hele kaart)`,
   matrix.paren >= 130, { paren: matrix.paren });
 
-// T130: BEKENDE, onderzochte beperking — elke route met speler op
-// "vlieringOost" (-5.5,-12) blijft (bewegend, niet letterlijk bevroren)
-// hangen bij precies één muurhoek: de bestaande T87-borstwering tussen
-// trap1 en trap2's deurgat, vlak naast trap2's nieuwe deur. Een ondode die
-// via trap2 het atelier binnenkomt en dan naar een doel ten zuidwesten van
-// die hoek moet, moet exact op die hoek van richting veranderen (bochtiger
-// dan gewoon rechtdoor de gang in lopen, wat WEL lukt — zie de geslaagde
-// nis-routes hieronder) en de lokale ontwijklogica rondt die bocht niet af.
-// Uitgebreid onderzocht (waypoint-drempels, de muur zelf inkorten, een
-// aparte kokeroversteek à la trap1's BOVEN-punt) zonder blijvende fix; elke
-// poging verplaatste het geflapper naar een nieuwe drempel in plaats van
-// het op te lossen. Dit is bewust NIET stilzwijgend weggefilterd — de check
-// hieronder eist expliciet dat het ALLEEN dit ene, bekende patroon is
-// (speler = vlieringOost) en niets anders, zodat een ECHTE regressie
-// (bijvoorbeeld een ander waypoint dat opnieuw kapotgaat) hier nog steeds
-// hard faalt.
-const onverwachtMislukt = matrix.mislukt.filter(m => m.speler !== 'vlieringOost');
-const bekendeUitzondering = matrix.mislukt.filter(m => m.speler === 'vlieringOost');
-check('Geen ENKELE onverwachte vastloper (alles buiten de bekende vlieringOost-hoekbug hieronder)',
-  onverwachtMislukt.length === 0, { onverwachtMislukt, bekendeUitzonderingAantal: bekendeUitzondering.length });
+// T131: de vroegere, hier gedocumenteerde uitzondering (speler op
+// "vlieringOost") is VERVALLEN. Die hoekbug ontstond doordat trap 2 destijds
+// aan de atelierkant uitkwam en zijn deurgat samen met de T87-borstwering een
+// scherpe hoek vormde die de lokale ontwijklogica niet kon ronden. Trap 2
+// loopt sinds T131 door de nis-afsluitmuur naar het noorden, waardoor die
+// borstwering weer één doorlopend stuk is en de hoek niet meer bestaat.
+//
+// De matrix eist daarom weer wat hij oorspronkelijk eiste: NUL vastlopers,
+// zonder uitzonderingslijst. Komt hier ooit weer iets terug, dan faalt dit
+// hard in plaats van stilletjes in een filter te verdwijnen.
+const onverwachtMislukt = matrix.mislukt;
+check('Geen ENKELE vastloper: alle 132 routeparen komen aan',
+  onverwachtMislukt.length === 0, { onverwachtMislukt });
 check(`De langste GESLAAGDE route blijft ruim binnen de limiet (gemeten ${matrix.langsteSeconden}s)`,
   matrix.langsteSeconden < TIJDSLIMIET_S, { langsteSeconden: matrix.langsteSeconden });
 

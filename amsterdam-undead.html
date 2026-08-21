@@ -126,7 +126,7 @@
   #ammoUI.leeg { animation: ammoLeegKnipper 0.4s ease; }
 
   /* --- Eén centrale interactieprompt onderin, voor alle interactiepunten
-       (deur, ammo-kist, upgradepunt) — zelfde patroon als
+       (deur, ammo-kist, werkbank, ...) — zelfde patroon als
        defend-national-monument.html --- */
   #interactiePrompt {
     position: fixed;
@@ -497,7 +497,7 @@
   <div>Golf <span id="golfTekst">1</span></div>
   <div id="zoneLabelUI" style="font-size:12px; font-weight:700; margin-top:2px; opacity:0.7;"></div>
   <div id="upgradeStatusUI" style="font-size:12px; font-weight:600; opacity:0.85; margin-top:4px;">
-    Schade <span id="schadeTekst">1</span> &nbsp;·&nbsp; Herladen <span id="herlaadTekst">1.2s</span> &nbsp;·&nbsp; Wapen <span id="wapenTekst">Drukspuit</span>
+    Schade <span id="schadeTekst">1</span> &nbsp;·&nbsp; Herladen <span id="herlaadTekst">1.2s</span> &nbsp;·&nbsp; Wapen <span id="wapenTekst">AMSTEL-9</span>
   </div>
   <div id="powerupStatusUI" style="font-size:12px; font-weight:700; margin-top:2px; color:#ffd76a;"></div>
   <div id="vluchtrouteUI" style="font-size:12px; font-weight:700; margin-top:2px; color:#6fe8c0;">Vluchtroute: 0/3</div>
@@ -2609,18 +2609,27 @@ const VLIERINGTRAP_HALF_BREEDTE = 0.9;
 const VLIERINGTRAP_CZ = VLIERING_Z_ZUID - VLIERINGTRAP_HALF_BREEDTE;
 const VLIERINGTRAP_X_OOST = VLIERING_X_OOST;   // onderaan: atelierniveau (y = 0)
 const VLIERINGTRAP_X_WEST = -8;                // bovenaan: vlieringniveau (1,2 m over 3,5 m = 19°, flauwer dan de keldertrap)
-// Vervolg (op verzoek): TWEEDE trap, aan de NOORDkant van de vliering, komt
-// uit in het noordelijkste stuk van de borstwering-wandsectie (vlak bij de
-// nis-hoek — dat is het noordwestelijke deel van het atelier dat de
-// vliering-oostmuur daadwerkelijk raakt; de LETTERLIJKE noordwesthoek van
-// het atelier ligt achter de nis-doorgang, waar geen wand tegen de vliering
-// aan staat). Maakt van de vliering een echte LUS i.p.v. een doodlopende
+// TWEEDE trap. Maakt van de vliering een echte LUS i.p.v. een doodlopende
 // zijruimte — dus ook ondoden kunnen 'm gebruiken (zie ZONE_WAYPOINTS/
-// zoekWaypoint verderop). Zelfde maat/helling als de bestaande trap.
+// zoekWaypoint verderop).
+//
+// T131 (feedback): hij kwam eerst aan de ATELIERkant uit (oost, door de
+// borstwering — dezelfde kant als trap 1) en is nu verplaatst naar de
+// ZIJkant: door de nis-afsluitmuur heen, vlak bij de kelderdeur. Daarmee
+// loopt hij langs de Z-as i.p.v. de X-as (onderaan y=0 in de nis, bovenaan
+// y=1,2 op de vliering) en ligt hij tegen de vliering-westmuur aan, zodat
+// die muur meteen zijn westelijke kokerwand is.
+//
+// Drie dingen worden hier meteen eenvoudiger dan bij de oude oostpositie:
+//   1. De borstwering is weer één doorlopend stuk (geen gat meer).
+//   2. De koker heeft geen uitstekende dwarswand bij zijn bovenkant (zoals
+//      trap1's kokernoordwand): hij mondt recht uit op het vlakke deel.
+//   3. Precies de scherpe hoek borstwering×trap2-deur die de vroegere,
+//      gedocumenteerde ontwijk-vastloper veroorzaakte bestaat niet meer.
 const VLIERINGTRAP2_HALF_BREEDTE = 0.9;
-const VLIERINGTRAP2_CZ = KAMER2_NIS_Z_ZUID + VLIERINGTRAP2_HALF_BREEDTE + 0.3;
-const VLIERINGTRAP2_X_OOST = VLIERING_X_OOST;   // onderaan: atelierniveau (y = 0)
-const VLIERINGTRAP2_X_WEST = -8;                // zelfde helling als de bestaande trap
+const VLIERINGTRAP2_CX = VLIERING_X_WEST + VLIERINGTRAP2_HALF_BREEDTE;   // -10,6: tegen de westmuur, bij de kelderdeur
+const VLIERINGTRAP2_Z_NOORD = VLIERING_Z_NOORD;                          // -17: onderaan, nisniveau (y = 0)
+const VLIERINGTRAP2_Z_ZUID = VLIERING_Z_NOORD + 3.5;                     // -13,5: bovenaan, zelfde helling als trap 1
 // De Zelflader-vlag staat hier zo vroeg omdat updateHUD() 'm in het
 // wapenlabel leest, en updateHUD() draait al één keer bij module-load — ver
 // vóór koopAutoHerlader() verderop gedeclareerd wordt. Zelfde TDZ-reden als
@@ -2887,17 +2896,13 @@ const ATELIER_MIDDEN_Z = DEUR2_Z;
   // dus niemand loopt er alsnog doorheen — alleen de zichtlijn is nieuw.
   {
     const stompX = -KAMER2_HALF_B - MUUR_DIKTE / 2;
-    // Vervolg (tweede trap, noordkant): de borstwering splitst nu in TWEE
-    // stukken rond het nieuwe trapgat — zelfde segmentpatroon als de
-    // bestaande splitsing rond het zuidelijke trapgat verderop.
-    const trap2ZVan = VLIERINGTRAP2_CZ - VLIERINGTRAP2_HALF_BREEDTE;
-    const trap2ZTot = VLIERINGTRAP2_CZ + VLIERINGTRAP2_HALF_BREEDTE;
-    const borstweringNoordDiepte = trap2ZVan - KAMER2_NIS_Z_ZUID;
-    bouwMuur(stompX, KAMER2_NIS_Z_ZUID + borstweringNoordDiepte / 2, MUUR_DIKTE, borstweringNoordDiepte,
-      BAKSTEEN, VLIERING_BORSTWERING_Y);
-    const borstweringMiddenTot = VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE;
-    const borstweringMiddenDiepte = borstweringMiddenTot - trap2ZTot;
-    bouwMuur(stompX, trap2ZTot + borstweringMiddenDiepte / 2, MUUR_DIKTE, borstweringMiddenDiepte,
+    // T131: trap 2 is verhuisd naar de NOORDkant (door de nis-afsluitmuur),
+    // dus de borstwering is hier weer één doorlopend stuk — exact de
+    // T87-versie van vóór de tweede trap. Het trapgat in deze muur bestaat
+    // niet meer; alleen trap 1's gat verderop blijft.
+    const borstweringTot = VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE;
+    const borstweringDiepte = borstweringTot - KAMER2_NIS_Z_ZUID;
+    bouwMuur(stompX, KAMER2_NIS_Z_ZUID + borstweringDiepte / 2, MUUR_DIKTE, borstweringDiepte,
       BAKSTEEN, VLIERING_BORSTWERING_Y);
     const zuidDiepte = GANG_Z_EIND - (VLIERINGTRAP_CZ + VLIERINGTRAP_HALF_BREEDTE);
     bouwMuur(stompX, GANG_Z_EIND - zuidDiepte / 2, MUUR_DIKTE, zuidDiepte, BAKSTEEN, ATELIER_HOOGTE);
@@ -3054,11 +3059,13 @@ function berekenVlieringY(x, z) {
     const fractie = (VLIERINGTRAP_X_OOST - x) / (VLIERINGTRAP_X_OOST - VLIERINGTRAP_X_WEST);
     return VLIERING_Y * fractie;
   }
-  // Vervolg (tweede trap, noordkant): zelfde formule, andere koker-z-band.
-  if (x > VLIERINGTRAP2_X_WEST &&
-      z > VLIERINGTRAP2_CZ - VLIERINGTRAP2_HALF_BREEDTE &&
-      z < VLIERINGTRAP2_CZ + VLIERINGTRAP2_HALF_BREEDTE) {
-    const fractie = (VLIERINGTRAP2_X_OOST - x) / (VLIERINGTRAP2_X_OOST - VLIERINGTRAP2_X_WEST);
+  // Tweede trap (T131: noordkant, langs de Z-as): zelfde formule, maar nu
+  // een X-band en een z-helling. Onderaan (z = VLIERINGTRAP2_Z_NOORD, tegen
+  // de nis-afsluitmuur) nisniveau 0, bovenaan (Z_ZUID) vlieringniveau.
+  if (z < VLIERINGTRAP2_Z_ZUID &&
+      x > VLIERINGTRAP2_CX - VLIERINGTRAP2_HALF_BREEDTE &&
+      x < VLIERINGTRAP2_CX + VLIERINGTRAP2_HALF_BREEDTE) {
+    const fractie = (z - VLIERINGTRAP2_Z_NOORD) / (VLIERINGTRAP2_Z_ZUID - VLIERINGTRAP2_Z_NOORD);
     return VLIERING_Y * fractie;
   }
   return VLIERING_Y;
@@ -3097,7 +3104,22 @@ function berekenVloerY(x, z) {
     const deur5ZuidDiepte = KAMER2_NIS_Z_ZUID - (KELDERTRAP_CZ + KELDERTRAP_HALF_BREEDTE);
     bouwMuur(KAMER2_NIS_X_WEST - MUUR_DIKTE / 2, KAMER2_NIS_Z_ZUID - deur5ZuidDiepte / 2, MUUR_DIKTE, deur5ZuidDiepte, BAKSTEEN, ATELIER_HOOGTE);
   }
-  bouwMuur(KAMER2_NIS_CX - MUUR_DIKTE, KAMER2_NIS_Z_ZUID + MUUR_DIKTE / 2, KAMER2_NIS_DIEPTE, MUUR_DIKTE, BAKSTEEN, ATELIER_HOOGTE);
+  // T131: de afsluitmuur splitst nu in TWEE segmenten met een trapgat
+  // ertussen — de tweede vlieringtrap komt hier de nis in, vlak bij de
+  // kelderdeur. Zelfde west/oost-segmentpatroon als de deur5-splitsing
+  // hierboven; het gat ligt tegen de westkant (VLIERINGTRAP2_CX), dus het
+  // westsegment is niet veel meer dan een stijl.
+  {
+    const muurWest = KAMER2_NIS_CX - MUUR_DIKTE - KAMER2_NIS_DIEPTE / 2;
+    const muurOost = KAMER2_NIS_CX - MUUR_DIKTE + KAMER2_NIS_DIEPTE / 2;
+    const gatWest = VLIERINGTRAP2_CX - VLIERINGTRAP2_HALF_BREEDTE;
+    const gatOost = VLIERINGTRAP2_CX + VLIERINGTRAP2_HALF_BREEDTE;
+    const afsluitCZ = KAMER2_NIS_Z_ZUID + MUUR_DIKTE / 2;
+    const westBreedte = gatWest - muurWest;
+    bouwMuur(muurWest + westBreedte / 2, afsluitCZ, westBreedte, MUUR_DIKTE, BAKSTEEN, ATELIER_HOOGTE);
+    const oostBreedte = muurOost - gatOost;
+    bouwMuur(gatOost + oostBreedte / 2, afsluitCZ, oostBreedte, MUUR_DIKTE, BAKSTEEN, ATELIER_HOOGTE);
+  }
 }
 
 /* ================================================================
@@ -3150,19 +3172,21 @@ function berekenVloerY(x, z) {
     m.receiveShadow = true;
     wereld.add(m);
   }
-  const trap2ZVan = VLIERINGTRAP2_CZ - VLIERINGTRAP2_HALF_BREEDTE;
-  const trap2ZTot = VLIERINGTRAP2_CZ + VLIERINGTRAP2_HALF_BREEDTE;
+  const trap2XWest = VLIERINGTRAP2_CX - VLIERINGTRAP2_HALF_BREEDTE;
+  const trap2XOost = VLIERINGTRAP2_CX + VLIERINGTRAP2_HALF_BREEDTE;
   {
-    // Vervolg (tweede trap, noordkant): het noordelijke vlak splitst nu in
-    // drie stukken rond het nieuwe trapgat — zelfde aanpak als de bestaande
-    // splitsing rond het zuidelijke trapgat (west-strook hieronder).
-    const noordVanTrap2Diepte = trap2ZVan - VLIERING_Z_NOORD;
-    vlieringVloer(breedteX, noordVanTrap2Diepte, centrumX, VLIERING_Z_NOORD + noordVanTrap2Diepte / 2);
-    const zuidVanTrap2Diepte = kokerZNoord - trap2ZTot;
-    vlieringVloer(breedteX, zuidVanTrap2Diepte, centrumX, trap2ZTot + zuidVanTrap2Diepte / 2);
-    const trap2WestBreedte = VLIERINGTRAP2_X_WEST - VLIERING_X_WEST;
-    vlieringVloer(trap2WestBreedte, VLIERINGTRAP2_HALF_BREEDTE * 2,
-      VLIERING_X_WEST + trap2WestBreedte / 2, VLIERINGTRAP2_CZ);
+    // T131 (tweede trap, noordkant, langs de Z-as): het noordelijke vlak
+    // splitst in twee stukken rond het nieuwe trapgat — het gat ligt tegen
+    // de WESTmuur, dus er is geen strook ten westen ervan nodig (anders dan
+    // bij trap 1, waar de koker midden in de zuidrand zit).
+    //   (a) alles ten oosten van de koker, over de volle noord-zuiddiepte;
+    //   (b) het stukje ten zuiden van de koker, in de kokerbreedte zelf.
+    const oostBreedte = VLIERING_X_OOST - trap2XOost;
+    vlieringVloer(oostBreedte, kokerZNoord - VLIERING_Z_NOORD,
+      trap2XOost + oostBreedte / 2, (VLIERING_Z_NOORD + kokerZNoord) / 2);
+    const zuidVanTrap2Diepte = kokerZNoord - VLIERINGTRAP2_Z_ZUID;
+    vlieringVloer(trap2XOost - trap2XWest, zuidVanTrap2Diepte,
+      VLIERINGTRAP2_CX, VLIERINGTRAP2_Z_ZUID + zuidVanTrap2Diepte / 2);
 
     const westBreedte = VLIERINGTRAP_X_WEST - VLIERING_X_WEST;
     const zuidDiepte = VLIERING_Z_ZUID - kokerZNoord;
@@ -3191,18 +3215,21 @@ function berekenVloerY(x, z) {
       wereld.add(trede);
     }
   }
-  // Vervolg (tweede trap, noordkant): zelfde trededozen-techniek, andere z.
+  // T131 (tweede trap, noordkant): zelfde trededozen-techniek, maar langs de
+  // Z-as — de trede loopt dus in x over de volle kokerbreedte en klimt naar
+  // het zuiden toe. Elke trede is een volle doos vanaf y=0 (geen open
+  // stootborden), zodat de trap ook van opzij dicht oogt.
   {
     const TREDEN = 8;
-    const lengte = VLIERINGTRAP2_X_OOST - VLIERINGTRAP2_X_WEST;
+    const lengte = VLIERINGTRAP2_Z_ZUID - VLIERINGTRAP2_Z_NOORD;
     const tredeDiepte = lengte / TREDEN;
     for (let i = 0; i < TREDEN; i++) {
       const topY = VLIERING_Y * ((i + 1) / TREDEN);
-      const x = VLIERINGTRAP2_X_OOST - tredeDiepte * (i + 0.5);
+      const z = VLIERINGTRAP2_Z_NOORD + tredeDiepte * (i + 0.5);
       const trede = new THREE.Mesh(
-        new THREE.BoxGeometry(tredeDiepte, topY, VLIERINGTRAP2_HALF_BREEDTE * 2),
+        new THREE.BoxGeometry(VLIERINGTRAP2_HALF_BREEDTE * 2, topY, tredeDiepte),
         matFamilie('hout', VLIERING_BALK));
-      trede.position.set(x, topY / 2, VLIERINGTRAP2_CZ);
+      trede.position.set(VLIERINGTRAP2_CX, topY / 2, z);
       trede.receiveShadow = true;
       wereld.add(trede);
     }
@@ -3256,47 +3283,25 @@ function berekenVloerY(x, z) {
     bouwMuur(VLIERINGTRAP_X_WEST + kokerBreedte / 2, kokerZNoord - MUUR_DIKTE / 2,
       kokerBreedte, MUUR_DIKTE, VLIERING_BALK, ATELIER_HOOGTE);
   }
-  // Vervolg (tweede trap, noordkant): dezelfde koker-wand-rol, maar nu op
-  // BEIDE zijden — trap 2 ligt midden in het open vlak (niet tegen de
-  // zuidmuur aan zoals trap 1), dus zowel de noord- als de zuidkant van de
-  // koker grenst aan de (1,2 m hogere) vlieringvloer.
+  // T131 (tweede trap, noordkant): dezelfde koker-wand-rol als bij trap 1,
+  // maar deze koker ligt tegen de vliering-WESTmuur aan. Die muur is dus al
+  // zijn westelijke wand — er hoeft er maar één bij, aan de oostkant.
   //
-  // De muren stoppen 1 m vóór VLIERINGTRAP2_X_OOST (de ateliervoet), i.p.v.
-  // door te lopen tot aan de deur zelf zoals trap1's kokerwand doet — geeft
-  // wat extra ruimte vlak bij de deur, al is dit GEEN volledige oplossing
-  // voor de hoekbug hieronder (zie de toelichting bij ZONE_WAYPOINTS[2] se
-  // niveau-2-entry en tests/test-navigatie-dekking.mjs). Bij het
-  // ateliereinde van de helling is de hoogte toch al bijna 0 (vlak bij
-  // atelierniveau), dus het ontbreken van de muur daar geeft geen zichtbare
-  // val naar de vlakke vloer ernaast.
-  //
-  // BEKENDE BEPERKING (T130, uitgebreid onderzocht, niet opgelost): de
-  // bestaande T87-borstwering tussen trap1 en trap2's deurgat (het
-  // "zuidelijke segment" hierboven bij de weststomp-splitsing) vormt samen
-  // met trap2's deur een scherpe hoek. Een ondode die via trap2 binnenkomt
-  // en dan naar een doel ten zuidwesten van die hoek moet — dus precies op
-  // die hoek van richting moet veranderen — blijft daar (bewegend, niet
-  // letterlijk bevroren) ronddraaien; de lokale ontwijklogica rondt die
-  // bocht niet af. Rechtdoor lopen langs dezelfde muur (bijv. verder naar de
-  // nis) werkt wél. Geprobeerd zonder blijvend succes: waypoint-drempels op
-  // diverse plekken (elke poging verplaatste het geflapper alleen), deze
-  // muur inkorten (hierboven, geen fix), een aparte kokeroversteek à la
-  // trap1's BOVEN_BUITEN/BINNEN (nieuwe geflapper op de nieuwe drempel). Een
-  // echte fix vereist waarschijnlijk een aanpassing aan de gedeelde
-  // ontwijklogica in updateOndoden() zelf (die alleen per-frame-verplaatsing
-  // meet, geen netto voortgang over een langer venster) — buiten de scope
-  // van dit ticket. Vastgelegd als bewuste, geïsoleerde uitzondering in
-  // tests/test-navigatie-dekking.mjs (speler = "vlieringOost"), niet
-  // stilzwijgend weggefilterd.
-  {
-    const koker2Overlap = 1;
-    const koker2XOost = VLIERINGTRAP2_X_OOST - koker2Overlap;
-    const koker2Breedte = koker2XOost - VLIERINGTRAP2_X_WEST;
-    bouwMuur(VLIERINGTRAP2_X_WEST + koker2Breedte / 2, trap2ZVan - MUUR_DIKTE / 2,
-      koker2Breedte, MUUR_DIKTE, VLIERING_BALK, ATELIER_HOOGTE);
-    bouwMuur(VLIERINGTRAP2_X_WEST + koker2Breedte / 2, trap2ZTot + MUUR_DIKTE / 2,
-      koker2Breedte, MUUR_DIKTE, VLIERING_BALK, ATELIER_HOOGTE);
-  }
+  // Op verzoek ("een dichte trap zonder open zijkant") loopt die wand over
+  // de VOLLE kokerlengte, van de nis-afsluitmuur tot de bovenkant van de
+  // helling, en over de volle hoogte vanaf de begane grond. Geen inkorting
+  // bij de voet zoals de vorige (oostelijke) versie van trap 2 had.
+  const koker2Diepte = VLIERINGTRAP2_Z_ZUID - VLIERINGTRAP2_Z_NOORD;
+  const koker2CZ = VLIERINGTRAP2_Z_NOORD + koker2Diepte / 2;
+  bouwMuur(trap2XOost + MUUR_DIKTE / 2, koker2CZ, MUUR_DIKTE, koker2Diepte,
+    VLIERING_BALK, ATELIER_HOOGTE);
+  // De westelijke kant is de vlieringMuur hierboven — maar die begint pas op
+  // VLIERING_Y (1,2 m), en trap 2 daalt daar juist tot 0. Zelfde gat-in-de-
+  // wand-situatie (en zelfde oplossing) als de zuidmuur hierboven: een
+  // puur visuele vulmuur van de begane grond tot de vlieringvloer. De
+  // 2D-collisierechthoek staat al geregistreerd door vlieringMuur() zelf.
+  bouwVulMuur(VLIERING_X_WEST - MUUR_DIKTE / 2, koker2CZ, MUUR_DIKTE, koker2Diepte,
+    0, VLIERING_Y, VLIERING_BALK);
 
   // --- Decor: een paar dakbalken en een emissief olielampje (geen licht) ---
   for (const bz of [-15.5, -13, -10.5]) {
@@ -4236,8 +4241,8 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
   // nieuwe textuur/asset) op de reeds-bestaande view-space `normal` uit
   // MeshStandardMaterial's eigen `<normal_fragment_maps>`-chunk — precies
   // de plek waar die variabele al gevuld is, vóór de lichtberekening 'm
-  // gebruikt (zelfde chunk-injectiepatroon als RIM_UNIFORMS/
-  // maakOndodeMateriaal() hierboven). Three.js-shader-chunknamen zijn GEEN
+  // gebruikt (zelfde chunk-injectiepatroon als maakOndodeMateriaal()
+  // hierboven). Three.js-shader-chunknamen zijn GEEN
   // publieke API — vastgelegd hier: chunk `<normal_fragment_maps>`,
   // three@0.160.0.
   function bouwWaterMateriaal() {
@@ -6089,8 +6094,6 @@ function bouwIcoonSleutel(g, kleur) {
 const WINKEL_STIJLEN = {
   ammo:         { kleur: 0x6bd0ff, bouwIcoon: (g) => bouwIcoonKogel(g, 0x6bd0ff),
     status: () => spelStaat.geld >= AMMO_PRIJS ? 'beschikbaar' : 'teDuur' },
-  upgrade:      { kleur: 0xffd75e, bouwIcoon: (g) => bouwIcoonPijl(g, 0xffd75e),
-    status: () => schadePerTreffer >= WAPEN_SCHADE_MAX ? 'gekocht' : (spelStaat.geld >= UPGRADE_PRIJS ? 'beschikbaar' : 'teDuur') },
   werkbank:     { kleur: 0xff9f5a, bouwIcoon: (g) => bouwIcoonFles(g, 0xff9f5a),
     status: () => snelspannerGekocht ? 'gekocht' : (spelStaat.geld >= SNELSPANNER_PRIJS ? 'beschikbaar' : 'teDuur') },
   pantserdrank: { kleur: 0xb8c8ff, bouwIcoon: (g) => bouwIcoonSchild(g, 0xb8c8ff),
@@ -6102,8 +6105,12 @@ const WINKEL_STIJLEN = {
   // Randgeval (ROADMAP Ticket 37): de status volgt het ACTIEVE wapen, exact
   // dezelfde logica als de bestaande smederijPunt-prompt (wapenStaat.gesmeed)
   // — staan beide wapens gesmeed, dan blijft dit vanzelf permanent 'gekocht'.
+  // Fix 5: drie-traps status i.p.v. twee — 'gekocht' pas als BEIDE niveaus
+  // gekocht zijn; tussen niveau 1 en 2 blijft de markering 'beschikbaar'/
+  // 'teDuur' tegen de (hogere) SMEDERIJ2_PRIJS.
   smederij:     { kleur: 0xff7a1f, bouwIcoon: (g) => bouwIcoonHamer(g, 0xff7a1f),
-    status: () => wapenStaat.gesmeed ? 'gekocht' : (spelStaat.geld >= SMEDERIJ_PRIJS ? 'beschikbaar' : 'teDuur') },
+    status: () => wapenStaat.gesmeedNiveau2 ? 'gekocht'
+      : (spelStaat.geld >= (wapenStaat.gesmeed ? SMEDERIJ2_PRIJS : SMEDERIJ_PRIJS) ? 'beschikbaar' : 'teDuur') },
   autoherlader: { kleur: 0x8ef0c8, bouwIcoon: (g) => bouwIcoonTrommel(g, 0x8ef0c8),
     status: () => autoHerladerGekocht ? 'gekocht' : (spelStaat.geld >= AUTOHERLADER_PRIJS ? 'beschikbaar' : 'teDuur') },
   deur1:        { kleur: 0x9fff9f, bouwIcoon: (g) => bouwIcoonSleutel(g, 0x9fff9f),
@@ -6120,15 +6127,15 @@ const WINKEL_STIJLEN = {
     status: () => deur6Gekocht ? 'gekocht' : (spelStaat.geld >= DEUR6_PRIJS ? 'beschikbaar' : 'teDuur') },
   // Ticket 44: de Vluchtroute — gratis oprapen, dus geen teDuur/gekocht-
   // status nodig (de markering verdwijnt gewoon bij het oprapen). Gedeeld
-  // pijl-silhouet (bestaand, anders alleen bij 'upgrade'), eigen zeegroene
-  // kleur onderscheidt 'm meteen visueel.
+  // pijl-silhouet (bestaand bouwIcoonPijl-icoon), eigen zeegroene kleur
+  // onderscheidt 'm meteen visueel.
   vluchtroute:  { kleur: 0x6fe8c0, bouwIcoon: (g) => bouwIcoonPijl(g, 0x6fe8c0),
     status: () => 'beschikbaar' },
 };
 
 // Alle gebouwde winkelmarkeringen, in aanroepvolgorde — puur voor debug/
 // tests (de bestaande, individueel benoemde const-referenties elders in dit
-// bestand, zoals upgradeMarkering, blijven de manier waarop de spelcode zelf
+// bestand, zoals werkbankMarkering, blijven de manier waarop de spelcode zelf
 // een specifieke markering aanspreekt, bv. voor wereld.remove()).
 const winkelMarkeringen = [];
 
@@ -6323,8 +6330,14 @@ const SMEDERIJ_Z = 3.5;
 const smederijMarkering = winkelMarkering(SMEDERIJ_X, SMEDERIJ_Z, 'smederij');
 // De Zelflader op de vliering: achterin, bij de kisten, ruim uit de buurt van
 // de helling zodat je er niet per ongeluk overheen loopt tijdens het klimmen.
-const AUTOHERLADER_X = VLIERING_X_WEST + 2.2;
-const AUTOHERLADER_Z = VLIERING_Z_NOORD + 2.2;
+// Feedback (na T131): stond half op trap 2 (die na de verhuizing naar de
+// zijkant nu precies onder de oude positie ligt). Verplaatst naar het
+// midden van de NOORDmuur van de vliering — x op het midden van de volle
+// vlieringbreedte (ruim ten oosten van trap2's koker, x <= -9,7), z net
+// zuidelijk van de nis-afsluitmuur (voldoende afstand voor de sokkel/
+// trommel-props, ruim noordelijk van de dakbalk-lamp op z = -13,85).
+const AUTOHERLADER_X = (VLIERING_X_WEST + VLIERING_X_OOST) / 2;
+const AUTOHERLADER_Z = VLIERING_Z_NOORD + 1;
 const autoHerladerMarkering = winkelMarkering(AUTOHERLADER_X, AUTOHERLADER_Z, 'autoherlader', VLIERING_Y);
 // Feedback: "ik zie geen object staan bij de Zelflader" — elk ander
 // kooppunt heeft naast de abstracte ring+icoon ook een eigen fysiek object
@@ -6470,7 +6483,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyR' && !e.repeat && document.pointerLockElement === renderer.domElement) {
     herladen();
   }
-  // T activeert het dichtstbijzijnde interactiepunt (deur/ammo-kist/upgrade).
+  // T activeert het dichtstbijzijnde interactiepunt (deur/ammo-kist/werkbank/...).
   // Zelfde !e.repeat + pointer-lock-patroon als in defend-national-monument.html.
   if (e.code === 'KeyT' && !e.repeat && document.pointerLockElement === renderer.domElement) {
     activeerHuidigeInteractie();
@@ -6753,6 +6766,11 @@ function updateSpeler(dt) {
   // de speler mag voorbij GRENS.minX de kelder-trapband in (zie
   // losBotsingenOp hierboven). Ondoden krijgen sinds §7.5.7 dezelfde bypass.
   losBotsingenOp(speler.positie, speler.straal, true);
+  // Fix 3: NA de muur-/meubelbotsing, zodat een ondode die tegen een muur
+  // aan staat de speler niet alsnog een stukje de muur in kan duwen (de
+  // volgorde muur-eerst-dan-ondode is dezelfde reden waarom updateOndoden()
+  // losBotsingenOp() ook vóór zijn eigen ontwijklogica aanroept).
+  duwSpelerWegVanOndoden();
   // Puur functioneel, geen state — herberekent elk frame opnieuw of x/z in
   // de kelder-trap- of vlieringfootprint vallen (zie berekenVloerY()).
   // Overal elders blijft dit exact 0, dus het bestaande 2D-gedrag
@@ -7107,7 +7125,7 @@ const WAPEN_LEAN_TEGENWICHT = 0.4;      // fractie van leanHoek die het wapen TE
 // mesh/mondingsflits-referenties. `reserve` van de Ratelaar is bewust 2x
 // die van de Drukspuit ("ongeveer dubbel zoveel munitie").
 const WAPEN_DRUKSPUIT = {
-  naam: 'Drukspuit', magazijnMax: 8, reserve: 48, schotCooldown: 0.2,
+  naam: 'AMSTEL-9', magazijnMax: 8, reserve: 48, schotCooldown: 0.2,
   herlaadDuurNormaal: 1.2, herlaadDuurSnel: 0.7,
   groep: wapenDrukspuit, vlam: vlamDrukspuit, vlamLicht: vlamLichtDrukspuit,
   // Ticket 90: was 1,1, nu op Signaal-niveau (§10.5). Ticket 12: schiet()
@@ -7121,14 +7139,19 @@ const WAPEN_DRUKSPUIT = {
   vlamKleurBasis: vlamDrukspuit.userData.vlamMateriaal.color.getHex(), vlamLichtKleurBasis: vlamLichtDrukspuit.color.getHex(),
   // Ticket 11: De Smederij (per-wapen late-game upgrade) — de Drukspuit is
   // de precisie-keuze en krijgt daarom de grootste schadebonus.
-  smederijConfig: { schadeBonus: 1.5, magazijnMax: 12 },
+  // Fix 5: twee Smederij-niveaus i.p.v. één — niveau 2 kost meer (SMEDERIJ2_PRIJS)
+  // en voegt méér schade toe dan niveau 1 (2.5 > 1.5), zie berekenSmederijBonus().
+  smederijConfig: [
+    { schadeBonus: 1.5, magazijnMax: 12 },
+    { schadeBonus: 2.5, magazijnMax: 16 },
+  ],
   // Ticket 34 (§5.6): de Drukspuit is de precisiekeuze — grote enkele kick,
   // géén spread. Waarden letterlijk overgenomen uit ARCHITECTURE_NOTES.
   kickSterkte: 0.014, spreadNdc: 0, terugslagSterkte: 1.0,
   schotToon: { start: 480, eind: 120, duur: 0.09 },
 };
 const WAPEN_RATELAAR = {
-  naam: 'De Ratelaar', magazijnMax: 16, reserve: 96, schotCooldown: 0.1,
+  naam: 'Canal Ripper', magazijnMax: 16, reserve: 96, schotCooldown: 0.1,
   herlaadDuurNormaal: 1.5, herlaadDuurSnel: 0.9,
   groep: wapenRatelaar, vlam: vlamRatelaar, vlamLicht: vlamLichtRatelaar,
   // Ticket 90: was 1,6, nu op Signaal-niveau (§10.5). Ticket 12: schiet()
@@ -7138,7 +7161,11 @@ const WAPEN_RATELAAR = {
   vlamMateriaal: vlamRatelaar.userData.vlamMateriaal,
   vlamKleurBasis: vlamRatelaar.userData.vlamMateriaal.color.getHex(), vlamLichtKleurBasis: vlamLichtRatelaar.color.getHex(),
   // Ticket 11: de Ratelaar is de volume-keuze — minder schadebonus, meer magazijn.
-  smederijConfig: { schadeBonus: 1, magazijnMax: 24 },
+  // Fix 5: zie de toelichting bij WAPEN_DRUKSPUIT.smederijConfig hierboven.
+  smederijConfig: [
+    { schadeBonus: 1, magazijnMax: 24 },
+    { schadeBonus: 1.8, magazijnMax: 32 },
+  ],
   // Ticket 34 (§5.6): de Ratelaar is de volumekeuze — kleine kick per schot,
   // vaste lichte spread (±0.8°). Waarden letterlijk overgenomen.
   kickSterkte: 0.006, spreadNdc: 0.012, terugslagSterkte: 0.55,
@@ -7155,7 +7182,21 @@ function nieuweWapenStaat(definitie) {
     herlaadTimer: 0,
     herlaadDuur: snelspannerGekocht ? definitie.herlaadDuurSnel : definitie.herlaadDuurNormaal,
     gesmeed: false,   // Ticket 11: per-wapen Smederij-status (machine volgt in Ticket 12)
+    // Fix 5: tweede Smederij-niveau, apart van `gesmeed` (dat blijft "niveau 1
+    // gekocht" betekenen — alle bestaande vlam-boost/kleur-logica die op
+    // `gesmeed` leest blijft dus ongewijzigd werken op niveau 1).
+    gesmeedNiveau2: false,
   };
+}
+
+// Fix 5: de schadebonus is nu de SOM van elk gekocht Smederij-niveau i.p.v.
+// één vaste bonus — één helper i.p.v. deze som op meerdere plekken
+// (raakOndode, updateHUD) te dupliceren.
+function berekenSmederijBonus(staat) {
+  let bonus = 0;
+  if (staat.gesmeed) bonus += staat.definitie.smederijConfig[0].schadeBonus;
+  if (staat.gesmeedNiveau2) bonus += staat.definitie.smederijConfig[1].schadeBonus;
+  return bonus;
 }
 
 // Elk wapen houdt zijn eigen magazijn/reserve/herlaad-status aan (ook als je
@@ -7563,7 +7604,32 @@ function schiet() {
     spawnTracer(_tmpVecA, ondodeRaak[0].point, MATERIAAL_KLEUREN.steen);
     let obj = raakObj;
     while (obj && !obj.userData.ondode) obj = obj.parent;
-    if (obj) raakOndode(obj.userData.ondode, ondodeRaak[0].point, kop);
+    if (obj) {
+      raakOndode(obj.userData.ondode, ondodeRaak[0].point, kop);
+      // Fix 5: AMSTEL-9 niveau 2 — kleine ontploffing op het raakpunt, ook
+      // bij een directe treffer. De geraakte ondode zelf kreeg zijn schade
+      // al via raakOndode() hierboven en is dus uitgesloten van de splash.
+      if (actiefWapenNaam === 'drukspuit' && wapenStaat.gesmeedNiveau2) {
+        schotExplosie(ondodeRaak[0].point.x, ondodeRaak[0].point.z, obj.userData.ondode);
+      }
+      // Fix 5: Canal Ripper niveau 2 (Doorboring) — de kogel gaat door de
+      // geraakte ondode heen en raakt de eerstvolgende ANDERE ondode
+      // verderop op dezelfde straal, met gereduceerde schade. Een muur
+      // dichterbij dan dat tweede doel blokkeert de doorboring (anders zou
+      // een kogel dwars door een muur een ondode in een andere ruimte raken).
+      if (actiefWapenNaam === 'ratelaar' && wapenStaat.gesmeedNiveau2) {
+        for (let i = 1; i < ondodeRaak.length; i++) {
+          let obj2 = ondodeRaak[i].object;
+          while (obj2 && !obj2.userData.ondode) obj2 = obj2.parent;
+          if (!obj2 || obj2.userData.ondode === obj.userData.ondode) continue;
+          const muurErtussen = raycaster.intersectObject(wereld, true);
+          if (muurErtussen.length > 0 && muurErtussen[0].distance < ondodeRaak[i].distance) break;
+          const kop2 = ondodeRaak[i].object.userData.lichaamsdeel === 'kop';
+          raakOndode(obj2.userData.ondode, ondodeRaak[i].point, kop2, RIPPER_DOORBORING_SCHADEFACTOR);
+          break;   // maximaal 1 extra doel per schot
+        }
+      }
+    }
     return;
   }
 
@@ -7582,6 +7648,12 @@ function schiet() {
   _tmpVecNormaal.copy(raak[0].face.normal).transformDirection(raak[0].object.matrixWorld);
   spawnImpact(raak[0].point, MATERIAAL_KLEUREN[familie] ?? MATERIAAL_KLEUREN.steen, 3, _tmpVecNormaal);
   spawnRook(raak[0].point);
+  // Fix 5: AMSTEL-9 niveau 2 — ook een schot op de vloer/muur/plafond
+  // ontploft, zodat de speler zombies indirect kan raken (bv. door vlak voor
+  // hun voeten op de grond te schieten).
+  if (actiefWapenNaam === 'drukspuit' && wapenStaat.gesmeedNiveau2) {
+    schotExplosie(raak[0].point.x, raak[0].point.z, null);
+  }
 }
 
 /* ================================================================
@@ -8058,15 +8130,98 @@ const AANVAL_DRAAI_SNELHEID = 2.0;   // rad/s bijdraaien tijdens de wind-up
 const MAX_AANVALLERS        = 2;     // gelijktijdige wind-ups (beslissing 23)
 const AANVAL_START_JITTER   = 0.35;  // 0..dit aan willekeurige startvertraging
 const AANVAL_HERSTEL_SNELHEIDSFACTOR = 0.4;   // beweegsnelheid tijdens 'herstel'
+// Fix 3 (feedback): met de nieuwe speler-ondode-botsing hieronder (zie
+// duwSpelerWegVanOndoden()) kan de speler niet meer dwars door een ondode
+// heen lopen — maar met de oude wind-up-tijden was hij nog steeds vaak
+// alweer buiten raakBereik tegen de tijd dat de wind-up afliep, simpelweg
+// omdat de speler (4,5 m/s) zoveel sneller is dan elke ondode. Windup
+// verkort met ~15-20% per type (behalve de Sjouwer, die zijn trage dreun
+// bewust behoudt — acceptatiecriterium in test-aanval-machine.mjs) maakt
+// ontwijken lastiger zonder schade/bereik/hoek aan te raken: nog steeds
+// geen instant-dood, alleen minder tijd om weg te draaien.
 const AANVAL_PROFIELEN = {
   //           windup  herstel  raakBereik  raakHoek  schade  onderbreekbaarLichaam
-  normaal: { windup: 0.55, herstel: 0.70, raakBereik: 1.6, raakHoek: 1.15, schade: 15, onderbreekbaarLichaam: false },
-  loper:   { windup: 0.40, herstel: 0.90, raakBereik: 1.5, raakHoek: 1.15, schade: 10, onderbreekbaarLichaam: true },
+  normaal: { windup: 0.45, herstel: 0.70, raakBereik: 1.6, raakHoek: 1.15, schade: 15, onderbreekbaarLichaam: false },
+  loper:   { windup: 0.33, herstel: 0.90, raakBereik: 1.5, raakHoek: 1.15, schade: 10, onderbreekbaarLichaam: true },
   sjouwer: { windup: 0.85, herstel: 1.00, raakBereik: 1.8, raakHoek: 1.40, schade: 25, onderbreekbaarLichaam: false },
-  brander: { windup: 0.55, herstel: 0.70, raakBereik: 1.6, raakHoek: 1.15, schade: 15, onderbreekbaarLichaam: false },
-  sluiper: { windup: 0.35, herstel: 0.80, raakBereik: 1.5, raakHoek: 1.15, schade: 12, onderbreekbaarLichaam: true },
+  brander: { windup: 0.45, herstel: 0.70, raakBereik: 1.6, raakHoek: 1.15, schade: 15, onderbreekbaarLichaam: false },
+  sluiper: { windup: 0.30, herstel: 0.80, raakBereik: 1.5, raakHoek: 1.15, schade: 12, onderbreekbaarLichaam: true },
 };
 let actieveAanvallers = 0;   // gelijktijdige wind-ups, begrensd door MAX_AANVALLERS
+
+// Fix 3 (feedback): tot nu toe had de speler NUL botsing tegen ondode-
+// lichamen — losBotsingenOp() duwt alleen tegen `obstakels` (muren/
+// meubels), nooit tegen `ondoden`. Gecombineerd met de speler die (4,5 m/s)
+// veel sneller is dan elke ondode, kon je gewoon dwars door een zombie heen
+// rennen zonder ooit lang genoeg binnen raakBereik te blijven voor een
+// wind-up. Deze functie behandelt elke levende ondode als een zachte
+// cirkel-obstakel: dezelfde cirkel-tegen-cirkel-pushout als losBotsingenOp()
+// tegen een rechthoek gebruikt, maar tegen een bewegend punt i.p.v. een
+// vaste rechthoek — vandaar een eigen functie in plaats van ondoden in de
+// obstakels-lijst te proppen.
+//
+// Bewust GEEN schade hier: dit is puur een fysiek obstakel, geen contact-
+// damage-mechanisme (Ticket 30 verving dat al eerder bewust door de
+// wind-up-state-machine, zie de toelichting daarboven). Het effect is
+// indirect: de speler moet nu om een ondode HEEN, kan er niet meer doorheen,
+// en dat kost tijd/ruimte waarin de ondode kan bijdraaien en een wind-up
+// kan starten of afronden.
+//
+// `ondoden` (de array) wordt pas veel later gedeclareerd — dat mag: dit is
+// een functie-BODY, pas geëvalueerd zodra 'm aangeroepen wordt (elke
+// updateSpeler()-tick, ver na de volledige module-initialisatie), dus geen
+// TDZ-fout. Zelfde patroon als SMEDERIJ_ACCENT_KLEUR/WINKEL_STIJLEN elders.
+const SPELER_ONDODE_BOTSING_STRAAL = speler.straal + ONDODE_STRAAL;
+// Fix 3 (feedback ronde 2): de eerste versie zette de speler bij overlap
+// per ondode meteen hard op exact SPELER_ONDODE_BOTSING_STRAAL — dat voelde
+// als tegen een onzichtbare muur aan lopen (één ondode blokkeerde volledig)
+// en gaf jitter bij meerdere ondoden vlak bij elkaar (elke snap naar zijn
+// eigen straal werkte de vorige snap tegen). Nu: per overlappende ondode
+// wordt maar een fractie (SPELER_ONDODE_ZACHTE_FACTOR) van de overlapdiepte
+// gecorrigeerd, en de correcties van alle overlappende ondoden worden EERST
+// opgeteld tot één vector en pas daarna in één keer toegepast. Twee gevolgen:
+// - Eén ondode: de correctie werkt alleen tegen de component van de
+//   spelerbeweging die recht op zijn middelpunt afstevent (radiaal); een
+//   zijwaartse/tangentiële component raakt de functie niet aan, dus de
+//   speler kan er soepel langsheen glijden. Recht in het midden blijven
+//   lopen geeft een klein, begrensd penetratie-evenwicht (zachte weerstand,
+//   geen snap, geen volledige doorloop) i.p.v. een harde stop.
+// - Meerdere ondoden dicht bij elkaar: hun correcties stapelen op (som van
+//   vectoren), dus hoe meer ondoden overlappen, hoe sterker de speler
+//   gehinderd wordt — tot volledige insluiting bij ondoden van alle kanten.
+// Botsing tegen muren/deuren/ondoden-onderling blijft ongewijzigd (dit raakt
+// alleen speler-tegen-ondode); schade blijft uitsluitend via de bestaande
+// wind-up-aanvalsmachine lopen (Ticket 30), niet via dit contact.
+const SPELER_ONDODE_ZACHTE_FACTOR = 0.35;
+function duwSpelerWegVanOndoden() {
+  let duwX = 0;
+  let duwZ = 0;
+  for (const o of ondoden) {
+    const dx = speler.positie.x - o.groep.position.x;
+    const dz = speler.positie.z - o.groep.position.z;
+    const afstand2 = dx * dx + dz * dz;
+    if (afstand2 >= SPELER_ONDODE_BOTSING_STRAAL * SPELER_ONDODE_BOTSING_STRAAL) continue;
+    let nx, nz, overlap;
+    if (afstand2 > 0.000001) {
+      const afstand = Math.sqrt(afstand2);
+      nx = dx / afstand;
+      nz = dz / afstand;
+      overlap = SPELER_ONDODE_BOTSING_STRAAL - afstand;
+    } else {
+      // Exact overlappende middelpunten (in theorie mogelijk vlak na een
+      // spawn): willekeurige richting, zelfde randgeval-aanpak als elders
+      // in dit bestand bij een nul-lengte richtingsvector.
+      const hoek = Math.random() * Math.PI * 2;
+      nx = Math.cos(hoek);
+      nz = Math.sin(hoek);
+      overlap = SPELER_ONDODE_BOTSING_STRAAL;
+    }
+    duwX += nx * overlap * SPELER_ONDODE_ZACHTE_FACTOR;
+    duwZ += nz * overlap * SPELER_ONDODE_ZACHTE_FACTOR;
+  }
+  speler.positie.x += duwX;
+  speler.positie.z += duwZ;
+}
 
 // Ticket 31 (Aanval A2): zichtbare/hoorbare tells bovenop T30's states.
 // Puur presentatie — raakt nooit de state-machine-logica of -timings zelf.
@@ -8325,11 +8480,7 @@ const GELD_PER_HIT  = 5;    // per treffer die niet dodelijk is
 const GELD_PER_KILL = 20;   // bonus bovenop de hit-beloning bij een kill
 const HEADSHOT_GELD_MULTIPLIER = 2;   // een dodelijke headshot geeft 2x het normale kill-geld
 
-// --- Wapenschade (te upgraden via het upgradepunt in Ticket 5) ----
-// Ticket 11: dit blijft het GLOBALE, early-game upgradepad, maar wordt
-// kleiner nu De Smederij (per-wapen, Tickets 11/12) de grotere late-game
-// damage-stap is: 1 -> max 1.5 i.p.v. 1 -> 2.
-const WAPEN_SCHADE_MAX = 1.5;   // basis-lichaamsschade: 1, na upgrade 1.5 (MAX)
+// --- Wapenschade ----
 let schadePerTreffer = 1;       // huidige lichaams-schade per treffer
 const HEADSHOT_EXTRA = 1;       // extra schade bij een kop-treffer (lichaam = schadePerTreffer, kop = +1)
 
@@ -8400,7 +8551,7 @@ const POWERUP_TYPES = {
   // Insta Kill -> Eliminatiemodus: tijdelijk doodt elke treffer de ondode meteen.
   eliminatiemodus: { naam: 'Eliminatiemodus', kleur: 0xff5c5c, effect: () => geefEliminatiemodus() },
   // Nuke -> Kerninslag: doodt alle levende ondoden nu meteen + geldbeloning.
-  kerninslag: { naam: 'Kerninslag', kleur: 0xbdf7ff, effect: () => geefKerninslag() },
+  kerninslag: { naam: 'Nuke', kleur: 0xbdf7ff, effect: () => geefKerninslag() },
 };
 
 let laatstePowerupDropGolf = -Infinity;   // golfnummer van de laatste drop, ongeacht type (Ticket 16)
@@ -8527,7 +8678,7 @@ function geefKerninslag() {
   }
   spelStaat.geld += bonus;
   runStats.geldTotaal += bonus;
-  toonGolfBanner('KERNINSLAG', `${levend.length} ondoden geëlimineerd · +€${bonus}`);
+  toonGolfBanner('NUKE', `${levend.length} ondoden geëlimineerd · +€${bonus}`);
   updateHUD();
 }
 
@@ -8659,48 +8810,12 @@ function geo(sleutel, fabriek) {
 // gedragswijziging).
 const kernMateriaal = new THREE.MeshStandardMaterial({ color: 0xff9a3d, emissive: 0xff7a1f, emissiveIntensity: EMISSIE_BRON_MAX, roughness: 0.4 });
 kernMateriaal.userData.gedeeld = true;   // Ticket 70: ruimGroepOp() mag dit nooit disposen
-// Ticket 100 (v0.22, §10.10-beslissing 85): materiaalfabriek voor de
-// ondode-huid — MOEST eerst gebouwd worden, want `onBeforeCompile` hoort
+// Materiaalfabriek voor de ondode-huid (oorspronkelijk Ticket 100) — hoort
 // per §7.9 (materiaal-mutatiediscipline) in de fabriek te zitten, nooit
-// achteraf op een instantie, en die fabriek bestond niet: elke huid-
-// materiaal-constructie in maakOndodeModel() was tot nu toe een losse
-// `new THREE.MeshStandardMaterial({...})`-aanroep. Vervangt AL die
-// call-sites (torso/schouders/bochel/buik/hoofd/arm/hand) — nooit
-// `kernMateriaal` (gedeeld, Brander-kern) of `oogMateriaal` (heeft al zijn
-// eigen T89-Signaal-emissiesysteem; een tweede, overlappende laag daarop
-// is niet gevraagd en niet gewenst).
-//
-// De fresnel-rim zelf: `pow(1 - dot(normal, viewDir), k)` als extra
-// bijdrage aan `totalEmissiveRadiance`, geïnjecteerd na de bestaande
-// `<emissivemap_fragment>`-chunk — de plek waar MeshStandardMaterial's
-// eigen fragment-shader die variabele al vult, dus de natuurlijke plek om
-// er nog een term bij op te tellen. GEEN nieuwe Light: dit is pure
-// shaderwerk op het materiaal, dus het lichtaantal (28) blijft ongewijzigd.
-// Three.js-shader-chunknamen zijn GEEN publieke API — vastgelegd hier:
-// chunk `<emissivemap_fragment>`, varying `vViewPosition`, three@0.160.0
-// (zelfde versie als de rest van dit project, zie de composer-imports).
-//
-// RIM_UNIFORMS is één gedeeld uniform-object-paar (niet per material
-// gekloond) — elke ondode-materiaal-instantie wijst naar DEZELFDE
-// {value:...}-objecten, dus één toekomstige write op
-// RIM_UNIFORMS.sterkte.value verandert de rim op ALLE ondoden tegelijk
-// (voorbereid op meebewegen met eventgolven, zoals de ticket-spec vraagt —
-// dit ticket zet 'm op een vaste basiswaarde, een latere ronde kan 'm laten
-// pulsen zonder de fabriek opnieuw aan te raken).
-//
-// Design-review na T101 (verval-shading, zie ARCHITECTURE_NOTES §10.10):
-// die tweede, cosmetische laag is teruggedraaid — onvoldoende waarneembaar
-// bij een sterkte die de type-kleuren niet overstemt, en botste sowieso met
-// de vlakke, textuurloze low-poly-stijl van het spel. Bij diezelfde review
-// bleek de rim zelf WEL de bewuste, terechte keuze (lost silhouetherkenning
-// in donkere kamers goedkoop op), maar iets te sterk — RIM_STERKTE_BASIS
-// dus verlaagd naar 20% van de oorspronkelijke 0,6.
-const RIM_KLEUR = new THREE.Color(0x55e0b0);   // koel teal-groen — wijkt bewust af van warm lamplicht (0xffc06a) én koel maanlicht (0xc8ddff)
-const RIM_STERKTE_BASIS = 0.12;                // 20% van de oorspronkelijke 0,6 (design-review, zie boven)
-const RIM_UNIFORMS = {
-  kleur: { value: RIM_KLEUR },
-  sterkte: { value: RIM_STERKTE_BASIS },
-};
+// achteraf op een instantie. Vervangt AL de huid-materiaal-call-sites
+// (torso/schouders/bochel/buik/hoofd/arm/hand) — nooit `kernMateriaal`
+// (gedeeld, Brander-kern) of `oogMateriaal` (heeft zijn eigen T89-Signaal-
+// emissiesysteem; een tweede, overlappende laag daarop is niet gewenst).
 // `vertexColors` (Ticket 118, default false — V1 blijft ongewijzigd): V2's
 // samengestelde geometrie heeft precies ÉÉN materiaal-instantie voor het
 // hele lichaam en gebruikt vertex colors voor de T104-achtige per-deel
@@ -8891,11 +9006,9 @@ function maakOndodeMateriaal(kleur, ruwheid = 0.85, vertexColors = false, oogUni
     materiaal.normalScale = new THREE.Vector2(V2_NORMAAL_STERKTE, V2_NORMAAL_STERKTE);
   }
   materiaal.onBeforeCompile = (shader) => {
-    shader.uniforms.uRimKleur = RIM_UNIFORMS.kleur;
-    shader.uniforms.uRimSterkte = RIM_UNIFORMS.sterkte;
     if (oogUniforms) {
-      // PER ONDODE (niet gedeeld zoals RIM_UNIFORMS): elke ondode heeft zijn
-      // eigen windup-/misttiming, zie het T31-contract.
+      // PER ONDODE (niet gedeeld): elke ondode heeft zijn eigen
+      // windup-/misttiming, zie het T31-contract.
       shader.uniforms.uOogKleur = oogUniforms.kleur;
       shader.uniforms.uOogIntensiteit = oogUniforms.intensiteit;
       shader.vertexShader = shader.vertexShader
@@ -8904,8 +9017,6 @@ function maakOndodeMateriaal(kleur, ruwheid = 0.85, vertexColors = false, oogUni
     }
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `
-        uniform vec3 uRimKleur;
-        uniform float uRimSterkte;
         ${oogUniforms ? `
         uniform vec3 uOogKleur;
         uniform float uOogIntensiteit;
@@ -8914,11 +9025,6 @@ function maakOndodeMateriaal(kleur, ruwheid = 0.85, vertexColors = false, oogUni
       `)
       .replace('#include <emissivemap_fragment>', `
         #include <emissivemap_fragment>
-        {
-          vec3 rimViewDir = normalize(vViewPosition);
-          float rimFresnel = pow(1.0 - max(dot(normal, rimViewDir), 0.0), 3.0);
-          totalEmissiveRadiance += uRimKleur * rimFresnel * uRimSterkte;
-        }
         ${oogUniforms ? `
         if (vRustPos.z > ${OOG_REGIO_Z_MIN.toFixed(3)}) {
           vec2 oogDelta = vec2(abs(vRustPos.x) - ${OOG_REGIO_X.toFixed(3)}, vRustPos.y - ${OOG_REGIO_Y.toFixed(3)});
@@ -9597,10 +9703,8 @@ function maakOndodeModelV2(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeT
     if (g) g.dispose();   // armL/hand/bochel/buik zijn null bij eenarmig resp. types zonder bochel/buik
   }
 
-  // Eén materiaal-instantie voor het HELE lichaam (i.p.v. V1's tot 11 per
-  // ondode) — vertexColors:true zodat het 'color'-attribuut hierboven de
-  // per-deel helderheid aanstuurt. Zelfde rimlight-injectie (T100) als V1,
-  // hergebruikt via dezelfde fabriek.
+  // Eén materiaal-instantie voor het HELE lichaam — vertexColors:true zodat
+  // het 'color'-attribuut hierboven de per-deel helderheid aanstuurt.
   // Ticket 122: hetzelfde materiaal draagt nu OOK de oogregio (zie
   // maakOndodeMateriaal()) — de ogen kosten daardoor geen enkel extra
   // object meer. De uniforms moeten dus vóór de materiaalfabriek bestaan.
@@ -10316,23 +10420,65 @@ function inVlieringKokerBand(z) {
   return z > VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE &&
     z < VLIERINGTRAP_CZ + VLIERINGTRAP_HALF_BREEDTE;
 }
-// Zelfde band, voor de tweede (noord-)trap — T130. Puur gebruikt om trap2's
-// eigen hellingband uit te sluiten van de vlieringvlak-waypoint hieronder
-// (die band ligt anders al binnen isVlieringVlak()'s z-bereik, zie de
-// toelichting daar).
-function inVlieringKoker2Band(z) {
-  return z > VLIERINGTRAP2_CZ - VLIERINGTRAP2_HALF_BREEDTE &&
-    z < VLIERINGTRAP2_CZ + VLIERINGTRAP2_HALF_BREEDTE;
+// Trap 2 loopt sinds T131 langs de Z-as, dus zijn "band" is een X-band.
+function inVlieringKoker2Band(x) {
+  return x > VLIERINGTRAP2_CX - VLIERINGTRAP2_HALF_BREEDTE &&
+    x < VLIERINGTRAP2_CX + VLIERINGTRAP2_HALF_BREEDTE;
 }
-// Het VLAKKE deel van de vliering = alles ten noorden van de kokerband. De
-// scheidslijn is bewust een Z-lijn en geen X-lijn: de kokernoordwand loopt
-// oost-west en houdt op bij x = VLIERINGTRAP_X_WEST, dus een ondode kruist
-// die lijn loodrecht en precies één keer. Een x-grens bij het muuruiteinde
-// (een eerdere versie) gaf juist een pingpong: elke stap oostwaarts zette de
-// deelruimte-vlag weer om, waarna hij terug naar het waypoint mikte en
-// eindeloos heen en weer bleef schuiven op het muuruiteinde.
+// De koker van trap 2 zelf: de X-band én ten noorden van de bovenkant van de
+// helling. Anders dan trap 1 heeft deze koker GEEN dwarswand bij zijn
+// bovenkant — hij mondt recht uit op het vlakke deel — dus de grens hier is
+// puur "sta ik op de helling of al op het vlak".
+// De aanloopstrook vlak vóór een trapgat hoort bij de koker erachter, niet
+// bij "nergens". Zonder die regel valt hij wél binnen het complex (niveau 1)
+// maar buiten alle drie de niveau-2-deelruimtes — een gat in de opdeling.
+// Een ondode die precies op zo'n strookrand jittert, wisselde daardoor elke
+// frame tussen "ik zit in het complex, dus niveau 1 zwijgt" en een
+// niveau-2-keuze die vanaf díe plek nergens op sloeg (gemeten: hij mikte
+// vanuit het atelier op trap 2's voet in de NIS, dwars door de borstwering).
+function isVlieringKoker2(x, z) {
+  return (isVliering(x, z) && inVlieringKoker2Band(x) && z < VLIERINGTRAP2_Z_ZUID) ||
+    (inVlieringKoker2Band(x) && z < VLIERING_Z_NOORD &&
+      z > VLIERING_Z_NOORD - VLIERINGTRAP2_AANLOOP_MARGE);
+}
+// De spiegelbeeldige lob aan de andere kant: trap1's koker plus het strookje
+// vlieringvloer ten westen ervan. Die twee horen bij elkaar omdat je ze
+// allebei bereikt door om het westelijke uiteinde van de kokernoordwand heen
+// te lopen — de scheidslijn met het vlak is dus dezelfde Z-lijn als vanouds
+// (zie de toelichting bij isVlieringVlak hieronder).
+function isVlieringLobe1(x, z) {
+  return (isVliering(x, z) && z > VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE) ||
+    (inVlieringKokerBand(z) && x > VLIERING_X_OOST && x < VLIERINGTRAP_ONDER_BUITEN.x);
+}
+// Alles wat je vanaf het vlakke deel via TRAP 2 bereikt: die koker zelf, de
+// nis erachter en het hele keldercomplex daar weer achter (de laatste twee
+// clausules zijn exact de `binnen`-toets van de nis-tak hierboven). Alles
+// wat hier NIET in valt — het atelier, de gang, de binnenplaats, de
+// gracht — ligt aan de trap-1-kant. Zo weet het vlakke deel, dat als enige
+// twee uitgangen heeft, welke van de twee bij welk doel hoort.
+function isNisKant(x, z) {
+  return isVlieringKoker2(x, z) || x <= KELDERTRAP_X_BOVEN ||
+    (x <= -KAMER2_HALF_B && z <= KAMER2_NIS_Z_ZUID);
+}
+// Het VLAKKE deel van de vliering = de hub: alles behalve de twee kokers.
+//
+// Voor trap 1 is de scheidslijn bewust een Z-lijn en geen X-lijn: de
+// kokernoordwand loopt oost-west en houdt op bij x = VLIERINGTRAP_X_WEST,
+// dus een ondode kruist die lijn loodrecht en precies één keer. Een x-grens
+// bij het muuruiteinde (een eerdere versie) gaf juist een pingpong: elke
+// stap oostwaarts zette de deelruimte-vlag weer om, waarna hij terug naar
+// het waypoint mikte en eindeloos heen en weer bleef schuiven.
+//
+// T131: trap 2's koker hoort hier NIET bij. Vóór deze fix viel hij wél
+// binnen de z-toets hierboven (hij lag op z ≈ -15,8, ruim ten noorden van
+// trap1's kokerband) en telde hij dus als "vlak" — met als gevolg dat élke
+// ondode die de vliering wilde verlaten eerst naar trap1's kokeroversteek
+// werd gestuurd, ongeacht via welke trap hij binnenkwam. Dat is precies het
+// gemelde gedrag: omhoog via beide trappen, omlaag altijd via trap 1.
 function isVlieringVlak(x, z) {
-  return isVliering(x, z) && z <= VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE;
+  return isVliering(x, z) &&
+    z <= VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE &&
+    !isVlieringKoker2(x, z);
 }
 // Ticket 87 (De Vliering) + feedbackronde: de helling is de ENIGE toegang, en
 // hij heeft — net als de keldertrap — TWEE muuropeningen achter elkaar: de
@@ -10357,10 +10503,20 @@ const VLIERINGTRAP_BOVEN_BUITEN = new THREE.Vector3(
 const VLIERINGTRAP_BOVEN_BINNEN = new THREE.Vector3(
   VLIERINGTRAP_X_WEST - 0.5, 0, VLIERINGTRAP_CZ - VLIERINGTRAP_HALF_BREEDTE - 0.55);
 
-// T130 — tweede (noord-)trap: zelfde voet-aanlooppunten als hierboven, maar
-// op de VLIERINGTRAP2_CZ-as.
-const VLIERINGTRAP2_ONDER_BUITEN = new THREE.Vector3(VLIERING_X_OOST + 0.7, 0, VLIERINGTRAP2_CZ);
-const VLIERINGTRAP2_ONDER_BINNEN = new THREE.Vector3(VLIERING_X_OOST - 0.9, 0, VLIERINGTRAP2_CZ);
+// T131 — tweede (noord-)trap: zelfde tweezijdige voet-aanlooppunten als
+// hierboven, maar nu op de VLIERINGTRAP2_CX-as en aan weerszijden van het
+// trapgat in de nis-afsluitmuur (z = VLIERING_Z_NOORD). BUITEN staat dus in
+// de nis, BINNEN onderaan in de koker.
+const VLIERINGTRAP2_ONDER_BUITEN = new THREE.Vector3(VLIERINGTRAP2_CX, 0, VLIERING_Z_NOORD - 0.9);
+const VLIERINGTRAP2_ONDER_BINNEN = new THREE.Vector3(VLIERINGTRAP2_CX, 0, VLIERING_Z_NOORD + 0.9);
+// En een eigen TOP-doorgang, symmetrisch aan trap1's kokeroversteek: de
+// overgang tussen de koker en het vlakke deel. Anders dan bij trap 1 zit
+// hier geen dwarswand omheen (de koker mondt recht uit op het vlak), maar
+// het tussenpunt is wél nodig zodra een ondode van verderop het vlak
+// oversteekt: zonder dit punt loopt zijn lijn naar de trapvoet dwars door
+// de oostelijke kokerwand.
+const VLIERINGTRAP2_BOVEN_BUITEN = new THREE.Vector3(VLIERINGTRAP2_CX, 0, VLIERINGTRAP2_Z_ZUID - 0.6);
+const VLIERINGTRAP2_BOVEN_BINNEN = new THREE.Vector3(VLIERINGTRAP2_CX, 0, VLIERINGTRAP2_Z_ZUID + 0.6);
 // Smalle aanloopstrook (zie de toelichting bij ZONE_WAYPOINTS[2] hieronder)
 // — ruim genoeg om muurgrens-geflapper bij het echt binnenlopen te dempen,
 // smal genoeg om niet te overlappen met de natuurlijke "muur hug"-afstand
@@ -10383,6 +10539,20 @@ const VLIERINGTRAP2_AANLOOP_MARGE = 0.45;
 // zodat de route ernaartoe evenwijdig aan die muur loopt in plaats van erdoor.
 const NIS_DOORGANG_BUITEN = new THREE.Vector3(-KAMER2_HALF_B + 0.6, 0, KAMER2_NIS_Z_ZUID - 2);
 const NIS_DOORGANG_BINNEN = new THREE.Vector3(-KAMER2_HALF_B - 0.6, 0, KAMER2_NIS_Z_ZUID - 2);
+
+// Het vlieringCOMPLEX als losse punt-test: de rampfootprint zelf plus de
+// smalle aanloopstrook vlak vóór elk van de twee trapgaten. (De stroken
+// dempen het geflapper dat anders precies op het fysieke muurvlak ontstaat:
+// daar slaat de deelruimte-vlag om terwijl de botsingscorrectie de ondode
+// net zo hard weer terugduwt.) Staat hier apart omdat ZONE_WAYPOINTS 'm
+// twee keer nodig heeft: als `binnen` van de vlieringtak, en in de
+// `negeerAls` van de nis-tak hieronder.
+function isVlieringGebied(x, z) {
+  return isVliering(x, z) ||
+    (inVlieringKokerBand(z) && x > VLIERING_X_OOST && x < VLIERINGTRAP_ONDER_BUITEN.x) ||
+    (inVlieringKoker2Band(x) && z < VLIERING_Z_NOORD &&
+      z > VLIERING_Z_NOORD - VLIERINGTRAP2_AANLOOP_MARGE);
+}
 
 // --- De sub-ruimte-boom van een zone -------------------------------------
 // Feedbackronde na T87: zone 2 is inmiddels geen lineaire KETEN meer maar een
@@ -10419,9 +10589,38 @@ const ZONE_WAYPOINTS = {
     // enige toegang tot het keldercomplex, dus hij hoort in de boom ook
     // BOVEN de kelder te staan: vandaar dat `binnen` hieronder de kelder
     // meeneemt en de kelderniveaus één zijn opgeschoven.
+    // T131: sinds trap 2 in de NIS uitkomt is de vliering een echte LUS —
+    // hij hangt aan het atelier (trap 1) én aan de nis (trap 2). Een
+    // containment-BOOM kan een lus niet uitdrukken: voor deze nis-entry ligt
+    // de vliering "buiten", dus werd een ondode in de nis die naar de
+    // vliering wilde eerst de nis UIT gestuurd (naar het atelier) om daar
+    // trap 1 te pakken — met trap 2 letterlijk naast hem. `negeerAls` zet
+    // deze ene entry opzij zodra een van beide uiteinden in het
+    // vlieringcomplex ligt; de vliering-entries hieronder hebben dan zelf al
+    // een doorgang naar élke aangrenzende ruimte, dus er valt niets weg.
+    // De oorspronkelijke reden voor dit waypoint (niet dwars door de
+    // borstwering mikken vanaf de vliering) blijft gedekt: zodra de ondode
+    // via trap 1 in het atelier staat, ligt geen van beide uiteinden nog in
+    // het complex en telt deze entry gewoon weer mee.
     { niveau: 1,
       binnen: (x, z) => x <= KELDERTRAP_X_BOVEN ||
         (x <= -KAMER2_HALF_B && z <= KAMER2_NIS_Z_ZUID),
+      // Tweede uitzondering (feedback): de nis is een 6 m brede OPEN
+      // doorgang, geen deur. Dit waypoint bestaat puur voor ondoden die van
+      // ZUIDEN komen, waar de 7 m lange borstwering tussen hen en de nis in
+      // staat; die moeten eerst noordwaarts om die muur heen. Maar het
+      // trechterde iedereen door dat ene punt midden in de opening — ook een
+      // ondode die al ter hoogte van de opening liep en gewoon rechtdoor naar
+      // het westen had gekund. Die maakte dan een zichtbare omweg naar het
+      // zuiden en weer terug, alsof de nis een aparte kamer was.
+      //
+      // Staan BEIDE uiteinden al binnen de z-band van de opening (z <=
+      // KAMER2_NIS_Z_ZUID), dan zit er per definitie geen muur meer tussen —
+      // de borstwering begint pas ten zuiden daarvan — en is een tussenstap
+      // dus alleen maar omweg. De zuid-van-de-opening-gevallen, waar de muur
+      // er wél tussen staat, blijven gewoon via het waypoint lopen.
+      negeerAls: (a, b) => isVlieringGebied(a.x, a.z) || isVlieringGebied(b.x, b.z) ||
+        (a.z <= KAMER2_NIS_Z_ZUID && b.z <= KAMER2_NIS_Z_ZUID),
       puntBuiten: NIS_DOORGANG_BUITEN, puntBinnen: NIS_DOORGANG_BINNEN },
     // Het hele keldercomplex (koker + kelderruimte + kelderoost) ligt ten
     // westen van de nis-westmuur; de vliering begint pas OP die lijn, dus
@@ -10475,47 +10674,69 @@ const ZONE_WAYPOINTS = {
     // hieronder blijft op de volle 0,7 m. isVliering(x,z) zelf (de echte
     // rampfootprint) blijft voor beide trappen gewoon meetellen.
     { niveau: 1,
-      binnen: (x, z) => isVliering(x, z) ||
-        (inVlieringKokerBand(z) && x > VLIERING_X_OOST && x < VLIERINGTRAP_ONDER_BUITEN.x) ||
-        (inVlieringKoker2Band(z) && x > VLIERING_X_OOST && x < VLIERING_X_OOST + VLIERINGTRAP2_AANLOOP_MARGE),
+      binnen: isVlieringGebied,
       puntBuiten: VLIERINGTRAP_ONDER_BUITEN, puntBinnen: VLIERINGTRAP_ONDER_BINNEN,
       kandidaten: [
         { buiten: VLIERINGTRAP_ONDER_BUITEN, binnen: VLIERINGTRAP_ONDER_BINNEN },
         { buiten: VLIERINGTRAP2_ONDER_BUITEN, binnen: VLIERINGTRAP2_ONDER_BINNEN },
       ] },
-    // Ongewijzigd sinds T87 (trap1's eigen kokeroversteek). T130 overwoog
-    // hier een uitzondering voor trap2's eigen hellingband (die anders ook
-    // als "vlak" telt, zie de toelichting bij VLIERINGTRAP2_ONDER_BUITEN),
-    // plus een symmetrische tweede entry voor trap2's westelijke overgang —
-    // maar ELKE geprobeerde variant daarvan (uitzondering met/zonder x-
-    // toets, een aparte entry met de aanlooppunten op de fysieke rampgrens,
-    // dezelfde punten met een z-offset zoals hier) gaf een NIEUW geflapper
-    // op de gekozen drempel zodra een ondode daar precies aankwam — het
-    // patroon leek zich telkens te verplaatsen, nooit op te lossen. In
-    // plaats daarvan blijft dit niveau puur op isVlieringVlak() (dus trap2's
-    // helling telt gewoon mee als "vlak", geen tussenstap): het WEL bekende
-    // compromis (een enkele, ver-van-trap2 route komt vlak tegen de 60s-
-    // tijdslimiet aan i.p.v. ruim eronder, gemeten via test-navigatie-
-    // dekking.mjs) is aantoonbaar veiliger dan een permanente vastloper.
-    // Trap2's eigen zuidmuur (kokerwand) wordt aan de lokale ontwijklogica
-    // overgelaten — dezelfde die het schuurtje op de binnenplaats al zonder
-    // waypoint kan omzeilen — in plaats van een expliciet tussenpunt.
+    // De binnenkant van de vliering is sinds trap 2 een KETEN die aan beide
+    // uiteinden open is:
     //
-    // De OR-clause met de trap2-aanloopstrook (identiek aan niveau 1
-    // hierboven) is geen optionele extra maar bewaakt een echte, apart
-    // gemeten vastloper: zonder deze regel disagreeën niveau 1 en niveau 2
-    // op x = VLIERING_X_OOST tot VLIERING_X_OOST + AANLOOP_MARGE (isVliering
-    // eist x <= -4,5, dus buiten die grens is niveau 2 "niet-vlak", terwijl
-    // niveau 1's eigen strook diezelfde 0,2 m juist WEL als "binnen het
-    // complex" telt). Een ondode die daar precies binnenloopt (trap2's
-    // deurgat) kruist bij toeval steeds heen en weer over x = -4,5, en met
-    // twee niveaus die het daar oneens zijn slaat het doel elke keer om
-    // tussen trap2's eigen (nabije) punt en trap1's (verre) BOVEN-punt — een
-    // permanente vastloper, niet zomaar een tragere route. Met deze regel
-    // erbij vallen niveau 1 en niveau 2 weer samen in exact dezelfde strook.
-    { niveau: 2, binnen: (x, z) => isVlieringVlak(x, z) ||
-        (inVlieringKoker2Band(z) && x > VLIERING_X_OOST && x < VLIERING_X_OOST + VLIERINGTRAP2_AANLOOP_MARGE),
-      puntBuiten: VLIERINGTRAP_BOVEN_BUITEN, puntBinnen: VLIERINGTRAP_BOVEN_BINNEN },
+    //     atelier ── lob 1 (trap1-koker + strook) ── vlak ── koker 2 ── nis
+    //
+    // T87 modelleerde dit nog als één nesting {complex} ⊃ {vlak}, met trap1's
+    // kokeroversteek als enige binnendoorgang. Dat klopte zolang de keten aan
+    // één kant dichtzat. Nu niet meer: twee ondoden in VERSCHILLENDE lobben
+    // (bv. een die net trap 1 op is en een doel op trap 2) vielen allebei
+    // buiten `vlak`, dus vuurde die ene entry helemaal niet en liep de ondode
+    // rechtstreeks de kokerwand in — gemeten als vastlopers op exact de twee
+    // lobgrenzen (z = -10,7 en z = -13,5).
+    //
+    // Daarom staat elke LOB nu zelf als deelruimte geregistreerd, elk met
+    // ZIJN EIGEN TWEE doorgangen: omhoog naar het vlak, en omlaag naar buiten
+    // (het atelier resp. de nis). Welke van de twee het wordt, kiest
+    // doorgangPunt() op de totale omweg naar het doel — zonder die
+    // doelterm zou een ondode halverwege een koker altijd de dichtstbijzijnde
+    // uitgang pakken, ook de verkeerde kant op.
+    //
+    // Let op de omgekeerde namen: voor een LOB-deelruimte is het punt IN de
+    // koker de `binnen`-kant en het punt op het vlak de `buiten`-kant —
+    // precies andersom dan bij de complex-entry hierboven, waar `buiten` juist
+    // buiten de hele vliering ligt.
+    // De drie schakels van de keten, alle drie op niveau 2 en onderling
+    // uitsluitend — dus hooguit één ervan bevat een gegeven punt, en ze
+    // kunnen elkaar nooit in de weg zitten bij de "diepste eerst"-regel.
+    //
+    // Lob 1: trap1's koker + het vlieringstrookje ten westen ervan.
+    { niveau: 2, binnen: isVlieringLobe1,
+      puntBuiten: VLIERINGTRAP_BOVEN_BINNEN, puntBinnen: VLIERINGTRAP_BOVEN_BUITEN,
+      kandidaten: [
+        // Omhoog naar het vlak: elk doel binnen de vliering dat niet in deze lob ligt.
+        { buiten: VLIERINGTRAP_BOVEN_BINNEN, binnen: VLIERINGTRAP_BOVEN_BUITEN,
+          buitenIn: (x, z) => isVliering(x, z) && !isVlieringLobe1(x, z) },
+        // Omlaag naar het atelier: al het overige (fallback, geen buitenIn).
+        { buiten: VLIERINGTRAP_ONDER_BUITEN, binnen: VLIERINGTRAP_ONDER_BINNEN },
+      ] },
+    // Het VLAKKE middenstuk. Als enige schakel grenst dit aan twee andere,
+    // dus hier bepaalt isNisKant() welke van de twee oversteken je nodig hebt.
+    { niveau: 2, binnen: isVlieringVlak,
+      puntBuiten: VLIERINGTRAP_BOVEN_BUITEN, puntBinnen: VLIERINGTRAP_BOVEN_BINNEN,
+      kandidaten: [
+        { buiten: VLIERINGTRAP2_BOVEN_BUITEN, binnen: VLIERINGTRAP2_BOVEN_BINNEN,
+          buitenIn: isNisKant },
+        // Richting trap 1 / het atelier en al het overige (fallback).
+        { buiten: VLIERINGTRAP_BOVEN_BUITEN, binnen: VLIERINGTRAP_BOVEN_BINNEN },
+      ] },
+    // Koker 2: trap2's helling.
+    { niveau: 2, binnen: isVlieringKoker2,
+      puntBuiten: VLIERINGTRAP2_BOVEN_BINNEN, puntBinnen: VLIERINGTRAP2_BOVEN_BUITEN,
+      kandidaten: [
+        { buiten: VLIERINGTRAP2_BOVEN_BINNEN, binnen: VLIERINGTRAP2_BOVEN_BUITEN,
+          buitenIn: (x, z) => isVliering(x, z) && !isVlieringKoker2(x, z) },
+        // Omlaag naar de nis (fallback).
+        { buiten: VLIERINGTRAP2_ONDER_BUITEN, binnen: VLIERINGTRAP2_ONDER_BINNEN },
+      ] },
   ],
   4: [
     { niveau: 1, binnen: (x, z) => x > GRACHTGANG_X_WEST,
@@ -10551,15 +10772,40 @@ const DOORGANG_MARGE = 0.4;
 // afstand tot de overkant werkt i.p.v. de eigen kant (zie de toelichting
 // erboven). Een wp zonder `kandidaten` gedraagt zich exact als voorheen: één
 // candidate, gebouwd uit zijn eigen puntBuiten/puntBinnen.
-function doorgangPunt(wp, vanPos, vanBinnen) {
+function doorgangPunt(wp, vanPos, vanBinnen, naarPos) {
   let k = wp._kandidaten[0];
   if (wp._kandidaten.length > 1) {
-    let besteKw = Infinity;
+    // T131: een deelruimte kan TWEE uitgangen hebben die naar heel
+    // verschillende plekken leiden (een trapkoker: omhoog naar het vlak,
+    // omlaag naar buiten). Puur op afstand kiezen kan dat niet aan — dan
+    // wint altijd de uitgang waar je toevallig het dichtst bij staat, ook al
+    // ligt je doel de andere kant op. Een afstands-SOM naar het doel erbij
+    // helpt evenmin: die meet hemelsbreed en denkt dus dat een doel vlak
+    // achter een muur "dichtbij" is.
+    //
+    // Daarom mag een kandidaat met `buitenIn` zeggen WELK gebied er achter
+    // hem ligt. Die toets is exact i.p.v. geschat: bij naar buiten gaan telt
+    // waar het DOEL ligt, bij naar binnen gaan waar de ondode ZELF vandaan
+    // komt — in beide gevallen het punt dat buiten de deelruimte ligt.
+    // Kandidaten zonder `buitenIn` (zoals de twee trapvoeten van de vliering
+    // zelf, die allebei naar "ergens buiten" leiden) vallen terug op de
+    // afstandskeuze eronder.
+    const buitenPunt = vanBinnen ? naarPos : vanPos;
+    let gekozen = null;
     for (const kand of wp._kandidaten) {
-      const dx = kand.buiten.x - vanPos.x, dz = kand.buiten.z - vanPos.z;
-      const kw = dx * dx + dz * dz;
-      if (kw < besteKw) { besteKw = kw; k = kand; }
+      if (kand.buitenIn !== undefined && kand.buitenIn(buitenPunt.x, buitenPunt.z)) { gekozen = kand; break; }
     }
+    if (gekozen === null) {
+      let besteKw = Infinity;
+      for (const kand of wp._kandidaten) {
+        if (kand.buitenIn !== undefined) continue;
+        const eigen = vanBinnen ? kand.binnen : kand.buiten;
+        const dx = eigen.x - vanPos.x, dz = eigen.z - vanPos.z;
+        const kw = dx * dx + dz * dz;
+        if (kw < besteKw) { besteKw = kw; gekozen = kand; }
+      }
+    }
+    if (gekozen !== null) k = gekozen;
   }
   const eigenKant = vanBinnen ? k.binnen : k.buiten;
   const overkant = vanBinnen ? k.buiten : k.binnen;
@@ -10587,12 +10833,17 @@ function zoekWaypoint(zone, vanPos, naarPos) {
   let erin = null, erinNiveau = Infinity;      // ondiepste deelruimte waar `van` BUITEN staat
   for (let i = 0; i < lijst.length; i++) {
     const wp = lijst[i];
+    // T131: optionele ontsnapping uit het boom-model voor deelruimtes die
+    // door een LUS met elkaar verbonden zijn (zie de nis-entry). Puur een
+    // extra vergelijking per entry, dus de performance-eis hierboven (geen
+    // graaf-traversal, geen allocaties) blijft staan.
+    if (wp.negeerAls !== undefined && wp.negeerAls(vanPos, naarPos)) continue;
     const vanBinnen = wp.binnen(vanPos.x, vanPos.z);
     if (vanBinnen === wp.binnen(naarPos.x, naarPos.z)) continue;   // scheidt deze twee niet
     if (vanBinnen) {
-      if (wp.niveau > eruitNiveau) { eruit = doorgangPunt(wp, vanPos, true); eruitNiveau = wp.niveau; }
+      if (wp.niveau > eruitNiveau) { eruit = doorgangPunt(wp, vanPos, true, naarPos); eruitNiveau = wp.niveau; }
     } else if (wp.niveau < erinNiveau) {
-      erin = doorgangPunt(wp, vanPos, false); erinNiveau = wp.niveau;
+      erin = doorgangPunt(wp, vanPos, false, naarPos); erinNiveau = wp.niveau;
     }
   }
   // Eerst naar buiten werken, pas daarna naar binnen: sta je zelf nog in een
@@ -10789,6 +11040,34 @@ function updateOndoden(dt) {
     const voorPos = _tmpVoorPos.copy(positie);
     positie.addScaledVector(richting, snelheidNu * dt);
     losBotsingenOp(positie, ONDODE_STRAAL, true);
+    // Feedback ("de zombies duwen me soms weg"): een ondode die tijdens
+    // jaag/herstel recht op de speler afloopt had géén minimale afstand tot
+    // de speler — zijn EIGEN beweging kon dus de speler-ondode-botsingscirkel
+    // in lopen, waarna duwSpelerWegVanOndoden() de overlap oploste door de
+    // SPELER terug te duwen. Dat voelde aan alsof de ondode je actief
+    // wegduwde, ook als je zelf stilstond of wegliep — nooit de bedoeling
+    // (die botsing is er alleen om te voorkomen dat JIJ dwars door een
+    // ondode heen loopt, zie Fix 3). Klem hier daarom de nadering van de
+    // ondode zelf op SPELER_ONDODE_BOTSING_STRAAL, zodat die overlap nooit
+    // ontstaat — een harde klem is hier prima (geen zichtbare schok): de
+    // ondode stopt gewoon met naderen op de rand, exact zoals hij ook al
+    // stopt tegen een muur (losBotsingenOp hierboven). raakBereik (1,4-1,8)
+    // ligt ruim boven deze afstand, dus aanvallen blijven onaangetast.
+    // Uitgezonderd tijdens een actieve flinch (Ticket 21/Z4, hieronder): de
+    // knockback-recoil is zijn EIGEN, kortstondige natuurkunde (incl. eigen
+    // losBotsingenOp-achtige muurklaring) en zou anders elke tick opnieuw
+    // teruggeklemd worden op deze afstand tot de speler — een tegengestelde
+    // kracht die de knockback tegenwerkt en 'm in muren kan proppen als de
+    // speler toevallig heel dichtbij staat op het moment van de treffer.
+    if (!ondode.flinch) {
+      const dxSpeler = positie.x - speler.positie.x, dzSpeler = positie.z - speler.positie.z;
+      const afstand2Speler = dxSpeler * dxSpeler + dzSpeler * dzSpeler;
+      if (afstand2Speler < SPELER_ONDODE_BOTSING_STRAAL * SPELER_ONDODE_BOTSING_STRAAL && afstand2Speler > 0.000001) {
+        const afstandSpeler = Math.sqrt(afstand2Speler);
+        positie.x = speler.positie.x + (dxSpeler / afstandSpeler) * SPELER_ONDODE_BOTSING_STRAAL;
+        positie.z = speler.positie.z + (dzSpeler / afstandSpeler) * SPELER_ONDODE_BOTSING_STRAAL;
+      }
+    }
     // Feedback: net als de speler (zie updateSpeler) volgt de hoogte van elke
     // ondode puur functioneel uit zijn x/z — geen state, dus hij daalt/stijgt
     // exact zo soepel als de speler op diezelfde trap/helling, en buiten de
@@ -11055,8 +11334,6 @@ function ruimGroepOp(object3D) {
 // degradeert de burst-grootte bij snel-op-elkaar-volgende kills (bv. een
 // Brander-kettingreactie via ontploiBrander()) zodat de 24-slots impactPool
 // niet in één klap leegloopt aan één enkele explosie.
-const KILL_FLITS_PIEK = 3;
-const KILL_FLITS_DUUR = 0.15;
 const KILL_BURST_AANTAL_GROOT = 10;
 const KILL_BURST_AANTAL_KLEIN = 4;
 const KILL_BURST_SAMENVAL_VENSTER = 0.06;
@@ -11086,19 +11363,10 @@ function doodOndode(ondode, punt = null, kop = false) {
   // lijk (ontwerpbeslissing 17): de groep is hierboven al uit ondodenGroep
   // gehaald en wordt nergens anders aan toegevoegd, dus verdwijnt gewoon.
   if (ondode.type === 'brander') { ontploiBrander(ondode); return; }
-  // Ticket 95: korte emissive flits op de PER-INSTANCE huidmaterialen (nooit
-  // op kernMateriaal of de gedeelde been-/vod-materialen — zie
-  // maakOndodeModel()). updateStervenden() telt 'm af. Branders slaan dit
-  // over: hun mesh is hierboven al uit de scene gehaald, dus een flits zou
-  // toch niet zichtbaar zijn.
-  for (const mat of ondode.delen.huidMaterialen) {
-    mat.emissive.setHex(0xffffff);
-    mat.emissiveIntensity = KILL_FLITS_PIEK;
-  }
   // Ticket 22 (Z5): geen Brander -> zichtbaar neervallen i.p.v. verdwijnen.
   const stijl = VAL_STIJLEN[Math.floor(Math.random() * VAL_STIJLEN.length)];
   stervendenGroep.add(ondode.groep);
-  stervenden.push({ groep: ondode.groep, timer: STERVEN_DUUR, stijl, killFlitsTimer: KILL_FLITS_DUUR, huidMaterialen: ondode.delen.huidMaterialen });
+  stervenden.push({ groep: ondode.groep, timer: STERVEN_DUUR, stijl, huidMaterialen: ondode.delen.huidMaterialen });
 }
 
 // Ticket 22 (Z5): lerpt de valanimatie van elk lijk af en verwijdert het
@@ -11113,13 +11381,6 @@ function updateStervenden(dt) {
     else if (s.stijl === 'achterover') s.groep.rotation.x = -hoek;
     else if (s.stijl === 'zijwaarts') s.groep.rotation.z = hoek;
     else s.groep.position.y = -voortgang * 0.9;   // inzakken: zakt weg i.p.v. omvallen
-    // Ticket 95: de kill-flits dooft binnen KILL_FLITS_DUUR, ruim vóór de
-    // val-animatie (STERVEN_DUUR) klaar is.
-    if (s.killFlitsTimer > 0) {
-      s.killFlitsTimer = Math.max(0, s.killFlitsTimer - dt);
-      const intensiteit = KILL_FLITS_PIEK * (s.killFlitsTimer / KILL_FLITS_DUUR);
-      for (const mat of s.huidMaterialen) mat.emissiveIntensity = intensiteit;
-    }
     if (s.timer <= 0) {
       stervendenGroep.remove(s.groep);
       ruimGroepOp(s.groep);   // Ticket 70: geometrie is gedeeld (T69) en overgeslagen; per-ondode materialen (huidKleur, oogMateriaal) worden hier gedisposed
@@ -11163,6 +11424,37 @@ function ontploiBrander(ondode) {
   }
 }
 
+// Fix 5: AMSTEL-9 niveau 2 — kleine ontploffing bij elk schot (op een
+// ondode- OF wereld-raakpunt, aangeroepen vanuit schiet()). Zelfde
+// flits+licht-pool als ontploiBrander() hierboven (explosies/
+// updateExplosies), een eigen, kleinere radius/kleur (AMSTEL9_EXPLOSIE_*,
+// groenig als de bestaande AMSTEL-9-mondingsvlam i.p.v. Branders oranje).
+// `uitgesloten` is de ondode die de kogel al rechtstreeks raakte (via
+// raakOndode() in schiet()) — die overslaan voorkomt dat één schot 'm twee
+// keer schade geeft. Schade op de OVERIGE ondoden binnen bereik loopt via
+// raakOndode() zodat geld/hitmarker/kill precies hetzelfde werken als een
+// normale treffer, met AMSTEL9_EXPLOSIE_SCHADEFACTOR zodat dit geen manier
+// wordt om de volle wapenschade te dupliceren over een hele groep tegelijk.
+function schotExplosie(x, z, uitgesloten) {
+  const flits = new THREE.Mesh(new THREE.SphereGeometry(AMSTEL9_EXPLOSIE_RADIUS * 0.4, 10, 10),
+    new THREE.MeshBasicMaterial({ color: 0x9fffb8, transparent: true, opacity: 0.5 }));
+  flits.position.set(x, 0.9, z);
+  scene.add(flits);
+  const licht = new THREE.PointLight(0x9fffb8, 8, AMSTEL9_EXPLOSIE_RADIUS * 2, 2);
+  licht.position.copy(flits.position);
+  scene.add(licht);
+  explosies.push({ flits, licht, timer: EXPLOSIE_FLITS_DUUR });
+  speelExplosie();
+
+  for (const andere of [...ondoden]) {
+    if (andere === uitgesloten || !ondoden.includes(andere)) continue;
+    const dx = andere.groep.position.x - x, dz = andere.groep.position.z - z;
+    if (dx * dx + dz * dz <= AMSTEL9_EXPLOSIE_RADIUS * AMSTEL9_EXPLOSIE_RADIUS) {
+      raakOndode(andere, andere.groep.position, false, AMSTEL9_EXPLOSIE_SCHADEFACTOR);
+    }
+  }
+}
+
 // Cosmetisch: telt elke actieve flits af en ruimt 'm op zodra de duur voorbij
 // is (scene.remove + dispose via ruimGroepOp — de PointLight heeft geen
 // geometrie/materiaal en hoeft alleen uit de scene). Achterwaartse loop:
@@ -11183,16 +11475,22 @@ function updateExplosies(dt) {
 
 // Eén treffer: schade, geld, en bij hp<=0 een kill (met kill-bonus).
 // `kop` = true bij een headshot: lichaam = basisschade, kop = +HEADSHOT_EXTRA.
-// Basisschade = schadePerTreffer (globale upgrade) + Smederij-bonus van het
-// actieve wapen als dat gesmeed is (Ticket 11) — Eliminatiemodus overschrijft dit.
-function raakOndode(ondode, punt, kop = false) {
+// Basisschade = schadePerTreffer + Smederij-bonus van het actieve wapen als
+// dat gesmeed is (Ticket 11) — Eliminatiemodus overschrijft dit.
+// Fix 5: `schadeFactor` (default 1) schaalt de uiteindelijke schade — gebruikt
+// door de AMSTEL-9-ontploffing (schotExplosie(), splash op OMLIGGENDE ondoden)
+// en de Canal Ripper-Doorboring (het TWEEDE, doorboorde doel) zodat die twee
+// niveau-2-effecten niet de volle wapenschade dupliceren op extra doelen.
+// Eliminatiemodus blijft bewust ongemoeid door schadeFactor: die garandeert
+// altijd een instant-kill, ongeacht welk pad de treffer binnenkomt.
+function raakOndode(ondode, punt, kop = false, schadeFactor = 1) {
   // Ticket 42: elke treffer telt, ongeacht dodelijk of niet — headshots zijn
   // kop-TREFFERS (consistent met de hitmarker-tiers), niet alleen kop-kills.
   runStats.treffers++;
   if (kop) runStats.headshots++;
-  const basisSchade = schadePerTreffer + (wapenStaat.gesmeed ? wapenStaat.definitie.smederijConfig.schadeBonus : 0);
+  const basisSchade = schadePerTreffer + berekenSmederijBonus(wapenStaat);
   // Eliminatiemodus (power-up): elke treffer is meteen dodelijk, ongeacht HP.
-  const schade = eliminatiemodusTimer > 0 ? ondode.hp : basisSchade + (kop ? HEADSHOT_EXTRA : 0);
+  const schade = eliminatiemodusTimer > 0 ? ondode.hp : (basisSchade + (kop ? HEADSHOT_EXTRA : 0)) * schadeFactor;
   ondode.hp -= schade;
   const geldFactor = dubbeleBeloningTimer > 0 ? 2 : 1;   // Dubbele Beloning (power-up)
   if (ondode.hp <= 0) {
@@ -11560,10 +11858,12 @@ function updateHUD() {
   // Speler-feedback: altijd de werkelijke waarde tonen (incl. de per-wapen
   // Smederij-bonus bij schade) i.p.v. "MAX" — "MAX" verborg de Smederij-bonus
   // en gaf geen idee meer van de echte herlaadtijd/schade tijdens het spelen.
-  const weergaveSchade = schadePerTreffer + (wapenStaat.gesmeed ? wapenStaat.definitie.smederijConfig.schadeBonus : 0);
+  const weergaveSchade = schadePerTreffer + berekenSmederijBonus(wapenStaat);
   // Ticket 12: ster-merkteken als het actieve wapen gesmeed is.
-  // ⟳ = De Zelflader gemonteerd (auto-herladen actief), naast de ★ voor gesmeed.
-  const wapenLabel = wapenStaat.definitie.naam + (wapenStaat.gesmeed ? ' ★' : '') + (autoHerladerGekocht ? ' ⟳' : '');
+  // Fix 5: ★★ bij het volledig gesmede (niveau 2) wapen, ★ bij alleen niveau 1.
+  // ⟳ = De Zelflader gemonteerd (auto-herladen actief), naast de ster(ren).
+  const smederijSter = wapenStaat.gesmeedNiveau2 ? ' ★★' : (wapenStaat.gesmeed ? ' ★' : '');
+  const wapenLabel = wapenStaat.definitie.naam + smederijSter + (autoHerladerGekocht ? ' ⟳' : '');
   // Power-ups: toon actieve tijdelijke buffs (leeg als er geen actief zijn).
   // Math.ceil telt in hele seconden af — wisselt dus vanzelf elke seconde,
   // en één laatste keer bij het aflopen (buffs wordt dan weer leeg).
@@ -11875,7 +12175,7 @@ function updateGolf(dt) {
       ontsnappingAankondigingActief = false;
     }
     updateOntsnappingVensterHUD();
-    toonGolfBanner('Wave cleared', `+€${bonus} bonus · koop bij de kist of het upgradepunt`);
+    toonGolfBanner('Wave cleared', `+€${bonus} bonus · koop bij de ammo-kist`);
     speelGolfKlaar();
     if (actieveEventGolf) eindigEventGolf();
     updateHUD();
@@ -11883,7 +12183,7 @@ function updateGolf(dt) {
 }
 
 /* ================================================================
-   STAP 9 — INTERACTIES: koopbare deur, ammo-kist en upgradepunt
+   STAP 9 — INTERACTIES: koopbare deur, ammo-kist en overige winkelpunten
    ================================================================
    Eén centraal "loop ernaartoe en druk T"-systeem, gekopieerd en
    aangepast uit defend-national-monument.html (interactiePunten +
@@ -11895,10 +12195,18 @@ function updateGolf(dt) {
 const DEUR_PRIJS       = 500;   // opent gang + atelier (zone C)
 const AMMO_PRIJS       = 300;   // vult reserve-munitie bij
 const AMMO_KIST_KOGELS = 48;    // reserve-kogels per aankoop
-const UPGRADE_PRIJS    = 500;   // schade +0.5 (daarna MAX, Ticket 11: WAPEN_SCHADE_MAX 1.5)
 const RATELAAR_PRIJS   = 750;   // eenmalig: tweede wapen, op de binnenplaats
 // Ticket 12: De Smederij — late-game geldsink, per wapen (zie ARCHITECTURE_NOTES §2.7-8).
 const SMEDERIJ_PRIJS   = 3000;  // eenmalig per wapen: Smederij-schadebonus + groter magazijn
+// Fix 5: tweede, duurdere Smederij-upgrade per wapen (na de eerste), met een
+// grotere schadebonus dan niveau 1 — zie smederijConfig[1] bij elk wapen.
+const SMEDERIJ2_PRIJS  = 4000;
+// Fix 5: AMSTEL-9 niveau 2 — kleine ontploffing per schot (schotExplosie()).
+const AMSTEL9_EXPLOSIE_RADIUS       = 2.0;   // m, kleiner dan de Brander-explosie (3.0)
+const AMSTEL9_EXPLOSIE_SCHADEFACTOR = 0.6;   // splash op ANDERE ondoden, niet de volle wapenschade
+// Fix 5: Canal Ripper niveau 2 (Doorboring) — het TWEEDE, doorboorde doel
+// krijgt minder schade dan het eerste (rechtstreeks geraakte) doel.
+const RIPPER_DOORBORING_SCHADEFACTOR = 0.6;
 const SMEDERIJ_VLAM_BOOST = 1.5;   // feller mondingsvuur voor een gesmeed wapen (schiet() past dit toe)
 // Op verzoek: De Zelflader — koopbaar op de vliering. Eenmalig, geldt daarna
 // voor BEIDE wapens (de vlag is globaal, niet per wapenStaat): zodra je
@@ -12107,21 +12415,10 @@ ammoBand.position.set(3, 0.32, -2);
 wereld.add(ammoBand);
 const ammoMarkering = winkelMarkering(3, -2, 'ammo');
 
-const upgradeTafel = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 0.5), mat(0x2f2a24, 0.8, 0.2));
-upgradeTafel.position.set(-3, 0.2, -2);
-upgradeTafel.castShadow = true;
-wereld.add(upgradeTafel);
-// Ticket 89: Bron-niveau (§10.5), net onder de richtwaarde.
-const upgradeKern = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10),
-  new THREE.MeshStandardMaterial({ color: 0xffe08a, emissive: 0xffb63a, emissiveIntensity: 1.1 }));
-upgradeKern.position.set(-3, 0.55, -2);
-wereld.add(upgradeKern);
-const upgradeMarkering = winkelMarkering(-3, -2, 'upgrade');
-
 const deurMarkering = winkelMarkering(0, DEUR_Z + 0.7, 'deur1');
 
 // Dooft een interactiemarkering naar grijs (Ticket V7): visuele hint dat een
-// eenmalige/MAX-upgrade hier niets meer te doen heeft.
+// eenmalige aankoop hier niets meer te doen heeft.
 function doofMarkering(markering) {
   markering.traverse(obj => {
     if (!obj.material) return;
@@ -12269,20 +12566,8 @@ function koopPantserdrank() {
   spelerStaat.hp += PANTSERDRANK_HP_BONUS;
   speelKoop();
   flitsMarkering(pantserdrankMarkering);
-  toonMelding(`Pantserdrank gedronken! Max HP nu ${spelerStaat.hpMax}`);
+  toonMelding(`Canal Jug gedronken! Max HP nu ${spelerStaat.hpMax}`);
   doofMarkering(pantserdrankMarkering);
-  updateHUD();
-}
-
-function koopUpgrade() {
-  if (schadePerTreffer >= WAPEN_SCHADE_MAX) { toonMelding('Schade is al maximaal'); return; }
-  if (spelStaat.geld < UPGRADE_PRIJS) { toonMelding(`Nog €${UPGRADE_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
-  spelStaat.geld -= UPGRADE_PRIJS;
-  schadePerTreffer += 0.5;   // Ticket 11: kleinere stap, stopt nu bij WAPEN_SCHADE_MAX (1.5)
-  speelKoop();
-  flitsMarkering(upgradeMarkering);
-  toonMelding(schadePerTreffer >= WAPEN_SCHADE_MAX ? 'Schade-upgrade! Nu MAX' : `Schade-upgrade! Nu ${schadePerTreffer}`);
-  if (schadePerTreffer >= WAPEN_SCHADE_MAX) doofMarkering(upgradeMarkering);
   updateHUD();
 }
 
@@ -12299,7 +12584,7 @@ function koopSnelspanner() {
   for (const staat of Object.values(wapenStaten)) if (staat) staat.herlaadDuur = staat.definitie.herlaadDuurSnel;
   speelKoop();
   flitsMarkering(werkbankMarkering);
-  toonMelding('Snelheidselixer gedronken — sneller herladen (MAX)');
+  toonMelding('Fast Hands gedronken — sneller herladen (MAX)');
   doofMarkering(werkbankMarkering);
   updateAmmoUI();
   updateHUD();
@@ -12316,7 +12601,7 @@ function koopRatelaar() {
   wapenStaten.ratelaar = nieuweWapenStaat(WAPEN_RATELAAR);
   speelKoop();
   flitsMarkering(ratelaarMarkering);
-  toonMelding('De Ratelaar is gekocht! Druk Q om te wisselen');
+  toonMelding('Canal Ripper is gekocht! Druk Q om te wisselen');
   doofMarkering(ratelaarMarkering);
   if (actiefWapenNaam === 'drukspuit') wisselWapen();
   updateHUD();
@@ -12325,14 +12610,25 @@ function koopRatelaar() {
 // Ticket 12: De Smederij smeedt het ACTIEVE wapen — eenmalig per wapen
 // (de gesmeed-status zit op de per-wapen wapenStaat, zie Ticket 11). Werkt
 // dus onafhankelijk voor Drukspuit en Ratelaar.
+// Fix 5: nu TWEE niveaus per wapen i.p.v. één. Niveau 1 (gesmeed) werkt
+// exact als voorheen; niveau 2 (gesmeedNiveau2) is duurder (SMEDERIJ2_PRIJS
+// > SMEDERIJ_PRIJS) en voegt meer schade toe dan niveau 1
+// (smederijConfig[1].schadeBonus > smederijConfig[0].schadeBonus). Niveau 2
+// ontgrendelt ook het per-wapen niveau-2-effect: AMSTEL-9 krijgt kleine
+// ontploffingen op elk raakpunt (schotExplosie() in schiet()), de Canal
+// Ripper krijgt Doorboring (een tweede, doorboord doel per schot).
 function koopSmederij() {
-  if (wapenStaat.gesmeed) return;
-  if (spelStaat.geld < SMEDERIJ_PRIJS) { toonMelding(`Nog €${SMEDERIJ_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
-  spelStaat.geld -= SMEDERIJ_PRIJS;
-  wapenStaat.gesmeed = true;
-  wapenStaat.magazijnMax = wapenStaat.definitie.smederijConfig.magazijnMax;
+  if (wapenStaat.gesmeedNiveau2) return;   // beide niveaus al gekocht
+  const niveauIndex = wapenStaat.gesmeed ? 1 : 0;
+  const prijs = niveauIndex === 0 ? SMEDERIJ_PRIJS : SMEDERIJ2_PRIJS;
+  if (spelStaat.geld < prijs) { toonMelding(`Nog €${prijs - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  spelStaat.geld -= prijs;
+  const tier = wapenStaat.definitie.smederijConfig[niveauIndex];
+  if (niveauIndex === 0) wapenStaat.gesmeed = true; else wapenStaat.gesmeedNiveau2 = true;
+  wapenStaat.magazijnMax = tier.magazijnMax;
   wapenStaat.magazijn = wapenStaat.magazijnMax;   // meteen volledig bijvullen, geen reload nodig
   // Visueel accent op het gesmede wapenonderdeel (geen nieuwe geometrie).
+  // Bij niveau 2 opnieuw toegepast — onschuldig idempotent, geen apart visual nodig.
   const accent = actiefWapenNaam === 'drukspuit' ? meterDrukspuit : tandwielRatelaar;
   accent.material.color.setHex(SMEDERIJ_ACCENT_KLEUR);
   accent.material.emissive.setHex(SMEDERIJ_ACCENT_KLEUR);
@@ -12348,7 +12644,10 @@ function koopSmederij() {
   medaillon.material.emissiveIntensity = 1.3;   // Ticket 89: Bron-niveau (§10.5)
   speelSmeed();
   flitsMarkering(smederijMarkering);
-  toonMelding(`${wapenStaat.definitie.naam} gesmeed! +${wapenStaat.definitie.smederijConfig.schadeBonus} schade, magazijn ${wapenStaat.magazijnMax}`);
+  const melding = niveauIndex === 0
+    ? `${wapenStaat.definitie.naam} gesmeed! +${tier.schadeBonus} schade, magazijn ${wapenStaat.magazijnMax}`
+    : `${wapenStaat.definitie.naam} volledig gesmeed! +${tier.schadeBonus} schade, magazijn ${wapenStaat.magazijnMax}`;
+  toonMelding(melding);
   updateAmmoUI();
   updateHUD();
 }
@@ -12366,7 +12665,7 @@ function koopAutoHerlader() {
   autoHerladerGekocht = true;
   speelKoop();
   flitsMarkering(autoHerladerMarkering);
-  toonMelding('De Zelflader gemonteerd! Je wapen herlaadt voortaan vanzelf');
+  toonMelding('Auto loader gemonteerd! Je wapen herlaadt voortaan vanzelf');
   updateAmmoUI();
   updateHUD();
 }
@@ -12499,15 +12798,15 @@ function koopWatertap() {
 }
 
 const pantserdrankPunt = {
-  naam: 'Pantserdrank',
+  naam: 'Canal Jug',
   // Ticket 62: y = -KELDER_DIEPTE (nu in de kelder) i.p.v. 0 — nodig voor
   // de KELDER_Y_MARGE-check in updateInteracties(), anders zou dit punt
   // ook vanaf de begane grond (dezelfde X/Z, boven de kelder) reageren.
   positie: new THREE.Vector3(PANTSERDRANK_X, -KELDER_DIEPTE, PANTSERDRANK_Z),
   radius: 1.4,
   prompt: () => pantserdrankGekocht
-    ? 'Pantserdrank is al gedronken (MAX)'
-    : `Druk T: Pantserdrank — max HP verdubbelen (€${PANTSERDRANK_PRIJS})`,
+    ? 'Canal Jug is al gedronken (MAX)'
+    : `Druk T: Canal Jug — max HP verdubbelen (€${PANTSERDRANK_PRIJS})`,
   actie: koopPantserdrank,
 };
 
@@ -12526,31 +12825,22 @@ const ammoPunt = {
   prompt: () => `Druk T: munitie bijvullen (€${AMMO_PRIJS})`,
   actie: koopAmmo,
 };
-const upgradePunt = {
-  naam: 'Upgradepunt',
-  positie: new THREE.Vector3(-3, 0, -2),
-  radius: 1.5,
-  prompt: () => schadePerTreffer >= WAPEN_SCHADE_MAX
-    ? 'Schade is MAX'
-    : `Druk T: schade-upgrade (€${UPGRADE_PRIJS})`,
-  actie: koopUpgrade,
-};
 const werkbankPunt = {
   naam: 'Werkbank',
   positie: new THREE.Vector3(WERKBANK_X, 0, WERKBANK_Z),
   radius: 1.5,
   prompt: () => snelspannerGekocht
-    ? 'Snelheidselixer is MAX'
-    : `Druk T: Snelheidselixer — sneller herladen (€${SNELSPANNER_PRIJS})`,
+    ? 'Fast Hands is MAX'
+    : `Druk T: Fast Hands — sneller herladen (€${SNELSPANNER_PRIJS})`,
   actie: koopSnelspanner,
 };
 const ratelaarPunt = {
-  naam: 'De Ratelaar',
+  naam: 'Canal Ripper',
   positie: new THREE.Vector3(RATELAAR_X, 0, RATELAAR_Z),
   radius: 1.5,
   prompt: () => ratelaarGekocht
-    ? 'De Ratelaar is al gekocht (Q om te wisselen)'
-    : `Druk T: koop De Ratelaar (€${RATELAAR_PRIJS})`,
+    ? 'Canal Ripper is al gekocht (Q om te wisselen)'
+    : `Druk T: koop Canal Ripper (€${RATELAAR_PRIJS})`,
   actie: koopRatelaar,
 };
 const deur2Punt = {
@@ -12609,21 +12899,21 @@ const smederijPunt = {
   naam: 'De Smederij',
   positie: new THREE.Vector3(SMEDERIJ_X, 0, SMEDERIJ_Z),
   radius: 1.6,
-  prompt: () => wapenStaat.gesmeed
-    ? `${wapenStaat.definitie.naam} is al gesmeed`
-    : `Druk T: smeed ${wapenStaat.definitie.naam} (€${SMEDERIJ_PRIJS})`,
+  prompt: () => wapenStaat.gesmeedNiveau2
+    ? `${wapenStaat.definitie.naam} is volledig gesmeed`
+    : `Druk T: smeed ${wapenStaat.definitie.naam} (€${wapenStaat.gesmeed ? SMEDERIJ2_PRIJS : SMEDERIJ_PRIJS})`,
   actie: koopSmederij,
 };
 // De Zelflader (vliering). positie.y = VLIERING_Y, zodat de bestaande
 // KELDER_Y_MARGE-check in updateInteracties() 'm alleen aanbiedt als je ook
 // echt bovenop de vliering staat — niet als je eronder in het atelier loopt.
 const autoHerladerPunt = {
-  naam: 'De Zelflader',
+  naam: 'Auto loader',
   positie: new THREE.Vector3(AUTOHERLADER_X, VLIERING_Y, AUTOHERLADER_Z),
   radius: 1.6,
   prompt: () => autoHerladerGekocht
-    ? 'De Zelflader is al gemonteerd'
-    : `Druk T: monteer De Zelflader (€${AUTOHERLADER_PRIJS})`,
+    ? 'Auto loader is al gemonteerd'
+    : `Druk T: monteer Auto loader (€${AUTOHERLADER_PRIJS})`,
   actie: koopAutoHerlader,
 };
 // --- Ticket 44: de Vluchtroute — drie verzamelbare, originele onderdelen
@@ -13105,7 +13395,7 @@ function toonVluchtOnderdelenIndienDrempel() {
   }
 }
 
-const interactiePunten = [deurPunt, ammoPunt, upgradePunt, werkbankPunt, pantserdrankPunt, deur2Punt, watertapPunt, ratelaarPunt, smederijPunt, deur3Punt, deur4Punt, deur5Punt, deur6Punt, autoHerladerPunt];
+const interactiePunten = [deurPunt, ammoPunt, werkbankPunt, pantserdrankPunt, deur2Punt, watertapPunt, ratelaarPunt, smederijPunt, deur3Punt, deur4Punt, deur5Punt, deur6Punt, autoHerladerPunt];
 
 let huidigeInteractie = null;
 
@@ -13509,6 +13799,7 @@ window.AmsterdamUndeadDebug = {
   // neemt) rechtstreeks kunnen aanroepen zonder een ondode te hoeven spawnen.
   THREE,
   scene, camera, speler, obstakels, isVrijePlek, GRENS, losBotsingenOp,
+  duwSpelerWegVanOndoden, SPELER_ONDODE_BOTSING_STRAAL, SPELER_ONDODE_ZACHTE_FACTOR,   // Fix 3: speler-ondode-botsing
   // Ticket 60: post-processing-pipeline (voor tests: composer/bloomPass bestaan
   // en composer.render() wordt daadwerkelijk gebruikt i.p.v. renderer.render()).
   composer, bloomPass,
@@ -13533,8 +13824,13 @@ window.AmsterdamUndeadDebug = {
   set laatsteKleurgradingZone(v) { laatsteKleurgradingZone = v; },
   get wapenStaat() { return wapenStaat; },   // v0.6: wapenStaat wordt herbonden bij wisselen (getter i.p.v. stale referentie)
   get gesmeedActief() { return wapenStaat.gesmeed; },   // Ticket 11: Smederij-status van het ACTIEVE wapen
+  // Fix 5: tweede Smederij-niveau, dezelfde "van het ACTIEVE wapen"-vorm.
+  get gesmeedNiveau2Actief() { return wapenStaat.gesmeedNiveau2; },
   // Ticket 12: De Smederij-machine (koopbare implementatie):
-  SMEDERIJ_PRIJS, SMEDERIJ_X, SMEDERIJ_Z, koopSmederij, smederijPunt, smederijMarkering,
+  SMEDERIJ_PRIJS, SMEDERIJ2_PRIJS, SMEDERIJ_X, SMEDERIJ_Z, koopSmederij, smederijPunt, smederijMarkering,
+  berekenSmederijBonus,
+  // Fix 5: AMSTEL-9-ontploffing en Canal Ripper-Doorboring (niveau-2-effecten):
+  schotExplosie, AMSTEL9_EXPLOSIE_RADIUS, AMSTEL9_EXPLOSIE_SCHADEFACTOR, RIPPER_DOORBORING_SCHADEFACTOR,
   // Ticket 17: Smederij-visuals per wapen
   smederijVisualsDrukspuit, smederijVisualsRatelaar, updateSmederijVisuals,
   get smederijVisualsZichtbaar() { return { drukspuit: smederijVisualsDrukspuit.visible, ratelaar: smederijVisualsRatelaar.visible }; },
@@ -13563,8 +13859,8 @@ window.AmsterdamUndeadDebug = {
   updateOndoden, raakOndode, doodOndode,
   // Ticket 22: doodsanimaties (Z5)
   stervenden, stervendenGroep, updateStervenden, VAL_STIJLEN, STERVEN_DUUR,
-  // Ticket 95: de kill-flits + het grotere kill-burst
-  KILL_FLITS_PIEK, KILL_FLITS_DUUR, KILL_BURST_AANTAL_GROOT, KILL_BURST_AANTAL_KLEIN, KILL_BURST_SAMENVAL_VENSTER,
+  // Ticket 95: het grotere kill-burst
+  KILL_BURST_AANTAL_GROOT, KILL_BURST_AANTAL_KLEIN, KILL_BURST_SAMENVAL_VENSTER,
   spawnKillBurst,
   get laatsteKillBurstTijd() { return laatsteKillBurstTijd; },
   set laatsteKillBurstTijd(v) { laatsteKillBurstTijd = v; },
@@ -13637,14 +13933,14 @@ window.AmsterdamUndeadDebug = {
   get zoneFogDoel() { return zoneFogDoel; },
   set zoneFogDoel(v) { zoneFogDoel = v; },
   interactiePunten, updateInteracties, activeerHuidigeInteractie,
-  koopDeur, koopAmmo, koopUpgrade,
+  koopDeur, koopAmmo,
   get deurGekocht() { return deurGekocht; },
   set deurGekocht(v) { deurGekocht = v; },
   get schadePerTreffer() { return schadePerTreffer; },
-  set schadePerTreffer(v) { schadePerTreffer = v; },   // Ticket 11: nodig om upgrade-staat x Smederij-bonus te testen
+  set schadePerTreffer(v) { schadePerTreffer = v; },   // Ticket 11: nodig om Smederij-bonus te testen
   get huidigeInteractie() { return huidigeInteractie; },
   deurObstakel, deurMesh, VENSTERS_KAMER2,
-  DEUR_PRIJS, AMMO_PRIJS, AMMO_KIST_KOGELS, UPGRADE_PRIJS, WAPEN_SCHADE_MAX,
+  DEUR_PRIJS, AMMO_PRIJS, AMMO_KIST_KOGELS,
   // Geometrie- en balansconstanten (voor tests):
   DEUR_Z, DEUR_HALF, GANG_Z_EIND, KAMER2_Z_NOORD, HALF_DIEPTE, HALF_BREEDTE, KAMER2_HALF_B,
   ONDODE_HP_TRAPPEN, HEADSHOT_EXTRA, ondodeStartHP,   // Ticket 14: trap i.p.v. VROEG/LAAT/GOLFGRENS
@@ -13681,12 +13977,15 @@ window.AmsterdamUndeadDebug = {
   VLIERING_X_WEST, VLIERING_X_OOST, VLIERING_Z_NOORD, VLIERING_Z_ZUID,
   VLIERING_Y, VLIERING_BORSTWERING_Y,
   VLIERINGTRAP_CZ, VLIERINGTRAP_HALF_BREEDTE, VLIERINGTRAP_X_OOST, VLIERINGTRAP_X_WEST,
-  // Vervolg: tweede trap (noordkant).
-  VLIERINGTRAP2_CZ, VLIERINGTRAP2_HALF_BREEDTE, VLIERINGTRAP2_X_OOST, VLIERINGTRAP2_X_WEST,
-  isVliering, isVlieringVlak, inVlieringKokerBand, ATELIER_HOOGTE,
+  // Tweede trap (T131: noordkant, door de nis-afsluitmuur, langs de Z-as).
+  VLIERINGTRAP2_CX, VLIERINGTRAP2_HALF_BREEDTE, VLIERINGTRAP2_Z_NOORD, VLIERINGTRAP2_Z_ZUID,
+  isVliering, isVlieringVlak, isVlieringLobe1, isVlieringGebied,
+  inVlieringKokerBand, inVlieringKoker2Band, isVlieringKoker2,
+  ATELIER_HOOGTE,
   VLIERINGTRAP_ONDER_BUITEN, VLIERINGTRAP_ONDER_BINNEN,
   VLIERINGTRAP_BOVEN_BUITEN, VLIERINGTRAP_BOVEN_BINNEN,
   VLIERINGTRAP2_ONDER_BUITEN, VLIERINGTRAP2_ONDER_BINNEN,
+  VLIERINGTRAP2_BOVEN_BUITEN, VLIERINGTRAP2_BOVEN_BINNEN,
   // De Zelflader (auto-herlader, koopbaar op de vliering)
   AUTOHERLADER_PRIJS, AUTOHERLADER_X, AUTOHERLADER_Z, koopAutoHerlader,
   autoHerladerPunt, autoHerladerMarkering,
@@ -13703,7 +14002,7 @@ window.AmsterdamUndeadDebug = {
   aantalOntgrendeldeZones, effectiefSpawnInterval, effectiefMaxActief,
   ZONE_SPAWN_INTERVAL_FACTOR, ZONE_MAX_ACTIEF_BONUS,
   // Ticket V7: progressie-UI:
-  doofMarkering, upgradeMarkering, werkbankMarkering,
+  doofMarkering, werkbankMarkering,
   // Ticket 36: winkelstijl-register + iconen (W2)
   WINKEL_STIJLEN, winkelMarkering, winkelMarkeringen, interactieMarkering,
   deurMarkering, deur2Markering, deur3Markering, deur4Markering, deur5Markering,
@@ -13751,10 +14050,8 @@ window.AmsterdamUndeadDebug = {
   // plek-verdeling rechtstreeks verifiëren i.p.v. via een gespawnde ondode).
   vervalVlekkenTint, kiesVervalPlekken, VERVAL_VLEK_KLEUR,
   geoCache, kernMateriaal,   // Ticket 69: gedeelde geometrie-cache (voor tests: cache-grootte + hergebruik)
-  // Ticket 100: de ondode-materiaalfabriek (rimlight) + het gedeelde
-  // uniform-paar dat alle ondode-materialen tegelijk aanstuurt.
-  maakOndodeMateriaal, RIM_UNIFORMS, RIM_KLEUR, RIM_STERKTE_BASIS,
-  wereld,   // Ticket 100 (voor tests): de kaartgeometrie-group, om wereldmaterialen te steekproeven
+  maakOndodeMateriaal,   // de ondode-materiaalfabriek (T89-oogsysteem, T123-normal-map)
+  wereld,   // (voor tests): de kaartgeometrie-group, om wereldmaterialen te steekproeven
   // Ticket 102/103: subdivisie-/occlusie-infrastructuur voor grote vlakken.
   SUBDIVISIE_SEGMENTEN, muurSegmenten, blok, vlak,
   OCCLUSIE_BEREIK, OCCLUSIE_STERKTE, occlusieFactor,

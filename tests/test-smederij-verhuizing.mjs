@@ -100,10 +100,11 @@ check('De Smederij zelf heeft geen collision (net als voorheen) — de plek is v
 // (terug naar 12), en de kelderoost-feedback voegde deur6Punt toe (naar 13),
 // zie test-map-lus-zone-e-inhoud.mjs) ----------------------------------------
 const telling = await page.evaluate(() => window.AmsterdamUndeadDebug.interactiePunten.length);
-// +1 sinds De Zelflader op de vliering (op verzoek na T87): 13 -> 14. De
-// strekking blijft: dit ticket verplaatst de Smederij, het voegt er geen toe.
-check('Er staan precies 14 interactiepunten geregistreerd (13 + De Zelflader op de vliering)',
-  telling === 14, { telling });
+// +1 sinds De Zelflader op de vliering (op verzoek na T87): 13 -> 14, en
+// -1 sinds het schade-upgradepunt verwijderd is: 14 -> 13. De strekking
+// blijft: dit ticket verplaatst de Smederij, het voegt er geen toe.
+check('Er staan precies 13 interactiepunten geregistreerd (12 + De Zelflader op de vliering)',
+  telling === 13, { telling });
 
 // --- 7. Precies één Smederij(-punt) — nooit een tweede --------------------
 const uniciteit = await page.evaluate(() => {

@@ -27,9 +27,6 @@ const vlagStatus = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.spelStaat.geld = 100000;
   const uit = {};
-  uit.upgradeVoor = d.WINKEL_STIJLEN.upgrade.status();
-  d.schadePerTreffer = d.WAPEN_SCHADE_MAX;
-  uit.upgradeNa = d.WINKEL_STIJLEN.upgrade.status();
 
   // snelspannerGekocht/pantserdrankGekocht/ratelaarGekocht zijn read-only
   // debug-getters (geen setter) — de status via de ECHTE koop-functie
@@ -52,8 +49,6 @@ const vlagStatus = await page.evaluate(() => {
 
   return uit;
 });
-check('Upgrade: "beschikbaar" voor MAX-schade, "gekocht" erna',
-  vlagStatus.upgradeVoor === 'beschikbaar' && vlagStatus.upgradeNa === 'gekocht', vlagStatus);
 check('Werkbank (Snelheidselixer): "beschikbaar" voor, "gekocht" na snelspannerGekocht',
   vlagStatus.werkbankVoor === 'beschikbaar' && vlagStatus.werkbankNa === 'gekocht', vlagStatus);
 check('Pantserdrank: "beschikbaar" voor, "gekocht" na pantserdrankGekocht',
@@ -64,29 +59,36 @@ check('Deur 1: "beschikbaar" voor, "gekocht" na koopDeur()',
   vlagStatus.deur1Voor === 'beschikbaar' && vlagStatus.deur1Na === 'gekocht', vlagStatus);
 
 // --- 3. Smederij-status volgt het ACTIEVE wapen (randgeval) ---------------
+// Fix 5: twee Smederij-niveaus per wapen — 'gekocht' pas na BEIDE niveaus,
+// dus koopSmederij() hier bewust tweemaal per wapen aangeroepen.
 const smederijStatus = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.spelStaat.geld = 100000;
   if (d.actiefWapenNaam !== 'drukspuit') d.wisselWapen();
   const voorSmeden = d.WINKEL_STIJLEN.smederij.status();
-  d.koopSmederij();   // smeedt de ACTIEVE Drukspuit
+  d.koopSmederij();   // niveau 1 van de ACTIEVE Drukspuit
+  const naNiveau1 = d.WINKEL_STIJLEN.smederij.status();
+  d.koopSmederij();   // niveau 2: nu pas volledig gesmeed
   const naDrukspuitGesmeed = d.WINKEL_STIJLEN.smederij.status();
   if (!d.ratelaarGekocht) d.koopRatelaar(); else d.wisselWapen();   // wisselt naar de Ratelaar
   const opNietGesmedeRatelaar = d.WINKEL_STIJLEN.smederij.status();
-  d.koopSmederij();   // smeedt nu ook de Ratelaar
+  d.koopSmederij();   // niveau 1
+  d.koopSmederij();   // niveau 2: smeedt nu ook de Ratelaar volledig
   const naBeideGesmeed = d.WINKEL_STIJLEN.smederij.status();
   d.wisselWapen();   // terug naar de (al gesmede) Drukspuit
   const terugOpGesmedeDrukspuit = d.WINKEL_STIJLEN.smederij.status();
-  return { voorSmeden, naDrukspuitGesmeed, opNietGesmedeRatelaar, naBeideGesmeed, terugOpGesmedeDrukspuit };
+  return { voorSmeden, naNiveau1, naDrukspuitGesmeed, opNietGesmedeRatelaar, naBeideGesmeed, terugOpGesmedeDrukspuit };
 });
 check('Vóór smeden: "beschikbaar"', smederijStatus.voorSmeden === 'beschikbaar', smederijStatus);
-check('Na het smeden van de actieve Drukspuit: "gekocht"',
+check('Na niveau 1 van de actieve Drukspuit: nog steeds "beschikbaar" (niveau 2 nog te koop)',
+  smederijStatus.naNiveau1 === 'beschikbaar', smederijStatus);
+check('Na beide niveaus van de actieve Drukspuit: "gekocht"',
   smederijStatus.naDrukspuitGesmeed === 'gekocht', smederijStatus);
 check('Na wisselen naar de nog niet gesmede Ratelaar: weer "beschikbaar" (volgt het actieve wapen)',
   smederijStatus.opNietGesmedeRatelaar === 'beschikbaar', smederijStatus);
-check('Zijn beide wapens gesmeed, dan blijft de status "gekocht"',
+check('Zijn beide wapens volledig gesmeed, dan blijft de status "gekocht"',
   smederijStatus.naBeideGesmeed === 'gekocht', smederijStatus);
-check('Terug op de (nog steeds gesmede) Drukspuit: weer "gekocht"',
+check('Terug op de (nog steeds volledig gesmede) Drukspuit: weer "gekocht"',
   smederijStatus.terugOpGesmedeDrukspuit === 'gekocht', smederijStatus);
 
 // --- 4. Watertap: "nvt" bij volle HP, herstelt zodra HP < max -------------
@@ -156,9 +158,9 @@ check('Beschikbaar: de ring-opacity pulst over echte tijd (verandert via de draa
 const gedoofdSkip = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.spelStaat.geld = 100000;
-  d.schadePerTreffer = d.WAPEN_SCHADE_MAX;   // upgrade nu 'gekocht'
+  d.autoHerladerGekocht = true;   // rechtstreeks, buiten koopAutoHerlader() om: De Zelflader nu 'gekocht'
   d.updateWinkelMarkeringen(0.1);   // eerste tick: dooft 'm
-  const ring = d.upgradeMarkering.children[0];
+  const ring = d.autoHerladerMarkering.children[0];
   const kleurNaDoven = ring.material.color.getHex();
   const opacityNaDoven = ring.material.opacity;
   // Nog 5 ticks: als de skip werkt, verandert er niets meer aan de kleur.
@@ -166,7 +168,7 @@ const gedoofdSkip = await page.evaluate(() => {
   return {
     kleurNaDoven, opacityNaDoven,
     kleurBlijftGedoofd: ring.material.color.getHex() === kleurNaDoven,
-    laatsteStatus: d.upgradeMarkering.userData.laatsteStatus,
+    laatsteStatus: d.autoHerladerMarkering.userData.laatsteStatus,
   };
 });
 check('Gekocht: de ring wordt gedoofd (grijs, 0x555555)',
@@ -177,29 +179,30 @@ check('Gekocht: userData.laatsteStatus staat op "gekocht"',
   gedoofdSkip.laatsteStatus === 'gekocht', gedoofdSkip);
 
 // --- 6. koop-flits: timer + zichtbare puls, ook als de status meteen
-// 'gekocht' wordt (Upgrade: 1 aankoop volstaat al voor MAX-schade) ---------
+// 'gekocht' wordt (De Zelflader: 1 aankoop volstaat al) ---------------------
 // Let op: Pantserdrank/Werkbank/Ratelaar zijn al "verbruikt" door sectie 2
-// hierboven (hun koop-functies zijn eenmalig) — Upgrade is hier bewust vers,
-// via een expliciete reset van schadePerTreffer.
+// hierboven (hun koop-functies zijn eenmalig) — De Zelflader is hier bewust
+// vers, via een expliciete reset van autoHerladerGekocht (sectie 5 zette 'm
+// al op true zonder koopAutoHerlader() aan te roepen).
 const flitsTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.spelStaat.geld = 100000;
-  d.schadePerTreffer = 1;   // reset: sectie 2 zette 'm al op MAX zonder koopUpgrade() aan te roepen
-  const voorAankoop = { flitsTimer: d.upgradeMarkering.userData.flitsTimer ?? 0 };
-  d.koopUpgrade();   // 1 aankoop = meteen MAX (1 + 0.5 = WAPEN_SCHADE_MAX 1.5) -> status meteen 'gekocht'
-  const direcNaAankoop = { flitsTimer: d.upgradeMarkering.userData.flitsTimer };
+  d.autoHerladerGekocht = false;
+  const voorAankoop = { flitsTimer: d.autoHerladerMarkering.userData.flitsTimer ?? 0 };
+  d.koopAutoHerlader();   // status meteen 'gekocht'
+  const direcNaAankoop = { flitsTimer: d.autoHerladerMarkering.userData.flitsTimer };
   d.updateWinkelMarkeringen(0.05);   // status is al 'gekocht', maar de flits moet nog spelen
-  const ring = d.upgradeMarkering.children[0];
-  const tijdensFlits = { schaal: ring.scale.x, laatsteStatus: d.upgradeMarkering.userData.laatsteStatus };
+  const ring = d.autoHerladerMarkering.children[0];
+  const tijdensFlits = { schaal: ring.scale.x, laatsteStatus: d.autoHerladerMarkering.userData.laatsteStatus };
   // Tik door tot de flits voorbij is.
   let ticks = 0;
-  while ((d.upgradeMarkering.userData.flitsTimer ?? 0) > 0 && ticks < 100) { d.updateWinkelMarkeringen(0.05); ticks++; }
+  while ((d.autoHerladerMarkering.userData.flitsTimer ?? 0) > 0 && ticks < 100) { d.updateWinkelMarkeringen(0.05); ticks++; }
   const naFlits = { schaal: ring.scale.x, kleur: ring.material.color.getHex() };
   return { voorAankoop, direcNaAankoop, tijdensFlits, naFlits };
 });
 check('Vóór aankoop staat er geen koop-flits-timer',
   flitsTest.voorAankoop.flitsTimer === 0, flitsTest);
-check('koopUpgrade() zet de flits-timer meteen aan (WINKEL_FLITS_DUUR)',
+check('koopAutoHerlader() zet de flits-timer meteen aan (WINKEL_FLITS_DUUR)',
   flitsTest.direcNaAankoop.flitsTimer > 0, flitsTest);
 check('Tijdens de flits schaalt de ring op (> 1), OOK al is de status meteen "gekocht"',
   flitsTest.tijdensFlits.schaal > 1 && flitsTest.tijdensFlits.laatsteStatus === 'gekocht', flitsTest);

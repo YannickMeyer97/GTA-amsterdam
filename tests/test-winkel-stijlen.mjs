@@ -24,8 +24,8 @@ const opbouw = await page.evaluate(() => {
     })),
   };
 });
-check('Er zijn precies 14 winkelmarkeringen gebouwd (één per interactiepunt, incl. deur5, deur6/kelderoost en De Zelflader)',
-  opbouw.aantal === 14, opbouw);
+check('Er zijn precies 13 winkelmarkeringen gebouwd (één per interactiepunt, incl. deur5, deur6/kelderoost en De Zelflader)',
+  opbouw.aantal === 13, opbouw);
 check('Elke markering heeft 2 of 3 kinderen: 1 ring + 1-2 icoon-meshes (budget <= 3 meshes)',
   opbouw.perGroep.every(g => g.totaalKinderen === 2 || g.totaalKinderen === 3), opbouw);
 check('Bij elke markering is het eerste kind de vloerring',
@@ -56,8 +56,8 @@ const stijlInventaris = await page.evaluate(() => {
   return uit;
 });
 const stijlNamen = Object.keys(stijlInventaris);
-check('Er staan 15 stijlen in WINKEL_STIJLEN (14 statische interactiepunten, incl. deur5, deur6 en De Zelflader, + de gedeelde Ticket-44-vluchtroutestijl)',
-  stijlNamen.length === 15, stijlInventaris);
+check('Er staan 14 stijlen in WINKEL_STIJLEN (13 statische interactiepunten, incl. deur5, deur6 en De Zelflader, + de gedeelde Ticket-44-vluchtroutestijl)',
+  stijlNamen.length === 14, stijlInventaris);
 check('Voor elke stijl is de icoon-geometrie hergebruikt tussen twee bouwIcoon()-aanroepen (gedeelde cache)',
   stijlNamen.every(n => stijlInventaris[n].geometrieHergebruikt), stijlInventaris);
 check('Voor elke stijl krijgt elke bouwIcoon()-aanroep verse materials (geen materiaal-cache, blijft doofbaar)',
@@ -66,7 +66,7 @@ check('Voor elke stijl krijgt elke bouwIcoon()-aanroep verse materials (geen mat
 // --- 3. Uniciteit: geen twee VERSCHILLENDE functiecategorieën delen zowel
 // hetzelfde silhouet als dezelfde kleur (ontwerpbeslissing 29) -------------
 // Feedback: de munitieGroep (ammo + provisiekast) is vervallen — ammo is nu
-// een gewone singleton-categorie, net als upgrade/werkbank/etc.
+// een gewone singleton-categorie, net als werkbank/pantserdrank/etc.
 const deurGroep = ['deur1', 'deur2', 'deur3', 'deur4', 'deur5', 'deur6'];   // deur5/deur6 hergebruiken bewust hetzelfde sleutel-silhouet
 const verwachteGedeeldeSets = [deurGroep];
 const signatuurGroepen = {};
@@ -97,11 +97,11 @@ check('Watertap heeft zijn eigen kleur (0x54c8e8), niet meer gelijk aan de ammo-
 // live-gebouwde markering --------------------------------------------------
 const doofTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  const voor = d.upgradeMarkering.children.map(c => ({
+  const voor = d.werkbankMarkering.children.map(c => ({
     kleur: c.material.color?.getHex(), emissive: c.material.emissive?.getHex(), opacity: c.material.opacity,
   }));
-  d.doofMarkering(d.upgradeMarkering);
-  const na = d.upgradeMarkering.children.map(c => ({
+  d.doofMarkering(d.werkbankMarkering);
+  const na = d.werkbankMarkering.children.map(c => ({
     kleur: c.material.color?.getHex(), emissive: c.material.emissive?.getHex(), opacity: c.material.opacity,
   }));
   return { voor, na };
