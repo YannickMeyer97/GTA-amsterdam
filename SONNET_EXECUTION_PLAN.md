@@ -3529,3 +3529,190 @@ minimaal V1 vs V2 vanaf hetzelfde standpunt, met dezelfde bevriezing als
     een aparte, expliciete opdracht bovenop het groene licht uit T127/
     T128 — "de tests zijn groen" is niet hetzelfde als "de eigenaar wil
     nu dat V1 weg is".
+
+
+---
+
+# Ronde 10 (v0.24) — Arsenaal-herstructurering
+
+Architectuur: `ARCHITECTURE_NOTES.md` §12. Ontwerpbeslissingen 95-99.
+
+**Volgorde is bindend.** T132 t/m T136 (Fix 6) volledig af vóór T137 begint
+(Fix 7) — de tier-visuals uit Fix 7 bouwen op modellen die Fix 6 introduceert.
+
+### Ticket 132 — Wapendatamodel: één arsenaal, twee schakelklassen
+
+**Doel.** De drie invarianten uit §12.2 opheffen zonder één gram
+gedragsverandering. Na dit ticket start de speler nog steeds met de AMSTEL-9
+in de hand en werkt alles exact zoals nu — alleen de structuur eronder is
+nieuw en klaar voor het mes.
+
+**Werk.**
+- `ARSENAAL`-definitie invoeren met een `klasse`-veld (`'mes'` /
+  `'vuurwapen'`) per wapen (§12.3).
+- `wisselWapen()` de expliciete gate "bezit ik twee vuurwapens" geven in
+  plaats van de huidige `if (!ratelaarGekocht) return;`. Nog steeds een
+  pure toggle tussen de twee vuurwapens.
+- `wapenStaten` voorbereiden op een `drukspuit: null`-startwaarde zonder
+  die al te zetten: elke lezer die nu aanneemt dat de staat bestaat moet
+  daar tegen kunnen. Inventariseer die lezers expliciet in de
+  ticket-afronding.
+- `tests/helpers.mjs`: `geefSpelerVuurwapen(page)` toevoegen (§12.8) —
+  nog geen enkel testbestand gebruikt 'm in dit ticket.
+
+**Acceptatie.**
+- De volledige suite is groen zonder dat één assertie is aangepast of
+  versoepeld. Dat is de kern-acceptatie-eis: dit ticket is gedragsneutraal.
+- `AmsterdamUndeadDebug` exporteert het nieuwe arsenaal-model zodat T133+
+  erop kan testen.
+
+**Valkuil.** De verleiding is om hier al `drukspuit: null` te zetten "want
+dat komt toch". Niet doen — dan debug je in T134 een half-verbouwde kern.
+
+---
+
+### Ticket 133 — Het mes: mechaniek, schade en de V-actie
+
+**Doel.** Het mes bestaat en werkt, met de speler nog steeds startend met de
+AMSTEL-9. Zo is het mes te testen zonder dat de start-staat al verbouwd is.
+
+**Werk.**
+- `mesStaat = { cooldownTimer }` (§12.3, beslissing 95) — bewust géén entry
+  in `wapenStaten`.
+- Constanten met de onderbouwing uit §12.4 als codecommentaar:
+  `MES_SCHADE = 1`, `MES_BEREIK = 1.2`, `MES_COOLDOWN = 0.6`.
+- `steekMes()`: korte raycast vanuit het camera-midden met
+  `raycaster.far = MES_BEREIK`, tegen `ondodenGroep` — hergebruikt de
+  bestaande hitbox-proxy-infrastructuur (layers, `userData.lichaamsdeel`)
+  zodat er geen tweede trefferpad ontstaat.
+- `raakOndode()` krijgt een optionele `geldAlsKop`-parameter (§12.4), in
+  exact dezelfde stijl als Fix 5's `schadeFactor`: default `false`,
+  verandert alleen de geld-multiplier, nooit de schade of de hitmarker-tier.
+- `V`-handler met het bestaande `!e.repeat` + pointer-lock-patroon.
+- Mesmodel + een korte steek-animatie. Voorlopig model — T137/T138 herzien
+  het uiterlijk.
+- Eigen geluid via Web Audio (geen bestand), in de stijl van de bestaande
+  `speel*`-functies.
+
+**Acceptatie.**
+- Nieuw `tests/test-mes.mjs`: schade exact `MES_SCHADE`; 1-hit-kill op een
+  normale ondode t/m golf 4 en **niet** meer op golf 5; treffer buiten
+  `MES_BEREIK` mist; cooldown blokkeert een tweede steek binnen
+  `MES_COOLDOWN`; een mes-kill levert `GELD_PER_KILL * HEADSHOT_GELD_MULTIPLIER`
+  op; een mes-treffer op de kop geeft **geen** `HEADSHOT_EXTRA` (beslissing 97).
+- Geen mondingsvlam, tracer of munitieverbruik bij een steek —
+  `test-mondingsvlam.mjs` blijft ongewijzigd groen.
+
+---
+
+### Ticket 134 — AMSTEL-9 als kooppunt; de speler start met het mes
+
+**Doel.** De eigenlijke Fix 6-omslag.
+
+**Werk.**
+- `wapenStaten.drukspuit` start op `null`; `actiefWapenNaam` start op
+  `'mes'`.
+- `koopAmstel9()` — zelfde patroon als `koopRatelaar()`: prijscheck, geld
+  af, `nieuweWapenStaat(WAPEN_DRUKSPUIT)`, en meteen naar dat wapen wisselen
+  (gebruikerseis: na aankoop is het je actieve wapen).
+- **Na de eerste vuurwapen-aankoop komt `actiefWapenNaam` nooit meer op
+  `'mes'`** — dat is een harde eis, geen bijeffect. Leg 'm vast in de test.
+- Wapenrek tegen de westmuur (§12.5): `AMSTEL9_X = -HALF_BREEDTE + 0.6`,
+  `AMSTEL9_Z = 0`, `AMSTEL9_PRIJS = 450`. Zelfde opbouw als het Canal
+  Ripper-rek, X-as gespiegeld, met AMSTEL-9-silhouetdelen. **Geen collision**
+  (net als het Ratelaar-rek).
+- `WINKEL_STIJLEN.amstel9` + `winkelMarkering` + interactiepunt.
+- De 21 testbestanden migreren volgens §12.8: het merendeel via
+  `geefSpelerVuurwapen()`, de vijf wapensysteem-tests inhoudelijk.
+
+**Acceptatie.**
+- Bij het laden: `actiefWapenNaam === 'mes'`, `wapenStaten.drukspuit === null`,
+  HUD toont `Mes` en `0 / 0`.
+- Kooppad: te weinig geld doet niets; met €450 wordt de AMSTEL-9 het actieve
+  wapen; nogmaals kopen is een no-op.
+- Na aankoop schakelt `V` niet meer het *actieve* wapen — het steekt alleen.
+- `Q` doet niets met één vuurwapen, en wisselt correct zodra de Canal Ripper
+  er ook is.
+- `test-visuele-basislijn.mjs`: `interactiePunten` 13 → 14 bijgewerkt **met
+  onderbouwing**; `obstakels` blijft 58 (rek zonder collision). Verschuift de
+  helderheidsbasislijn door het nieuwe HUD-label of het mesmodel in beeld,
+  werk 'm dan bij mét gemeten waarden en reden — zie de HUD-tekst-precedent
+  in §12.7.
+
+---
+
+### Ticket 135 — Randgevallen: Smederij, Auto loader, HUD, reset
+
+**Doel.** De tabel uit §12.6 volledig implementeren en vastleggen.
+
+**Werk + acceptatie (één test per rij).**
+- `koopSmederij()` met alleen een mes: weigert met een melding, schrijft geen
+  geld af.
+- Auto loader gekocht terwijl je alleen een mes hebt: geen effect, en de vlag
+  werkt alsnog zodra je een vuurwapen koopt.
+- HUD met mes: `0 / 0`, label `Mes`, geen ★ en geen ⟳.
+- Game over → nieuwe run: terug naar alleen het mes, `wapenStaten.drukspuit`
+  weer `null`.
+- `V` tijdens herladen werkt; `V` binnen de cooldown wordt genegeerd.
+
+---
+
+### Ticket 136 — Golf-1-balans meten en bijstellen
+
+**Doel.** De vraag die je pas kúnt beantwoorden als T132-T135 draaien: hoe
+lang duurt het om met alleen een mes €450 bij elkaar te krijgen, en is dat
+leuk of frustrerend?
+
+**Werk.**
+- Meet in een headless run: gemiddeld aantal golven en verstreken tijd tot
+  €450, en hoeveel schade de speler daarbij oploopt.
+- Weeg af tegen de bestaande beloningen (`GELD_PER_KILL` 20,
+  `HEADSHOT_GELD_MULTIPLIER` 2, `WAVE_BONUS_BASIS` 75 +
+  `WAVE_BONUS_PER_GOLF` 15).
+- Stel bij via `AMSTEL9_PRIJS` of de mes-constanten — **niet** via de
+  HP-trap (ontwerpbeslissing 10).
+
+**Acceptatie.** Een gemeten, in het ticket vastgelegd antwoord op "in welke
+golf heeft een gemiddelde speler de AMSTEL-9?", plus de onderbouwing van
+een eventuele prijsbijstelling. Als er niets bijgesteld hoeft: leg dát vast,
+met de meting.
+
+---
+
+### Ticket 137 — Visuele spec en budget voor de tier-visuals
+
+**Doel.** Vóór er één model gebouwd wordt: vastleggen hoe basis / 1x gesmeed
+/ 2x gesmeed er per wapen uitzien, en wat dat mag kosten.
+
+**Werk.**
+- Vormtaal per tier per wapen (AMSTEL-9, Canal Ripper, en de keuze of het
+  mes tiers krijgt — het mes kán niet gesmeed worden, dus waarschijnlijk
+  één vaste look).
+- Budget per `smederijVisuals*`-Group binnen de bestaande grens van **≤ 5
+  meshes en 0 lichten** (§12.7 vangrail 1). Tier 2 moet binnen datzelfde
+  budget passen, óf het budget wordt met onderbouwing verruimd en
+  `test-smederij.mjs` mee bijgewerkt.
+- Vooraf begroten wat dit met `test-visuele-basislijn.mjs` doet (§12.7
+  vangrail 4): welke standpunten kunnen verschuiven, en met hoeveel.
+- Bevestigen dat de `vlam`-structuur (Group van exact 2 `PlaneGeometry`)
+  intact blijft.
+
+**Acceptatie.** Een spec waar T138/T139 rechtstreeks uit te bouwen zijn,
+zonder dat er nog ontwerpkeuzes open staan.
+
+---
+
+### Ticket 138 — AMSTEL-9 in drie tiers
+
+Bouwt de spec uit T137 voor de AMSTEL-9. Additief per tier (beslissing 98).
+Acceptatie: de drie tiers zijn visueel duidelijk te onderscheiden;
+mesh-/lichtbudget gehaald; `test-smederij.mjs` en `test-mondingsvlam.mjs`
+groen; basislijn bijgewerkt mét gemeten onderbouwing als hij verschuift.
+
+---
+
+### Ticket 139 — Canal Ripper in drie tiers
+
+Idem voor de Canal Ripper, plus de mes-look als T137 daartoe besloot.
+Afsluitend: volledige regressiesuite + een voor/na-beeldverslag van alle
+tiers naast elkaar, in de stijl van de eerdere fase-beeldverslagen.

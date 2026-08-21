@@ -8136,3 +8136,278 @@ draagt). `tests/helpers.mjs` verloor de bijbehorende
 **Resultaat.** Functioneel en visueel identiek aan de laatst goedgekeurde
 V2-staat uit T127/de speeltest-fixes — dit ticket verplaatst geen enkele
 pixel, het verwijdert alleen het pad dat toch al niet meer gekozen werd.
+
+
+## 12. Ronde 10 (v0.24) — Arsenaal-herstructurering: het mes, de wapenwinkel en wapenvisuals
+
+### 12.1 Scope en aanleiding
+
+Twee gebruikerswensen die op het eerste gezicht los staan, maar dezelfde
+code raken:
+
+- **Fix 6.** De speler start met een klein mes in plaats van een geladen
+  pistool. De AMSTEL-9 wordt een kooppunt (€450) tegen de westmuur van de
+  startruimte. Na aankoop is de AMSTEL-9 het actieve wapen en is het mes
+  alleen nog via `V` te gebruiken — niet meer als "in de hand te nemen"
+  wapen. `Q` blijft uitsluitend tussen AMSTEL-9 en Canal Ripper wisselen.
+  Elke mes-kill betaalt op headshot-niveau.
+- **Fix 7.** Volledige visuele herziening van het arsenaal, met een eigen
+  uiterlijk per Smederij-tier (basis / 1x gesmeed / 2x gesmeed).
+
+Fix 6 is geen feature bovenop het wapensysteem maar een verbouwing van de
+kern ervan, en Fix 7 bouwt op de modellen die Fix 6 introduceert. Vandaar
+één architectuurronde en een strikte volgorde: Fix 6 volledig af (T132-T136)
+vóór Fix 7 (T137-T139) begint.
+
+### 12.2 Waarom dit niet één ticket kan zijn — drie invarianten sneuvelen
+
+Het huidige wapenmodel (§1 codekaart, "Wapendefinities + actieve wapen-staat")
+draagt drie aannames die overal in de code én in de tests zijn ingebakken:
+
+1. **`wapenStaten.drukspuit` bestaat altijd.** De initialisatie is
+   `const wapenStaten = { drukspuit: nieuweWapenStaat(WAPEN_DRUKSPUIT), ratelaar: null };`
+   — de Drukspuit/AMSTEL-9 is er vanaf frame 0, geladen en wel. Na Fix 6
+   start hij op `null`, precies zoals de Ratelaar nu.
+2. **`actiefWapenNaam` is altijd één van twee vuurwapens.** Elke afgeleide
+   lezing (`wapenStaat.definitie.naam` in de HUD, `meterDrukspuit` vs
+   `tandwielRatelaar` in `koopSmederij()`, `WAPEN_DRUKSPUIT.groep.visible`
+   in `wisselWapen()`) gaat daarvan uit.
+3. **`wisselWapen()` is een pure toggle.** Geen argument, geen doelwapen:
+   `actiefWapenNaam = actiefWapenNaam === 'drukspuit' ? 'ratelaar' : 'drukspuit'`.
+   Fix 6 vraagt twee verschillende schakel-semantieken naast elkaar.
+
+**Testimpact, gemeten.** 21 van de 83 testbestanden lezen of schrijven
+`wapenStaat` / `actiefWapenNaam` / `wisselWapen` / `schiet()`:
+`meet-zombie-v1-baseline`, `test-camerabeweging`, `test-effecten-pool`,
+`test-hitmarker-audio`, `test-inslagen-rijker`, `test-map-lus-zone-e-inhoud`,
+`test-materiaal-families`, `test-mondingsvlam`, `test-ondode-doodsanimaties`,
+`test-ondode-hitreacties`, `test-ondode-model`, `test-ondode-vormen`,
+`test-powerups`, `test-score-stats`, `test-smederij-verhuizing`,
+`test-smederij`, `test-stadsarchief`, `test-v016-integratie`, `test-vliering`,
+`test-wapen-identiteit`, `test-winkel-status`. Veruit de meeste daarvan
+gebruiken `d.schiet()` alleen als *middel* om schade toe te brengen (en gaan
+er impliciet van uit dat de speler een geladen wapen vasthoudt), niet omdat
+ze het wapensysteem zelf testen. Dat onderscheid bepaalt de migratie in §12.8.
+
+### 12.3 Het nieuwe datamodel: één arsenaal, twee schakelklassen
+
+De kern van deze ronde is dat "welk wapen is actief" en "welk wapen mag je
+kiezen" uit elkaar getrokken worden.
+
+```
+ARSENAAL (nieuw, vervangt de impliciete twee-wapen-aanname)
+  mes        — klasse 'mes',      altijd bezeten, nooit kiesbaar via Q
+  drukspuit  — klasse 'vuurwapen', bezit via koopAmstel9()  (€450)
+  ratelaar   — klasse 'vuurwapen', bezit via koopRatelaar() (€750)
+```
+
+Twee onafhankelijke stukjes state:
+
+- **`actiefWapenNaam`** — wat je in je handen hebt en wat `schiet()` gebruikt.
+  Zolang je nog geen vuurwapen bezit is dit `'mes'`. Zodra het eerste
+  vuurwapen gekocht wordt springt dit daarheen en komt het **nooit meer**
+  terug op `'mes'` (gebruikerseis: "zodra er een wapen wordt gekocht is dat
+  je actieve wapen en kan je niet meer actief het mes erbij pakken").
+- **`mesGereed`** — het mes is er altijd; `V` voert een *steek-actie* uit
+  zonder `actiefWapenNaam` aan te raken. Het mes is dus ná de eerste aankoop
+  geen selecteerbaar wapen meer maar een aparte actie, precies zoals `R`
+  (herladen) of `T` (interactie) dat zijn.
+
+Daaruit volgen de twee schakel-semantieken:
+
+| Toets | Werking | Voorwaarde |
+|---|---|---|
+| `Q` | Wisselt **uitsluitend** tussen `drukspuit` en `ratelaar` | Beide gekocht |
+| `V` | Voert een steek uit met het mes, in élke wapenstaat | Altijd |
+
+`wisselWapen()` krijgt dus een expliciete gate op "bezit ik twee vuurwapens"
+in plaats van de huidige `if (!ratelaarGekocht) return;` — functioneel
+dezelfde vorm, maar nu met de AMSTEL-9 als tweede voorwaarde in plaats van
+als gegeven.
+
+**Ontwerpbeslissing 95.** Het mes is geen derde entry in `wapenStaten` maar
+een aparte, veel eenvoudiger struct. Een `wapenStaat` draagt
+`magazijn`/`reserve`/`herladen`/`herlaadTimer`/`herlaadDuur`/`gesmeed`/
+`gesmeedNiveau2` — het mes heeft van al die zeven velden er nul zinnig. Het
+mes in dezelfde struct persen zou elke lezer van `wapenStaat` dwingen om
+overal `if (actiefWapenNaam === 'mes')` te schrijven; een aparte
+`mesStaat` met alleen `{ cooldownTimer }` houdt de vuurwapen-code
+letterlijk ongewijzigd.
+
+### 12.4 Het mes: mechaniek en balans
+
+De gebruikerseis is "tot ronde 4-6 ergens een 1-hit-kill op een normale
+zombie". De HP-trap is bewust grofmazig (ontwerpbeslissing 10, de
+anti-bullet-sponge-borg) en kent maar vier treden:
+
+| Golf | HP normale ondode |
+|---|---|
+| 1-4 | 1 |
+| 5-10 | 2 |
+| 11-15 | 3 |
+| 16+ | 4 |
+
+Daaruit volgt dat er **geen waarde bestaat die precies bij golf 5 of 6
+ophoudt**: schade 1 geeft een 1-hit-kill t/m golf 4, schade 2 geeft er één
+t/m golf **10**. De trap verbouwen om golf 6 exact te raken zou
+ontwerpbeslissing 10 aantasten voor een detail — dat doen we niet.
+
+**Ontwerpbeslissing 96: `MES_SCHADE = 1`.** Dat legt de grens op golf 4, de
+onderkant van de gevraagde marge. Schade 2 zou het mes t/m golf 10 dodelijk
+maken en daarmee de €450-aankoop zinloos: je zou pas in golf 11 een reden
+hebben om een vuurwapen te kopen, terwijl de hele Fix 6-opzet juist is dat
+je zo snel mogelijk wíl upgraden.
+
+Merk op dat het mes daarmee in golf 1-4 exact evenveel schade doet als de
+AMSTEL-9 (`schadePerTreffer` = 1). Dat is bedoeld: **je koopt het pistool
+niet voor DPS maar voor afstand.** Zie de bereikkeuze hieronder — met een
+mes moet je gegarandeerd de gevarenzone van de ondode in.
+
+| Constante | Waarde | Onderbouwing |
+|---|---|---|
+| `MES_SCHADE` | 1 | 1-hit-kill t/m golf 4 (zie boven) |
+| `MES_BEREIK` | 1.2 m | Korter dan `AANVAL_START_BEREIK` (1.4): om te kunnen steken moet je *altijd* binnen de afstand komen waarop de ondode zijn wind-up mag starten. De ondergrens is `SPELER_ONDODE_BOTSING_STRAAL` (0.75) — dichterbij dan dat kun je fysiek niet komen, dus 1.2 laat een werkbare marge van 0.45 m |
+| `MES_COOLDOWN` | 0.6 s | Binnen de gevraagde 0,5-1 s; snel genoeg voor twee ondoden achter elkaar, te traag om te spammen |
+
+**Ontwerpbeslissing 97: het mes kent geen kop/lichaam-onderscheid.** Een
+steek is geen precisieschot. `raakOndode()` wordt aangeroepen met
+`kop = false`, dus zonder `HEADSHOT_EXTRA`. Dat is consistent met de
+gebruikerseis dat *elke* mes-kill headshot-geld betaalt: als het mes wél
+kop-treffers kende, zou "altijd headshot-geld" een rare dubbeling zijn.
+
+**Kill-geld.** De gebruikerseis is "elke mes kill krijgt headshot geld".
+`raakOndode()` rekent nu
+`GELD_PER_KILL * geldMultiplier * geldFactor * (kop ? HEADSHOT_GELD_MULTIPLIER : 1)`.
+Het mes heeft dus een pad nodig dat `HEADSHOT_GELD_MULTIPLIER` toepast
+zónder `kop = true` te zetten (want dat zou ook `HEADSHOT_EXTRA` schade
+geven en de hitmarker-tier op `'kop'` zetten). Concreet: een extra,
+optionele parameter op `raakOndode()` in dezelfde stijl als de
+`schadeFactor` uit Fix 5 — bijvoorbeeld `geldAlsKop`. Zie T133.
+
+**Wat het mes níét doet:** geen mondingsvlam, geen tracer, geen
+`vlamLicht`, geen munitie, geen herladen, geen spread, geen `cameraKick`
+uit `kickSterkte` (wel een eigen, kleine zwaai-animatie). Het raakt
+daarmee geen enkele bestaande vlam-/tracer-/munitie-invariant.
+
+### 12.5 De AMSTEL-9 als kooppunt (westmuur startruimte)
+
+Plaatsing volgens gebruikerskeuze: **tegen de westmuur van de startruimte,
+met hetzelfde wapenrek-uiterlijk als het Canal Ripper-kooppunt.**
+
+De startruimte loopt van `x = -HALF_BREEDTE` (-4.5) tot `+4.5` en
+`z = -HALF_DIEPTE` (-5) tot `+5`. Bestaande interactiepunten daar zijn
+alleen deur 1 (`0, 0, DEUR_Z + 0.7`) en de ammo-kist (`3, 0, -2`); tegen de
+westmuur staat niets — geverifieerd, geen enkel object op `x ≈ -4.x` binnen
+`|z| < 5`. Ruimte genoeg.
+
+Het Canal Ripper-rek (§1, "Wandkooppunt De Ratelaar") is zes meshes plus een
+`winkelMarkering`: `achterplaat` (0.12 × 1.2 × 1.25), `loop` (cilinder),
+`kolf`, `steunBoven`, `steunOnder`, `bordje`. Voor de AMSTEL-9 wordt dat
+gespiegeld naar de westmuur — dezelfde opbouw, X-as omgeklapt, en de `loop`/
+`kolf` vervangen door de AMSTEL-9-silhouetdelen zodat je aan het rek ziet
+wélk wapen er hangt.
+
+| Constante | Waarde |
+|---|---|
+| `AMSTEL9_PRIJS` | 450 |
+| `AMSTEL9_X` | `-HALF_BREEDTE + 0.6` (= -3.9) |
+| `AMSTEL9_Z` | 0 (midden van de westmuur, ruim weg van deur 1 en de ammo-kist) |
+
+`WINKEL_STIJLEN` krijgt een `amstel9`-entry met dezelfde drie-traps
+statuslogica als `ratelaar` (`gekocht` / `beschikbaar` / `teDuur`).
+
+**Let op de invarianten in `test-visuele-basislijn.mjs`:** die bewaakt
+`interactiePunten.length === 13` en `obstakels.length === 58`. Het nieuwe
+kooppunt maakt daar 14 van; het rek krijgt — net als het Ratelaar-rek —
+**geen** collision, dus `obstakels` blijft 58. Beide met onderbouwing
+bijwerken, niet stilzwijgend.
+
+### 12.6 Randgevallen — expliciet vastgelegd
+
+| Situatie | Gedrag | Reden |
+|---|---|---|
+| Smederij met alleen een mes | Weigert, met melding | Gebruikerseis: het mes kan niet gesmeed worden. `koopSmederij()` smeedt "het actieve wapen"; met `actiefWapenNaam === 'mes'` is er geen `wapenStaat` om te smeden |
+| Smederij ná de eerste aankoop | Ongewijzigd | Dan is het actieve wapen altijd een vuurwapen |
+| Auto loader met alleen een mes | Doet niets | Gebruikerseis: er valt niets te herladen. De vlag blijft gewoon gezet en werkt zodra je een vuurwapen hebt |
+| HUD-munitie met het mes | `0 / 0` | Gebruikerskeuze |
+| HUD-wapenlabel met het mes | `Mes` (zonder ★/⟳) | Het mes kent geen Smederij-tier en geen auto-herlaad |
+| Game over / nieuwe run | Terug naar alleen het mes | De AMSTEL-9 is een aankoop binnen een run, net als de Canal Ripper |
+| `V` tijdens herladen | Werkt gewoon | Het mes staat los van de vuurwapen-staat; dat is juist het punt van "altijd op de achtergrond" |
+| `V` tijdens de mes-cooldown | Genegeerd | Zelfde `!e.repeat` + pointer-lock-patroon als `T`/`R` (zie §1, "Bekende valkuilen") |
+
+### 12.7 Wapenvisuals in drie tiers (Fix 7)
+
+Fix 7 vraagt een eigen uiterlijk per Smederij-tier. De huidige situatie is
+asymmetrisch: tier 1 krijgt een accentkleur-mutatie plus een vooraf
+gebouwde `smederijVisuals*`-Group die zichtbaar wordt, en **tier 2 heeft
+visueel niets** — Fix 5 paste bewust alleen dezelfde tier-1-visual opnieuw
+toe.
+
+**Harde vangrails die de spec moet respecteren:**
+
+1. `test-smederij.mjs` bewaakt **≤ 5 meshes en 0 lichten** per
+   `smederijVisuals*`-Group. Het ember-lichtje is in de perf-audit bewust
+   verwijderd (§7.9); tier 2 mag dat niet terugbrengen.
+2. `test-mondingsvlam.mjs` eist dat elke `vlam` een Group van **exact twee**
+   `PlaneGeometry`-vlakken blijft, met de kleur op
+   `userData.vlamMateriaal`.
+3. De emissie-hiërarchie uit §10.5 (`EMISSIE_BRON_*` / `EMISSIE_SIGNAAL_*`)
+   is bindend: het gesmede accent zit op Bron-niveau (1.4), niet hoger.
+4. **De visuele basislijn kan verschuiven.** Het wapenmodel hangt aan de
+   camera op `(0.26, -0.22, -0.5)` en valt daarmee deels binnen het
+   15-85%-meetvenster van `pixelstats()`. Dat dit meetbaar is, is deze ronde
+   empirisch aangetoond: alleen al het vervangen van de HUD-**tekst**
+   "Drukspuit" door "AMSTEL-9" verschoof de vliering-mediaan van 7,69 naar
+   9,06 — ruim buiten de 2%-band. Een nieuw wapenmodel is een veel grotere
+   ingreep. T137 begroot dit vooraf.
+
+**Ontwerpbeslissing 98: de tier-visual is additief, niet vervangend.** Elke
+tier voegt onderdelen toe aan hetzelfde basismodel in plaats van een compleet
+tweede model te tonen. Drie complete modellen per wapen zou het
+mesh-/geheugenbudget verdrievoudigen voor iets wat de speler nooit naast
+elkaar ziet, en zou de `vlam`/`vlamLicht`-referenties in `WAPEN_*` per tier
+moeten dupliceren.
+
+De concrete vormtaal per tier — welke onderdelen, welke kleuren, welk
+silhouet — wordt in T137 vastgelegd, niet hier: dat is een ontwerpstap met
+eigen beeldmateriaal, geen architectuurkeuze.
+
+### 12.8 Migratiestrategie voor de 21 testbestanden
+
+Het onderscheid uit §12.2 is de sleutel: de meeste van die 21 bestanden
+testen het wapensysteem niet, ze *gebruiken* het.
+
+- **Bestanden die `schiet()` als schade-middel gebruiken** (de meerderheid:
+  `test-ondode-*`, `test-powerups`, `test-effecten-pool`,
+  `test-inslagen-rijker`, `test-materiaal-families`, …) krijgen één
+  gedeelde helper in `tests/helpers.mjs`, bijvoorbeeld
+  `geefSpelerVuurwapen(page)`, die vóór de eigenlijke test de AMSTEL-9
+  toekent. Eén regel per bestand, geen assertie verandert.
+- **Bestanden die het wapensysteem zélf testen** (`test-wapen-identiteit`,
+  `test-smederij`, `test-mondingsvlam`, `test-winkel-status`,
+  `test-smederij-verhuizing`) worden inhoudelijk bijgewerkt: die moeten de
+  nieuwe start-staat en de nieuwe schakel-semantiek juist wél vastleggen.
+
+**Ontwerpbeslissing 99: T132 levert het datamodel op met de complete suite
+groen, vóórdat er één gram mes-gameplay bestaat.** De verleiding is om mes
+en datamodel in één klap te doen; dan debug je een nieuw wapen en een
+verbouwde kern tegelijk, met 21 rode testbestanden als ruis. T132 is
+daarom expliciet gedragsneutraal: de speler start nog steeds met de
+AMSTEL-9 in de hand, alleen de *structuur* eromheen is nieuw.
+
+### 12.9 Volgorde en afhankelijkheden
+
+```
+T132 datamodel (gedragsneutraal, suite groen)
+  └─ T133 het mes (mechaniek + voorlopig model)
+       └─ T134 AMSTEL-9-kooppunt + speler start wapenloos
+            └─ T135 randgevallen (Smederij/Auto loader/HUD/reset)
+                 └─ T136 golf-1-balans meten en bijstellen
+                      └─ T137 visuele spec + budget  ─┐
+                           ├─ T138 AMSTEL-9 in 3 tiers │ Fix 7
+                           └─ T139 Canal Ripper in 3 tiers ┘
+```
+
+T136 is bewust een eigen ticket: pas als het complete Fix 6-pad speelbaar is
+kun je meten hoe lang €450 bij elkaar messen duurt, en dat is een
+balansvraag die je meet en niet gokt.
