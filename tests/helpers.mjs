@@ -224,6 +224,37 @@ export async function zetVisueelStandpunt(page, standpunt) {
   await frames(page, 3);
 }
 
+// Ticket 132 (Ronde 10, §12.8): zorgt dat de speler een GELADEN VUURWAPEN in
+// handen heeft vóór de eigenlijke test begint.
+//
+// Waarom deze helper bestaat: 21 testbestanden gebruiken `d.schiet()` puur als
+// MIDDEL om schade toe te brengen, niet omdat ze het wapensysteem testen. Die
+// gaan er impliciet van uit dat de speler bij het laden al een geladen wapen
+// vasthoudt. Vanaf T134 klopt die aanname niet meer (de speler start met een
+// mes), en dan moet elk van die bestanden precies één regel bijkrijgen — deze
+// — in plaats van 21 losse ad-hoc oplossingen.
+//
+// In dit ticket is de helper nog een no-op-met-aanvulling: de Drukspuit-staat
+// bestaat al bij het laden, dus hij vult alleen het magazijn en zet een
+// eventueel lopend herladen stop. Nog geen enkel testbestand roept 'm aan
+// (bewust — T132 is gedragsneutraal). T134 breidt 'm uit met het toekennen
+// van de AMSTEL-9 zodra die niet meer standaard in bezit is.
+export async function geefSpelerVuurwapen(page) {
+  await page.evaluate(() => {
+    const d = window.AmsterdamUndeadDebug;
+    if (!d.wapenStaat) {
+      // Vanaf T134 bereikbaar: dan moet deze helper het wapen zelf toekennen.
+      // Bewust hard falen i.p.v. stil doorgaan — een test die denkt te
+      // schieten maar dat niet doet, geeft een onbegrijpelijke assertie-fout
+      // ver verderop.
+      throw new Error('geefSpelerVuurwapen: geen vuurwapen in bezit — T134 moet deze helper uitbreiden');
+    }
+    d.wapenStaat.herladen = false;
+    d.wapenStaat.herlaadTimer = 0;
+    d.wapenStaat.magazijn = d.wapenStaat.magazijnMax;
+  });
+}
+
 // Eenvoudige pass/fail-teller met dezelfde console-output als de bestaande
 // scratchpad-tests ([OK]/[FAIL] per regel, samenvatting aan het eind).
 export function makeChecker() {

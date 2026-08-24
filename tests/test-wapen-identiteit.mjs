@@ -5,7 +5,7 @@
 // spreiding maar de Drukspuit blijft exact op het midden, de herlaad-dip
 // beweegt de wapen-groep en keert exact terug, en de wisselanimatie zet een
 // timer + geluid.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, frames } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
 const { check, report } = makeChecker();
@@ -170,6 +170,90 @@ const wisselNa = await wachtTotConditie(
 );
 check('Na WISSEL_DUUR is wisselTimer 0 en staat de actieve wapen-groep weer exact op de rust-y',
   wisselNa.wisselTimer === 0 && wisselNa.y === wisselNa.basisY, wisselNa);
+
+// --- 5. Ticket 132: het ARSENAAL en de twee schakelklassen ---------------
+const arsenaal = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  return {
+    sleutels: Object.keys(d.ARSENAAL),
+    klassen: Object.fromEntries(Object.entries(d.ARSENAAL).map(([k, v]) => [k, v.klasse])),
+    definitieKlopt: d.ARSENAAL.drukspuit.definitie === d.WAPEN_DRUKSPUIT
+      && d.ARSENAAL.ratelaar.definitie === d.WAPEN_RATELAAR,
+    heeftPresentatie: Object.values(d.ARSENAAL).every(v => v.presentatie && v.audio),
+  };
+});
+check('ARSENAAL bevat beide vuurwapens, elk met klasse "vuurwapen"',
+  arsenaal.sleutels.length === 2 && arsenaal.klassen.drukspuit === 'vuurwapen'
+  && arsenaal.klassen.ratelaar === 'vuurwapen', arsenaal);
+check('ARSENAAL-entries wijzen naar de bestaande WAPEN_*-definities (geen kopie)',
+  arsenaal.definitieKlopt, arsenaal);
+check('Elke ARSENAAL-entry heeft een presentatie- en audio-subobject (vorm voor T140/T137/T153)',
+  arsenaal.heeftPresentatie, arsenaal);
+
+const gate = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const metBeide = d.bezitTweeVuurwapens();
+  const bewaard = d.wapenStaten.ratelaar;
+  d.wapenStaten.ratelaar = null;
+  const metEen = d.bezitTweeVuurwapens();
+  d.wapenStaten.ratelaar = bewaard;
+  return { metBeide, metEen, herstel: d.bezitTweeVuurwapens() };
+});
+check('bezitTweeVuurwapens(): waar met twee vuurwapens, onwaar met één (vervangt de ratelaarGekocht-vlag als Q-gate)',
+  gate.metBeide === true && gate.metEen === false && gate.herstel === true, gate);
+
+// --- 6. Ticket 132: nieuwe runtimevelden, gereserveerd maar ongebruikt ----
+const velden132 = await page.evaluate(() => {
+  const s = window.AmsterdamUndeadDebug.nieuweWapenStaat(window.AmsterdamUndeadDebug.WAPEN_DRUKSPUIT);
+  return { spreadOpbouw: s.spreadOpbouw, recoilFase: s.recoilFase };
+});
+check('nieuweWapenStaat() reserveert spreadOpbouw en recoilFase, allebei op 0 (T142/T143 vullen ze)',
+  velden132.spreadOpbouw === 0 && velden132.recoilFase === 0, velden132);
+
+// --- 7. Ticket 132 / ontwerpbeslissing 100: inHandGroep volgt het wapen ---
+const inHand = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const voorNaam = d.actiefWapenNaam;
+  const voorKlopt = d.inHandGroep === d.wapenStaat.definitie.groep;
+  d.wapenStaat.herladen = false;
+  d.wisselWapen();
+  return {
+    voorNaam, voorKlopt, naNaam: d.actiefWapenNaam,
+    naKlopt: d.inHandGroep === d.wapenStaat.definitie.groep,
+    isGroep: !!d.inHandGroep && d.inHandGroep.isObject3D === true,
+  };
+});
+check('inHandGroep wijst naar de Group van het actieve wapen, vóór én na een wissel',
+  inHand.voorKlopt && inHand.naKlopt && inHand.voorNaam !== inHand.naNaam, inHand);
+check('inHandGroep is een echte Object3D (nooit null)', inHand.isGroep, inHand);
+
+// --- 8. Ticket 132 / §13.3: het null-contract van wapenStaat -------------
+// De kern van dit ticket. Vanaf T134 is `wapenStaat` null zodra de speler een
+// mes vasthoudt; de sway/lean-write in de gameLoop draaide toen nog ELKE
+// frame zonder guard en zou dan meteen crashen. Deze test bewijst dat een
+// frame met wapenStaat === null geen enkele fout meer oplevert.
+const foutenVoorNulTest = errs.length;
+await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  window.__bewaardeWapenStaat = d.wapenStaat;
+  d.wapenStaat = null;
+});
+// Ruim genoeg frames om alle geconditioneerde takken (terugslag, wisseldip,
+// vlamdoving) minstens één keer voorbij te laten komen.
+await frames(page, 12);
+await page.waitForTimeout(200);   // pageerror-events komen asynchroon binnen
+const nulTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const groepNogSteeds = !!d.inHandGroep;
+  d.wapenStaat = window.__bewaardeWapenStaat;   // herstellen vóór de rest van de suite
+  delete window.__bewaardeWapenStaat;
+  return { groepNogSteeds, hersteld: !!d.wapenStaat };
+});
+check('Met wapenStaat === null draaien 12 frames zonder één console-/page-error (§13.3, OB100)',
+  errs.length === foutenVoorNulTest, { nieuweFouten: errs.slice(foutenVoorNulTest) });
+check('inHandGroep blijft bestaan terwijl wapenStaat null is (presentatie los van gameplay)',
+  nulTest.groepNogSteeds === true, nulTest);
+check('wapenStaat is na de null-test correct hersteld', nulTest.hersteld === true, nulTest);
 
 const fails = report(errs);
 await browser.close();

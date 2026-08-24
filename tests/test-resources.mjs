@@ -40,13 +40,44 @@ async function zetPointerLockUit() {
    ================================================================ */
 const aVoor = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  // Patch Material.prototype.dispose (2 niveaus boven een concrete
-  // instantie, want MeshStandardMaterial/MeshBasicMaterial erven 'm
-  // ongewijzigd over) zodat we — ongeacht of T69/T70 al landde —
-  // objectief kunnen tellen of .dispose() ooit wordt aangeroepen.
-  // Nulmeting uit de audit: 0 dispose()-calls in het hele bestand.
+  // Patch Material.prototype.dispose zodat we objectief kunnen tellen of
+  // .dispose() ooit wordt aangeroepen. Nulmeting uit de audit: 0 calls.
+  //
+  // Fix (gevonden tijdens T132): dit ging via
+  // `Object.getPrototypeOf(Object.getPrototypeOf(delen.oogMateriaal))` — twee
+  // vaste stappen vanaf een concreet materiaal. Sinds **Ticket 122**
+  // (Zombie V2) is `delen.oogMateriaal` géén THREE.Material meer maar een plat
+  // shim-object met alleen een `emissiveIntensity`-setter naar de
+  // shader-uniform. Twee stappen vanaf een plat object komen uit op `null`,
+  // waarna deze regel gooide en het HELE script afbrak vóór check 1 — alle
+  // lek-vangrails hieronder hebben sindsdien niet meer gedraaid.
+  //
+  // Nu twee keer robuuster: (1) haal een ECHT materiaal uit de mesh-tree in
+  // plaats van uit `delen`, zodat een shim in `delen` dit nooit meer kan
+  // breken; (2) zoek de prototype die `dispose` als EIGEN property heeft, in
+  // plaats van een vast aantal stappen te tellen.
+  //
+  // Dat tweede punt is preciezer dan het lijkt. De keten is gemeten:
+  //   MeshStandardMaterial.prototype  (geen eigen dispose)
+  //   Material.prototype              (eigen dispose)   <- dit willen we
+  //   EventDispatcher.prototype       (geen eigen dispose)
+  //   Object.prototype
+  // In three.js geldt `class Material extends EventDispatcher`, dus zowel
+  // "twee stappen omhoog" als "klim tot vlak vóór Object.prototype" landt
+  // ernaast — die laatste komt op EventDispatcher.prototype uit, waar een
+  // toegevoegde dispose door Material.prototype.dispose wordt GESCHADUWD.
+  // De patch lijkt dan te werken maar telt stilletjes 0 calls.
   const proefOndode = d.spawnOndode(0);
-  const materialProto = Object.getPrototypeOf(Object.getPrototypeOf(proefOndode.delen.oogMateriaal));
+  let proefMateriaal = null;
+  proefOndode.groep.traverse(o => {
+    if (!proefMateriaal && o.isMesh && o.material && o.material.isMaterial) proefMateriaal = o.material;
+  });
+  if (!proefMateriaal) throw new Error('test-resources: geen echt THREE.Material gevonden op een ondode');
+  let materialProto = Object.getPrototypeOf(proefMateriaal);
+  while (materialProto && !Object.prototype.hasOwnProperty.call(materialProto, 'dispose')) {
+    materialProto = Object.getPrototypeOf(materialProto);
+  }
+  if (!materialProto) throw new Error('test-resources: geen prototype met een eigen dispose() gevonden');
   if (!materialProto.__origDispose) {
     materialProto.__origDispose = materialProto.dispose;
     materialProto.dispose = function (...a) {

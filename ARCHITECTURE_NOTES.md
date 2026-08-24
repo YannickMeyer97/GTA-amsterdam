@@ -8520,9 +8520,22 @@ Volledige inventaris, naar risico gerangschikt:
 
 | Categorie | Plekken |
 |---|---|
-| Per-frame, ongeguard | gameLoop sway/lean (`position.x`, `rotation.z`) |
+| Per-frame, ongeguard | gameLoop sway/lean (`position.x`, `rotation.z`); `WINKEL_STIJLEN.smederij.status()` via `updateWinkelMarkeringen()` |
 | Per-frame, achter een conditie die na een schot/wissel waar wordt | gameLoop terugslag (`terugslag > 0`), wisseldip (`wisselTimer > 0`), vlamdoving (`vlamTimer > 0`), `updateWapen()` (auto-herlader + herlaadtimer) |
-| Op aanroep | `updateAmmoUI()`, `herladen()`, `wisselWapen()`, `probeerTeSchieten()`, `schiet()` (11 dereferences), `speelSchot()`, `updateHUD()`, `koopSmederij()`, `smederijPunt.prompt()` + `WINKEL_STIJLEN.smederij.status()`, ammo-kist, werkbank, twee debug-getters |
+| Op aanroep | `updateAmmoUI()`, `herladen()`, `wisselWapen()`, `probeerTeSchieten()`, `schiet()` (11 dereferences), `speelSchot()`, `updateHUD()`, `koopSmederij()`, `smederijPunt.prompt()`, ammo-kist, werkbank, twee debug-getters |
+
+> **Correctie, gevonden tijdens de uitvoering van T132.** De eerste versie van
+> deze tabel zette `WINKEL_STIJLEN.smederij.status()` onder "op aanroep". Dat
+> is fout: `updateWinkelMarkeringen(dt)` roept `stijl.status()` **elke frame**
+> aan voor elke nog niet gekochte markering, en de Smederij-status is de enige
+> die `wapenStaat` dereferencet. Hij is dus een tweede ongeguarde per-frame
+> lezer, naast de sway/lean-write. De null-contract-test uit T132 vond dit
+> alsnog — precies waarvoor die test bedoeld is. Zonder die test was dit een
+> crash in T134 geweest die niemand aan de Smederij had toegeschreven.
+>
+> Les voor de volgende tickets: "wordt dit per frame aangeroepen?" is bij een
+> callback-in-een-datatabel (`WINKEL_STIJLEN`, `interactiePunten[].prompt`)
+> niet af te lezen aan de definitieplek. Zoek de aanroeper, niet de definitie.
 
 §12.3 stelt dat een aparte `mesStaat` "de vuurwapen-code letterlijk
 ongewijzigd" houdt. Dat klopt voor het **schade- en munitiepad**, maar niet

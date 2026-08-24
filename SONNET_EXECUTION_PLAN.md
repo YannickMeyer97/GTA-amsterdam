@@ -3808,6 +3808,24 @@ eis.
 **Valkuil.** De verleiding is om nu ook al `drukspuit: null` te zetten. Niet
 doen — dat blijft T134, en de bestaande T132-waarschuwing geldt onverkort.
 
+**Uitgevoerd.** Alle vier toevoegingen zijn geland, gedragsneutraal: geen
+enkele bestaande assertie is aangepast of versoepeld (ontwerpbeslissing 99).
+`test-wapen-identiteit.mjs` ging van 16 naar 25 checks, allemaal nieuw.
+
+Twee dingen die de uitvoering aan het licht bracht:
+
+1. **De null-contract-test vond meteen een lezer die in de architectuur fout
+   geclassificeerd stond.** `WINKEL_STIJLEN.smederij.status()` is via
+   `updateWinkelMarkeringen()` een **per-frame** lezer van `wapenStaat`, niet
+   "op aanroep" zoals §13.3 eerst zei. Hij is nu null-veilig (geeft `'nvt'`
+   zonder wapen, dezelfde grijze weergave als de watertap bij volle HP);
+   `smederijPunt.prompt()` kreeg dezelfde behandeling. §13.3 is gecorrigeerd,
+   mét de les: bij een callback in een datatabel is "draait dit per frame?"
+   niet af te lezen aan de definitieplek — zoek de aanroeper.
+2. **`test-resources.mjs` was al kapot vóór dit ticket** (geverifieerd op de
+   committed baseline met de gamecode gestasht). Apart gefixt vóór T133 — zie
+   "Losse fix" hieronder. Het bleek een dood testscript, geen echt lek.
+
 **Uitvoeringsadvies.** Opus 5 · xhigh · extended thinking On.
 14-plekken-brede dereference-audit plus een hot-path-splitsing, volledig
 gedragsneutraal, met een 2%-pixelvangrail eromheen — en fout gaan maakt twaalf
@@ -3815,6 +3833,111 @@ vervolgtickets ongeldig. *Escaleer naar Opus 5 Max* alleen wanneer de suite ná
 de refactor rood blijft zonder aanwijsbare oorzaak: dan klopt de aanname
 "gedragsneutraal" niet en is dát belangrijker dan het ticket. Review: Sonnet 5
 High, na ticket (grep-audit). Vertrouwen in dit advies: hoog.
+
+---
+
+## Losse fix — `test-resources.mjs` was dood sinds Ticket 122
+
+**Geen eigen ticket; gevonden én gefixt tijdens T132, vóór T133.**
+
+`test-resources.mjs` crashte bij het opstarten en had dus **geen enkele van
+zijn checks gedraaid**:
+
+```
+page.evaluate: TypeError: Cannot read properties of null (reading '__origDispose')
+    at test-resources.mjs:41
+```
+
+**Oorzaak.** De test patcht `Material.prototype.dispose` om dispose-calls te
+tellen, en kwam daar via twee vaste prototype-stappen vanaf
+`proefOndode.delen.oogMateriaal`. Sinds **Ticket 122** (Zombie V2) is dat geen
+`THREE.Material` meer maar een plat shim-object met alleen een
+`emissiveIntensity`-setter naar de shader-uniform. Twee stappen vanaf een plat
+object komen uit op `null` — script dood, vóór check 1.
+
+**Waarom dit meer was dan een kapot script.** Dit is de enige test die
+geheugenlekken bewaakt: geometrie-/materiaalgroei over 100 spawn/kill-cycli,
+Brander-explosies, powerup-drops, DOM-node-groei, de T71/T72-write-tellers en
+de 25-golven-stabiliteitsloop. Al die vangrails stonden een hele ronde uit.
+
+**Fix.** Twee wijzigingen, allebei in het testscript — de gamecode was niet
+kapot:
+1. Haal een **echt** materiaal uit de mesh-tree (`traverse()` naar de eerste
+   `isMesh` met `material.isMaterial`) in plaats van uit `delen`, zodat een
+   shim daar dit nooit meer kan breken.
+2. Zoek de prototype die `dispose` als **eigen property** heeft, in plaats van
+   een vast aantal stappen te tellen.
+
+Punt 2 is subtieler dan het lijkt, en de eerste fixpoging liep er zelf in.
+De gemeten keten is:
+
+```
+MeshStandardMaterial.prototype   (geen eigen dispose)
+Material.prototype               (eigen dispose)   <- doel
+EventDispatcher.prototype        (geen eigen dispose)
+Object.prototype
+```
+
+In three.js geldt `class Material extends EventDispatcher`. Zowel "twee
+stappen omhoog" als "klim tot vlak vóór `Object.prototype`" landt dus
+**ernaast**: die laatste komt op `EventDispatcher.prototype` uit, waar een
+toegevoegde `dispose` door `Material.prototype.dispose` wordt geschaduwd. De
+patch lijkt dan te werken maar telt stil 0 calls — precies het symptoom dat
+één tussenversie liet zien.
+
+**Uitkomst: 18 OK, 0 FAIL.** Alle asserties die sinds T122 stillagen slagen,
+inclusief `Material.dispose()` met **101 calls** over 100 spawn/kill-cycli.
+Het T69/T70-dispose-contract is dus intact — er was geen echt geheugenlek,
+alleen een blinde vangrail.
+
+**Les.** Een testscript dat crasht vóór zijn eerste `check()` telt in
+`run-all.mjs` als één rood script tussen 82 groene, zonder één `[FAIL]`-regel.
+Dat is makkelijk te lezen als ruis. Waard om bij een rode suite altijd te
+controleren of het aantal gedraaide checks klopt, niet alleen het aantal
+groene scripts.
+
+### Twee flaky tests, aan het licht gekomen bij dezelfde regressieronde
+
+Niet gefixt, wél gediagnosticeerd. Allebei **pre-existing** en niet door T132
+veroorzaakt — bewezen door twee volledige suite-runs op byte-identieke
+gamecode die verschillende scripts rood gaven, plus losse herhalingen.
+
+**1. `test-camerabeweging.mjs`, sectie 7** — reproduceerbaar los, ~50%:
+twee runs achter elkaar gaven 24 OK/0 FAIL en daarna 23 OK/1 FAIL.
+
+De assertie eist een EXACTE gelijkheid:
+
+```js
+d.speler.positie.set(1.5, 0, -2.5);
+d.updateSpeler(0);
+// verwacht: camera.position.x === 1.5 && camera.position.z === -2.5
+```
+
+Maar `updateSpeler()` roept sinds **Fix 3** ook `duwSpelerWegVanOndoden()`
+aan. Staat er op dat moment een levende ondode binnen
+`SPELER_ONDODE_BOTSING_STRAAL` van (1.5, -2.5), dan wordt de speler zacht
+weggeduwd en komt de camera op bijv. (1.4917, -2.5063) uit — precies de
+gemeten waarden. Of er zo'n ondode staat, hangt af van ondode-AI-timing uit
+eerdere secties in hetzelfde script, en is dus niet deterministisch.
+
+Fix-richting: `ondoden` legen aan het begin van sectie 7. Die sectie test de
+reset-garantie van `updateSpeler()`, niet de speler-ondode-botsing — de
+aanwezigheid van ondoden is er puur ongewenste ruis. Een tolerantie i.p.v.
+exacte gelijkheid is de verkeerde fix: de hele waarde van deze check zit in
+"exact vers gezet".
+
+**2. `test-vijand-leesbaarheid.mjs`** — "Twee ondoden met een gelijktijdig
+verlopen grom-timer geven toch maar 1 grom (globale cap)", gemeten
+`tellerNa: 0` in plaats van 1. Los tweemaal groen, alleen rood onder
+suite-load. De globale grom-cap toetst `klok - laatsteGromKlok >=
+ONDODE_GROM_GLOBALE_CAP`; onder tragere frames verschuift `klok` genoeg om de
+verwachte grom te onderdrukken. Niet verder onderzocht.
+
+**Waarschijnlijke aanleiding dat ze nu opvielen.** Met `test-resources.mjs`
+gerepareerd draait dat script weer volledig (100 spawns, 30 explosies, 25
+golven) in dezelfde gedeelde browser. Dat maakt de suite merkbaar zwaarder,
+en timinggevoelige asserties elders driften daardoor eerder. De flakes zaten
+er al; ze werden alleen zichtbaarder.
 
 ---
 
