@@ -3896,48 +3896,74 @@ Dat is makkelijk te lezen als ruis. Waard om bij een rode suite altijd te
 controleren of het aantal gedraaide checks klopt, niet alleen het aantal
 groene scripts.
 
-### Twee flaky tests, aan het licht gekomen bij dezelfde regressieronde
+### Twee flaky tests, gevonden bij dezelfde regressieronde — nu gefixt
 
-Niet gefixt, wél gediagnosticeerd. Allebei **pre-existing** en niet door T132
-veroorzaakt — bewezen door twee volledige suite-runs op byte-identieke
-gamecode die verschillende scripts rood gaven, plus losse herhalingen.
+Allebei **pre-existing** en niet door T132 veroorzaakt — bewezen door twee
+volledige suite-runs op byte-identieke gamecode die verschillende scripts
+rood gaven. Beide zijn inmiddels opgelost en geverifieerd met 10× herhaalde
+volledige runs (0 FAIL) plus een schone `run-all.mjs` (83/83 groen).
 
-**1. `test-camerabeweging.mjs`, sectie 7** — reproduceerbaar los, ~50%:
-twee runs achter elkaar gaven 24 OK/0 FAIL en daarna 23 OK/1 FAIL.
+**1. `test-camerabeweging.mjs`, sectie 7 — "reset-garantie".** De assertie
+eist een EXACTE gelijkheid na `d.speler.positie.set(1.5, 0, -2.5);
+d.updateSpeler(0);`. `updateSpeler()` roept sinds Fix 3 ook
+`duwSpelerWegVanOndoden()` aan; staat er op dat moment een levende ondode
+binnen `SPELER_ONDODE_BOTSING_STRAAL`, dan schuift de speler een fractie weg.
+Of dat gebeurt hangt af van of het golfsysteem tijdens de vele rAF-waits
+eerder in het script al zombies gespawnd heeft — niet deterministisch.
+**Fix:** de ondoden vóór de check echt verwijderen. Eerste poging
+(`d.ondoden.length = 0`) loste dít symptoom volledig op (30/30), maar bleek
+zelf een nieuwe bug te introduceren (zie punt 3).
 
-De assertie eist een EXACTE gelijkheid:
+**2. `test-vijand-leesbaarheid.mjs` — grom-globale-cap.** Niet, zoals eerst
+vermoed, `klok`-drift (`klok` blijft in dit testbestand altijd 0, want
+`simuleerPointerLock` staat hier nooit aan). De echte oorzaak: de twee
+testondoden staan op ~0,7 m van de speler, binnen `AANVAL_START_BEREIK`
+(1,4 m), en krijgen van `spawnOndode()` een willekeurige
+`aanvalVertraging` (0 – `AANVAL_START_JITTER` = 0,35 s). Rolt die ≤ dt
+(0,05 s) — ~14,3% kans per ondode, dus ~2% kans dat het BEIDE overkomt —
+dan start `updateOndoden()` in dezelfde tick een windup en `continue`t vóór
+de grom-code (die verderop in de functie staat) ooit bereikt wordt. Bij
+beide ondoden tegelijk: `tellerNa: 0` i.p.v. 1. **Fix:** `aanvalVertraging`
+expliciet op 999 zetten voor de twee testondoden — dezelfde soort
+determinisme-fix als `NEUTRALE_TRAITS` elders in de suite. 40/40 herhalingen
+groen.
 
-```js
-d.speler.positie.set(1.5, 0, -2.5);
-d.updateSpeler(0);
-// verwacht: camera.position.x === 1.5 && camera.position.z === -2.5
-```
+**3. Bijvangst: `d.ondoden.length = 0` is de VERKEERDE manier om ondoden uit
+een test te verwijderen.** Ontdekt tijdens het verifiëren van fix 1: die
+loste de reset-garantie-check op (30/30), maar de daaropvolgende sectie in
+hetzelfde bestand ("Alle schoten raakten…", een realistische
+schiet-integratietest) bleef daarna in ~10-20% van de runs falen met
+`hpVoor === hpNa` — alle 20 schoten misten volledig.
 
-Maar `updateSpeler()` roept sinds **Fix 3** ook `duwSpelerWegVanOndoden()`
-aan. Staat er op dat moment een levende ondode binnen
-`SPELER_ONDODE_BOTSING_STRAAL` van (1.5, -2.5), dan wordt de speler zacht
-weggeduwd en komt de camera op bijv. (1.4917, -2.5063) uit — precies de
-gemeten waarden. Of er zo'n ondode staat, hangt af van ondode-AI-timing uit
-eerdere secties in hetzelfde script, en is dus niet deterministisch.
+Oorzaak: `.length = 0` leegt alleen de JS-trackingarray `ondoden`, niet de
+Three.js-scènegraaf `ondodenGroep`. `schiet()`'s raycast doorloopt
+`ondodenGroep` rechtstreeks (`raycaster.intersectObject(ondodenGroep, true)`)
+— een "gecleared" zombie-mesh blijft daar gewoon fysiek staan en kan een
+latere raycast blokkeren als hij tussen de camera en het echte testdoel
+staat. De reset-garantie-check zelf raycast niet, dus die zag het probleem
+niet — maar de scène bleef wél gecorrumpeerd voor de eropvolgende sectie.
 
-Fix-richting: `ondoden` legen aan het begin van sectie 7. Die sectie test de
-reset-garantie van `updateSpeler()`, niet de speler-ondode-botsing — de
-aanwezigheid van ondoden is er puur ongewenste ruis. Een tolerantie i.p.v.
-exacte gelijkheid is de verkeerde fix: de hele waarde van deze check zit in
-"exact vers gezet".
+**Definitieve fix, op beide plekken:** `for (const o of [...d.ondoden])
+d.doodOndode(o);` in plaats van `.length = 0`. `doodOndode()` doet wél
+`ondodenGroep.remove(ondode.groep)` — precies het bestaande patroon dat de
+rest van de testsuite al gebruikt (`test-aanval-machine.mjs`,
+`test-vliering.mjs`, `test-waypoint-navigatie.mjs`, …). Na deze correctie:
+`test-camerabeweging.mjs` 10/10 volledige runs groen (was eerst 9/10 met de
+array-only fix).
 
-**2. `test-vijand-leesbaarheid.mjs`** — "Twee ondoden met een gelijktijdig
-verlopen grom-timer geven toch maar 1 grom (globale cap)", gemeten
-`tellerNa: 0` in plaats van 1. Los tweemaal groen, alleen rood onder
-suite-load. De globale grom-cap toetst `klok - laatsteGromKlok >=
-ONDODE_GROM_GLOBALE_CAP`; onder tragere frames verschuift `klok` genoeg om de
-verwachte grom te onderdrukken. Niet verder onderzocht.
+**Les.** Een array-veld op de debug-hook (`d.ondoden`) en de Three.js-
+scènegraaf die het spiegelt (`ondodenGroep`) zijn twee aparte stukken staat
+die met de hand synchroon gehouden moeten worden. Alleen `doodOndode()`
+garandeert dat; direct aan de array knutselen in een test is een val die
+zich pas toont in een LATERE sectie van hetzelfde bestand, niet in de sectie
+waar de manipulatie plaatsvindt.
 
-**Waarschijnlijke aanleiding dat ze nu opvielen.** Met `test-resources.mjs`
-gerepareerd draait dat script weer volledig (100 spawns, 30 explosies, 25
-golven) in dezelfde gedeelde browser. Dat maakt de suite merkbaar zwaarder,
-en timinggevoelige asserties elders driften daardoor eerder. De flakes zaten
-er al; ze werden alleen zichtbaarder.
+**Waarschijnlijke aanleiding dat ze aan het licht kwamen.** Met
+`test-resources.mjs` gerepareerd draait dat script weer volledig (100
+spawns, 30 explosies, 25 golven) in dezelfde gedeelde browser. Dat maakt de
+suite merkbaar zwaarder, en timinggevoelige/RNG-gevoelige asserties elders
+driften daardoor eerder naar het oppervlak. De flakes zaten er al langer; ze
+werden nu pas zichtbaar.
 
 ---
 

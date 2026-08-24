@@ -78,7 +78,22 @@ const capTest = await page.evaluate(() => {
   // Twee ondoden vlak bij de speler, allebei met een meteen-afgelopen timer.
   const o1 = d.spawnOndode(0, 'normaal');
   const o2 = d.spawnOndode(0, 'sjouwer');
-  for (const o of [o1, o2]) { o.groep.position.set(d.speler.positie.x + 0.5, 0, d.speler.positie.z + 0.5); o.gromTimer = 0.01; }
+  for (const o of [o1, o2]) {
+    o.groep.position.set(d.speler.positie.x + 0.5, 0, d.speler.positie.z + 0.5);
+    o.gromTimer = 0.01;
+    // Fix (flaky test, gevonden bij T132): op deze afstand (~0,7m) vallen
+    // beide ondoden binnen AANVAL_START_BEREIK (1,4m), en spawnOndode() geeft
+    // ze een willekeurige aanvalVertraging (0..AANVAL_START_JITTER = 0,35s).
+    // Rolt die ≤ dt (0,05s), dan start updateOndoden() in DEZELFDE tick een
+    // windup en `continue`t vóórdat de grom-code (verderop in de functie)
+    // ooit bereikt wordt — ~14,3% kans per ondode, dus ~2% kans dat het BEIDE
+    // overkomt en tellerNa op 0 uitkomt i.p.v. de bedoelde 1. Deze test gaat
+    // over de grom-cap, niet over de aanvalstiming; zet de vertraging hier
+    // expliciet ruim boven dt zodat geen van beide per ongeluk in windup kan
+    // vallen — dezelfde soort determinisme-fix als NEUTRALE_TRAITS elders in
+    // de suite (bv. test-camerabeweging.mjs).
+    o.aanvalVertraging = 999;
+  }
   d.laatsteGromKlok = -999;
   const tellerVoor = d.ondodeGromTeller;
   d.updateOndoden(0.05);   // beide timers lopen deze tick af

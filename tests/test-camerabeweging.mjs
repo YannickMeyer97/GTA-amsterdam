@@ -172,6 +172,27 @@ check('De wapenrotatie staat TEGENGESTELD aan de camera-lean (ander teken, klein
 // tick's cosmetische zone erin had gezet.
 const resetGarantie = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
+  // Fix (flaky test, gevonden bij T132): met simuleerPointerLock:true staat
+  // spelActief de hele test aan, dus het golfsysteem kan tijdens de vele
+  // rAF-waits in de secties hierboven (60+40+... frames) echt golf 1 starten
+  // en ondoden spawnen. updateSpeler() roept ALTIJD ook
+  // duwSpelerWegVanOndoden() aan (ongeacht dt) — staat er toevallig een
+  // ondode binnen SPELER_ONDODE_BOTSING_STRAAL van (1.5, -2.5), dan schuift
+  // de speler een fractie weg en faalt de exacte-positie-check hieronder.
+  // Dat heeft niets met de camerabeweging van dit ticket te maken (de
+  // garantie die hier bewezen wordt gaat over updateSpeler()'s eigen reset,
+  // niet over speler-ondode-botsing), dus leegmaken i.p.v. tolereren.
+  //
+  // BEWUST doodOndode() i.p.v. `d.ondoden.length = 0`: die laatste leegt
+  // alleen de TRACKING-array, niet de SCÈNE-graaf — de mesh van een
+  // "gecleared" ondode blijft dan gewoon in `ondodenGroep` hangen. Dat is
+  // hier onschadelijk (deze check doet geen raycast), maar corrumpeert de
+  // scène voor de eropvolgende schiet-sectie verderop in dit bestand, die
+  // WEL raycast tegen `ondodenGroep` — een stale mesh kan dan een latere
+  // raycast blokkeren. doodOndode() haalt het object ook echt uit de scène
+  // (naar stervendenGroep, buiten schiet()'s raycast-doel), zelfde patroon
+  // als elders in de suite (`for (const o of [...d.ondoden]) d.doodOndode(o)`).
+  for (const o of [...d.ondoden]) d.doodOndode(o);
   d.speler.positie.set(1.5, 0, -2.5);
   d.speler.yaw = 0.7; d.speler.pitch = -0.1;
   // "Corrumpeer" camera opzettelijk met waarden die duidelijk NIET de
@@ -227,6 +248,18 @@ const treffersTijdensBeweging = await page.evaluate(async () => {
   // niet aanraakt, zie de reset-garantie hierboven) — vastzetten op de
   // gemiddelde/neutrale hoogte maakt de treffer-garantie deterministisch.
   const NEUTRALE_TRAITS = { profiel: 'standaard', kromme: false, slepend: 0, armVerschil: 0, lengte: 1, strompelt: false };
+  // Fix (flaky test, gevonden bij T132, zelfde mechanisme als de
+  // resetGarantie-fix hierboven): het golfsysteem kan tijdens de vele
+  // rAF-waits eerder in dit script écht zombies gespawnd hebben. Staat er
+  // toevallig een echte ondode tussen de camera (0,0,0) en het testdoel
+  // (0,0,-3), dan raakt de raycast in schiet() DIE ondode i.p.v. `o` — o.hp
+  // blijft dan alle 20 schoten lang ongewijzigd (exact het symptoom
+  // hieronder). doodOndode() i.p.v. `.length = 0`: die laatste leegt alleen
+  // de tracking-array, niet `ondodenGroep` (de scène-graaf die schiet()'s
+  // raycast doorloopt) — een "gecleared" mesh zou dan gewoon blijven staan
+  // en de raycast alsnog kunnen blokkeren. Vóór de spawn van `o`, niet erna
+  // (dat zou `o` zelf ook meteen weer verwijderen).
+  for (const o of [...d.ondoden]) d.doodOndode(o);
   const o = d.spawnOndode(0, 'normaal', NEUTRALE_TRAITS);
   o.hp = 100000;
   const hpVoor = o.hp;
