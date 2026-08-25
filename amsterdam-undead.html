@@ -483,7 +483,7 @@
      DE UI-LAAG (HTML bovenop het 3D-canvas)
      ============================================================ -->
 <a id="menuLink" href="index.html">← Menu</a>
-<div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; klik = schieten &nbsp;·&nbsp; R = herladen &nbsp;·&nbsp; T = kopen/gebruiken &nbsp;·&nbsp; Q = wisselen van wapen &nbsp;·&nbsp; Esc = pauze</div>
+<div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; klik = schieten &nbsp;·&nbsp; V = steken &nbsp;·&nbsp; R = herladen &nbsp;·&nbsp; T = kopen/gebruiken &nbsp;·&nbsp; Q = wisselen van wapen &nbsp;·&nbsp; Esc = pauze</div>
 <div id="richtkruis" style="display:none"></div>
 <div id="hitmarker"><span></span><span></span><span></span><span></span></div>
 <div id="interactiePrompt"></div>
@@ -533,7 +533,7 @@
   <div id="pandAdresStart" class="pandAdres"></div>
   <h2>Een verlaten grachtenpand — overleef de golven ondoden</h2>
   <div class="uitleg">
-    🚶 <b>WASD</b> lopen &nbsp;·&nbsp; 🖱️ <b>muis</b> kijken &nbsp;·&nbsp; <b>klik</b> schieten<br>
+    🚶 <b>WASD</b> lopen &nbsp;·&nbsp; 🖱️ <b>muis</b> kijken &nbsp;·&nbsp; <b>klik</b> schieten &nbsp;·&nbsp; 🔪 <b>V</b> steken<br>
     🔫 <b>R</b> herladen &nbsp;·&nbsp; 🛒 <b>T</b> kopen/gebruiken &nbsp;·&nbsp; 🔄 <b>Q</b> wissel wapen &nbsp;·&nbsp; ⏸️ <b>Esc</b> pauze<br>
     <span style="opacity:0.85">🎒 Vind de 3 vluchtroute-onderdelen om te ontsnappen</span>
   </div>
@@ -12671,6 +12671,13 @@ const RATELAAR_PRIJS   = 750;   // eenmalig: tweede wapen, op de binnenplaats
 // precies het "kort en gespannen, niet fataal" gevoel dat de mes-opening
 // (T132-135) beoogt. GEEN aanpassing: €450 blijft staan. Zie ook
 // test-golf1-economie.mjs voor de regressie-bewaking hiervan.
+// Mijlpaal M1 (speeltest, ná T136): meting bevestigd in de praktijk —
+// "spannend maar goed", en het kopen van de AMSTEL-9 voelt als een
+// opluchting "die je wel snel wil doen, anders wordt het te zwaar". Dat is
+// de bedoelde vorm, maar het is óók de bovengrens: de mesfase mag korter,
+// niet langer. Wie AMSTEL9_PRIJS wil verhogen of MES_SCHADE/MES_COOLDOWN
+// wil afzwakken, verlengt precies die fase — doe dat niet zonder een
+// nieuwe speeltest.
 const AMSTEL9_PRIJS    = 450;
 // Ticket 12: De Smederij — late-game geldsink, per wapen (zie ARCHITECTURE_NOTES §2.7-8).
 const SMEDERIJ_PRIJS   = 3000;  // eenmalig per wapen: Smederij-schadebonus + groter magazijn
