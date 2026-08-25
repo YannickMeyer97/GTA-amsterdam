@@ -6932,6 +6932,18 @@ let meterDrukspuit;   // Ticket 12: krijgt een ember-accent zodra de Drukspuit g
     new THREE.MeshStandardMaterial({ color: 0x8fffb0, emissive: 0x4fdc7a, emissiveIntensity: 0.9 }));
   meterDrukspuit.position.set(0, 0.065, 0.02);
   wapenDrukspuit.add(meterDrukspuit);
+  // Ticket 140 (onderdelenconventie): elk wapenmodel legt zijn eigen
+  // onderdelen vast onder SEMANTISCHE namen, niet onder modelspecifieke
+  // ("tank", "mondstuk"). Zo kan T141/T142-T144 straks "de loop" of "de
+  // greep" animeren zonder per wapen een andere sleutel te hoeven kennen.
+  // De registratie staat bewust hier, binnen het bouwblok: dit zijn lokale
+  // consts, en het model hoort zelf te bepalen wat het aanbiedt.
+  // `romp` = het hoofdvolume, `loop` = wat naar voren wijst (de mondingsflits
+  // hangt daaraan vast), `greep` = wat de hand vasthoudt, `accent` = het
+  // detail dat de Smederij laat gloeien (ontwerpbeslissing 12).
+  // T141 bepaalt welke sleutels VERPLICHT worden; deze vier zijn de
+  // gemeenschappelijke kern die beide vuurwapens én het mes kunnen leveren.
+  wapenDrukspuit.userData.onderdelen = { romp: tank, loop: mondstuk, greep, accent: meterDrukspuit };
 }
 
 // Ticket 17: Smederij-visuals — "smeulende drukketel". Vooraf gebouwd en
@@ -7077,6 +7089,13 @@ let tandwielRatelaar;   // Ticket 12: krijgt een ember-accent zodra de Ratelaar 
   tandwielRatelaar.position.set(0.045, 0.02, 0.04);
   tandwielRatelaar.rotation.y = Math.PI / 2;
   wapenRatelaar.add(tandwielRatelaar);
+  // Ticket 140: zelfde vier semantische kernsleutels als de Drukspuit, plus
+  // twee die alleen dit wapen heeft (`magazijn` en `kolf`) — de conventie is
+  // bewust open: een wapen mag méér aanbieden dan de kern, nooit minder.
+  wapenRatelaar.userData.onderdelen = {
+    romp: chassis, loop, greep: greepRatelaar, accent: tandwielRatelaar,
+    magazijn: magazijnkast, kolf,
+  };
 }
 
 // Ticket 17: Smederij-visuals — "gloeiend drijfwerk". Vooraf gebouwd en
@@ -7154,6 +7173,11 @@ const wapenMes = new THREE.Group();
   heft.rotation.x = Math.PI / 2;
   heft.position.set(0, -0.005, 0.06);
   wapenMes.add(heft);
+  // Ticket 140: het mes doet volwaardig mee in de onderdelenconventie. Het
+  // kent geen `accent` — het kan niet gesmeed worden (§12.6), dus er is per
+  // definitie niets om te laten gloeien. Dat is precies waarom de conventie
+  // per model wordt vastgelegd en niet centraal wordt afgedwongen.
+  wapenMes.userData.onderdelen = { romp: pareerstang, loop: lemmet, greep: heft };
 }
 // Ticket 134 (Fix 6): de speler START met het mes — dus dit is meteen zijn
 // GEHOUDEN pose, niet de ingetrokken quick-draw-pose. Zelfde rustcoördinaat
@@ -7198,6 +7222,12 @@ let cameraKick = 0;
 // rust-y (-0.22, zie wapenDrukspuit/wapenRatelaar.position.set hierboven).
 const WAPEN_BASIS_Y = -0.22;
 const WAPEN_BASIS_X = 0.26;   // zelfde rust-x als wapenDrukspuit/wapenRatelaar.position.set hierboven
+// Ticket 140: de derde as bestond al, maar uitsluitend als losse literal -0.5
+// op twee plekken (het terugslag-blok en de gehouden-mes-stoot). Nu expliciet,
+// zodat updateWapenPresentatie() zijn drie assen uit één basispositie kan
+// optellen i.p.v. twee ervan uit een constante en de derde uit een magic
+// number. Zelfde waarde als wapenDrukspuit/wapenRatelaar/wapenMes.position.set.
+const WAPEN_BASIS_Z = -0.5;
 const WAPEN_HERLAAD_DIP_AMPLITUDE = 0.05;
 const WISSEL_DUUR = 0.16;
 let wisselTimer = 0;
@@ -7439,21 +7469,49 @@ const ARSENAAL = {
   drukspuit: {
     klasse: 'vuurwapen',
     definitie: WAPEN_DRUKSPUIT,
-    // T140 verhuist WAPEN_BASIS_X/Y hierheen (nu nog gedeelde constanten) en
-    // vult `onderdelen` aan met wat T141 als animeerbaar aanwijst.
-    presentatie: { basisX: WAPEN_BASIS_X, basisY: WAPEN_BASIS_Y, onderdelen: { accent: meterDrukspuit } },
+    // Ticket 140: de RUSTPOSITIE is nu per wapen adresseerbaar i.p.v. een
+    // gedeelde module-constante — updateWapenPresentatie() leest uitsluitend
+    // hieruit. Beide wapens delen vandaag nog dezelfde waarden (daarom staan
+    // de WAPEN_BASIS_*-constanten er nog als gedeelde bron), maar een wapen
+    // dat straks hoger of dichterbij in beeld moet hangen, verandert nu hier
+    // en nergens anders. `onderdelen` is verhuisd naar
+    // `groep.userData.onderdelen`: dat hoort bij het MODEL, niet bij deze
+    // tabel — het model weet zelf wat het aanbiedt.
+    presentatie: { basisX: WAPEN_BASIS_X, basisY: WAPEN_BASIS_Y, basisZ: WAPEN_BASIS_Z },
     audio: { schot: WAPEN_DRUKSPUIT.schotToon },
   },
   ratelaar: {
     klasse: 'vuurwapen',
     definitie: WAPEN_RATELAAR,
-    presentatie: { basisX: WAPEN_BASIS_X, basisY: WAPEN_BASIS_Y, onderdelen: { accent: tandwielRatelaar } },
+    presentatie: { basisX: WAPEN_BASIS_X, basisY: WAPEN_BASIS_Y, basisZ: WAPEN_BASIS_Z },
     audio: { schot: WAPEN_RATELAAR.schotToon },
   },
   // T133 voegt hier `mes: { klasse: 'mes', ... }` toe. Bewust nog NIET: een
   // half gebouwde mes-entry zou betekenen dat T133 een verbouwde kern én een
-  // nieuw wapen tegelijk moet debuggen (ontwerpbeslissing 99).
+  // nieuw wapen tegelijk moet debuggen (ontwerpbeslissing 99). T133 heeft die
+  // entry uiteindelijk óók niet toegevoegd: het mes is een ACTIE, geen
+  // kiesbaar wapen (ontwerpbeslissing 95/97), en het ARSENAAL gaat over
+  // SCHAKELKLASSEN. Zie MES_PRESENTATIE hieronder voor de presentatiekant.
 };
+
+// Ticket 140: de presentatie-entry van het mes. Bewust een PEER van de
+// ARSENAAL-entries en geen entry ERIN: het mes hoort niet in een tabel over
+// schakelklassen (zie hierboven), maar het presentatiepad kent het verschil
+// tussen wapen en mes niet — dat is precies ontwerpbeslissing 100
+// (`inHandGroep` is altijd een Group, ongeacht of er een wapenStaat is).
+// Zelfde vorm als een ARSENAAL-presentatie, zodat actievePresentatie()
+// hieronder één uniform object teruggeeft en de per-frame code nergens een
+// mes-tak nodig heeft. Zelfde rustpositie als beide vuurwapens (§12.3: het
+// mes staat in de hand precies waar een vuurwapen zou staan).
+const MES_PRESENTATIE = { basisX: WAPEN_BASIS_X, basisY: WAPEN_BASIS_Y, basisZ: WAPEN_BASIS_Z };
+
+// De rustpositie van wat er NU in de hand hangt. `actiefWapenNaam` is altijd
+// 'mes' | 'drukspuit' | 'ratelaar'; alleen de twee vuurwapens staan in het
+// ARSENAAL, dus de mes-tak is de fallback — niet een foutgeval.
+function actievePresentatie() {
+  const entry = ARSENAAL[actiefWapenNaam];
+  return entry ? entry.presentatie : MES_PRESENTATIE;
+}
 
 // Bezit de speler minstens twee vuurwapens? Dat is de voorwaarde voor `Q`.
 // Vandaag exact gelijkwaardig aan het oude `ratelaarGekocht` (de Drukspuit-
@@ -7612,13 +7670,17 @@ function updateWapen(dt) {
   }
   if (wapenStaat.herladen) {
     wapenStaat.herlaadTimer -= dt;
-    // Ticket 34: herlaad-dip — sinus-boog omlaag/omhoog op herlaadTimer/
-    // herlaadDuur, geen aparte timer/state nodig.
-    const voortgang = 1 - Math.max(0, wapenStaat.herlaadTimer) / wapenStaat.herlaadDuur;
-    inHandGroep.position.y = WAPEN_BASIS_Y - Math.sin(voortgang * Math.PI) * WAPEN_HERLAAD_DIP_AMPLITUDE;
+    // Ticket 140: de herlaad-DIP (de cosmetische y-beweging) is hier weg —
+    // die hoort bij updateWapenPresentatie(), samen met de vier andere
+    // schrijvers. Deze functie houdt uitsluitend nog de herlaadtimer en de
+    // munitie-overheveling: gameplay, geen presentatie. De dip zelf is
+    // ongewijzigd; hij wordt daar afgeleid uit exact deze `herlaadTimer` /
+    // `herlaadDuur` / `herladen`-velden. Volgorde is daarbij essentieel en
+    // geen toeval: updateWapen() draait in de spelActief-tak, ruim vóór de
+    // cosmetische zone, dus de presentatielaag leest dezelfde, al
+    // bijgewerkte waarden die de oude inline-berekening hier zag.
     if (wapenStaat.herlaadTimer <= 0) {
       wapenStaat.herladen = false;
-      inHandGroep.position.y = WAPEN_BASIS_Y;   // exact terug naar rust
       const nodig = wapenStaat.magazijnMax - wapenStaat.magazijn;
       const overgeheveld = Math.min(nodig, wapenStaat.reserve);
       wapenStaat.magazijn += overgeheveld;
@@ -7638,6 +7700,100 @@ function updateMes(dt) {
   // "> 0 betekent geblokkeerd", en een ongeklemde negatieve waarde zou dat
   // wel goed doen maar bij inspectie (debug/tests) misleidend aflezen.
   if (mesStaat.meleeTimer > 0) mesStaat.meleeTimer = Math.max(0, mesStaat.meleeTimer - dt);
+}
+
+/* ===== Ticket 140 — DE WAPENPRESENTATIELAAG ==============================
+ * Eén eigenaar van élke cosmetische transform op `inHandGroep`. Vóór dit
+ * ticket schreven VIJF plekken los van elkaar naar dezelfde Group, verspreid
+ * over twee functies en drie gameLoop-blokken, en bepaalde de VOLGORDE waarin
+ * ze toevallig stonden wie won bij samenloop. Dat is nu één berekening met
+ * expliciete voorrang, en exact één write per property per frame.
+ *
+ * De vijf bijdragen, met hun as:
+ *   herlaad-dip   y   (kwam uit updateWapen())
+ *   wisseldip     y   (kwam uit het gameLoop-wisselblok)
+ *   terugslag     z   (kwam uit het gameLoop-terugslagblok)
+ *   sway          x   (kwam uit het camerabewegingsblok)
+ *   lean       rot z  (idem)
+ * plus de twee mes-bijdragen die T133 al had (mesWegzakOffset en
+ * mesStootOffsetZ hieronder) — die schreven óók naar `inHandGroep`, dus
+ * horen hier thuis.
+ *
+ * DE INVARIANT DIE IMPLICIET WAS (ticket-valkuil 2). Herlaad-dip en wisseldip
+ * schrijven allebei naar y en konden elkaar in principe overschrijven. Dat
+ * gebeurde vandaag nooit, maar puur door een gate elders: `wisselWapen()`
+ * weigert tijdens het herladen, en `activeerVuurwapen()` vanuit een aankoop
+ * bindt `wapenStaat` meteen aan een VERS wapen dat per definitie niet aan het
+ * herladen is. Die stilzwijgende uitsluiting is hier vervangen door een
+ * expliciete OPTELLING: zolang ze elkaar uitsluiten is de som identiek aan de
+ * winnaar-van-toen, en forceer je ze toch tegelijk (een test kan beide timers
+ * rechtstreeks zetten), dan is de uitkomst gedefinieerd en voorspelbaar in
+ * plaats van afhankelijk van welk blok toevallig als laatste schreef.
+ *
+ * DE ENIGE ECHTE VOORRANG. De mes-quick-draw (het vuurwapen zakt uit beeld)
+ * is géén optelling maar een OVERRIDE op y, precies zoals vóór dit ticket:
+ * dat blok stond bewust ná de twee dips en overschreef ze. Die keuze is
+ * inhoudelijk (een steek is een grotere, kortere beweging en hoort te winnen
+ * zolang hij loopt) en bovendien bereikbaar: V indrukken tijdens een herlaad
+ * of vlak na een wissel is normaal spel. Optellen zou het wapen daar dieper
+ * laten wegzakken dan bedoeld — dus expliciet een override.
+ * ======================================================================== */
+
+// De twee mes-animatiebijdragen aan `inHandGroep`. Het mes-blok in de gameLoop
+// rekent ze uit (het kent zijn eigen fasen); deze laag past ze toe. Zo blijft
+// die animatie zijn eigen baas over het MES-model, terwijl de Group-transform
+// één eigenaar houdt.
+let mesQuickDrawActief = false;   // true zolang het vuurwapen wegzakt/terugkomt
+let mesWegzakOffset = 0;          // hoever het vuurwapen omlaag staat (override op y)
+let mesStootOffsetZ = 0;          // gehouden mes: stoot naar voren (optelling op z)
+let mesKantelX = 0;               // gehouden mes: neerwaartse kantel (rotation.x)
+
+function updateWapenPresentatie(dt) {
+  const basis = actievePresentatie();
+
+  // --- terugslag (z) — decay en formule letterlijk uit het oude blok -------
+  if (terugslag > 0) terugslag = Math.max(0, terugslag - dt * 6);
+  const terugslagOffsetZ = terugslag * 0.08;
+
+  // --- wisseldip (y) ------------------------------------------------------
+  // De oude code schreef eerst de sinus en zette 'm daarna, op de laatste
+  // frame, expliciet terug op exact de rust-y. Dat tweede deel is hier de
+  // `wisselTimer > 0`-check ná het aftellen: op de afsluitende frame is de
+  // offset exact 0 in plaats van de ~1e-17 die sin(PI) oplevert.
+  let wisselDip = 0;
+  if (wisselTimer > 0) {
+    wisselTimer = Math.max(0, wisselTimer - dt);
+    if (wisselTimer > 0) {
+      const voortgang = 1 - wisselTimer / WISSEL_DUUR;
+      wisselDip = Math.sin(voortgang * Math.PI) * WAPEN_HERLAAD_DIP_AMPLITUDE;
+    }
+  }
+
+  // --- herlaad-dip (y) ----------------------------------------------------
+  // Leest de gameplayvelden die updateWapen() dit tick al heeft bijgewerkt.
+  // Zodra die `herladen` op false zet is de dip vanzelf 0 — dat vervangt de
+  // expliciete "exact terug naar rust"-write die daar stond.
+  let herlaadDip = 0;
+  if (wapenStaat && wapenStaat.herladen) {
+    const voortgang = 1 - Math.max(0, wapenStaat.herlaadTimer) / wapenStaat.herlaadDuur;
+    herlaadDip = Math.sin(voortgang * Math.PI) * WAPEN_HERLAAD_DIP_AMPLITUDE;
+  }
+
+  // --- samenstellen -------------------------------------------------------
+  // sin(), niet cos(): bij bobFase=0 (in rust) moet de sway exact 0 zijn,
+  // anders staat het wapen ook in volledige stilstand verschoven t.o.v. de
+  // basis-x — precies dat verschoof T88's vliering-mediaan met bijna 5%
+  // (gemeten, niet aangenomen). Zie de ticket-valkuil bij T140.
+  const yOffset = mesQuickDrawActief ? -mesWegzakOffset : -(herlaadDip + wisselDip);
+  inHandGroep.position.set(
+    basis.basisX + Math.sin(bobFase) * WAPEN_SWAY_AMPLITUDE,
+    basis.basisY + yOffset,
+    basis.basisZ + terugslagOffsetZ + mesStootOffsetZ,
+  );
+  inHandGroep.rotation.z = -leanHoek * WAPEN_LEAN_TEGENWICHT;
+  // Alleen het gehouden mes kantelt; voor een vuurwapen is dit elke frame 0,
+  // dezelfde waarde die de Group vanaf zijn constructie al had.
+  inHandGroep.rotation.x = mesKantelX;
 }
 
 // Ticket 17: Smederij-visuals — draaiend tandwiel op de Ratelaar + zacht
@@ -14233,21 +14389,13 @@ function gameLoop(nu) {
   // measurement-modus, T88).
   updateWaterAnimatie(klok);
 
-  if (terugslag > 0) {
-    terugslag = Math.max(0, terugslag - dt * 6);
-    inHandGroep.position.z = -0.5 + terugslag * 0.08;
-  }
+  // Ticket 140: het terugslag-blok is verhuisd naar updateWapenPresentatie()
+  // (aanroep onderaan deze cosmetische zone) — decay en formule ongewijzigd.
   // Ticket 34: cameraKick-decay hoort in dezelfde cosmetische zone als
   // terugslag (loopt door tijdens pauze, puur visueel).
   if (cameraKick > 0) cameraKick = Math.max(0, cameraKick * Math.exp(-10 * dt));
-  // Ticket 34: wisselanimatie — korte y-dip op de binnenkomende (nu actieve)
-  // wapen-groep, zelfde sinus-boog-idee als de herlaad-dip maar op wisselTimer.
-  if (wisselTimer > 0) {
-    wisselTimer = Math.max(0, wisselTimer - dt);
-    const voortgang = 1 - wisselTimer / WISSEL_DUUR;
-    inHandGroep.position.y = WAPEN_BASIS_Y - Math.sin(voortgang * Math.PI) * WAPEN_HERLAAD_DIP_AMPLITUDE;
-    if (wisselTimer <= 0) inHandGroep.position.y = WAPEN_BASIS_Y;   // exact terug naar rust
-  }
+  // Ticket 140: de wisseldip (Ticket 34) is verhuisd naar
+  // updateWapenPresentatie() — zelfde sinus-boog op dezelfde wisselTimer.
   if (vlamTimer > 0) {
     if (vlamNetGezet) {
       // Dit frame is het schot zelf (of het eerstvolgende tick erna) — sla de
@@ -14272,11 +14420,25 @@ function gameLoop(nu) {
   // sway/lean werken al) — een steek is dan een simpele jab-en-terug, geen
   // drieluik (er is niets weg te laten zakken).
   //
-  // Deze blok staat NA het wisseldip-blok hierboven en na updateWapen()'s
-  // herlaad-dip, en overschrijft die dus bewust: een steek is een grotere,
-  // kortere beweging en hoort te winnen zolang hij loopt. Bij het aflopen
-  // zet hij expliciet terug naar rust, waarna die andere dips weer verder
-  // schrijven.
+  // Ticket 140: dit blok rekent de mes-animatie nog steeds volledig zelf uit
+  // (het kent zijn eigen fasen en bestuurt het MES-model rechtstreeks), maar
+  // schrijft niet langer zelf naar `inHandGroep` — het levert drie offsets af
+  // die updateWapenPresentatie() onderaan deze zone toepast. De voorrang die
+  // vroeger uit de VOLGORDE volgde (dit blok stond ná de dips en overschreef
+  // ze) is daar nu expliciet: `mesQuickDrawActief` is een override op y.
+  //
+  // De vlag wordt hier gezet, vóór het aftellen, zodat hij exact aangeeft
+  // "de quick-draw-tak draait dit frame" — inclusief de afsluitende frame,
+  // waarop de wegzak-formule vanzelf op 0 uitkomt en het wapen dus precies op
+  // de rust-y staat. Zonder die volgorde zou de laatste frame al terugvallen
+  // op de herlaad-dip en één frame lager staan dan voorheen.
+  mesQuickDrawActief = mesAnimatieTimer > 0 && actiefWapenNaam !== 'mes';
+  // Elke frame vanaf nul: staat er geen animatie aan, dan is er ook geen
+  // offset. Dat vervangt de expliciete "exact terug naar rust"-writes die
+  // vroeger aan het eind van beide takken stonden.
+  mesWegzakOffset = 0;
+  mesStootOffsetZ = 0;
+  mesKantelX = 0;
   if (mesAnimatieTimer > 0) {
     mesAnimatieTimer = Math.max(0, mesAnimatieTimer - dt);
     const verstreken = MES_STEEK_ANIMATIE_DUUR - mesAnimatieTimer;
@@ -14285,13 +14447,12 @@ function gameLoop(nu) {
       // Geen vuurwapen om weg te laten zakken — het mes zélf stoot naar
       // voren en trekt terug, vanuit zijn HELD rustpose (WAPEN_BASIS_*).
       // Blijft de hele tijd zichtbaar (was het al, als het actieve wapen).
-      const s = Math.min(1, verstreken / MES_STEEK_ANIMATIE_DUUR);
-      const boog = Math.sin(s * Math.PI);   // 0 -> 1 -> 0: rust, stoot, terug
-      wapenMes.position.z = -0.5 - MES_HELD_STOOT_Z * boog;
-      wapenMes.rotation.x = MES_HELD_KANTEL_X * boog;
-      if (mesAnimatieTimer <= 0) {
-        wapenMes.position.z = -0.5;
-        wapenMes.rotation.x = 0;
+      // Het mes IS hier `inHandGroep`, dus deze twee gaan als offset mee.
+      if (mesAnimatieTimer > 0) {
+        const s = Math.min(1, verstreken / MES_STEEK_ANIMATIE_DUUR);
+        const boog = Math.sin(s * Math.PI);   // 0 -> 1 -> 0: rust, stoot, terug
+        mesStootOffsetZ = -MES_HELD_STOOT_Z * boog;
+        mesKantelX = MES_HELD_KANTEL_X * boog;
       }
     } else {
       // Het vuurwapen maakt plaats.
@@ -14305,7 +14466,7 @@ function gameLoop(nu) {
         const s = Math.min(1, (verstreken - MES_FASE_WEG - MES_FASE_STEEK) / MES_FASE_TERUG);
         wegzak = MES_WAPEN_WEGZAK * (1 - Math.sin(s * Math.PI / 2));
       }
-      inHandGroep.position.y = WAPEN_BASIS_Y - wegzak;
+      mesWegzakOffset = wegzak;
 
       // Het mes is uitsluitend zichtbaar in fase 2 — daarbuiten is het
       // wapen (deels) in beeld, en juist die overlap wilden we kwijt.
@@ -14329,12 +14490,14 @@ function gameLoop(nu) {
       }
 
       if (mesAnimatieTimer <= 0) {
-        // Exact terug naar rust — mes én vuurwapen, zodat er geen restje
-        // offset blijft hangen (zelfde afsluitpatroon als de wisseldip).
+        // Exact terug naar de INGETROKKEN mes-pose, zodat er geen restje
+        // offset blijft hangen. Het vuurwapen hoeft hier niets meer: de
+        // wegzak-formule hierboven staat op deze afsluitende frame al exact
+        // op 0, en vanaf de volgende frame is `mesQuickDrawActief` false
+        // waardoor de dips het weer overnemen (Ticket 140).
         wapenMes.visible = false;
         wapenMes.position.set(MES_IN_X, MES_IN_Y, MES_IN_Z);
         wapenMes.rotation.set(MES_IN_ROT_X, MES_IN_ROT_Y, MES_IN_ROT_Z);
-        inHandGroep.position.y = WAPEN_BASIS_Y;
       }
     }
   }
@@ -14392,13 +14555,12 @@ function gameLoop(nu) {
     // plus een tegengestelde fractie van de lean, zodat het niet 1-op-1 met
     // de camera meebeweegt (dat zou als star/vastgeschroefd ogen) maar ook
     // niet het richten verstoort (spreadNdc/pitch/yaw blijven ongemoeid).
-    // Bewust sin(), niet cos(): bij bobFase=0 (in rust) moet dit exact 0
-    // zijn, anders staat het wapen ook in volledige stilstand permanent
-    // verschoven t.o.v. WAPEN_BASIS_X — precies dat verschoof T88's
-    // vliering-mediaan met bijna 5% (gemeten, niet aangenomen).
-    inHandGroep.position.x = WAPEN_BASIS_X + Math.sin(bobFase) * WAPEN_SWAY_AMPLITUDE;
-    inHandGroep.rotation.z = -leanHoek * WAPEN_LEAN_TEGENWICHT;
+    // Ticket 140: die twee writes staan nu in updateWapenPresentatie(),
+    // samen met de drie andere bijdragen aan dezelfde Group. Ze lezen
+    // `bobFase` en `leanHoek` die dit blok hierboven vers heeft gezet —
+    // vandaar de aanroep direct hieronder en niet eerder in de zone.
   }
+  updateWapenPresentatie(dt);
 
   // Ticket 117: reset VÓÓR de render (niet erna) — renderer.info.render
   // telt anders het vorige frame mee in dit frame se "calls sinds reset".
@@ -14471,9 +14633,27 @@ window.AmsterdamUndeadDebug = {
   get herlaadKlaarTeller() { return herlaadKlaarTeller; },
   // Ticket 34: wapen-identiteit (kick, spread, dip, wissel)
   WAPEN_BASIS_Y, WAPEN_HERLAAD_DIP_AMPLITUDE, WISSEL_DUUR, speelWissel,
+  // Ticket 140: de wapenpresentatielaag. `updateWapenPresentatie` is
+  // rechtstreeks aanroepbaar zodat een test één frame presentatie kan draaien
+  // zonder de hele gameLoop; de setters op wisselTimer/terugslag maken het
+  // mogelijk twee dips GEFORCEERD tegelijk te zetten (in normaal spel sluiten
+  // ze elkaar uit) en de gedefinieerde uitkomst te toetsen.
+  updateWapenPresentatie, actievePresentatie, MES_PRESENTATIE, WAPEN_BASIS_Z,
+  // De twee accent-meshes zelf, zodat een test kan toetsen dat
+  // userData.onderdelen.accent naar EXACT deze objecten wijst (verhuisd uit de
+  // ARSENAAL-presentatie, niet gekopieerd) — het zijn dezelfde meshes die
+  // koopSmederij() laat gloeien.
+  meterDrukspuit, tandwielRatelaar,
+  get terugslag() { return terugslag; },
+  set terugslag(v) { terugslag = v; },
+  get mesQuickDrawActief() { return mesQuickDrawActief; },
+  get mesWegzakOffset() { return mesWegzakOffset; },
+  get mesStootOffsetZ() { return mesStootOffsetZ; },
+  get mesKantelX() { return mesKantelX; },
   get cameraKick() { return cameraKick; },
   set cameraKick(v) { cameraKick = v; },
   get wisselTimer() { return wisselTimer; },
+  set wisselTimer(v) { wisselTimer = v; },
   get wisselTeller() { return wisselTeller; },
   ondoden, ondodenGroep, VENSTERS, spawnOndode, spawnWillekeurigeOndode, kiesVensterIndex,
   zetOndodeSpawnRichting,   // Feedback: kijkrichting meteen bij echte spawns (niet in spawnOndode() zelf, tests blijven ongewijzigd)

@@ -140,11 +140,19 @@ const dip = await page.evaluate(() => {
   const voorY = d.wapenStaat.definitie.groep.position.y;   // vlak bij het begin: nog dicht bij rust
   let laagstePunt = voorY;
   let ticks = 0;
+  // Ticket 140: de herlaad-DIP is verhuisd uit updateWapen() (die houdt nu
+  // alleen nog de timer en de munitie-overheveling) naar
+  // updateWapenPresentatie(), de enige schrijver van de wapen-transform. Eén
+  // frame "wapen" is dus die twee samen, in deze volgorde — precies zoals de
+  // gameLoop ze aanroept. De asserties hieronder zijn ongewijzigd: de dip
+  // zelf, zijn amplitude en de exacte terugkeer naar rust zijn hetzelfde.
   while (d.wapenStaat.herladen && ticks < 500) {
     d.updateWapen(0.02);
+    d.updateWapenPresentatie(0.02);
     laagstePunt = Math.min(laagstePunt, d.wapenStaat.definitie.groep.position.y);
     ticks++;
   }
+  d.updateWapenPresentatie(0.02);   // afsluitende frame: herladen is net false, dip terug op 0
   const naY = d.wapenStaat.definitie.groep.position.y;
   return { voorY, laagstePunt, naY, basisY: d.WAPEN_BASIS_Y, amplitude: d.WAPEN_HERLAAD_DIP_AMPLITUDE };
 });
