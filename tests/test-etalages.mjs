@@ -5,7 +5,7 @@
 // Zie ROADMAP.md Ticket 85 en ARCHITECTURE_NOTES.md §9.6. De groei-vrije
 // mesh-/materiaal-/obstakeltelling over 25 golven zit in test-resources.mjs
 // (sectie f) — dit bestand bewaakt de FUNCTIONELE correctheid.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
 const { check, report } = makeChecker();
@@ -118,6 +118,12 @@ check('startGolf() roept updateEtalageSporen() aan (raam 0 wisselt bij een echte
 
 // --- 6. Ereplank: twee medaillons, gedoofd totdat het bijbehorende wapen
 // gesmeed wordt. -----------------------------------------------------------
+// Ticket 134/135 (§12.8/§12.6): koopSmederij() smeedt het ACTIEVE wapen — de
+// speler start sinds T134 met een mes (geen wapenStaat), en koopSmederij()
+// weigert dat nu met een melding i.p.v. te crashen (T135). Deze sectie test
+// het smeedpad zelf, dus eerst een geladen vuurwapen toekennen — was ooit
+// "de Drukspuit, standaard bij het laden", dat klopt niet meer.
+await geefSpelerVuurwapen(page);
 const ereplankVoorTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   return {
@@ -135,7 +141,7 @@ const ereplankNaTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.spelStaat.geld = 100000;
   const ratelaarKleurVoor = d.ereplankMedaillonRatelaar.material.color.getHex();
-  d.koopSmederij();   // smeedt het actieve wapen (Drukspuit, standaard bij het laden)
+  d.koopSmederij();   // smeedt het actieve wapen (AMSTEL-9, via geefSpelerVuurwapen() hierboven)
   return {
     drukspuitKleurNa: d.ereplankMedaillonDrukspuit.material.color.getHex(),
     ratelaarOngewijzigd: d.ereplankMedaillonRatelaar.material.color.getHex() === ratelaarKleurVoor,

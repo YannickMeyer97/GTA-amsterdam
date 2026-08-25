@@ -6102,8 +6102,12 @@ function bouwIcoonPistool(g, kleur) {
 // blijft de letterlijke waarde (0xff7a1f) nodig, want dat IS meteen bij
 // object-constructie geëvalueerd.
 const WINKEL_STIJLEN = {
+  // Ticket 135: zelfde 'nvt'-behandeling als smederij hieronder — zonder
+  // vuurwapen valt er niets te bevoorraden (koopAmmo() weigert dit nu ook,
+  // §12.6). 'nvt' voorkomt dat de ring "beschikbaar" pulst voor een aankoop
+  // die bij het T-drukken alsnog geweigerd wordt.
   ammo:         { kleur: 0x6bd0ff, bouwIcoon: (g) => bouwIcoonKogel(g, 0x6bd0ff),
-    status: () => spelStaat.geld >= AMMO_PRIJS ? 'beschikbaar' : 'teDuur' },
+    status: () => !wapenStaat ? 'nvt' : (spelStaat.geld >= AMMO_PRIJS ? 'beschikbaar' : 'teDuur') },
   werkbank:     { kleur: 0xff9f5a, bouwIcoon: (g) => bouwIcoonFles(g, 0xff9f5a),
     status: () => snelspannerGekocht ? 'gekocht' : (spelStaat.geld >= SNELSPANNER_PRIJS ? 'beschikbaar' : 'teDuur') },
   pantserdrank: { kleur: 0xb8c8ff, bouwIcoon: (g) => bouwIcoonSchild(g, 0xb8c8ff),
@@ -7407,6 +7411,12 @@ function nieuweWapenStaat(definitie) {
 // één vaste bonus — één helper i.p.v. deze som op meerdere plekken
 // (raakOndode, updateHUD) te dupliceren.
 function berekenSmederijBonus(staat) {
+  // Ticket 135: raakOndode() leest hiervoor de MODULE-LEVEL wapenStaat (niet
+  // een parameter) zodra basisSchadeVast niet is meegegeven — en die is sinds
+  // T134 null zolang de speler alleen een mes heeft. "Geen vuurwapen" is
+  // triviaal "geen Smederij-bonus" (het mes kan sowieso niet gesmeed worden,
+  // §12.6), dus 0 i.p.v. crashen op staat.gesmeed.
+  if (!staat) return 0;
   let bonus = 0;
   if (staat.gesmeed) bonus += staat.definitie.smederijConfig[0].schadeBonus;
   if (staat.gesmeedNiveau2) bonus += staat.definitie.smederijConfig[1].schadeBonus;
@@ -12999,6 +13009,12 @@ function koopDeur() {
 }
 
 function koopAmmo() {
+  // Ticket 135 (§12.6, zelfde redenering als koopSmederij()): reserve-munitie
+  // bijvullen voor een vuurwapen dat je niet bezit is zinloos — er is geen
+  // wapenStaat.reserve om bij op te tellen. Weigert met een melding i.p.v.
+  // de eerdere crash. Vóór de geldcheck: "geen wapen" is fundamenteler dan
+  // "te weinig geld" (zelfde volgorde als koopSmederij()).
+  if (!wapenStaat) { toonMelding('Er is geen vuurwapen om te bevoorraden'); speelGeenGeld(); return; }
   if (spelStaat.geld < AMMO_PRIJS) { toonMelding(`Nog €${AMMO_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
   spelStaat.geld -= AMMO_PRIJS;
   wapenStaat.reserve += AMMO_KIST_KOGELS;
@@ -13096,6 +13112,12 @@ function koopAmstel9() {
 // ontploffingen op elk raakpunt (schotExplosie() in schiet()), de Canal
 // Ripper krijgt Doorboring (een tweede, doorboord doel per schot).
 function koopSmederij() {
+  // Ticket 135 (§12.6): het mes kan niet gesmeed worden — koopSmederij()
+  // smeedt "het actieve wapen", en met actiefWapenNaam === 'mes' is er geen
+  // wapenStaat om te smeden. Weigert met een melding i.p.v. de eerdere
+  // crash op wapenStaat.gesmeedNiveau2. speelGeenGeld() (i.p.v. speelKoop())
+  // omdat dit hetzelfde "kan nu niet"-gevoel moet geven als te weinig geld.
+  if (!wapenStaat) { toonMelding('Er is geen wapen om te smeden'); speelGeenGeld(); return; }
   if (wapenStaat.gesmeedNiveau2) return;   // beide niveaus al gekocht
   const niveauIndex = wapenStaat.gesmeed ? 1 : 0;
   const prijs = niveauIndex === 0 ? SMEDERIJ_PRIJS : SMEDERIJ2_PRIJS;
@@ -13300,7 +13322,10 @@ const ammoPunt = {
   naam: 'Ammo-kist',
   positie: new THREE.Vector3(3, 0, -2),
   radius: 1.5,
-  prompt: () => `Druk T: munitie bijvullen (€${AMMO_PRIJS})`,
+  // Ticket 135: null-veilig, zelfde patroon als smederijPunt.prompt().
+  prompt: () => !wapenStaat
+    ? 'Er is geen vuurwapen om te bevoorraden'
+    : `Druk T: munitie bijvullen (€${AMMO_PRIJS})`,
   actie: koopAmmo,
 };
 const werkbankPunt = {

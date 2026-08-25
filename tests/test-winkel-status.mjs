@@ -5,10 +5,16 @@
 // tijdens hun koop-flits), de Smederij-status volgt het actieve wapen,
 // winkelLicht hecht zich aan de dichtstbijzijnde niet-gedoofde winkel
 // binnen 6 m en dooft daarbuiten, en koop-functies triggeren flitsMarkering.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
 const { check, report } = makeChecker();
+// Ticket 135 (§12.6): de ammo-kist-status is nu 'nvt' zonder vuurwapen (de
+// speler start met een mes) — eerst een geladen vuurwapen toekennen zodat
+// sectie 1 hieronder daadwerkelijk de GELD-afhankelijke status test, niet
+// de nieuwe wapen-afhankelijke 'nvt'-tak (die heeft zijn eigen dekking in
+// test-arsenaal-randgevallen.mjs).
+await geefSpelerVuurwapen(page);
 
 // --- 1. Statusovergangen op geld ------------------------------------------
 const geldStatus = await page.evaluate(() => {
