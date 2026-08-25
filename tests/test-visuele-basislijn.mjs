@@ -495,14 +495,41 @@ const RENDER_BAND = 0.25;
 // tekst-run, ruim binnen de 25%-RENDER_BAND), alleen de mediaan verschuift.
 // Geen geometrie- of lichtwijziging — puur de HUD-tekstinhoud. Bewust
 // bijgewerkt, geen ongemerkte scene-wijziging.
+// Ticket 134 (Fix 6, §12.5 + §12.7-vangrail 4): de speler start nu met het
+// mes in de hand i.p.v. de AMSTEL-9 — en het wapenmodel hangt aan de CAMERA
+// (0.26, -0.22, -0.5), dus het staat op ALLE ACHT standpunten in beeld,
+// ongeacht waar de camera in de wereld staat. Precies zoals dit ticket
+// vooraf aangekondigde ("het wapenmodel in beeld" naast het HUD-label,
+// zie de precedent hierboven bij T90/Fix 6): dat verschuift de hele
+// BASISLIJN-tabel, niet één zone. Twee oorzaken tegelijk:
+//   1. Het mesmodel (3 meshes: kegel + doos + capsule, staal/leer) verving
+//      de AMSTEL-9 (4 meshes: 2 cilinders + capsule + emissieve bol,
+//      groen/donkergroen) als permanent zichtbaar wapen-in-beeld.
+//   2. Het nieuwe AMSTEL-9-wandrek (6 meshes, westmuur startruimte) is aan
+//      de WERELD toegevoegd — alleen zichtbaar vanuit de woonkamer (calls
+//      627 -> 634, +7 — ruim binnen de 25%-RENDER_BAND, dus geen verdere
+//      uitsplitsing nodig dan "het rek staat erbij, het wapenmodel is
+//      1 mesh kleiner").
+// Gemeten met `node test-visuele-basislijn.mjs` ná de T134-wijzigingen
+// (leesbare JSON die het script zelf print bij een FAIL). Alle acht
+// standpunten herijkt; geen enkele buiten de RENDER_BAND (25%) — de
+// mesh-/driehoektelling verschuift met hooguit een paar procent.
 const BASISLIJN = {
-  woonkamer:    { gemiddelde: 28.89, mediaan: 17.08, calls: 627, triangles: 53843 },
-  gang:         { gemiddelde: 29.19, mediaan: 15.80, calls: 458, triangles: 37747 },
-  atelier:      { gemiddelde: 30.62, mediaan: 16.66, calls: 273, triangles: 26381 },
-  binnenplaats: { gemiddelde: 24.98, mediaan: 21.36, calls: 273, triangles: 26757 },
-  bijkeuken:    { gemiddelde: 25.11, mediaan: 15.59, calls: 586, triangles: 49583 },
-  kelder:       { gemiddelde: 15.81, mediaan: 11.26, calls: 187, triangles: 25832 },
-  vliering:     { gemiddelde: 11.89, mediaan: 9.06,  calls: 273, triangles: 32280 },
+  woonkamer:    { gemiddelde: 28.03, mediaan: 16.51, calls: 634, triangles: 51145 },
+  gang:         { gemiddelde: 29.39, mediaan: 15.59, calls: 468, triangles: 38755 },
+  atelier:      { gemiddelde: 31.69, mediaan: 16.66, calls: 274, triangles: 26357 },
+  binnenplaats: { gemiddelde: 23.07, mediaan: 21.03, calls: 274, triangles: 26733 },
+  bijkeuken:    { gemiddelde: 27.39, mediaan: 16.80, calls: 597, triangles: 47041 },
+  kelder:       { gemiddelde: 13.39, mediaan: 10.12, calls: 188, triangles: 25808 },
+  // Vliering is de bijna-zwarte baseline (net als bij het T90-HUD-tekst-
+  // precedent) — dus het gevoeligste standpunt. Het mesmodel is kleiner en
+  // donkerder (staal 0xaab0b8/leer 0x2a2018) dan de AMSTEL-9's felgroene
+  // meterDrukspuit-lampje (emissive 0x4fdc7a, expliciet BOVEN Bron-niveau
+  // getild, zie T89) — dat lampje was op deze bijna-zwarte achtergrond een
+  // disproportioneel deel van de heldere pixels in het 15-85%-venster. Zonder
+  // dat lampje daalt de mediaan van 9,06 naar 2,92 (-68%), ruim buiten de
+  // 2%-BAND maar exact verklaard: geen ander element in deze scène veranderde.
+  vliering:     { gemiddelde: 10.73, mediaan: 2.92,  calls: 274, triangles: 31948 },
   // Feedback-fix 1 (gebruiker: "tijdens de mistgolf zie ik duidelijk dat er
   // geen water om de vlonder heen ligt"): het watervlak begon eerst pas bij
   // VLONDER_X_OOST (recht voor de steiger); naast het smalle dek (|z|>1
@@ -524,7 +551,9 @@ const BASISLIJN = {
   // (28859 -> 26981, het watervlak is per saldo iets kleiner na de
   // noordwaartse clip). Geen enkele andere zone beweegt: alleen de gracht
   // kijkt naar dit vlak.
-  gracht:       { gemiddelde: 26.13, mediaan: 16.80, calls: 198, triangles: 26981 },
+  // Ticket 134: zelfde oorzaak als de andere zeven — het wapenmodel in
+  // beeld wisselde van AMSTEL-9 naar mes (zie de toelichting hierboven).
+  gracht:       { gemiddelde: 22.15, mediaan: 15.66, calls: 199, triangles: 26957 },
 };
 
 const gemeten = {};
@@ -568,7 +597,7 @@ const invarianten = await page.evaluate(() => {
 check('Invariant 2: precies 28 lichten (1 hemisfeer + 27 point)', invarianten.lichten === 28, invarianten);
 check('Invariant 2: precies 1 schaduwwerpend licht', invarianten.schaduwwerpers === 1, invarianten);
 check('Invariant 5: obstakels.length blijft 58 (T131-baseline)', invarianten.obstakels === 58, invarianten);
-check('interactiePunten.length blijft 13', invarianten.interactiePunten === 13, invarianten);
+check('interactiePunten.length blijft 14 (Ticket 134: AMSTEL-9 als kooppunt)', invarianten.interactiePunten === 14, invarianten);
 check('Post-processing: 4 passes (RenderPass/Bloom/naverwerking/Output, sinds T96 — blijft 4 voor de rest van de ronde, T97/T98 breiden de bestaande naverwerkingspass uit)', invarianten.composerPasses === 4, invarianten);
 
 // --- 4. Bronvorm van de assertie: een band, geen exact getal --------------

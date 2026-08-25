@@ -64,6 +64,9 @@ check('Deur 1: "beschikbaar" voor, "gekocht" na koopDeur()',
 const smederijStatus = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.spelStaat.geld = 100000;
+  // Ticket 134: de speler start met het mes — eerst garanderen dat de
+  // AMSTEL-9 bezeten is (wisselWapen() no-opt anders stilzwijgend).
+  if (!d.wapenStaten.drukspuit) d.koopAmstel9();
   if (d.actiefWapenNaam !== 'drukspuit') d.wisselWapen();
   const voorSmeden = d.WINKEL_STIJLEN.smederij.status();
   d.koopSmederij();   // niveau 1 van de ACTIEVE Drukspuit

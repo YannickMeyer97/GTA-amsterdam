@@ -11,10 +11,14 @@
 // onder blijven en NOOIT meeschalen met vuursnelheid, anders wordt
 // aanhoudend vuur verblindend op precies het moment dat de speler het
 // meest moet zien (§10.6, "Let op").
-import { openAmsterdamUndead, makeChecker, frames } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, frames, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
 const { check, report } = makeChecker();
+// Ticket 134 (§12.8): dit bestand test de mondingsvlam via ECHTE schiet()-
+// aanroepen, niet het wapensysteem zelf — de speler start sinds T134 met
+// een mes, dus eerst een geladen vuurwapen (AMSTEL-9) toekennen.
+await geefSpelerVuurwapen(page);
 
 // --- 1. Structuur: vlam is een Group van twee gekruiste vlakken op één
 // gedeeld materiaal (geen losse .material meer op vlam zelf) -------------

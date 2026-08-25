@@ -7,10 +7,13 @@
 // Ticket 129: de vroegere V1-architectuur is verwijderd — de vorm-/hitbox-
 // checks lezen nu rechtstreeks de SkinnedMesh-architectuur (delen.vormParams,
 // de vaste hitbox-proxies uit Ticket 120) i.p.v. losse geschaalde meshes.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
 const { check, report } = makeChecker();
+// Ticket 134 (§12.8): de raycast-sweep-sectie gebruikt d.schiet() — eerst
+// een geladen vuurwapen toekennen.
+await geefSpelerVuurwapen(page);
 
 const TYPES = ['normaal', 'loper', 'sjouwer', 'brander', 'sluiper'];
 

@@ -6028,6 +6028,11 @@ const ICOON_GEO = {
   // kaart visueel niet te onderscheiden.
   trommel: new THREE.CylinderGeometry(0.085, 0.085, 0.07, 12),
   trommelKogel: new THREE.CylinderGeometry(0.028, 0.028, 0.1, 8),
+  // Ticket 134: het AMSTEL-9-kooppunt — kort loop + een gekantelde greep,
+  // silhouet-stijl (net als de andere iconen hier), geen kopie van het
+  // in-hand-model.
+  pistoolLoop: new THREE.BoxGeometry(0.16, 0.045, 0.05),
+  pistoolGreep: new THREE.BoxGeometry(0.05, 0.14, 0.05),
 };
 // Ticket 89: BEWUST onder Bron (§10.5, 1,2-1,6) — de "beschikbaar"-status
 // van een winkelpunt wordt gedragen door de ringkleur/-opacity-puls
@@ -6079,6 +6084,11 @@ function bouwIcoonSleutel(g, kleur) {
   const ring = icoonMesh(ICOON_GEO.sleutelRing, kleur); ring.position.y = 1.4; g.add(ring);
   const steel = icoonMesh(ICOON_GEO.sleutelSteel, kleur); steel.position.y = 1.25; g.add(steel);
 }
+function bouwIcoonPistool(g, kleur) {
+  const loop = icoonMesh(ICOON_GEO.pistoolLoop, kleur); loop.position.set(0.02, 1.42, 0); g.add(loop);
+  const greep = icoonMesh(ICOON_GEO.pistoolGreep, kleur);
+  greep.position.set(-0.05, 1.31, 0); greep.rotation.z = 0.35; g.add(greep);
+}
 
 // Centrale config (§5.7-tabel): key = stijlnaam, kleur = de per-punt kleur
 // (pantserdrank en watertap krijgen hier hun nieuwe, van elkaar en van de
@@ -6100,6 +6110,12 @@ const WINKEL_STIJLEN = {
     status: () => pantserdrankGekocht ? 'gekocht' : (spelStaat.geld >= PANTSERDRANK_PRIJS ? 'beschikbaar' : 'teDuur') },
   watertap:     { kleur: 0x54c8e8, bouwIcoon: (g) => bouwIcoonDruppel(g, 0x54c8e8),
     status: () => spelerStaat.hp >= spelerStaat.hpMax ? 'nvt' : (spelStaat.geld >= WATERTAP_PRIJS ? 'beschikbaar' : 'teDuur') },
+  // Ticket 134: eerste vuurwapen — status volgt `wapenStaten.drukspuit`
+  // rechtstreeks (net als `ratelaarGekocht` hieronder voor de Ratelaar),
+  // niet `wapenStaat`/`actiefWapenNaam` (die kunnen intussen op de Ratelaar
+  // staan zonder dat dat iets zegt over AMSTEL-9-bezit).
+  amstel9:      { kleur: 0xa8c8e0, bouwIcoon: (g) => bouwIcoonPistool(g, 0xa8c8e0),
+    status: () => wapenStaten.drukspuit ? 'gekocht' : (spelStaat.geld >= AMSTEL9_PRIJS ? 'beschikbaar' : 'teDuur') },
   ratelaar:     { kleur: 0xd9a05a, bouwIcoon: (g) => bouwIcoonTandwiel(g, 0xd9a05a),
     status: () => ratelaarGekocht ? 'gekocht' : (spelStaat.geld >= RATELAAR_PRIJS ? 'beschikbaar' : 'teDuur') },
   // Randgeval (ROADMAP Ticket 37): de status volgt het ACTIEVE wapen, exact
@@ -6298,6 +6314,39 @@ const RATELAAR_Z = DEUR2_Z + 5;
   wereld.add(bordje);
 }
 const ratelaarMarkering = winkelMarkering(RATELAAR_X, RATELAAR_Z, 'ratelaar');
+
+// --- Wandkooppunt "AMSTEL-9" (Ticket 134, Fix 6, §12.5): tegen de westmuur
+// van de STARTRUIMTE — zelfde opbouw als het Ratelaar-rek hierboven, X-as
+// gespiegeld (de westmuur ligt op x = -HALF_BREEDTE, dus "0,1 naar binnen"
+// wordt hier +0,1 i.p.v. -0,1), met kortere/compactere loop+kolf zodat het
+// silhouet als een pistool leest i.p.v. een SMG. Geen collision, net als het
+// Ratelaar-rek — puur decor + interactiepunt.
+const AMSTEL9_X = -HALF_BREEDTE + 0.6;
+const AMSTEL9_Z = 0;   // midden van de westmuur, ruim weg van deur 1 en de ammo-kist
+{
+  const achterplaat = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.2, 1.25), mat(0x2b2118, 0.82));
+  achterplaat.position.set(-HALF_BREEDTE + 0.1, 0.85, AMSTEL9_Z);
+  achterplaat.castShadow = true;
+  wereld.add(achterplaat);
+  const loop = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.42, 8), mat(0x1a1d20, 0.55, 0.45));
+  loop.rotation.x = Math.PI / 2;
+  loop.rotation.z = Math.PI / 2;
+  loop.position.set(-HALF_BREEDTE + 0.22, 1.03, AMSTEL9_Z);
+  wereld.add(loop);
+  const kolf = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.2, 0.14), mat(0x3a2a1c, 0.8));
+  kolf.position.set(-HALF_BREEDTE + 0.22, 0.9, AMSTEL9_Z + 0.2);
+  wereld.add(kolf);
+  const steunBoven = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.5), mat(0x151515, 0.65, 0.4));
+  steunBoven.position.set(-HALF_BREEDTE + 0.24, 1.18, AMSTEL9_Z);
+  wereld.add(steunBoven);
+  const steunOnder = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.5), mat(0x151515, 0.65, 0.4));
+  steunOnder.position.set(-HALF_BREEDTE + 0.24, 0.78, AMSTEL9_Z);
+  wereld.add(steunOnder);
+  const bordje = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, 0.7), mat(0xa8c8e0, 0.55, 0.15));
+  bordje.position.set(-HALF_BREEDTE + 0.25, 0.45, AMSTEL9_Z);
+  wereld.add(bordje);
+}
+const amstel9Markering = winkelMarkering(AMSTEL9_X, AMSTEL9_Z, 'amstel9');
 
 // --- Ticket 12: De Smederij — smeedpunt. Klein aambeeld + gloeiend
 // kooltje, geen collision (zelfde patroon als de Ratelaar/Watertap/
@@ -6907,6 +6956,10 @@ smederijVisualsDrukspuit.visible = false;
 wapenDrukspuit.add(smederijVisualsDrukspuit);
 
 wapenDrukspuit.position.set(0.26, -0.22, -0.5);
+// Ticket 134: bij het laden bezit de speler nog geen enkel vuurwapen (start
+// met het mes) — onzichtbaar totdat koopAmstel9() 'm activeert. Zelfde
+// patroon als wapenRatelaar.visible hieronder.
+wapenDrukspuit.visible = false;
 camera.add(wapenDrukspuit);
 scene.add(camera);   // camera moet in de scene zitten, anders zie je het wapen niet
 
@@ -7098,13 +7151,21 @@ const wapenMes = new THREE.Group();
   heft.position.set(0, -0.005, 0.06);
   wapenMes.add(heft);
 }
-// Begint in de INGETROKKEN houding (rechtsonder, uit beeld). De steekanimatie
-// interpoleert van daaruit naar de gestrekte houding richting het vizier —
-// zie MES_IN_*/MES_UIT_* verderop. Literalen omdat die constanten pas later
-// gedeclareerd worden; de gameLoop zet ze na elke steek exact terug.
-wapenMes.position.set(0.36, -0.48, -0.38);
-wapenMes.rotation.set(0.90, 0.10, 0.70);
-wapenMes.visible = false;
+// Ticket 134 (Fix 6): de speler START met het mes — dus dit is meteen zijn
+// GEHOUDEN pose, niet de ingetrokken quick-draw-pose. Zelfde rustcoördinaat
+// als een vuurwapen (0.26, -0.22, -0.5, rotatie 0) — literalen omdat
+// WAPEN_BASIS_X/Y pas later gedeclareerd worden, zelfde waarden. Zichtbaar
+// vanaf het laden, want inHandGroep wijst er hieronder ook meteen naartoe.
+//
+// De ingetrokken houding (MES_IN_*, rechtsonder/uit beeld) is UITSLUITEND
+// voor de quick-draw-steek NADAT de speler een vuurwapen heeft — dat
+// scenario bestaat bij het laden nog niet (actiefWapenNaam start op 'mes'
+// en komt daar nooit meer op terug, zie activeerVuurwapen()). steekMes()
+// zet de pose bij elke druk op V opnieuw, dus welke waarde hier ligt vóór
+// de allereerste steek maakt niet uit — dit is puur de LAAD-pose.
+wapenMes.position.set(0.26, -0.22, -0.5);
+wapenMes.rotation.set(0, 0, 0);
+wapenMes.visible = true;
 camera.add(wapenMes);
 
 let terugslag = 0;
@@ -7251,6 +7312,18 @@ const MES_UIT_X = 0.16, MES_UIT_Y = -0.13, MES_UIT_Z = -0.50;
 const MES_IN_ROT_X = 0.90, MES_IN_ROT_Y = 0.10, MES_IN_ROT_Z = 0.70;
 const MES_UIT_ROT_X = 0.45, MES_UIT_ROT_Y = 0.55, MES_UIT_ROT_Z = 0.25;
 let mesAnimatieTimer = 0;
+
+// --- Ticket 134: een TWEEDE steek-animatie, voor als het mes zélf het
+// actieve wapen is (nog geen vuurwapen gekocht) --------------------------
+// Bovenstaande MES_IN_*/MES_UIT_* horen bij de quick-draw: een vuurwapen
+// zakt weg en het mes komt van een verborgen, ingetrokken plek. Zonder
+// vuurwapen is er niets om weg te laten zakken en staat het mes al
+// zichtbaar op zijn rustplek (WAPEN_BASIS_X/Y/Z, hetzelfde coördinaat als
+// een vuurwapen) — een steek is dan een simpele jab-en-terug vanuit die
+// rustpositie, geen drieluik. Kleinere uitslag dan de quick-draw-stoot: het
+// mes hoeft niet vanuit het niets het beeld te vullen, het is al in beeld.
+const MES_HELD_STOOT_Z = 0.16;
+const MES_HELD_KANTEL_X = -0.30;   // rad — lichte neerwaartse kantel tijdens de stoot
 
 // --- Wapendefinities + actieve wapen-staat --------------------------
 // Elk wapen: naam (HUD), munitiestats, vuursnelheid en de bijbehorende
@@ -7425,23 +7498,34 @@ function bezitTweeVuurwapens() {
 // transform op het wapen-in-de-hand, gebruik dan `inHandGroep` en nooit
 // `wapenStaat.definitie.groep`. T140 maakt daar één eigenaar van.
 // =========================================================================
-const wapenStaten = { drukspuit: nieuweWapenStaat(WAPEN_DRUKSPUIT), ratelaar: null };
-let actiefWapenNaam = 'drukspuit';
-let wapenStaat = wapenStaten.drukspuit;
+// Ticket 134 (Fix 6): de speler start met UITSLUITEND het mes — geen enkel
+// vuurwapen bezeten. `wapenStaten['mes']` bestaat bewust niet (ontwerp-
+// beslissing 95, mesStaat is de aparte struct hierboven); `wapenStaat` is
+// dus expliciet `null` i.p.v. een `wapenStaten[actiefWapenNaam]`-lookup die
+// stilzwijgend `undefined` zou opleveren.
+const wapenStaten = { drukspuit: null, ratelaar: null };
+let actiefWapenNaam = 'mes';
+let wapenStaat = null;
 
 // Ontwerpbeslissing 100: de Group die op dit moment aan de camera hangt —
-// ALTIJD niet-null, ook als er geen vuurwapen is (dan wijst hij naar het mes,
-// vanaf T133). Hiermee blijft het PRESENTATIEPAD (bob/sway/lean/dips/
-// terugslag) los van het GAMEPLAYPAD (`wapenStaat`, dat wél null mag zijn).
-// Dat is een verfijning van ontwerpbeslissing 95, geen omkering: OB95 gaat
-// over de zeven gameplayvelden van een wapenStaat, en het presentatiepad
-// heeft daar niets van nodig — alleen een Group om te verplaatsen.
-let inHandGroep = wapenStaat.definitie.groep;
+// ALTIJD niet-null, ook als er geen vuurwapen is (dan wijst hij naar het
+// mes). Hiermee blijft het PRESENTATIEPAD (bob/sway/lean/dips/terugslag) los
+// van het GAMEPLAYPAD (`wapenStaat`, dat wél null mag zijn). Dat is een
+// verfijning van ontwerpbeslissing 95, geen omkering: OB95 gaat over de
+// zeven gameplayvelden van een wapenStaat, en het presentatiepad heeft daar
+// niets van nodig — alleen een Group om te verplaatsen.
+// Ticket 134: bij het laden is dat dus letterlijk `wapenMes` (er is nog geen
+// `wapenStaat` om `.definitie.groep` van te lezen).
+let inHandGroep = wapenMes;
 
 function updateAmmoUI() {
-  // Ticket 132: zonder vuurwapen valt er geen munitie te tonen. T134 vervangt
-  // deze early return door de echte mes-weergave ("0 / 0", §12.6).
-  if (!wapenStaat) return;
+  // Ticket 134 (§12.6): zonder vuurwapen is er geen munitie — vaste "0 / 0"
+  // i.p.v. de laatst getoonde vuurwapen-waarde.
+  if (!wapenStaat) {
+    ammoUI.textContent = '0 / 0';
+    ammoUI.classList.remove('herladen');
+    return;
+  }
   ammoUI.textContent = wapenStaat.herladen ? 'Herladen…' : `${wapenStaat.magazijn} / ${wapenStaat.reserve}`;
   ammoUI.classList.toggle('herladen', wapenStaat.herladen);
 }
@@ -7458,14 +7542,38 @@ function herladen() {
   updateAmmoUI();
 }
 
-// Wisselen tussen Drukspuit en Ratelaar (Q). Alleen mogelijk als de Ratelaar
-// gekocht is; geblokkeerd tijdens herladen (eenvoudiger en voorspelbaarder
-// dan het herladen te onderbreken).
+// Ticket 134: maakt `naam` het actieve wapen — gedeeld door de Q-toggle
+// (wisselWapen() hieronder) EN door de twee koop-functies (koopAmstel9(),
+// koopRatelaar()), die het zojuist gekochte vuurwapen altijd meteen actief
+// maken (gebruikerseis). Dat laatste kan NIET via wisselWapen() zelf lopen:
+// zijn `bezitTweeVuurwapens()`-gate is een Q-toggle-regel ("wissel tussen
+// twee BEZETEN vuurwapens") die een eerste-ooit aankoop (nul of één
+// vuurwapen bezeten) altijd zou blokkeren.
+function activeerVuurwapen(naam) {
+  actiefWapenNaam = naam;
+  wapenStaat = wapenStaten[naam];
+  inHandGroep = wapenStaat.definitie.groep;   // Ticket 132: presentatiepad volgt mee (OB100)
+  WAPEN_DRUKSPUIT.groep.visible = naam === 'drukspuit';
+  WAPEN_RATELAAR.groep.visible = naam === 'ratelaar';
+  // Ticket 134: het mes is na de EERSTE vuurwapen-aankoop nooit meer het
+  // actieve wapen (hard requirement, §12.3) — dus ook nooit meer zichtbaar
+  // als "in de hand". `steekMes()` blijft 'm gewoon kort inschakelen voor de
+  // quick-draw-animatie; dat gebeurt via mesAnimatieTimer, niet hier.
+  wapenMes.visible = false;
+  // Ticket 34: korte y-dip-animatie op de binnenkomende groep (decayt in de
+  // cosmetische gameLoop-zone) + een eigen wisselgeluidje.
+  wisselTimer = WISSEL_DUUR;
+  speelWissel();
+  updateAmmoUI();
+  updateHUD();
+}
+
+// Wisselen tussen Drukspuit en Ratelaar (Q). Alleen mogelijk als BEIDE
+// vuurwapens bezeten zijn; geblokkeerd tijdens herladen (eenvoudiger en
+// voorspelbaarder dan het herladen te onderbreken).
 function wisselWapen() {
   // Ticket 132: expliciete bezitsgate op het ARSENAAL i.p.v. de losse
-  // `ratelaarGekocht`-vlag. Vandaag exact hetzelfde resultaat (de Drukspuit-
-  // staat bestaat altijd), maar T134 kan de Drukspuit hierna op `null` laten
-  // starten zonder deze regel aan te raken.
+  // `ratelaarGekocht`-vlag.
   if (!bezitTweeVuurwapens()) return;
   if (wapenStaat.herladen) return;
   // Een eventuele nog zichtbare mondingsflits van het uitgaande wapen meteen
@@ -7474,17 +7582,7 @@ function wisselWapen() {
   vlamNetGezet = false;
   wapenStaat.definitie.vlam.visible = false;
   wapenStaat.definitie.vlamLicht.visible = false;
-  actiefWapenNaam = actiefWapenNaam === 'drukspuit' ? 'ratelaar' : 'drukspuit';
-  wapenStaat = wapenStaten[actiefWapenNaam];
-  inHandGroep = wapenStaat.definitie.groep;   // Ticket 132: presentatiepad volgt mee (OB100)
-  WAPEN_DRUKSPUIT.groep.visible = actiefWapenNaam === 'drukspuit';
-  WAPEN_RATELAAR.groep.visible = actiefWapenNaam === 'ratelaar';
-  // Ticket 34: korte y-dip-animatie op de binnenkomende groep (decayt in de
-  // cosmetische gameLoop-zone) + een eigen wisselgeluidje.
-  wisselTimer = WISSEL_DUUR;
-  speelWissel();
-  updateAmmoUI();
-  updateHUD();
+  activeerVuurwapen(actiefWapenNaam === 'drukspuit' ? 'ratelaar' : 'drukspuit');
 }
 
 // Wordt elke frame aangeroepen zolang het spel actief is (pointer lock aan);
@@ -7794,7 +7892,17 @@ let bijkeukenBetreden = false;   // Ticket 27: eenmalige kraak bij de eerste sta
 let volgendeKlokGeluid = 40 + Math.random() * 40;
 
 function probeerTeSchieten() {
-  if (!wapenStaat) return;                       // Ticket 132: zonder vuurwapen valt er niets te schieten
+  // Feedback ná T134: zolang het mes het actieve wapen is (nog geen
+  // vuurwapen gekocht) moet de "schiet"-knop (linkermuisklik) ook steken —
+  // dezelfde knop als straks het vuurwapen bedient, maar dan met de
+  // mes-actie. steekMes() bewaakt zijn EIGEN cooldown (mesStaat.cooldownTimer,
+  // 0.6s) net als V, dus vasthouden herhaalt vanzelf op dat tempo i.p.v. te
+  // spammen — geen aparte gate hier nodig.
+  if (!wapenStaat) { steekMes(); return; }
+  // Ticket 132: zonder vuurwapen valt er niets te schieten (nu onbereikbaar
+  // met het mes als actief wapen, zie de vroege return hierboven — blijft
+  // staan voor het theoretische geval dat wapenStaat ooit weer null wordt
+  // zonder dat actiefWapenNaam 'mes' is).
   // Ticket 133 (visuele herziening): tijdens een steek is het vuurwapen
   // letterlijk uit beeld gezakt. Schieten zou dan een mondingsvlam uit het
   // niets tonen, dus de steek blokkeert het vuren tot het wapen terug is
@@ -7935,9 +8043,11 @@ function steekMes() {
   mesStaat.cooldownTimer = MES_COOLDOWN;
   mesStaat.meleeTimer = MES_STEEK_ANIMATIE_DUUR;   // blokkeert het vuren zolang het wapen weg is
   mesAnimatieTimer = MES_STEEK_ANIMATIE_DUUR;
-  // Het mes wordt hier NIET meteen zichtbaar gezet: in fase 1 zakt eerst het
-  // vuurwapen uit beeld, pas in fase 2 komt het mes op. De cosmetische zone in
-  // gameLoop regelt dat (zie MES_FASE_*).
+  // Zichtbaarheid wordt hier bewust NIET aangeraakt — de cosmetische zone in
+  // gameLoop regelt dat volledig, en het verschilt per situatie: met een
+  // vuurwapen actief komt het mes pas in fase 2 in beeld (MES_FASE_*); is
+  // het mes zelf het actieve wapen, dan staat het al zichtbaar (T134) en
+  // blijft dat gewoon zo tijdens de stoot.
   speelMesSteek();
 
   // De TREFFER valt hier, op het moment van de toetsaanslag — dus ~0,12s
@@ -12191,17 +12301,20 @@ function updateHUD() {
   // Speler-feedback: altijd de werkelijke waarde tonen (incl. de per-wapen
   // Smederij-bonus bij schade) i.p.v. "MAX" — "MAX" verborg de Smederij-bonus
   // en gaf geen idee meer van de echte herlaadtijd/schade tijdens het spelen.
-  // Ticket 132: alle wapen-afgeleide waarden defensief berekend, zodat een
-  // null `wapenStaat` (mes in de hand, vanaf T134) hier niet crasht. Vandaag
-  // is `wapenStaat` altijd waarheidsgetrouw, dus dit is gedragsneutraal.
-  // T134 vult de echte mes-weergave in: label `Mes`, geen ster, geen ⟳-tijd.
+  // Ticket 132/134: alle wapen-afgeleide waarden defensief berekend, zodat een
+  // null `wapenStaat` (mes in de hand) hier niet crasht.
   const weergaveSchade = schadePerTreffer + (wapenStaat ? berekenSmederijBonus(wapenStaat) : 0);
   const herlaadDuurNu = wapenStaat ? wapenStaat.herlaadDuur : 0;
   // Ticket 12: ster-merkteken als het actieve wapen gesmeed is.
   // Fix 5: ★★ bij het volledig gesmede (niveau 2) wapen, ★ bij alleen niveau 1.
   // ⟳ = De Zelflader gemonteerd (auto-herladen actief), naast de ster(ren).
+  // Ticket 134 (§12.6): het mes kent geen Smederij-tier en geen auto-herlaad
+  // — label wordt dus kaal `Mes`, ongeacht autoHerladerGekocht (die vlag
+  // staat wél gewoon aan, zie updateWapen()/T135; hij toont 'm alleen niet
+  // terwijl er niets is om automatisch te herladen).
   const smederijSter = !wapenStaat ? '' : (wapenStaat.gesmeedNiveau2 ? ' ★★' : (wapenStaat.gesmeed ? ' ★' : ''));
-  const wapenLabel = (wapenStaat ? wapenStaat.definitie.naam : '') + smederijSter + (autoHerladerGekocht ? ' ⟳' : '');
+  const wapenLabel = !wapenStaat ? 'Mes'
+    : wapenStaat.definitie.naam + smederijSter + (autoHerladerGekocht ? ' ⟳' : '');
   // Power-ups: toon actieve tijdelijke buffs (leeg als er geen actief zijn).
   // Math.ceil telt in hele seconden af — wisselt dus vanzelf elke seconde,
   // en één laatste keer bij het aflopen (buffs wordt dan weer leeg).
@@ -12534,6 +12647,10 @@ const DEUR_PRIJS       = 500;   // opent gang + atelier (zone C)
 const AMMO_PRIJS       = 300;   // vult reserve-munitie bij
 const AMMO_KIST_KOGELS = 48;    // reserve-kogels per aankoop
 const RATELAAR_PRIJS   = 750;   // eenmalig: tweede wapen, op de binnenplaats
+// Ticket 134 (Fix 6, §12.5): eerste vuurwapen — bewust goedkoper dan de
+// Ratelaar (ontwerpbeslissing 96: laag genoeg om vroeg in de run bereikbaar
+// te zijn met alleen het mes; T136 meet en stelt zo nodig bij).
+const AMSTEL9_PRIJS    = 450;
 // Ticket 12: De Smederij — late-game geldsink, per wapen (zie ARCHITECTURE_NOTES §2.7-8).
 const SMEDERIJ_PRIJS   = 3000;  // eenmalig per wapen: Smederij-schadebonus + groter magazijn
 // Fix 5: tweede, duurdere Smederij-upgrade per wapen (na de eerste), met een
@@ -12941,8 +13058,31 @@ function koopRatelaar() {
   flitsMarkering(ratelaarMarkering);
   toonMelding('Canal Ripper is gekocht! Druk Q om te wisselen');
   doofMarkering(ratelaarMarkering);
-  if (actiefWapenNaam === 'drukspuit') wisselWapen();
+  // Ticket 134: was `if (actiefWapenNaam === 'drukspuit')` — vóór T134 het
+  // enige mogelijke geval (de Drukspuit-staat bestond altijd, dus dit was
+  // altijd waar). Met het mes als mogelijke startwapen moet dit generieker:
+  // "nog niet op de Ratelaar" dekt zowel het oude geval als de nieuwe
+  // eerste-aankoop-vanuit-het-mes-route, met exact hetzelfde eindresultaat
+  // voor het oude geval.
+  if (actiefWapenNaam !== 'ratelaar') activeerVuurwapen('ratelaar');
   updateHUD();
+}
+
+// Ticket 134 (Fix 6, §12.5): AMSTEL-9-kooppunt tegen de westmuur van de
+// startruimte. Zelfde opbouw als koopRatelaar() hierboven, inclusief het
+// meteen-actief-maken — hier is dat zelfs de KERN van de ticket-eis (de
+// speler start zonder vuurwapen, dus dit is voor de meeste spelers de
+// allereerste keer dat er iets anders dan het mes in hun handen komt).
+function koopAmstel9() {
+  if (wapenStaten.drukspuit) return;
+  if (spelStaat.geld < AMSTEL9_PRIJS) { toonMelding(`Nog €${AMSTEL9_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  spelStaat.geld -= AMSTEL9_PRIJS;
+  wapenStaten.drukspuit = nieuweWapenStaat(WAPEN_DRUKSPUIT);
+  speelKoop();
+  flitsMarkering(amstel9Markering);
+  toonMelding('AMSTEL-9 is gekocht!');
+  doofMarkering(amstel9Markering);
+  activeerVuurwapen('drukspuit');
 }
 
 // Ticket 12: De Smederij smeedt het ACTIEVE wapen — eenmalig per wapen
@@ -13180,6 +13320,18 @@ const ratelaarPunt = {
     ? 'Canal Ripper is al gekocht (Q om te wisselen)'
     : `Druk T: koop Canal Ripper (€${RATELAAR_PRIJS})`,
   actie: koopRatelaar,
+};
+// Ticket 134 (Fix 6, §12.5): eerste vuurwapen, dus geen "Q om te wisselen"-
+// tekst nodig als 'm al gekocht is — na aankoop is de AMSTEL-9 altijd
+// meteen het actieve wapen (activeerVuurwapen(), geen los toetsje nodig).
+const amstel9Punt = {
+  naam: 'AMSTEL-9',
+  positie: new THREE.Vector3(AMSTEL9_X, 0, AMSTEL9_Z),
+  radius: 1.5,
+  prompt: () => wapenStaten.drukspuit
+    ? 'AMSTEL-9 is al gekocht'
+    : `Druk T: koop AMSTEL-9 (€${AMSTEL9_PRIJS})`,
+  actie: koopAmstel9,
 };
 const deur2Punt = {
   naam: 'Deur 2',
@@ -13737,7 +13889,7 @@ function toonVluchtOnderdelenIndienDrempel() {
   }
 }
 
-const interactiePunten = [deurPunt, ammoPunt, werkbankPunt, pantserdrankPunt, deur2Punt, watertapPunt, ratelaarPunt, smederijPunt, deur3Punt, deur4Punt, deur5Punt, deur6Punt, autoHerladerPunt];
+const interactiePunten = [deurPunt, ammoPunt, werkbankPunt, pantserdrankPunt, deur2Punt, watertapPunt, ratelaarPunt, amstel9Punt, smederijPunt, deur3Punt, deur4Punt, deur5Punt, deur6Punt, autoHerladerPunt];
 
 let huidigeInteractie = null;
 
@@ -14064,21 +14216,42 @@ function gameLoop(nu) {
       if (vlamTimer <= 0) { wapenStaat.definitie.vlam.visible = false; wapenStaat.definitie.vlamLicht.visible = false; }
     }
   }
-  // Ticket 133 (visuele herziening): de steek in drie fasen — vuurwapen zakt
-  // uit beeld, mes neemt zijn plek in en prikt, vuurwapen komt terug. Zo
-  // staan er nooit twee modellen tegelijk op de rustplek; dat clippen was
-  // precies het probleem van de eerste versie. Deze blok staat NA het
-  // wisseldip-blok hierboven en na updateWapen()'s herlaad-dip, en overschrijft
-  // die dus bewust: een steek is een grotere, kortere beweging en hoort te
-  // winnen zolang hij loopt. Bij het aflopen zet hij y expliciet terug op
-  // WAPEN_BASIS_Y, waarna die andere dips gewoon weer verder schrijven.
+  // Ticket 133/134 (visuele herziening): TWEE steek-animaties, afhankelijk
+  // van of het mes het actieve wapen is.
+  //
+  // MET vuurwapen (quick-draw): drieluik — vuurwapen zakt uit beeld, mes
+  // neemt zijn plek in en prikt, vuurwapen komt terug. Zo staan er nooit
+  // twee modellen tegelijk op de rustplek; dat clippen was precies het
+  // probleem van de allereerste versie.
+  //
+  // ZONDER vuurwapen (T134, het mes IS het wapen): het mes staat al
+  // zichtbaar op zijn rustplek (`inHandGroep` wijst er al naartoe, dus bob/
+  // sway/lean werken al) — een steek is dan een simpele jab-en-terug, geen
+  // drieluik (er is niets weg te laten zakken).
+  //
+  // Deze blok staat NA het wisseldip-blok hierboven en na updateWapen()'s
+  // herlaad-dip, en overschrijft die dus bewust: een steek is een grotere,
+  // kortere beweging en hoort te winnen zolang hij loopt. Bij het aflopen
+  // zet hij expliciet terug naar rust, waarna die andere dips weer verder
+  // schrijven.
   if (mesAnimatieTimer > 0) {
     mesAnimatieTimer = Math.max(0, mesAnimatieTimer - dt);
     const verstreken = MES_STEEK_ANIMATIE_DUUR - mesAnimatieTimer;
 
-    // Het vuurwapen maakt plaats. `wapenStaat` kan null zijn (T134: alleen een
-    // mes) — dan is `inHandGroep` het mes zélf en valt er niets weg te dippen.
-    if (wapenStaat) {
+    if (actiefWapenNaam === 'mes') {
+      // Geen vuurwapen om weg te laten zakken — het mes zélf stoot naar
+      // voren en trekt terug, vanuit zijn HELD rustpose (WAPEN_BASIS_*).
+      // Blijft de hele tijd zichtbaar (was het al, als het actieve wapen).
+      const s = Math.min(1, verstreken / MES_STEEK_ANIMATIE_DUUR);
+      const boog = Math.sin(s * Math.PI);   // 0 -> 1 -> 0: rust, stoot, terug
+      wapenMes.position.z = -0.5 - MES_HELD_STOOT_Z * boog;
+      wapenMes.rotation.x = MES_HELD_KANTEL_X * boog;
+      if (mesAnimatieTimer <= 0) {
+        wapenMes.position.z = -0.5;
+        wapenMes.rotation.x = 0;
+      }
+    } else {
+      // Het vuurwapen maakt plaats.
       let wegzak;
       if (verstreken < MES_FASE_WEG) {
         // Ease-out: begint snel, vlakt af als het wapen onderin aankomt.
@@ -14090,35 +14263,36 @@ function gameLoop(nu) {
         wegzak = MES_WAPEN_WEGZAK * (1 - Math.sin(s * Math.PI / 2));
       }
       inHandGroep.position.y = WAPEN_BASIS_Y - wegzak;
-    }
 
-    // Het mes is uitsluitend zichtbaar in fase 2 — daarbuiten is het wapen
-    // (deels) in beeld, en juist die overlap wilden we kwijt.
-    const inSteekFase = verstreken >= MES_FASE_WEG && verstreken < MES_FASE_WEG + MES_FASE_STEEK;
-    wapenMes.visible = inSteekFase;
-    if (inSteekFase) {
-      const s = (verstreken - MES_FASE_WEG) / MES_FASE_STEEK;
-      const boog = Math.sin(s * Math.PI);   // 0 -> 1 -> 0: uit, prik, terug
-      // Eén lineaire menging tussen de ingetrokken en de gestrekte houding.
-      // Positie én rotatie lopen mee met dezelfde boog, dus het mes komt
-      // omhoog, naar het midden, naar voren en recht in één beweging.
-      wapenMes.position.set(
-        MES_IN_X + (MES_UIT_X - MES_IN_X) * boog,
-        MES_IN_Y + (MES_UIT_Y - MES_IN_Y) * boog,
-        MES_IN_Z + (MES_UIT_Z - MES_IN_Z) * boog,
-      );
-      wapenMes.rotation.x = MES_IN_ROT_X + (MES_UIT_ROT_X - MES_IN_ROT_X) * boog;
-      wapenMes.rotation.y = MES_IN_ROT_Y + (MES_UIT_ROT_Y - MES_IN_ROT_Y) * boog;
-      wapenMes.rotation.z = MES_IN_ROT_Z + (MES_UIT_ROT_Z - MES_IN_ROT_Z) * boog;
-    }
+      // Het mes is uitsluitend zichtbaar in fase 2 — daarbuiten is het
+      // wapen (deels) in beeld, en juist die overlap wilden we kwijt.
+      const inSteekFase = verstreken >= MES_FASE_WEG && verstreken < MES_FASE_WEG + MES_FASE_STEEK;
+      wapenMes.visible = inSteekFase;
+      if (inSteekFase) {
+        const s = (verstreken - MES_FASE_WEG) / MES_FASE_STEEK;
+        const boog = Math.sin(s * Math.PI);   // 0 -> 1 -> 0: uit, prik, terug
+        // Eén lineaire menging tussen de ingetrokken en de gestrekte
+        // houding. Positie én rotatie lopen mee met dezelfde boog, dus het
+        // mes komt omhoog, naar het midden, naar voren en recht in één
+        // beweging.
+        wapenMes.position.set(
+          MES_IN_X + (MES_UIT_X - MES_IN_X) * boog,
+          MES_IN_Y + (MES_UIT_Y - MES_IN_Y) * boog,
+          MES_IN_Z + (MES_UIT_Z - MES_IN_Z) * boog,
+        );
+        wapenMes.rotation.x = MES_IN_ROT_X + (MES_UIT_ROT_X - MES_IN_ROT_X) * boog;
+        wapenMes.rotation.y = MES_IN_ROT_Y + (MES_UIT_ROT_Y - MES_IN_ROT_Y) * boog;
+        wapenMes.rotation.z = MES_IN_ROT_Z + (MES_UIT_ROT_Z - MES_IN_ROT_Z) * boog;
+      }
 
-    if (mesAnimatieTimer <= 0) {
-      // Exact terug naar rust — mes én vuurwapen, zodat er geen restje
-      // offset blijft hangen (zelfde afsluitpatroon als de wisseldip).
-      wapenMes.visible = false;
-      wapenMes.position.set(MES_IN_X, MES_IN_Y, MES_IN_Z);
-      wapenMes.rotation.set(MES_IN_ROT_X, MES_IN_ROT_Y, MES_IN_ROT_Z);
-      if (wapenStaat) inHandGroep.position.y = WAPEN_BASIS_Y;
+      if (mesAnimatieTimer <= 0) {
+        // Exact terug naar rust — mes én vuurwapen, zodat er geen restje
+        // offset blijft hangen (zelfde afsluitpatroon als de wisseldip).
+        wapenMes.visible = false;
+        wapenMes.position.set(MES_IN_X, MES_IN_Y, MES_IN_Z);
+        wapenMes.rotation.set(MES_IN_ROT_X, MES_IN_ROT_Y, MES_IN_ROT_Z);
+        inHandGroep.position.y = WAPEN_BASIS_Y;
+      }
     }
   }
 
@@ -14425,6 +14599,10 @@ window.AmsterdamUndeadDebug = {
   koopRatelaar, wisselWapen, ratelaarPunt, ratelaarMarkering,
   // Ticket 132 (Ronde 11): het arsenaal-model + de twee schakelklassen.
   ARSENAAL, bezitTweeVuurwapens, nieuweWapenStaat,
+  // Ticket 134 (Fix 6, §12.5): eerste vuurwapen — de AMSTEL-9 als kooppunt,
+  // de speler start met het mes.
+  AMSTEL9_PRIJS, AMSTEL9_X, AMSTEL9_Z, koopAmstel9, amstel9Punt, amstel9Markering,
+  activeerVuurwapen,
   // Ontwerpbeslissing 100: de Group die nu in de hand hangt (nooit null) —
   // los van `wapenStaat` (gameplay, mag vanaf T134 null zijn).
   get inHandGroep() { return inHandGroep; },
@@ -14434,6 +14612,7 @@ window.AmsterdamUndeadDebug = {
   mesStaat, MES_SCHADE, MES_BEREIK, MES_COOLDOWN, steekMes, updateMes,
   MES_STEEK_ANIMATIE_DUUR, MES_FASE_WEG, MES_FASE_STEEK, MES_FASE_TERUG,
   MES_WAPEN_WEGZAK, MES_IN_X, MES_IN_Y, MES_IN_Z, MES_UIT_X, MES_UIT_Y, MES_UIT_Z,
+  MES_HELD_STOOT_Z, MES_HELD_KANTEL_X,
   wapenMes, speelMesSteek,
   get mesSteekTeller() { return mesSteekTeller; },
   get mesAnimatieTimer() { return mesAnimatieTimer; },

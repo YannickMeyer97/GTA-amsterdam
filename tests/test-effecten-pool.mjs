@@ -4,7 +4,7 @@
 // (schiet()/raakOndode()), headshot geeft meer deeltjes dan een
 // lichaamstreffer, effecten bevriezen tijdens pauze, en de tracer-oorsprong
 // klopt met de vlam-wereldpositie.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';
 
 // Bewust ZONDER simuleerPointerLock: het spel staat dus vanaf het begin al
 // gepauzeerd (spelActief === false), wat precies is wat de pauze-freeze-
@@ -13,6 +13,10 @@ import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 // pointer-lock-staat.
 const { browser, page, errs } = await openAmsterdamUndead();
 const { check, report } = makeChecker();
+// Ticket 134 (§12.8): sectie 4 leest d.wapenStaat.definitie.vlam — de speler
+// start sinds T134 met een mes (wapenStaat === null). koopAmstel9() is een
+// gewone functie, onafhankelijk van spelActief/pointer-lock.
+await geefSpelerVuurwapen(page);
 
 // --- 1. Pool-plafonds: nooit meer dan TRACER_MAX/IMPACT_MAX actieve slots -
 const poolPlafonds = await page.evaluate(() => {

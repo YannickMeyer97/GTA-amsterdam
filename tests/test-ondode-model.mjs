@@ -6,10 +6,13 @@
 // de V1-only silhouet-/geoCache-secties (schouder/hand/vodGerafeld — geometrie
 // die alleen door de verwijderde maakOndodeModelV1() werd opgebouwd) zijn
 // vervallen, niet vervangen.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
 const { check, report } = makeChecker();
+// Ticket 134 (§12.8): dit bestand gebruikt d.schiet() als middel om schade
+// toe te brengen — eerst een geladen vuurwapen toekennen.
+await geefSpelerVuurwapen(page);
 
 const TYPES = ['normaal', 'loper', 'sjouwer', 'brander', 'sluiper'];
 

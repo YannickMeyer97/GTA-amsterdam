@@ -5,10 +5,13 @@
 // eisen uit het ticket: onbekende sleutels blijven behouden, geen enkele
 // ontgrendeling raakt een balansgetal, en bijwerkenStadsarchief() telt
 // headshots nooit dubbel over een win-dan-doorspelen-dan-dood-sessie.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
 const { check, report } = makeChecker();
+// Ticket 134 (§12.8): de mondingsvlam-tint-sectie gebruikt d.schiet() en
+// d.wapenStaat rechtstreeks — eerst een geladen vuurwapen toekennen.
+await geefSpelerVuurwapen(page);
 
 const VEILIGE_STAAT = () => ({
   ontsnappingen: 0, headshotsTotaal: 0, hoogsteGolf: 0,

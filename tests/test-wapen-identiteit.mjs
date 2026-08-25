@@ -55,6 +55,10 @@ check('De twee wapens hebben aantoonbaar verschillende schotToon-parameters',
 // --- 1. Camera-kick: visueel-only, speler.pitch blijft ongemoeid ----------
 const kickVoor = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
+  // Ticket 134: de speler start met het mes, niet met de Drukspuit — eerst
+  // garanderen dat de AMSTEL-9 bezeten is (wisselWapen() no-opt anders
+  // stilzwijgend, want die vereist twee bezeten vuurwapens).
+  if (!d.wapenStaten.drukspuit) { d.spelStaat.geld = 100000; d.koopAmstel9(); }
   if (d.actiefWapenNaam !== 'drukspuit') d.wisselWapen();
   d.wapenStaat.herladen = false;
   d.wapenStaat.magazijn = d.wapenStaat.magazijnMax;
@@ -92,6 +96,9 @@ await page.evaluate(() => {
 function verzamelRaakpuntenCode(wapenNaam) {
   return `
     const d = window.AmsterdamUndeadDebug;
+    // Ticket 134: garandeer bezit van ${wapenNaam} vóórdat er gewisseld wordt.
+    if ('${wapenNaam}' === 'drukspuit' && !d.wapenStaten.drukspuit) { d.spelStaat.geld = 100000; d.koopAmstel9(); }
+    if ('${wapenNaam}' === 'ratelaar' && !d.wapenStaten.ratelaar) { d.spelStaat.geld = 100000; d.koopRatelaar(); }
     if (d.actiefWapenNaam !== '${wapenNaam}') d.wisselWapen();
     d.wapenStaat.herladen = false;
     d.wapenStaat.magazijn = 999;
@@ -123,6 +130,7 @@ check('Ratelaar (spreadNdc 0.012): de 20 raakpunten geven meer dan 1 unieke x-wa
 // --- 3. Herlaad-dip: sinus-boog omlaag/omhoog, exact terug naar rust ------
 const dip = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
+  if (!d.wapenStaten.drukspuit) { d.spelStaat.geld = 100000; d.koopAmstel9(); }
   if (d.actiefWapenNaam !== 'drukspuit') d.wisselWapen();
   d.wapenStaat.herladen = false;
   d.wapenStaat.magazijn = 0;
@@ -148,6 +156,7 @@ check('Na afloop van het herladen staat de wapen-groep weer EXACT op de rust-y',
 // --- 4. Wisselanimatie: timer + geluid, exacte terugkeer naar rust --------
 const wissel = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
+  if (!d.wapenStaten.drukspuit) { d.spelStaat.geld = 100000; d.koopAmstel9(); }
   if (!d.ratelaarGekocht) { d.spelStaat.geld = 100000; d.koopRatelaar(); }
   if (d.actiefWapenNaam !== 'drukspuit') d.wisselWapen();
   d.wapenStaat.herladen = false;

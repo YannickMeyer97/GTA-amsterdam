@@ -5,10 +5,14 @@
 // camerabeweging staat volledig buiten updateSpeler()/losBotsingenOp()/
 // schiet() — een schot raakt exact hetzelfde als vóór dit ticket, (3) het
 // wapenmodel wiegt tegen (niet 1-op-1 mee).
-import { openAmsterdamUndead, makeChecker, frames } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, frames, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
 const { check, report } = makeChecker();
+// Ticket 134 (§12.8): dit bestand gebruikt d.schiet() als middel, niet om
+// het wapensysteem zelf te testen — eerst een geladen vuurwapen toekennen
+// (de speler start sinds T134 met een mes).
+await geefSpelerVuurwapen(page);
 
 // --- 1. Constantensanity: amplitude in centimeters, lean ruim onder 1° ----
 const constanten = await page.evaluate(() => {

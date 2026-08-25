@@ -1,14 +1,19 @@
 // Ticket 133 (Ronde 10, §12.3-12.4 + ontwerpbeslissingen 95-97): het mes —
-// altijd beschikbaar via V, los van het actieve vuurwapen. De speler start
-// in deze ronde nog steeds met de AMSTEL-9 (T134 maakt het mes het
-// startwapen); dit bestand test uitsluitend de mes-MECHANIEK zelf.
+// altijd beschikbaar via V, los van het actieve vuurwapen. Dit bestand test
+// uitsluitend de mes-MECHANIEK zelf (schade/bereik/cooldown/geld/OB97);
+// vanaf sectie 2 wordt de speler expliciet aan de AMSTEL-9 geholpen
+// (geefSpelerVuurwapen()) zodat dezelfde opstelling blijft werken die
+// geschreven is toen de speler nog standaard met een vuurwapen startte.
+// Ticket 134 maakte het mes het STARTWAPEN — dat gedrag (laadstaat, koopPad,
+// V/Q-semantiek, HUD) wordt getest in test-arsenaal-startwapen.mjs, niet
+// hier; dit bestand blijft over de steek-actie zelf gaan.
 //
 // Testopstelling (pitch=-0.3, VASTE_TRAITS) is empirisch geverifieerd op
 // betrouwbaarheid: 40/40 treffers op afstanden 0.8-1.0m, zelfde methode als
 // test-smederij.mjs gebruikt voor de vuurwapen-raycasts. kiesOndodeTraits()
 // (spawnOndode()'s default 3e argument) loot anders een willekeurige
 // lengte/houding die de precisie-raycast soms net laat missen.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
 const { check, report } = makeChecker();
@@ -48,16 +53,27 @@ check('MES_SCHADE=1, MES_BEREIK=1.2, MES_COOLDOWN=0.6 (§12.4)',
   structuur.constanten.schade === 1 && structuur.constanten.bereik === 1.2 && structuur.constanten.cooldown === 0.6,
   structuur.constanten);
 
-// --- 1b. Het mesmodel begint onzichtbaar (VÓÓR enige steekMes()-aanroep
-// hieronder — dit moet de allereerste keer zijn dat wapenMes/mesAnimatieTimer
-// aangeraakt worden, anders test dit niet de page-load-staat maar toevallig
-// leftover state van een latere sectie).
+// --- 1b. Het mesmodel is bij het laden ZICHTBAAR (Ticket 134: het mes is het
+// startwapen — dit moet de allereerste keer zijn dat wapenMes/mesAnimatieTimer
+// aangeraakt worden, VÓÓR geefSpelerVuurwapen()/enige steekMes()-aanroep
+// hieronder, anders test dit niet de page-load-staat maar toevallig leftover
+// state van een latere sectie). Zie test-arsenaal-startwapen.mjs voor de
+// volledige T134-dekking (koopAmstel9(), HUD, V/Q-semantiek); dit is puur de
+// randvoorwaarde die de rest van dit bestand nodig heeft: geen kale, mesloze
+// handen bij het opstarten van elke sectie hieronder.
 const modelBijLaden = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  return { zichtbaar: d.wapenMes.visible, animatieTimer: d.mesAnimatieTimer };
+  return { zichtbaar: d.wapenMes.visible, animatieTimer: d.mesAnimatieTimer, actiefWapenNaam: d.actiefWapenNaam };
 });
-check('Het mesmodel is bij het laden onzichtbaar (nog niet het actieve wapen, T134)',
-  modelBijLaden.zichtbaar === false && modelBijLaden.animatieTimer === 0, modelBijLaden);
+check('Het mesmodel is bij het laden zichtbaar (het is het startwapen, Ticket 134)',
+  modelBijLaden.zichtbaar === true && modelBijLaden.animatieTimer === 0 && modelBijLaden.actiefWapenNaam === 'mes',
+  modelBijLaden);
+
+// Vanaf hier: de rest van dit bestand test de steek-MECHANIEK, niet het
+// startwapen-gedrag — eerst de AMSTEL-9 toekennen zodat de bestaande
+// opstelling (d.wapenStaat, d.WAPEN_DRUKSPUIT.vlam, quick-draw-animatie)
+// ongewijzigd blijft werken.
+await geefSpelerVuurwapen(page);
 
 // --- 2. Schade is exact MES_SCHADE ----------------------------------------
 const schadeTest = await page.evaluate(new Function(`

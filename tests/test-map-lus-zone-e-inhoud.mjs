@@ -6,10 +6,15 @@
 // getest in sectie 3) is verwijderd — munitie is nu alleen nog te koop bij
 // de ammo-kist in de woonkamer, zie test-winkel-status.mjs/test-winkel-
 // stijlen.mjs voor de bijgewerkte interactiepunten-/markeringen-tellingen.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
 const { check, report } = makeChecker();
+// Ticket 134 (§12.8): sectie "woonkamerAmmoWerkt" roept koopAmmo() aan, dat
+// wapenStaat.reserve rechtstreeks schrijft (koopAmmo()'s eigen null-contract
+// voor "alleen een mes" is T135-scope, §12.6) — eerst een geladen vuurwapen
+// toekennen zodat DIT bestand zijn eigen regressie blijft testen.
+await geefSpelerVuurwapen(page);
 
 // --- 1. Vóór deur 3: het bijkeuken-venster staat NIET in de actieve
 // spawnlijst, maar heeft al wel 3 planken (barricade al gebouwd) ----------

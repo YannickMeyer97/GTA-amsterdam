@@ -4,10 +4,13 @@
 // patroon als het vignet), de herlaad-audio-splitsing (start in herladen(),
 // klaar in updateWapen() op het echte voltooiingsmoment — geen setTimeout
 // meer), en de leeg-magazijn-ammo-UI-knipper.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
 const { check, report } = makeChecker();
+// Ticket 134 (§12.8): de herlaad-audio-sectie leest d.wapenStaat rechtstreeks
+// — eerst een geladen vuurwapen toekennen (de speler start met een mes).
+await geefSpelerVuurwapen(page);
 
 // CI-fix: de decay/samenval-venster-mechanismen hieronder draaien op de
 // gameLoop's ECHTE, gecapte dt (max 0.05s/frame) — een vaste wandklok-marge

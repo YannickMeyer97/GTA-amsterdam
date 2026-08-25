@@ -224,30 +224,35 @@ export async function zetVisueelStandpunt(page, standpunt) {
   await frames(page, 3);
 }
 
-// Ticket 132 (Ronde 10, §12.8): zorgt dat de speler een GELADEN VUURWAPEN in
-// handen heeft vóór de eigenlijke test begint.
+// Ticket 132/134 (Ronde 10, §12.8): zorgt dat de speler een GELADEN VUURWAPEN
+// in handen heeft vóór de eigenlijke test begint.
 //
 // Waarom deze helper bestaat: 21 testbestanden gebruiken `d.schiet()` puur als
 // MIDDEL om schade toe te brengen, niet omdat ze het wapensysteem testen. Die
 // gaan er impliciet van uit dat de speler bij het laden al een geladen wapen
-// vasthoudt. Vanaf T134 klopt die aanname niet meer (de speler start met een
+// vasthoudt. Sinds T134 klopt die aanname niet meer (de speler start met een
 // mes), en dan moet elk van die bestanden precies één regel bijkrijgen — deze
 // — in plaats van 21 losse ad-hoc oplossingen.
 //
-// In dit ticket is de helper nog een no-op-met-aanvulling: de Drukspuit-staat
-// bestaat al bij het laden, dus hij vult alleen het magazijn en zet een
-// eventueel lopend herladen stop. Nog geen enkel testbestand roept 'm aan
-// (bewust — T132 is gedragsneutraal). T134 breidt 'm uit met het toekennen
-// van de AMSTEL-9 zodra die niet meer standaard in bezit is.
+// T134: `d.koopAmstel9()` kent zowel het geld toe (via een directe
+// geld-schrijf, niet via `spelStaat.geld +=` op een negatief bedrag — dat zou
+// een controle op "genoeg geld" kunnen breken als die ooit strenger wordt)
+// als de aankoop zelf, en activeert 'm meteen (§12.3: elke vuurwapen-aankoop
+// wordt automatisch het actieve wapen). Daarna is `d.wapenStaat` de
+// AMSTEL-9-staat en werkt de rest van de functie ongewijzigd zoals in T132.
 export async function geefSpelerVuurwapen(page) {
   await page.evaluate(() => {
     const d = window.AmsterdamUndeadDebug;
     if (!d.wapenStaat) {
-      // Vanaf T134 bereikbaar: dan moet deze helper het wapen zelf toekennen.
-      // Bewust hard falen i.p.v. stil doorgaan — een test die denkt te
-      // schieten maar dat niet doet, geeft een onbegrijpelijke assertie-fout
-      // ver verderop.
-      throw new Error('geefSpelerVuurwapen: geen vuurwapen in bezit — T134 moet deze helper uitbreiden');
+      d.spelStaat.geld = Math.max(d.spelStaat.geld, d.AMSTEL9_PRIJS);
+      d.koopAmstel9();
+      if (!d.wapenStaat) {
+        // Defensief: als koopAmstel9() om een onverwachte reden toch niet
+        // activeert, hard falen i.p.v. stil doorgaan — een test die denkt te
+        // schieten maar dat niet doet, geeft anders een onbegrijpelijke
+        // assertie-fout ver verderop.
+        throw new Error('geefSpelerVuurwapen: koopAmstel9() leverde geen actief vuurwapen op');
+      }
     }
     d.wapenStaat.herladen = false;
     d.wapenStaat.herlaadTimer = 0;

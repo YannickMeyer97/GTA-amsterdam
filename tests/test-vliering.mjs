@@ -14,7 +14,7 @@
 // is daarvoor expliciet ONGESCHIKT — die kijkt alleen naar obstakel-overlap, en
 // meldt de volledig ommuurde dode hoek ten zuiden van de nis als "vrij" (221
 // punten), terwijl er geen enkele route heen bestaat.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
 const { check, report } = makeChecker();
@@ -470,6 +470,12 @@ check('Nogmaals kopen is een veilige no-op (geen tweede afschrijving)',
   zelflader.nogmaals.geld === 500, zelflader);
 
 // --- 16. Auto-herladen: alleen op leeg, alleen ná aankoop -----------------
+// Ticket 134 (§12.8): deze sectie leest/schrijft d.wapenStaat rechtstreeks —
+// eerst een geladen vuurwapen toekennen (de speler start met een mes). Pas
+// hier toegevoegd (niet bovenaan het bestand) omdat sectie 15 hierboven zijn
+// eigen, ABSOLUTE spelStaat.geld-waarden zet vóór elke eigen check — die
+// blijven dus onaangeraakt door de €450 die geefSpelerVuurwapen() uitgeeft.
+await geefSpelerVuurwapen(page);
 const autoHerlaad = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const leegEnTick = () => {

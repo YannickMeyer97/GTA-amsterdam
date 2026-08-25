@@ -2,10 +2,13 @@
 // golf (Ticket 16, vervangt de Ticket 2/feedbackronde-cooldowns) plus de
 // aparte, langere Kerninslag-cooldown (Ticket 3). Zie ARCHITECTURE_NOTES.md
 // §1 "Power-up drops" / "Power-up effecten" en §4.1.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
 const { check, report } = makeChecker();
+// Ticket 134 (§12.8): meerdere secties lezen/schrijven d.wapenStaat.magazijn/
+// reserve rechtstreeks — eerst een geladen vuurwapen toekennen.
+await geefSpelerVuurwapen(page);
 
 function resetBuffs(page) {
   return page.evaluate(() => {

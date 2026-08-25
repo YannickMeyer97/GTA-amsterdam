@@ -2,10 +2,13 @@
 // langgerekte vonken, en een korte opzwellende rookpluim. Nul allocaties/
 // setTimeout in schiet()/raakOndode() blijft de invariant (bestaande pools
 // vooraf gebouwd, IMPACT_MAX/ROOK_MAX begrensd).
-import { openAmsterdamUndead, makeChecker, frames } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, frames, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
 const { check, report } = makeChecker();
+// Ticket 134 (§12.8): dit bestand gebruikt d.schiet() als middel om echte
+// wereld-inslagen te produceren — eerst een geladen vuurwapen toekennen.
+await geefSpelerVuurwapen(page);
 
 // --- 1. spawnImpact() zonder normaal: bestaand, volledig willekeurig
 // gedrag blijft exact ongewijzigd (raakOndode()'s aanroep-signatuur) ------

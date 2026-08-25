@@ -3,10 +3,13 @@
 // een dodelijke/Eliminatiemodus-hit. raakOndode() is het drukste
 // risicogebied (schade/geld/drops/buffs) — deze test controleert dat de
 // bestaande volgorde/logica daar ongewijzigd blijft.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
 const { check, report } = makeChecker();
+// Ticket 134 (§12.8): dit bestand gebruikt d.schiet() als middel om schade
+// toe te brengen — eerst een geladen vuurwapen toekennen.
+await geefSpelerVuurwapen(page);
 
 // Neutrale traits (geen kromme rug/scheve nek): isoleert de flinch-rotatie
 // van de willekeurige rust-houding, anders is de "terug naar rust"-check

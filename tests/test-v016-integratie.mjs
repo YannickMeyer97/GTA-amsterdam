@@ -10,10 +10,14 @@
 // tegelijk, real-time via de al draaiende gameLoop) die de "speeltest golf
 // 8+, alle deuren open, Mistgolf met winkels/tells/ogen"-eis van het ticket
 // dekt: geen enkele console-error terwijl alle T30-T40-systemen samen lopen.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
 const { check, report } = makeChecker();
+// Ticket 134 (§12.8): dit bestand gebruikt d.schiet() als middel om schade
+// toe te brengen, niet om het wapensysteem zelf te testen — de speler start
+// sinds T134 met een mes, dus eerst een geladen vuurwapen toekennen.
+await geefSpelerVuurwapen(page);
 
 // --- 1. Lichttelling + schaduw-invariant -----------------------------------
 const lichtenTest = await page.evaluate(() => {
@@ -83,8 +87,8 @@ check('Actieve impact-deeltjes blijven binnen IMPACT_MAX, ook na de stress-golf'
 // De getallen zijn kaartbrede tellers (+1 elk sinds De Zelflader resp. het
 // vliering-traplampje); de strekking is onveranderd: ze GROEIEN NIET tijdens
 // combat-stress.
-check('Winkelmarkeringen groeien niet mee met combat-stress (blijft 13, incl. deur5 + deur6 + De Zelflader)',
-  stressTest.winkelMarkeringenLengte === 13, stressTest);
+check('Winkelmarkeringen groeien niet mee met combat-stress (blijft 14, incl. deur5 + deur6 + De Zelflader + Ticket 134 AMSTEL-9)',
+  stressTest.winkelMarkeringenLengte === 14, stressTest);
 check('lampLichten groeit niet mee met combat-stress (blijft 10, incl. kelder (3) + kelderoost (1) + vliering (1))',
   stressTest.lampLichtenLengte === 10, stressTest);
 check('stofwolken groeit niet mee met combat-stress (blijft 2)',

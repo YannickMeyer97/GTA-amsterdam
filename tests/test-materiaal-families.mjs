@@ -6,10 +6,13 @@
 // roughness/metalness), de binnenplaats is zichtbaar glanzender dan de
 // gang-vloer, en een wereld-impact op hout geeft een andere deeltjeskleur
 // dan op steen.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
 const { check, report } = makeChecker();
+// Ticket 134 (§12.8): een sectie hieronder gebruikt d.schiet() om een echte
+// wereld-impact te produceren — eerst een geladen vuurwapen toekennen.
+await geefSpelerVuurwapen(page);
 
 // --- 1. Cache-identiteit: geen groei bij herhaald aanroepen ---------------
 const cacheTest = await page.evaluate(() => {

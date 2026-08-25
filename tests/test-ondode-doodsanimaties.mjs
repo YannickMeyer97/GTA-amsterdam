@@ -4,10 +4,13 @@
 // `ondodenGroep`, een lijk mag geen kogels meer vangen; (3) melee/collision
 // itereren `ondoden`, een lijk kan niet meer slaan. Brander behoudt zijn
 // directe explosie zonder lijk.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
 const { check, report } = makeChecker();
+// Ticket 134 (§12.8): dit bestand gebruikt d.schiet() als middel om schade
+// toe te brengen — eerst een geladen vuurwapen toekennen.
+await geefSpelerVuurwapen(page);
 
 function opruimen() {
   return `

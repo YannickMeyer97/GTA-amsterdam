@@ -30,6 +30,17 @@ check('Ratelaar-smederijConfig[1] (niveau 2, Fix 5): meer schade dan niveau 1, g
   configs.ratelaar[1].schadeBonus > configs.ratelaar[0].schadeBonus &&
   configs.ratelaar[1].magazijnMax > configs.ratelaar[0].magazijnMax, configs.ratelaar);
 
+// Ticket 134: de speler start met het mes, niet met een vuurwapen — dit
+// hele bestand wisselt via `kiesWapen()` voortdurend tussen Drukspuit en
+// Ratelaar, en die toggle (wisselWapen()) vereist BEIDE vuurwapens bezeten
+// (bezitTweeVuurwapens()). Dus eerst allebei kopen, vóór ook maar één
+// `d.wapenStaat`-lezing hieronder.
+await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  if (!d.wapenStaten.drukspuit) { d.spelStaat.geld = 5000; d.koopAmstel9(); }
+  if (!d.ratelaarGekocht) { d.spelStaat.geld = 5000; d.koopRatelaar(); }
+});
+
 // --- Ticket 11 / Fix 5: nieuweWapenStaat() begint op beide niveaus ongesmeed
 const gesmeedStart = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
@@ -37,15 +48,6 @@ const gesmeedStart = await page.evaluate(() => {
 });
 check('Een nieuwe wapenstaat begint met gesmeed=false', gesmeedStart.gesmeed === false, gesmeedStart);
 check('Een nieuwe wapenstaat begint met gesmeedNiveau2=false', gesmeedStart.gesmeedNiveau2 === false, gesmeedStart);
-
-// koopRatelaar() vereist geld; zet dat hier vast zodat de Ratelaar-staat bestaat.
-await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  if (!d.ratelaarGekocht) {
-    d.spelStaat.geld = 5000;
-    d.koopRatelaar();
-  }
-});
 
 // --- Ticket 11: 16-combinaties-schadetest ----------------------------------
 // wapen x gesmeed x headshot x schadePerTreffer-waarde. Elke ondode krijgt

@@ -5,10 +5,14 @@
 // exact, de highscore-helpers werken round-trip via localStorage én
 // breken niet als localStorage geweigerd wordt, en gameOver() vult het
 // scherm (incl. "NIEUW RECORD") correct.
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
 const { check, report } = makeChecker();
+// Ticket 134 (§12.8): sectie 1 gebruikt d.schiet() rechtstreeks — eerst een
+// geladen vuurwapen toekennen. Alle geld-checks in dit bestand meten een
+// DELTA (na - voor), dus de €450 die dit uitgeeft raakt geen enkele assertie.
+await geefSpelerVuurwapen(page);
 
 // --- 0. Schone lei: localStorage leegmaken zodat deze test niet leunt op
 // een record van een eerdere run in dezelfde browsercontext -----------------
