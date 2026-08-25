@@ -6498,6 +6498,14 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyQ' && !e.repeat && document.pointerLockElement === renderer.domElement) {
     wisselWapen();
   }
+  // Ticket 133 (Ronde 10, §12.3): V steekt met het mes — een ACTIE, geen
+  // wapenwissel (het mes is geen entry in wapenStaten en raakt actiefWapenNaam
+  // nooit aan). Altijd beschikbaar, los van welk vuurwapen actief is; zelfde
+  // !e.repeat + pointer-lock-patroon als R/T/Q. steekMes() bewaakt zijn eigen
+  // cooldown, dus geen extra gate hier nodig.
+  if (e.code === 'KeyV' && !e.repeat && document.pointerLockElement === renderer.domElement) {
+    steekMes();
+  }
   // Ticket 117 (Zombie V2 fase 0): F3 toggelt het tijdelijke perf-overlay.
   // Bewust GEEN pointer-lock-vereiste (in tegenstelling tot R/T/Q hierboven)
   // — dit is een ontwikkelaarshulpmiddel, geen gameplay-actie, en moet ook
@@ -7063,6 +7071,42 @@ vlamLichtRatelaar.position.copy(vlamRatelaar.position);
 vlamLichtRatelaar.visible = false;
 wapenRatelaar.add(vlamLichtRatelaar);
 
+// 3) Het mes — Ticket 133 (Ronde 10, §12.3-12.4). VOORLOPIG model: T137/T138
+// herzien het uiterlijk zodra de gunfeel-/presentatielaag (T140/T141) af is.
+// In deze ronde blijft de AMSTEL-9 het actieve wapen (T134 maakt het mes pas
+// het startwapen) — het mes hangt daarom, anders dan wapenDrukspuit/
+// wapenRatelaar, standaard ONZICHTBAAR aan de camera en flitst alleen kort
+// in beeld tijdens een steek (zie mesAnimatieTimer in de cosmetische
+// gameLoop-zone, en steekMes() verderop).
+// Maatvoering: het eerste model (lemmet 0,16 lang, straal 0,014) bleek in een
+// screenshot niet meer dan een donkere spriet langs de onderrand — op ~0,5 m
+// van de camera is dat simpelweg te weinig beeldvullend. Ongeveer verdubbeld,
+// plus een pareerstang zodat het silhouet als "mes" leest en niet als staafje.
+const wapenMes = new THREE.Group();
+{
+  const staal = new THREE.MeshStandardMaterial({ color: 0xaab0b8, roughness: 0.35, metalness: 0.75 });
+  const lemmet = new THREE.Mesh(new THREE.ConeGeometry(0.030, 0.34, 4), staal);
+  lemmet.rotation.x = -Math.PI / 2;   // punt wijst naar voren (-Z)
+  lemmet.position.set(0, 0, -0.20);
+  wapenMes.add(lemmet);
+  const pareerstang = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.018, 0.022), staal);
+  pareerstang.position.set(0, 0, -0.03);
+  wapenMes.add(pareerstang);
+  const heft = new THREE.Mesh(new THREE.CapsuleGeometry(0.026, 0.13, 4, 8),
+    new THREE.MeshStandardMaterial({ color: 0x2a2018, roughness: 0.8 }));
+  heft.rotation.x = Math.PI / 2;
+  heft.position.set(0, -0.005, 0.06);
+  wapenMes.add(heft);
+}
+// Begint in de INGETROKKEN houding (rechtsonder, uit beeld). De steekanimatie
+// interpoleert van daaruit naar de gestrekte houding richting het vizier —
+// zie MES_IN_*/MES_UIT_* verderop. Literalen omdat die constanten pas later
+// gedeclareerd worden; de gameLoop zet ze na elke steek exact terug.
+wapenMes.position.set(0.36, -0.48, -0.38);
+wapenMes.rotation.set(0.90, 0.10, 0.70);
+wapenMes.visible = false;
+camera.add(wapenMes);
+
 let terugslag = 0;
 let vlamTimer = 0;
 // Fix (na T90): garandeert het EERSTE frame na een schot altijd, ongeacht
@@ -7125,6 +7169,88 @@ const LANDING_DIP_SCHAAL = 0.03;        // dipsterkte per (m/s) daalsnelheid, ge
 const LANDING_DIP_DUUR = 0.35;          // s — zelfde sin(voortgang·π)-boog als de herlaad-/wisseldip
 const WAPEN_SWAY_AMPLITUDE = 0.004;     // was 0,008 — nu 0,4 cm zijwaartse tegenwiegeling op het wapenmodel
 const WAPEN_LEAN_TEGENWICHT = 0.4;      // fractie van leanHoek die het wapen TEGENgesteld meeneemt
+
+// --- Ticket 133 (Ronde 10, §12.3-12.4): het mes ----------------------
+// Ontwerpbeslissing 95: het mes is GEEN entry in `wapenStaten` — een
+// wapenStaat draagt zeven vuurwapen-specifieke velden (magazijn/reserve/
+// herladen/herlaadTimer/herlaadDuur/gesmeed/gesmeedNiveau2) waar het mes
+// niets aan heeft. `mesStaat` is bewust minimaal: alleen de cooldown.
+// `meleeTimer` is bewust een TWEEDE timer naast `cooldownTimer`, en niet
+// dezelfde: cooldownTimer bewaakt "mag je alwéér steken" (0,6s), meleeTimer
+// bewaakt "is de steekanimatie nog bezig" (0,4s) en blokkeert in die tijd het
+// vuren — zie probeerTeSchieten(). Allebei GAMEPLAY-timers: ze tellen af in
+// updateMes(), dus alleen tijdens actief spel. De cosmetische tegenhanger
+// `mesAnimatieTimer` hieronder telt juist wél door tijdens een pauze, net als
+// vlamTimer/wisselTimer — dat is de vaste scheiding gameplaypad/presentatiepad.
+const mesStaat = { cooldownTimer: 0, meleeTimer: 0 };
+// Ontwerpbeslissing 96 (§12.4): MES_SCHADE=1 legt de 1-hit-kill-grens op
+// golf 4 (de HP-trap: 1 HP t/m golf 4, 2 HP golf 5-10) — de onderkant van
+// de gevraagde "tot ronde 4-6"-marge. Schade 2 zou t/m golf 10 dodelijk
+// blijven en de €450-AMSTEL-9-aankoop zinloos maken tot golf 11.
+const MES_SCHADE = 1;
+// MES_BEREIK: korter dan AANVAL_START_BEREIK (1.4) — om te steken moet je
+// altijd binnen de afstand komen waarop een ondode zijn wind-up mag
+// starten. Ondergrens is SPELER_ONDODE_BOTSING_STRAAL (0.75, dichterbij kun
+// je fysiek niet komen), dus 1.2 laat een werkbare marge van 0.45 m.
+const MES_BEREIK = 1.2;
+// MES_COOLDOWN: binnen de gevraagde 0,5-1 s — snel genoeg voor twee ondoden
+// achter elkaar, te traag om te spammen.
+const MES_COOLDOWN = 0.6;
+// --- Cosmetiek van de steek (herzien na visuele review) ---------------
+// EERSTE versie liet het mes verschijnen op EXACT dezelfde plek als het
+// vuurwapen (allebei x=0.26, y=-0.22, z=-0.5). Resultaat: je zag het mes
+// dwars dóór het wapenmodel heen steken. De oorzaak was structureel — twee
+// zichtbare modellen die dezelfde rustplek delen clippen altijd — dus de
+// oplossing is dat ook: het vuurwapen MAAKT PLAATS en het mes neemt die plek
+// over. Nooit twee modellen tegelijk op dezelfde coördinaat, per definitie.
+//
+//   fase 1  vuurwapen zakt uit beeld       MES_FASE_WEG    (mes onzichtbaar)
+//   fase 2  mes prikt schuin naar voren    MES_FASE_STEEK  (wapen blijft laag)
+//   fase 3  vuurwapen komt terug omhoog    MES_FASE_TERUG  (mes onzichtbaar)
+//
+// Totaal 0,40s — ruim onder MES_COOLDOWN (0,6s), dus de animatie is altijd
+// afgelopen vóórdat de volgende steek toegestaan is.
+const MES_FASE_WEG = 0.12;
+const MES_FASE_STEEK = 0.16;
+const MES_FASE_TERUG = 0.12;
+const MES_STEEK_ANIMATIE_DUUR = MES_FASE_WEG + MES_FASE_STEEK + MES_FASE_TERUG;
+// Hoe diep het vuurwapen wegzakt. De camera heeft 70° verticale FOV, dus de
+// onderrand van het beeld ligt op z=-0.5 rond y≈-0.35 en op z=-0.7 (waar de
+// looppunt zit) rond y≈-0.49. Vanaf rust-y -0.22 is 0,62 m genoeg om ook dat
+// verste deel ruim onder de beeldrand te duwen, zonder `visible=false` te
+// hoeven zetten (dat zou een harde pop geven i.p.v. een beweging).
+const MES_WAPEN_WEGZAK = 0.62;
+// De prik zelf, als twee houdingen waartussen geïnterpoleerd wordt:
+//
+//   INGETROKKEN  rechtsonder, dicht bij de camera, punt omlaag gekanteld —
+//                net buiten/onder de beeldrand, waar het mes vandaan komt.
+//   GESTREKT     naar het midden toe (richting het vizier), hoger in beeld,
+//                naar voren geschoten (-Z, dus wég van de camera) en bijna
+//                recht — dit is het diepste punt van de stoot.
+//
+// De richting is bewust naar het VIZIER en niet langs de onderrand: de
+// raycast van steekMes() gaat door het schermmidden, dus de beweging wijst
+// dan naar precies wat er geraakt wordt. Een eerdere versie liet het mes
+// alleen omhoog/vooruit komen bij x=0.26 — dat schoof het silhouet grotendeels
+// achter de onderste HUD-rand en las niet als een steek.
+//
+// Let op de z-richting: naar voren is NEGATIEF. De allereerste versie telde
+// hier per ongeluk OP (-0.5 → -0.28), waardoor het mes naar je gezicht toe
+// kwam in plaats van naar de ondode.
+// Over de ROTATIE, en waarom het mes niet "recht vooruit" mag wijzen: het
+// lemmet ligt langs de lokale -Z. Draai je de groep zó dat -Z recht van de
+// camera af wijst, dan kijk je precies langs het lemmet en zie je alleen de
+// punt — in een screenshot leverde dat een sliver van een paar pixels op,
+// terwijl het mes volgens de cijfers keurig "volledig gestrekt" stond. Het
+// lemmet moet dus DIAGONAAL door het beeld liggen, ook op het diepste punt
+// van de stoot. Vandaar een stevige rotation.y (zwaait de punt naar het
+// midden/links) gecombineerd met een rotation.x omhoog: samen wijst het
+// lemmet naar linksboven-vooruit, richting het vizier, en zie je de lengte.
+const MES_IN_X = 0.36, MES_IN_Y = -0.48, MES_IN_Z = -0.38;
+const MES_UIT_X = 0.16, MES_UIT_Y = -0.13, MES_UIT_Z = -0.50;
+const MES_IN_ROT_X = 0.90, MES_IN_ROT_Y = 0.10, MES_IN_ROT_Z = 0.70;
+const MES_UIT_ROT_X = 0.45, MES_UIT_ROT_Y = 0.55, MES_UIT_ROT_Z = 0.25;
+let mesAnimatieTimer = 0;
 
 // --- Wapendefinities + actieve wapen-staat --------------------------
 // Elk wapen: naam (HUD), munitiestats, vuursnelheid en de bijbehorende
@@ -7395,6 +7521,17 @@ function updateWapen(dt) {
   }
 }
 
+// Ticket 133: de mes-cooldown, los van het vuurwapen-gameplaypad (het mes
+// heeft geen wapenStaat, zie mesStaat hierboven) — daarom een eigen, kleine
+// updatefunctie i.p.v. 'm in updateWapen() te proppen.
+function updateMes(dt) {
+  if (mesStaat.cooldownTimer > 0) mesStaat.cooldownTimer -= dt;
+  // meleeTimer wordt wél geklemd op 0: probeerTeSchieten() leest 'm als
+  // "> 0 betekent geblokkeerd", en een ongeklemde negatieve waarde zou dat
+  // wel goed doen maar bij inspectie (debug/tests) misleidend aflezen.
+  if (mesStaat.meleeTimer > 0) mesStaat.meleeTimer = Math.max(0, mesStaat.meleeTimer - dt);
+}
+
 // Ticket 17: Smederij-visuals — draaiend tandwiel op de Ratelaar + zacht
 // flikkerend ember-licht op beide sets (zelfde sin-patroon als de
 // lampflikker in de gameLoop, maar op de pauzeerbare spel-klok i.p.v. `nu`).
@@ -7658,6 +7795,14 @@ let volgendeKlokGeluid = 40 + Math.random() * 40;
 
 function probeerTeSchieten() {
   if (!wapenStaat) return;                       // Ticket 132: zonder vuurwapen valt er niets te schieten
+  // Ticket 133 (visuele herziening): tijdens een steek is het vuurwapen
+  // letterlijk uit beeld gezakt. Schieten zou dan een mondingsvlam uit het
+  // niets tonen, dus de steek blokkeert het vuren tot het wapen terug is
+  // (0,4s). Bewust hier en niet in schiet(): tests roepen schiet() direct aan
+  // om het trefferpad te meten, en die mogen daar geen mes-staat voor nodig
+  // hebben. Dit is een gameplaykeuze bovenop de visuele: een steek kost je
+  // kort je vuurkracht — het maakt het mes een afweging i.p.v. gratis.
+  if (mesStaat.meleeTimer > 0) return;
   if (wapenStaat.herladen) return;               // niet schieten tijdens herladen
   if (klok - laatsteSchotTijd < wapenStaat.definitie.schotCooldown) return;
   laatsteSchotTijd = klok;
@@ -7776,6 +7921,53 @@ function schiet() {
   if (actiefWapenNaam === 'drukspuit' && wapenStaat.gesmeedNiveau2) {
     schotExplosie(raak[0].point.x, raak[0].point.z, null);
   }
+}
+
+// Ticket 133 (Ronde 10, §12.3-12.4): het mes — altijd beschikbaar, los van
+// het actieve vuurwapen (V-toets, zie de keydown-handler in STAP 3). Eigen,
+// kort-bereik raycast vanuit het schermmidden, GEEN spread (§12.4: "wat het
+// mes níét doet"). Hergebruikt de bestaande hitbox-proxy-infrastructuur
+// (dezelfde `raycaster`, dezelfde layers, dezelfde `ondodenGroep`/
+// `userData.ondode`-opklim als schiet()) zodat er geen tweede trefferpad
+// ontstaat — alleen `raycaster.far` wijkt tijdelijk af.
+function steekMes() {
+  if (mesStaat.cooldownTimer > 0) return;
+  mesStaat.cooldownTimer = MES_COOLDOWN;
+  mesStaat.meleeTimer = MES_STEEK_ANIMATIE_DUUR;   // blokkeert het vuren zolang het wapen weg is
+  mesAnimatieTimer = MES_STEEK_ANIMATIE_DUUR;
+  // Het mes wordt hier NIET meteen zichtbaar gezet: in fase 1 zakt eerst het
+  // vuurwapen uit beeld, pas in fase 2 komt het mes op. De cosmetische zone in
+  // gameLoop regelt dat (zie MES_FASE_*).
+  speelMesSteek();
+
+  // De TREFFER valt hier, op het moment van de toetsaanslag — dus ~0,12s
+  // vóórdat het mes visueel in beeld prikt. Bewust: gameplay en presentatie
+  // zijn in dit project gescheiden paden, en een uitgestelde treffer zou een
+  // extra "hangende steek"-staat vragen (doel kan intussen weglopen/sterven).
+  // Op 0,12s is het verschil niet voelbaar, de trefferbeslissing blijft
+  // volledig deterministisch, en de bestaande tests blijven synchroon.
+
+  // Belangrijk: `raycaster.far` is een GEDEELDE instelling (schiet() rekent
+  // overal op far=30, zie de module-constante hierboven) — altijd expliciet
+  // terugzetten, ook via elke return hieronder, anders blijft een volgend
+  // schot op MES_BEREIK hangen.
+  const verVoorheen = raycaster.far;
+  raycaster.far = MES_BEREIK;
+  raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+  const ondodeRaak = raycaster.intersectObject(ondodenGroep, true);
+  raycaster.far = verVoorheen;
+  if (ondodeRaak.length === 0) return;
+
+  let obj = ondodeRaak[0].object;
+  while (obj && !obj.userData.ondode) obj = obj.parent;
+  if (!obj) return;
+  // Ontwerpbeslissing 97: het mes kent geen kop/lichaam-onderscheid — altijd
+  // kop=false, ook als de raycast toevallig de 'kop'-hitboxproxy raakt (die
+  // waarde wordt hier bewust niet gelezen, in tegenstelling tot schiet()).
+  // geldAlsKop=true zodat een kill alsnog headshot-geld betaalt (§12.4).
+  // basisSchadeVast=MES_SCHADE: negeert bewust de Smederij-bonus van het
+  // actieve vuurwapen — het mes kan niet gesmeed worden (§12.6).
+  raakOndode(obj.userData.ondode, ondodeRaak[0].point, false, 1, true, MES_SCHADE);
 }
 
 /* ================================================================
@@ -8095,6 +8287,11 @@ function speelHerlaadKlaar() { herlaadKlaarTeller++; piep('sine', 500, 700, 0.12
 // Ticket 34: kort wisselgeluidje bij wisselWapen().
 let wisselTeller = 0;
 function speelWissel() { wisselTeller++; piep('triangle', 260, 420, 0.08, 0.06); }
+
+// Ticket 133: kort, scherp steekgeluidje — snelle neerwaartse sweep, duidelijk
+// anders dan de vuurwapen-schoten (geen sawtooth-knal, geen droge klik).
+let mesSteekTeller = 0;
+function speelMesSteek() { mesSteekTeller++; piep('sawtooth', 380, 90, 0.08, 0.09); }
 
 // Ticket 33: hitmarker-audio met drie tiers + ±5% pitch-variatie per
 // afspeling, zodat de Ratelaar geen machinegeweer-monotonie wordt.
@@ -11605,12 +11802,26 @@ function updateExplosies(dt) {
 // niveau-2-effecten niet de volle wapenschade dupliceren op extra doelen.
 // Eliminatiemodus blijft bewust ongemoeid door schadeFactor: die garandeert
 // altijd een instant-kill, ongeacht welk pad de treffer binnenkomt.
-function raakOndode(ondode, punt, kop = false, schadeFactor = 1) {
+// Ticket 133 (§12.4): twee nieuwe, optionele parameters voor het mes.
+// - `geldAlsKop` (default false): forceert de HEADSHOT_GELD_MULTIPLIER op
+//   een KILL zonder `kop` op true te zetten — dat zou ook HEADSHOT_EXTRA-
+//   schade en de 'kop'-hitmarkertier geven, en het mes kent bewust geen
+//   kop/lichaam-onderscheid (ontwerpbeslissing 97). Alleen de kill-money
+//   leest deze vlag; de niet-dodelijke GELD_PER_HIT-tak leest 'm bewust
+//   niet (die past de headshot-multiplier al nergens toe, ook niet bij
+//   een echte kop=true-treffer van een vuurwapen).
+// - `basisSchadeVast` (default null): overschrijft de basisschade-formule
+//   volledig i.p.v. 'm te schalen (schadeFactor doet dat al). Nodig omdat
+//   de standaardformule (schadePerTreffer + Smederij-bonus VAN HET ACTIEVE
+//   VUURWAPEN) anders zou lekken in een messteek — het mes kan niet gesmeed
+//   worden (§12.6) en moet MES_SCHADE onveranderlijk blijven houden, ook als
+//   de speler het actieve vuurwapen al heeft opgewaardeerd.
+function raakOndode(ondode, punt, kop = false, schadeFactor = 1, geldAlsKop = false, basisSchadeVast = null) {
   // Ticket 42: elke treffer telt, ongeacht dodelijk of niet — headshots zijn
   // kop-TREFFERS (consistent met de hitmarker-tiers), niet alleen kop-kills.
   runStats.treffers++;
   if (kop) runStats.headshots++;
-  const basisSchade = schadePerTreffer + berekenSmederijBonus(wapenStaat);
+  const basisSchade = basisSchadeVast !== null ? basisSchadeVast : (schadePerTreffer + berekenSmederijBonus(wapenStaat));
   // Eliminatiemodus (power-up): elke treffer is meteen dodelijk, ongeacht HP.
   const schade = eliminatiemodusTimer > 0 ? ondode.hp : (basisSchade + (kop ? HEADSHOT_EXTRA : 0)) * schadeFactor;
   ondode.hp -= schade;
@@ -11620,7 +11831,7 @@ function raakOndode(ondode, punt, kop = false, schadeFactor = 1) {
     // Ticket 33: kill is de hoogste hitmarker-/audio-tier, ongeacht kop of lichaam.
     toonHitmarker('kill');
     speelKillKnak();
-    const killGeld = Math.round(GELD_PER_KILL * ondode.geldMultiplier * geldFactor * (kop ? HEADSHOT_GELD_MULTIPLIER : 1));
+    const killGeld = Math.round(GELD_PER_KILL * ondode.geldMultiplier * geldFactor * ((kop || geldAlsKop) ? HEADSHOT_GELD_MULTIPLIER : 1));
     spelStaat.geld += killGeld;
     runStats.geldTotaal += killGeld;
     const dropPos = ondode.groep.position.clone();
@@ -13576,6 +13787,7 @@ function gameLoop(nu) {
     klok += dt;
     if (schietKnopIngedrukt) probeerTeSchieten();
     updateWapen(dt);
+    updateMes(dt);   // Ticket 133: mes-cooldown, los van het vuurwapen-gameplaypad
     updateSmederijVisuals(dt);
     updateOndoden(dt);
     updateStervenden(dt);
@@ -13850,6 +14062,63 @@ function gameLoop(nu) {
     } else {
       vlamTimer -= dt;
       if (vlamTimer <= 0) { wapenStaat.definitie.vlam.visible = false; wapenStaat.definitie.vlamLicht.visible = false; }
+    }
+  }
+  // Ticket 133 (visuele herziening): de steek in drie fasen — vuurwapen zakt
+  // uit beeld, mes neemt zijn plek in en prikt, vuurwapen komt terug. Zo
+  // staan er nooit twee modellen tegelijk op de rustplek; dat clippen was
+  // precies het probleem van de eerste versie. Deze blok staat NA het
+  // wisseldip-blok hierboven en na updateWapen()'s herlaad-dip, en overschrijft
+  // die dus bewust: een steek is een grotere, kortere beweging en hoort te
+  // winnen zolang hij loopt. Bij het aflopen zet hij y expliciet terug op
+  // WAPEN_BASIS_Y, waarna die andere dips gewoon weer verder schrijven.
+  if (mesAnimatieTimer > 0) {
+    mesAnimatieTimer = Math.max(0, mesAnimatieTimer - dt);
+    const verstreken = MES_STEEK_ANIMATIE_DUUR - mesAnimatieTimer;
+
+    // Het vuurwapen maakt plaats. `wapenStaat` kan null zijn (T134: alleen een
+    // mes) — dan is `inHandGroep` het mes zélf en valt er niets weg te dippen.
+    if (wapenStaat) {
+      let wegzak;
+      if (verstreken < MES_FASE_WEG) {
+        // Ease-out: begint snel, vlakt af als het wapen onderin aankomt.
+        wegzak = MES_WAPEN_WEGZAK * Math.sin((verstreken / MES_FASE_WEG) * Math.PI / 2);
+      } else if (verstreken < MES_FASE_WEG + MES_FASE_STEEK) {
+        wegzak = MES_WAPEN_WEGZAK;   // plateau: blijft de hele prik lang uit beeld
+      } else {
+        const s = Math.min(1, (verstreken - MES_FASE_WEG - MES_FASE_STEEK) / MES_FASE_TERUG);
+        wegzak = MES_WAPEN_WEGZAK * (1 - Math.sin(s * Math.PI / 2));
+      }
+      inHandGroep.position.y = WAPEN_BASIS_Y - wegzak;
+    }
+
+    // Het mes is uitsluitend zichtbaar in fase 2 — daarbuiten is het wapen
+    // (deels) in beeld, en juist die overlap wilden we kwijt.
+    const inSteekFase = verstreken >= MES_FASE_WEG && verstreken < MES_FASE_WEG + MES_FASE_STEEK;
+    wapenMes.visible = inSteekFase;
+    if (inSteekFase) {
+      const s = (verstreken - MES_FASE_WEG) / MES_FASE_STEEK;
+      const boog = Math.sin(s * Math.PI);   // 0 -> 1 -> 0: uit, prik, terug
+      // Eén lineaire menging tussen de ingetrokken en de gestrekte houding.
+      // Positie én rotatie lopen mee met dezelfde boog, dus het mes komt
+      // omhoog, naar het midden, naar voren en recht in één beweging.
+      wapenMes.position.set(
+        MES_IN_X + (MES_UIT_X - MES_IN_X) * boog,
+        MES_IN_Y + (MES_UIT_Y - MES_IN_Y) * boog,
+        MES_IN_Z + (MES_UIT_Z - MES_IN_Z) * boog,
+      );
+      wapenMes.rotation.x = MES_IN_ROT_X + (MES_UIT_ROT_X - MES_IN_ROT_X) * boog;
+      wapenMes.rotation.y = MES_IN_ROT_Y + (MES_UIT_ROT_Y - MES_IN_ROT_Y) * boog;
+      wapenMes.rotation.z = MES_IN_ROT_Z + (MES_UIT_ROT_Z - MES_IN_ROT_Z) * boog;
+    }
+
+    if (mesAnimatieTimer <= 0) {
+      // Exact terug naar rust — mes én vuurwapen, zodat er geen restje
+      // offset blijft hangen (zelfde afsluitpatroon als de wisseldip).
+      wapenMes.visible = false;
+      wapenMes.position.set(MES_IN_X, MES_IN_Y, MES_IN_Z);
+      wapenMes.rotation.set(MES_IN_ROT_X, MES_IN_ROT_Y, MES_IN_ROT_Z);
+      if (wapenStaat) inHandGroep.position.y = WAPEN_BASIS_Y;
     }
   }
 
@@ -14161,6 +14430,14 @@ window.AmsterdamUndeadDebug = {
   get inHandGroep() { return inHandGroep; },
   get ratelaarGekocht() { return ratelaarGekocht; },
   get actiefWapenNaam() { return actiefWapenNaam; },
+  // Ticket 133 (Ronde 10, §12.3-12.4): het mes.
+  mesStaat, MES_SCHADE, MES_BEREIK, MES_COOLDOWN, steekMes, updateMes,
+  MES_STEEK_ANIMATIE_DUUR, MES_FASE_WEG, MES_FASE_STEEK, MES_FASE_TERUG,
+  MES_WAPEN_WEGZAK, MES_IN_X, MES_IN_Y, MES_IN_Z, MES_UIT_X, MES_UIT_Y, MES_UIT_Z,
+  wapenMes, speelMesSteek,
+  get mesSteekTeller() { return mesSteekTeller; },
+  get mesAnimatieTimer() { return mesAnimatieTimer; },
+  set mesAnimatieTimer(v) { mesAnimatieTimer = v; },   // testisolatie: forceer een schone start
   // v0.7: Pantserdrank-perk (hpMax-verdubbeling):
   PANTSERDRANK_PRIJS, PANTSERDRANK_HP_BONUS, PANTSERDRANK_X, PANTSERDRANK_Z,
   koopPantserdrank, pantserdrankPunt, pantserdrankMarkering,
