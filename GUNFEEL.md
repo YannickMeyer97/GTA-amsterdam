@@ -159,55 +159,87 @@ onder alle omstandigheden — geen tier, power-up of bewegingstoestand mag dat
 aantasten. Dit is toetsbaar en moet een test krijgen die het als contract
 vastlegt, niet als toevalligheid.
 
-**Spread-opbouw (nieuw, via `wapenStaat.spreadOpbouw`).**
+**Spread-opbouw: NUL. Dit wapen dobbelt nooit.**
+
+> **Correctie tijdens T142.** De eerste versie van deze spec schreef hier een
+> oplopende spreiding voor als straf op ratelen (+0,012 per schot, afbouw
+> 0,040/s). Bij implementatie brak dat meteen het contract dat
+> `test-wapen-identiteit.mjs` al bewaakte: *twintig schoten van dit wapen
+> moeten op exact hetzelfde punt landen.* De test had gelijk en de spec niet.
+>
+> Willekeurige spreiding is het verkeerde gereedschap voor het precisiewapen.
+> Als je met de AMSTEL-9 mist, moet dat jouw fout zijn geweest en niet die van
+> het wapen — anders is "precies en gecontroleerd" een loze belofte. Dat het
+> mechanisme wél in de code staat is geen restant: T143 heeft het nodig voor de
+> Canal Ripper, waar spreiding juist de identiteit ís.
+
+**De straf op doorratelen is deterministisch: de camera klimt.** `cameraKick`
+telt op bij elk schot en wordt door `updateSpeler()` op `camera.rotation.x`
+gezet — en de raycast van het volgende schot vertrekt vanuit diezelfde camera.
+Vuren voordat de kick hersteld is, schiet dus meetbaar hoger. `speler.pitch`
+blijft daarbij onaangeraakt (harde randvoorwaarde): er is geen blijvende
+aim-drift, alleen een beeld dat je zelf terugbrengt.
+
+Dat verschil is het hele punt. Spreiding kun je alleen ondergaan; een klim die
+bij dezelfde invoer altijd dezelfde uitkomst geeft, kun je leren compenseren.
+**Dat is wat skill-based betekent voor een precisiewapen.**
+
+**Ratel-straf (nieuw).**
+
+```
+factor = 1 + kickRatelStraf × (1 − min(1, gat / KICK_HERSTELVENSTER))
+cameraKick += kickSterkte × factor
+```
 
 | parameter | waarde |
 |---|---|
-| toename per schot | +0,012 NDC |
-| afbouw | 0,040 NDC/s |
-| plafond | 0,030 NDC (kegel 2,27°) |
-| toegepaste waarde | de stand **vóór** dit schot; daarna pas optellen |
+| `kickRatelStraf` | 0,8 |
+| `KICK_HERSTELVENSTER` | `ln(20)/10` = 0,2996 s — afgeleid van de decay, niet ingetypt |
 
-Die laatste regel is wat het first-shot-contract bewaart: schot 1 vuurt op 0.
-
-De afbouw is bewust op de camera-kick-hersteltijd afgestemd:
-
-```
-0,012 NDC / 0,040 NDC/s = 0,30 s  ≈  camera-kick herstel tot 5% (0,2996 s)
-```
-
-**Daarmee is de regel voor de speler één zin: wacht tot het beeld stil staat en
-elk schot is exact zuiver; ratel door en je spreiding loopt op.**
-
-Gedrag bij maximale cadans (0,20 s): per schot netto +0,012 − 0,008 = **+0,004
-NDC**. Schot *n* vuurt dus op `(n−1) × 0,004`; het plafond wordt pas bij schot 9
-geraakt — op tier 0 (magazijn 8) loopt de spreiding precies één magazijn lang op
-zonder het plafond te halen.
-
-| schot (0,20 s cadans) | spread bij afvuren | kegel |
+| gat tussen schoten | factor | kick dat schot |
 |---|---|---|
-| 1 | 0,000 | 0,00° |
-| 2 | 0,004 | 0,30° |
-| 3 | 0,008 | 0,60° |
-| 5 | 0,016 | 1,21° |
-| 8 (laatste van tier-0-magazijn) | 0,028 | 2,11° |
-| 9+ | 0,030 (plafond) | 2,27° |
+| ≥ 0,30 s (hersteld) | 1,00 | 0,802° |
+| 0,20 s (max cadans) | 1,27 | 1,016° |
+| 0 s (theoretisch) | 1,80 | 1,443° |
 
-Bij 0,30 s tussen de schoten blijft elke waarde 0,000.
+Wat de speler daarvan merkt, is waar het vizier staat op het moment dat de
+volgende kogel vertrekt (de kick ná decay, in evenwicht):
 
-**Recoil.** Camera-kick 0,014 rad per schot en de decay-constante 10 blijven
-ongewijzigd — die verhouding is de basis waar de spread-afbouw op is
-afgestemd. De verdeling camera vs. model: camera 0,014 rad (bestaand),
-model-terugslag piek 0,080 m op z (bestaand) plus een **nieuwe model-kick op
-`rotation.x`** van 0,020 rad (1,15°), met dezelfde lineaire afbouw als de
-z-terugslag (6/s → volledig terug in 0,167 s). Die loopt via de T140-laag en
-moet exact op de rustpositie terugkomen.
+| cadans | evenwicht `cameraKick` | vizier-offset bij afvuren |
+|---|---|---|
+| 0,30 s (geduldig) | 0,0147 rad | **0,042°** |
+| 0,20 s (ratelen) | 0,0205 rad | **0,159°** |
 
-**Cadans.** Ongewijzigd op 0,20 s. De straf op sneller vuren is de spread, niet
-een langere cooldown — een cooldown-verlenging zou het wapen traag laten
-*aanvoelen* in plaats van onnauwkeurig.
+**Ratelen zet je vizier bijna vier keer zo ver van je richtpunt als geduldig
+vuren — elke kogel gaat nog steeds exact waar de loop wijst, alleen wijst die
+loop hoger.**
 
-**Herladen.** Ongewijzigd (1,20 s / 0,70 s).
+**Recoil-verdeling camera vs. model.** Camera-kick basis 0,014 rad per schot en
+de decay-constante 10 blijven ongewijzigd — die vormen de referentie waar het
+herstelvenster van afgeleid is. Model-terugslag piek 0,080 m op z (bestaand),
+plus een **nieuwe model-kick op `rotation.x`** van 0,020 rad (1,15°), met
+dezelfde lineaire afbouw als de z-terugslag (6/s → volledig terug in 0,167 s).
+
+Die model-kick raakt de aim **niet** — hij zit op de wapen-Group, niet op de
+camera. Hij is er puur voor het gewicht van het schot, en loopt via de
+T140-presentatielaag, dus hij komt per constructie exact op de rustpose terug.
+
+**Cadans.** Ongewijzigd op 0,20 s. De straf op sneller vuren is de camera-klim,
+niet een langere cooldown — een cooldown-verlenging zou het wapen traag laten
+*aanvoelen* in plaats van je te laten voelen dat je te snel was.
+
+**Muzzle-feedback en herladen.** Ongewijzigd (mondingsflits 0,033 s; herladen
+1,20 s / 0,70 s). De meting gaf geen aanleiding hier iets aan te veranderen: de
+flits doet zijn werk als tell, en de herlaadduur is al de langzaamste van de
+twee wapens. De nieuwe fysieke feedback van dit ticket is de model-kick
+hierboven.
+
+**Headshot-feedback.** Binnen de bestaande drie hitmarker-tiers — geen nieuwe
+tier, geen nieuwe rang. De kop-tier gaat van 0,18 naar **0,24 s**, waarmee de
+afstand tot een lichaamstreffer (0,12 s) verdubbelt in plaats van anderhalf
+keer; kill (0,30 s) blijft daar duidelijk boven. Omdat de AMSTEL-9 zijn plek
+naast de snellere Canal Ripper met zekerheid verdient en niet met TTK (§2),
+moet een geslaagde koptreffer ook als beloning lézen.
 
 ---
 
@@ -224,9 +256,10 @@ hier ligt geen contract op nul; onnauwkeurigheid hoort bij dit wapen.
 | parameter | waarde |
 |---|---|
 | toename per schot | +0,005 NDC |
-| afbouw boven de burst-drempel | 0,030 NDC/s |
-| afbouw onder de burst-drempel | 0,090 NDC/s (3×) |
+| afbouw, standaard | 0,030 NDC/s |
+| afbouw, onder de drempel **én gestopt met vuren** | 0,090 NDC/s (3×) |
 | burst-drempel | 0,010 NDC |
+| "gestopt met vuren" | pauze > 1,5 × schotCooldown |
 | plafond | 0,048 NDC |
 | totale spread | `spreadNdc + spreadOpbouw` |
 
@@ -245,10 +278,27 @@ totale spread van 0,044 → **kegel 3,32°**, ruim drie keer de basis.
 **Burst recovery — de kern van "korte bursts blijven belonend".** Direct ná
 schot *k* staat de opbouw op `0,002k + 0,003`, dus een burst van **drie** kogels
 eindigt op 0,009 en blijft daarmee onder de drempel van 0,010; vanaf de vierde
-kogel gaat hij eroverheen (0,011). Onder de drempel valt de opbouw drie keer zo
-snel terug: 0,010 / 0,090 = **0,11 s** om volledig schoon te zijn. Een burst van
-drie is dus praktisch gratis, terwijl doorratelen boven de drempel komt en dan
-met 0,030/s afbouwt — 1,6 s vanaf het plafond.
+kogel gaat hij eroverheen (0,011).
+
+> **Correctie tijdens T143.** De eerste versie van deze regel luidde alleen
+> "onder de drempel bouwt hij drie keer zo snel af". Dat sprak zichzelf tegen:
+> de versnelde afbouw gold dan óók tussen twee schoten van een salvo door, en
+> die wist per interval méér weg (0,090 × 0,1 = 0,009) dan een schot oplevert
+> (0,005). De opbouw kon de drempel dus nooit halen en bleef eeuwig op nul —
+> het hele mechanisme deed niets. De test die het volle magazijn narekende
+> vond dat meteen.
+>
+> De regel is nu: **de versnelde afbouw geldt alleen wanneer je bent gestopt
+> met vuren**, gemeten als een pauze langer dan 1,5× de eigen cadans van het
+> wapen (`SPREAD_GESTOPT_FACTOR`). Herstel is iets wat na het loslaten van de
+> trekker gebeurt, niet tussen twee kogels door.
+
+| situatie | afbouw | tijd tot schoon |
+|---|---|---|
+| burst van 3, dan loslaten | 0,090/s (onder drempel) | **0,10 s** |
+| burst van 4, dan loslaten | eerst 0,030, dan 0,090 | ~0,14 s |
+| vol magazijn (16), dan loslaten | eerst 0,030, dan 0,090 | ~0,84 s |
+| vanaf het plafond (0,048) | eerst 0,030, dan 0,090 | ~1,4 s |
 
 **Sustained-fire recoil.** De camera-kick loopt mee met de opbouw in plaats van
 per schot constant te zijn:
@@ -324,19 +374,28 @@ rechts het doel.
 
 | dimensie | AMSTEL-9 nu → doel | Canal Ripper nu → doel |
 |---|---|---|
-| spread schot 1 | 0,00° → **0,00° (contract)** | 0,91° → 0,91° |
-| spread na vol magazijn | 0,00° → **2,27°** | 0,91° → **3,17°** |
-| spread na 0,30 s pauze | 0,00° → **0,00°** | 0,91° → 0,91° |
-| tijd tot volledig schoon | n.v.t. → **0,30 s** | n.v.t. → **0,11 s** (burst) / 1,6 s (plafond) |
+| spread, élk schot | 0,00° → **0,00° (contract, altijd)** | 0,91° → 0,91° basis |
+| spread na vol magazijn | 0,00° → **0,00°** | 0,91° → **3,17°** |
+| tijd tot volledig schoon | n.v.t. (nooit vuil) | n.v.t. → **0,10 s** (burst van 3) / ~1,4 s (plafond) |
+| Doorboring-feedback | n.v.t. | alleen schade → **eigen toon + tracer** |
+| ratel-detail in beweging | — | stil → **tandwiel draait mee, loopt uit** |
+| straf op ratelen | geen → **deterministische camera-klim** | geen → **willekeurige spreiding** |
+| vizier-offset, geduldig vuren | 0,042° → 0,042° | n.v.t. |
+| vizier-offset, ratelen | 0,042° → **0,159°** (3,8×) | n.v.t. |
 | camera-kick schot 1 | 0,80° → 0,80° | 0,34° → 0,34° |
-| camera-kick eind magazijn | 0,93° → 0,93° | 0,54° → **0,67°** |
+| camera-kick eind magazijn | 0,93° → **1,17°** | 0,54° → **0,67°** |
 | model-kick `rotation.x` | geen → **1,15°** | geen → ritmisch, schaalt mee |
+| hitmarker kop-duur | 0,18 s → **0,24 s** | 0,18 s → 0,24 s (gedeeld) |
 | cadans | 5,0/s | 10,0/s |
 | TTK HP4 lichaam t0 | 0,60 s | 0,30 s |
 
 **De ruil in één zin:** de Canal Ripper doodt sneller maar wordt onbetrouwbaar
-zodra je doorratelt; de AMSTEL-9 doodt langzamer maar is exact zo zuiver als
-jouw geduld.
+zodra je doorratelt; de AMSTEL-9 doodt langzamer maar gaat élke kogel precies
+waar de loop wijst — en hoe hoog die loop staat, bepaal jij met je timing.
+
+De twee wapens straffen doorratelen dus met **verschillende soorten** straf, en
+dat is opzet: de een met iets wat je kunt leren compenseren, de ander met iets
+wat je alleen kunt vermijden.
 
 ---
 

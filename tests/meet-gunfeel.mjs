@@ -11,6 +11,8 @@
 //   B. Effectieve schotcadans en magazijnduur
 //   C. Spreidingskegel in graden (empirisch bemonsterd, niet afgeleid)
 //   D. Recoil-hersteltijd tot binnen 5%
+//   E. Ratel-straf: de deterministische camera-klim bij te snel vuren (T142)
+//   F. Progressieve spreiding over een vol magazijn (T143)
 import { openAmsterdamUndead, frames } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
@@ -214,6 +216,72 @@ const verificatie = await page.evaluate(async () => {
   };
 });
 
+// --- E. Ratel-straf (Ticket 142) -------------------------------------------
+// De deterministische straf op vuren vóórdat de camera-kick hersteld is. Wat de
+// speler ervan merkt is niet de kick zelf maar het EVENWICHT: waar het vizier
+// staat op het moment dat de volgende kogel vertrekt. Dat is de kick in
+// evenwicht, na de decay over één cadans-interval.
+const ratelStraf = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const uit = [];
+  for (const def of [d.WAPEN_DRUKSPUIT, d.WAPEN_RATELAAR]) {
+    const factor = (gat) => 1 + def.kickRatelStraf * (1 - Math.min(1, gat / d.KICK_HERSTELVENSTER));
+    const rij = { wapen: def.naam, kickRatelStraf: def.kickRatelStraf, perCadans: [] };
+    for (const cadans of [def.schotCooldown, 0.30]) {
+      const kickPerSchot = def.kickSterkte * factor(cadans);
+      // Evenwicht van k <- k*exp(-10*cadans) + kickPerSchot
+      const evenwicht = kickPerSchot / (1 - Math.exp(-10 * cadans));
+      // Stand op het moment van het volgende schot (dus ná één interval decay).
+      const bijAfvuren = evenwicht * Math.exp(-10 * cadans);
+      rij.perCadans.push({
+        cadans, factor: Number(factor(cadans).toFixed(4)),
+        evenwichtGraden: Number((evenwicht * 180 / Math.PI).toFixed(4)),
+        vizierOffsetGraden: Number((bijAfvuren * 180 / Math.PI).toFixed(4)),
+      });
+    }
+    uit.push(rij);
+  }
+  return { herstelvenster: d.KICK_HERSTELVENSTER, perWapen: uit };
+});
+
+// --- F. Progressieve spreiding (Ticket 143) --------------------------------
+// De ANDERE soort straf: waar de AMSTEL-9 doorratelen bestraft met een leerbare
+// camera-klim, doet de Canal Ripper het met willekeurige spreiding. Gemeten via
+// het echte pad: schiet() hoogt de opbouw op, updateWapen() bouwt hem af.
+const progressief = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.spelStaat.geld = 1000000;
+  if (!d.wapenStaten.ratelaar) d.koopRatelaar();
+  const kegelPerNdc = 0.906 / 0.012;   // uit sectie C: 0,012 NDC == 0,906 graden
+  const uit = [];
+  for (const naam of ['drukspuit', 'ratelaar']) {
+    d.activeerVuurwapen(naam);
+    const def = d.wapenStaat.definitie;
+    d.wapenStaat.herladen = false;
+    d.wapenStaat.magazijn = 999;
+    d.wapenStaat.spreadOpbouw = 0;
+    const reeks = [];
+    for (let i = 0; i < 16; i++) {
+      reeks.push(def.spreadNdc + d.wapenStaat.spreadOpbouw);
+      d.schiet();
+      d.vorigSchotKlok = d.klok;          // doorlopend vuren
+      d.updateWapen(def.schotCooldown);
+    }
+    // Herstel na loslaten van de trekker.
+    d.vorigSchotKlok = d.klok - 999;
+    let stappen = 0;
+    while (d.wapenStaat.spreadOpbouw > 0 && stappen < 5000) { d.updateWapen(0.005); stappen++; }
+    uit.push({
+      wapen: def.naam,
+      schot1Ndc: reeks[0], schot16Ndc: reeks[15],
+      schot1Graden: Number((reeks[0] * kegelPerNdc).toFixed(3)),
+      schot16Graden: Number((reeks[15] * kegelPerNdc).toFixed(3)),
+      schoonNaSec: Number((stappen * 0.005).toFixed(3)),
+    });
+  }
+  return uit;
+});
+
 // --- rapportage ------------------------------------------------------------
 const pct = (a, b) => b === 0 ? (a === 0 ? 0 : Infinity) : Math.abs(a - b) / b * 100;
 
@@ -242,6 +310,22 @@ for (const w of recoil.terugslag.perWapen) {
   console.log(`  ${w.wapen.padEnd(20)} model-terugslag piek ${w.piekUitslagMeter}m, binnen 5% na ${w.hersteltijd5procent}s, volledig terug na ${w.volledigTerugSec}s`);
 }
 
+console.log(`\n=== E. Ratel-straf (herstelvenster ${ratelStraf.herstelvenster.toFixed(4)}s) ===`);
+for (const w of ratelStraf.perWapen) {
+  if (w.kickRatelStraf === 0) { console.log(`${w.wapen.padEnd(20)} geen ratel-straf (straft doorratelen met spreiding)`); continue; }
+  console.log(`${w.wapen.padEnd(20)} kickRatelStraf ${w.kickRatelStraf}`);
+  for (const c of w.perCadans) {
+    console.log(`  cadans ${c.cadans}s -> factor ${c.factor}, evenwicht ${c.evenwichtGraden}°, vizier bij afvuren ${c.vizierOffsetGraden}°`);
+  }
+  const [snel, traag] = w.perCadans;
+  console.log(`  -> ratelen zet het vizier ${(snel.vizierOffsetGraden / traag.vizierOffsetGraden).toFixed(2)}x zo ver van je richtpunt`);
+}
+
+console.log('\n=== F. Progressieve spreiding over een vol magazijn (16 schoten) ===');
+for (const p of progressief) {
+  console.log(`${p.wapen.padEnd(20)} schot 1: ${p.schot1Graden}°  ->  schot 16: ${p.schot16Graden}°  (schoon na ${p.schoonNaSec}s)`);
+}
+
 console.log('\n=== Verificatie: de twee decays impliceren dezelfde gesimuleerde tijd ===');
 if (verificatie.terugslagVerzadigd) {
   console.log('  terugslag zat al op zijn nulbodem — geen zinvolle kruiscontrole deze run');
@@ -253,6 +337,6 @@ if (verificatie.terugslagVerzadigd) {
 }
 
 console.log('\n=== JSON ===');
-console.log(JSON.stringify({ ttk, cadans, spreiding, recoil, verificatie }));
+console.log(JSON.stringify({ ttk, cadans, spreiding, recoil, ratelStraf, progressief, verificatie }));
 console.log('console errors:', errs.length ? errs.join(' | ') : 'geen');
 await browser.close();

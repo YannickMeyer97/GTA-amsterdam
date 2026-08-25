@@ -7216,6 +7216,15 @@ const VLAM_FLITS_DUUR = 0.033;
 // vervalt exponentieel in de cosmetische gameLoop-zone (net als terugslag).
 // speler.pitch zelf wordt NOOIT gemuteerd — geen blijvende aim-drift.
 let cameraKick = 0;
+// Ticket 142: het venster waarbinnen "te snel" telt — gelijk aan de GEMETEN
+// hersteltijd van de camera-kick tot binnen 5%: exp(-10*T) = 0.05 -> T =
+// ln(20)/10 (zie GUNFEEL.md §1.4). Afgeleid en niet ingetypt, zodat hij
+// meeschuift als de decay-constante ooit verandert.
+const KICK_HERSTELVENSTER = Math.log(20) / 10;   // 0,2996 s
+// Klok-stand van het VORIGE schot. laatsteSchotTijd (in probeerTeSchieten())
+// is hiervoor onbruikbaar: die wordt al op `klok` gezet vóórdat schiet()
+// draait, dus daar is het gat altijd 0.
+let vorigSchotKlok = -Infinity;
 // Ticket 34: wapenwissel-animatie (korte y-dip op de binnenkomende groep,
 // decayt in dezelfde cosmetische zone als terugslag/cameraKick) en de
 // bijbehorende herlaad-dip-amplitude — beide wapens delen dezelfde
@@ -7387,6 +7396,38 @@ const WAPEN_DRUKSPUIT = {
   // Ticket 34 (§5.6): de Drukspuit is de precisiekeuze — grote enkele kick,
   // géén spread. Waarden letterlijk overgenomen uit ARCHITECTURE_NOTES.
   kickSterkte: 0.014, spreadNdc: 0, terugslagSterkte: 1.0,
+  // Ticket 142 (GUNFEEL.md §3): de precisie-identiteit. NUL spread-opbouw, en
+  // dat is een bewuste correctie op de eerste versie van de T141-spec.
+  //
+  // Die schreef een oplopende spread voor als straf op ratelen. Dat brak
+  // meteen het contract dat test-wapen-identiteit.mjs bewaakt: twintig schoten
+  // van dit wapen moeten op EXACT hetzelfde punt landen. De test had gelijk en
+  // de spec niet — willekeurige spreiding op het precisiewapen is het
+  // verkeerde gereedschap. Dit wapen mag nooit dobbelen; als je mist, moet dat
+  // jouw fout zijn geweest en niet die van het wapen.
+  //
+  // De straf op doorratelen is daarom DETERMINISTISCH en zit in de camera-klim
+  // (kickRatelStraf hieronder): het beeld loopt op als je te snel vuurt, maar
+  // altijd op exact dezelfde, leerbare manier — dus compenseerbaar. Dát is wat
+  // skill-based betekent voor een precisiewapen.
+  //
+  // Het opbouw-mechanisme zelf blijft staan (schiet()/updateWapen() rekenen
+  // ermee) omdat T143 het voor de Canal Ripper wél nodig heeft; daar IS
+  // spreiding de identiteit, en daar bewaakt de test juist dat er méér dan één
+  // raakpunt is.
+  spreadOpbouwPerSchot: 0, spreadOpbouwAfbouw: 0, spreadOpbouwMax: 0,
+  // Geen burst-drempel en geen meeschalende kick: dit wapen bouwt niets op, dus
+  // er valt niets af te bouwen of mee te schalen (T143-velden, hier op nul).
+  spreadBurstDrempel: 0, spreadOpbouwAfbouwSnel: 0, kickSpreadSchaal: 0,
+  // Extra camera-kick zodra je vuurt vóórdat de vorige kick hersteld is:
+  //   factor = 1 + kickRatelStraf * (1 - min(1, gat / KICK_HERSTELVENSTER))
+  // Bij een gat >= 0,30 s (de gemeten hersteltijd) is de factor exact 1 — dan
+  // kost geduld je niets. Op maximale cadans (0,20 s) is hij 1,27.
+  kickRatelStraf: 0.8,
+  // Fysieke terugslag op het MODEL, los van de camera-kick: het wapen kantelt
+  // omhoog en zakt met dezelfde lineaire snelheid terug als de z-terugslag
+  // (6/s), dus volledig terug in 0,167 s. Loopt via de T140-presentatielaag.
+  modelKickX: 0.020,
   schotToon: { start: 480, eind: 120, duur: 0.09 },
 };
 const WAPEN_RATELAAR = {
@@ -7408,6 +7449,30 @@ const WAPEN_RATELAAR = {
   // Ticket 34 (§5.6): de Ratelaar is de volumekeuze — kleine kick per schot,
   // vaste lichte spread (±0.8°). Waarden letterlijk overgenomen.
   kickSterkte: 0.006, spreadNdc: 0.012, terugslagSterkte: 0.55,
+  // Ticket 143 (GUNFEEL.md §4): agressie met oplopende straf. Waar de AMSTEL-9
+  // doorratelen bestraft met een LEERBARE camera-klim, doet dit wapen het met
+  // WILLEKEURIGE spreiding — iets wat je alleen kunt vermijden, niet
+  // compenseren. Dat verschil in soort straf is opzet, niet toeval.
+  //
+  // Bij maximale cadans (0,1 s) is de netto opbouw +0,005 - 0,003 = +0,002 per
+  // schot; over een vol tier-0-magazijn (16) dus 0,032 bovenop de basis 0,012.
+  spreadOpbouwPerSchot: 0.005, spreadOpbouwAfbouw: 0.030, spreadOpbouwMax: 0.048,
+  // De burst-drempel is wat korte salvo's belonend houdt: onder deze stand
+  // bouwt de spreiding DRIE keer zo snel af. Direct na schot k staat de opbouw
+  // op 0,002k + 0,003, dus een burst van drie eindigt op 0,009 en blijft er
+  // net onder; vanaf de vierde kogel ga je eroverheen en zit je aan de trage
+  // afbouw vast. 0,010 / 0,090 = 0,11 s om vanaf de drempel schoon te zijn.
+  spreadBurstDrempel: 0.010, spreadOpbouwAfbouwSnel: 0.090,
+  // Sustained-fire recoil: de kick loopt mee met de opbouw i.p.v. per schot
+  // constant te zijn. 1/0,032 = 31,25, dus aan het eind van een vol
+  // tier-0-magazijn is de kick bijna verdubbeld (0,34° -> 0,67°).
+  kickSpreadSchaal: 31.25,
+  // Het tandwiel (userData.onderdelen.accent) draait door zolang er gevuurd
+  // wordt — het ratel-detail waar dit wapen zijn naam aan dankt. rad/s, gezet
+  // bij elk schot en uitlopend in de presentatielaag.
+  tandwielSpinPerSchot: 9,
+  modelKickX: 0,       // de Ripper krijgt ritmische beweging (zie ripperTandwielSnelheid), geen enkele stoot
+  kickRatelStraf: 0,   // straft doorratelen met spreiding, niet met camera-klim
   schotToon: { start: 620, eind: 210, duur: 0.06 },
 };
 
@@ -7662,6 +7727,34 @@ function updateWapen(dt) {
   // `wapenStaat`. De cosmetische wapenbeweging staat hier bewust NIET achter:
   // die hoort bij `inHandGroep` en loopt gewoon door met een mes in de hand.
   if (!wapenStaat) return;
+  // Ticket 142: de spread-opbouw bouwt af zolang je NIET vuurt. Staat bewust
+  // hier (gameplaypad, achter de spelActief-gate) en niet in de cosmetische
+  // zone: dit stuurt de raycast, dus het mag niet doortellen tijdens pauze.
+  // Ook geen aparte reset bij herladen of wisselen nodig — een herlaadbeurt
+  // (1,2 s) is ruim langer dan de 0,75 s die de afbouw nodig heeft om vanaf
+  // het plafond op nul te komen, dus dat regelt zichzelf.
+  // Ticket 143: twee afbouwsnelheden. Onder de burst-drempel valt de opbouw
+  // versneld terug, zodat korte salvo's praktisch gratis blijven en alleen
+  // doorratelen je aan de trage afbouw vastzet.
+  //
+  // De extra voorwaarde `gestopt` is geen detail maar de kern, en is er pas
+  // gekomen nadat de eerste versie zichzelf bleek tegen te spreken: met alleen
+  // de drempel-check gold de SNELLE afbouw ook tussen twee schoten van een
+  // salvo door, en die wist er per interval meer weg (0,090 x 0,1 = 0,009) dan
+  // een schot oplevert (0,005). De opbouw kon de drempel daardoor nooit halen
+  // en bleef eeuwig op nul — het hele mechanisme deed niets. De versnelde
+  // afbouw hoort bij HERSTEL NA STOPPEN, niet bij de adempauze binnen een
+  // salvo. Vandaar de vergelijking met de eigen cadans van het wapen.
+  //
+  // Wapens zonder drempel (de AMSTEL-9, alles op 0) nemen sowieso de normale
+  // tak: `opbouw < 0` is nooit waar.
+  if (wapenStaat.spreadOpbouw > 0) {
+    const def = wapenStaat.definitie;
+    const gestopt = (klok - vorigSchotKlok) > def.schotCooldown * SPREAD_GESTOPT_FACTOR;
+    const tempo = (gestopt && wapenStaat.spreadOpbouw < def.spreadBurstDrempel)
+      ? def.spreadOpbouwAfbouwSnel : def.spreadOpbouwAfbouw;
+    wapenStaat.spreadOpbouw = Math.max(0, wapenStaat.spreadOpbouw - tempo * dt);
+  }
   // De Zelflader: leeg magazijn = herlaad vanzelf. herladen() bewaakt zelf al
   // "al bezig"/"al vol"/"geen reserve", dus dit mag elke frame draaien; het is
   // een paar vergelijkingen, geen allocatie (hot-path-regel §7.9).
@@ -7748,12 +7841,47 @@ let mesWegzakOffset = 0;          // hoever het vuurwapen omlaag staat (override
 let mesStootOffsetZ = 0;          // gehouden mes: stoot naar voren (optelling op z)
 let mesKantelX = 0;               // gehouden mes: neerwaartse kantel (rotation.x)
 
+// Ticket 142: fysieke terugslag-kantel op het wapenmodel (rotation.x), gezet
+// door schiet() en hier afgebouwd met dezelfde lineaire snelheid als
+// `terugslag` (6/s) — de twee horen bij dezelfde beweging, dus ze mogen niet
+// uit de pas lopen. Kan nooit tegelijk met `mesKantelX` van nul verschillen:
+// die hoort bij het GEHOUDEN mes, en dan is er per definitie geen vuurwapen om
+// mee te schieten. Ze worden hieronder toch opgeteld, zodat die uitsluiting
+// zichtbaar is in de code i.p.v. een aanname die je moet onthouden.
+let wapenKickX = 0;
+
+// Ticket 143: draaisnelheid (rad/s) van het Canal Ripper-tandwiel. schiet()
+// zet 'm, de presentatielaag draait het onderdeel ermee en laat de snelheid
+// uitlopen — een tandwiel dat abrupt stilstaat leest als kapot, een tandwiel
+// dat uitloopt als machinerie. Puur cosmetisch; raakt geen enkele raycast.
+let ripperTandwielSnelheid = 0;
+const RIPPER_TANDWIEL_UITLOOP = 14;   // rad/s per seconde afname
+// Ticket 143: vanaf hoeveel keer de eigen schotcadans een pauze als "gestopt
+// met vuren" telt. 1,5x is ruim genoeg om de normale ritmische pauze binnen
+// een salvo niet als stoppen te lezen, en kort genoeg om direct na het laatste
+// schot in te zetten. Zie de toelichting bij de afbouw in updateWapen().
+const SPREAD_GESTOPT_FACTOR = 1.5;
+
 function updateWapenPresentatie(dt) {
   const basis = actievePresentatie();
 
   // --- terugslag (z) — decay en formule letterlijk uit het oude blok -------
   if (terugslag > 0) terugslag = Math.max(0, terugslag - dt * 6);
   const terugslagOffsetZ = terugslag * 0.08;
+
+  // --- model-kick (rotation.x) — Ticket 142, zelfde snelheid als hierboven --
+  if (wapenKickX > 0) wapenKickX = Math.max(0, wapenKickX - dt * 6);
+
+  // --- ritmisch tandwiel (Ticket 143) -------------------------------------
+  // Draait het `accent`-onderdeel van het actieve wapen, als dat er een heeft
+  // dat hoort te draaien. Bewust op het ONDERDEEL en niet op de Group: de
+  // Group-transform heeft sinds T140 één eigenaar met een vaste rustpose, en
+  // een doordraaiend tandwiel zou daar nooit exact op terugkomen.
+  if (ripperTandwielSnelheid > 0) {
+    ripperTandwielSnelheid = Math.max(0, ripperTandwielSnelheid - RIPPER_TANDWIEL_UITLOOP * dt);
+    const onderdelen = inHandGroep.userData.onderdelen;
+    if (onderdelen && onderdelen.accent) onderdelen.accent.rotation.y += ripperTandwielSnelheid * dt;
+  }
 
   // --- wisseldip (y) ------------------------------------------------------
   // De oude code schreef eerst de sinus en zette 'm daarna, op de laatste
@@ -7791,9 +7919,11 @@ function updateWapenPresentatie(dt) {
     basis.basisZ + terugslagOffsetZ + mesStootOffsetZ,
   );
   inHandGroep.rotation.z = -leanHoek * WAPEN_LEAN_TEGENWICHT;
-  // Alleen het gehouden mes kantelt; voor een vuurwapen is dit elke frame 0,
-  // dezelfde waarde die de Group vanaf zijn constructie al had.
-  inHandGroep.rotation.x = mesKantelX;
+  // Twee bronnen voor de kantel, die elkaar per constructie uitsluiten: het
+  // gehouden mes tijdens een steek (mesKantelX) en de schot-terugslag van een
+  // vuurwapen (wapenKickX, Ticket 142). Beide zijn 0 in rust, dus dit komt
+  // altijd exact op de rustpose terug.
+  inHandGroep.rotation.x = mesKantelX + wapenKickX;
 }
 
 // Ticket 17: Smederij-visuals — draaiend tandwiel op de Ratelaar + zacht
@@ -7826,9 +7956,15 @@ let klok = 0;
 // binnen HITMARKER_SAMENVAL_VENSTER van elkaar downgraden de hitmarker niet
 // (bv. een lichaamstreffer vlak na een kill), maar de decay-timer herstart
 // sowieso op elke treffer.
+// Ticket 142 (GUNFEEL.md §3): de kop-tier van 0,18 naar 0,24 s. De AMSTEL-9
+// verdient zijn plek naast de snellere Canal Ripper met zekerheid, niet met
+// TTK (§2 van GUNFEEL.md) — dan moet een geslaagde koptreffer ook als een
+// beloning LEZEN. Bewust binnen de bestaande drie tiers: geen nieuwe tier, geen
+// nieuwe rang, alleen de afstand tussen lichaam (0,12) en kop vergroot van 1,5x
+// naar 2x, met kill (0,30) nog steeds duidelijk daarboven.
 const HITMARKER_TIERS = {
   lichaam: { duur: 0.12 },
-  kop:     { duur: 0.18 },
+  kop:     { duur: 0.24 },
   kill:    { duur: 0.30 },
 };
 const HITMARKER_RANG = { lichaam: 0, kop: 1, kill: 2 };
@@ -8099,7 +8235,27 @@ function schiet() {
 
   const { vlam, vlamLicht } = wapenStaat.definitie;
   terugslag = wapenStaat.definitie.terugslagSterkte;
-  cameraKick += wapenStaat.definitie.kickSterkte;   // Ticket 34: visueel-only, decayt in de cosmetische zone
+  // Ticket 142: vuren vóórdat de vorige kick hersteld is, kost extra klim.
+  // Volledig DETERMINISTISCH — zelfde invoer geeft zelfde uitkomst, dus de
+  // speler kan het leren compenseren. Dat is het verschil met spreiding, die
+  // je alleen maar kunt ondergaan (zie de toelichting bij kickRatelStraf).
+  // Geen allocatie, alleen scalairen (hot-path-regel §7.9).
+  const gatSindsVorigSchot = klok - vorigSchotKlok;
+  const ratelFactor = 1 + wapenStaat.definitie.kickRatelStraf
+    * (1 - Math.min(1, gatSindsVorigSchot / KICK_HERSTELVENSTER));
+  vorigSchotKlok = klok;
+  // Ticket 143: sustained-fire recoil — de kick schaalt mee met de al
+  // opgebouwde spreiding, dus volgehouden vuur schudt steeds harder. Leest de
+  // stand van VÓÓR dit schot (die wordt verderop pas opgehoogd), net als de
+  // spreiding zelf. Voor de AMSTEL-9 is kickSpreadSchaal 0 -> factor exact 1.
+  const spreadKickFactor = 1 + wapenStaat.spreadOpbouw * wapenStaat.definitie.kickSpreadSchaal;
+  cameraKick += wapenStaat.definitie.kickSterkte * ratelFactor * spreadKickFactor;   // Ticket 34: decayt in de cosmetische zone
+  // Ticket 143: het tandwiel is het ratel-detail van dit wapen — laat het
+  // meedraaien zolang er gevuurd wordt (de snelheid decayt in de
+  // presentatielaag, dus na het laatste schot loopt het uit i.p.v. te stoppen).
+  if (wapenStaat.definitie.tandwielSpinPerSchot) {
+    ripperTandwielSnelheid = wapenStaat.definitie.tandwielSpinPerSchot;
+  }
   vlam.visible = true;
   vlamLicht.visible = true;
   // Ticket 12: een gesmeed wapen krijgt een feller mondingsvuur.
@@ -8136,7 +8292,20 @@ function schiet() {
   // tracer + impact op muren/vloer/plafond (of, bij een volledige misser,
   // een tracer tot raycaster.far). De tracer volgt hierdoor altijd het echte
   // raakpunt, incl. spread.
-  const spread = wapenStaat.definitie.spreadNdc;
+  // Ticket 142 (GUNFEEL.md §3): totale spreiding = de vaste basis van het wapen
+  // PLUS de opgebouwde straf op doorratelen. De volgorde is het hele contract:
+  // dit schot vuurt op de stand van VÓÓR zichzelf, en pas daarna telt zijn
+  // eigen bijdrage op. Voor de AMSTEL-9 (spreadNdc 0, opbouw start op 0)
+  // betekent dat: schot 1 is altijd exact zuiver, onder alle omstandigheden.
+  // Alleen scalairen, geen allocatie — hot-path-regel §7.9.
+  const spread = wapenStaat.definitie.spreadNdc + wapenStaat.spreadOpbouw;
+  wapenStaat.spreadOpbouw = Math.min(wapenStaat.definitie.spreadOpbouwMax,
+    wapenStaat.spreadOpbouw + wapenStaat.definitie.spreadOpbouwPerSchot);
+  // Fysieke kick op het wapenmodel zelf (kantelt omhoog, zakt terug via de
+  // T140-presentatielaag). Bewust ZETTEN i.p.v. optellen, net als `terugslag`
+  // hierboven: twee schoten vlak na elkaar geven één kick, geen stapeling die
+  // het wapen uit beeld zou draaien.
+  wapenKickX = wapenStaat.definitie.modelKickX;
   raycaster.setFromCamera({ x: (Math.random() - 0.5) * spread, y: (Math.random() - 0.5) * spread }, camera);
   const ondodeRaak = raycaster.intersectObject(ondodenGroep, true);
   if (ondodeRaak.length > 0) {
@@ -8167,6 +8336,14 @@ function schiet() {
           if (muurErtussen.length > 0 && muurErtussen[0].distance < ondodeRaak[i].distance) break;
           const kop2 = ondodeRaak[i].object.userData.lichaamsdeel === 'kop';
           raakOndode(obj2.userData.ondode, ondodeRaak[i].point, kop2, RIPPER_DOORBORING_SCHADEFACTOR);
+          // Ticket 143: eigen tell voor de doorboring — hoorbaar dát de kogel
+          // erdoorheen ging, plus een tracer van doel 1 naar doel 2 die het
+          // pad zichtbaar maakt. De SCHADE blijft ongemoeid
+          // (RIPPER_DOORBORING_SCHADEFACTOR ongewijzigd, Fix 5-waarde): dit is
+          // puur feedback. Hergebruikt de bestaande tracerpool, dus geen nieuw
+          // effect-slot en geen allocatie.
+          speelDoorboring();
+          spawnTracer(ondodeRaak[0].point, ondodeRaak[i].point, MATERIAAL_KLEUREN.steen);
           break;   // maximaal 1 extra doel per schot
         }
       }
@@ -8576,6 +8753,14 @@ let raakTikTeller = 0, kopTikTeller = 0, killKnakTeller = 0;
 function speelRaakTik()  { raakTikTeller++; const p = pitchVariatie(); piep('square', 320 * p, 90 * p, 0.07, 0.08); }
 function speelKopTik()   { kopTikTeller++; const p = pitchVariatie(); piep('square', 460 * p, 140 * p, 0.08, 0.09); }
 function speelKillKnak() { killKnakTeller++; const p = pitchVariatie(); piep('sawtooth', 200 * p, 40 * p, 0.14, 0.12); }
+// Ticket 143: de Doorboring (Canal Ripper, Smederij-niveau 2) was tot nu toe
+// alleen in de SCHADE merkbaar — een tweede doel viel om zonder dat er iets
+// klonk of te zien was dat de kogel erdoorheen was gegaan. Een eigen, langer
+// naklinkende toon: hoger startend dan de gewone raaktik en verder uitzakkend,
+// zodat het als "erdoorheen" leest en niet als een tweede losse treffer.
+// Eigen teller, zelfde patroon als de drie hierboven (test-haak).
+let doorboringTeller = 0;
+function speelDoorboring() { doorboringTeller++; const p = pitchVariatie(); piep('triangle', 620 * p, 110 * p, 0.16, 0.07); }
 // Ticket 80: optionele bronpositie voor richtinghoren; zonder argumenten
 // (bv. toekomstige aanroepers) blijft dit gewoon mono, net als voorheen.
 function speelPlankBreek(bronX, bronZ) {
@@ -14639,6 +14824,26 @@ window.AmsterdamUndeadDebug = {
   // mogelijk twee dips GEFORCEERD tegelijk te zetten (in normaal spel sluiten
   // ze elkaar uit) en de gedefinieerde uitkomst te toetsen.
   updateWapenPresentatie, actievePresentatie, MES_PRESENTATIE, WAPEN_BASIS_Z,
+  // Ticket 142: de model-kick op rotation.x, zodat een test kan toetsen dat hij
+  // zichtbaar is én exact op de rustpose terugkomt. `vorigSchotKlok` is de
+  // enige manier om het GAT tussen twee schoten te sturen zonder de echte klok
+  // te laten lopen — de ratel-straf hangt er volledig van af.
+  get wapenKickX() { return wapenKickX; },
+  set wapenKickX(v) { wapenKickX = v; },
+  get vorigSchotKlok() { return vorigSchotKlok; },
+  set vorigSchotKlok(v) { vorigSchotKlok = v; },
+  // De spel-klok zelf: een test die een GAT tussen twee schoten wil instellen
+  // moet `vorigSchotKlok` relatief hieraan zetten (klok staat bij het openen
+  // van de pagina al niet meer op 0).
+  get klok() { return klok; },
+  KICK_HERSTELVENSTER,
+  // Ticket 143: Canal Ripper — progressieve spreiding, ritmisch tandwiel en de
+  // Doorboring-tell.
+  get ripperTandwielSnelheid() { return ripperTandwielSnelheid; },
+  set ripperTandwielSnelheid(v) { ripperTandwielSnelheid = v; },
+  RIPPER_TANDWIEL_UITLOOP,
+  get doorboringTeller() { return doorboringTeller; },
+  speelDoorboring,
   // De twee accent-meshes zelf, zodat een test kan toetsen dat
   // userData.onderdelen.accent naar EXACT deze objecten wijst (verhuisd uit de
   // ARSENAAL-presentatie, niet gekopieerd) — het zijn dezelfde meshes die
