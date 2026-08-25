@@ -12659,7 +12659,18 @@ const AMMO_KIST_KOGELS = 48;    // reserve-kogels per aankoop
 const RATELAAR_PRIJS   = 750;   // eenmalig: tweede wapen, op de binnenplaats
 // Ticket 134 (Fix 6, §12.5): eerste vuurwapen — bewust goedkoper dan de
 // Ratelaar (ontwerpbeslissing 96: laag genoeg om vroeg in de run bereikbaar
-// te zijn met alleen het mes; T136 meet en stelt zo nodig bij).
+// te zijn met alleen het mes).
+// Ticket 136 (meting, tests/t136-golf1-meting.mjs, N=20 trials): een
+// "camp-and-melee"-speler die stil op de startpositie blijft staan (zicht
+// op de ramen) en alles binnen MES_BEREIK steekt zodra de cooldown het
+// toelaat, bereikt €450 in 20/20 trials zonder ook maar één keer te
+// sterven — gemiddeld op golf 2.15 (bereik 2-3), na gemiddeld 38,8
+// sim-seconden combat en 9,8 kills, met gemiddeld 54,8 HP verlies (van de
+// 100 max; slechtste geobserveerde eindstand 10 HP over, trial 2). Ruim
+// binnen golf 2 dus, met voelbaar risico maar geen enkele dode run —
+// precies het "kort en gespannen, niet fataal" gevoel dat de mes-opening
+// (T132-135) beoogt. GEEN aanpassing: €450 blijft staan. Zie ook
+// test-golf1-economie.mjs voor de regressie-bewaking hiervan.
 const AMSTEL9_PRIJS    = 450;
 // Ticket 12: De Smederij — late-game geldsink, per wapen (zie ARCHITECTURE_NOTES §2.7-8).
 const SMEDERIJ_PRIJS   = 3000;  // eenmalig per wapen: Smederij-schadebonus + groter magazijn
