@@ -168,13 +168,19 @@ const variatie = await page.evaluate(() => {
     rotaties.push(d.WAPEN_RATELAAR.vlam.rotation.z);
     schalen.push(d.WAPEN_RATELAAR.vlam.scale.x);
   }
-  return { rotaties, schalen };
+  return { rotaties, schalen, vlamSchaalFactor: d.WAPEN_RATELAAR.vlamSchaalFactor };
 });
 const uniekeRotaties = new Set(variatie.rotaties.map(r => r.toFixed(6))).size;
 check('Rotatie varieert daadwerkelijk per schot (niet 8x identiek)',
   uniekeRotaties > 1, variatie);
-check('Schaal blijft binnen de bedoelde marge (0,85-1,15)',
-  variatie.schalen.every(s => s >= 0.85 && s <= 1.15), variatie);
+// Ticket 144: de basismarge (0,85-1,15) is ongewijzigd, maar wordt sinds dit
+// ticket per wapen geschaald met vlamSchaalFactor (muzzle-feedback-
+// differentiatie: één grote AMSTEL-9-flits tegenover kleinere Ratelaar-
+// flitsjes) — de verwachte grenzen lezen die factor dus mee i.p.v. de
+// oude vaste 0,85-1,15.
+const rMarge = { min: 0.85 * variatie.vlamSchaalFactor, max: 1.15 * variatie.vlamSchaalFactor };
+check('Schaal blijft binnen de bedoelde (per-wapen geschaalde) marge',
+  variatie.schalen.every(s => s >= rMarge.min - 1e-9 && s <= rMarge.max + 1e-9), { variatie, rMarge });
 
 // --- 9. Invariant: het lichtaantal blijft 28 (bestaand licht, geen nieuw) -
 const lichten = await page.evaluate(() => {

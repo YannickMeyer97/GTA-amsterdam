@@ -7439,6 +7439,23 @@ const WAPEN_DRUKSPUIT = {
   // (6/s), dus volledig terug in 0,167 s. Loopt via de T140-presentatielaag.
   modelKickX: 0.020,
   schotToon: { start: 480, eind: 120, duur: 0.09 },
+  // Ticket 144: treffer-/kill-feedback per wapen. Deze drie tonen zijn
+  // LETTERLIJK de bestaande, tot nu toe gedeelde waarden uit
+  // speelRaakTik()/speelKopTik()/speelKillKnak() (zie hun fallback bij het
+  // mes hieronder) — de AMSTEL-9 verandert dus NIETS aan zijn eigen geluid,
+  // en blijft daarmee bit-voor-bit binnen test-hitmarker-audio.mjs' bestaande
+  // asserties. Alleen de Ratelaar krijgt een eigen profiel.
+  raakToon: { type: 'square', start: 320, eind: 90, duur: 0.07 },
+  kopToon: { type: 'square', start: 460, eind: 140, duur: 0.08 },
+  killToon: { type: 'sawtooth', start: 200, eind: 40, duur: 0.14 },
+  // Impact-karakter: 1 = de bestaande snelheid/spreiding van spawnImpact(),
+  // ongewijzigd. Eén precieze, zware inslag past bij de precisie-identiteit.
+  impactSnelheidFactor: 1,
+  // Muzzle-feedback: schaalt de bestaande vlam-scale-randomisatie
+  // (0,85-1,15) in schiet(). >1 = één grote, volle flits per (langzaam)
+  // schot — past bij "krachtig handwapen", en is de tegenhanger van de
+  // kleinere, snellere flitsjes hieronder bij de Ratelaar.
+  vlamSchaalFactor: 1.15,
 };
 const WAPEN_RATELAAR = {
   naam: 'Canal Ripper', magazijnMax: 16, reserve: 96, schotCooldown: 0.1,
@@ -7510,6 +7527,26 @@ const WAPEN_RATELAAR = {
   // compenseren — dat is het verschil tussen "beeld trilt" en "wapen loopt weg".
   pitchKickFractie: 0.35,
   schotToon: { start: 620, eind: 210, duur: 0.06 },
+  // Ticket 144: een eigen, hoger en korter profiel — blind op het geluid
+  // alleen moet dit als een lichtere, rattelende tik lezen tegenover de
+  // AMSTEL-9's zwaardere 'square'/'sawtooth'-tikken. 'triangle' klinkt
+  // zachter/ijler dan 'square', wat past bij "veel snelle lichte hits"
+  // i.p.v. "één zware".
+  raakToon: { type: 'triangle', start: 380, eind: 160, duur: 0.05 },
+  kopToon: { type: 'triangle', start: 540, eind: 220, duur: 0.06 },
+  // De kill-toon blijft 'square' (niet 'triangle'): een kill moet ALTIJD
+  // gewichtig klinken, ook bij dit lichtere wapen — alleen sneller dan de
+  // AMSTEL-9's sawtooth, passend bij de hogere cadans.
+  killToon: { type: 'square', start: 260, eind: 60, duur: 0.10 },
+  // Impact-karakter: >1 = deeltjes vliegen sneller en chaotischer uiteen —
+  // "spray" i.p.v. de AMSTEL-9's ene precieze klap. Bewust GEEN extra
+  // deeltjes (dat zou bij de dubbele cadans van dit wapen de impactPool
+  // sneller leegtrekken tijdens een drukke golf, precies de valkuil die
+  // T144 noemt) — alleen de beweging van dezelfde hoeveelheid deeltjes.
+  impactSnelheidFactor: 1.6,
+  // Kleinere, snellere flitsjes (tegenover de AMSTEL-9's ene grote) — past
+  // bij de hogere cadans en het ritmisch draaiende tandwiel uit T143.
+  vlamSchaalFactor: 0.8,
 };
 
 function nieuweWapenStaat(definitie) {
@@ -8148,7 +8185,13 @@ function spawnTracer(vanWereldPos, naarPunt, kleur) {
 // wolk stipjes. Zonder normaal (de ondode-treffer-aanroep in raakOndode(),
 // waar "uit het oppervlak" geen betekenisvol concept is) blijft het
 // bestaande, volledig willekeurige gedrag exact ongewijzigd.
-function spawnImpact(punt, kleur, aantal, normaal = null) {
+// Ticket 144: `snelheidFactor` (default 1 = ongewijzigd bestaand gedrag)
+// schaalt alleen de SNELHEID waarmee de deeltjes uiteenvliegen, niet hun
+// aantal — een per-wapen "impact-karakter" (precies één zware klap tegenover
+// een chaotische spray) zonder de bestaande, geteste deeltjes-aantallen aan
+// te raken en zonder de gedeelde IMPACT_MAX-pool harder te belasten dan
+// vandaag (aantal blijft exact wat de aanroeper al doorgaf).
+function spawnImpact(punt, kleur, aantal, normaal = null, snelheidFactor = 1) {
   for (let i = 0; i < aantal; i++) {
     const slot = pakEffectSlot(impactPool);
     slot.actief = true;
@@ -8158,16 +8201,16 @@ function spawnImpact(punt, kleur, aantal, normaal = null) {
     slot.mesh.material.opacity = 1;
     slot.mesh.visible = true;
     if (normaal) {
-      const snelheid = 1.5 + Math.random() * 1.5;
-      slot.vx = normaal.x * snelheid + (Math.random() - 0.5) * 1.2;
-      slot.vy = normaal.y * snelheid + Math.random() * 1.2;
-      slot.vz = normaal.z * snelheid + (Math.random() - 0.5) * 1.2;
+      const snelheid = (1.5 + Math.random() * 1.5) * snelheidFactor;
+      slot.vx = normaal.x * snelheid + (Math.random() - 0.5) * 1.2 * snelheidFactor;
+      slot.vy = normaal.y * snelheid + Math.random() * 1.2 * snelheidFactor;
+      slot.vz = normaal.z * snelheid + (Math.random() - 0.5) * 1.2 * snelheidFactor;
       slot.mesh.scale.set(0.012, 0.012, 0.09 + Math.random() * 0.05);   // langgerekte vonk
     } else {
       slot.mesh.scale.setScalar(0.035);
-      slot.vx = (Math.random() - 0.5) * 1.5;
-      slot.vy = Math.random() * 1.5;
-      slot.vz = (Math.random() - 0.5) * 1.5;
+      slot.vx = (Math.random() - 0.5) * 1.5 * snelheidFactor;
+      slot.vy = Math.random() * 1.5 * snelheidFactor;
+      slot.vz = (Math.random() - 0.5) * 1.5 * snelheidFactor;
     }
     actieveEffecten.push({ slot, timer: IMPACT_LEVENSDUUR, duur: IMPACT_LEVENSDUUR, soort: 'impact', langgerekt: !!normaal });
   }
@@ -8336,7 +8379,10 @@ function schiet() {
   // elk schot identiek oogt — puur cosmetisch, geen invloed op de tracer/
   // raycast (die lezen vlam.getWorldPosition(), niet de rotatie/schaal).
   vlam.rotation.z = Math.random() * Math.PI * 2;
-  vlam.scale.setScalar(0.85 + Math.random() * 0.3);
+  // Ticket 144: vlamSchaalFactor geeft de AMSTEL-9 één grote, volle flits
+  // per (langzamer) schot en de Ratelaar kleinere, snellere flitsjes — de
+  // muzzle-feedback-helft van de per-wapen differentiatie.
+  vlam.scale.setScalar((0.85 + Math.random() * 0.3) * wapenStaat.definitie.vlamSchaalFactor);
   vlamTimer = VLAM_FLITS_DUUR;
   vlamNetGezet = true;
   speelSchot();
@@ -8424,7 +8470,9 @@ function schiet() {
   // translatie/schaal) zodat spawnImpact() 'm rechtstreeks als richting kan
   // gebruiken. _tmpVecNormaal is scratch-ruimte, geen bewaarde referentie.
   _tmpVecNormaal.copy(raak[0].face.normal).transformDirection(raak[0].object.matrixWorld);
-  spawnImpact(raak[0].point, MATERIAAL_KLEUREN[familie] ?? MATERIAAL_KLEUREN.steen, 3, _tmpVecNormaal);
+  // Ticket 144: ook wereld-inslagen dragen het per-wapen impact-karakter.
+  spawnImpact(raak[0].point, MATERIAAL_KLEUREN[familie] ?? MATERIAAL_KLEUREN.steen, 3, _tmpVecNormaal,
+    wapenStaat.definitie.impactSnelheidFactor);
   spawnRook(raak[0].point);
   // Fix 5: AMSTEL-9 niveau 2 — ook een schot op de vloer/muur/plafond
   // ontploft, zodat de speler zombies indirect kan raken (bv. door vlak voor
@@ -8810,9 +8858,34 @@ function speelMesSteek() { mesSteekTeller++; piep('sawtooth', 380, 90, 0.08, 0.0
 // afspeling, zodat de Ratelaar geen machinegeweer-monotonie wordt.
 function pitchVariatie() { return 0.95 + Math.random() * 0.1; }
 let raakTikTeller = 0, kopTikTeller = 0, killKnakTeller = 0;
-function speelRaakTik()  { raakTikTeller++; const p = pitchVariatie(); piep('square', 320 * p, 90 * p, 0.07, 0.08); }
-function speelKopTik()   { kopTikTeller++; const p = pitchVariatie(); piep('square', 460 * p, 140 * p, 0.08, 0.09); }
-function speelKillKnak() { killKnakTeller++; const p = pitchVariatie(); piep('sawtooth', 200 * p, 40 * p, 0.14, 0.12); }
+// Ticket 144: elk wapen krijgt zijn eigen raak-/kop-/kill-toon (zie
+// raakToon/kopToon/killToon bij WAPEN_DRUKSPUIT/WAPEN_RATELAAR) — een
+// blinde luisteraar moet aan deze tikken alleen al kunnen horen welk wapen
+// er net raak schoot. Zonder vuurwapen (het mes, wapenStaat === null) valt
+// dit terug op de FALLBACK hieronder, die bewust letterlijk de oude,
+// gedeelde waarden is: de mes-treffer-audio is buiten scope van dit ticket
+// en verandert niet.
+const RAAK_TOON_FALLBACK = { type: 'square', start: 320, eind: 90, duur: 0.07 };
+const KOP_TOON_FALLBACK = { type: 'square', start: 460, eind: 140, duur: 0.08 };
+const KILL_TOON_FALLBACK = { type: 'sawtooth', start: 200, eind: 40, duur: 0.14 };
+function speelRaakTik() {
+  raakTikTeller++;
+  const p = pitchVariatie();
+  const t = wapenStaat ? wapenStaat.definitie.raakToon : RAAK_TOON_FALLBACK;
+  piep(t.type, t.start * p, t.eind * p, t.duur, 0.08);
+}
+function speelKopTik() {
+  kopTikTeller++;
+  const p = pitchVariatie();
+  const t = wapenStaat ? wapenStaat.definitie.kopToon : KOP_TOON_FALLBACK;
+  piep(t.type, t.start * p, t.eind * p, t.duur, 0.09);
+}
+function speelKillKnak() {
+  killKnakTeller++;
+  const p = pitchVariatie();
+  const t = wapenStaat ? wapenStaat.definitie.killToon : KILL_TOON_FALLBACK;
+  piep(t.type, t.start * p, t.eind * p, t.duur, 0.12);
+}
 // Ticket 143: de Doorboring (Canal Ripper, Smederij-niveau 2) was tot nu toe
 // alleen in de SCHADE merkbaar — een tweede doel viel om zonder dat er iets
 // klonk of te zien was dat de kogel erdoorheen was gegaan. Een eigen, langer
@@ -12183,7 +12256,17 @@ function spawnKillBurst(punt, kop) {
   const binnenVenster = klok - laatsteKillBurstTijd < KILL_BURST_SAMENVAL_VENSTER;
   laatsteKillBurstTijd = klok;
   const aantal = binnenVenster ? KILL_BURST_AANTAL_KLEIN : KILL_BURST_AANTAL_GROOT;
-  spawnImpact(punt, kop ? MATERIAAL_KLEUREN.vijandKop : MATERIAAL_KLEUREN.vijand, aantal);
+  // Ticket 144: hetzelfde per-wapen impact-karakter op de kill-burst. Leest
+  // de module-level wapenStaat rechtstreeks (net als berekenSmederijBonus()
+  // dat al deed) — doodOndode() wordt ook aangeroepen zonder speler-treffer
+  // (een Brander-kettingreactie via ontploiBrander()), en dan geldt gewoon
+  // het huidig ACTIEVE wapen; zonder vuurwapen (het mes) blijft de factor 1,
+  // het bestaande gedrag. AANTAL blijft ongewijzigd door dit ticket — meer
+  // deeltjes per kill zou bij de Ratelaars dubbele cadans de 24-slots
+  // impactPool tijdens een drukke golf sneller leegtrekken (de valkuil die
+  // T144 expliciet noemt); alleen de SNELHEID varieert.
+  spawnImpact(punt, kop ? MATERIAAL_KLEUREN.vijandKop : MATERIAAL_KLEUREN.vijand, aantal, null,
+    wapenStaat ? wapenStaat.definitie.impactSnelheidFactor : 1);
 }
 
 // `punt` = wereldpositie van de kill (bekend bij een speler-treffer via
@@ -12391,7 +12474,10 @@ function raakOndode(ondode, punt, kop = false, schadeFactor = 1, geldAlsKop = fa
     // krijgt meer deeltjes én een lichtere tint als visuele feedback. Alleen
     // hier (overlevende treffer): een dodelijke treffer krijgt sinds Ticket 95
     // zijn eigen, grotere burst via spawnKillBurst() binnen doodOndode().
-    spawnImpact(punt, kop ? MATERIAAL_KLEUREN.vijandKop : MATERIAAL_KLEUREN.vijand, kop ? 5 : 3);
+    // Ticket 144: AANTAL blijft 3/5 (ongewijzigd, zie test-effecten-pool.mjs);
+    // alleen de snelheid varieert per wapen — geen vuurwapen (mes) is factor 1.
+    spawnImpact(punt, kop ? MATERIAAL_KLEUREN.vijandKop : MATERIAAL_KLEUREN.vijand, kop ? 5 : 3, null,
+      wapenStaat ? wapenStaat.definitie.impactSnelheidFactor : 1);
   }
   updateHUD();
 }
