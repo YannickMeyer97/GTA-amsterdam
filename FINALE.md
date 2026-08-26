@@ -284,39 +284,50 @@ manier om erachter te komen wat zo'n laag écht zou moeten kunnen.
 
 ---
 
-## 4. Verwachte testimpact
+## 4. Verwachte testimpact — afgerond (T146)
 
-| bestand | regels | verwachting |
+| bestand | regels | uitkomst |
 |---|---|---|
-| `test-ontsnapping.mjs` | 219 | **Wijzigt.** Test nu dat `T` direct wint; moet worden: `T` start de fase, de fase eindigt in winst. |
-| `test-ontsnapping-vensters.mjs` | 432 | **Wijzigt op één punt.** De wave-complete-tak krijgt de uitzondering uit beslissing 6; de bestaande gevallen (geen instap actief) moeten **ongewijzigd** groen blijven. |
-| `test-boot-aankondiging.mjs` | 179 | **Ongewijzigd verwacht.** De aankondigingsfase gaat vooraf aan de instap en verandert niet. |
-| `test-vluchtroute.mjs` | 222 | **Ongewijzigd verwacht.** De 3/3-eis staat los van wat er ná `T` gebeurt. |
-| `test-eventgolven.mjs` | 195 | **Ongewijzigd verwacht**, maar wel de plek waar de spawn-cap 14/16/18 is vastgelegd — als T147 daaraan raakt, faalt dit bestand en dát is dan terecht. |
-| `test-finale.mjs` | *nieuw* | Start, timer, pauzeren/hervatten, golfgrens, game over midden in de fase, en (na T147) escalatie **én herstel** per kanaal. |
+| `test-ontsnapping.mjs` | 219 → 233 | **Gewijzigd, zoals verwacht.** Sectie 4/5 riepen `probeerOntsnapping()` aan en verwachtten meteen het winscherm; roepen nu daarna expliciet `voltooiOntsnapping()` aan om bij dezelfde inhoud (score/stats/record) te komen — die inhoud zelf is onaangeraakt. 25/25 groen. |
+| `test-ontsnapping-vensters.mjs` | 432 → 481 | **Gewijzigd op precies één punt, zoals verwacht.** Twee nieuwe subsecties (7d/7e) bewaken de uitzondering uit beslissing 6 én het tegendeel (zonder instap sluit het venster nog gewoon — bewijst dat de uitzondering niet per ongeluk permanent is). Alle 44 bestaande checks **ongewijzigd** gebleven. 49/49 groen. |
+| `test-boot-aankondiging.mjs` | 179 | **Ongewijzigd**, zoals verwacht. 19/19 groen. |
+| `test-vluchtroute.mjs` | 222 | **Ongewijzigd**, zoals verwacht. 21/21 groen. |
+| `test-eventgolven.mjs` | 195 | Niet aangeraakt in T146 (raakt pas relevant bij T147). |
+| `tests/test-finale.mjs` | *nieuw*, 178 | Start via een echte `KeyT` + positie, dubbele `T` is een no-op, timer telt af/pauzeert/hervat via de ECHTE gameLoop (wall-clock, geen gesimuleerde tijd), automatische voltooiing, game over midden in de fase + opruiming, `interactiePunten`-invariant. Escalatie **en herstel** volgen in T147, met eigen dekking bovenop dit bestand. 16/16 groen. |
+
+**Een bug gevonden tijdens het testen, niet in het ontwerp voorzien:** `voltooiOntsnapping()` liet de statusregel op de laatst geschreven instapfase-tekst staan ("Blijf bij de boot!"/"Losgooien… Ns") in plaats van terug te springen naar "Boot ligt aan!" — `toonWinScherm()` raakt die regel niet aan, en niets anders ververste 'm totdat "Speel door" het punt weer volledig opruimde. Gefixt met één extra `updateOntsnappingVensterHUD()`-aanroep in `voltooiOntsnapping()`, vóór `toonWinScherm()`.
 
 ---
 
 ## 5. Checklist voor T146 en T147
 
-**T146 — de machine**
+**T146 — de machine — afgerond**
 
-- [ ] `probeerOntsnapping()` splitsen; `toonWinScherm()` ongewijzigd laten.
-- [ ] Geld afschrijven bij de start (beslissing 1).
-- [ ] `instapActief` / `instapTimer`, getikt in de `spelActief`-tak.
-- [ ] Timer loopt alleen terwijl de speler binnen de radius van het
-      ontsnappingspunt staat (beslissing 3).
-- [ ] Uitzondering in de wave-complete-tak (beslissing 6) — lees eerst
-      `test-ontsnapping-vensters.mjs`.
-- [ ] Twee nieuwe HUD-regels (beslissing 5).
-- [ ] Doodgaan tijdens de fase = normale game over, en de fase-state wordt
-      opgeruimd.
-- [ ] Nieuw `tests/test-finale.mjs`; `interactiePunten` blijft 14.
+- [x] `probeerOntsnapping()` gesplitst; `toonWinScherm()` ongewijzigd gelaten.
+- [x] Geld afgeschreven bij de start (beslissing 1).
+- [x] `instapActief` / `instapTimer` (+ `FINALE_INSTAP_DUUR = 30`), getikt via
+      `updateFinaleInstap(dt)` in de `spelActief`-tak, ná `updateInteracties()`.
+- [x] Timer loopt alleen terwijl `huidigeInteractie === ontsnappingsPunt`
+      (beslissing 3) — hergebruikt de bestaande proximity-check, geen eigen
+      afstandsmeting.
+- [x] Uitzondering in de wave-complete-tak (beslissing 6), met companion-test
+      die bewijst dat de uitzondering precies smal genoeg is.
+- [x] Twee nieuwe HUD-regels (beslissing 5): `Losgooien… {n}s` (bij de boot),
+      `Blijf bij de boot!` (weg). De interactie-prompt van het punt zelf toont
+      tijdens de instap dezelfde aftelling in plaats van de nu-onjuiste
+      "Druk T"-instructie.
+- [x] Doodgaan tijdens de fase = normale game over; `gameOver()` ruimt
+      `instapActief`/`instapTimer` expliciet op.
+- [x] `tests/test-finale.mjs` (nieuw, 16 checks); `interactiePunten`-invariant
+      bewaakt (verandert niet door het starten/voltooien/afbreken van de fase).
+- [x] Volledige regressiesuite groen (zie hieronder).
 
 **T147 — de escalatie**
 
 - [ ] Budget-injectie bij de start; grep bevestigt nul nieuwe spawnpaden.
-- [ ] Escalatie als functie van `instapTimer / FINALE_DUUR` — geen nieuwe state.
+- [ ] Escalatie als functie van `instapTimer / FINALE_INSTAP_DUUR` — geen
+      nieuwe state (de constante heet in de code `FINALE_INSTAP_DUUR`, niet
+      `FINALE_DUUR`).
 - [ ] Vier kanalen (spawn, audio, beeld, slotfase) uit beslissing 4.
 - [ ] **Elk kanaal herstelt op élk exitpad**: winst, game over, en pauze door
       weglopen. Dit is de bekende valkuil; volg het `eindigEventGolf(direct)`-precedent.

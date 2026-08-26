@@ -12988,6 +12988,14 @@ function gameOver() {
   gameOverScherm.style.display = 'flex';
   speelGameOver();
   if (actieveEventGolf) eindigEventGolf(true);   // direct: het spel staat stil, dus geen geleidelijke uitfade
+  // Ticket 146: geen aparte faalstaat (FINALE.md §2 beslissing 3) — doodgaan
+  // tijdens de instapfase is gewoon deze functie. spelActief valt hierna toch
+  // al uit (spelStaat.gameOver is hierboven al true gezet), dus
+  // updateFinaleInstap() zou vanzelf stoppen; dit ruimt de state alsnog
+  // expliciet op zodat er nooit een instapActief=true blijft rondslingeren
+  // die bij een volgende blik in de debugger verwarring zou geven.
+  instapActief = false;
+  instapTimer = 0;
   if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
 }
 
@@ -13317,7 +13325,13 @@ function updateGolf(dt) {
     // Ticket 54: het ontsnappingsvenster sluit zodra de golf niet langer een
     // ontsnappingsgolf is — de boot vaart weer weg (mechaniek; T55 voegt
     // hier later de vertrek-tell aan toe).
-    if (ontsnappingsPunt && !isOntsnappingsGolf(spelStaat.golf)) {
+    // Ticket 146 (FINALE.md §2 beslissing 6): NIET tijdens een lopende
+    // instapfase. Zonder deze uitzondering kan de speler 28 van de 30
+    // seconden overleven en de boot alsnog zien wegvaren omdat de golf
+    // toevallig eindigde — geen spannende faalstaat, een willekeurige. Zodra
+    // instapActief waar is, wacht de boot; de fase sluit zelf af via
+    // voltooiOntsnapping() of game over.
+    if (ontsnappingsPunt && !isOntsnappingsGolf(spelStaat.golf) && !instapActief) {
       const pi = interactiePunten.indexOf(ontsnappingsPunt);
       if (pi !== -1) interactiePunten.splice(pi, 1);
       ontsnappingsPunt = null;
@@ -14440,8 +14454,21 @@ function updateBootHoornHerhaling(dt) {
 // HUD-updatefunctie i.p.v. inline in updateHUD() — die laatste wordt al
 // bij module-load 1x aangeroepen (regel ~4562), ver vóór ONTSNAPPING_*
 // hieronder gedeclareerd is, dus inline zou een TDZ-ReferenceError geven.
+// Ticket 146 (FINALE.md §2 beslissing 5): twee nieuwe regels voor de
+// instapfase, VÓÓR de bestaande "Boot ligt aan!"-tak (zolang instapActief
+// waar is, bestaat ontsnappingsPunt ook nog, dus die tak zou anders winnen).
+// De pauze-tekst is bewust een OPDRACHT ("Blijf bij de boot!"), geen
+// statusmelding — hij verschijnt precies op het moment dat de speler iets
+// moet doen.
+//
+// Deze functie kan nu ELK FRAME aangeroepen worden zolang de instapfase
+// loopt (vanuit updateFinaleInstap()) — vandaar de diff-guard op el.textContent
+// hieronder, zelfde discipline als updateHUD()'s hudLaatst (T71): een write
+// alleen als de zichtbare tekst echt verandert, niet 30x per seconde dezelfde
+// string opnieuw.
 function updateOntsnappingVensterHUD() {
   const el = document.getElementById('ontsnappingVensterUI');
+  let tekst;
   // Feedback: T76 toonde deze regel al zodra het EERSTE vluchtonderdeel
   // binnen was ("Boot over N golven"), maar de boot komt pas echt zodra alle
   // 3 onderdelen binnen zijn (zie probeerOntsnappingsVensterTeOpenen() /
@@ -14449,17 +14476,23 @@ function updateOntsnappingVensterHUD() {
   // VLUCHT_ONDERDELEN.length eisen) — met 1 of 2 onderdelen was de melding
   // dus misleidend: de golf-aftelling klopte, maar de boot verscheen die
   // golf niet. De regel blijft nu leeg tot de vluchtroute compleet is; pas
-  // dan kan ontsnappingsPunt/ontsnappingAankondigingActief sowieso al waar
-  // zijn, dus die twee takken hieronder blijven ongewijzigd.
+  // dan kunnen ontsnappingsPunt/ontsnappingAankondigingActief/instapActief
+  // sowieso al waar zijn, dus de takken hieronder blijven ongewijzigd.
   if (vluchtOnderdelenOpgepakt < VLUCHT_ONDERDELEN.length) {
-    el.textContent = '';
+    tekst = '';
+  } else if (instapActief) {
+    tekst = (huidigeInteractie === ontsnappingsPunt)
+      ? `Losgooien… ${Math.ceil(instapTimer)}s`
+      : 'Blijf bij de boot!';
   } else if (ontsnappingsPunt) {
-    el.textContent = 'Boot ligt aan!';
+    tekst = 'Boot ligt aan!';
   } else if (ontsnappingAankondigingActief) {
-    el.textContent = 'Boot nadert…';
+    tekst = 'Boot nadert…';
   } else {
-    el.textContent = `Boot over ${golvenTotOntsnappingsVenster(spelStaat.golf)} golven`;
+    tekst = `Boot over ${golvenTotOntsnappingsVenster(spelStaat.golf)} golven`;
   }
+  if (el.textContent === tekst) return;
+  el.textContent = tekst;
 }
 // Start de aankondigingsfase als het venster nu open mag gaan (3/3, geldige
 // ontsnappingsgolf, nog geen punt, nog geen lopende aankondiging). Aangeroepen
@@ -14570,9 +14603,14 @@ function toonOntsnappingspuntIndienKlaar() {
     // expliciet BIJKEUKEN_CZ i.p.v. een momentopname van de vaarbeweging.
     positie: new THREE.Vector3(BOOT_DOK_X - 1.5, 0, BIJKEUKEN_CZ),
     radius: 1.4,
-    prompt: () => spelStaat.geld < ONTSNAPPING_PRIJS
-      ? `Nog €${ONTSNAPPING_PRIJS - spelStaat.geld} nodig om te ontsnappen`
-      : `Druk T: ontsnap over het water (€${ONTSNAPPING_PRIJS})`,
+    // Ticket 146: tijdens de instapfase doet T niets meer (probeerOntsnapping()
+    // negeert 'm dan) — de prompt toont hier de live aftelling in plaats van
+    // een "Druk T"-instructie die niet meer klopt.
+    prompt: () => instapActief
+      ? `Losgooien… ${Math.ceil(instapTimer)}s`
+      : (spelStaat.geld < ONTSNAPPING_PRIJS
+        ? `Nog €${ONTSNAPPING_PRIJS - spelStaat.geld} nodig om te ontsnappen`
+        : `Druk T: ontsnap over het water (€${ONTSNAPPING_PRIJS})`),
     actie: probeerOntsnapping,
   };
   interactiePunten.push(ontsnappingsPunt);
@@ -14580,11 +14618,63 @@ function toonOntsnappingspuntIndienKlaar() {
   updateOntsnappingVensterHUD();   // dekt ook het raapVluchtOnderdeelOp()-pad (los van updateOntsnappingsVenster())
 }
 
+// Ticket 146 (FINALE.md §2/§3): T start voortaan de INSTAPFASE in plaats van
+// meteen te winnen — een holdout van FINALE_INSTAP_DUUR seconden bij de boot,
+// vóórdat toonWinScherm() volgt. Het geld gaat bij de START af (niet bij
+// voltooiing): de prompt zegt al "ontsnap over het water (€2500)", de HUD zou
+// anders 30s lang geld tonen dat al weg is, en het sluit het randgeval dat de
+// speler tijdens zijn eigen instap elders geld uitgeeft en met te weinig
+// terugkomt — afschrijven bij start maakt die vraag betekenisloos in plaats
+// van dat deze functie 'm moet beantwoorden.
+const FINALE_INSTAP_DUUR = 30;   // s — FINALE.md §2 beslissing 2
+let instapActief = false;
+let instapTimer = 0;
+
 function probeerOntsnapping() {
+  if (instapActief) return;   // T nogmaals indrukken tijdens de instap doet niets
   if (spelStaat.geld < ONTSNAPPING_PRIJS) { toonMelding(`Nog €${ONTSNAPPING_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
   spelStaat.geld -= ONTSNAPPING_PRIJS;
   updateHUD();
+  instapActief = true;
+  instapTimer = FINALE_INSTAP_DUUR;
+  toonGolfBanner('Aan boord!', 'Blijf bij de boot tot ze losgooien…');
+  updateOntsnappingVensterHUD();
+}
+
+// Aangeroepen zodra de instapfase afloopt (updateFinaleInstap() hieronder).
+// toonWinScherm() blijft het ongewijzigde eindpunt — dat is precies waarom
+// hier gesplitst is: alles wat NA de fase komt was al af.
+function voltooiOntsnapping() {
+  instapActief = false;
+  instapTimer = 0;
+  // Zonder deze regel bleef de statusregel op de laatst geschreven
+  // instapfase-tekst ("Blijf bij de boot!"/"Losgooien… Ns") staan totdat er
+  // toevallig een andere trigger langskwam — ontsnappingsPunt bestaat hierna
+  // nog gewoon (tot "Speel door"), dus hoort meteen weer "Boot ligt aan!" te
+  // tonen. toonWinScherm() zelf blijft bewust ongewijzigd (T140-discipline:
+  // dat scherm is al af), dus deze write staat er los naast.
+  updateOntsnappingVensterHUD();
   toonWinScherm();
+}
+
+// Ticket 146 (FINALE.md §2 beslissing 3): de timer loopt ALLEEN terwijl de
+// speler daadwerkelijk bij de boot staat — weglopen pauzeert 'm, terugkomen
+// hervat 'm. "Bij de boot staan" is `huidigeInteractie === ontsnappingsPunt`:
+// updateInteracties() berekent dat elke frame toch al (afstand tot alle
+// interactiepunten), dus dit hergebruikt die uitkomst i.p.v. zelf opnieuw te
+// meten. Moet daarom NA updateInteracties() draaien in de gameLoop.
+//
+// Geen aparte faalstaat (FINALE.md §2 beslissing 3): doodgaan tijdens de fase
+// is gewoon game over via het bestaande pad. Dat werkt vanzelf, want
+// spelActief (de gate om deze functie o.a. aan te roepen) valt uit zodra
+// spelStaat.gameOver waar wordt — er is geen aparte guard nodig.
+function updateFinaleInstap(dt) {
+  if (!instapActief) return;
+  if (huidigeInteractie === ontsnappingsPunt) {
+    instapTimer = Math.max(0, instapTimer - dt);
+  }
+  updateOntsnappingVensterHUD();
+  if (instapTimer <= 0) voltooiOntsnapping();
 }
 
 // Winnen is GEEN game over (§6.4-beslissing 36): spelStaat.gameOver blijft
@@ -14703,6 +14793,7 @@ function gameLoop(nu) {
     updateKleurgrading(dt);   // Ticket 98
     updateSpelerRegen(dt);
     updateInteracties();
+    updateFinaleInstap(dt);   // Ticket 146: leest huidigeInteractie, dus NA updateInteracties()
     updateWinkelMarkeringen(dt);   // Ticket 37: status-animatie + winkelLicht
     updateStofwolken(dt);   // Ticket 40: atelier-stof, alleen zichtbaar in zone C
     updateDruppel(dt);      // Ticket 40: kelderhals-druppel-lek
@@ -15265,6 +15356,12 @@ window.AmsterdamUndeadDebug = {
   ONTSNAPPING_PRIJS, toonOntsnappingspuntIndienKlaar, probeerOntsnapping, toonWinScherm, winScherm,
   get ontsnappingsPunt() { return ontsnappingsPunt; },
   set ontsnappingsPunt(v) { ontsnappingsPunt = v; },
+  // Ticket 146: de instapfase
+  FINALE_INSTAP_DUUR, voltooiOntsnapping, updateFinaleInstap,
+  get instapActief() { return instapActief; },
+  set instapActief(v) { instapActief = v; },
+  get instapTimer() { return instapTimer; },
+  set instapTimer(v) { instapTimer = v; },
   // Ticket 54: periodieke ontsnappingsvensters (ronde-gating)
   ONTSNAPPING_START_GOLF, ONTSNAPPING_INTERVAL_GOLVEN, isOntsnappingsGolf,
   golvenTotOntsnappingsVenster, updateOntsnappingsVenster, updateOntsnappingVensterHUD,

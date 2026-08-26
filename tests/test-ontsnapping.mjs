@@ -8,11 +8,20 @@
 // verschijnt pas bij 3/3 vluchtroute-onderdelen (tijdens een geldige
 // ontsnappingsgolf), exact bij de boot; de
 // geld-eis werkt (te weinig geld = bestaande "nog €X nodig"-flow, geen
-// aftrek); succesvol ontsnappen toont het winscherm met score(+1000 vóór
-// de scoreFactor)/stats/record, ZONDER spelStaat.gameOver te zetten; de
-// schermen-guard laat het startscherm niet over het winscherm heen poppen;
-// "Speel door" verwijdert het punt definitief en hervat het spel; de
-// bestaande gameOver-/pauzeflow blijft byte-voor-byte werken.
+// aftrek); succesvol ontsnappen toont uiteindelijk het winscherm met
+// score(+1000 vóór de scoreFactor)/stats/record, ZONDER spelStaat.gameOver
+// te zetten; de schermen-guard laat het startscherm niet over het winscherm
+// heen poppen; "Speel door" verwijdert het punt definitief en hervat het
+// spel; de bestaande gameOver-/pauzeflow blijft byte-voor-byte werken.
+//
+// Ticket 146: probeerOntsnapping() wint niet meer meteen — hij start de
+// instapfase (geld gaat er WEL meteen af) en pas voltooiOntsnapping() toont
+// het winscherm. Sectie 5 hieronder roept daarom na probeerOntsnapping()
+// expliciet voltooiOntsnapping() aan om bij het winscherm te komen: dit
+// bestand bewaakt de INHOUD van dat scherm (score/stats/record), niet de
+// timing van de instapfase zelf — die heeft zijn eigen dekking in
+// test-finale.mjs (timer, pauzeren/hervatten, golfgrens, game over
+// middenin).
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
@@ -73,7 +82,7 @@ const idempotentTest = await page.evaluate(() => {
 check('Herhaald aanroepen na verschijnen voegt het punt niet nogmaals toe',
   idempotentTest.lengteNa === idempotentTest.lengteVoor, idempotentTest);
 
-// --- 4. Te weinig geld: prompt + geen aftrek, geen winscherm --------------
+// --- 4. Te weinig geld: prompt + geen aftrek, geen winscherm, geen instap -
 const teWeinigGeldTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.spelStaat.geld = 100;
@@ -83,15 +92,19 @@ const teWeinigGeldTest = await page.evaluate(() => {
     promptTekst,
     geldNa: d.spelStaat.geld,
     winSchermDisplay: document.getElementById('winScherm').style.display,
+    instapActief: d.instapActief,
   };
 });
 check('Met te weinig geld toont de prompt "nog €X nodig"',
   teWeinigGeldTest.promptTekst.includes('Nog €2400 nodig'), teWeinigGeldTest);
-check('probeerOntsnapping() met te weinig geld trekt niets af en toont geen winscherm',
-  teWeinigGeldTest.geldNa === 100 && teWeinigGeldTest.winSchermDisplay !== 'flex', teWeinigGeldTest);
+check('probeerOntsnapping() met te weinig geld trekt niets af, toont geen winscherm en start geen instapfase',
+  teWeinigGeldTest.geldNa === 100 && teWeinigGeldTest.winSchermDisplay !== 'flex'
+  && teWeinigGeldTest.instapActief === false, teWeinigGeldTest);
 
-// --- 5. Genoeg geld: aftrek, winscherm, score(+1000)/stats/record, GEEN
-// game over -------------------------------------------------------------
+// --- 5. Genoeg geld: instapfase start, geld gaat DIRECT af (Ticket 146) —
+// pas na voltooiOntsnapping() komt het winscherm met score(+1000)/stats/
+// record, GEEN game over. Deze sectie bewaakt de INHOUD van dat winscherm;
+// de instapfase zelf (timer, pauzeren) staat in test-finale.mjs. -----------
 const ontsnapTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   localStorage.removeItem(d.HIGHSCORE_KEY);
@@ -103,9 +116,18 @@ const ontsnapTest = await page.evaluate(() => {
   const verwachteScore = Math.round((10 * 10 + 4 * 15 + 5 * 100 + 1000) * 1);
   const promptTekst = d.ontsnappingsPunt.prompt();
   d.probeerOntsnapping();
+  const naStart = {
+    geldNa: d.spelStaat.geld,
+    instapActiefNaStart: d.instapActief,
+    instapTimerNaStart: d.instapTimer,
+    verwachtInstapTimer: d.FINALE_INSTAP_DUUR,
+    winSchermVoorVoltooiing: document.getElementById('winScherm').style.display,
+  };
+  d.voltooiOntsnapping();   // Ticket 146: forceert het einde van de instapfase
   return {
     promptTekst,
-    geldNa: d.spelStaat.geld,
+    ...naStart,
+    instapActiefNaVoltooiing: d.instapActief,
     gameOverNa: d.spelStaat.gameOver,
     winSchermDisplay: document.getElementById('winScherm').style.display,
     scoreTekst: document.getElementById('winScoreTekst').textContent,
@@ -117,11 +139,16 @@ const ontsnapTest = await page.evaluate(() => {
 });
 check('Met genoeg geld toont de prompt "ontsnap over het water"',
   ontsnapTest.promptTekst.includes('ontsnap over het water'), ontsnapTest);
-check('probeerOntsnapping() trekt ONTSNAPPING_PRIJS (€2500) af',
+check('probeerOntsnapping() trekt ONTSNAPPING_PRIJS (€2500) DIRECT af — niet pas bij voltooiing',
   ontsnapTest.geldNa === 5000 - 2500, ontsnapTest);
+check('probeerOntsnapping() start de instapfase i.p.v. meteen te winnen (instapActief true, timer op volle duur, nog geen winscherm)',
+  ontsnapTest.instapActiefNaStart === true && ontsnapTest.instapTimerNaStart === ontsnapTest.verwachtInstapTimer
+  && ontsnapTest.winSchermVoorVoltooiing !== 'flex', ontsnapTest);
+check('voltooiOntsnapping() zet instapActief weer op false',
+  ontsnapTest.instapActiefNaVoltooiing === false, ontsnapTest);
 check('spelStaat.gameOver blijft false — winnen is GEEN game over',
   ontsnapTest.gameOverNa === false, ontsnapTest);
-check('Het winscherm wordt zichtbaar',
+check('Het winscherm wordt zichtbaar (na voltooiOntsnapping())',
   ontsnapTest.winSchermDisplay === 'flex', ontsnapTest);
 check('De score bevat exact de +1000-ontsnappingsbonus vóór de scoreFactor',
   ontsnapTest.scoreTekst === String(ontsnapTest.verwachteScore), ontsnapTest);

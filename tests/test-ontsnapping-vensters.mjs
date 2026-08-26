@@ -78,6 +78,8 @@ async function opruimOntsnapping() {
     d.ontsnappingsPunt = null;
     d.ontsnappingAankondigingActief = false;
     d.ontsnappingAankondigingTimer = 0;
+    d.instapActief = false;   // Ticket 146
+    d.instapTimer = 0;
   });
 }
 
@@ -364,6 +366,76 @@ check('Een nog lopende aankondiging wordt stil geannuleerd als de golf eindigt (
   annuleerTest.aankondigingNa === false && annuleerTest.puntNa === null && annuleerTest.geenVertrekGespeeld, annuleerTest);
 check('...en er start ook GEEN fysieke uitvaren-animatie (er is nooit iets aangekomen om te laten vertrekken)',
   annuleerTest.geenUitvarenGestart, annuleerTest);
+
+// --- 7d. Ticket 146 (FINALE.md §2 beslissing 6): zodra de instapfase loopt,
+// sluit de wave-complete-transitie het venster NIET meer — de boot wacht op
+// de speler. Dit is dezelfde forceer-opzet als sluitTest (7) hierboven, nu
+// met instapActief=true. De vergelijking met sluitTest bewijst dat het
+// ENIGE verschil de nieuwe voorwaarde is: zelfde golf, zelfde aanmeer-
+// opzet, alleen instapActief erbij. -----------------------------------------
+await opruimOntsnapping();
+const instapBlokkeertSluitenTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.vluchtOnderdelenOpgepakt = 3;
+  d.spelStaat.golf = 10;
+  d.toonOntsnappingspuntIndienKlaar();
+  d.updateBootPositie();
+  d.instapActief = true;
+  d.instapTimer = 12;   // willekeurige, nog niet afgelopen waarde
+  const puntVoor = d.ontsnappingsPunt;
+  const vertrekVoor = d.bootVertrekTeller;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  d.spelStaat.golfActief = true;
+  d.spelStaat.budget = 0;
+  d.spelStaat.spawnTimer = 999;
+  d.updateGolf(0.016);
+  return {
+    golfNa: d.spelStaat.golf,
+    // De golf zelf loopt gewoon door (dat blijft buiten scope, zie
+    // FINALE.md §2 beslissing 6) — alleen het SLUITEN van het venster wordt
+    // onderdrukt.
+    puntBlijftBestaan: d.ontsnappingsPunt === puntVoor,
+    interactiePuntenBevatNog: d.interactiePunten.includes(puntVoor),
+    geenVertrekGespeeld: d.bootVertrekTeller === vertrekVoor,
+    geenUitvarenGestart: d.bootUitvarenActief === false,
+    instapNogSteedsActief: d.instapActief === true,
+    instapTimerOngemoeid: d.instapTimer === 12,
+  };
+});
+check('De golf loopt gewoon door naar 11, ook tijdens een lopende instapfase',
+  instapBlokkeertSluitenTest.golfNa === 11, instapBlokkeertSluitenTest);
+check('Maar het ontsnappingspunt blijft bestaan — de boot vaart NIET weg tijdens de instapfase',
+  instapBlokkeertSluitenTest.puntBlijftBestaan && instapBlokkeertSluitenTest.interactiePuntenBevatNog,
+  instapBlokkeertSluitenTest);
+check('Geen vertrek-geluid en geen uitvaren-animatie — er ís niets vertrokken',
+  instapBlokkeertSluitenTest.geenVertrekGespeeld && instapBlokkeertSluitenTest.geenUitvarenGestart,
+  instapBlokkeertSluitenTest);
+check('instapActief/instapTimer blijven ongemoeid door de golf-transitie (die twee sluiten alleen via voltooiOntsnapping()/gameOver())',
+  instapBlokkeertSluitenTest.instapNogSteedsActief && instapBlokkeertSluitenTest.instapTimerOngemoeid,
+  instapBlokkeertSluitenTest);
+
+// --- 7e. Regressie-tegenhanger van 7d: ZODRA instapActief weer false is
+// (fase is afgerond/nooit gestart), sluit dezelfde transitie het venster
+// weer gewoon — de uitzondering in updateGolf() is dus precies zo smal als
+// bedoeld, niet per ongeluk permanent. -------------------------------------
+await opruimOntsnapping();
+const geenInstapSluitWelTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.vluchtOnderdelenOpgepakt = 3;
+  d.spelStaat.golf = 10;
+  d.toonOntsnappingspuntIndienKlaar();
+  d.instapActief = false;
+  const puntVoor = d.ontsnappingsPunt;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  d.spelStaat.golfActief = true;
+  d.spelStaat.budget = 0;
+  d.spelStaat.spawnTimer = 999;
+  d.updateGolf(0.016);
+  return { puntNa: d.ontsnappingsPunt, interactiePuntenBevatNietMeer: !d.interactiePunten.includes(puntVoor) };
+});
+check('Zonder lopende instapfase sluit de wave-complete-transitie het venster nog gewoon (7/sluitTest blijft geldig)',
+  geenInstapSluitWelTest.puntNa === null && geenInstapSluitWelTest.interactiePuntenBevatNietMeer,
+  geenInstapSluitWelTest);
 
 // --- 8. De golf-10-melding vuurt precies 1x, ook bij herhaalde
 // startGolf()-achtige aanroepen op dezelfde en latere ontsnappingsgolven ---
