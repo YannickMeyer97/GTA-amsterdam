@@ -69,8 +69,13 @@ check('De spreiding loopt monotoon op tijdens een vol magazijn op maximale cadan
   volMagazijn.monotoon, volMagazijn);
 check('Het 16e schot heeft meetbaar meer spreiding dan het eerste (minstens 3x)',
   volMagazijn.laatste >= volMagazijn.eerste * 3, volMagazijn);
-check('De totale spreiding aan het eind van het magazijn ligt rond 0,042 (GUNFEEL §4)',
-  Math.abs(volMagazijn.laatste - 0.042) < 0.002, volMagazijn);
+// Bijgesteld na de M2-speeltest: de oorspronkelijke 0,042 (kegel 3,2°) was in
+// de praktijk niet te voelen — een vol magazijn leegjagen deed zichtbaar niets.
+// Zie de toelichting bij spreadOpbouwPerSchot in de wapendefinitie.
+check('De totale spreiding aan het eind van het magazijn ligt rond 0,102 (kegel ~7,7°)',
+  Math.abs(volMagazijn.laatste - 0.102) < 0.003, volMagazijn);
+check('Dat is minstens zeven keer de basisspreiding — een vol magazijn is echt wild',
+  volMagazijn.laatste >= volMagazijn.eerste * 7, volMagazijn);
 
 // --- 3. De opbouw bouwt aantoonbaar af tijdens een vuurpauze --------------
 const afbouw = await page.evaluate(() => {
@@ -121,45 +126,99 @@ const burst = await page.evaluate(() => {
     burst16: salvo(16),
   };
 });
-check('De snelle afbouw onder de drempel is exact drie keer de trage',
-  Math.abs(burst.snel / burst.traag - 3) < 1e-9, burst);
+check('De snelle afbouw onder de drempel is minstens drie keer de trage',
+  burst.snel / burst.traag >= 3, burst);
 check('Een burst van drie blijft ONDER de burst-drempel (praktisch gratis)',
   burst.burst3.naSalvo < burst.drempel, burst);
 check('Een burst van vier komt er wél overheen (de drempel doet echt iets)',
   burst.burst4.naSalvo > burst.drempel, burst);
 check('Een burst van drie is duidelijk sneller schoon dan een vol magazijn',
   burst.burst3.schoonNaSec < burst.burst16.schoonNaSec / 4, burst);
-check('Een burst van drie is binnen ~0,11 s schoon (GUNFEEL §4)',
-  burst.burst3.schoonNaSec <= 0.12, burst);
+check('Een burst van drie is binnen ~0,15 s schoon — korte salvo\'s blijven praktisch gratis',
+  burst.burst3.schoonNaSec <= 0.16, burst);
+check('Een leeggejaagd magazijn ijlt ongeveer één herlaadbeurt na (~2 s), niet langer',
+  burst.burst16.schoonNaSec > 1.5 && burst.burst16.schoonNaSec < 2.4, burst);
 
 // --- 5. Sustained-fire recoil: de kick loopt mee met de opbouw ------------
 const sustained = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const def = d.wapenStaat.definitie;
+  // De TOTALE kick van een schot is sinds de speeltoets-bijstelling gesplitst:
+  // een herstellend deel (cameraKick) plus een blijvend deel (speler.pitch).
+  // Voor de spread-schaling telt de som — die splitsing zelf wordt in 5b
+  // afzonderlijk getoetst.
   const kickBij = (opbouw) => {
     d.wapenStaat.spreadOpbouw = opbouw;
     d.wapenStaat.magazijn = 999;
     d.cameraKick = 0;
+    d.speler.pitch = 0;
     d.vorigSchotKlok = d.klok - 5;   // ruim hersteld: isoleert de spread-schaling
     d.schiet();
-    return d.cameraKick;
+    return d.cameraKick + d.speler.pitch;
   };
   return {
     basis: def.kickSterkte,
     schaal: def.kickSpreadSchaal,
     bijNul: kickBij(0),
-    bijEindMagazijn: kickBij(0.030),
+    // 0,090 is de opbouw die een vol tier-0-magazijn (16 schoten) oplevert.
+    bijEindMagazijn: kickBij(0.090),
     bijPlafond: kickBij(def.spreadOpbouwMax),
   };
 });
-check('Zonder opbouw is de kick exact de basiswaarde (schaalfactor 1)',
+check('Zonder opbouw is de kick exact de basiswaarde (schaalfactor 1) — schot 1 blijft ongemoeid',
   Math.abs(sustained.bijNul - sustained.basis) < 1e-12, sustained);
-check('Aan het eind van een vol magazijn is de kick bijna verdubbeld',
-  sustained.bijEindMagazijn > sustained.basis * 1.9 && sustained.bijEindMagazijn < sustained.basis * 2.0,
+check('Aan het eind van een vol magazijn is de kick ruim verdrievoudigd (was na de eerste tuning nauwelijks merkbaar)',
+  sustained.bijEindMagazijn > sustained.basis * 3 && sustained.bijEindMagazijn < sustained.basis * 8,
   sustained);
 check('De kick loopt monotoon op met de opbouw',
   sustained.bijPlafond > sustained.bijEindMagazijn && sustained.bijEindMagazijn > sustained.bijNul,
   sustained);
+
+// --- 5b. ECHTE terugslag: het richtpunt klimt en moet gecorrigeerd worden --
+// Speeltoets-bijstelling. Vóór deze wijziging was alle terugslag herstellend:
+// het beeld schokte omhoog en kwam exact terug waar je richtte, dus je hoefde
+// niets te doen. Nu blijft een deel staan als echte pitch-verandering.
+const echteTerugslag = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const def = d.wapenStaat.definitie;
+  d.wapenStaat.spreadOpbouw = 0;
+  d.wapenStaat.magazijn = 999;
+  d.speler.pitch = 0;
+  d.cameraKick = 0;
+
+  d.schiet();
+  const naEenSchot = { pitch: d.speler.pitch, kick: d.cameraKick };
+
+  // Een vol magazijn op maximale cadans.
+  d.speler.pitch = 0;
+  d.wapenStaat.spreadOpbouw = 0;
+  for (let i = 0; i < 16; i++) { d.schiet(); d.vorigSchotKlok = d.klok; d.updateWapen(def.schotCooldown); }
+  const naMagazijn = d.speler.pitch;
+
+  // Klemcontrole: doorvuren mag je blik nooit voorbij de muisgrens draaien.
+  for (let i = 0; i < 400; i++) { d.schiet(); d.vorigSchotKlok = d.klok; d.updateWapen(def.schotCooldown); }
+  const naDoorvuren = d.speler.pitch;
+
+  d.speler.pitch = 0;
+  d.cameraKick = 0;
+  d.wapenStaat.spreadOpbouw = 0;
+  return {
+    fractie: def.pitchKickFractie,
+    naEenSchot, naMagazijnGraden: naMagazijn * 180 / Math.PI,
+    naDoorvuren, klem: 1.45,
+    amstel9Fractie: d.WAPEN_DRUKSPUIT.pitchKickFractie,
+  };
+});
+check('Eén schot verandert speler.pitch daadwerkelijk (echte terugslag, geen loze beeldtrilling)',
+  echteTerugslag.naEenSchot.pitch > 0, echteTerugslag);
+check('De herstellende helft staat ook aan — direct na het schot is de totale uitslag groter dan de blijvende',
+  echteTerugslag.naEenSchot.kick > 0, echteTerugslag);
+check('Een vol magazijn duwt het richtpunt ruim 5° omhoog: dat moet je zelf terugtrekken',
+  echteTerugslag.naMagazijnGraden > 5, echteTerugslag);
+check('Doorvuren blijft binnen de pitch-klem van de muisinvoer (blik draait nooit over de kop)',
+  echteTerugslag.naDoorvuren <= echteTerugslag.klem + 1e-9, echteTerugslag);
+check('De AMSTEL-9 houdt zijn oude contract: nul blijvende terugslag',
+  echteTerugslag.amstel9Fractie === 0, echteTerugslag);
 
 // --- 6. Het tandwiel draait tijdens vuren en loopt uit --------------------
 // Bewust op het ONDERDEEL (userData.onderdelen.accent) en niet op de Group:

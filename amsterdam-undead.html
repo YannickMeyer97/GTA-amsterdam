@@ -6850,9 +6850,12 @@ function updateSpeler(dt) {
     speler.positie.z
   );
   camera.rotation.y = speler.yaw;
-  // Ticket 34: cameraKick is een visueel-only offset bovenop speler.pitch —
-  // de bron van waarheid (speler.pitch) blijft ongemoeid, dus geen blijvende
-  // aim-drift na een schot.
+  // Ticket 34: cameraKick is de HERSTELLENDE helft van de terugslag — een
+  // tijdelijke offset bovenop speler.pitch die naar nul vervalt.
+  // Speeltoets-bijstelling: de andere helft is per wapen instelbaar
+  // (`pitchKickFractie`, zie schiet()) en verandert speler.pitch wél
+  // blijvend, zodat je zelf moet terugtrekken. Bij fractie 0 — de AMSTEL-9 —
+  // geldt de oorspronkelijke regel onverkort: geen enkele aim-drift.
   camera.rotation.x = speler.pitch + cameraKick;
   // Ticket 92 (v0.22, §10.9): expliciete reset, ELK frame, vóór schiet()'s
   // raycast deze tick kan lopen. camera.rotation.z is de enige as die de
@@ -7214,7 +7217,9 @@ let vlamNetGezet = false;
 const VLAM_FLITS_DUUR = 0.033;
 // Ticket 34: visueel-only camera-kick (recoil). Telt op bij elk schot,
 // vervalt exponentieel in de cosmetische gameLoop-zone (net als terugslag).
-// speler.pitch zelf wordt NOOIT gemuteerd — geen blijvende aim-drift.
+// speler.pitch wordt hierdoor niet gemuteerd; de blijvende helft van de
+// terugslag loopt via `pitchKickFractie` in schiet() en is per wapen nul of
+// niet (speeltoets-bijstelling na T143).
 let cameraKick = 0;
 // Ticket 142: het venster waarbinnen "te snel" telt — gelijk aan de GEMETEN
 // hersteltijd van de camera-kick tot binnen 5%: exp(-10*T) = 0.05 -> T =
@@ -7424,6 +7429,11 @@ const WAPEN_DRUKSPUIT = {
   // Bij een gat >= 0,30 s (de gemeten hersteltijd) is de factor exact 1 — dan
   // kost geduld je niets. Op maximale cadans (0,20 s) is hij 1,27.
   kickRatelStraf: 0.8,
+  // Geen ECHTE terugslag: dit wapen kickt het beeld omhoog en zet het exact
+  // terug waar je richtte. Speeltoets bevestigde dat dat goed voelt voor een
+  // krachtig handwapen, dus hier blijft `speler.pitch` onaangeroerd — precies
+  // de oude Ticket 34-regel, nu als per-wapen keuze i.p.v. een globale wet.
+  pitchKickFractie: 0,
   // Fysieke terugslag op het MODEL, los van de camera-kick: het wapen kantelt
   // omhoog en zakt met dezelfde lineaire snelheid terug als de z-terugslag
   // (6/s), dus volledig terug in 0,167 s. Loopt via de T140-presentatielaag.
@@ -7454,25 +7464,51 @@ const WAPEN_RATELAAR = {
   // WILLEKEURIGE spreiding — iets wat je alleen kunt vermijden, niet
   // compenseren. Dat verschil in soort straf is opzet, niet toeval.
   //
-  // Bij maximale cadans (0,1 s) is de netto opbouw +0,005 - 0,003 = +0,002 per
-  // schot; over een vol tier-0-magazijn (16) dus 0,032 bovenop de basis 0,012.
-  spreadOpbouwPerSchot: 0.005, spreadOpbouwAfbouw: 0.030, spreadOpbouwMax: 0.048,
+  // SPEELTOETS-BIJSTELLING (na M2-speeltest): de eerste waarden waren veel te
+  // braaf. Een vol magazijn kwam uit op een kegel van 3,2 graden (op 5 m een
+  // afwijking van ~14 cm — je raakt de romp dan nog gewoon) en een camera-klim
+  // van 1,05 graden, nauwelijks meer dan één enkel AMSTEL-9-schot van 0,80.
+  // Doorratelen voelde daardoor letterlijk gratis. De meting klopte met de
+  // spec; de spec zelf was te voorzichtig gekozen — precies het soort fout dat
+  // alleen spelen aan het licht brengt.
+  //
+  // Nu: netto +0,010 - 0,004 = +0,006 per schot bij maximale cadans, dus over
+  // een vol tier-0-magazijn (16) 0,090 bovenop de basis 0,012 — een kegel van
+  // ~7,7 graden. Schot 1 blijft onaangeroerd op de basis (0,91 graden).
+  //
+  // De afbouw ging van 0,030 naar 0,040 omdat het herstel vanaf een leeg
+  // magazijn anders ruim 3 s duurde: langer dan een herlaadbeurt, dus je stond
+  // ook ná het herladen nog te spuiten. Op 0,040 ijlt de spreiding ongeveer
+  // één herlaad lang na (~1,8 s) — je betaalt voor het leegjagen, maar niet
+  // twee keer.
+  spreadOpbouwPerSchot: 0.010, spreadOpbouwAfbouw: 0.040, spreadOpbouwMax: 0.130,
   // De burst-drempel is wat korte salvo's belonend houdt: onder deze stand
   // bouwt de spreiding DRIE keer zo snel af. Direct na schot k staat de opbouw
-  // op 0,002k + 0,003, dus een burst van drie eindigt op 0,009 en blijft er
-  // net onder; vanaf de vierde kogel ga je eroverheen en zit je aan de trage
-  // afbouw vast. 0,010 / 0,090 = 0,11 s om vanaf de drempel schoon te zijn.
-  spreadBurstDrempel: 0.010, spreadOpbouwAfbouwSnel: 0.090,
+  // op 0,006k + 0,004, dus een burst van drie eindigt op 0,022 en blijft net
+  // onder de drempel; vanaf de vierde kogel (0,028) ga je eroverheen en zit je
+  // aan de trage afbouw vast. Drempel en snelle afbouw zijn meegeschaald met
+  // de zwaardere opbouw hierboven: 0,025 / 0,150 = 0,17 s om vanaf de drempel
+  // schoon te zijn.
+  spreadBurstDrempel: 0.025, spreadOpbouwAfbouwSnel: 0.150,
   // Sustained-fire recoil: de kick loopt mee met de opbouw i.p.v. per schot
-  // constant te zijn. 1/0,032 = 31,25, dus aan het eind van een vol
-  // tier-0-magazijn is de kick bijna verdubbeld (0,34° -> 0,67°).
-  kickSpreadSchaal: 31.25,
+  // constant te zijn. Ook meegeschaald — met de oude 31,25 bleef de klim over
+  // een heel magazijn onder de één graad en was hij dus onzichtbaar. Op 60
+  // komt de opgebouwde klim aan het eind van een vol magazijn rond de 4
+  // graden: duidelijk voelbaar, terwijl schot 1 (opbouw 0, factor exact 1)
+  // ongewijzigd op 0,34° blijft.
+  kickSpreadSchaal: 60,
   // Het tandwiel (userData.onderdelen.accent) draait door zolang er gevuurd
   // wordt — het ratel-detail waar dit wapen zijn naam aan dankt. rad/s, gezet
   // bij elk schot en uitlopend in de presentatielaag.
   tandwielSpinPerSchot: 9,
   modelKickX: 0,       // de Ripper krijgt ritmische beweging (zie ripperTandwielSnelheid), geen enkele stoot
   kickRatelStraf: 0,   // straft doorratelen met spreiding, niet met camera-klim
+  // ECHTE terugslag: 35% van elke kick blijft staan als pitch-verandering, dus
+  // je moet actief terugtrekken. Omdat de kick zelf meeschaalt met de
+  // spread-opbouw loopt dat op: schot 1 duwt 0,12° omhoog, het zestiende 0,77°.
+  // Over een vol tier-0-magazijn samen ruim 7° klim die je zelf moet
+  // compenseren — dat is het verschil tussen "beeld trilt" en "wapen loopt weg".
+  pitchKickFractie: 0.35,
   schotToon: { start: 620, eind: 210, duur: 0.06 },
 };
 
@@ -8249,7 +8285,31 @@ function schiet() {
   // stand van VÓÓR dit schot (die wordt verderop pas opgehoogd), net als de
   // spreiding zelf. Voor de AMSTEL-9 is kickSpreadSchaal 0 -> factor exact 1.
   const spreadKickFactor = 1 + wapenStaat.spreadOpbouw * wapenStaat.definitie.kickSpreadSchaal;
-  cameraKick += wapenStaat.definitie.kickSterkte * ratelFactor * spreadKickFactor;   // Ticket 34: decayt in de cosmetische zone
+  const kick = wapenStaat.definitie.kickSterkte * ratelFactor * spreadKickFactor;
+  // SPEELTOETS-BIJSTELLING: ECHTE terugslag, per wapen instelbaar.
+  //
+  // Tot nu toe was `cameraKick` volledig visueel: hij telde op bij
+  // `speler.pitch` maar viel altijd naar nul terug, dus je richtpunt bewoog
+  // nooit. Gevolg (letterlijk uit de speeltest): "de marker blijft gewoon
+  // redelijk in het midden staan" — je hoefde niets te corrigeren, alleen even
+  // te wachten. Dat is geen terugslag maar beeldtrilling.
+  //
+  // `pitchKickFractie` bepaalt welk DEEL van de kick blijft staan als echte
+  // pitch-verandering. De rest blijft de herstellende visuele component. Direct
+  // na het schot is de totale uitslag dus onveranderd `kick`; na het herstel
+  // blijft `kick * fractie` over, en dát moet de speler zelf terugtrekken.
+  //
+  // Dit versoepelt bewust de oude "speler.pitch wordt NOOIT gemuteerd"-regel
+  // uit Ticket 34/141. Die regel blijft gelden voor elk wapen met fractie 0 —
+  // de AMSTEL-9 staat daarom op 0 en houdt zijn bestaande, goedgekeurde gevoel
+  // exact. Alleen de Canal Ripper klimt echt.
+  const pitchDeel = kick * wapenStaat.definitie.pitchKickFractie;
+  if (pitchDeel > 0) {
+    // Zelfde klem als de muisinvoer, anders kan volgehouden vuur je blik
+    // voorbij recht-omhoog draaien.
+    speler.pitch = Math.max(-1.45, Math.min(1.45, speler.pitch + pitchDeel));
+  }
+  cameraKick += kick - pitchDeel;   // Ticket 34: decayt in de cosmetische zone
   // Ticket 143: het tandwiel is het ratel-detail van dit wapen — laat het
   // meedraaien zolang er gevuurd wordt (de snelheid decayt in de
   // presentatielaag, dus na het laatste schot loopt het uit i.p.v. te stoppen).

@@ -253,32 +253,47 @@ hier ligt geen contract op nul; onnauwkeurigheid hoort bij dit wapen.
 
 **Spread-opbouw.**
 
+> **Bijgesteld na de M2-speeltest.** De eerste getallen (+0,005 per schot,
+> plafond 0,048) waren véél te braaf. Een vol magazijn kwam uit op een kegel
+> van 3,2° — op 5 m een afwijking van ~14 cm, waarmee je de romp gewoon nog
+> raakt — en op een camera-klim van 1,05°, nauwelijks meer dan één enkel
+> AMSTEL-9-schot. Doorratelen voelde daardoor letterlijk gratis. De meting
+> klopte netjes met de spec; de spec zelf was te voorzichtig gekozen, en dat is
+> precies het soort fout dat alleen spelen aan het licht brengt. De waarden
+> hieronder zijn de bijgestelde.
+
 | parameter | waarde |
 |---|---|
-| toename per schot | +0,005 NDC |
-| afbouw, standaard | 0,030 NDC/s |
-| afbouw, onder de drempel **én gestopt met vuren** | 0,090 NDC/s (3×) |
-| burst-drempel | 0,010 NDC |
+| toename per schot | +0,010 NDC |
+| afbouw, standaard | 0,040 NDC/s |
+| afbouw, onder de drempel **én gestopt met vuren** | 0,150 NDC/s (3,75×) |
+| burst-drempel | 0,025 NDC |
 | "gestopt met vuren" | pauze > 1,5 × schotCooldown |
-| plafond | 0,048 NDC |
+| plafond | 0,130 NDC |
 | totale spread | `spreadNdc + spreadOpbouw` |
 
-Bij maximale cadans (0,10 s) is de netto opbouw +0,005 − 0,003 = **+0,002 NDC
-per schot**. Over een vol tier-0-magazijn (16 patronen) is dat 0,032, dus een
-totale spread van 0,044 → **kegel 3,32°**, ruim drie keer de basis.
+Bij maximale cadans (0,10 s) is de netto opbouw +0,010 − 0,004 = **+0,006 NDC
+per schot**. Over een vol tier-0-magazijn (16 patronen) is dat 0,090, dus een
+totale spread van 0,102 → **kegel 7,70°**, ruim acht keer de basis.
 
 | schot (0,10 s cadans) | totale spread | kegel |
 |---|---|---|
 | 1 | 0,012 | 0,91° |
-| 4 | 0,018 | 1,36° |
-| 8 | 0,026 | 1,96° |
-| 16 | 0,042 | 3,17° |
-| plafond | 0,060 | 4,53° |
+| 4 | 0,030 | 2,27° |
+| 8 | 0,054 | 4,08° |
+| 16 | 0,102 | 7,70° |
+| plafond | 0,142 | 10,72° |
+
+De afbouw ging mee omhoog (0,030 → 0,040) omdat het herstel vanaf een leeg
+magazijn anders ruim 3 s duurde — langer dan een herlaadbeurt, dus je stond ook
+ná het herladen nog te spuiten. Op 0,040 ijlt de spreiding ongeveer één
+herlaad lang na (**1,95 s** gemeten): je betaalt voor het leegjagen, maar niet
+twee keer.
 
 **Burst recovery — de kern van "korte bursts blijven belonend".** Direct ná
-schot *k* staat de opbouw op `0,002k + 0,003`, dus een burst van **drie** kogels
-eindigt op 0,009 en blijft daarmee onder de drempel van 0,010; vanaf de vierde
-kogel gaat hij eroverheen (0,011).
+schot *k* staat de opbouw op `0,006k + 0,004`, dus een burst van **drie** kogels
+eindigt op 0,022 en blijft daarmee onder de drempel van 0,025; vanaf de vierde
+kogel gaat hij eroverheen (0,028).
 
 > **Correctie tijdens T143.** De eerste versie van deze regel luidde alleen
 > "onder de drempel bouwt hij drie keer zo snel af". Dat sprak zichzelf tegen:
@@ -295,10 +310,10 @@ kogel gaat hij eroverheen (0,011).
 
 | situatie | afbouw | tijd tot schoon |
 |---|---|---|
-| burst van 3, dan loslaten | 0,090/s (onder drempel) | **0,10 s** |
-| burst van 4, dan loslaten | eerst 0,030, dan 0,090 | ~0,14 s |
-| vol magazijn (16), dan loslaten | eerst 0,030, dan 0,090 | ~0,84 s |
-| vanaf het plafond (0,048) | eerst 0,030, dan 0,090 | ~1,4 s |
+| burst van 3, dan loslaten | 0,150/s (onder drempel) | **0,15 s** |
+| burst van 4, dan loslaten | eerst 0,040, dan 0,150 | ~0,25 s |
+| vol magazijn (16), dan loslaten | eerst 0,040, dan 0,150 | **~1,95 s** |
+| vanaf het plafond (0,130) | eerst 0,040, dan 0,150 | ~2,8 s |
 
 **Sustained-fire recoil.** De camera-kick loopt mee met de opbouw in plaats van
 per schot constant te zijn:
@@ -375,15 +390,15 @@ rechts het doel.
 | dimensie | AMSTEL-9 nu → doel | Canal Ripper nu → doel |
 |---|---|---|
 | spread, élk schot | 0,00° → **0,00° (contract, altijd)** | 0,91° → 0,91° basis |
-| spread na vol magazijn | 0,00° → **0,00°** | 0,91° → **3,17°** |
-| tijd tot volledig schoon | n.v.t. (nooit vuil) | n.v.t. → **0,10 s** (burst van 3) / ~1,4 s (plafond) |
+| spread na vol magazijn | 0,00° → **0,00°** | 0,91° → **7,70°** |
+| tijd tot volledig schoon | n.v.t. (nooit vuil) | n.v.t. → **0,15 s** (burst van 3) / ~1,95 s (vol magazijn) |
 | Doorboring-feedback | n.v.t. | alleen schade → **eigen toon + tracer** |
 | ratel-detail in beweging | — | stil → **tandwiel draait mee, loopt uit** |
 | straf op ratelen | geen → **deterministische camera-klim** | geen → **willekeurige spreiding** |
 | vizier-offset, geduldig vuren | 0,042° → 0,042° | n.v.t. |
 | vizier-offset, ratelen | 0,042° → **0,159°** (3,8×) | n.v.t. |
 | camera-kick schot 1 | 0,80° → 0,80° | 0,34° → 0,34° |
-| camera-kick eind magazijn | 0,93° → **1,17°** | 0,54° → **0,67°** |
+| camera-kick eind magazijn | 0,93° → **1,17°** | 0,54° → **~3,5°** |
 | model-kick `rotation.x` | geen → **1,15°** | geen → ritmisch, schaalt mee |
 | hitmarker kop-duur | 0,18 s → **0,24 s** | 0,18 s → 0,24 s (gedeeld) |
 | cadans | 5,0/s | 10,0/s |
