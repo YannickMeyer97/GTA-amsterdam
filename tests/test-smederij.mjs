@@ -539,6 +539,93 @@ check('Cumulatieve schadebonus = som van niveau 1 + niveau 2 (niveau 2 is het gr
   Math.abs(volledigTraject.schadeBeideNiveaus - (1 + volledigTraject.t1Bonus + volledigTraject.t2Bonus)) < 1e-9 &&
   volledigTraject.t2Bonus > volledigTraject.t1Bonus, volledigTraject);
 
+// --- Ticket 138 (TIERVISUALS.md §4): AMSTEL-9's tier-2-onderdelen zijn ---
+// pas zichtbaar NA niveau 2. Vóór T138 was elke `koopSmederij()`-aanroep een
+// "alles-of-niets" toggle op de hele Group (zie de test hierboven), waardoor
+// tier 2 geen enkel zichtbaar verschil maakte t.o.v. tier 1 — precies het gat
+// dat TIERVISUALS.md §1.2/§2 mat (byte-identieke render, 0,000% pixelverschil
+// met verborgen HUD). Deze test bewaakt dat drie onderdelen ECHT `userData.tier`
+// dragen en dat de zichtbare telling per niveau oploopt: 0 -> 2 -> 5.
+const drukspuitTierZichtbaarheid = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const kiesWapen = (naam) => { if (d.actiefWapenNaam !== naam) d.wisselWapen(); };
+  kiesWapen('drukspuit');
+  const groep = d.smederijVisualsDrukspuit;
+  const tellenZichtbaar = () => groep.children.filter(k => k.visible).length;
+
+  d.wapenStaat.gesmeed = false;
+  d.wapenStaat.gesmeedNiveau2 = false;
+  groep.visible = false;
+  for (const kind of groep.children) kind.visible = false;
+  const bijTier0 = tellenZichtbaar();
+
+  d.spelStaat.geld = 1000000;
+  d.koopSmederij();   // niveau 1
+  const bijTier1 = tellenZichtbaar();
+  const tier2OnderdelenBijTier1 = groep.children.filter(k => k.userData.tier === 2 && k.visible).length;
+
+  d.spelStaat.geld = 1000000;
+  d.koopSmederij();   // niveau 2
+  const bijTier2 = tellenZichtbaar();
+
+  const tierTelling = { tier1: groep.children.filter(k => k.userData.tier === 1).length,
+    tier2: groep.children.filter(k => k.userData.tier === 2).length };
+
+  return { bijTier0, bijTier1, bijTier2, tier2OnderdelenBijTier1, tierTelling, totaalKinderen: groep.children.length };
+});
+check('AMSTEL-9-tiervisuals: 0 zichtbare onderdelen op tier 0',
+  drukspuitTierZichtbaarheid.bijTier0 === 0, drukspuitTierZichtbaarheid);
+check('AMSTEL-9-tiervisuals: precies 2 zichtbare onderdelen op tier 1 (de bestaande gloeiringen)',
+  drukspuitTierZichtbaarheid.bijTier1 === 2, drukspuitTierZichtbaarheid);
+check('AMSTEL-9-tiervisuals: de drie tier-2-onderdelen zijn NOG onzichtbaar zolang alleen tier 1 gekocht is',
+  drukspuitTierZichtbaarheid.tier2OnderdelenBijTier1 === 0, drukspuitTierZichtbaarheid);
+check('AMSTEL-9-tiervisuals: alle 5 onderdelen zichtbaar op tier 2 (2 bestaand + 3 nieuw)',
+  drukspuitTierZichtbaarheid.bijTier2 === 5, drukspuitTierZichtbaarheid);
+check('AMSTEL-9-tiervisuals: budget exact op de grens (2 tier-1 + 3 tier-2 = 5, geen zesde)',
+  drukspuitTierZichtbaarheid.tierTelling.tier1 === 2 && drukspuitTierZichtbaarheid.tierTelling.tier2 === 3
+  && drukspuitTierZichtbaarheid.totaalKinderen === 5, drukspuitTierZichtbaarheid);
+
+// --- Ticket 139 (TIERVISUALS.md §5): spiegelbeeld van de AMSTEL-9-check ----
+// hierboven, nu voor de Canal Ripper (hittebandVoor/gloeipen/drijfwerkbout).
+const ratelaarTierZichtbaarheid = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const kiesWapen = (naam) => { if (d.actiefWapenNaam !== naam) d.wisselWapen(); };
+  kiesWapen('ratelaar');
+  const groep = d.smederijVisualsRatelaar;
+  const tellenZichtbaar = () => groep.children.filter(k => k.visible).length;
+
+  d.wapenStaat.gesmeed = false;
+  d.wapenStaat.gesmeedNiveau2 = false;
+  groep.visible = false;
+  for (const kind of groep.children) kind.visible = false;
+  const bijTier0 = tellenZichtbaar();
+
+  d.spelStaat.geld = 1000000;
+  d.koopSmederij();   // niveau 1
+  const bijTier1 = tellenZichtbaar();
+  const tier2OnderdelenBijTier1 = groep.children.filter(k => k.userData.tier === 2 && k.visible).length;
+
+  d.spelStaat.geld = 1000000;
+  d.koopSmederij();   // niveau 2
+  const bijTier2 = tellenZichtbaar();
+
+  const tierTelling = { tier1: groep.children.filter(k => k.userData.tier === 1).length,
+    tier2: groep.children.filter(k => k.userData.tier === 2).length };
+
+  return { bijTier0, bijTier1, bijTier2, tier2OnderdelenBijTier1, tierTelling, totaalKinderen: groep.children.length };
+});
+check('Canal Ripper-tiervisuals: 0 zichtbare onderdelen op tier 0',
+  ratelaarTierZichtbaarheid.bijTier0 === 0, ratelaarTierZichtbaarheid);
+check('Canal Ripper-tiervisuals: precies 2 zichtbare onderdelen op tier 1 (tandwiel + hitteband)',
+  ratelaarTierZichtbaarheid.bijTier1 === 2, ratelaarTierZichtbaarheid);
+check('Canal Ripper-tiervisuals: de drie tier-2-onderdelen zijn NOG onzichtbaar zolang alleen tier 1 gekocht is',
+  ratelaarTierZichtbaarheid.tier2OnderdelenBijTier1 === 0, ratelaarTierZichtbaarheid);
+check('Canal Ripper-tiervisuals: alle 5 onderdelen zichtbaar op tier 2 (2 bestaand + 3 nieuw)',
+  ratelaarTierZichtbaarheid.bijTier2 === 5, ratelaarTierZichtbaarheid);
+check('Canal Ripper-tiervisuals: budget exact op de grens (2 tier-1 + 3 tier-2 = 5, geen zesde)',
+  ratelaarTierZichtbaarheid.tierTelling.tier1 === 2 && ratelaarTierZichtbaarheid.tierTelling.tier2 === 3
+  && ratelaarTierZichtbaarheid.totaalKinderen === 5, ratelaarTierZichtbaarheid);
+
 // --- AMSTEL-9 niveau 2: kleine ontploffing beschadigt OMLIGGENDE ondoden --
 // (rechtstreeks via schotExplosie(), zoals schiet() 'm ook aanroept — een
 // volledige camera-raycast-integratietest staat verderop bij Doorboring.)

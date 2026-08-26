@@ -6954,15 +6954,24 @@ let meterDrukspuit;   // Ticket 12: krijgt een ember-accent zodra de Drukspuit g
 // om de tank (die na tank.rotation.x=PI/2 langs de lokale Z-as ligt — een
 // standaard-georiënteerde Torus omsluit ook de Z-as, dus geen extra
 // rotatie nodig) plus een zacht flikkerend ember-lichtje.
+//
+// Ticket 138 (TIERVISUALS.md §4): drie tier-2-onderdelen toegevoegd — "het
+// drukvat staat onder overdruk". Elk kind draagt `userData.tier` (1 of 2);
+// koopSmederij() schakelt zichtbaarheid per kind op basis van het niveau, dus
+// de Group zelf blijft vanaf tier 1 zichtbaar (ongewijzigd gedrag) terwijl de
+// tier-2-onderdelen tot dan verborgen blijven.
 const smederijVisualsDrukspuit = new THREE.Group();
 {
   // Ticket 89: Bron-niveau (§10.5), zoals alle drie de Smederij-accenten.
+  // Ticket 138: hetzelfde materiaal wordt hergebruikt voor de tier-2-
+  // onderdelen — géén nieuw emissieniveau, precies vangrail 3.
   const ringMateriaal = new THREE.MeshStandardMaterial({
     color: SMEDERIJ_ACCENT_KLEUR, emissive: SMEDERIJ_ACCENT_KLEUR, emissiveIntensity: 1.3, roughness: 0.4,
   });
   for (const z of [-0.02, -0.09]) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.008, 8, 16), ringMateriaal);
     ring.position.set(0, 0.02, z);
+    ring.userData.tier = 1;
     smederijVisualsDrukspuit.add(ring);
   }
   // Performance-audit (feedback): het ember-lichtje hier (bereik 0,9 m) is
@@ -6970,6 +6979,31 @@ const smederijVisualsDrukspuit = new THREE.Group();
   // van het emissive ringmateriaal hierboven komt, niet van dit puntlicht —
   // een licht met zo'n klein bereik kost de fragment-shader evenveel als een
   // lamp die een hele kamer verlicht, voor een niet-waarneembaar effect.
+
+  // Ticket 138 tier 2: drukband — dikker dan de twee tier-1-ringen en vóór ze
+  // geplaatst (tank loopt tot z=-0.15), zodat de drie ringen een oplopende
+  // druk-reeks richting de monding vormen.
+  const drukband = new THREE.Mesh(new THREE.TorusGeometry(0.052, 0.011, 8, 16), ringMateriaal);
+  drukband.position.set(0, 0.02, -0.14);
+  drukband.userData.tier = 2;
+  drukband.visible = false;
+  smederijVisualsDrukspuit.add(drukband);
+
+  // Overdrukventiel: steekt half uit de tankbovenkant (y=0.064), leest als
+  // een afblaasventiel onder spanning.
+  const overdrukventiel = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.010, 0.026, 10), ringMateriaal);
+  overdrukventiel.position.set(0, 0.062, -0.05);
+  overdrukventiel.userData.tier = 2;
+  overdrukventiel.visible = false;
+  smederijVisualsDrukspuit.add(overdrukventiel);
+
+  // Ladingsring: om het mondstuk (straal ~0.0155), precies waar de
+  // explosieve lading (Fix 5 niveau-2-effect) het wapen verlaat.
+  const ladingsring = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.006, 8, 14), ringMateriaal);
+  ladingsring.position.set(0, 0.02, -0.24);
+  ladingsring.userData.tier = 2;
+  ladingsring.visible = false;
+  smederijVisualsDrukspuit.add(ladingsring);
 }
 smederijVisualsDrukspuit.visible = false;
 wapenDrukspuit.add(smederijVisualsDrukspuit);
@@ -7106,6 +7140,12 @@ let tandwielRatelaar;   // Ticket 12: krijgt een ember-accent zodra de Ratelaar 
 // tandwiel dat langzaam draait (updateSmederijVisuals), een dunne
 // hitteband om de loop, plus dezelfde flikkerende ember-light als de
 // Drukspuit-variant.
+//
+// Ticket 139 (TIERVISUALS.md §5): drie tier-2-onderdelen toegevoegd — "het
+// drijfwerk is doorgloeid tot ín de loop", de vormtaal voor Doorboring. Zelfde
+// patroon als T138: elk kind draagt `userData.tier`, `koopSmederij()`
+// schakelt zichtbaarheid per kind (die functie is al wapen-agnostisch sinds
+// T138, hier is geen aanpassing nodig).
 const smederijVisualsRatelaar = new THREE.Group();
 let smederijTandwielRatelaar;   // los bewaard: krijgt elke frame een rotatie
 {
@@ -7116,6 +7156,7 @@ let smederijTandwielRatelaar;   // los bewaard: krijgt elke frame een rotatie
     }));
   smederijTandwielRatelaar.position.set(0.045, 0.02, -0.05);
   smederijTandwielRatelaar.rotation.y = Math.PI / 2;
+  smederijTandwielRatelaar.userData.tier = 1;
   smederijVisualsRatelaar.add(smederijTandwielRatelaar);
   // Hitteband om de loop (loop ligt na rotation.x=PI/2 langs de lokale
   // Z-as — zelfde redenering als de gloeiringen van de Drukspuit).
@@ -7125,11 +7166,49 @@ let smederijTandwielRatelaar;   // los bewaard: krijgt elke frame een rotatie
       color: SMEDERIJ_ACCENT_KLEUR, emissive: SMEDERIJ_ACCENT_KLEUR, emissiveIntensity: 1.3, roughness: 0.4,
     }));
   hitteband.position.set(0, 0.03, -0.12);
+  hitteband.userData.tier = 1;
   smederijVisualsRatelaar.add(hitteband);
   // Performance-audit (feedback): zelfde verwijdering als de Drukspuit-
   // variant hierboven — het ember-lichtje (bereik 0,9 m) voegde niets
   // waarneembaars toe bovenop het emissive materiaal van het tandwiel/de
   // hitteband.
+
+  // Ticket 139 tier 2: tweede hitteband, verder naar voren op de loop
+  // (binnenstraal 0.021 om een loop van ~0.0168) — met de eerste band leest
+  // het als escalatie richting de monding.
+  const hittebandVoor = new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.007, 8, 16),
+    new THREE.MeshStandardMaterial({
+      color: SMEDERIJ_ACCENT_KLEUR, emissive: SMEDERIJ_ACCENT_KLEUR, emissiveIntensity: 1.3, roughness: 0.4,
+    }));
+  hittebandVoor.position.set(0, 0.03, -0.27);
+  hittebandVoor.userData.tier = 2;
+  hittebandVoor.visible = false;
+  smederijVisualsRatelaar.add(hittebandVoor);
+
+  // Gloeipen: de identiteitsdrager van Doorboring. Zit 5cm ín de loop
+  // verankerd en steekt 5cm vóór de monding uit (loop eindigt ~z=-0.35,
+  // vlamRatelaar staat op z=-0.36 — de pen loopt dus dwars door de
+  // mondingsvlam heen, wat de gloed versterkt in plaats van conflicteert).
+  const gloeipen = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.007, 0.10, 8),
+    new THREE.MeshStandardMaterial({
+      color: SMEDERIJ_ACCENT_KLEUR, emissive: SMEDERIJ_ACCENT_KLEUR, emissiveIntensity: 1.3, roughness: 0.4,
+    }));
+  gloeipen.rotation.x = Math.PI / 2;
+  gloeipen.position.set(0, 0.03, -0.35);
+  gloeipen.userData.tier = 2;
+  gloeipen.visible = false;
+  smederijVisualsRatelaar.add(gloeipen);
+
+  // Drijfwerkbout: maakt het tandwielcluster op het chassis af.
+  const drijfwerkbout = new THREE.Mesh(new THREE.TorusGeometry(0.012, 0.005, 6, 10),
+    new THREE.MeshStandardMaterial({
+      color: SMEDERIJ_ACCENT_KLEUR, emissive: SMEDERIJ_ACCENT_KLEUR, emissiveIntensity: 1.3, roughness: 0.4,
+    }));
+  drijfwerkbout.rotation.y = Math.PI / 2;
+  drijfwerkbout.position.set(0.045, 0.02, 0.10);
+  drijfwerkbout.userData.tier = 2;
+  drijfwerkbout.visible = false;
+  smederijVisualsRatelaar.add(drijfwerkbout);
 }
 smederijVisualsRatelaar.visible = false;
 wapenRatelaar.add(smederijVisualsRatelaar);
@@ -13640,7 +13719,14 @@ function koopSmederij() {
   accent.material.emissiveIntensity = 1.4;   // Ticket 89: Bron-niveau (§10.5)
   // Ticket 17: het bijbehorende vooraf gebouwde visual-Group (gloeiringen/
   // tandwiel + ember-light) zichtbaar maken.
-  (actiefWapenNaam === 'drukspuit' ? smederijVisualsDrukspuit : smederijVisualsRatelaar).visible = true;
+  // Ticket 138/139: per kind schakelen op `userData.tier` in plaats van de
+  // hele Group in één keer — zo blijven de tier-2-onderdelen verborgen tot
+  // niveau 2 daadwerkelijk gekocht is, terwijl tier 1 al bij de eerste
+  // aankoop zichtbaar wordt (ongewijzigd gedrag).
+  const niveau = niveauIndex + 1;
+  const visualsGroep = actiefWapenNaam === 'drukspuit' ? smederijVisualsDrukspuit : smederijVisualsRatelaar;
+  visualsGroep.visible = true;
+  for (const kind of visualsGroep.children) kind.visible = kind.userData.tier <= niveau;
   // Ticket 85: het bijbehorende ereplank-medaillon oplicht — zelfde
   // materiaal-mutatie-patroon als het accent hierboven, geen nieuwe mesh.
   const medaillon = actiefWapenNaam === 'drukspuit' ? ereplankMedaillonDrukspuit : ereplankMedaillonRatelaar;

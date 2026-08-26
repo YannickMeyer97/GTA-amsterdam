@@ -355,26 +355,41 @@ mes, en dat blijft ongewijzigd (§6).
 
 ---
 
-## 10. Checklist voor T138 en T139
+## 10. Checklist voor T138 en T139 — afgerond
 
-- [ ] Drie tier-2-meshes toevoegen aan de bestaande `smederijVisuals*`-Group,
-      volgens de tabellen in §4 en §5.
-- [ ] `userData.tier` op elk kind; tier-2-meshes starten op `visible = false`.
-- [ ] `koopSmederij()` schakelt zichtbaarheid per kind op basis van het niveau.
-- [ ] Ember-materiaalrecept hergebruiken (0xff7a1f, `emissiveIntensity` 1.3,
+- [x] Drie tier-2-meshes toegevoegd aan de bestaande `smederijVisuals*`-Group,
+      volgens de tabellen in §4 (AMSTEL-9: drukband, overdrukventiel,
+      ladingsring) en §5 (Canal Ripper: hittebandVoor, gloeipen, drijfwerkbout).
+- [x] `userData.tier` op elk kind; tier-2-meshes starten op `visible = false`.
+- [x] `koopSmederij()` schakelt zichtbaarheid per kind op basis van het niveau
+      (wapen-agnostisch: dezelfde code bedient beide wapens sinds T138).
+- [x] Ember-materiaalrecept hergebruikt (0xff7a1f, `emissiveIntensity` 1.3,
       `roughness` 0.4) — geen nieuwe emissie-niveaus.
-- [ ] `userData.onderdelen` ongewijzigd; geen tier-mesh in die tabel.
-- [ ] Geen `PointLight`, in geen enkele tier.
-- [ ] `vlam` blijft een Group van exact twee `PlaneGeometry`-vlakken.
-- [ ] `test-smederij.mjs` en `test-mondingsvlam.mjs` groen zonder versoepelde
-      asserties. De budget-check daar is `meshes <= 5` en blijft dus vanzelf
-      groen bij 5 — juist daarom is de tier-zichtbaarheidstest hieronder nodig:
-      zonder die test zou een Group van 5 meshes waarvan er 3 nooit zichtbaar
-      worden er in de suite identiek uitzien als een correcte implementatie.
-- [ ] `test-visuele-basislijn.mjs` groen **zonder herijking** — verschuift hij
-      tóch, dan is er per ongeluk iets aan het mes of aan de wereld veranderd,
-      en is dát de bug.
-- [ ] Nieuwe test die vastlegt dat de drie tiers een verschillend aantal
-      zichtbare meshes tonen (0 / 2 / 5), zodat "tier 2 is visueel leeg" niet
-      opnieuw kan ontstaan.
-- [ ] Afsluitend (T139): voor/na-beeldverslag van alle tiers naast elkaar.
+- [x] `userData.onderdelen` ongewijzigd; geen tier-mesh in die tabel.
+- [x] Geen `PointLight`, in geen enkele tier.
+- [x] `vlam` blijft een Group van exact twee `PlaneGeometry`-vlakken.
+- [x] `test-smederij.mjs` (64/64) en `test-mondingsvlam.mjs` (26/26) groen
+      zonder versoepelde asserties. De budget-check daar is `meshes <= 5` en
+      bleef dus vanzelf groen bij 5 — precies waarom de tier-zichtbaarheidstest
+      hieronder nodig was: zonder die test zou een Group van 5 meshes waarvan
+      er 3 nooit zichtbaar worden er in de suite identiek hebben uitgezien als
+      een correcte implementatie.
+- [x] `test-visuele-basislijn.mjs` groen **zonder herijking** (65/65, beide
+      tickets) — de basislijn ziet nooit een vuurwapen (T134: speler start
+      met het mes), dus geen enkel standpunt verschoof.
+- [x] Nieuwe tests die vastleggen dat de drie tiers een verschillend aantal
+      zichtbare meshes tonen (0 / 2 / 5), per wapen — voorkomt dat "tier 2 is
+      visueel leeg" terugkomt.
+- [x] Afsluitend (T139): voor/na-beeldverslag van alle tiers naast elkaar —
+      `tests/beeldverslag/fase-tiervisuals-t138-t139.png`. Bij beide wapens
+      leest tier 2 visueel duidelijk als "meer, en verder naar voren" t.o.v.
+      tier 1, zoals de grammatica in §3 beoogde.
+- [x] Volledige regressiesuite: 87/91 groen op de T139-run (86/91 op T138) —
+      de resterende 4 zijn bekende wall-clock-timingtests
+      (`test-omgeving-sfeer.mjs`, `test-ontsnapping-vensters.mjs`,
+      `test-achtergrondmuziek.mjs`, `test-hitmarker-audio.mjs`, plus
+      `test-nachthemel.mjs` op de T138-run), stuk voor stuk opnieuw groen
+      geverifieerd in isolatie, geen van alle in een bestand dat dit ticket
+      aanraakte.
+- [x] Het mesmodel is, zoals besloten in §6, ongewijzigd gebleven — geen
+      Smederij-upgrade voor het mes, dus geen tier-eis.
