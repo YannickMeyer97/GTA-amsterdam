@@ -6968,26 +6968,30 @@ const smederijVisualsDrukspuit = new THREE.Group();
   const ringMateriaal = new THREE.MeshStandardMaterial({
     color: SMEDERIJ_ACCENT_KLEUR, emissive: SMEDERIJ_ACCENT_KLEUR, emissiveIntensity: 1.3, roughness: 0.4,
   });
-  for (const z of [-0.02, -0.09]) {
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.008, 8, 16), ringMateriaal);
-    ring.position.set(0, 0.02, z);
-    ring.userData.tier = 1;
-    smederijVisualsDrukspuit.add(ring);
-  }
+  // SPEELTOETS-BIJSTELLING (na het T138/T139-beeldverslag): de gebruiker vond
+  // het wapen te vol staan met ringen. Tier 1 hield er twee (z = -0.02 en
+  // -0.09) en tier 2 legde er een derde bij (-0.14). Nu:
+  //   tier 1 = ALLEEN de achterste ring (-0.02)
+  //   tier 2 = die ring + de middelste terug (-0.09) + de ring bij de loop
+  // De drukband op -0.14 is dus vervallen. Netto staan er bij tier 2 twee
+  // ringen op de tank plus één bij de monding, precies zoals gevraagd.
+  const ringAchter = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.008, 8, 16), ringMateriaal);
+  ringAchter.position.set(0, 0.02, -0.02);
+  ringAchter.userData.tier = 1;
+  smederijVisualsDrukspuit.add(ringAchter);
   // Performance-audit (feedback): het ember-lichtje hier (bereik 0,9 m) is
   // verwijderd. Voor/na-pixelmeting liet zien dat de gloed vrijwel volledig
   // van het emissive ringmateriaal hierboven komt, niet van dit puntlicht —
   // een licht met zo'n klein bereik kost de fragment-shader evenveel als een
   // lamp die een hele kamer verlicht, voor een niet-waarneembaar effect.
 
-  // Ticket 138 tier 2: drukband — dikker dan de twee tier-1-ringen en vóór ze
-  // geplaatst (tank loopt tot z=-0.15), zodat de drie ringen een oplopende
-  // druk-reeks richting de monding vormen.
-  const drukband = new THREE.Mesh(new THREE.TorusGeometry(0.052, 0.011, 8, 16), ringMateriaal);
-  drukband.position.set(0, 0.02, -0.14);
-  drukband.userData.tier = 2;
-  drukband.visible = false;
-  smederijVisualsDrukspuit.add(drukband);
+  // Tier 2: de middelste ring. Zelfde maat als de tier-1-ring, zodat de twee
+  // samen als één paar lezen in plaats van als een oplopende reeks.
+  const ringMidden = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.008, 8, 16), ringMateriaal);
+  ringMidden.position.set(0, 0.02, -0.09);
+  ringMidden.userData.tier = 2;
+  ringMidden.visible = false;
+  smederijVisualsDrukspuit.add(ringMidden);
 
   // Overdrukventiel: steekt half uit de tankbovenkant (y=0.064), leest als
   // een afblaasventiel onder spanning.
@@ -7148,6 +7152,13 @@ let tandwielRatelaar;   // Ticket 12: krijgt een ember-accent zodra de Ratelaar 
 // T138, hier is geen aanpassing nodig).
 const smederijVisualsRatelaar = new THREE.Group();
 let smederijTandwielRatelaar;   // los bewaard: krijgt elke frame een rotatie
+// SPEELTOETS-BIJSTELLING: drie tier-2-onderdelen die niet alleen stilstaan.
+// Los bewaard zodat updateSmederijVisuals() ze kan animeren.
+let ripperDrijfwerkbout;        // tweede tandwiel, draait tegengesteld
+let ripperHittebanden = [];     // gloeien mee met de oververhitting
+let ripperGloeipen;             // pompt terug bij elk schot
+let ripperGloeipenStoot = 0;    // 0..1, gezet door schiet(), loopt uit in de update
+const RIPPER_GLOEIPEN_RUST_Z = -0.35;   // zelfde waarde als de plaatsing hieronder
 {
   // Ticket 89: Bron-niveau (§10.5), idem.
   smederijTandwielRatelaar = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.007, 6, 12),
@@ -7199,16 +7210,26 @@ let smederijTandwielRatelaar;   // los bewaard: krijgt elke frame een rotatie
   gloeipen.visible = false;
   smederijVisualsRatelaar.add(gloeipen);
 
-  // Drijfwerkbout: maakt het tandwielcluster op het chassis af.
-  const drijfwerkbout = new THREE.Mesh(new THREE.TorusGeometry(0.012, 0.005, 6, 10),
+  // SPEELTOETS-BIJSTELLING: de bout was een stilstaand ringetje en droeg
+  // niets bij. Nu een écht tandwiel dat tijdens vuren TEGENGESTELD aan het
+  // tier-1-tandwiel draait (zie updateSmederijVisuals) — twee raderen die in
+  // elkaar grijpen lezen als opgevoerd drijfwerk. Kost geen extra mesh: het is
+  // dezelfde mesh met meer segmenten en een rotatie erop.
+  ripperDrijfwerkbout = new THREE.Mesh(new THREE.TorusGeometry(0.016, 0.006, 6, 10),
     new THREE.MeshStandardMaterial({
       color: SMEDERIJ_ACCENT_KLEUR, emissive: SMEDERIJ_ACCENT_KLEUR, emissiveIntensity: 1.3, roughness: 0.4,
     }));
-  drijfwerkbout.rotation.y = Math.PI / 2;
-  drijfwerkbout.position.set(0.045, 0.02, 0.10);
-  drijfwerkbout.userData.tier = 2;
-  drijfwerkbout.visible = false;
-  smederijVisualsRatelaar.add(drijfwerkbout);
+  ripperDrijfwerkbout.rotation.y = Math.PI / 2;
+  ripperDrijfwerkbout.position.set(0.045, 0.02, 0.10);
+  ripperDrijfwerkbout.userData.tier = 2;
+  ripperDrijfwerkbout.visible = false;
+  smederijVisualsRatelaar.add(ripperDrijfwerkbout);
+
+  // De twee hittebanden en de gloeipen worden los bewaard: updateSmederij-
+  // Visuals() laat de banden meegloeien met de oververhitting (spreadOpbouw)
+  // en pompt de pen per schot. Zie daar.
+  ripperHittebanden = [hitteband, hittebandVoor];
+  ripperGloeipen = gloeipen;
 }
 smederijVisualsRatelaar.visible = false;
 wapenRatelaar.add(smederijVisualsRatelaar);
@@ -7471,11 +7492,23 @@ const WAPEN_DRUKSPUIT = {
   vlamKleurBasis: vlamDrukspuit.userData.vlamMateriaal.color.getHex(), vlamLichtKleurBasis: vlamLichtDrukspuit.color.getHex(),
   // Ticket 11: De Smederij (per-wapen late-game upgrade) — de Drukspuit is
   // de precisie-keuze en krijgt daarom de grootste schadebonus.
-  // Fix 5: twee Smederij-niveaus i.p.v. één — niveau 2 kost meer (SMEDERIJ2_PRIJS)
-  // en voegt méér schade toe dan niveau 1 (2.5 > 1.5), zie berekenSmederijBonus().
+  // Fix 5: twee Smederij-niveaus i.p.v. één — niveau 2 kost meer (SMEDERIJ2_PRIJS).
+  //
+  // SPEELTOETS-BIJSTELLING: niveau 2 gaf +2.5, waarmee de lichaamsschade op 5
+  // uitkwam en ELKE HP-trap (max 4) in één schot stierf — het wapen had daarna
+  // geen doel meer om nog op te mikken. Nu +0.5, dus lichaam 3 / kop 4: HP 3
+  // valt in één lichaamsschot, HP 4 alleen met een KOPtreffer. Dat geeft de
+  // precisiekeuze weer iets om te presteren.
+  //
+  // Niveau 2 is daarmee een KLEINERE schadesprong dan niveau 1 (+0.5 tegen
+  // +1.5), en dat is bewust: niveau 2 ontsluit óók de explosie per raakpunt
+  // (schotExplosie). De totale sprong is dus groter dan de schade alleen, en
+  // "niveau 2 = de grootste stap" blijft kloppen — alleen niet meer via dit
+  // ene getal. Zie de toelichting bij de bijbehorende checks in
+  // test-smederij.mjs.
   smederijConfig: [
     { schadeBonus: 1.5, magazijnMax: 12 },
-    { schadeBonus: 2.5, magazijnMax: 16 },
+    { schadeBonus: 0.5, magazijnMax: 16 },
   ],
   // Ticket 34 (§5.6): de Drukspuit is de precisiekeuze — grote enkele kick,
   // géén spread. Waarden letterlijk overgenomen uit ARCHITECTURE_NOTES.
@@ -7548,9 +7581,14 @@ const WAPEN_RATELAAR = {
   vlamKleurBasis: vlamRatelaar.userData.vlamMateriaal.color.getHex(), vlamLichtKleurBasis: vlamLichtRatelaar.color.getHex(),
   // Ticket 11: de Ratelaar is de volume-keuze — minder schadebonus, meer magazijn.
   // Fix 5: zie de toelichting bij WAPEN_DRUKSPUIT.smederijConfig hierboven.
+  //
+  // SPEELTOETS-BIJSTELLING: niveau 2 gaf +1.8 (lichaam 3.8). Nu +0.5, dus
+  // lichaam 2.5 / kop 3.5. Zelfde redenering als bij de AMSTEL-9: de kleinere
+  // schadesprong is bewust, want niveau 2 ontsluit óók Doorboring (een tweede
+  // doel per schot).
   smederijConfig: [
     { schadeBonus: 1, magazijnMax: 24 },
-    { schadeBonus: 1.8, magazijnMax: 32 },
+    { schadeBonus: 0.5, magazijnMax: 32 },
   ],
   // Ticket 34 (§5.6): de Ratelaar is de volumekeuze — kleine kick per schot,
   // vaste lichte spread (±0.8°). Waarden letterlijk overgenomen.
@@ -8014,6 +8052,42 @@ const RIPPER_TANDWIEL_UITLOOP = 14;   // rad/s per seconde afname
 // schot in te zetten. Zie de toelichting bij de afbouw in updateWapen().
 const SPREAD_GESTOPT_FACTOR = 1.5;
 
+// SPEELTOETS-BIJSTELLING: de spreidingsopbouw wordt genormaliseerd op de
+// magazijngrootte. Het probleem dat dit oplost: de opbouw per schot was een
+// vast getal, dus met een Smederij-magazijn van 32 in plaats van 16 bereikte
+// de Canal Ripper hetzelfde plafond op hetzelfde SCHOT — en bleef daarna nog
+// tien kogels op zijn slechtst hangen. Upgraden maakte het wapen onnauwkeurig,
+// terwijl het grotere magazijn juist de beloning was.
+//
+// Wat genormaliseerd wordt is de NETTO opbouw per schot: opbouw min wat de
+// afbouw er in datzelfde schotinterval weer afhaalt. Dat is de grootheid die
+// bepaalt waar je aan het eind van je magazijn uitkomt. Door die met
+// basismagazijn/huidig magazijn te schalen ligt de spreiding op elk PUNT IN
+// HET MAGAZIJN gelijk: bij kogel 20 van 32 precies zo groot als bij kogel 10
+// van 16.
+//
+// Afbouwtempo, plafond en burst-drempel blijven expres ONGESCHAALD. Een eerste
+// versie schaalde die ook mee; de test ving dat: het plafond schaalde dan
+// harder dan de opbouw en tier 2 werd juist NAUWKEURIGER dan ongesmeed (0,063
+// tegen 0,096 rad). Ongeschaald laten betekent bovendien dat herstellen na het
+// vuren even lang duurt bij elke tier — bij gelijke spreiding hoort gelijke
+// hersteltijd.
+//
+// De AMSTEL-9 heeft al deze parameters op 0 staan, dus dit is daar per
+// definitie een no-op: 0 blijft 0, ongeacht de factor.
+function spreadMagazijnFactor(staat) {
+  return staat.definitie.magazijnMax / staat.magazijnMax;
+}
+
+// De opbouw per schot die nodig is om de netto-opbouw met de magazijnfactor te
+// laten schalen. Zie spreadMagazijnFactor() voor het waarom.
+function spreadOpbouwDitSchot(staat) {
+  const def = staat.definitie;
+  const afbouwPerSchot = def.spreadOpbouwAfbouw * def.schotCooldown;
+  const nettoBasis = def.spreadOpbouwPerSchot - afbouwPerSchot;
+  return nettoBasis * spreadMagazijnFactor(staat) + afbouwPerSchot;
+}
+
 function updateWapenPresentatie(dt) {
   const basis = actievePresentatie();
 
@@ -8090,6 +8164,42 @@ function updateSmederijVisuals(dt) {
     for (const kind of visuals.children) {
       if (kind.isPointLight) kind.intensity = 0.3 * flikker;
     }
+  }
+
+  // SPEELTOETS-BIJSTELLING: de Canal Ripper op tier 2 stond er levenloos bij —
+  // drie stilstaande ember-vormen. Drie animaties maken hem levend, alle drie
+  // zonder één extra mesh of licht. Ze draaien alleen als de tier-2-set
+  // daadwerkelijk zichtbaar is (`ripperDrijfwerkbout.visible` is precies die
+  // vlag, gezet door koopSmederij()).
+  if (!ripperDrijfwerkbout || !ripperDrijfwerkbout.visible) return;
+
+  // 1. Tweede tandwiel, TEGENGESTELD aan het tier-1-rad: twee raderen die in
+  //    elkaar grijpen. Iets sneller, zodat het verschil in tempo zichtbaar is.
+  ripperDrijfwerkbout.rotation.z -= dt * 1.9;
+
+  // 2. Oververhitting: de hittebanden gloeien feller naarmate de spreiding
+  //    oploopt. Zo zie je aan je eigen wapen dat je te lang doorratelt, en
+  //    doven ze weer zodra je stopt — dezelfde grootheid die de spreiding
+  //    stuurt, nu ook zichtbaar. Genormaliseerd op het (met de magazijngrootte
+  //    meeschalende) plafond, zodat "volle gloed" altijd "maximaal vuil"
+  //    betekent, ongeacht tier. Blijft binnen Bron-niveau: 0,6 tot 1,3 — de
+  //    emissie-hiërarchie (§10.5, vangrail 3) staat niet hoger toe.
+  const staat = wapenStaten.ratelaar;
+  let hitte = 0;
+  if (staat) {
+    const plafond = staat.definitie.spreadOpbouwMax * spreadMagazijnFactor(staat);
+    if (plafond > 0) hitte = Math.min(1, staat.spreadOpbouw / plafond);
+  }
+  const gloed = 0.6 + 0.7 * hitte;
+  for (const band of ripperHittebanden) band.material.emissiveIntensity = gloed;
+
+  // 3. De gloeipen pompt terug bij elk schot, als een slagpin. schiet() zet de
+  //    stoot op 1; hier loopt hij uit. Puur een lokale z-offset op het
+  //    ONDERDEEL — de Group-transform blijft van updateWapenPresentatie()
+  //    (T140), en de pen keert exact terug op zijn rustplek zodra de stoot 0 is.
+  if (ripperGloeipenStoot > 0) {
+    ripperGloeipenStoot = Math.max(0, ripperGloeipenStoot - dt * 9);
+    ripperGloeipen.position.z = RIPPER_GLOEIPEN_RUST_Z + ripperGloeipenStoot * 0.03;
   }
 }
 
@@ -8437,6 +8547,10 @@ function schiet() {
   // presentatielaag, dus na het laatste schot loopt het uit i.p.v. te stoppen).
   if (wapenStaat.definitie.tandwielSpinPerSchot) {
     ripperTandwielSnelheid = wapenStaat.definitie.tandwielSpinPerSchot;
+    // Speeltoets-bijstelling: en de tier-2-gloeipen slaat terug als een
+    // slagpin. Alleen relevant als die zichtbaar is; updateSmederijVisuals()
+    // controleert dat en laat de stoot daar uitlopen.
+    ripperGloeipenStoot = 1;
   }
   vlam.visible = true;
   vlamLicht.visible = true;
@@ -8484,8 +8598,11 @@ function schiet() {
   // betekent dat: schot 1 is altijd exact zuiver, onder alle omstandigheden.
   // Alleen scalairen, geen allocatie — hot-path-regel §7.9.
   const spread = wapenStaat.definitie.spreadNdc + wapenStaat.spreadOpbouw;
+  // De opbouw per schot schaalt met de magazijngrootte — zie
+  // spreadMagazijnFactor(). Zo staat de spreiding op elk PUNT IN HET MAGAZIJN
+  // gelijk, ongeacht Smederij-tier. Het plafond blijft absoluut.
   wapenStaat.spreadOpbouw = Math.min(wapenStaat.definitie.spreadOpbouwMax,
-    wapenStaat.spreadOpbouw + wapenStaat.definitie.spreadOpbouwPerSchot);
+    wapenStaat.spreadOpbouw + spreadOpbouwDitSchot(wapenStaat));
   // Fysieke kick op het wapenmodel zelf (kantelt omhoog, zakt terug via de
   // T140-presentatielaag). Bewust ZETTEN i.p.v. optellen, net als `terugslag`
   // hierboven: twee schoten vlak na elkaar geven één kick, geen stapeling die
@@ -8505,7 +8622,7 @@ function schiet() {
       // bij een directe treffer. De geraakte ondode zelf kreeg zijn schade
       // al via raakOndode() hierboven en is dus uitgesloten van de splash.
       if (actiefWapenNaam === 'drukspuit' && wapenStaat.gesmeedNiveau2) {
-        schotExplosie(ondodeRaak[0].point.x, ondodeRaak[0].point.z, obj.userData.ondode);
+        schotExplosie(ondodeRaak[0].point.x, ondodeRaak[0].point.y, ondodeRaak[0].point.z, obj.userData.ondode);
       }
       // Fix 5: Canal Ripper niveau 2 (Doorboring) — de kogel gaat door de
       // geraakte ondode heen en raakt de eerstvolgende ANDERE ondode
@@ -8557,7 +8674,7 @@ function schiet() {
   // ontploft, zodat de speler zombies indirect kan raken (bv. door vlak voor
   // hun voeten op de grond te schieten).
   if (actiefWapenNaam === 'drukspuit' && wapenStaat.gesmeedNiveau2) {
-    schotExplosie(raak[0].point.x, raak[0].point.z, null);
+    schotExplosie(raak[0].point.x, raak[0].point.y, raak[0].point.z, null);
   }
 }
 
@@ -12437,10 +12554,24 @@ function ontploiBrander(ondode) {
 // raakOndode() zodat geld/hitmarker/kill precies hetzelfde werken als een
 // normale treffer, met AMSTEL9_EXPLOSIE_SCHADEFACTOR zodat dit geen manier
 // wordt om de volle wapenschade te dupliceren over een hele groep tegelijk.
-function schotExplosie(x, z, uitgesloten) {
+// Speeltoets-fix: de flits stond op een VASTE hoogte (y = 0.9) en de functie
+// kreeg alleen x/z mee — de y van het raakpunt werd bij beide aanroepers
+// weggegooid. Twee zichtbare gevolgen, allebei door de gebruiker gemeld:
+//   * De flits verscheen altijd op dezelfde hoogte, ook bij een koptreffer.
+//   * In de kelder (vloer op een negatieve y) hing de flits door het plafond
+//     heen op de begane grond, dus je zag je eigen explosie niet.
+// De hoogte reist nu mee met het raakpunt.
+//
+// Ook de SCHADE-check was puur horizontaal (alleen dx/dz), waardoor een
+// explosie in de kelder ondoden recht daarboven raakte. Die is nu 3D. Gemeten
+// wordt naar het verticale midden van de lichaams-hitbox, niet naar
+// `groep.position` (dat zijn de voeten): anders zou de lichaamshoogte zelf als
+// afstand meetellen en de effectieve radius kleiner maken dan
+// AMSTEL9_EXPLOSIE_RADIUS belooft.
+function schotExplosie(x, y, z, uitgesloten) {
   const flits = new THREE.Mesh(new THREE.SphereGeometry(AMSTEL9_EXPLOSIE_RADIUS * 0.4, 10, 10),
     new THREE.MeshBasicMaterial({ color: 0x9fffb8, transparent: true, opacity: 0.5 }));
-  flits.position.set(x, 0.9, z);
+  flits.position.set(x, y, z);
   scene.add(flits);
   const licht = new THREE.PointLight(0x9fffb8, 8, AMSTEL9_EXPLOSIE_RADIUS * 2, 2);
   licht.position.copy(flits.position);
@@ -12450,8 +12581,10 @@ function schotExplosie(x, z, uitgesloten) {
 
   for (const andere of [...ondoden]) {
     if (andere === uitgesloten || !ondoden.includes(andere)) continue;
-    const dx = andere.groep.position.x - x, dz = andere.groep.position.z - z;
-    if (dx * dx + dz * dz <= AMSTEL9_EXPLOSIE_RADIUS * AMSTEL9_EXPLOSIE_RADIUS) {
+    const dx = andere.groep.position.x - x;
+    const dy = (andere.groep.position.y + HITBOX_LICHAAM_WERELD_Y) - y;
+    const dz = andere.groep.position.z - z;
+    if (dx * dx + dy * dy + dz * dz <= AMSTEL9_EXPLOSIE_RADIUS * AMSTEL9_EXPLOSIE_RADIUS) {
       raakOndode(andere, andere.groep.position, false, AMSTEL9_EXPLOSIE_SCHADEFACTOR);
     }
   }
@@ -15073,6 +15206,15 @@ window.AmsterdamUndeadDebug = {
   // Doorboring-tell.
   get ripperTandwielSnelheid() { return ripperTandwielSnelheid; },
   set ripperTandwielSnelheid(v) { ripperTandwielSnelheid = v; },
+  // Speeltoets-bijstelling: de drie tier-2-animaties van de Canal Ripper +
+  // de magazijn-normalisatie van de spreiding.
+  spreadMagazijnFactor, spreadOpbouwDitSchot,
+  get ripperDrijfwerkbout() { return ripperDrijfwerkbout; },
+  get ripperHittebanden() { return ripperHittebanden; },
+  get ripperGloeipen() { return ripperGloeipen; },
+  get ripperGloeipenStoot() { return ripperGloeipenStoot; },
+  set ripperGloeipenStoot(v) { ripperGloeipenStoot = v; },
+  RIPPER_GLOEIPEN_RUST_Z,
   RIPPER_TANDWIEL_UITLOOP,
   get doorboringTeller() { return doorboringTeller; },
   speelDoorboring,

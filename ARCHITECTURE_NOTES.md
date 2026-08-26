@@ -94,8 +94,12 @@ Three.js via CDN-importmap, geen build-stap). Dat blijft zo.
   zones); `speelGolfStart()`.
 - `updateGolf(dt)`: rust-timer → `startGolf()`; spawn-tick elke
   `effectiefSpawnInterval()` (basis 1.1s, −15% per extra ontgrendelde zone)
-  zolang `ondoden.length < effectiefMaxActief()` (18 + 4 per extra zone,
-  dus max 26); spawns lopen via `golfSpawnStap()`.
+  zolang `ondoden.length < effectiefMaxActief()` (`GOLF_MAX_ACTIEF` 14 + 2 per
+  extra zone, geclampt op 3 zones — dus 14/16/18, **max 18**); spawns lopen via
+  `golfSpawnStap()`. *(Gecorrigeerd in T145: hier stond "18 + 4 per extra zone,
+  dus max 26", wat niet uit de code te herleiden is. `test-eventgolven.mjs`
+  legde 14/16/18 al vast; `tests/meet-finale-budget.mjs` heeft het opnieuw
+  gemeten.)*
 - `golfSpawnStap()`: kiest venster (`kiesVensterIndex()`, afstands-gewogen),
   beukt eerst een barricadeplank (`beukBarricade`, telt NIET als spawn) en
   spawnt pas bij 0 planken echt: `spawnOndode(idx, kiesOndodeType())`.
@@ -8646,8 +8650,17 @@ hele bestaande aankomst-/vertrekapparaat en voegt één state toe.
 
 Duur: richtwaarde ~30 s, midden in de gevraagde 20-45 s, en passend bij de
 bestaande ritmes — `GOLF_RUST_TIJD` is 8 s, `ONTSNAPPING_AANKONDIGING_DUUR`
-is 5 s, `effectiefSpawnInterval()` is 1,1 s basis. Bij ~30 s past een surge
-van ~25 spawns binnen `effectiefMaxActief()` (max 26).
+is 5 s, `effectiefSpawnInterval()` is 1,1 s basis (0,795 s bij drie zones).
+
+> **Gecorrigeerd in T145.** Hier stond: *"Bij ~30 s past een surge van ~25
+> spawns binnen `effectiefMaxActief()` (max 26)."* Het werkelijke plafond is
+> **18**, niet 26 — zie de correctie bij `updateGolf()` in §1. Dat verandert de
+> vorm van de finale: er passen 37 spawnpogingen in 30 s, maar er kunnen er
+> nooit meer dan 18 tegelijk leven. De druk zit dus in het **tempo** waarmee er
+> een nieuwe binnenkomt zodra de speler er één doodt (elke 0,8 s), niet in het
+> aantal op het scherm. T147 moet daarop ontwerpen; een surge die op aantal
+> mikt, loopt tegen de klem en voelt vlak. Volledige begroting in `FINALE.md`
+> §1.
 
 Faalgedrag: **geen aparte faalstaat**. Doodgaan tijdens de instapfase is
 gewoon game over via het bestaande pad.

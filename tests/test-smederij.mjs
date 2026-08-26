@@ -23,12 +23,31 @@ check('Drukspuit-smederijConfig[0] (niveau 1): schadeBonus 1.5, magazijnMax 12',
   configs.drukspuit[0].schadeBonus === 1.5 && configs.drukspuit[0].magazijnMax === 12, configs.drukspuit);
 check('Ratelaar-smederijConfig[0] (niveau 1): schadeBonus 1, magazijnMax 24',
   configs.ratelaar[0].schadeBonus === 1 && configs.ratelaar[0].magazijnMax === 24, configs.ratelaar);
-check('Drukspuit-smederijConfig[1] (niveau 2, Fix 5): meer schade dan niveau 1, groter magazijn',
-  configs.drukspuit[1].schadeBonus > configs.drukspuit[0].schadeBonus &&
+// SPEELTOETS-BIJSTELLING: deze twee checks eisten eerst dat niveau 2 een
+// GROTERE schadebonus gaf dan niveau 1. Die eis is bewust vervallen.
+//
+// Fix 5 gaf niveau 2 zowel de grootste schadesprong als het per-wapen
+// tier-2-effect, en dat werd te veel: de AMSTEL-9 kwam op lichaamsschade 5 uit
+// en doodde daarmee élke HP-trap (max 4) in één schot, waardoor er niets meer
+// te mikken viel. Niveau 2 geeft nu +0.5 op beide wapens — een KLEINERE
+// schadesprong dan niveau 1.
+//
+// "Niveau 2 is de grootste stap" klopt nog steeds, alleen niet meer via dit
+// ene getal: niveau 2 ontsluit óók de AMSTEL-9-explosie per raakpunt en de
+// Ripper-Doorboring. Wat hier overblijft als harde eis is dus het magazijn
+// (dat wél strikt oploopt) plus de exacte, bedoelde schadewaarden hieronder —
+// die zijn scherper dan de oude ">"-vergelijking, niet losser.
+check('Drukspuit-smederijConfig[1] (niveau 2): schadeBonus 0.5, magazijn groter dan niveau 1',
+  configs.drukspuit[1].schadeBonus === 0.5 &&
   configs.drukspuit[1].magazijnMax > configs.drukspuit[0].magazijnMax, configs.drukspuit);
-check('Ratelaar-smederijConfig[1] (niveau 2, Fix 5): meer schade dan niveau 1, groter magazijn',
-  configs.ratelaar[1].schadeBonus > configs.ratelaar[0].schadeBonus &&
+check('Ratelaar-smederijConfig[1] (niveau 2): schadeBonus 0.5, magazijn groter dan niveau 1',
+  configs.ratelaar[1].schadeBonus === 0.5 &&
   configs.ratelaar[1].magazijnMax > configs.ratelaar[0].magazijnMax, configs.ratelaar);
+// De uitkomst waar het echt om gaat, in speler-termen: wat kost een kill.
+check('AMSTEL-9 volledig gesmeed: lichaam 3, kop 4 (HP 3 in één lichaamsschot, HP 4 alleen met een kop)',
+  1 + configs.drukspuit[0].schadeBonus + configs.drukspuit[1].schadeBonus === 3, configs.drukspuit);
+check('Canal Ripper volledig gesmeed: lichaam 2.5, kop 3.5',
+  1 + configs.ratelaar[0].schadeBonus + configs.ratelaar[1].schadeBonus === 2.5, configs.ratelaar);
 
 // Ticket 134: de speler start met het mes, niet met een vuurwapen — dit
 // hele bestand wisselt via `kiesWapen()` voortdurend tussen Drukspuit en
@@ -535,9 +554,16 @@ check('Niveau 2: magazijnMax naar smederijConfig[1].magazijnMax', volledigTrajec
 check('Een derde koopSmederij()-aanroep is nu wél een echte no-op (beide niveaus al gekocht)',
   volledigTraject.derdeAanroepNoOp, volledigTraject);
 check('HUD toont ★★ bij een volledig gesmeed (niveau 2) wapen', volledigTraject.wapenLabel.includes('★★'), volledigTraject);
-check('Cumulatieve schadebonus = som van niveau 1 + niveau 2 (niveau 2 is het grootste deel)',
-  Math.abs(volledigTraject.schadeBeideNiveaus - (1 + volledigTraject.t1Bonus + volledigTraject.t2Bonus)) < 1e-9 &&
-  volledigTraject.t2Bonus > volledigTraject.t1Bonus, volledigTraject);
+// De cumulatie zelf blijft de kern van deze check: raakOndode() moet BEIDE
+// bonussen optellen, niet alleen de laatste. Het "niveau 2 is het grootste
+// deel"-deel is vervallen — zie de toelichting bij de smederijConfig-checks
+// bovenaan dit bestand. Wat ervoor in de plaats komt is scherper: de gemeten
+// schade moet exact op 3 uitkomen.
+check('Cumulatieve schadebonus = som van niveau 1 + niveau 2 (beide tellen mee, niet alleen de laatste)',
+  Math.abs(volledigTraject.schadeBeideNiveaus - (1 + volledigTraject.t1Bonus + volledigTraject.t2Bonus)) < 1e-9,
+  volledigTraject);
+check('Volledig gesmede AMSTEL-9 doet gemeten exact 3 lichaamsschade',
+  Math.abs(volledigTraject.schadeBeideNiveaus - 3) < 1e-9, volledigTraject);
 
 // --- Ticket 138 (TIERVISUALS.md §4): AMSTEL-9's tier-2-onderdelen zijn ---
 // pas zichtbaar NA niveau 2. Vóór T138 was elke `koopSmederij()`-aanroep een
@@ -573,17 +599,21 @@ const drukspuitTierZichtbaarheid = await page.evaluate(() => {
 
   return { bijTier0, bijTier1, bijTier2, tier2OnderdelenBijTier1, tierTelling, totaalKinderen: groep.children.length };
 });
+// SPEELTOETS-BIJSTELLING: de tellingen zijn 2/5 -> 1/4 geworden. De gebruiker
+// vond het wapen te vol staan met ringen; tier 1 houdt er nu nog één over, en
+// de derde tankring (de drukband) is helemaal vervallen. Tier 2 = die ring +
+// een tweede ring + de ring bij de loop + het overdrukventiel.
 check('AMSTEL-9-tiervisuals: 0 zichtbare onderdelen op tier 0',
   drukspuitTierZichtbaarheid.bijTier0 === 0, drukspuitTierZichtbaarheid);
-check('AMSTEL-9-tiervisuals: precies 2 zichtbare onderdelen op tier 1 (de bestaande gloeiringen)',
-  drukspuitTierZichtbaarheid.bijTier1 === 2, drukspuitTierZichtbaarheid);
-check('AMSTEL-9-tiervisuals: de drie tier-2-onderdelen zijn NOG onzichtbaar zolang alleen tier 1 gekocht is',
+check('AMSTEL-9-tiervisuals: precies 1 zichtbaar onderdeel op tier 1 (alleen de achterste gloeiring)',
+  drukspuitTierZichtbaarheid.bijTier1 === 1, drukspuitTierZichtbaarheid);
+check('AMSTEL-9-tiervisuals: de tier-2-onderdelen zijn NOG onzichtbaar zolang alleen tier 1 gekocht is',
   drukspuitTierZichtbaarheid.tier2OnderdelenBijTier1 === 0, drukspuitTierZichtbaarheid);
-check('AMSTEL-9-tiervisuals: alle 5 onderdelen zichtbaar op tier 2 (2 bestaand + 3 nieuw)',
-  drukspuitTierZichtbaarheid.bijTier2 === 5, drukspuitTierZichtbaarheid);
-check('AMSTEL-9-tiervisuals: budget exact op de grens (2 tier-1 + 3 tier-2 = 5, geen zesde)',
-  drukspuitTierZichtbaarheid.tierTelling.tier1 === 2 && drukspuitTierZichtbaarheid.tierTelling.tier2 === 3
-  && drukspuitTierZichtbaarheid.totaalKinderen === 5, drukspuitTierZichtbaarheid);
+check('AMSTEL-9-tiervisuals: alle 4 onderdelen zichtbaar op tier 2 (1 bestaand + 3 nieuw)',
+  drukspuitTierZichtbaarheid.bijTier2 === 4, drukspuitTierZichtbaarheid);
+check('AMSTEL-9-tiervisuals: 1 tier-1 + 3 tier-2 = 4, binnen het budget van 5',
+  drukspuitTierZichtbaarheid.tierTelling.tier1 === 1 && drukspuitTierZichtbaarheid.tierTelling.tier2 === 3
+  && drukspuitTierZichtbaarheid.totaalKinderen === 4, drukspuitTierZichtbaarheid);
 
 // --- Ticket 139 (TIERVISUALS.md §5): spiegelbeeld van de AMSTEL-9-check ----
 // hierboven, nu voor de Canal Ripper (hittebandVoor/gloeipen/drijfwerkbout).
@@ -795,6 +825,159 @@ const geenDoorboringNiveau1 = await page.evaluate(() => {
 });
 check('Zonder niveau 2 raakt de Canal Ripper alleen doel A, B blijft ongemoeid (geen Doorboring)',
   geenDoorboringNiveau1.schadeA > 0 && geenDoorboringNiveau1.schadeB === 0, geenDoorboringNiveau1);
+
+// --- SPEELTOETS-BIJSTELLING: de explosie hoort bij het RAAKPUNT -----------
+// Gemeld: "als ik op een zombie schiet met tier 2 AMSTEL-9 komt het bolletje
+// altijd op dezelfde plek, ook al schiet ik op zijn hoofd" en "in de kelder
+// zie ik geen ontploffing". Oorzaak: schotExplosie() zette de flits op een
+// VASTE y (0.9) en kreeg de hoogte van het raakpunt niet eens mee — beide
+// aanroepers gaven alleen x en z door. Deze checks leggen vast dat de hoogte
+// meereist, ook onder de begane grond.
+const explosieHoogte = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const meet = (x, y, z) => {
+    const voor = d.explosies.length;
+    d.schotExplosie(x, y, z, null);
+    const nieuw = d.explosies[d.explosies.length - 1];
+    return { gespawnd: d.explosies.length - voor, y: nieuw.flits.position.y, lichtY: nieuw.licht.position.y };
+  };
+  return { kop: meet(0, 1.55, 0), buik: meet(0, 0.8, 0), kelder: meet(0, -2.4, 0) };
+});
+check('Explosie op kophoogte staat op de kophoogte (niet op de vaste oude 0.9)',
+  Math.abs(explosieHoogte.kop.y - 1.55) < 1e-9, explosieHoogte);
+check('Explosie op buikhoogte staat lager dan die op kophoogte (de hoogte reist echt mee)',
+  explosieHoogte.buik.y < explosieHoogte.kop.y, explosieHoogte);
+check('Explosie in de kelder staat op een NEGATIEVE y (hing eerder door het plafond op de begane grond)',
+  Math.abs(explosieHoogte.kelder.y + 2.4) < 1e-9 && explosieHoogte.kelder.y < 0, explosieHoogte);
+check('Het explosielicht volgt de flits op dezelfde hoogte',
+  explosieHoogte.kop.lichtY === explosieHoogte.kop.y
+  && explosieHoogte.kelder.lichtY === explosieHoogte.kelder.y, explosieHoogte);
+
+// De splash is nu 3D: een explosie in de kelder raakt geen ondode die recht
+// daarboven op de begane grond staat. Vóór deze fix telde alleen de
+// horizontale afstand mee, dus die werd dwars door de vloer heen geraakt.
+const splash3D = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const meetSchade = (explosieY, ondodeY) => {
+    for (const o of [...d.ondoden]) d.doodOndode(o);
+    const o = d.spawnOndode(0, 'normaal');
+    o.hp = 1000;
+    o.groep.position.set(0.5, ondodeY, 0);   // ruim binnen de horizontale radius
+    const schade = (() => { d.schotExplosie(0, explosieY, 0, null); return 1000 - o.hp; })();
+    d.doodOndode(o);
+    return schade;
+  };
+  return {
+    zelfdeVerdieping: meetSchade(0.9, 0),
+    ondodeBoven: meetSchade(-2.4, 0),      // explosie in de kelder, ondode op de begane grond
+    radius: d.AMSTEL9_EXPLOSIE_RADIUS,
+  };
+});
+check('Splash raakt een ondode op dezelfde verdieping gewoon',
+  splash3D.zelfdeVerdieping > 0, splash3D);
+check('Splash raakt GEEN ondode die een verdieping hoger staat (3D-afstand, niet meer dwars door de vloer)',
+  splash3D.ondodeBoven === 0, splash3D);
+
+// --- SPEELTOETS-BIJSTELLING: spreiding genormaliseerd op magazijngrootte ---
+// Gemeld: de Canal Ripper voelde op tier 2 "wel heel inaccuraat aan het eind
+// van het magazijn". Oorzaak: de opbouw per schot was een vast getal, dus met
+// 32 kogels bereikte hij hetzelfde plafond op hetzelfde SCHOT en bleef daarna
+// nog tien kogels op zijn slechtst hangen. Nu schaalt de hele curve mee, zodat
+// de spreiding op elk PUNT IN HET MAGAZIJN gelijk is, ongeacht tier.
+const spreadNormalisatie = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const kiesWapen = (naam) => { if (d.actiefWapenNaam !== naam) d.wisselWapen(); };
+  kiesWapen('ratelaar');
+  const def = d.WAPEN_RATELAAR;
+
+  // Vuurt een heel magazijn leeg en geeft de eindspreiding terug. De
+  // tussenliggende afbouw wordt meegenomen door updateWapen() met de eigen
+  // cadans als dt — precies zoals doorlopend vuren in het echt.
+  const heelMagazijnSpread = (magazijnMax) => {
+    d.wapenStaat.magazijnMax = magazijnMax;
+    d.wapenStaat.magazijn = magazijnMax;
+    d.wapenStaat.herladen = false;
+    d.wapenStaat.spreadOpbouw = 0;
+    d.cameraKick = 0;
+    for (let i = 0; i < magazijnMax; i++) {
+      d.wapenStaat.magazijn = magazijnMax;   // magazijn vol houden: we meten spreiding, niet munitie
+      d.wapenStaat.herladen = false;
+      d.schiet();
+      d.vorigSchotKlok = d.klok;
+      d.updateWapen(def.schotCooldown);
+    }
+    return d.wapenStaat.spreadOpbouw;
+  };
+
+  const tier0 = heelMagazijnSpread(16);
+  const tier1 = heelMagazijnSpread(24);
+  const tier2 = heelMagazijnSpread(32);
+  return {
+    tier0, tier1, tier2,
+    factor0: d.spreadMagazijnFactor({ definitie: def, magazijnMax: 16 }),
+    factor2: d.spreadMagazijnFactor({ definitie: def, magazijnMax: 32 }),
+  };
+});
+check('spreadMagazijnFactor is 1 op het basismagazijn en 0.5 bij het dubbele',
+  spreadNormalisatie.factor0 === 1 && spreadNormalisatie.factor2 === 0.5, spreadNormalisatie);
+check('Een vol magazijn eindigt op tier 2 NIET met meer spreiding dan op tier 0 (dat was de klacht)',
+  spreadNormalisatie.tier2 <= spreadNormalisatie.tier0 + 1e-9, spreadNormalisatie);
+check('De eindspreiding is over alle drie de tiers vrijwel gelijk (curve uitgerekt, niet opgehoogd)',
+  Math.abs(spreadNormalisatie.tier1 - spreadNormalisatie.tier0) < 0.005
+  && Math.abs(spreadNormalisatie.tier2 - spreadNormalisatie.tier0) < 0.005, spreadNormalisatie);
+check('Er bouwt nog wél spreiding op — de normalisatie zet het mechanisme niet uit',
+  spreadNormalisatie.tier2 > 0.01, spreadNormalisatie);
+
+// --- SPEELTOETS-BIJSTELLING: de Canal Ripper op tier 2 beweegt ------------
+// Drie animaties, alle drie zonder extra mesh of licht.
+const ripperLeeft = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const kiesWapen = (naam) => { if (d.actiefWapenNaam !== naam) d.wisselWapen(); };
+  kiesWapen('ratelaar');
+  d.spelStaat.geld = 1000000;
+  while (!d.gesmeedNiveau2Actief) { d.spelStaat.geld = 1000000; d.koopSmederij(); }
+
+  // 1. Tweede tandwiel draait, en TEGENGESTELD aan het tier-1-rad.
+  const boutVoor = d.ripperDrijfwerkbout.rotation.z;
+  const tandwielVoor = d.smederijVisualsRatelaar.children[0].rotation.z;
+  for (let i = 0; i < 10; i++) d.updateSmederijVisuals(0.05);
+  const boutNa = d.ripperDrijfwerkbout.rotation.z;
+  const tandwielNa = d.smederijVisualsRatelaar.children[0].rotation.z;
+
+  // 2. Oververhittingsgloed: veel spreiding = feller.
+  d.wapenStaat.spreadOpbouw = 0;
+  d.updateSmederijVisuals(0.016);
+  const gloedKoud = d.ripperHittebanden[0].material.emissiveIntensity;
+  d.wapenStaat.spreadOpbouw = d.WAPEN_RATELAAR.spreadOpbouwMax * d.spreadMagazijnFactor(d.wapenStaat);
+  d.updateSmederijVisuals(0.016);
+  const gloedHeet = d.ripperHittebanden[0].material.emissiveIntensity;
+  d.wapenStaat.spreadOpbouw = 0;
+
+  // 3. Gloeipen pompt terug bij een schot en keert exact terug naar rust.
+  d.ripperGloeipenStoot = 1;
+  d.updateSmederijVisuals(0.016);
+  const penUit = d.ripperGloeipen.position.z;
+  for (let i = 0; i < 40; i++) d.updateSmederijVisuals(0.016);
+  const penRust = d.ripperGloeipen.position.z;
+
+  return {
+    boutDraait: boutNa !== boutVoor, tandwielDraait: tandwielNa !== tandwielVoor,
+    tegengesteld: Math.sign(boutNa - boutVoor) !== Math.sign(tandwielNa - tandwielVoor),
+    gloedKoud, gloedHeet, penUit, penRust, rustZ: d.RIPPER_GLOEIPEN_RUST_Z,
+  };
+});
+check('Ripper tier 2: het tweede tandwiel draait daadwerkelijk mee',
+  ripperLeeft.boutDraait && ripperLeeft.tandwielDraait, ripperLeeft);
+check('Ripper tier 2: de twee tandwielen draaien in TEGENGESTELDE richting (grijpen in elkaar)',
+  ripperLeeft.tegengesteld, ripperLeeft);
+check('Ripper tier 2: de hittebanden gloeien feller bij oververhitting',
+  ripperLeeft.gloedHeet > ripperLeeft.gloedKoud, ripperLeeft);
+check('Ripper tier 2: de gloed blijft binnen Bron-niveau (max 1.3, emissie-hiërarchie §10.5)',
+  ripperLeeft.gloedHeet <= 1.3 + 1e-9 && ripperLeeft.gloedKoud > 0, ripperLeeft);
+check('Ripper tier 2: de gloeipen schuift uit bij een schot',
+  ripperLeeft.penUit > ripperLeeft.rustZ, ripperLeeft);
+check('Ripper tier 2: de gloeipen keert exact terug naar zijn rustpositie',
+  Math.abs(ripperLeeft.penRust - ripperLeeft.rustZ) < 1e-9, ripperLeeft);
 
 // Opruimen voor eventuele volgende testruns op dezelfde page.
 await page.evaluate(() => {

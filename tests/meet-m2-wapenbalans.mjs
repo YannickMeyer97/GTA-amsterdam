@@ -101,10 +101,11 @@ const trefferkans = await page.evaluate((args) => {
 }, { AFSTANDEN, HERHALINGEN });
 
 // --- effectieve TTK: schoten-tot-kill gedeeld door de trefferkans ----------
-// De schade zelf is door T142/T143/T144 niet aangeraakt (alle drie sluiten
-// schadewaarden expliciet uit), dus het aantal RAKE kogels per kill komt nog
-// steeds uit de T141-tabel. Effectieve TTK = dat aantal / trefferkans,
-// x de cadans.
+// Het aantal RAKE kogels per kill wordt hieronder gemeten via raakOndode(),
+// niet overgenomen uit de T141-tabel — die is na de speeltoets-bijstelling
+// (tier-2-bonus van +2,5/+1,8 naar +0,5, zie GUNFEEL.md §1.1) op twee cellen
+// veranderd. Meten in plaats van overschrijven houdt dit script vanzelf
+// actueel. Effectieve TTK = dat aantal / trefferkans, x de cadans.
 const effectief = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const uit = [];

@@ -210,19 +210,23 @@ staat onder overdruk.**
 
 | # | naam | tier | vorm | plaats | waarom |
 |---|---|---|---|---|---|
-| 1 | gloeiring achter | 1 | `TorusGeometry(0.05, 0.008, 8, 16)` | `(0, 0.02, -0.02)` | bestaand, ongewijzigd |
-| 2 | gloeiring midden | 1 | `TorusGeometry(0.05, 0.008, 8, 16)` | `(0, 0.02, -0.09)` | bestaand, ongewijzigd |
-| 3 | drukband | 2 | `TorusGeometry(0.052, 0.011, 8, 16)` — dikker dan de twee tier-1-ringen | `(0, 0.02, -0.14)` | vóór de bestaande twee, nog op de tank (die loopt tot z = -0,15) |
-| 4 | overdrukventiel | 2 | `CylinderGeometry(0.008, 0.010, 0.026, 10)`, rechtop | `(0, 0.062, -0.05)` | steekt half uit de tankbovenkant (y = 0,064); leest als een afblaasventiel onder spanning |
-| 5 | ladingsring | 2 | `TorusGeometry(0.022, 0.006, 8, 14)` om het mondstuk | `(0, 0.02, -0.24)` | binnenstraal 0,016 om een mondstuk van ~0,0155 — precies waar de lading het wapen verlaat |
+| 1 | gloeiring achter | 1 | `TorusGeometry(0.05, 0.008, 8, 16)` | `(0, 0.02, -0.02)` | de enige tier-1-ring |
+| 2 | gloeiring midden | 2 | `TorusGeometry(0.05, 0.008, 8, 16)` | `(0, 0.02, -0.09)` | zelfde maat als #1, zodat de twee als één paar lezen |
+| 3 | overdrukventiel | 2 | `CylinderGeometry(0.008, 0.010, 0.026, 10)`, rechtop | `(0, 0.062, -0.05)` | steekt half uit de tankbovenkant (y = 0,064); leest als een afblaasventiel onder spanning |
+| 4 | ladingsring | 2 | `TorusGeometry(0.022, 0.006, 8, 14)` om het mondstuk | `(0, 0.02, -0.24)` | binnenstraal 0,016 om een mondstuk van ~0,0155 — precies waar de lading het wapen verlaat |
 
-**Totaal 5 meshes, 0 lichten — exact op vangrail 1.**
+**Totaal 4 meshes, 0 lichten — binnen vangrail 1 (max 5).**
 
-Silhouet-effect: tier 1 leest als "er zitten banden omheen", tier 2 als "het
-hele vat gloeit door tot aan de monding". De drie ringen staan op z = -0,02 /
--0,09 / -0,14: de tussenruimte loopt naar voren toe dicht (0,07 → 0,05), wat de
-tank een druk-oplopende leesrichting geeft. De oplopende dikte (0,008 → 0,008 →
-0,011) versterkt datzelfde.
+> **SPEELTOETS-BIJSTELLING (na T139).** De eerste uitvoering had er vijf: tier 1
+> hield twee ringen en tier 2 legde er een derde bij (een dikkere "drukband" op
+> z = -0,14). Dat stond te vol. Nu houdt tier 1 alleen de achterste ring over,
+> komt de middelste terug als tier-2-onderdeel, en is de drukband helemaal
+> vervallen. Netto bij tier 2: twee ringen op de tank plus één bij de monding.
+
+Silhouet-effect: tier 1 leest als "er zit een band omheen", tier 2 als "het vat
+gloeit door tot aan de monding". Doordat de twee tankringen identiek van maat
+zijn lezen ze als een paar, en springt de kleinere ring bij het mondstuk er
+juist uit — dat is het onderdeel dat de tier-2-mechaniek uitbeeldt.
 
 ---
 
@@ -237,7 +241,7 @@ Tier-2-mechaniek: Doorboring — de kogel gaat dwars door een doel heen. Vormtaa
 | 2 | hitteband | 1 | `TorusGeometry(0.03, 0.007, 8, 16)` | `(0, 0.03, -0.12)` | bestaand, ongewijzigd |
 | 3 | hitteband voor | 2 | `TorusGeometry(0.028, 0.007, 8, 16)` | `(0, 0.03, -0.27)` | binnenstraal 0,021 om een loop van ~0,0168; met de eerste band leest het als escalatie langs de loop |
 | 4 | gloeipen | 2 | `CylinderGeometry(0.004, 0.007, 0.10, 8)`, `rotation.x = PI/2` (taps naar voren) | `(0, 0.03, -0.35)` | zit 5 cm ín de loop verankerd en steekt 5 cm vóór de monding uit |
-| 5 | drijfwerkbout | 2 | `TorusGeometry(0.012, 0.005, 6, 10)`, `rotation.y = PI/2` | `(0.045, 0.02, 0.10)` | maakt het tandwielcluster op het chassis af |
+| 5 | drijfwerkbout | 2 | `TorusGeometry(0.016, 0.006, 6, 10)`, `rotation.y = PI/2` | `(0.045, 0.02, 0.10)` | tweede tandwiel naast het tier-1-rad |
 
 **Totaal 5 meshes, 0 lichten — exact op vangrail 1.**
 
@@ -251,6 +255,34 @@ verankering half binnen, half buiten. En **hij loopt door de mondingsvlam heen**
 (`vlamRatelaar` staat op z = -0,36): dat is geen conflict maar versterking — een
 gloeiende pen midden in de flits leest als de bron ervan. De `vlam`-structuur
 zelf blijft ongemoeid (vangrail 2).
+
+### 5.1 Drie animaties — het mesh-budget is vol, beweging is gratis
+
+> **SPEELTOETS-BIJSTELLING (na T139).** Gemeld: de Ripper zag er op tier 2 "nog
+> iets saai" uit. Terecht — het waren drie stilstaande ember-vormen, en twee
+> daarvan (gloeipen, drijfwerkbout) vallen vanuit spelersperspectief nauwelijks
+> op. Het budget zat op 5/5, dus er kon geen mesh bij; beweging kost niets.
+
+| # | wat | waar |
+|---|---|---|
+| 1 | **Tweede tandwiel.** De drijfwerkbout draait tijdens vuren tegengesteld aan het tier-1-rad (−1,9 rad/s tegen +1,2). Twee raderen die in elkaar grijpen lezen als opgevoerd drijfwerk. | `updateSmederijVisuals()` |
+| 2 | **Oververhittingsgloed.** De twee hittebanden gloeien feller naarmate `spreadOpbouw` oploopt, en doven als je stopt. Je ziet aan je eigen wapen dat je te lang doorratelt — dezelfde grootheid die de spreiding stuurt, nu ook zichtbaar. Genormaliseerd op het plafond, dus "volle gloed" = "maximaal vuil" bij elke tier. | idem |
+| 3 | **Pompende gloeipen.** De pen slaat per schot 3 cm terug en loopt uit, als een slagpin. `schiet()` zet de stoot, de update laat 'm aflopen. | `schiet()` + idem |
+
+Drie randvoorwaarden die deze animaties respecteren:
+
+- **Emissie-hiërarchie (vangrail 3).** De gloed loopt van 0,6 tot 1,3 — Bron-
+  niveau is het plafond en dat wordt niet overschreden.
+- **Nul extra meshes en lichten.** Alledrie zijn transform- of
+  materiaalmutaties op onderdelen die er al waren.
+- **De pen keert exact terug op zijn rustpositie** (`RIPPER_GLOEIPEN_RUST_Z`).
+  Dat is dezelfde eis die T140 aan de presentatielaag stelde: alles wat beweegt
+  moet exact op zijn rustpose uitkomen, anders verschuift de pixelvangrail
+  zodra het onderdeel ooit in beeld komt. Vastgelegd in een test.
+
+De animaties draaien alleen als de tier-2-set daadwerkelijk zichtbaar is, en
+alleen tijdens actief spel — `updateSmederijVisuals()` zit in de `spelActief`-
+tak van de gameLoop.
 
 ---
 
@@ -339,13 +371,13 @@ bouwstand is meteen weer de begintoestand.
 
 | | meshes tier 1 | meshes tier 2 | totaal | grens | lichten |
 |---|---|---|---|---|---|
-| AMSTEL-9 | 2 (bestaand) | 3 (nieuw) | **5** | 5 | 0 |
-| Canal Ripper | 2 (bestaand) | 3 (nieuw) | **5** | 5 | 0 |
+| AMSTEL-9 | 1 | 3 | **4** | 5 | 0 |
+| Canal Ripper | 2 | 3 | **5** | 5 | 0 |
 
-Het budget wordt niet verruimd en `test-smederij.mjs` hoeft niet bijgewerkt te
-worden voor de tellingen. Beide wapens komen exact op de grens uit — er is na
-T138/T139 geen ruimte meer voor een derde tier of extra decoratie zonder een
-onderbouwde verruiming.
+Het budget wordt niet verruimd. De Canal Ripper zit exact op de grens; bij de
+AMSTEL-9 is na de speeltoets-bijstelling (§4) één plek vrijgekomen. Verder
+uitbreiden vraagt een onderbouwde verruiming — of, zoals bij de Ripper in §5.1,
+beweging in plaats van geometrie.
 
 Renderkosten: ~+3 draw calls per wapen (0,5% van 634), ruim binnen de 25%
 `RENDER_BAND`.

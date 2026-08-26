@@ -60,7 +60,18 @@ Schade per lichaamstreffer per tier:
 |---|---|---|
 | 0 | 1,0 | 1,0 |
 | 1 | 2,5 | 2,0 |
-| 2 | 5,0 | 3,8 |
+| 2 | 3,0 | 2,5 |
+
+> **SPEELTOETS-BIJSTELLING (na T139).** Tier 2 gaf eerst 5,0 en 3,8. Bij 5,0
+> doodde de AMSTEL-9 élke HP-trap (max 4) in één lichaamsschot en viel er niets
+> meer te mikken — het wapen had zijn eigen precisie-identiteit weggeüpgraded.
+> De niveau-2-bonus is op beide wapens teruggebracht naar +0,5.
+>
+> Daarmee is niveau 2 een **kleinere schadesprong dan niveau 1** (+0,5 tegen
+> +1,5 / +1,0), en dat is bewust: niveau 2 ontsluit óók het per-wapen effect
+> (AMSTEL-9-explosie, Ripper-Doorboring). De totale stap is dus groter dan de
+> schade alleen. Twee testasserties die "niveau 2 = grootste schadesprong"
+> eisten zijn hierop aangepast; zie de toelichting in `test-smederij.mjs`.
 
 **AMSTEL-9** (cadans 0,2 s):
 
@@ -69,7 +80,11 @@ Schade per lichaamstreffer per tier:
 | 1 | 1 (0,00 s) | 1 (0,00) | 1 (0,00) | 1 (0,00) | 1 (0,00) | 1 (0,00) |
 | 2 | 2 (0,20 s) | 1 (0,00) | 1 (0,00) | 1 (0,00) | 1 (0,00) | 1 (0,00) |
 | 3 | 3 (0,40 s) | 2 (0,20) | 2 (0,20) | 1 (0,00) | 1 (0,00) | 1 (0,00) |
-| 4 | 4 (0,60 s) | 2 (0,20) | 2 (0,20) | 2 (0,20) | 1 (0,00) | 1 (0,00) |
+| 4 | 4 (0,60 s) | 2 (0,20) | 2 (0,20) | 2 (0,20) | **2 (0,20)** | 1 (0,00) |
+
+De enige cel die door de bijstelling verandert is HP 4 op tier 2: die kostte
+één lichaamsschot en kost er nu twee — of één **kop**treffer. Precies het gat
+waarin de precisiekeuze weer iets te presteren heeft.
 
 **Canal Ripper** (cadans 0,1 s):
 
@@ -77,8 +92,8 @@ Schade per lichaamstreffer per tier:
 |---|---|---|---|---|---|---|
 | 1 | 1 (0,00 s) | 1 (0,00) | 1 (0,00) | 1 (0,00) | 1 (0,00) | 1 (0,00) |
 | 2 | 2 (0,10 s) | 1 (0,00) | 1 (0,00) | 1 (0,00) | 1 (0,00) | 1 (0,00) |
-| 3 | 3 (0,20 s) | 2 (0,10) | 2 (0,10) | 1 (0,00) | 1 (0,00) | 1 (0,00) |
-| 4 | 4 (0,30 s) | 2 (0,10) | 2 (0,10) | 2 (0,10) | 2 (0,10) | 1 (0,00) |
+| 3 | 3 (0,20 s) | 2 (0,10) | 2 (0,10) | 1 (0,00) | **2 (0,10)** | 1 (0,00) |
+| 4 | 4 (0,30 s) | 2 (0,10) | 2 (0,10) | 2 (0,10) | 2 (0,10) | **2 (0,10)** |
 
 ### 1.2 Cadans, magazijn, herladen
 
@@ -265,13 +280,37 @@ hier ligt geen contract op nul; onnauwkeurigheid hoort bij dit wapen.
 
 | parameter | waarde |
 |---|---|
-| toename per schot | +0,010 NDC |
+| toename per schot | +0,010 NDC, **genormaliseerd op magazijngrootte** |
 | afbouw, standaard | 0,040 NDC/s |
 | afbouw, onder de drempel **én gestopt met vuren** | 0,150 NDC/s (3,75×) |
 | burst-drempel | 0,025 NDC |
 | "gestopt met vuren" | pauze > 1,5 × schotCooldown |
 | plafond | 0,130 NDC |
 | totale spread | `spreadNdc + spreadOpbouw` |
+
+> **SPEELTOETS-BIJSTELLING (na T139): normalisatie op magazijngrootte.**
+> Gemeld: op Smederij-tier 2 was de Ripper "aan het eind van het magazijn wel
+> heel inaccuraat". Terecht — de toename per schot was een vast getal, dus met
+> 32 kogels in plaats van 16 bereikte hij hetzelfde plafond op hetzelfde
+> *schot*, en bleef daarna nog tien kogels op zijn slechtst hangen. Upgraden
+> maakte het wapen dus onnauwkeuriger, terwijl het grotere magazijn juist de
+> beloning was.
+>
+> Wat nu meeschaalt is de **netto** opbouw per schot (toename min wat de afbouw
+> er in datzelfde schotinterval afhaalt), met factor
+> `basismagazijn / huidig magazijn`. Daardoor ligt de spreiding op elk *punt in
+> het magazijn* gelijk: bij kogel 20 van 32 precies zo groot als bij kogel 10
+> van 16.
+>
+> Afbouwtempo, plafond en burst-drempel blijven **ongeschaald**. Een eerste
+> versie schaalde die ook mee en de test ving dat meteen: het plafond werd dan
+> relatief strenger dan de opbouw, en tier 2 kwam uit op 0,063 rad tegen 0,096
+> voor ongesmeed — het wapen werd dus *nauwkeuriger* door te upgraden, het
+> tegenovergestelde probleem. Ongeschaald laten houdt bovendien de hersteltijd
+> na het vuren gelijk over alle tiers: bij gelijke spreiding hoort gelijk
+> herstel.
+>
+> Gemeten eindspreiding na een vol magazijn, alle drie de tiers: 0,096 NDC.
 
 Bij maximale cadans (0,10 s) is de netto opbouw +0,010 − 0,004 = **+0,006 NDC
 per schot**. Over een vol tier-0-magazijn (16 patronen) is dat 0,090, dus een
@@ -487,6 +526,16 @@ bevestigt:
    schot (0,00 s), óók HP 4 — waar de Ripper er dan nog twee nodig heeft. Dat
    is precies bij de taaiste late-game vijanden.
 
+> **Achterhaald door de speeltoets-bijstelling na T139.** Punt 2 gold bij een
+> tier-2-lichaamsschade van 5,0. Die is teruggebracht naar 3,0 (zie §1.1),
+> juist omdát "alles gaat in één schot dood" het mikken zinloos maakte. HP 4
+> kost nu twee lichaamsschoten óf één koptreffer.
+>
+> Het tier-2-moment is daarmee niet verdwenen maar **verplaatst**: van "elke
+> kill is gratis" naar "elke kill is gratis als je de kop raakt". Dat is
+> dichter bij de precisie-identiteit uit §3 dan de oude situatie was. Punt 1
+> (zekerheid) is ongewijzigd — dat is een spread-eigenschap, geen schade.
+
 ### 8.3 Speeltoets M2 — afgerond
 
 Het grootste deel van het gevecht in een grachtenpand speelt zich op korte
@@ -509,14 +558,38 @@ Drie gerichte vragen zijn tijdens de speeltoets bevestigd:
 
 **Bevestigd:** geen verdere bijstelling nodig op basis van deze speeltoets.
 
-### 8.4 Fix 5 tier-2-beloningen (ongewijzigd)
+### 8.4 Fix 5 tier-2-beloningen
 
 | | waarde |
 |---|---|
 | AMSTEL-9-explosie | radius 2 m, schadefactor 0,6 |
 | Ripper-Doorboring | 1 extra doel, schadefactor 0,6 |
-| Smederij-schadebonus | AMSTEL-9 +1,5 / +2,5 · Ripper +1,0 / +1,8 |
+| Smederij-schadebonus | AMSTEL-9 +1,5 / **+0,5** · Ripper +1,0 / **+0,5** |
 
-Beide zijn door T142-T144 niet aangeraakt (alle drie sluiten schadewaarden
-expliciet uit). T143 gaf de Doorboring wél voor het eerst een eigen hoorbare
-en zichtbare tell — daarvóór was hij alleen in de schade merkbaar.
+De twee effecten zijn door T142-T144 niet aangeraakt (alle drie sluiten
+schadewaarden expliciet uit). T143 gaf de Doorboring wél voor het eerst een
+eigen hoorbare en zichtbare tell — daarvóór was hij alleen in de schade
+merkbaar.
+
+De **schadebonus** van niveau 2 is ná T139 wél bijgesteld (van +2,5 / +1,8 naar
++0,5), om de reden in §1.1. De beloning van niveau 2 verschuift daarmee van
+"veel meer schade" naar "het effect plus een groter magazijn" — en juist die
+twee zijn wat het van niveau 1 onderscheidt.
+
+### 8.5 Twee gemelde bugs in de AMSTEL-9-explosie
+
+Uit dezelfde speeltoets, allebei in `schotExplosie()` en allebei dezelfde
+oorzaak: de functie kreeg alleen `x` en `z` mee. De hoogte van het raakpunt
+werd door beide aanroepers weggegooid en de flits stond op een vaste `y = 0.9`.
+
+1. *"Het bolletje komt altijd op dezelfde plek, ook al schiet ik op zijn
+   hoofd."* — klopt: de verticale positie was een constante.
+2. *"In de kelder zie ik geen ontploffing."* — die hing op de hoogte van de
+   begane grond, dus door het plafond heen.
+
+De hoogte reist nu mee met het raakpunt. Meteen meegenomen: de **splash-schade**
+was ook puur horizontaal (alleen `dx`/`dz`), waardoor een explosie in de kelder
+ondoden recht daarboven raakte. Die is nu 3D, gemeten naar het verticale midden
+van de lichaams-hitbox — niet naar `groep.position` (de voeten), want dan zou
+de lichaamshoogte zelf als afstand meetellen en de effectieve radius kleiner
+maken dan `AMSTEL9_EXPLOSIE_RADIUS` belooft.
