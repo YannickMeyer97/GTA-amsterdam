@@ -1,6 +1,7 @@
 # GUNFEEL.md — wapengevoel in getallen
 
-Ticket 141 (Ronde 11, fase 2). Dit document legt vast wat "precies en
+Ticket 141 (Ronde 11, fase 2), aangevuld met de bevindingen van T142-T144 en
+mijlpaal M2. Dit document legt vast wat "precies en
 gecontroleerd" (AMSTEL-9) en "agressief met oplopende straf" (Canal Ripper)
 **in getallen en curves** betekenen, meet waar het spel vandaag staat, en
 wijst aan welke modelonderdelen moeten kunnen bewegen.
@@ -435,3 +436,87 @@ goedgekeurde gevoel blijft exact), 0,35 voor de Ripper.
 **Bevestigd:** met `pitchKickFractie` op deze waarden voelen beide wapens
 goed. Geen verdere bijstelling nodig. De doelbanden in §3, §4 en §6 gelden
 zoals vastgelegd, inclusief de twee correcties.
+
+---
+
+## 8. Mijlpaal M2 — kloppen de twee wapens sámen?
+
+M2 stelt de vraag die T141 nog niet kón beantwoorden. De TTK-tabel in §1.1 ging
+uit van *"elke kogel raakt"* en was dus puur een schade-/cadanssom. Sinds T143
+mist de Canal Ripper een deel van zijn kogels en klimt zijn richtpunt. Zijn
+rauwe TTK-voordeel — in tier 0 en 1 was hij in élke cel even snel of sneller —
+hoefde dus niet meer te gelden.
+
+Meetscript: `tests/meet-m2-wapenbalans.mjs`. Dat vuurt echte magazijnen op een
+echte ondode via `schiet()` en telt hoeveel kogels de echte hitbox-proxies
+raken. Twee scenario's per wapen, want daartussen zit de vaardigheidskloof die
+het ontwerp bedoelt: **ongecompenseerd** (de speler trekt niet terug) en
+**gecompenseerd** (de speler trekt de klim perfect terug).
+
+### 8.1 Gemeten trefferkans (40 magazijnen per cel)
+
+| | 3 m | 6 m | 10 m |
+|---|---|---|---|
+| AMSTEL-9, ongecomp. | 100% | 100% | 100% |
+| AMSTEL-9, gecomp. | 100% | 100% | 100% |
+| Canal Ripper, ongecomp. | 100% | 95,0% | 72,0% |
+| Canal Ripper, gecomp. | 100% | 97,7% | 81,6% |
+
+De AMSTEL-9 staat op 100% in élke cel — precies wat zijn contract (`spreadNdc`
+exact 0, `pitchKickFractie` 0) belooft, en meteen de sanity-check dat de
+meting klopt. Een eerdere versie van het meetscript liet `cameraKick`
+ongeremd oplopen (die decayt in de cosmetische gameLoop-zone, niet in
+`updateWapenPresentatie()` — T140 liet camera-effecten expliciet buiten scope)
+en rapporteerde daardoor 58% voor een wapen dat per definitie niet kan missen.
+
+### 8.2 Wat dat betekent voor de balans
+
+**De straf van de Ripper is afstandsafhankelijk, en dat is niet neutraal.**
+Op 3 m is doorratelen letterlijk gratis: 100%, ook zonder compenseren. Pas
+vanaf ~6 m gaat het tellen, en op 10 m kost het een kwart tot een derde van je
+kogels. Effectieve TTK op 6 m (rake schoten ÷ trefferkans × cadans) laat zien
+dat de accuratesse-straf hem daar hooguit ~0,01 s kost: **hij blijft in tier 0
+en 1 ongeveer twee keer zo snel als de AMSTEL-9.**
+
+De conclusie van T141 staat dus overeind: *de AMSTEL-9 wint niet op TTK, en na
+T142-T144 nog steeds niet.* Zijn waarde ligt in twee dingen die de meting wél
+bevestigt:
+
+1. **Zekerheid.** 100% op 10 m tegenover 72-82%.
+2. **Het tier-2-moment.** Bij Smederij-tier 2 doodt hij élke HP-trap in één
+   schot (0,00 s), óók HP 4 — waar de Ripper er dan nog twee nodig heeft. Dat
+   is precies bij de taaiste late-game vijanden.
+
+### 8.3 Speeltoets M2 — afgerond
+
+Het grootste deel van het gevecht in een grachtenpand speelt zich op korte
+afstand af. Daar is de spreidingsstraf van de Ripper **niet voelbaar** (100%
+op 3 m). Het risico was dus dat "agressie met oplopende straf" in de praktijk
+zelden aangaat, en de Ripper simpelweg het betere wapen blijft — een
+speelgevoel-vraag die de getallen alleen niet konden beantwoorden.
+
+Drie gerichte vragen zijn tijdens de speeltoets bevestigd:
+1. Het tier-2-moment van de AMSTEL-9 (eenschots-explosie) leest nog steeds
+   duidelijk als een apart, herkenbaar moment naast de nieuwe kickback/ratel-
+   straf — geen vermenging met de gewone terugslag.
+2. De situatie hierboven — spreidingsstraf onzichtbaar op 3 m, wel voelbaar
+   vanaf ~6-10 m — is in de praktijk geen probleem: op korte afstand is de
+   Ripper bewust het sterkere wapen, en dat verschil met de AMSTEL-9 blijft op
+   afstand aanwezig.
+3. Fix 5's tier-2-beloningen (AMSTEL-9-explosie, Ripper-Doorboring) voelen
+   nog steeds als een echte beloning bovenop de nieuwe gunfeel, niet
+   overschaduwd door de T142/T143-aanpassingen.
+
+**Bevestigd:** geen verdere bijstelling nodig op basis van deze speeltoets.
+
+### 8.4 Fix 5 tier-2-beloningen (ongewijzigd)
+
+| | waarde |
+|---|---|
+| AMSTEL-9-explosie | radius 2 m, schadefactor 0,6 |
+| Ripper-Doorboring | 1 extra doel, schadefactor 0,6 |
+| Smederij-schadebonus | AMSTEL-9 +1,5 / +2,5 · Ripper +1,0 / +1,8 |
+
+Beide zijn door T142-T144 niet aangeraakt (alle drie sluiten schadewaarden
+expliciet uit). T143 gaf de Doorboring wél voor het eerst een eigen hoorbare
+en zichtbare tell — daarvóór was hij alleen in de schade merkbaar.
