@@ -414,10 +414,24 @@ wat je alleen kunt vermijden.
 
 ---
 
-## 7. Open punt
+## 7. Handmatige speeltoets — afgerond
 
-De handmatige toets uit de ticket-acceptatie (beide wapens vijf minuten spelen
-met de meetwaarden erbij, om te controleren of de getallen overeenkomen met wat
-je voelt) staat nog open. De doelbanden in §3, §4 en §6 zijn onderbouwd met de
-meting maar nog niet met de hand geverifieerd; als het spelen iets anders
-uitwijst, worden ze hier bijgesteld vóór T142/T143 ze implementeren.
+De handmatige toets uit de ticket-acceptatie is uitgevoerd, over twee rondes.
+
+**Ronde 1** (vóór de Ripper-bijstelling in §4): de AMSTEL-9 voelde meteen
+goed — precies, met een kickback die bij een krachtig handwapen past. De
+Canal Ripper niet: een vol magazijn leegjagen gaf nauwelijks meer spreiding
+of beeldbeweging dan één AMSTEL-9-schot. Dat leidde tot de eerste bijstelling
+(kegel 3,2° → 7,7°, zie de correctie in §4).
+
+**Ronde 2** (na die bijstelling): het beeld schudde nu wel merkbaar, maar het
+richtpunt zelf bewoog niet — de speler hoefde niets te corrigeren. Dat bleek
+geen tuningprobleem maar een architectuurkeuze: `cameraKick` was volledig
+herstellend, dus er was structureel niets om te compenseren. Dat leidde tot
+`pitchKickFractie` (§3/§4): een deel van elke kick blijft nu als echte
+`speler.pitch`-verandering staan — 0 voor de AMSTEL-9 (geen aim-drift, zijn
+goedgekeurde gevoel blijft exact), 0,35 voor de Ripper.
+
+**Bevestigd:** met `pitchKickFractie` op deze waarden voelen beide wapens
+goed. Geen verdere bijstelling nodig. De doelbanden in §3, §4 en §6 gelden
+zoals vastgelegd, inclusief de twee correcties.
