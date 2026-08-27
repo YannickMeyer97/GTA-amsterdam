@@ -8495,11 +8495,18 @@ op `ondode.loopFase` met een platte `THREE.Skeleton`. Er is al
 sway met faseverschil, flinch met rompTwist en vier valstijlen. Het budget is
 hard: **≤ 10 transform-writes per ondode per frame** (§4.9).
 
-Eén structureel gat: `loopFase` loopt op **tijd**
-(`dt * (4 + snelheid * 2) * gang.pasFactor`), terwijl de root op **afstand**
-beweegt (`positie.addScaledVector(richting, snelheidNu * dt)`). Die twee zijn
-niet gekoppeld, dus voetslip is structureel — en een geblokkeerde ondode
-loopt ter plekke door.
+*(Gecorrigeerd in T148 — locomotion-kwaliteit)* Vóór T148 liep `loopFase` op
+**tijd** (`dt * (4 + snelheid * 2) * gang.pasFactor`), terwijl de root op
+**afstand** beweegt (`positie.addScaledVector(richting, snelheidNu * dt)`).
+Die twee waren niet gekoppeld, dus voetslip was structureel — en een
+geblokkeerde ondode liep ter plekke door. T148 koppelt `loopFase` aan
+werkelijk afgelegde afstand (`voorPos.distanceTo(positie)`, 2D, ná
+`losBotsingenOp()`), exact het bestaande `bobFase`-patroon van de speler —
+een geblokkeerde ondode legt nu ~0m af en beweegt zijn benen dus ook niet
+meer. Zelfde ticket voegt gewichtsoverdracht toe: een zijwaartse
+`position.x`-verschuiving op pelvis (in fase met de bestaande sway) en chest
+(fase-vertraagd, op de bestaande chest-sway-fase) — geen nieuw geanimeerd
+deel, dus binnen hetzelfde 10-writes-budget (§4.9).
 
 **Audio: ~40 handgeschreven `speel*()`-functies boven één `piep()`-primitieve,
 geen registry, geen asset-pad.** Dertien testtellers (`herlaadStartTeller`,

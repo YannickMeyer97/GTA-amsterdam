@@ -76,7 +76,7 @@ check('Het geld gaat DIRECT af bij het starten, niet pas bij voltooiing',
 check('Er verschijnt nog GEEN winscherm — de fase moet eerst lopen',
   startTest.winSchermDisplay !== 'flex', startTest);
 check('De HUD toont de live aftelling zolang de speler bij de boot staat',
-  startTest.hudTekst === `Losgooien… ${startTest.verwachtTimer}s`, startTest);
+  startTest.hudTekst === `Hou stand… ${startTest.verwachtTimer}s`, startTest);
 
 // --- 2. T nogmaals indrukken tijdens de instapfase doet niets (geen dubbele
 // aftrek, timer springt niet terug naar de volle duur) ---------------------

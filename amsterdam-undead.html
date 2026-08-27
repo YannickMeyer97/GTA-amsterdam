@@ -9450,6 +9450,17 @@ function speelOndodeGrom(type, bronX, bronZ) {
 // dezelfde constante die maakOndodeModel gebruikt voor de rust-houding van
 // de arm-pivots, zodat bouw en animatie nooit uit de pas kunnen lopen.
 const ARM_RUST_ROTATIE_X   = -0.5;   // naar voren uitgestrekt (rust-houding van de arm-pivots)
+// Ticket 148: loopFase liep tot nu toe op TIJD (dt * (4 + snelheid*2)) terwijl
+// de root op AFSTAND beweegt — die twee zijn niet gekoppeld, dus structurele
+// voetslip (en een tegen een muur geblokkeerde ondode die ter plekke
+// doorloopt). Gekoppeld aan werkelijk afgelegde afstand, exact het bobFase-
+// patroon van de speler (zie updateSpeler()). Per-meter-constante afgeleid
+// van de oude tijd-formule bij ONDODE_SNELHEID, zodat het normale type zijn
+// bestaande cadans bij onbelemmerd lopen behoudt — snellere/tragere types
+// wijken nu bewust af via hun eigen afgelegde afstand i.p.v. via een aparte
+// snelheidsterm, wat vanzelf een realistischere pas-lengte/cadans-relatie
+// geeft dan de oude formule.
+const ONDODE_PASFREQUENTIE_PER_METER = (4 + ONDODE_SNELHEID * 2) / ONDODE_SNELHEID;   // rad/m, ≈4,67
 const BEEN_LOOP_AMPLITUDE  = 0.42;   // rad — normale beenzwaai
 const ARM_LOOP_FACTOR      = 0.6;    // arm-amplitude = beenamplitude x deze factor (tegenfase)
 const HOOFD_KANTEL_AMPLITUDE = 0.025;   // rad — subtiele hoofd-microkantel
@@ -9460,8 +9471,24 @@ const ROMP_BOB_HOOGTE      = 0.03;   // m — romp-bob boven de rust-y (1.1)
 // V1 nooit aan). Kleiner dan BEEN_LOOP_AMPLITUDE — dit is een subtiele
 // "voller bewogen"-toevoeging, geen nieuwe hoofdbeweging.
 const PELVIS_SWAY_AMPLITUDE = 0.08;   // rad — heup-sway in fase met de loopcyclus
+// Ticket 148: gewichtsoverdracht — een lichte zijwaartse verschuiving van de
+// pelvis naar het steunbeen, IN FASE met dezelfde faseL die de rotation.z-
+// sway hierboven al gebruikt (dus geen nieuwe klok/fase, en telt in het
+// 8-delen-budget van ARCHITECTURE_NOTES §4.9 mee als dezelfde "pelvis"-slot
+// — geen extra geanimeerd lichaamsdeel, alleen een extra as op een deel dat
+// toch al elk frame geschreven wordt). Positie, dus meters, niet radialen —
+// vandaar een eigen, kleinere schaal dan de rotatie-amplitudes hierboven.
+const PELVIS_WEIGHT_SHIFT_AMPLITUDE = 0.0225;   // m — zijwaartse pelvis-verschuiving (speeltest: 0,03 zwaaide te veel, 25% verkleind)
 const CHEST_SWAY_AMPLITUDE  = 0.05;   // rad — borstkas-sway, kleiner (meer inertie/demping)
 const CHEST_LAG_FASE        = 0.35;   // rad faseverschil t.o.v. de pelvis-sway ("loopt iets achter")
+// Ticket 148: torso-beweging verder uitgewerkt op de bestaande chest-sway —
+// dezelfde CHEST_LAG_FASE-vertraagde fase die chestSwayNu (rotation.z)
+// hieronder al gebruikt, drijft nu OOK een kleine zijwaartse chest-
+// verschuiving. Zo golft de gewichtsoverdracht zichtbaar van de pelvis
+// omhoog naar de borstkas i.p.v. dat de twee onafhankelijk van elkaar
+// bewegen — geen nieuwe fase, geen nieuw geanimeerd deel (chest is al
+// budgeted), alleen een extra as op een write die er toch al staat.
+const CHEST_WEIGHT_SHIFT_AMPLITUDE = 0.015;   // m — kleiner dan pelvis, zelfde "meer inertie"-logica als CHEST_SWAY_AMPLITUDE (speeltest: 25% verkleind, zie PELVIS_WEIGHT_SHIFT_AMPLITUDE)
 // Vervolg-fix (speeltest: "loopt houterig"): V2's benen zijn platte
 // enkelvoudige botten zonder knie (T119 se platte-structuur-eis staat geen
 // aparte knie-/scheenbeen-keten toe) — een volledig stijf been dat als een
@@ -10383,6 +10410,17 @@ function bouwOndodeBotstructuurV2() {
   if (bones.armL) bones.armL.userData.baseY = bones.armL.position.y;
   bones.armR.userData.baseY = bones.armR.position.y;
   bones.hoofd.userData.baseRotX = bones.hoofd.rotation.x;
+  // Ticket 148-fix (speeltest: "de benen staan soms los/aan de zijkant van
+  // het lichaam"): zelfde grondoorzaak als de arm-fix hierboven, nu voor de
+  // NIEUWE pelvis-gewichtsoverdracht (position.x). De beenbotten zijn nooit
+  // aan de romp-mesh geskind (v2RompGewichten() dekt alleen pelvis/romp/
+  // chest), dus toen de pelvis zijwaarts begon te schuiven, bleef de romp-
+  // mesh de benen visueel volgen maar de STATISCHE beenbotten zelf niet —
+  // de heup (romp-mesh) en de voeten (beenbotten) liepen zo zichtbaar uit
+  // elkaar. baseX zodat updateOndoden() straks dezelfde pelvis-shift ook op
+  // de benen kan zetten (zie daar).
+  bones.beenL.userData.baseX = bones.beenL.position.x;
+  bones.beenR.userData.baseX = bones.beenR.position.x;
   return bones;
 }
 
@@ -12213,15 +12251,31 @@ function updateOndoden(dt) {
     }
 
     // Ticket 20 (Z3): losse ledematen-animatie. loopFase loopt nu voor ALLE
-    // ondoden (snelheidsgekoppeld), niet meer alleen bij strompelt — puur
-    // visueel, raakt nooit positie/collision (bob zit op de romp-groep, een
-    // KIND van de root, nooit op groep.position zelf). Budget: 8
-    // transform-writes hieronder + rotation.y hierboven = 9, binnen de
-    // ≤ 10/ondode/frame uit ARCHITECTURE_NOTES §4.9.
+    // ondoden (afstandsgekoppeld — zie Ticket 148 hieronder), niet meer
+    // alleen bij strompelt — puur visueel, raakt nooit positie/collision (bob
+    // zit op de romp-groep, een KIND van de root, nooit op groep.position
+    // zelf). Budget: 8 geanimeerde delen (beenL/R, armL/R, romp, pelvis,
+    // chest, hoofd) hieronder + rotation.y hierboven = 9 slots, binnen de
+    // ≤ 10/ondode/frame uit ARCHITECTURE_NOTES §4.9 — geteld per DEEL, niet
+    // per property-mutatie (zie Ticket 148: de nieuwe pelvis-/chest-/been-
+    // gewichtsoverdracht is een extra AS op vier al-getelde delen, geen
+    // nieuw deel, dus geen extra slot).
     // Ticket 39 (Sfeer S2): per-type gang-ritme — vermenigvuldigers op
     // dezelfde writes hieronder (netto 0 extra transform-writes).
     const gang = (ONDODE_TYPES[ondode.type] || ONDODE_TYPES.normaal).gang || ONDODE_GANG_DEFAULT;
-    ondode.loopFase += dt * (4 + ondode.snelheid * 2) * gang.pasFactor;
+    // Ticket 148: voetslip-fix. `voorPos` (hierboven, vóór de beweging +
+    // losBotsingenOp() gezet) is al een verse momentopname van DEZE aanroep —
+    // in tegenstelling tot de speler se bobFase (module-level vorigeSpelerX/Z,
+    // overleeft frames) is hier dus GEEN aparte "vorige positie"-state nodig:
+    // een teleport tussen twee frames (test/debug) kan hier nooit als sprint
+    // gelezen worden. 2D (X/Z, geen Y) — exact zoals bobFase — zodat een
+    // trap/helling geen valse extra "afstand" oplevert. Een ondode die tegen
+    // een muur staat (losBotsingenOp klemt positie terug) legt ~0m af en
+    // beweegt zijn benen dus ook niet meer — vóór deze fix liep loopFase op
+    // tijd door, ook ter plekke.
+    const dxLoop = positie.x - voorPos.x, dzLoop = positie.z - voorPos.z;
+    const afgelegdeAfstandOndode = Math.hypot(dxLoop, dzLoop);
+    ondode.loopFase += afgelegdeAfstandOndode * ONDODE_PASFREQUENTIE_PER_METER * gang.pasFactor;
     const delen = ondode.delen;
     const beenAmpL = (ondode.strompelt ? BEEN_LOOP_AMPLITUDE * STROMPEL_BEEN_ZWAK : BEEN_LOOP_AMPLITUDE) * gang.ampFactor;
     const beenAmpR = (ondode.strompelt ? BEEN_LOOP_AMPLITUDE * STROMPEL_BEEN_STERK : BEEN_LOOP_AMPLITUDE) * gang.ampFactor;
@@ -12304,10 +12358,31 @@ function updateOndoden(dt) {
     // deze botten niet (delen.pelvis/delen.chest bestaan dan niet), dus dit
     // raakt V1 nooit aan en de loop-/aanval-/flinch-/death-timing hierboven
     // (faseL/loopFase zelf, beenAmp, ARM_LOOP_FACTOR, enz.) is ongewijzigd.
-    if (delen.pelvis) delen.pelvis.rotation.z = faseL * PELVIS_SWAY_AMPLITUDE;
+    if (delen.pelvis) {
+      delen.pelvis.rotation.z = faseL * PELVIS_SWAY_AMPLITUDE;
+      // Ticket 148: gewichtsoverdracht — dezelfde faseL, dus de pelvis
+      // verschuift zijwaarts naar het steunbeen precies wanneer hij ook naar
+      // die kant kantelt (rotation.z hierboven), i.p.v. een losse, uit-fase
+      // wiebel.
+      const pelvisShiftNu = faseL * PELVIS_WEIGHT_SHIFT_AMPLITUDE;
+      delen.pelvis.position.x = pelvisShiftNu;
+      // Speeltest-fix: zonder dit stonden de benen zichtbaar los van/naast
+      // de romp — de beenbotten zijn nooit aan de romp-mesh geskind
+      // (v2RompGewichten() dekt alleen pelvis/romp/chest), dus de heup
+      // schoof zijwaarts terwijl de voeten bleven staan. Zelfde precedent
+      // als de arm-fix hierboven (chest se sway/bob ook op de armen).
+      delen.beenL.position.x = delen.beenL.userData.baseX + pelvisShiftNu;
+      delen.beenR.position.x = delen.beenR.userData.baseX + pelvisShiftNu;
+    }
     const chestSwayNu = Math.sin(ondode.loopFase - CHEST_LAG_FASE) * CHEST_SWAY_AMPLITUDE;
     if (delen.chest) {
       delen.chest.rotation.z = chestSwayNu;
+      // Ticket 148: torso-beweging verder uitgewerkt op deze bestaande
+      // chest-sway — dezelfde vertraagde fase (CHEST_LAG_FASE) drijft nu ook
+      // een kleine zijwaartse chest-verschuiving, zodat de gewichtsoverdracht
+      // zichtbaar van de pelvis (hierboven) omhoog "golft" i.p.v. dat de twee
+      // onafhankelijk bewegen.
+      delen.chest.position.x = Math.sin(ondode.loopFase - CHEST_LAG_FASE) * CHEST_WEIGHT_SHIFT_AMPLITUDE;
       // Vervolg-fix (speeltest: "armen lijken soms los van de romp te
       // staan"): de schouderzone van de romp-mesh hangt vrijwel volledig aan
       // 'chest' (v2RompGewichten() geeft daar wChest≈1), maar armL/armR zijn
@@ -14499,8 +14574,11 @@ function updateOntsnappingVensterHUD() {
   if (vluchtOnderdelenOpgepakt < VLUCHT_ONDERDELEN.length) {
     tekst = '';
   } else if (instapActief) {
+    // Speeltest-fix: was "Losgooien… Ns" — dat beschrijft wat de BOOT doet,
+    // niet wat de speler moet doen (standhouden terwijl T147's escalatie
+    // oploopt). "Hou stand" is de opdracht, niet de statusmelding.
     tekst = (huidigeInteractie === ontsnappingsPunt)
-      ? `Losgooien… ${Math.ceil(instapTimer)}s`
+      ? `Hou stand… ${Math.ceil(instapTimer)}s`
       : 'Blijf bij de boot!';
   } else if (ontsnappingsPunt) {
     tekst = 'Boot ligt aan!';
@@ -14620,12 +14698,21 @@ function toonOntsnappingspuntIndienKlaar() {
     // aanlegplek). Het ontsnappingspunt hoort bij de AANGEMEERDE plek, dus
     // expliciet BIJKEUKEN_CZ i.p.v. een momentopname van de vaarbeweging.
     positie: new THREE.Vector3(BOOT_DOK_X - 1.5, 0, BIJKEUKEN_CZ),
-    radius: 1.4,
+    // Speeltest-fix: was 1.4 (net de vlonder) — te krap zodra de instapfase
+    // (T147) de zombie-toevoer laat oplopen: geen ruimte om te bewegen of te
+    // kiten tijdens de 30s holdout. Vergroot tot de afstand vanaf dit punt
+    // tot de verste hoek van de bijkeuken (+ kleine marge) — dekt daarmee in
+    // een rechte lijn ook de grachtgang en de vlonder ertussen, dus de
+    // speler kan vrij tussen boot en bijkeuken bewegen zonder dat de timer
+    // pauzeert. Afgeleid van de bestaande zone-constanten i.p.v. een losse
+    // magic number, zodat een latere wijziging aan de bijkeuken-afmetingen
+    // dit automatisch meeschaalt.
+    radius: Math.hypot((BOOT_DOK_X - 1.5) - BIJKEUKEN_X_WEST, BIJKEUKEN_CZ - BIJKEUKEN_Z_NOORD) + 0.5,
     // Ticket 146: tijdens de instapfase doet T niets meer (probeerOntsnapping()
     // negeert 'm dan) — de prompt toont hier de live aftelling in plaats van
     // een "Druk T"-instructie die niet meer klopt.
     prompt: () => instapActief
-      ? `Losgooien… ${Math.ceil(instapTimer)}s`
+      ? `Hou stand… ${Math.ceil(instapTimer)}s`
       : (spelStaat.geld < ONTSNAPPING_PRIJS
         ? `Nog €${ONTSNAPPING_PRIJS - spelStaat.geld} nodig om te ontsnappen`
         : `Druk T: ontsnap over het water (€${ONTSNAPPING_PRIJS})`),
@@ -14690,7 +14777,12 @@ function probeerOntsnapping() {
   finaleFogVan = { near: scene.fog.near, far: scene.fog.far };
   finalePulsTimer = FINALE_PULS_INTERVAL_START;
   finaleLaatsteSecondenGetoond = false;
-  toonGolfBanner('Aan boord!', 'Blijf bij de boot tot ze losgooien…');
+  // Speeltest-fix: de subtekst was "Blijf bij de boot tot ze losgooien…" —
+  // legde de wachttijd uit, maar niet dat het intussen zwaarder wordt
+  // (T147's escalatie). Nieuwe spelers lazen dat als een neutrale wachttijd
+  // i.p.v. een oplopende horde-fase. FINALE_INSTAP_DUUR i.p.v. een losse "30"
+  // zodat de tekst niet uit de pas kan lopen met de werkelijke duur.
+  toonGolfBanner('Aan boord!', `Blijf dichtbij de boot — overleef ${FINALE_INSTAP_DUUR} seconden!`);
   updateOntsnappingVensterHUD();
 }
 
@@ -15655,6 +15747,9 @@ window.AmsterdamUndeadDebug = {
   // Ticket 119: pelvis-/chest-sway-constanten (voor tests: amplitude/fase
   // rechtstreeks verifiëren i.p.v. magische getallen te herhalen).
   PELVIS_SWAY_AMPLITUDE, CHEST_SWAY_AMPLITUDE, CHEST_LAG_FASE,
+  // Ticket 148: locomotion-kwaliteit — afstandsgekoppelde loopFase-frequentie
+  // + gewichtsoverdracht-amplitudes (pelvis/chest).
+  ONDODE_PASFREQUENTIE_PER_METER, PELVIS_WEIGHT_SHIFT_AMPLITUDE, CHEST_WEIGHT_SHIFT_AMPLITUDE,
   // Ticket 121: anatomie-bouwers + het schakelbare detailniveau (voor de
   // beeldvergelijking laag/midden en de driehoeksmeting in de tests).
   V2_DETAIL_NIVEAUS, bouwLoftGeometrie, bemonsterProfiel, v2RompGewichten,

@@ -173,6 +173,134 @@ check('chest.rotation.z matcht exact sin(loopFase - CHEST_LAG_FASE) * CHEST_SWAY
 check('pelvis/chest op hetzelfde tijdstip verschillen (de fase-vertraging doet echt iets)',
   pelvisChest.naPelvis1 !== pelvisChest.naChest1, pelvisChest);
 
+// --- 7. Ticket 148: loopFase gekoppeld aan WERKELIJK afgelegde afstand
+// (exact het bobFase-patroon van de speler), niet meer aan tijd — het
+// dicht structurele voetslip. Een vrij lopende ondode: de faseopbouw moet
+// exact matchen met de gemeten positie-delta x ONDODE_PASFREQUENTIE_PER_METER
+// x gang.pasFactor. --------------------------------------------------------
+const afstandGekoppeld = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  const o = d.spawnOndode(0, 'normaal');
+  o.groep.position.set(0, 0, -10);
+  d.speler.positie.set(0, 0, 0);   // ver genoeg weg: geen melee-windup, gewoon vrij lopen
+  const voorPos = { x: o.groep.position.x, z: o.groep.position.z };
+  const loopFaseVoor = o.loopFase;
+  d.updateOndoden(0.1);
+  const naPos = { x: o.groep.position.x, z: o.groep.position.z };
+  const loopFaseNa = o.loopFase;
+  const afgelegd = Math.hypot(naPos.x - voorPos.x, naPos.z - voorPos.z);
+  const verwachteFaseToename = afgelegd * d.ONDODE_PASFREQUENTIE_PER_METER;   // pasFactor 1 voor 'normaal'
+  d.doodOndode(o);
+  return { afgelegd, faseToename: loopFaseNa - loopFaseVoor, verwachteFaseToename };
+});
+check('Een vrij lopende ondode legt daadwerkelijk afstand af (testopzet klopt)',
+  afstandGekoppeld.afgelegd > 0, afstandGekoppeld);
+check('loopFase-toename matcht exact afgelegde afstand x ONDODE_PASFREQUENTIE_PER_METER (geen tijd-koppeling meer)',
+  Math.abs(afstandGekoppeld.faseToename - afstandGekoppeld.verwachteFaseToename) < 1e-9, afstandGekoppeld);
+
+// --- 8. Ticket 148: een tegen een muur geblokkeerde ondode legt ~0m af en
+// beweegt zijn benen dus niet of nauwelijks — vóór deze fix liep loopFase
+// gewoon door op tijd, ook ter plekke.
+//
+// De zuidmuur van de woonkamer (x -4.8..4.8, z 5..5.3) is een simpel, geïsoleerd
+// recht muursegment (geen deuropening/hoek in de buurt bij x=0), met de speler
+// ver naar het zuiden (buiten de kaart) — de ondode probeert dus recht de muur
+// in te lopen. Eén "settle"-tick eerst (niet meegeteld): de ondode spawnt op
+// GRENS.maxZ, dat is de coarse buitenklem-marge, niet de exacte ONDODE_STRAAL-
+// afstand tot de echte muur-obstakel, dus die allereerste tick corrigeert nog
+// een (grotere) startoverlap i.p.v. de bedoelde "loopt ertegenaan"-beweging te
+// meten — vergelijkbaar met hoe test-vluchtroute.mjs onderdelen al op hun
+// rustvlak plaatst vóórdat het eigenlijk meten begint.
+//
+// Bewust maar 3 gemeten ticks x dt=0.1 (0,3s) NA de settle: de BESTAANDE
+// vastTijd/ontwijk-logica (verderop in updateOndoden(), los van dit ticket)
+// laat een écht al 0,5s vastzittende ondode gericht zijwaarts uitwijken om
+// het obstakel heen — een goede bestaande feature, maar die zou deze test na
+// ~5-6 ticks laten "verplaatsen" via een zijwaartse ontwijk-burst i.p.v. via
+// de voetslip-fix zelf. Ruim binnen die 0,5s-drempel blijven bewaakt precies
+// wat dit ticket beweert: de klem zelf, niet de latere ontwijk-reactie. -----
+const geblokkeerd = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  const o = d.spawnOndode(0, 'normaal');
+  o.groep.position.set(0, 0, d.GRENS.maxZ);
+  d.speler.positie.set(0, 0, d.GRENS.maxZ + 20);
+  d.updateOndoden(0.1);   // settle: los van de startoverlap, niet gemeten
+  const zVoor = o.groep.position.z;
+  const loopFaseVoor = o.loopFase;
+  const beenLVoor = o.delen.beenL.rotation.x, beenRVoor = o.delen.beenR.rotation.x;
+  const aanvalStaatVoor = o.aanvalStaat;
+  for (let i = 0; i < 3; i++) d.updateOndoden(0.1);
+  const zNa = o.groep.position.z;
+  const loopFaseNa = o.loopFase;
+  const beenLNa = o.delen.beenL.rotation.x, beenRNa = o.delen.beenR.rotation.x;
+  const aanvalStaatNa = o.aanvalStaat;
+  d.doodOndode(o);
+  return {
+    zVoor, zNa, loopFaseVoor, loopFaseNa,
+    beenLVoor, beenLNa, beenRVoor, beenRNa,
+    aanvalStaatVoor, aanvalStaatNa,
+  };
+});
+check('De speler staat ver genoeg weg om melee-windup uit te sluiten (testopzet klopt)',
+  geblokkeerd.aanvalStaatVoor === 'jaag' && geblokkeerd.aanvalStaatNa === 'jaag', geblokkeerd);
+check('De geblokkeerde ondode blijft na de settle op dezelfde z staan (losBotsingenOp klemt hem elke tick terug)',
+  Math.abs(geblokkeerd.zNa - geblokkeerd.zVoor) < 1e-6, geblokkeerd);
+check('...dus loopFase bouwt niet op (3 ticks ná de settle, nog steeds ~0 toename)',
+  Math.abs(geblokkeerd.loopFaseNa - geblokkeerd.loopFaseVoor) < 1e-6, geblokkeerd);
+check('...en de benen bewegen dus ook niet merkbaar (was vóór T148 wél het geval — tijd-gekoppeld liep altijd door)',
+  Math.abs(geblokkeerd.beenLNa - geblokkeerd.beenLVoor) < 1e-6 && Math.abs(geblokkeerd.beenRNa - geblokkeerd.beenRVoor) < 1e-6,
+  geblokkeerd);
+
+// --- 9. Ticket 148: gewichtsoverdracht — pelvis/chest zijwaartse
+// verschuiving, dezelfde faseL/CHEST_LAG_FASE als de bestaande rotation.z-
+// sway (zie sectie 6), nu ook op position.x. --------------------------------
+const gewichtsoverdracht = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  const o = d.spawnOndode(0, 'normaal');
+  o.groep.position.set(0, 0, -10);
+  d.speler.positie.set(0, 0, 0);
+  const voorPelvisX = o.delen.pelvis.position.x, voorChestX = o.delen.chest.position.x;
+  const beenLBaseX = o.delen.beenL.userData.baseX, beenRBaseX = o.delen.beenR.userData.baseX;
+  d.updateOndoden(0.1);
+  const naPelvisX1 = o.delen.pelvis.position.x, naChestX1 = o.delen.chest.position.x;
+  const naBeenLX1 = o.delen.beenL.position.x, naBeenRX1 = o.delen.beenR.position.x;
+  const loopFaseNa1 = o.loopFase;
+  d.updateOndoden(0.1);
+  const naPelvisX2 = o.delen.pelvis.position.x, naChestX2 = o.delen.chest.position.x;
+  const verwachtPelvisX1 = Math.sin(loopFaseNa1) * d.PELVIS_WEIGHT_SHIFT_AMPLITUDE;
+  const verwachtChestX1 = Math.sin(loopFaseNa1 - d.CHEST_LAG_FASE) * d.CHEST_WEIGHT_SHIFT_AMPLITUDE;
+  d.doodOndode(o);
+  return {
+    voorPelvisX, voorChestX, naPelvisX1, naChestX1, naPelvisX2, naChestX2, verwachtPelvisX1, verwachtChestX1,
+    beenLBaseX, beenRBaseX, naBeenLX1, naBeenRX1,
+  };
+});
+check('pelvis.position.x beweegt tussen ticks (zijwaartse gewichtsoverdracht)',
+  gewichtsoverdracht.naPelvisX1 !== gewichtsoverdracht.voorPelvisX && gewichtsoverdracht.naPelvisX2 !== gewichtsoverdracht.naPelvisX1,
+  gewichtsoverdracht);
+check('chest.position.x beweegt mee (fase-vertraagd t.o.v. pelvis, zelfde CHEST_LAG_FASE als de rotation.z-sway)',
+  gewichtsoverdracht.naChestX1 !== gewichtsoverdracht.voorChestX && gewichtsoverdracht.naChestX2 !== gewichtsoverdracht.naChestX1,
+  gewichtsoverdracht);
+check('pelvis.position.x matcht exact sin(loopFase) * PELVIS_WEIGHT_SHIFT_AMPLITUDE',
+  Math.abs(gewichtsoverdracht.naPelvisX1 - gewichtsoverdracht.verwachtPelvisX1) < 1e-9, gewichtsoverdracht);
+check('chest.position.x matcht exact sin(loopFase - CHEST_LAG_FASE) * CHEST_WEIGHT_SHIFT_AMPLITUDE',
+  Math.abs(gewichtsoverdracht.naChestX1 - gewichtsoverdracht.verwachtChestX1) < 1e-9, gewichtsoverdracht);
+// Speeltest-fix: de benen volgden de pelvis-shift eerst niet mee (v2Romp-
+// Gewichten() skint de beenbotten nooit), waardoor de romp-mesh zichtbaar
+// van de statische voeten losschoof. beenL/beenR moeten dus EXACT dezelfde
+// shift krijgen als de pelvis, bovenop hun eigen rustpositie (baseX).
+check('beenL.position.x volgt EXACT dezelfde zijwaartse shift als de pelvis (geen visuele loskoppeling meer)',
+  Math.abs(gewichtsoverdracht.naBeenLX1 - (gewichtsoverdracht.beenLBaseX + gewichtsoverdracht.naPelvisX1)) < 1e-9,
+  gewichtsoverdracht);
+check('beenR.position.x volgt EXACT dezelfde zijwaartse shift als de pelvis',
+  Math.abs(gewichtsoverdracht.naBeenRX1 - (gewichtsoverdracht.beenRBaseX + gewichtsoverdracht.naPelvisX1)) < 1e-9,
+  gewichtsoverdracht);
+check('beenL en beenR blijven op hun eigen, verschillende rustpositie (geen samenval)',
+  gewichtsoverdracht.beenLBaseX !== gewichtsoverdracht.beenRBaseX, gewichtsoverdracht);
+
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);
