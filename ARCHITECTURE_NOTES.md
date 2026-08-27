@@ -8508,6 +8508,74 @@ meer. Zelfde ticket voegt gewichtsoverdracht toe: een zijwaartse
 (fase-vertraagd, op de bestaande chest-sway-fase) — geen nieuw geanimeerd
 deel, dus binnen hetzelfde 10-writes-budget (§4.9).
 
+*(Bijgesteld na de T149-speeltest — trefferfeedback en neervallen)* De
+speeltest meldde drie dingen: lichaams-/armtreffers voelden niet, lijken
+vielen "heel snel" neer, en ze vielen soms naar de speler toe. Alle drie
+gemeten en herleid:
+
+- **Trefferfeedback.** T149 liet de romp-twist kwadratisch uitdoven
+  (`fractie²`), waardoor er halverwege de toch al korte flinch (0,18s) nog
+  ~5° over was tegen ~17° bij een kopschot. Teruggedraaid naar lineair;
+  `FLINCH_DUUR` 0,18 → 0,26s (blijft onder de 0,3s-hersteltijd uit T21),
+  `FLINCH_ROMP_TWIST` 0,36 → 0,50 rad, `FLINCH_LICHAAM_DIP` 0,05 → 0,07m.
+  Het kop/lichaam-onderscheid zit nu in de KOP-curve (sqrt, hangt juist lang
+  door) in plaats van in een verzwakte lichaamsreactie.
+- **`KNOCKBACK_AFSTAND` 0,144 → 0,22m.** Het 0,15m-plafond was een bewuste
+  T21-rem toen de flinch nieuw was; de terugstoot blijkt echter de enige
+  trefferfeedback die óók op afstand zichtbaar is. Het plafond in
+  `test-ondode-hitreacties.mjs` is mee opgehoogd naar 0,25m, met dezelfde
+  toelichting. De muurklaringstest daar blijft onveranderd: `losBotsingenOp()`
+  kapt de knockback nog steeds af, dus niets wordt door geometrie geduwd.
+- **Valcurve stond omgekeerd.** T149 schreef een ease-OUT
+  (`1 - (1-t)^n`) met een comment dat "versnelt eerst" beweerde — gemeten was
+  75% van de val voltooid op de hélft van de tijd. Een omvallend lichaam
+  versnelt juist (klein zwaartekrachtmoment rechtop, oplopend bij doorslaan).
+  Nu een echte ease-IN (`t^n`), en `STERVEN_DUUR` 0,7 → 1,0s.
+- **Valrichting hangt nu af van de doodsoorzaak.** `voorover` bracht de kop
+  1,71m NAAR de speler en werd in 25% van de kills geloot. Een schot kiest
+  voortaan uit `VAL_STIJLEN_SCHOT` (van de speler af — de ondode kijkt hem
+  aan, dus lokaal "achterover" ís weg), met een gelote zijwaartse leun voor
+  variatie; een messteek behoudt de volle `VAL_STIJLEN`-afwisseling.
+  `doodOndode(..., doorMes)` krijgt dat via `raakOndode(..., doorMes)` mee.
+  Een dood zonder speler-treffer (Brander-kettingreactie, Kerninslag) valt in
+  de schot-tak.
+
+*(Bijgesteld na een TWEEDE T149-speeltest — "ze vallen nu bijna allemaal naar
+mij toe")* De bovenstaande valrichting-fix loste het probleem niet echt op.
+Root cause: THREE's standaard Euler-volgorde `'XYZ'` betekent
+`v_wereld = Rx(Ry(Rz(v_lokaal)))` — de kijkrichting (`rotation.y`) wordt
+toegepast VOORDAT de val-kantel (`rotation.x`) toegepast wordt. Het
+hoofd-botpunt ligt lokaal vrijwel exact op de Y-as (~(0, 1,58, 0,02)), en een
+rotatie om een as heeft nagenoeg geen effect op een punt dát op die as ligt —
+dus de kijkrichting deed feitelijk niets. De daaropvolgende kantel-rotatie
+verschoof het lijk daardoor altijd in dezelfde WERELD-Z-richting, gemeten via
+een fijnmazige yaw-sweep (0°–360° in stappen van 30°): de Z-verschuiving bleef
+constant rond -1,6 tot -1,9m en de X-verschuiving bleef ~0, ongeacht de
+kijkrichting van de ondode. De eigen validatietest van de vorige bijstelling
+(sectie 6b in `test-ondode-doodsanimaties.mjs`) testte destijds maar ÉÉN
+geometrie (ondode altijd pal ten noorden van de speler) — daar valt "altijd
+dezelfde wereldrichting" toevallig samen met "van de speler af", dus de test
+gaf een vals-positieve bevestiging in plaats van de bug te vangen.
+
+Fix, in `doodOndode()`:
+- `ondode.groep.rotation.order = 'YXZ'` (geldt voor ZOWEL het schot- als het
+  mes-valpad) — dan wordt de kantel EERST toegepast en de kijkrichting
+  DAARNA, waardoor de kijkrichting de wereldrichting van de val nu wél
+  daadwerkelijk bepaalt.
+- Alleen voor een SCHOT (`!doorMes`): `rotation.y` expliciet vastzetten op
+  `Math.atan2(dx, dz)` (dezelfde formule als de jaag-AI, dx/dz = speler minus
+  ondode-positie) op het moment van sterven. Dat maakt de "altijd van de
+  speler af"-garantie onafhankelijk van de AI-rotatie, die tijdens chaotisch
+  gevecht (onderbroken windup, ontwijkbeweging) kan achterlopen of scheef
+  staan. Bij een messteek blijft de werkelijke kijkrichting van de ondode
+  staan — die varieert vanzelf per situatie, en dat gaf precies de gevraagde
+  afwisseling.
+
+`test-ondode-doodsanimaties.mjs` sectie 6b is herschreven: test nu 6
+aanlooprichtingen (noord/zuid/oost/west/twee diagonalen) × 40 schot-kills elk,
+mét een WILLEKEURIGE (niet naar de speler gerichte) AI-kijkrichting bij het
+sterven — precies de combinatie die de vorige test miste.
+
 **Audio: ~40 handgeschreven `speel*()`-functies boven één `piep()`-primitieve,
 geen registry, geen asset-pad.** Dertien testtellers (`herlaadStartTeller`,
 `wisselTeller`, `raakTikTeller`, `kopTikTeller`, `killKnakTeller`,

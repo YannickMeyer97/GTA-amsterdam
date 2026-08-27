@@ -8724,7 +8724,7 @@ function steekMes() {
   // geldAlsKop=true zodat een kill alsnog headshot-geld betaalt (§12.4).
   // basisSchadeVast=MES_SCHADE: negeert bewust de Smederij-bonus van het
   // actieve vuurwapen — het mes kan niet gesmeed worden (§12.6).
-  raakOndode(obj.userData.ondode, ondodeRaak[0].point, false, 1, true, MES_SCHADE);
+  raakOndode(obj.userData.ondode, ondodeRaak[0].point, false, 1, true, MES_SCHADE, true);
 }
 
 /* ================================================================
@@ -9080,7 +9080,13 @@ function speelKillKnak() {
   killKnakTeller++;
   const p = pitchVariatie();
   const t = wapenStaat ? wapenStaat.definitie.killToon : KILL_TOON_FALLBACK;
-  piep(t.type, t.start * p, t.eind * p, t.duur, 0.12);
+  piep(t.type, t.start * p, t.eind * p, t.duur, 0.16);
+  // Speeltoets-bijstelling (na T149, "kill voelt zwaarder"): een lage,
+  // wegzakkende onderlaag ONDER de bestaande per-wapen killToon. Die toon
+  // blijft ongemoeid (hij draagt de wapenidentiteit uit T144) — dit voegt
+  // alleen het lijfelijke gewicht toe dat er miste. Geen eigen teller: dit is
+  // dezelfde gebeurtenis, killKnakTeller telt 'm al.
+  piep('sine', 95 * p, 42 * p, 0.26, 0.13);
 }
 // Ticket 143: de Doorboring (Canal Ripper, Smederij-niveau 2) was tot nu toe
 // alleen in de SCHADE merkbaar — een tweede doel viel om zonder dat er iets
@@ -9346,6 +9352,26 @@ function duwSpelerWegVanOndoden() {
 // Puur presentatie — raakt nooit de state-machine-logica of -timings zelf.
 const AANVAL_ARM_HOEK_WINDUP = -1.9;    // rad — armen hoog geheven tijdens de wind-up
 const AANVAL_HOOFD_KANTEL    = 0.12;    // rad — hoofd kantelt licht achterover tijdens de wind-up
+// Ticket 149 (Gevecht-leesbaarheid): anticipatie in de wind-up, alleen op de
+// arm-heffing — een ease-in-curve (traag begin, snel einde) i.p.v. de
+// lineaire windupFractie, zodat de aanloop als een echte "hij haalt uit"-
+// opbouw aanvoelt. Hoofd/oog blijven bewust op de lineaire windupFractie:
+// `oogHalverwege > 2.0` is een getest acceptatiecriterium met een krappe
+// marge (test-aanval-tells.mjs) — een tragere curve daar zou 'm laten
+// falen. Geen enkele AANVAL_PROFIELEN-timing verandert; dit is zuiver de
+// curve WAARLANGS dezelfde windupFractie (0..1) naar de armhoek afbeeldt.
+const AANVAL_ANTICIPATIE_EXPONENT = 1.6;
+// "Hardere impact/duidelijker herstel": de arm zwaait op het slag-moment niet
+// keurig lineair terug naar rust, maar schiet er net voorbij (follow-through)
+// en veert dan terug — een klassieke "ease-out-back"-curve. AANVAL_IMPACT_
+// OVERSHOOT is de standaard-"back"-constante (hoe ver voorbij rust); bij
+// t=0/1 geeft de curve wiskundig gegarandeerd exact 0/1, dus geen sprong bij
+// het slag-moment zelf of bij de overgang naar de normale loop-zwaai.
+const AANVAL_IMPACT_OVERSHOOT = 1.2;
+function easeOutBack(t) {
+  const c3 = AANVAL_IMPACT_OVERSHOOT + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + AANVAL_IMPACT_OVERSHOOT * Math.pow(t - 1, 2);
+}
 // Ticket 89 (§10.5): de oogtrap is een staat-afhankelijke tieroverschrijding
 // — in rust (BASIS) zit hij BINNEN Bron (1,2-1,6), tijdens elk alarm
 // (AANVAL/MIST/STROOMUITVAL) schiet hij naar Signaal (2,6-3,4). Dat is
@@ -9514,13 +9540,36 @@ const STROMPEL_BEEN_STERK  = 1.3;
 // Ticket 21 (Z4): hitreacties. Flinch lerpt lineair af over FLINCH_DUUR;
 // knockback is een vaste totale afstand verspreid over diezelfde duur, altijd
 // via losBotsingenOp geklemd (nooit door een muur).
-const FLINCH_DUUR          = 0.18;   // s — < 0.3s hersteltijd (acceptatiecriterium)
+// Speeltoets-bijstelling (na T149): "ik merk niet echt iets als ik op een arm
+// of op het lichaam schiet". Gemeten oorzaak: de flinch duurde 0,18s én T149
+// liet 'm kwadratisch uitdoven, waardoor er halverwege nog maar ~5° twist
+// over was (tegen ~17° bij een kopschot). Duur fors omhoog (blijft onder de
+// 0,3s-hersteltijd uit het T21-acceptatiecriterium), twist en dip groter, en
+// de kwadratische uitdoving is teruggedraaid — zie updateOndoden().
+const FLINCH_DUUR          = 0.26;   // s — < 0.3s hersteltijd (acceptatiecriterium)
 // Feedback: 20% groter dan de oorspronkelijke Ticket 21-waarden (0.35/0.3/0.12)
 // — de reactie was soms nauwelijks te zien. KNOCKBACK_AFSTAND blijft met 0.144
 // ruim onder het 0.15m-plafond uit de ticket.
 const FLINCH_HOOFD_HOEK    = 0.42;   // rad — hoofd deint terug bij een headshot
-const FLINCH_ROMP_TWIST    = 0.36;   // rad — romp draait weg bij een lichaamstreffer
-const KNOCKBACK_AFSTAND    = 0.144;  // m — totale verplaatsing over de flinch-duur (max 0.15 uit de ticket)
+const FLINCH_ROMP_TWIST    = 0.50;   // rad — romp draait weg bij een lichaamstreffer (speeltoets: 0,36 was te subtiel)
+// Ticket 149: kop- en lichaamsflinch sterker onderscheiden — niet via een
+// nieuwe as, maar via een andere curve op dezelfde `fractie` (flinch.timer /
+// FLINCH_DUUR, loopt lineair 1 -> 0). Kop: sqrt(fractie) — blijft het
+// grootste deel van FLINCH_DUUR dicht bij de volle uitwijking (een "duizelig"
+// nagalmen) en klapt pas heel aan het eind snel terug. Lichaam: fractie²  —
+// het omgekeerde, een snelle knal die meteen begint af te bouwen (een korte,
+// kinetische terugslag, "erdoorheen lopen"). Beide geven bij fractie=0
+// exact 0, dus het bestaande herstel-gedrag (rotation.y-reset, zie hieronder
+// in updateOndoden()) blijft ongewijzigd.
+const FLINCH_LICHAAM_DIP  = 0.07;    // m — extra "ineenkrimpen" bij een lichaamstreffer, samen met de twist
+// Speeltoets-bijstelling (na T149): het 0,15m-plafond kwam uit T21 en was een
+// bewuste rem toen de flinch nieuw was. De speeltest ("ik merk niet echt iets
+// als ik op een arm of op het lichaam schiet") laat zien dat die rem nu te
+// strak staat: de terugstoot is de enige feedback die je óók op afstand ziet.
+// Bewust verhoogd naar 0,22m; het plafond in test-ondode-hitreacties.mjs is
+// mee opgehoogd, met dezelfde toelichting. De muurklaring blijft ongemoeid —
+// losBotsingenOp() klemt de knockback nog steeds (aparte test bewaakt dat).
+const KNOCKBACK_AFSTAND    = 0.22;   // m — totale verplaatsing over de flinch-duur
 const KERNPULS_SCHAAL_BONUS = 0.8;   // Brander-kern zwelt tijdelijk op bij een treffer
 
 // Bepaalt de start-HP van een ondode op basis van de huidige golf.
@@ -11037,7 +11086,35 @@ const stervendenGroep = new THREE.Group();
 scene.add(stervendenGroep);
 const stervenden = [];
 const VAL_STIJLEN = ['voorover', 'achterover', 'zijwaarts', 'inzakken'];
-const STERVEN_DUUR = 0.7;
+// Speeltoets-bijstelling (na T149): was 0,7s. Dat las als "omklappen", niet
+// als een lichaam met gewicht dat neergaat. Ronde 2: 1,0s voelde ná de
+// ease-IN-fix (zie VAL_EASE_EXPONENT) weer iets te lang aanslepen — 10%
+// korter naar 0,9s, ruim boven de oorspronkelijke 0,7s die als te snel gold.
+const STERVEN_DUUR = 0.9;
+// Speeltoets-bijstelling (na T149): dit stond als ease-OUT geschreven
+// (`1 - (1-t)^n`) mét een comment dat "versnelt eerst" beweerde — precies het
+// omgekeerde van wat de formule deed. Gemeten: op de hélft van de tijd was al
+// 75% van de val voltooid, wat de speeltest meldde als "vallen soms heel snel
+// neer". Een omvallend lichaam VERSNELT juist: rechtop staand is het
+// zwaartekrachtmoment klein, en het loopt op naarmate hij verder doorslaat.
+// Nu een echte ease-IN (`t^n`), toegepast in updateStervenden().
+const VAL_EASE_EXPONENT = 2;
+// Speeltoets-bijstelling (na T149): "vallen ze naar mij toe als ik ze
+// neerschiet". Gemeten: de stijl 'voorover' bracht de kop 1,71m NAAR de
+// speler, en werd in 25% van alle kills geloot. Een neergeschoten lichaam
+// hoort van de schutter WEG te gaan. Omdat de ondode de speler aankijkt
+// (groep.rotation.y volgt 'm), is lokaal "achterover" per definitie van de
+// speler af — geen wereldrichting-berekening nodig. Een messteek houdt wél
+// de volle variatie: die duwt niet, en van dichtbij oogt elke kant geloofwaardig.
+const VAL_STIJLEN_SCHOT = ['achterover'];
+// Zijwaartse leun bovenop een achterover-val, zodat "altijd achterover" toch
+// gevarieerd oogt (schuin naar achteren i.p.v. elke keer identiek recht naar
+// achteren). Blijft ruim onder 90°, dus de val gaat nooit alsnog naar voren.
+const VAL_ZIJLEUN_MAX = 0.45;   // rad (~26°)
+// "Kill voelt zwaarder": vlak vóór het omvallen zakt het lichaam kort door de
+// benen — een klein gewichtsmoment dat de val inleidt i.p.v. meteen te kantelen.
+const VAL_INZAK_DIEPTE = 0.12;   // m
+const VAL_INZAK_FRACTIE = 0.28;  // deel van de valduur waarin het doorzakken plaatsvindt
 
 // `type` = 'normaal' tenzij expliciet anders opgegeven: bestaande tests en
 // debug-tools roepen dit rechtstreeks aan en verwachten voorspelbaar
@@ -12092,7 +12169,11 @@ function updateOndoden(dt) {
       // deze ondode (zelfde properties), dus geen extra transform-budget.
       const windupFractie = Math.min(1, 1 - Math.max(0, ondode.aanvalTimer) / profiel.windup);
       const delen = ondode.delen;
-      const armNu = ARM_RUST_ROTATIE_X + (AANVAL_ARM_HOEK_WINDUP - ARM_RUST_ROTATIE_X) * windupFractie;
+      // Ticket 149: anticipatie — alleen de arm-heffing loopt op de ease-in-
+      // curve (AANVAL_ANTICIPATIE_EXPONENT), hoofd/oog hieronder blijven op
+      // de lineaire windupFractie zelf.
+      const windupArmFractie = Math.pow(windupFractie, AANVAL_ANTICIPATIE_EXPONENT);
+      const armNu = ARM_RUST_ROTATIE_X + (AANVAL_ARM_HOEK_WINDUP - ARM_RUST_ROTATIE_X) * windupArmFractie;
       if (delen.armL) delen.armL.rotation.x = armNu;
       if (delen.armR) delen.armR.rotation.x = armNu;
       delen.hoofd.rotation.x = delen.hoofd.userData.baseRotX - AANVAL_HOOFD_KANTEL * windupFractie;
@@ -12257,9 +12338,12 @@ function updateOndoden(dt) {
     // zelf). Budget: 8 geanimeerde delen (beenL/R, armL/R, romp, pelvis,
     // chest, hoofd) hieronder + rotation.y hierboven = 9 slots, binnen de
     // ≤ 10/ondode/frame uit ARCHITECTURE_NOTES §4.9 — geteld per DEEL, niet
-    // per property-mutatie (zie Ticket 148: de nieuwe pelvis-/chest-/been-
+    // per property-mutatie (zie Ticket 148: de pelvis-/chest-/been-
     // gewichtsoverdracht is een extra AS op vier al-getelde delen, geen
-    // nieuw deel, dus geen extra slot).
+    // nieuw deel, dus geen extra slot). Ticket 149's curves (windup-
+    // anticipatie, impact-overshoot, flinch-differentiatie, val-easing)
+    // hergebruiken uitsluitend diezelfde bestaande properties met een andere
+    // wiskundige afbeelding van fractie -> waarde — 0 extra transform-writes.
     // Ticket 39 (Sfeer S2): per-type gang-ritme — vermenigvuldigers op
     // dezelfde writes hieronder (netto 0 extra transform-writes).
     const gang = (ONDODE_TYPES[ondode.type] || ONDODE_TYPES.normaal).gang || ONDODE_GANG_DEFAULT;
@@ -12318,7 +12402,13 @@ function updateOndoden(dt) {
       const profielHerstel = (AANVAL_PROFIELEN[ondode.type] || AANVAL_PROFIELEN.normaal).herstel;
       const herstelFractie = Math.min(1, (profielHerstel - ondode.aanvalTimer) / (profielHerstel / 2));
       if (herstelFractie < 1) {
-        const armNu = AANVAL_ARM_HOEK_WINDUP + (ARM_RUST_ROTATIE_X - AANVAL_ARM_HOEK_WINDUP) * herstelFractie;
+        // Ticket 149: "hardere impact/duidelijker herstel" — de arm zwaait op
+        // het slag-moment niet keurig lineair terug naar rust, maar schiet er
+        // net voorbij (follow-through) en veert dan terug. easeOutBack(0)=0/
+        // easeOutBack(1)=1 exact, dus geen sprong bij het slag-moment zelf of
+        // bij de handoff naar de normale loop-zwaai hierboven. Oog blijft op
+        // de lineaire herstelFractie (ongewijzigd) — puur presentatie op de arm.
+        const armNu = AANVAL_ARM_HOEK_WINDUP + (ARM_RUST_ROTATIE_X - AANVAL_ARM_HOEK_WINDUP) * easeOutBack(herstelFractie);
         if (delen.armL) delen.armL.rotation.x = armNu;
         if (delen.armR) delen.armR.rotation.x = armNu;
         // Ticket 39: ondode.oogBasisIntensiteit i.p.v. de hardcoded constante
@@ -12429,20 +12519,42 @@ function updateOndoden(dt) {
         if (delen.kern) delen.kern.scale.setScalar(1);
       } else {
         const fractie = ondode.flinch.timer / FLINCH_DUUR;
-        if (ondode.flinch.soort === 'kop') delen.hoofd.rotation.x -= FLINCH_HOOFD_HOEK * fractie;
-        else {
+        if (ondode.flinch.soort === 'kop') {
+          // Ticket 149: sqrt(fractie) i.p.v. fractie zelf — het hoofd blijft
+          // het grootste deel van FLINCH_DUUR dicht bij de volle uitwijking
+          // (een kort "duizelig" nagalmen) en klapt pas vlak vóór het einde
+          // snel terug, i.p.v. gelijkmatig af te bouwen.
+          delen.hoofd.rotation.x -= FLINCH_HOOFD_HOEK * Math.sqrt(fractie);
+        } else {
+          // Speeltoets-bijstelling (na T149): dit was `fractie * fractie`, met
+          // als idee "een snelle kinetische terugslag". In de praktijk maakte
+          // dat de reactie vrijwel onzichtbaar — halverwege de flinch bleef er
+          // nog maar ~5° twist over, tegen ~17° bij een kopschot, en de
+          // speeltest meldde dan ook dat lichaams-/armtreffers niet aanvoelden.
+          // Terug naar lineair uitdoven; het onderscheid met de kop zit nu in
+          // de kop-curve (sqrt, blijft juist lang hangen) plus de dip hieronder.
+          const lichaamFractie = fractie;
           // Zelfde skin-weight-argument als de bob hierboven: een lichaams-
           // treffer moet de HELE torso zichtbaar laten twisten, niet alleen
-          // het smalle romp-gewogen bandje.
-          delen.romp.rotation.y = FLINCH_ROMP_TWIST * fractie;
-          if (delen.pelvis) delen.pelvis.rotation.y = FLINCH_ROMP_TWIST * fractie;
+          // het smalle romp-gewogen bandje. Extra "ineenkrimpen" (position.y)
+          // bovenop de bestaande twist — samen lezen ze als een klap opvangen,
+          // duidelijk anders dan de kop-terugdeining hierboven.
+          const dip = FLINCH_LICHAAM_DIP * lichaamFractie;
+          delen.romp.rotation.y = FLINCH_ROMP_TWIST * lichaamFractie;
+          delen.romp.position.y -= dip;
+          if (delen.pelvis) {
+            delen.pelvis.rotation.y = FLINCH_ROMP_TWIST * lichaamFractie;
+            delen.pelvis.position.y -= dip;
+          }
           if (delen.chest) {
-            delen.chest.rotation.y = FLINCH_ROMP_TWIST * fractie;
+            delen.chest.rotation.y = FLINCH_ROMP_TWIST * lichaamFractie;
+            delen.chest.position.y -= dip;
             // Zelfde reden als de sway/bob-fix hierboven: de arm moet met
             // het (chest-gewogen) schoudervlak meetwisten, anders scheurt de
             // schouder zichtbaar los tijdens de flinch.
-            if (delen.armL) delen.armL.rotation.y = FLINCH_ROMP_TWIST * fractie;
-            delen.armR.rotation.y = FLINCH_ROMP_TWIST * fractie;
+            if (delen.armL) { delen.armL.rotation.y = FLINCH_ROMP_TWIST * lichaamFractie; delen.armL.position.y -= dip; }
+            delen.armR.rotation.y = FLINCH_ROMP_TWIST * lichaamFractie;
+            delen.armR.position.y -= dip;
           }
         }
         if (ondode.flinch.kernPuls && delen.kern) delen.kern.scale.setScalar(1 + fractie * KERNPULS_SCHAAL_BONUS);
@@ -12554,7 +12666,7 @@ function spawnKillBurst(punt, kop) {
 // raakOndode(); onbekend bij een Brander-kettingreactie, die doodOndode()
 // direct aanroept — dan valt dit terug op de eigen positie van de ondode).
 // `kop` = headshot-kill (alleen betekenisvol bij een speler-treffer).
-function doodOndode(ondode, punt = null, kop = false) {
+function doodOndode(ondode, punt = null, kop = false, doorMes = false) {
   // Ticket 30: een dodelijke treffer tijdens de wind-up mag het aanvalsslot
   // niet laten lekken (anders daalt actieveAanvallers nooit meer terug).
   if (ondode.aanvalStaat === 'windup') actieveAanvallers--;
@@ -12568,9 +12680,52 @@ function doodOndode(ondode, punt = null, kop = false) {
   // gehaald en wordt nergens anders aan toegevoegd, dus verdwijnt gewoon.
   if (ondode.type === 'brander') { ontploiBrander(ondode); return; }
   // Ticket 22 (Z5): geen Brander -> zichtbaar neervallen i.p.v. verdwijnen.
-  const stijl = VAL_STIJLEN[Math.floor(Math.random() * VAL_STIJLEN.length)];
+  // Speeltoets-bijstelling (na T149): een SCHOT duwt het lichaam van de
+  // schutter af (VAL_STIJLEN_SCHOT), een messteek behoudt de volle variatie.
+  // `doorMes` komt via raakOndode() mee; een dood zonder speler-treffer (een
+  // Brander-kettingreactie, Kerninslag) valt in de schot-tak — ook dat is een
+  // klap van buitenaf, geen van dichtbij toegebrachte steek.
+  const stijlBron = doorMes ? VAL_STIJLEN : VAL_STIJLEN_SCHOT;
+  const stijl = stijlBron[Math.floor(Math.random() * stijlBron.length)];
+  // Speeltoets-bijstelling (na T149, ronde 2): de val-rotatie (rotation.x/z)
+  // werd toegepast met THREE's standaard Euler-volgorde 'XYZ' — dat betekent
+  // v_wereld = Rx(Ry(Rz(v_lokaal))), dus de kijkrichting (rotation.y) wordt
+  // ALS EERSTE toegepast, op een botpunt dat vrijwel exact op de Y-as ligt
+  // (het hoofd zit nagenoeg recht boven de voeten). Een rotatie om een as
+  // heeft geen effect op een punt dát op die as ligt, dus de kijkrichting
+  // deed feitelijk niets — de daaropvolgende val-kantel (rotation.x) viel
+  // daardoor altijd dezelfde kant op in wereldcoördinaten, ONGEACHT waar de
+  // ondode heen keek. Dat verklaart waarom de ronde-1-fix (VAL_STIJLEN_SCHOT
+  // = alleen 'achterover') soms toch naar de speler toe viel: "achterover"
+  // werkte alleen als de toevallige wereldrichting van de val toevallig van
+  // de speler af wees, niet omdat de kijkrichting daadwerkelijk meetelde.
+  // Fix: 'YXZ' i.p.v. 'XYZ' — dan wordt de kantel EERST toegepast en de
+  // kijkrichting DAARNA, dus de kijkrichting bepaalt nu wél de wereldrichting
+  // van de val. Geldt voor beide valpaden (mes én schot): ook bij een
+  // messteek was de val voorheen richting-onafhankelijk.
+  ondode.groep.rotation.order = 'YXZ';
+  if (!doorMes) {
+    // Voor een schot leggen we de kijkrichting expliciet vast op "naar de
+    // speler toe kijken" op het moment van sterven — dan valt "achterover"
+    // altijd van de speler af, ongeacht welke kant de AI toevallig op keek
+    // (bijvoorbeeld een onderbroken windup of een ontweek-beweging vlak
+    // voor de dodelijke treffer). Zonder deze snap zou de garantie alleen
+    // gelden als de AI-rotatie toevallig al klopte. Bij een messteek laten
+    // we de werkelijke kijkrichting staan (varieert vanzelf per situatie),
+    // zodat de valrichting daar juist wél afwisselt, zoals gevraagd.
+    const dx = speler.positie.x - ondode.groep.position.x;
+    const dz = speler.positie.z - ondode.groep.position.z;
+    if (dx * dx + dz * dz > 1e-6) ondode.groep.rotation.y = Math.atan2(dx, dz);
+  }
   stervendenGroep.add(ondode.groep);
-  stervenden.push({ groep: ondode.groep, timer: STERVEN_DUUR, stijl, huidMaterialen: ondode.delen.huidMaterialen });
+  // Ticket 149: willekeurige valrichting voor 'zijwaarts' (links/rechts) —
+  // ongebruikt bij de andere drie stijlen, maar altijd gezet zodat de kant
+  // niet afhangt van WELKE stijl er geloot is.
+  const zijkant = Math.random() < 0.5 ? 1 : -1;
+  // Speeltoets-bijstelling: schuine leun, zodat een altijd-achterover-val toch
+  // per lijk anders oogt (zie VAL_ZIJLEUN_MAX).
+  const zijleun = (Math.random() * 2 - 1) * VAL_ZIJLEUN_MAX;
+  stervenden.push({ groep: ondode.groep, timer: STERVEN_DUUR, stijl, zijkant, zijleun, huidMaterialen: ondode.delen.huidMaterialen });
 }
 
 // Ticket 22 (Z5): lerpt de valanimatie van elk lijk af en verwijdert het
@@ -12579,12 +12734,30 @@ function updateStervenden(dt) {
   for (let i = stervenden.length - 1; i >= 0; i--) {
     const s = stervenden[i];
     s.timer -= dt;
-    const voortgang = Math.min(1, 1 - Math.max(0, s.timer) / STERVEN_DUUR);
+    const voortgangLineair = Math.min(1, 1 - Math.max(0, s.timer) / STERVEN_DUUR);
+    // Speeltoets-bijstelling (na T149): ease-IN. Een omvallend lichaam
+    // versnelt — rechtop is het zwaartekrachtmoment klein en het loopt op
+    // naarmate hij doorslaat. De vorige versie deed precies het omgekeerde
+    // (75% van de val al voltooid op de helft van de tijd), wat als "klapt
+    // meteen om" las. Zie de toelichting bij VAL_EASE_EXPONENT.
+    const voortgang = Math.pow(voortgangLineair, VAL_EASE_EXPONENT);
     const hoek = voortgang * (Math.PI / 2);   // 0 -> 90°, draait om de voeten (root-oorsprong)
+    // "Kill voelt zwaarder": door de benen zakken vlak vóór/tijdens het
+    // kantelen. Loopt op zijn eigen (snellere) tempo dan de val zelf, dus je
+    // ziet eerst het gewicht inzakken en dan pas het omvallen doorzetten.
+    const inzak = VAL_INZAK_DIEPTE * Math.min(1, voortgangLineair / VAL_INZAK_FRACTIE);
     if (s.stijl === 'voorover') s.groep.rotation.x = hoek;
     else if (s.stijl === 'achterover') s.groep.rotation.x = -hoek;
-    else if (s.stijl === 'zijwaarts') s.groep.rotation.z = hoek;
+    else if (s.stijl === 'zijwaarts') s.groep.rotation.z = hoek * s.zijkant;   // Ticket 149: links of rechts, per lijk geloot
     else s.groep.position.y = -voortgang * 0.9;   // inzakken: zakt weg i.p.v. omvallen
+    if (s.stijl !== 'inzakken') {
+      // 'inzakken' regelt zijn eigen (veel diepere) verzakking hierboven; de
+      // andere stijlen krijgen het korte doorzak-moment er bovenop.
+      s.groep.position.y = -inzak;
+      // Schuine leun bovenop een voorover-/achteroverval (zie VAL_ZIJLEUN_MAX).
+      // 'zijwaarts' gebruikt rotation.z al zelf als hoofdas, dus die slaan we over.
+      if (s.stijl !== 'zijwaarts') s.groep.rotation.z = s.zijleun * voortgang;
+    }
     if (s.timer <= 0) {
       stervendenGroep.remove(s.groep);
       ruimGroepOp(s.groep);   // Ticket 70: geometrie is gedeeld (T69) en overgeslagen; per-ondode materialen (huidKleur, oogMateriaal) worden hier gedisposed
@@ -12717,7 +12890,7 @@ function updateExplosies(dt) {
 //   VUURWAPEN) anders zou lekken in een messteek — het mes kan niet gesmeed
 //   worden (§12.6) en moet MES_SCHADE onveranderlijk blijven houden, ook als
 //   de speler het actieve vuurwapen al heeft opgewaardeerd.
-function raakOndode(ondode, punt, kop = false, schadeFactor = 1, geldAlsKop = false, basisSchadeVast = null) {
+function raakOndode(ondode, punt, kop = false, schadeFactor = 1, geldAlsKop = false, basisSchadeVast = null, doorMes = false) {
   // Ticket 42: elke treffer telt, ongeacht dodelijk of niet — headshots zijn
   // kop-TREFFERS (consistent met de hitmarker-tiers), niet alleen kop-kills.
   runStats.treffers++;
@@ -12740,7 +12913,7 @@ function raakOndode(ondode, punt, kop = false, schadeFactor = 1, geldAlsKop = fa
     // impact-burst + emissive flits) — geen aparte spawnImpact()-aanroep
     // hier meer nodig (zie de else-tak hieronder, voor de overlevende-
     // treffer-variant, die dat WEL nog doet).
-    doodOndode(ondode, punt, kop);
+    doodOndode(ondode, punt, kop, doorMes);
     if (Math.random() < POWERUP_DROP_KANS) spawnPowerupDrop(dropPos.x, dropPos.z, kiesPowerupType());
   } else {
     // Ticket 33: een overlevende treffer is 'kop' (headshot) of 'lichaam'.
@@ -15897,6 +16070,13 @@ window.AmsterdamUndeadDebug = {
   get actieveAanvallers() { return actieveAanvallers; },
   // Ticket 31 (Aanval A2): zichtbare/hoorbare tells
   AANVAL_ARM_HOEK_WINDUP, AANVAL_HOOFD_KANTEL, OOG_INTENSITEIT_BASIS, OOG_INTENSITEIT_AANVAL,
+  // Ticket 149 (Gevecht-leesbaarheid): anticipatie/impact-curves + flinch-
+  // differentiatie + val-easing.
+  AANVAL_ANTICIPATIE_EXPONENT, AANVAL_IMPACT_OVERSHOOT, easeOutBack,
+  FLINCH_LICHAAM_DIP, VAL_EASE_EXPONENT,
+  // Speeltoets-bijstelling na T149: valrichting per doodsoorzaak, schuine
+  // leun, en het doorzak-moment ("kill voelt zwaarder").
+  VAL_STIJLEN_SCHOT, VAL_ZIJLEUN_MAX, VAL_INZAK_DIEPTE, VAL_INZAK_FRACTIE,
   speelAanvalGrom, speelSlagRaak, speelSlagMis,
   get aanvalGromTeller() { return aanvalGromTeller; },
   get slagRaakTeller() { return slagRaakTeller; },

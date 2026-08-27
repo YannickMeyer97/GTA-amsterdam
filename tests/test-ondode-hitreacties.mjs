@@ -78,6 +78,102 @@ check('Lichaamstreffer geeft flinch.soort = "lichaam" met een romp-twist (rotati
 check('Romp-twist verdwijnt weer na herstel (rotation.y terug naar 0)',
   flinchLichaam.rompYNa === 0, flinchLichaam);
 
+// --- 2b. Ticket 149: kop- vs lichaamsflinch sterker onderscheiden — andere
+// curves op dezelfde fractie (sqrt voor kop, kwadraat voor lichaam) + een
+// extra "ineenkrimpen" (position.y-dip) alleen bij een lichaamstreffer.
+// snelheid=0 + loopFase=0 sluiten de gewone loop-idle-writes (hoofd-
+// microkantel, romp-bob) uit — anders vervuilt hun eigen bijdrage (via de
+// afstandsgekoppelde loopFase, Ticket 148) de exacte-formule-checks hieronder
+// met een onvoorspelbare, niet-nul term. -------------------------------------
+const flinchCurves = await page.evaluate((traitsStr) => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  d.eliminatiemodusTimer = 0;
+  d.speler.positie.set(0, 0, 0);
+  const traits = eval(`(${traitsStr})`);
+
+  // Kop vs. een ongeraakte controle-ondode, identiek opgezet: bewijst dat een
+  // headshot romp.position.y niet aanraakt.
+  const controle = d.spawnOndode(0, 'normaal', traits);
+  controle.hp = 1000; controle.snelheid = 0; controle.loopFase = 0;
+  controle.groep.position.set(0, 0, -10);
+  const kop = d.spawnOndode(0, 'normaal', traits);
+  kop.hp = 1000; kop.snelheid = 0; kop.loopFase = 0;
+  kop.groep.position.set(0, 0, -10);
+  d.raakOndode(kop, kop.groep.position, true);
+  d.updateOndoden(0.001);
+  // fractie wordt in de echte code gelezen NA de timer-decrement van deze
+  // tick (ondode.flinch.timer -= dt vóór de write) — dus ook hier PAS na de
+  // updateOndoden()-aanroep aflezen, anders klopt de verwachte waarde niet.
+  const fractieKop = kop.flinch.timer / d.FLINCH_DUUR;
+  const hoofdXNa = kop.delen.hoofd.rotation.x;
+  const hoofdBaseX = kop.delen.hoofd.userData.baseRotX;
+  const rompYControle = controle.delen.romp.position.y;
+  const rompYKop = kop.delen.romp.position.y;
+  d.doodOndode(controle);
+  d.doodOndode(kop);
+
+  const lichaam = d.spawnOndode(1, 'normaal', traits);
+  lichaam.hp = 1000; lichaam.snelheid = 0; lichaam.loopFase = 0;
+  lichaam.groep.position.set(0, 0, -10);   // zelfde bekende-vrije plek als kop/controle hierboven
+  d.raakOndode(lichaam, lichaam.groep.position, false);
+  d.updateOndoden(0.001);
+  const fractieLichaam = lichaam.flinch.timer / d.FLINCH_DUUR;
+  const rompRotYNa = lichaam.delen.romp.rotation.y;
+  const dipWerkelijk = lichaam.delen.romp.userData.baseY - lichaam.delen.romp.position.y;   // loopFase=0 -> geen bob, dus dit IS de flinch-dip
+  d.doodOndode(lichaam);
+
+  return {
+    fractieKop, hoofdXNa, hoofdBaseX,
+    verwachtHoofdX: hoofdBaseX - d.FLINCH_HOOFD_HOEK * Math.sqrt(fractieKop),
+    rompYControle, rompYKop,
+    fractieLichaam, rompRotYNa,
+    verwachtRompRotY: d.FLINCH_ROMP_TWIST * fractieLichaam,
+    verwachtDip: d.FLINCH_LICHAAM_DIP * fractieLichaam,
+    dipWerkelijk,
+  };
+}, NEUTRALE_TRAITS_STR);
+check('Headshot-rotatie matcht exact FLINCH_HOOFD_HOEK * sqrt(fractie) (langzamer herstel dan lineair — "duizelig" nagalmen)',
+  Math.abs(flinchCurves.hoofdXNa - flinchCurves.verwachtHoofdX) < 1e-9, flinchCurves);
+check('Een headshot raakt romp.position.y NIET aan (identiek aan een niet-geraakte controle-ondode op dezelfde tick)',
+  Math.abs(flinchCurves.rompYKop - flinchCurves.rompYControle) < 1e-9, flinchCurves);
+// Speeltoets-bijstelling (na T149): dit was `fractie²`. Die curve doofde de
+// romp-twist zó snel uit dat lichaams-/armtreffers niet meer aanvoelden (de
+// speeltest meldde precies dat) — terug naar lineair. Het onderscheid met een
+// kopschot zit nu in de KOP-curve (sqrt, blijft juist lang hangen) plus de
+// dip hieronder, niet in een verzwakte lichaamsreactie.
+check('Lichaamstreffer-twist matcht exact FLINCH_ROMP_TWIST * fractie (lineair uitdovend, zichtbaar over de hele flinch)',
+  Math.abs(flinchCurves.rompRotYNa - flinchCurves.verwachtRompRotY) < 1e-9, flinchCurves);
+check('Lichaamstreffer geeft ook een zichtbaar ineenkrimpen (romp.position.y lager dan de kale bob-basis, matcht FLINCH_LICHAAM_DIP * fractie)',
+  Math.abs(flinchCurves.dipWerkelijk - flinchCurves.verwachtDip) < 1e-9, flinchCurves);
+// Echte meting halverwege de flinch (niet vlak na de treffer, waar sqrt en
+// lineair allebei ~1 zijn): de kop moet dan naar verhouding duidelijk verder
+// doorhangen dan het lichaam. Dat is wat kop- en lichaamstreffers zonder HUD
+// van elkaar onderscheidbaar maakt.
+const flinchOnderscheid = await page.evaluate((traitsStr) => {
+  const d = window.AmsterdamUndeadDebug;
+  const traits = eval(`(${traitsStr})`);
+  function meetHalverwege(kop) {
+    for (const o of [...d.ondoden]) d.doodOndode(o);
+    d.eliminatiemodusTimer = 0;
+    d.speler.positie.set(0, 0, 0);
+    const o = d.spawnOndode(0, 'normaal', traits);
+    o.hp = 1000; o.snelheid = 0; o.loopFase = 0;
+    o.groep.position.set(0, 0, -10);
+    d.raakOndode(o, o.groep.position, kop);
+    d.updateOndoden(d.FLINCH_DUUR / 2);   // exact halverwege
+    const fractie = o.flinch.timer / d.FLINCH_DUUR;
+    const genormaliseerd = kop
+      ? Math.abs(o.delen.hoofd.rotation.x - o.delen.hoofd.userData.baseRotX) / d.FLINCH_HOOFD_HOEK
+      : Math.abs(o.delen.romp.rotation.y) / d.FLINCH_ROMP_TWIST;
+    d.doodOndode(o);
+    return { fractie: +fractie.toFixed(3), genormaliseerd: +genormaliseerd.toFixed(3) };
+  }
+  return { kop: meetHalverwege(true), lichaam: meetHalverwege(false) };
+}, NEUTRALE_TRAITS_STR);
+check('Halverwege de flinch hangt een KOPtreffer naar verhouding duidelijk verder door dan een lichaamstreffer (sqrt- vs lineaire curve)',
+  flinchOnderscheid.kop.genormaliseerd > flinchOnderscheid.lichaam.genormaliseerd + 0.15, flinchOnderscheid);
+
 // --- 3. Knockback-afstand: totale verplaatsing over de volledige flinch-duur
 // blijft binnen de 0.15m-ceiling uit de acceptatiecriteria --------------
 const knockback = await page.evaluate(() => {
@@ -97,8 +193,16 @@ const knockback = await page.evaluate(() => {
   d.doodOndode(o);
   return { afstand };
 });
-check('Knockback verplaatst de ondode, maximaal 0.15 m (acceptatiecriterium)',
-  knockback.afstand > 0 && knockback.afstand <= 0.15, knockback);
+// Speeltoets-bijstelling (na T149): het plafond stond op 0,15m, een bewuste
+// rem uit T21 toen de flinch nieuw was. De speeltest ("ik merk niet echt iets
+// als ik op een arm of op het lichaam schiet") liet zien dat die rem te strak
+// stond — de terugstoot is de enige trefferfeedback die óók op afstand
+// zichtbaar is. KNOCKBACK_AFSTAND is daarom naar 0,22m gebracht; het plafond
+// hier is mee opgehoogd naar 0,25m. Dit blijft een ECHT plafond: de
+// muurklaringstest hieronder bewaakt onveranderd dat losBotsingenOp() de
+// knockback nog steeds afkapt, dus een ondode wordt nooit door geometrie geduwd.
+check('Knockback verplaatst de ondode, maximaal 0.25 m (bijgesteld plafond, zie toelichting)',
+  knockback.afstand > 0 && knockback.afstand <= 0.25, knockback);
 
 // --- 4. Muurtest: de knockback duwt nooit door een muur -------------------
 // Isolatie: ver van echte kaartgeometrie (x=500,z=-500), zodat alleen de

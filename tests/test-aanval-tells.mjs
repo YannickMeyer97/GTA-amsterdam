@@ -184,6 +184,62 @@ const audioMis = await page.evaluate(() => {
 check('Een ontweken aanval roept speelSlagMis() aan en NIET speelSlagRaak()',
   audioMis.misNa === 1 && audioMis.raakNa === 0, audioMis);
 
+// --- 6. Ticket 149: windup-anticipatie — de arm-heffing volgt een ease-in-
+// curve (windupFractie ^ AANVAL_ANTICIPATIE_EXPONENT) i.p.v. de lineaire
+// windupFractie zelf. Hoofd/oog blijven bewust lineair (zie de code-
+// toelichting) — sectie 2/3 hierboven bewaken die AL, dit toetst specifiek
+// dat de arm-curve daadwerkelijk wordt toegepast en exact matcht. -----------
+const anticipatie = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  d.speler.positie.set(0, 0, 0);
+  const o = d.spawnOndode(0, 'normaal');
+  o.groep.position.set(0, 0, -1.0);
+  o.aanvalVertraging = 0;
+  const dt = 1 / 60;
+  let stappen = 0;
+  while (o.aanvalStaat !== 'windup' && stappen < 5) { d.updateOndoden(dt); stappen++; }
+  const windupDuur = d.AANVAL_PROFIELEN.normaal.windup;
+  for (let i = 0; i < Math.round((windupDuur / 2) / dt); i++) d.updateOndoden(dt);
+  const armHalverwege = o.delen.armL.rotation.x;
+  const windupFractie = Math.min(1, 1 - Math.max(0, o.aanvalTimer) / windupDuur);
+  const windupArmFractieVerwacht = Math.pow(windupFractie, d.AANVAL_ANTICIPATIE_EXPONENT);
+  const armVerwacht = d.ARM_RUST_ROTATIE_X + (d.AANVAL_ARM_HOEK_WINDUP - d.ARM_RUST_ROTATIE_X) * windupArmFractieVerwacht;
+  const armLineairVerwacht = d.ARM_RUST_ROTATIE_X + (d.AANVAL_ARM_HOEK_WINDUP - d.ARM_RUST_ROTATIE_X) * windupFractie;
+  d.doodOndode(o);
+  return { armHalverwege, armVerwacht, armLineairVerwacht, windupFractie };
+});
+check('De arm-heffing matcht exact de ease-in-curve (windupFractie ^ AANVAL_ANTICIPATIE_EXPONENT)',
+  Math.abs(anticipatie.armHalverwege - anticipatie.armVerwacht) < 1e-9, anticipatie);
+check('...en wijkt merkbaar af van de oude lineaire formule (bewijst dat de curve echt iets doet)',
+  Math.abs(anticipatie.armHalverwege - anticipatie.armLineairVerwacht) > 0.05, anticipatie);
+
+// --- 7. Ticket 149: impact-overshoot in herstel — de arm zwaait net voorbij
+// de rusthoek (follow-through) vóórdat hij settelt, via easeOutBack(). ------
+const overshoot = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  d.speler.positie.set(0, 0, 0);
+  const o = d.spawnOndode(0, 'normaal');
+  o.groep.position.set(0, 0, -10);   // ver weg: geen nieuwe windup tijdens deze meting
+  const herstelDuur = d.AANVAL_PROFIELEN.normaal.herstel;
+  o.aanvalStaat = 'herstel';
+  o.aanvalTimer = herstelDuur * 0.7;   // geeft herstelFractie rond het overshoot-piekpunt
+  d.updateOndoden(0.001);
+  const armNa = o.delen.armL.rotation.x;
+  const herstelFractieNa = Math.min(1, (herstelDuur - o.aanvalTimer) / (herstelDuur / 2));
+  const armVerwacht = d.AANVAL_ARM_HOEK_WINDUP + (d.ARM_RUST_ROTATIE_X - d.AANVAL_ARM_HOEK_WINDUP) * d.easeOutBack(herstelFractieNa);
+  const eindpunten = { bij0: d.easeOutBack(0), bij1: d.easeOutBack(1) };
+  d.doodOndode(o);
+  return { armNa, armVerwacht, herstelFractieNa, rustHoek: d.ARM_RUST_ROTATIE_X, eindpunten };
+});
+check('De arm-terugzwaai matcht exact easeOutBack(herstelFractie)',
+  Math.abs(overshoot.armNa - overshoot.armVerwacht) < 1e-9, overshoot);
+check('...en overschiet daadwerkelijk voorbij de rusthoek (follow-through, > ARM_RUST_ROTATIE_X)',
+  overshoot.armNa > overshoot.rustHoek, overshoot);
+check('easeOutBack(0) = 0 en easeOutBack(1) = 1 (op drijvende-komma-precisie na — geen sprong bij het slag-moment of de handoff naar de loop-zwaai)',
+  Math.abs(overshoot.eindpunten.bij0) < 1e-9 && Math.abs(overshoot.eindpunten.bij1 - 1) < 1e-9, overshoot);
+
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);
