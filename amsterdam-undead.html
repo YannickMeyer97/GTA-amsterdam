@@ -9152,7 +9152,17 @@ function updateDreigingsAudio(dt) {
     const afstand = Math.hypot(o.groep.position.x - speler.positie.x, o.groep.position.z - speler.positie.z);
     if (afstand < DREIGINGS_NABIJHEID_BEREIK) aantalBinnenBereik++;
   }
-  schrijfDreigingsGain(berekenDreigingsGain(aantalBinnenBereik));
+  let doel = berekenDreigingsGain(aantalBinnenBereik);
+  // Ticket 147: tijdens de instapfase een gegarandeerde, oplopende vloer
+  // bovenop de normale nabijheids-berekening (Math.max — de proximity-swell
+  // blijft dus ook gewoon meetellen als de speler omsingeld raakt). Zodra
+  // instapActief false wordt, valt dit vanzelf weg: geen aparte restore
+  // nodig, precies zoals de andere kanalen in updateFinaleEscalatie().
+  if (instapActief) {
+    const fractie = 1 - instapTimer / FINALE_INSTAP_DUUR;
+    doel = Math.max(doel, FINALE_DREIGINGS_VOLUME_PLAFOND * fractie);
+  }
+  schrijfDreigingsGain(doel);
 }
 
 // Ticket 66: schrijft de muziekgain (zelfde write/throttle-patroon als
@@ -12996,6 +13006,7 @@ function gameOver() {
   // die bij een volgende blik in de debugger verwarring zou geven.
   instapActief = false;
   instapTimer = 0;
+  herstelFinaleEscalatie();   // Ticket 147: fog terug, ook als de speler tijdens de instap sterft
   if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
 }
 
@@ -14446,7 +14457,14 @@ function updateBootHoornHerhaling(dt) {
   bootHoornHerhaalTimer -= dt;
   if (bootHoornHerhaalTimer <= 0) {
     speelBootHoornGericht();
-    bootHoornHerhaalTimer = BOOT_HOORN_HERHAAL_INTERVAL;
+    // Ticket 147: tijdens de instapfase toetert de hoorn steeds vaker —
+    // dezelfde bron, alleen het HERHAALinterval krimpt. Zodra instapActief
+    // weer false is, valt de eerstvolgende reset vanzelf terug op de
+    // normale BOOT_HOORN_HERHAAL_INTERVAL: geen aparte restore nodig.
+    bootHoornHerhaalTimer = instapActief
+      ? BOOT_HOORN_HERHAAL_INTERVAL
+        - (BOOT_HOORN_HERHAAL_INTERVAL - FINALE_HOORN_INTERVAL_MIN) * (1 - instapTimer / FINALE_INSTAP_DUUR)
+      : BOOT_HOORN_HERHAAL_INTERVAL;
   }
 }
 
@@ -14630,6 +14648,35 @@ const FINALE_INSTAP_DUUR = 30;   // s — FINALE.md §2 beslissing 2
 let instapActief = false;
 let instapTimer = 0;
 
+// Ticket 147 (FINALE.md §2 beslissing 4): vier escalatiekanalen, ALLEMAAL
+// bestaand — geen nieuw spawnsysteem, geen nieuwe effect-pools, geen nieuwe
+// lichten. Elk kanaal is bewust zo gebouwd dat het zichzelf herstelt:
+//   - spawn: één budget-injectie via het bestaande golfSpawnStap()-pad.
+//   - lampDipFactor/vignetFlits: een PULS (zelfde primitief als de bestaande
+//     golfstart-lichtdip/schade-vignet) — die twee tellen zelf al elk frame
+//     terug naar hun rust, ook tijdens pauze/game-over (bestaand, ongewijzigd
+//     mechanisme). Geen restore-code nodig.
+//   - boothoorn-interval: de reset-regel in updateBootHoornHerhaling() leest
+//     voortaan `instapActief`; zodra dat false is, valt hij vanzelf terug op
+//     BOOT_HOORN_HERHAAL_INTERVAL. Ook geen restore-code nodig.
+//   - fog: DIT kanaal herstelt niet vanzelf (scene.fog.near/far blijft
+//     hangen op de laatst geschreven waarde) — vandaar de expliciete
+//     snapshot (finaleFogVan) en herstelFinaleEscalatie() hieronder, precies
+//     het `eindigEventGolf()`-precedent (§1: Mistgolf had ditzelfde
+//     probleem en kreeg daarom een expliciete restore in gameOver()).
+const FINALE_SURGE_BUDGET = 65;          // ≈ 30s spawnen op vol tempo, FINALE.md §1.2
+const FINALE_FOG_KRIMP = 0.5;            // near/far krimpen tot 50% bij het vertrek
+const FINALE_HOORN_INTERVAL_MIN = 2;     // s, tegenover de normale 7s
+const FINALE_DREIGINGS_VOLUME_PLAFOND = 0.10;   // boven het normale plafond (0.07) — het climax-moment
+const FINALE_PULS_INTERVAL_START = 2.5;  // s tussen lamp/vignet-pulsen, bij het begin
+const FINALE_PULS_INTERVAL_EIND = 0.6;   // s tussen pulsen, vlak vóór het vertrek — het hart klopt sneller
+const FINALE_PULS_LAMPDIP = 0.5;         // hoe diep de lampen dippen per puls
+const FINALE_LAATSTE_SECONDEN = 5;       // s: het "nu of nooit"-moment
+let finaleFogVan = null;                 // {near, far} bij het starten van de instap
+let finalePulsTimer = 0;
+let finaleLaatsteSecondenGetoond = false;
+let finaleLosgooienTeller = 0;   // debug/test: het eenmalige "laatste seconden"-signaal
+
 function probeerOntsnapping() {
   if (instapActief) return;   // T nogmaals indrukken tijdens de instap doet niets
   if (spelStaat.geld < ONTSNAPPING_PRIJS) { toonMelding(`Nog €${ONTSNAPPING_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
@@ -14637,6 +14684,12 @@ function probeerOntsnapping() {
   updateHUD();
   instapActief = true;
   instapTimer = FINALE_INSTAP_DUUR;
+  // Ticket 147: de surge — via het bestaande spawnpad (golfSpawnStap() leest
+  // spelStaat.budget toch al elke gameLoop-tick), geen nieuw spawnsysteem.
+  spelStaat.budget += FINALE_SURGE_BUDGET;
+  finaleFogVan = { near: scene.fog.near, far: scene.fog.far };
+  finalePulsTimer = FINALE_PULS_INTERVAL_START;
+  finaleLaatsteSecondenGetoond = false;
   toonGolfBanner('Aan boord!', 'Blijf bij de boot tot ze losgooien…');
   updateOntsnappingVensterHUD();
 }
@@ -14647,6 +14700,7 @@ function probeerOntsnapping() {
 function voltooiOntsnapping() {
   instapActief = false;
   instapTimer = 0;
+  herstelFinaleEscalatie();   // Ticket 147: fog terug — zie de toelichting daar
   // Zonder deze regel bleef de statusregel op de laatst geschreven
   // instapfase-tekst ("Blijf bij de boot!"/"Losgooien… Ns") staan totdat er
   // toevallig een andere trigger langskwam — ontsnappingsPunt bestaat hierna
@@ -14655,6 +14709,19 @@ function voltooiOntsnapping() {
   // dat scherm is al af), dus deze write staat er los naast.
   updateOntsnappingVensterHUD();
   toonWinScherm();
+}
+
+// Ticket 147: het enige escalatiekanaal dat NIET vanzelf herstelt (zie de
+// toelichting bij FINALE_SURGE_BUDGET hierboven). Aangeroepen vanuit
+// voltooiOntsnapping() én gameOver() — de twee enige plekken waar de
+// instapfase kan eindigen. Geen guard op instapActief nodig: finaleFogVan is
+// alleen niet-null als er daadwerkelijk een snapshot is genomen, dus buiten
+// een finale is dit vanzelf een no-op.
+function herstelFinaleEscalatie() {
+  if (!finaleFogVan) return;
+  scene.fog.near = finaleFogVan.near;
+  scene.fog.far = finaleFogVan.far;
+  finaleFogVan = null;
 }
 
 // Ticket 146 (FINALE.md §2 beslissing 3): de timer loopt ALLEEN terwijl de
@@ -14675,6 +14742,51 @@ function updateFinaleInstap(dt) {
   }
   updateOntsnappingVensterHUD();
   if (instapTimer <= 0) voltooiOntsnapping();
+}
+
+// Ticket 147: het "nu of nooit"-signaal, origineel — geen bestaand geluid
+// hergebruikt (speelBootHoorn() betekent al specifiek "de boot IS
+// aangekomen"; dit hier is het tegenovergestelde moment).
+function speelFinaleLosgooien() {
+  finaleLosgooienTeller++;
+  piep('sawtooth', 90, 260, 0.35, 0.12);   // oplopend, urgent — het omgekeerde van de dalende boothoorn
+}
+
+// Ticket 147 (FINALE.md §2 beslissing 4): de vier escalatiekanalen, als
+// functie van instapTimer — geen eigen voortgangsstate nodig (zie de
+// toelichting bij FINALE_SURGE_BUDGET). Draait ALLEEN terwijl instapActief,
+// dus bevriest vanzelf zolang beslissing 3 de timer pauzeert (weglopen): de
+// fractie hieronder verandert dan niet, dus ook de escalatie niet.
+function updateFinaleEscalatie(dt) {
+  if (!instapActief) return;
+  const fractie = 1 - instapTimer / FINALE_INSTAP_DUUR;   // 0 bij start, 1 vlak vóór vertrek
+
+  // Beeld: de mist kruipt dichterbij. finaleFogVan is de opname van vóór de
+  // instap (welk fog-profiel dat ook was — zone of event), dus dit vecht
+  // nooit met de zone-/mistgolf-systemen om scene.fog; het schrijft er
+  // alleen overheen zolang de fase loopt en herstelt daarna expliciet (zie
+  // herstelFinaleEscalatie()).
+  scene.fog.near = finaleFogVan.near * (1 - fractie * FINALE_FOG_KRIMP);
+  scene.fog.far = finaleFogVan.far * (1 - fractie * FINALE_FOG_KRIMP);
+
+  // Beeld + geluid: een "hartslag"-puls die sneller gaat kloppen — dezelfde
+  // primitieven als de bestaande golfstart-lichtdip en het schade-vignet,
+  // dus zelf-herstellend (lampDipFactor/vignetFlits tellen sowieso al elk
+  // frame terug naar rust, zie de lampflikker-loop resp. updateVignet()).
+  finalePulsTimer -= dt;
+  if (finalePulsTimer <= 0) {
+    lampDipFactor = Math.min(lampDipFactor, FINALE_PULS_LAMPDIP);
+    vignetFlits = 1;
+    finalePulsTimer = FINALE_PULS_INTERVAL_START
+      - (FINALE_PULS_INTERVAL_START - FINALE_PULS_INTERVAL_EIND) * fractie;
+  }
+
+  // Laatste seconden: één eenmalig, duidelijk herkenbaar "nu of nooit"-moment.
+  if (!finaleLaatsteSecondenGetoond && instapTimer <= FINALE_LAATSTE_SECONDEN) {
+    finaleLaatsteSecondenGetoond = true;
+    toonGolfBanner('LOSGOOIEN!', 'nu of nooit…');
+    speelFinaleLosgooien();
+  }
 }
 
 // Winnen is GEEN game over (§6.4-beslissing 36): spelStaat.gameOver blijft
@@ -14794,6 +14906,7 @@ function gameLoop(nu) {
     updateSpelerRegen(dt);
     updateInteracties();
     updateFinaleInstap(dt);   // Ticket 146: leest huidigeInteractie, dus NA updateInteracties()
+    updateFinaleEscalatie(dt);   // Ticket 147: NA updateFinaleInstap() — leest instapActief pas ná een eventuele voltooiing deze frame
     updateWinkelMarkeringen(dt);   // Ticket 37: status-animatie + winkelLicht
     updateStofwolken(dt);   // Ticket 40: atelier-stof, alleen zichtbaar in zone C
     updateDruppel(dt);      // Ticket 40: kelderhals-druppel-lek
@@ -15362,6 +15475,18 @@ window.AmsterdamUndeadDebug = {
   set instapActief(v) { instapActief = v; },
   get instapTimer() { return instapTimer; },
   set instapTimer(v) { instapTimer = v; },
+  // Ticket 147: de escalatie
+  FINALE_SURGE_BUDGET, FINALE_FOG_KRIMP, FINALE_HOORN_INTERVAL_MIN,
+  FINALE_DREIGINGS_VOLUME_PLAFOND, FINALE_PULS_INTERVAL_START, FINALE_PULS_INTERVAL_EIND,
+  FINALE_PULS_LAMPDIP, FINALE_LAATSTE_SECONDEN,
+  updateFinaleEscalatie, herstelFinaleEscalatie, speelFinaleLosgooien,
+  get finaleFogVan() { return finaleFogVan; },
+  set finaleFogVan(v) { finaleFogVan = v; },
+  get finalePulsTimer() { return finalePulsTimer; },
+  set finalePulsTimer(v) { finalePulsTimer = v; },
+  get finaleLaatsteSecondenGetoond() { return finaleLaatsteSecondenGetoond; },
+  set finaleLaatsteSecondenGetoond(v) { finaleLaatsteSecondenGetoond = v; },
+  get finaleLosgooienTeller() { return finaleLosgooienTeller; },
   // Ticket 54: periodieke ontsnappingsvensters (ronde-gating)
   ONTSNAPPING_START_GOLF, ONTSNAPPING_INTERVAL_GOLVEN, isOntsnappingsGolf,
   golvenTotOntsnappingsVenster, updateOntsnappingsVenster, updateOntsnappingVensterHUD,

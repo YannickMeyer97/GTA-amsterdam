@@ -284,7 +284,7 @@ manier om erachter te komen wat zo'n laag écht zou moeten kunnen.
 
 ---
 
-## 4. Verwachte testimpact — afgerond (T146)
+## 4. Verwachte testimpact — afgerond (T146 + T147)
 
 | bestand | regels | uitkomst |
 |---|---|---|
@@ -292,10 +292,14 @@ manier om erachter te komen wat zo'n laag écht zou moeten kunnen.
 | `test-ontsnapping-vensters.mjs` | 432 → 481 | **Gewijzigd op precies één punt, zoals verwacht.** Twee nieuwe subsecties (7d/7e) bewaken de uitzondering uit beslissing 6 én het tegendeel (zonder instap sluit het venster nog gewoon — bewijst dat de uitzondering niet per ongeluk permanent is). Alle 44 bestaande checks **ongewijzigd** gebleven. 49/49 groen. |
 | `test-boot-aankondiging.mjs` | 179 | **Ongewijzigd**, zoals verwacht. 19/19 groen. |
 | `test-vluchtroute.mjs` | 222 | **Ongewijzigd**, zoals verwacht. 21/21 groen. |
-| `test-eventgolven.mjs` | 195 | Niet aangeraakt in T146 (raakt pas relevant bij T147). |
-| `tests/test-finale.mjs` | *nieuw*, 178 | Start via een echte `KeyT` + positie, dubbele `T` is een no-op, timer telt af/pauzeert/hervat via de ECHTE gameLoop (wall-clock, geen gesimuleerde tijd), automatische voltooiing, game over midden in de fase + opruiming, `interactiePunten`-invariant. Escalatie **en herstel** volgen in T147, met eigen dekking bovenop dit bestand. 16/16 groen. |
+| `test-eventgolven.mjs` | 195 | **Ongewijzigd** — bleek uiteindelijk NIET relevant voor T147: de surge hergebruikt `spelStaat.budget` puur numeriek, zonder de Sluiper-/Mistgolf-logica die dit bestand bewaakt aan te raken. De §4-verwachting hierboven ("raakt pas relevant bij T147") is dus niet uitgekomen. 18/18 groen. |
+| `tests/test-finale.mjs` | 178 → 447 (T147) | T146-secties (1-7) ongewijzigd. Acht nieuwe secties (8-15) voor de vier escalatiekanalen: budget-injectie (exacte hoeveelheid, geen nieuw spawnpad), fog-snapshot/-krimp/-EXACT-herstel op **beide** exitpaden (`voltooiOntsnapping()` én `gameOver()`), lamp/vignet-puls met krimpend interval, dreigingsgain-vloer (`Math.max`) en zijn verdwijnen, boothoorn-interval-versnelling en zijn terugval, het eenmalige "laatste seconden"-signaal, en een eind-tot-eind-proef via de ECHTE gameLoop (geen enkele handmatige `voltooiOntsnapping()`-aanroep) die de volledige `updateFinaleInstap` → `updateFinaleEscalatie`-bedrading bevestigt. 36/36 groen. |
 
-**Een bug gevonden tijdens het testen, niet in het ontwerp voorzien:** `voltooiOntsnapping()` liet de statusregel op de laatst geschreven instapfase-tekst staan ("Blijf bij de boot!"/"Losgooien… Ns") in plaats van terug te springen naar "Boot ligt aan!" — `toonWinScherm()` raakt die regel niet aan, en niets anders ververste 'm totdat "Speel door" het punt weer volledig opruimde. Gefixt met één extra `updateOntsnappingVensterHUD()`-aanroep in `voltooiOntsnapping()`, vóór `toonWinScherm()`.
+**Een bug gevonden tijdens het testen, niet in het ontwerp voorzien (T146):** `voltooiOntsnapping()` liet de statusregel op de laatst geschreven instapfase-tekst staan ("Blijf bij de boot!"/"Losgooien… Ns") in plaats van terug te springen naar "Boot ligt aan!" — `toonWinScherm()` raakt die regel niet aan, en niets anders ververste 'm totdat "Speel door" het punt weer volledig opruimde. Gefixt met één extra `updateOntsnappingVensterHUD()`-aanroep in `voltooiOntsnapping()`, vóór `toonWinScherm()`.
+
+**Twee bugs gevonden tijdens het testen van T147, allebei in de TEST zelf, niet in de game-code:**
+1. De `startNieuweInstap()`-testhelper zette alleen `d.ontsnappingsPunt = null` en riep daarna `toonOntsnappingspuntIndienKlaar()` opnieuw aan — dat maakt een NIEUW punt-object, maar het OUDE bleef (zonder het bestaande splice-patroon dat dood/reset normaal gebruikt) gewoon in `interactiePunten` staan. Bij een tweede/derde aanroep binnen hetzelfde testbestand koos `updateInteracties()` steevast het EERSTE (oudste) duplicaat als `huidigeInteractie`, terwijl `d.ontsnappingsPunt` naar het NIEUWSTE object wees — de `huidigeInteractie === ontsnappingsPunt`-check in `updateFinaleInstap()` faalde daardoor permanent, wat de eind-tot-eind-proef (sectie 15) liet hangen (timer bevroor, fase voltooide nooit). Gefixt door de helper eerst alle bestaande `naam === 'De Ontsnapping'`-entries uit `interactiePunten` te verwijderen. Bijkomend: de helper forceert nu ook `instapActief = false` vooraf (een eerdere sectie kan die true hebben laten staan zonder `voltooiOntsnapping()`, wat `probeerOntsnapping()`'s dubbele-druk-guard een stille no-op zou maken) en ruimt ondoden/budget op (een eerder geïnjecteerd `FINALE_SURGE_BUDGET` bleef anders over vele testsecties heen doorspawnen en kon de speler via `duwSpelerWegVanOndoden()` van de boot af duwen).
+2. De eerste versie van sectie 15 vergeleek de herstelde fog na een vaste `setTimeout(500ms)` met een fog-meting die **vóór** `probeerOntsnapping()` was genomen — maar `finaleFogVan` (de waarde die `herstelFinaleEscalatie()` daadwerkelijk terugschrijft) wordt intern op een net iets later moment vastgelegd, en `updateZoneFog()` blijft ook ná het herstel gewoon elk frame onafhankelijk doorinterpoleren. Beide gaven een kleine, onvermijdelijke drift t.o.v. een "exacte" match. Gefixt door (a) tegen `d.finaleFogVan` zelf te vergelijken i.p.v. een eigen hermeting, en (b) per rAF-frame te pollen tot `instapActief` false wordt en de fog in exact dat frame te lezen, vóór een volgend frame `updateZoneFog()` nogmaals kan laten driften.
 
 ---
 
@@ -322,16 +326,36 @@ manier om erachter te komen wat zo'n laag écht zou moeten kunnen.
       bewaakt (verandert niet door het starten/voltooien/afbreken van de fase).
 - [x] Volledige regressiesuite groen (zie hieronder).
 
-**T147 — de escalatie**
+**T147 — de escalatie — afgerond**
 
-- [ ] Budget-injectie bij de start; grep bevestigt nul nieuwe spawnpaden.
-- [ ] Escalatie als functie van `instapTimer / FINALE_INSTAP_DUUR` — geen
-      nieuwe state (de constante heet in de code `FINALE_INSTAP_DUUR`, niet
-      `FINALE_DUUR`).
-- [ ] Vier kanalen (spawn, audio, beeld, slotfase) uit beslissing 4.
-- [ ] **Elk kanaal herstelt op élk exitpad**: winst, game over, en pauze door
-      weglopen. Dit is de bekende valkuil; volg het `eindigEventGolf(direct)`-precedent.
-- [ ] Lichten blijven 28; poolgroottes ongewijzigd.
-- [ ] Ontwerp op **tempo**, niet op aantal — het plafond van 18 (§1.1) maakt
-      "meer op het scherm" onmogelijk voorbij dat punt.
-- [ ] F3 tijdens de piek: p95 vastgelegd in het ticket.
+- [x] Budget-injectie bij de start (`spelStaat.budget += FINALE_SURGE_BUDGET`
+      in `probeerOntsnapping()`); geen nieuw spawnpad — `golfSpawnStap()` leest
+      `spelStaat.budget` toch al elke gameLoop-tick.
+- [x] Escalatie als functie van `instapTimer / FINALE_INSTAP_DUUR`
+      (`updateFinaleEscalatie()`'s `fractie`) — geen eigen voortgangsstate.
+- [x] Vier kanalen (spawn, audio, beeld, slotfase) uit beslissing 4:
+      spawnbudget, `scene.fog.near/far`-krimp + lamp/vignet-puls (beeld),
+      dreigingsgain-vloer + boothoorn-interval (audio), eenmalig
+      "laatste seconden"-signaal (slotfase).
+- [x] **Elk kanaal herstelt op élk exitpad**: fog expliciet via
+      `herstelFinaleEscalatie()` (aangeroepen vanuit zowel
+      `voltooiOntsnapping()` als `gameOver()`, het `eindigEventGolf(direct)`-
+      precedent); lampDipFactor/vignetFlits/boothoorn-interval herstellen
+      zichzelf al (bestaande per-frame terugval-primitieven, geen restore
+      nodig); dreigingsgain-vloer is een `Math.max()`-vloer die vanzelf
+      verdwijnt zodra `instapActief` false is. Pauze door weglopen bevriest
+      de hele escalatie vanzelf (`fractie` verandert niet, want die hangt
+      alleen van `instapTimer` af, en die pauzeert al sinds T146).
+- [x] Lichten blijven 28; poolgroottes ongewijzigd (geen nieuw effect-/
+      lichtsysteem, alleen bestaande kanalen hergebruikt — zie boven).
+- [x] Ontwerp op **tempo**, niet op aantal — het budget wordt via het
+      bestaande spawnpad omgezet, het plafond van 18 (§1.1) blijft ongemoeid.
+- [x] F3 tijdens de piek: `tests/t147-perf-meting.mjs` (meetscript, geen
+      test-/check-prefix — zelfde reden als `t140-perf-meting.mjs`, te ruisig
+      voor een harde assertie). Gemeten: p95 100,1 ms, gemiddelde 98,3 ms —
+      zelfde orde van grootte als T140's software-rasterisatie-cijfers, niet
+      ontspoord. De escalatie zelf is drie scalaire writes + een bestaande
+      proximity-check per frame, geen nieuwe allocatie of matrixwerk.
+- [x] `tests/test-finale.mjs` uitgebreid met 20 nieuwe checks (secties 8-15,
+      36/36 groen) + volledige regressiesuite groen (zie hieronder; twee
+      bekende CPU-druk-timing-flakes, los geverifieerd, geen echte regressie).

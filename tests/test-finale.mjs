@@ -11,12 +11,17 @@
 // niets; de twee nieuwe HUD-teksten; doodgaan tijdens de fase is gewoon
 // game over, met opgeruimde instap-state; interactiePunten blijft op 14.
 //
-// Wat hier NIET staat: escalatie (spawn-surge, audio/beeld) — dat is T147,
-// met zijn eigen dekking bovenop dit bestand. Ook de golfgrens-uitzondering
-// (FINALE.md §2 beslissing 6) staat NIET hier maar in
-// test-ontsnapping-vensters.mjs (sectie 7d/7e) — dat bestand bewaakt de
-// wave-complete-tak al voor de rest van de ontsnappingsmachine, en de
-// uitzondering hoort daar in dezelfde context.
+// Ticket 147 (secties 8+): de vier escalatiekanalen uit FINALE.md §2
+// beslissing 4 — budget-injectie, beeld (fog/lampdip/vignet), geluid
+// (dreigingsvloer/boothoorn), en het eenmalige "laatste seconden"-moment.
+// Bewaakt vooral het HERSTEL op elke exitpad: voltooiing, game over, en
+// (via de bestaande pauzelogica uit T146) dat de escalatie zelf bevriest
+// zolang de speler weg is van de boot — geen apart mechanisme daarvoor
+// nodig, want alles is een pure functie van instapTimer.
+//
+// Wat hier NIET staat: de golfgrens-uitzondering (FINALE.md §2 beslissing 6)
+// — die staat in test-ontsnapping-vensters.mjs (sectie 7d/7e), dat bestand
+// bewaakt de wave-complete-tak al voor de rest van de ontsnappingsmachine.
 import { openAmsterdamUndead, makeChecker, frames } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
@@ -180,6 +185,286 @@ check('...en ook niet door game over midden in de fase',
   gameOverTijdensInstapTest.lengteNaGameOver === gameOverTijdensInstapTest.lengteVoorInstap,
   gameOverTijdensInstapTest);
 
-const fails = report(errs);
+// =====================================================================
+// Ticket 147: de vier escalatiekanalen. Nieuwe browser/page (de vorige
+// eindigde in sectie 6 met spelStaat.gameOver === true), zelfde patroon als
+// test-ontsnapping-vensters.mjs's wall-clock-sectie (b2/p2).
+// =====================================================================
+const { browser: browser2, page: page2, errs: errs2 } = await openAmsterdamUndead({ simuleerPointerLock: true });
+
+async function startNieuweInstap() {
+  await page2.evaluate(() => {
+    const d = window.AmsterdamUndeadDebug;
+    d.spelStaat.gameOver = false;
+    // Forceer een schone lei: een vorige sectie kan instapActief=true hebben
+    // laten staan (bv. door zelf updateFinaleEscalatie() aan te roepen zonder
+    // voltooiOntsnapping()) — probeerOntsnapping() hieronder is dan een no-op
+    // (T146: T nogmaals indrukken doet niets), dus zonder deze reset start
+    // "een nieuwe instap" soms helemaal niet opnieuw.
+    d.instapActief = false;
+    d.instapTimer = 0;
+    // Ruim ook eventuele ondoden en het spawnbudget op: eerdere secties
+    // injecteren FINALE_SURGE_BUDGET (65) via probeerOntsnapping(), en dat
+    // budget teert pas over veel wall-clock-seconden af. Zonder reset hoopt
+    // dat zich op over de vele awaits/setTimeouts in dit testbestand, spawnt
+    // er een leger bij de boot, en duwt duwSpelerWegVanOndoden() de speler
+    // permanent van het ontsnappingspunt af — precies het soort valse
+    // negatief dat sectie 15 (de echte eind-tot-eind-proef) liet falen.
+    for (const o of [...d.ondoden]) d.doodOndode(o);
+    d.spelStaat.budget = 0;
+    d.vluchtOnderdelenOpgepakt = 3;
+    d.spelStaat.golf = 10;
+    // Niet alleen d.ontsnappingsPunt nullen: dat verwijdert het OUDE punt
+    // niet uit interactiePunten (dat gebeurt normaal via het bestaande
+    // splice-patroon bij dood/reset, dat hier bewust wordt overgeslagen).
+    // Zonder deze opruiming stapelen zich meerdere "De Ontsnapping"-objecten
+    // op dezelfde positie op — updateInteracties() kiest dan altijd het
+    // EERSTE (oudste) als huidigeInteractie, terwijl d.ontsnappingsPunt naar
+    // het NIEUWSTE object wijst. De `huidigeInteractie === ontsnappingsPunt`-
+    // check in updateFinaleInstap() faalt dan permanent (andere referentie,
+    // zelfde positie) — precies de valse "speler niet bij boot"-bevriezing
+    // die sectie 15 liet hangen.
+    for (let i = d.interactiePunten.length - 1; i >= 0; i--) {
+      if (d.interactiePunten[i].naam === 'De Ontsnapping') d.interactiePunten.splice(i, 1);
+    }
+    d.ontsnappingsPunt = null;
+    d.toonOntsnappingspuntIndienKlaar();
+    d.spelStaat.geld = 10000;
+    d.speler.positie.set(d.ontsnappingsPunt.positie.x, 0, d.ontsnappingsPunt.positie.z);
+    d.updateInteracties();
+    d.probeerOntsnapping();
+  });
+}
+
+// --- 8/9. Budget-injectie + fog-escalatie tijdens de fase, en EXACT herstel
+// bij voltooiing (FINALE.md §2 beslissing 4, §1.3-precedent voor herstel) --
+const surgeEnFogTest = await page2.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.vluchtOnderdelenOpgepakt = 3;
+  d.spelStaat.golf = 10;
+  d.toonOntsnappingspuntIndienKlaar();
+  d.spelStaat.geld = 10000;
+  d.spelStaat.budget = 3;   // laag, zodat de injectie duidelijk meetbaar is
+  d.speler.positie.set(d.ontsnappingsPunt.positie.x, 0, d.ontsnappingsPunt.positie.z);
+  d.updateInteracties();
+
+  const budgetVoor = d.spelStaat.budget;
+  const fogVoorStart = { near: d.scene.fog.near, far: d.scene.fog.far };
+  d.probeerOntsnapping();
+  const budgetToename = d.spelStaat.budget - budgetVoor;
+  const fogSnapshotKlopt = d.finaleFogVan.near === fogVoorStart.near && d.finaleFogVan.far === fogVoorStart.far;
+
+  d.instapTimer = d.FINALE_INSTAP_DUUR * 0.5;   // fractie 0.5
+  d.updateFinaleEscalatie(0);   // dt=0: alleen de fog-write, geen pulstriggers
+  const fogHalverwege = { near: d.scene.fog.near, far: d.scene.fog.far };
+  const verwachtNearHalverwege = fogVoorStart.near * (1 - 0.5 * d.FINALE_FOG_KRIMP);
+
+  d.instapTimer = 0;
+  d.voltooiOntsnapping();
+
+  return {
+    budgetToename, verwachtToename: d.FINALE_SURGE_BUDGET,
+    fogSnapshotKlopt, fogVoorStart, fogHalverwege, verwachtNearHalverwege,
+    fogNaVoltooiing: { near: d.scene.fog.near, far: d.scene.fog.far },
+    finaleFogVanNa: d.finaleFogVan,
+  };
+});
+check('probeerOntsnapping() injecteert FINALE_SURGE_BUDGET in het bestaande spawnbudget (geen nieuw spawnpad)',
+  surgeEnFogTest.budgetToename === surgeEnFogTest.verwachtToename, surgeEnFogTest);
+check('finaleFogVan is exact de fog-snapshot van vóór het starten van de instap',
+  surgeEnFogTest.fogSnapshotKlopt, surgeEnFogTest);
+check('Op de helft van de fase is de mist merkbaar dichterbij gekropen (near krimpt volgens FINALE_FOG_KRIMP)',
+  Math.abs(surgeEnFogTest.fogHalverwege.near - surgeEnFogTest.verwachtNearHalverwege) < 1e-9, surgeEnFogTest);
+check('Na voltooiing staat de fog EXACT terug op de waarde van vóór de instap',
+  surgeEnFogTest.fogNaVoltooiing.near === surgeEnFogTest.fogVoorStart.near
+  && surgeEnFogTest.fogNaVoltooiing.far === surgeEnFogTest.fogVoorStart.far, surgeEnFogTest);
+check('finaleFogVan is opgeruimd (null) na voltooiing — geen stale snapshot',
+  surgeEnFogTest.finaleFogVanNa === null, surgeEnFogTest);
+
+// --- 10. Fog-herstel via het ANDERE exitpad: game over midden in de fase --
+const fogGameOverTest = await page2.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.vluchtOnderdelenOpgepakt = 3;
+  d.spelStaat.golf = 10;
+  d.ontsnappingsPunt = null;
+  d.toonOntsnappingspuntIndienKlaar();
+  d.spelStaat.geld = 10000;
+  d.speler.positie.set(d.ontsnappingsPunt.positie.x, 0, d.ontsnappingsPunt.positie.z);
+  d.updateInteracties();
+  const fogVoorStart = { near: d.scene.fog.near, far: d.scene.fog.far };
+  d.probeerOntsnapping();
+  d.instapTimer = d.FINALE_INSTAP_DUUR * 0.3;
+  d.updateFinaleEscalatie(0);
+  d.gameOver();
+  return {
+    fogVoorStart,
+    fogNaGameOver: { near: d.scene.fog.near, far: d.scene.fog.far },
+    finaleFogVanNa: d.finaleFogVan,
+  };
+});
+check('Fog herstelt ook via gameOver() (los exitpad van voltooiOntsnapping())',
+  fogGameOverTest.fogNaGameOver.near === fogGameOverTest.fogVoorStart.near
+  && fogGameOverTest.fogNaGameOver.far === fogGameOverTest.fogVoorStart.far, fogGameOverTest);
+check('finaleFogVan is ook na game over opgeruimd',
+  fogGameOverTest.finaleFogVanNa === null, fogGameOverTest);
+
+// --- 11. Lamp/vignet-"hartslag": dipt bij elke puls, en het interval krimpt
+// naarmate het vertrek nadert (zelf-herstellend mechanisme, zie de
+// toelichting bij FINALE_PULS_INTERVAL_START in de game-code) -------------
+await startNieuweInstap();
+const pulsTest = await page2.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.lampDipFactor = 1; d.vignetFlits = 0;
+  d.instapTimer = d.FINALE_INSTAP_DUUR;   // fractie 0
+  d.finalePulsTimer = 0;   // forceer dat deze update() meteen een puls afvuurt
+  d.updateFinaleEscalatie(0.01);
+  const pulsBijStart = { lampDip: d.lampDipFactor, vignet: d.vignetFlits, nieuwInterval: d.finalePulsTimer };
+
+  d.lampDipFactor = 1; d.vignetFlits = 0;
+  d.instapTimer = 0.5;   // fractie bijna 1
+  d.finalePulsTimer = 0;
+  d.updateFinaleEscalatie(0.01);
+  const pulsBijEinde = { lampDip: d.lampDipFactor, vignet: d.vignetFlits, nieuwInterval: d.finalePulsTimer };
+
+  return { pulsBijStart, pulsBijEinde, verwachtLampDip: d.FINALE_PULS_LAMPDIP };
+});
+check('Een puls dipt de lampen naar FINALE_PULS_LAMPDIP en zet vignetFlits op 1',
+  pulsTest.pulsBijStart.lampDip === pulsTest.verwachtLampDip && pulsTest.pulsBijStart.vignet === 1, pulsTest);
+check('Het pulsinterval is korter vlak vóór het vertrek dan bij het begin — het hart klopt sneller',
+  pulsTest.pulsBijEinde.nieuwInterval < pulsTest.pulsBijStart.nieuwInterval, pulsTest);
+
+// --- 12. Dreigingsgain-vloer: gegarandeerd hoorbaar tijdens de fase, ook
+// zonder nabije ondoden — en weg zodra de fase voorbij is (zelf-herstellend:
+// zie de Math.max()-toelichting in updateDreigingsAudio()) -----------------
+const dreigingsTest = await page2.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  for (const o of [...d.ondoden]) d.doodOndode(o);   // 0 ondoden binnen bereik: de proximity-term is 0
+  d.dreigingsThrottleTimer = 0;   // forceer een echte write, geen throttle-skip
+  d.updateDreigingsAudio(0.016);
+  const doelTijdensInstap = d.dreigingsGainDoel;
+
+  d.voltooiOntsnapping();   // sluit de instap uit sectie 11 af
+  d.dreigingsThrottleTimer = 0;
+  d.updateDreigingsAudio(0.016);
+  const doelNaInstap = d.dreigingsGainDoel;
+
+  return { doelTijdensInstap, doelNaInstap };
+});
+check('Zonder nabije ondoden dwingt de instapfase-vloer toch een hoorbare dreigingsgain af (> 0)',
+  dreigingsTest.doelTijdensInstap > 0, dreigingsTest);
+check('Na voltooiing valt de vloer weg — dreigingsgain terug naar 0 (geen nabije ondoden)',
+  dreigingsTest.doelNaInstap === 0, dreigingsTest);
+
+// --- 13. Boothoorn-interval: krimpt naarmate het vertrek nadert, valt na
+// afloop vanzelf terug op BOOT_HOORN_HERHAAL_INTERVAL -----------------------
+await startNieuweInstap();
+const hoornTest = await page2.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.instapTimer = d.FINALE_INSTAP_DUUR;   // fractie 0
+  d.bootHoornHerhaalTimer = 0.001;
+  d.updateBootHoornHerhaling(0.01);
+  const intervalBijStart = d.bootHoornHerhaalTimer;
+
+  d.instapTimer = 0.5;   // fractie bijna 1
+  d.bootHoornHerhaalTimer = 0.001;
+  d.updateBootHoornHerhaling(0.01);
+  const intervalBijEinde = d.bootHoornHerhaalTimer;
+
+  d.instapTimer = 0;
+  d.voltooiOntsnapping();
+  d.bootHoornHerhaalTimer = 0.001;
+  d.updateBootHoornHerhaling(0.01);   // ontsnappingsPunt bestaat nog (tot "Speel door"), dus dit vuurt nog
+  const intervalNaInstap = d.bootHoornHerhaalTimer;
+
+  return {
+    intervalBijStart, intervalBijEinde, intervalNaInstap,
+    BOOT_HOORN_HERHAAL_INTERVAL: d.BOOT_HOORN_HERHAAL_INTERVAL,
+  };
+});
+check('Bij fractie 0 is het hoorn-interval nog de normale BOOT_HOORN_HERHAAL_INTERVAL',
+  Math.abs(hoornTest.intervalBijStart - hoornTest.BOOT_HOORN_HERHAAL_INTERVAL) < 1e-9, hoornTest);
+check('Vlak vóór het vertrek is het hoorn-interval merkbaar korter (richting FINALE_HOORN_INTERVAL_MIN)',
+  hoornTest.intervalBijEinde < hoornTest.intervalBijStart, hoornTest);
+check('Na de instapfase valt het interval terug naar de normale waarde — geen restore-code nodig',
+  hoornTest.intervalNaInstap === hoornTest.BOOT_HOORN_HERHAAL_INTERVAL, hoornTest);
+
+// --- 14. "Laatste seconden": één eenmalig, herkenbaar signaal -------------
+await startNieuweInstap();
+const laatsteSecondenTest = await page2.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const tellerVoor = d.finaleLosgooienTeller;
+  d.instapTimer = d.FINALE_LAATSTE_SECONDEN + 1;   // nog NET buiten het venster
+  d.updateFinaleEscalatie(0.01);
+  const nogNiet = d.finaleLosgooienTeller;
+
+  d.instapTimer = d.FINALE_LAATSTE_SECONDEN - 0.1;   // net erbinnen
+  d.updateFinaleEscalatie(0.01);
+  const welGevuurd = d.finaleLosgooienTeller;
+
+  d.instapTimer = 1;   // nog steeds binnen het venster
+  d.updateFinaleEscalatie(0.01);
+  const nogSteeds1x = d.finaleLosgooienTeller;
+
+  return { tellerVoor, nogNiet, welGevuurd, nogSteeds1x };
+});
+check('Vóór het venster van FINALE_LAATSTE_SECONDEN vuurt het signaal nog niet',
+  laatsteSecondenTest.nogNiet === laatsteSecondenTest.tellerVoor, laatsteSecondenTest);
+check('Zodra de timer eronder zakt, vuurt het signaal precies 1x',
+  laatsteSecondenTest.welGevuurd === laatsteSecondenTest.tellerVoor + 1, laatsteSecondenTest);
+check('...en niet nogmaals, ook al blijft de timer daarna binnen het venster',
+  laatsteSecondenTest.nogSteeds1x === laatsteSecondenTest.welGevuurd, laatsteSecondenTest);
+
+// --- 15. Eind-tot-eind via de ECHTE gameLoop: escalatie zichtbaar tijdens de
+// fase, en volledig hersteld zodra de fase via de ECHTE timer afloopt (geen
+// handmatige voltooiOntsnapping()-aanroep) — de doorslaggevende proef dat de
+// gameLoop-bedrading (updateFinaleEscalatie NA updateFinaleInstap) klopt. --
+await startNieuweInstap();
+// Fog EXACT herstellen geldt alleen op het instant van herstelFinaleEscalatie()
+// zelf — updateZoneFog() blijft daarna gewoon elk frame onafhankelijk richting
+// zijn eigen doel interpoleren (bestaand, ongewijzigd gedrag). Een vaste
+// wall-clock wachttijd ná voltooiing laat dus willekeurig veel extra frames
+// lopen vóór het uitlezen, en drijft de gemeten waarde weg van de restore.
+// Poll daarom per rAF-frame en lees fog in exact hetzelfde frame waarin
+// instapActief false wordt — vóór een volgend frame de kans krijgt om
+// updateZoneFog() nogmaals te draaien.
+const eindTotEind = await page2.evaluate(() => new Promise((resolve) => {
+  const d = window.AmsterdamUndeadDebug;
+  // d.finaleFogVan (niet een verse scene.fog-meting hier): startNieuweInstap()
+  // en deze evaluate() zijn twee losse afgeronde trips naar de browser, en
+  // de echte gameLoop tikt gewoon door in de tussenliggende tijd — updateZoneFog()
+  // kan scene.fog dus al een fractie hebben laten driften vóórdat dit blok
+  // start. finaleFogVan is de snapshot die herstelFinaleEscalatie() ZELF
+  // gebruikt, dus dat is de enige eerlijke referentiewaarde voor "exact terug".
+  const fogVoor = { near: d.finaleFogVan.near, far: d.finaleFogVan.far };
+  d.instapTimer = 0.15;   // kort genoeg om via echte wall-clock snel af te lopen
+  let frame = 0;
+  const tik = () => {
+    frame++;
+    if (!d.instapActief || frame > 300) {   // 300 frames (~5s bij 60fps) is ruim voldoende, anders test-fail i.p.v. hang
+      resolve({
+        fogVoor,
+        instapActiefNa: d.instapActief,
+        winSchermDisplay: document.getElementById('winScherm').style.display,
+        fogNa: { near: d.scene.fog.near, far: d.scene.fog.far },
+        finaleFogVanNa: d.finaleFogVan,
+      });
+    } else {
+      requestAnimationFrame(tik);
+    }
+  };
+  requestAnimationFrame(tik);
+}));
+const eindTotEindVoor = { fogVoor: eindTotEind.fogVoor };
+const eindTotEindNa = eindTotEind;
+check('Via de ECHTE gameLoop loopt de timer af en voltooit de fase vanzelf (winscherm verschijnt)',
+  eindTotEindNa.instapActiefNa === false && eindTotEindNa.winSchermDisplay === 'flex', eindTotEindNa);
+check('...en de fog staat na afloop EXACT terug op de waarde van vóór de fase',
+  eindTotEindNa.fogNa.near === eindTotEindVoor.fogVoor.near && eindTotEindNa.fogNa.far === eindTotEindVoor.fogVoor.far,
+  { eindTotEindVoor, eindTotEindNa });
+check('finaleFogVan is opgeruimd na de echte, natuurlijke voltooiing',
+  eindTotEindNa.finaleFogVanNa === null, eindTotEindNa);
+
+const fails = report([...errs, ...errs2]);
 await browser.close();
+await browser2.close();
 process.exit(fails > 0 ? 1 : 0);
