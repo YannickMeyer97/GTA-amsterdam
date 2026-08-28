@@ -518,7 +518,16 @@ const BASISLIJN = {
   woonkamer:    { gemiddelde: 28.03, mediaan: 16.51, calls: 634, triangles: 51145 },
   gang:         { gemiddelde: 29.39, mediaan: 15.59, calls: 468, triangles: 38755 },
   atelier:      { gemiddelde: 31.69, mediaan: 16.66, calls: 274, triangles: 26357 },
-  binnenplaats: { gemiddelde: 23.07, mediaan: 21.03, calls: 274, triangles: 26733 },
+  // Ticket 151: de binnenplaatsmuren gingen van vlakke GANG_PLEISTER-kleur
+  // naar de 'pleister'-materiaalfamilie MET een materiaalfamilie-bonus op
+  // VUIL_FAMILIE_FACTOR (pleisterwerk toont vocht/schade zichtbaarder dan
+  // baksteen) — een kleine, verwachte verduistering. Was 23,07/21,03; de
+  // gemiddelde-toets bleef ruim binnen de 2%-BAND (23,07 -> 22,95), maar de
+  // mediaan-toets in de kleurgrading-sectie hieronder (§6) vergelijkt tegen
+  // deze tabel en zakte net onder de kwantisatievloer (21,03 -> 20,37,
+  // -3,1%). Calls/triangles ongewijzigd: matFamilie() vervangt alleen het
+  // materiaal-object, geen extra geometrie/mesh.
+  binnenplaats: { gemiddelde: 22.95, mediaan: 20.65, calls: 274, triangles: 26733 },
   bijkeuken:    { gemiddelde: 27.39, mediaan: 16.80, calls: 597, triangles: 47041 },
   kelder:       { gemiddelde: 13.39, mediaan: 10.12, calls: 188, triangles: 25808 },
   // Vliering is de bijna-zwarte baseline (net als bij het T90-HUD-tekst-

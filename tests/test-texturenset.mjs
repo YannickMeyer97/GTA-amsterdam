@@ -185,11 +185,19 @@ check(`De klinkervloer herhaalt per KLINKER_TEGEL_METERS (${tegelTest.tegelMeter
 check('Eén klinkertegel beslaat meerdere meters (anders herhaalt het patroon zichtbaar elke meter over een plaats van 17x16m)',
   tegelTest.tegelMeters >= 3, tegelTest);
 
-// --- 5c. De pleister-familie bestaat als grondslag voor een eventuele
-// toekomstige muur-uitrol, maar wordt (nog) NERGENS door de wereldopbouw
-// aangeroepen — een eerdere toepassing op de atelier-muren is op verzoek
-// weer teruggedraaid naar baksteen (niet mooi genoeg bevonden), dus dit
-// ticket levert alleen de tekenaar, niet de toepassing.
+// --- 5c. Ticket 151: de pleister-familie is uitgerold op de GANG_PLEISTER-
+// muren (blok()/bouwMuur()/bouwVulMuur()/bouwGrachtMuur() kregen een
+// optionele `familie`-parameter, bouwBinnenplaatsMuur() idem inline). Een
+// eerdere toepassing op de ATELIER-muren (BAKSTEEN -> pleister) is destijds
+// teruggedraaid na beoordeling op beeld — dit is een andere afweging (de
+// gang-/binnenplaats-/gracht-muren die al `GANG_PLEISTER` heetten en er dus
+// altijd al als pleisterwerk bedoeld waren, niet baksteen-vervanging), nu
+// zelf visueel geverifieerd via screenshots vóór het vastzetten.
+// inGebruik === 9: de 2 gangmuren + de 4 bouwBinnenplaatsMuur-segmenten +
+// de deur3-lintel (bouwVulMuur) + de 2 grachtgang-muren. De drie kleine
+// binnenplaats-gevelvlakken (bkGevel/wang) delen hetzelfde matFamilie()-
+// materiaal maar zetten userData.materiaalFamilie niet (geen occlusie/
+// vuil-pass op die geometrie), dus die tellen hier bewust niet mee.
 const pleisterTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const p = d.matFamilie('pleister', 0x2e332c);
@@ -201,8 +209,8 @@ const pleisterTest = await page.evaluate(() => {
 });
 check("'pleister' bestaat als volwaardige familie (map + roughnessMap, mat en niet-metallic)",
   pleisterTest.heeftMap && pleisterTest.heeftRuwheid && pleisterTest.metaal === 0 && pleisterTest.ruwheid > 0.8, pleisterTest);
-check("'pleister' wordt nog NERGENS in de wereld toegepast (alleen de grondslag is gelegd)",
-  pleisterTest.inGebruik === 0, pleisterTest);
+check("'pleister' wordt nu daadwerkelijk toegepast, op alle 9 GANG_PLEISTER-muursegmenten (Ticket 151)",
+  pleisterTest.inGebruik === 9, pleisterTest);
 
 // --- 6. Laadtijd-risico uit ARCHITECTURE_NOTES §10.11 ("tientallen
 // milliseconden per textuur... moet gemeten worden"): alle drie de

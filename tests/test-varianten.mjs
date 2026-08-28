@@ -1,5 +1,7 @@
-// Ondode-varianten: Loper/Sjouwer/Brander (Ticket v0.7 + balanspatch
-// Tickets 4/5). Zie ARCHITECTURE_NOTES.md §1 "Zombie-typedefinities".
+// Ondode-varianten: Sjouwer/Brander/Sluiper (Ticket v0.7 + balanspatch
+// Ticket 5). Zie ARCHITECTURE_NOTES.md §1 "Zombie-typedefinities".
+// (De Loper is later op speelverzoek uit het spel verwijderd — leek qua
+// kleur/gedrag te veel op de Brander en voegde te weinig eigen identiteit toe.)
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
@@ -24,22 +26,10 @@ const gewichten = await page.evaluate(() => {
   const golf4 = d.ondodeTypeGewichten();
   return { golf1, golf4 };
 });
-check('Golf 1: alleen normaal heeft gewicht', gewichten.golf1.loper === 0 &&
+check('Golf 1: alleen normaal heeft gewicht',
   gewichten.golf1.sjouwer === 0 && gewichten.golf1.brander === 0 && gewichten.golf1.normaal > 0, gewichten.golf1);
-check('Golf 4: alle drie varianten hebben een gewicht > 0',
-  gewichten.golf4.loper > 0 && gewichten.golf4.sjouwer > 0 && gewichten.golf4.brander > 0, gewichten.golf4);
-
-// --- 3. Loper: 2,2 m/s (Ticket 4), minder HP -------------------------------
-const loperStats = await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  d.spelStaat.golf = 5;
-  const loper = d.spawnOndode(0, 'loper');
-  const normaal = d.spawnOndode(0, 'normaal');
-  return { loperSnelheid: loper.snelheid, normaalSnelheid: normaal.snelheid, loperHp: loper.hp, normaalHp: normaal.hp };
-});
-check('Loper-snelheid is ~2.205 m/s (±0.01)', Math.abs(loperStats.loperSnelheid - 2.205) < 0.01, loperStats);
-check('Loper is sneller en heeft minder HP dan normaal',
-  loperStats.loperSnelheid > loperStats.normaalSnelheid && loperStats.loperHp < loperStats.normaalHp, loperStats);
+check('Golf 4: beide varianten (sjouwer/brander) hebben een gewicht > 0',
+  gewichten.golf4.sjouwer > 0 && gewichten.golf4.brander > 0, gewichten.golf4);
 
 // --- 4. Sjouwer: 5 HP op golf 5-10 (Ticket 5 + 14), trager, meer geld -----
 // Ticket 14: basis-HP is nu een trap (golf 3 -> basis 1 -> sjouwer 3);
@@ -63,9 +53,8 @@ const hpTabel = await page.evaluate(() => {
     d.spelStaat.golf = golf;
     const normaal = d.spawnOndode(0, 'normaal');
     const sjouwer = d.spawnOndode(0, 'sjouwer');
-    const loper = d.spawnOndode(0, 'loper');
     const sluiper = d.spawnOndode(0, 'sluiper');
-    uit[golf] = { basis: d.ondodeStartHP(), normaal: normaal.hp, sjouwer: sjouwer.hp, loper: loper.hp, sluiper: sluiper.hp };
+    uit[golf] = { basis: d.ondodeStartHP(), normaal: normaal.hp, sjouwer: sjouwer.hp, sluiper: sluiper.hp };
     for (const o of [...d.ondoden]) d.doodOndode(o);
   }
   return uit;
@@ -77,8 +66,8 @@ check('Normaal-HP volgt de trap: 1(g1-4) 2(g5-10) 3(g11-15) 4(g16+, plafond)', t
 const sjouwerNooitBoven8 = Object.values(hpTabel).every(rij => rij.sjouwer <= 8);
 check('Sjouwer-HP is nooit hoger dan 8 (golf 16+: min(round(4x2.5), 8) = 8)',
   sjouwerNooitBoven8 && hpTabel[16].sjouwer === 8 && hpTabel[11].sjouwer === 8, hpTabel[16]);
-const minimum1 = Object.values(hpTabel).every(rij => rij.loper >= 1 && rij.sluiper >= 1);
-check('Loper en Sluiper zakken nooit onder 1 HP', minimum1, { golf1: hpTabel[1] });
+const minimum1 = Object.values(hpTabel).every(rij => rij.sluiper >= 1);
+check('Sluiper zakt nooit onder 1 HP', minimum1, { golf1: hpTabel[1] });
 
 // --- 5. Brander: normale HP, ontploft bij overlijden ----------------------
 const branderType = await page.evaluate(() => {
@@ -150,7 +139,7 @@ const v2Types = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const uit = {};
   const traits = { profiel: 'standaard', kromme: false, slepend: 0, armVerschil: 0, lengte: 1, strompelt: false };
-  for (const type of ['normaal', 'loper', 'sjouwer', 'brander', 'sluiper']) {
+  for (const type of ['normaal', 'sjouwer', 'brander', 'sluiper']) {
     for (const o of [...d.ondoden]) { d.ondodenGroep.remove(o.groep); d.ruimGroepOp(o.groep); }
     d.ondoden.length = 0;
     const o = d.spawnOndode(0, type, { ...traits });
@@ -188,19 +177,17 @@ const v2RompBreedtes = await page.evaluate(() => {
   return { smal: meet(0.78), normaal: meet(1), breed: meet(1.3) };
 });
 
-check('V2: elk van de vijf types kost 1 zichtbare draw call, behalve de Brander (2: + losse kernmesh)',
-  ['normaal', 'loper', 'sjouwer', 'sluiper'].every(t => v2Types[t].zichtbareMeshes === 1) &&
+check('V2: elk van de vier types kost 1 zichtbare draw call, behalve de Brander (2: + losse kernmesh)',
+  ['normaal', 'sjouwer', 'sluiper'].every(t => v2Types[t].zichtbareMeshes === 1) &&
   v2Types.brander.zichtbareMeshes === 2, v2Types);
 check('V2: alleen de Brander heeft een losse kern-mesh (delen.kern)',
-  v2Types.brander.heeftKern && ['normaal', 'loper', 'sjouwer', 'sluiper'].every(t => !v2Types[t].heeftKern), v2Types);
-check('V2: Sjouwer past rompBreedte 1,3 toe en heeft een bochel, Loper 0,78 (exact ONDODE_TYPES[..].vorm)',
+  v2Types.brander.heeftKern && ['normaal', 'sjouwer', 'sluiper'].every(t => !v2Types[t].heeftKern), v2Types);
+check('V2: Sjouwer past rompBreedte 1,3 toe en heeft een bochel (exact ONDODE_TYPES[..].vorm)',
   v2Types.sjouwer.rompBreedte === 1.3 && v2Types.sjouwer.heeftBochel === true &&
-  v2Types.loper.rompBreedte === 0.78 && v2Types.normaal.rompBreedte === 1, v2Types);
+  v2Types.normaal.rompBreedte === 1, v2Types);
 check('V2: bouwV2RompGeometrie() vertaalt die breedte ook echt naar een breder oppervlak',
   v2RompBreedtes.breed > v2RompBreedtes.normaal * 1.15 &&
   v2RompBreedtes.smal < v2RompBreedtes.normaal * 0.9, v2RompBreedtes);
-check('V2: Loper leunt voorover (vorm.voorover 0,18 -> chest-kanteling > 0), normaal staat rechtop',
-  v2Types.loper.chestKanteling > 0.1 && v2Types.normaal.chestKanteling === 0, v2Types);
 check('V2: Sluiper heeft een ingedoken kop (extra hoofdkanteling t.o.v. normaal)',
   v2Types.sluiper.hoofdKanteling > v2Types.normaal.hoofdKanteling + 0.2, v2Types);
 
@@ -249,10 +236,8 @@ check("V2: alleen 'eenarmig' mist delen.armL; het SKELET houdt al zijn botten (e
 const typeData = await page.evaluate(() => {
   const t = window.AmsterdamUndeadDebug.ONDODE_TYPES;
   const plat = (x) => ({ s: x.snelheidMultiplier, hp: x.hpMultiplier, hpMax: x.hpMax ?? null, geld: x.geldMultiplier, schaal: x.schaal });
-  return { loper: plat(t.loper), sjouwer: plat(t.sjouwer), brander: plat(t.brander), sluiper: plat(t.sluiper) };
+  return { sjouwer: plat(t.sjouwer), brander: plat(t.brander), sluiper: plat(t.sluiper) };
 });
-check('ONDODE_TYPES.loper ongewijzigd (snelheid 1.47, hp 0.5, geld 0.6, schaal 0.9)',
-  JSON.stringify(typeData.loper) === JSON.stringify({ s: 1.47, hp: 0.5, hpMax: null, geld: 0.6, schaal: 0.9 }), typeData.loper);
 check('ONDODE_TYPES.sjouwer ongewijzigd (snelheid 0.55, hp 2.5, hpMax 8, geld 2.2, schaal 1.35)',
   JSON.stringify(typeData.sjouwer) === JSON.stringify({ s: 0.55, hp: 2.5, hpMax: 8, geld: 2.2, schaal: 1.35 }), typeData.sjouwer);
 check('ONDODE_TYPES.brander/.sluiper ongewijzigd',

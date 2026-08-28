@@ -1,6 +1,6 @@
 // Ticket 136 (§12.9, Fix 6 afsluiter): golf-1-balans met alleen het mes.
 // Geen exacte-tuning-asserties (RNG-afhankelijk: spawn-timing, aanval-
-// jitter, vanaf golf 2 ook het loper/normaal-mengsel) — dit bewaakt de
+// jitter, vanaf golf 3 ook het sjouwer/normaal-mengsel) — dit bewaakt de
 // CONCLUSIE van de meting (tests/t136-golf1-meting.mjs, N=20, zie ook de
 // commentaar bij AMSTEL9_PRIJS): een "camp-and-melee"-speler die stilstaat
 // op de startpositie en alles binnen MES_BEREIK steekt zodra de cooldown

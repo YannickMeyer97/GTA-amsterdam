@@ -180,19 +180,18 @@ const dpsPariteit = await page.evaluate(() => {
 check('DPS-pariteit: over 4 volledige aanvalscycli (1.25s elk) valt ongeveer 4x de profielschade (±1 treffer marge)',
   Math.abs(dpsPariteit.schadeTotaal - dpsPariteit.verwachteSchade) <= 15, dpsPariteit);
 
-// --- 7. Sjouwer heeft een langere wind-up en meer schade dan Loper/Sluiper -
+// --- 7. Sjouwer heeft een langere wind-up en meer schade dan Sluiper -------
 const profielVerschillen = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   return {
-    sjouwer: d.AANVAL_PROFIELEN.sjouwer, loper: d.AANVAL_PROFIELEN.loper, sluiper: d.AANVAL_PROFIELEN.sluiper,
+    sjouwer: d.AANVAL_PROFIELEN.sjouwer, sluiper: d.AANVAL_PROFIELEN.sluiper,
   };
 });
 check('Sjouwer: wind-up >= 0.85s en schade 25 (trage dreun, acceptatiecriterium)',
   profielVerschillen.sjouwer.windup >= 0.85 && profielVerschillen.sjouwer.schade === 25, profielVerschillen);
-check('Loper en Sluiper hebben een kortere wind-up dan de Sjouwer en zijn onderbreekbaar via lichaamstreffer',
-  profielVerschillen.loper.windup < profielVerschillen.sjouwer.windup &&
+check('Sluiper heeft een kortere wind-up dan de Sjouwer en is onderbreekbaar via lichaamstreffer',
   profielVerschillen.sluiper.windup < profielVerschillen.sjouwer.windup &&
-  profielVerschillen.loper.onderbreekbaarLichaam && profielVerschillen.sluiper.onderbreekbaarLichaam,
+  profielVerschillen.sluiper.onderbreekbaarLichaam,
   profielVerschillen);
 
 const fails = report(errs);

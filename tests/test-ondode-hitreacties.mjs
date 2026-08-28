@@ -319,7 +319,7 @@ check('De ondode loopt tijdens een flinch gewoon door richting de speler (pathin
   meleeEnPathing.dichterbij, meleeEnPathing);
 
 // --- 7b. Onderbrekingsregels: headshot breekt een wind-up altijd af; een
-// lichaamstreffer alleen bij onderbreekbaarLichaam-types (Loper/Sluiper) ---
+// lichaamstreffer alleen bij onderbreekbaarLichaam-types (Sluiper) --------
 const onderbreking = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   function windupOndode(type) {
@@ -348,11 +348,11 @@ const onderbreking = await page.evaluate(() => {
   uit.sjouwerKopHerstelVerwacht = d.AANVAL_PROFIELEN.sjouwer.herstel * 0.5;
   d.doodOndode(sjouwer2);
 
-  // Loper (onderbreekbaarLichaam: true): lichaamstreffer breekt WEL af.
-  const loper = windupOndode('loper');
-  d.raakOndode(loper, loper.groep.position, false);
-  uit.loperLichaam = loper.aanvalStaat;
-  d.doodOndode(loper);
+  // Sluiper (onderbreekbaarLichaam: true): lichaamstreffer breekt WEL af.
+  const sluiper = windupOndode('sluiper');
+  d.raakOndode(sluiper, sluiper.groep.position, false);
+  uit.sluiperLichaam = sluiper.aanvalStaat;
+  d.doodOndode(sluiper);
 
   return uit;
 });
@@ -361,8 +361,8 @@ check('Sjouwer-windup: een lichaamstreffer onderbreekt NIET (onderbreekbaarLicha
 check('Sjouwer-windup: een headshot onderbreekt ALTIJD (staat -> herstel, halve hersteltijd)',
   onderbreking.sjouwerKop === 'herstel' &&
   Math.abs(onderbreking.sjouwerKopTimer - onderbreking.sjouwerKopHerstelVerwacht) < 1e-9, onderbreking);
-check('Loper-windup: een lichaamstreffer onderbreekt WEL (onderbreekbaarLichaam: true)',
-  onderbreking.loperLichaam === 'herstel', onderbreking);
+check('Sluiper-windup: een lichaamstreffer onderbreekt WEL (onderbreekbaarLichaam: true)',
+  onderbreking.sluiperLichaam === 'herstel', onderbreking);
 
 // --- 7c. Dood tijdens een wind-up laat het aanvalsslot niet lekken --------
 // Een ECHTE jaag->windup-overgang (via updateOndoden) zodat actieveAanvallers

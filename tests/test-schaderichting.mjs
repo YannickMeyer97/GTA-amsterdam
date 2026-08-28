@@ -136,7 +136,7 @@ const viaSpelerSchade = await page.evaluate(() => {
   for (const slot of d.schadeWedgePool) { slot.timer = 0; slot.el.style.opacity = '0'; }
   d.schadeWedgeVolgende = 0;
   const hpVoor = d.spelerStaat.hp;
-  d.spelerSchade(5, 'loper', 0, -5);   // bron recht vooruit
+  d.spelerSchade(5, 'sjouwer', 0, -5);   // bron recht vooruit
   const slot = d.schadeWedgePool[0];
   return { hpNa: d.spelerStaat.hp, hpVoor, opacity: slot.el.style.opacity, transform: slot.el.style.transform };
 });

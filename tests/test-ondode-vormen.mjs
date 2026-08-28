@@ -15,7 +15,7 @@ const { check, report } = makeChecker();
 // een geladen vuurwapen toekennen.
 await geefSpelerVuurwapen(page);
 
-const TYPES = ['normaal', 'loper', 'sjouwer', 'brander', 'sluiper'];
+const TYPES = ['normaal', 'sjouwer', 'brander', 'sluiper'];
 
 // Neutrale traits met een af te dwingen profiel; 'gebocheld' hoort met een
 // kromme rug te komen (forceerKromme), dus die dwingen we hier ook af.
@@ -45,10 +45,10 @@ check('Er zijn 6-8 variatieprofielen gedefinieerd',
 // blootgeeft die anders alleen met het oog te toetsen zouden zijn — een
 // bounding box wordt door de ARMEN bepaald, niet door de romp, dus is geen
 // betrouwbare torsobreedte-meting) -----------------------------------------
-const vormen = await page.evaluate((vasteTraitsStandaard) => {
+const vormen = await page.evaluate(({ vasteTraitsStandaard, TYPES }) => {
   const d = window.AmsterdamUndeadDebug;
   const uit = {};
-  for (const type of ['normaal', 'loper', 'sjouwer', 'brander', 'sluiper']) {
+  for (const type of TYPES) {
     for (const o of [...d.ondoden]) d.doodOndode(o);
     const o = d.spawnOndode(0, type, eval(`(${vasteTraitsStandaard})`));
     uit[type] = {
@@ -62,9 +62,8 @@ const vormen = await page.evaluate((vasteTraitsStandaard) => {
     d.doodOndode(o);
   }
   return uit;
-}, vasteTraits('standaard'));
-check('Loper-torso is smaller dan normaal, Sjouwer-torso breder (vormParams.rompBreedte)',
-  vormen.loper.rompBreedte < vormen.normaal.rompBreedte &&
+}, { vasteTraitsStandaard: vasteTraits('standaard'), TYPES });
+check('Sjouwer-torso is breder dan normaal (vormParams.rompBreedte)',
   vormen.sjouwer.rompBreedte > vormen.normaal.rompBreedte, vormen);
 check('Sjouwer heeft een bochel, normaal niet',
   vormen.sjouwer.heeftBochel === true && vormen.normaal.heeftBochel === false, vormen);
@@ -79,10 +78,10 @@ check('Sluiper-kop is ingedoken (naar voren en omlaag gekanteld)',
 // een VASTE straal (HITBOX_KOP_STRAAL), niet per type/profiel afgeleide
 // geometrie — een headshot moet voor elk type/profiel exact even groot
 // blijven. -------------------------------------------------------------
-const contract = await page.evaluate(() => {
+const contract = await page.evaluate((TYPES) => {
   const d = window.AmsterdamUndeadDebug;
   const slecht = [];
-  for (const type of ['normaal', 'loper', 'sjouwer', 'brander', 'sluiper']) {
+  for (const type of TYPES) {
     for (const profiel of Object.keys(d.VARIATIE_PROFIELEN)) {
       for (const o of [...d.ondoden]) d.doodOndode(o);
       const traits = { profiel, kromme: profiel === 'gebocheld', slepend: 0, armVerschil: 0, lengte: 1, strompelt: false };
@@ -95,8 +94,8 @@ const contract = await page.evaluate(() => {
     }
   }
   return slecht;
-});
-check("Alle 35 type x profiel-combinaties: kopProxy is 'kop' met straal 0.18, lichaamProxy bestaat",
+}, TYPES);
+check("Alle 28 type x profiel-combinaties: kopProxy is 'kop' met straal 0.18, lichaamProxy bestaat",
   contract.length === 0, contract);
 
 // --- 4. Raycast-sweep: headshot per type x 3 profielen, en de rechterarm
@@ -171,7 +170,6 @@ const stats = await page.evaluate(() => {
 check('ONDODE_TYPES-stats zijn ongewijzigd (snapshot v0.14)',
   JSON.stringify(stats) === JSON.stringify({
     normaal: { s: 1, h: 1, g: 1, hpMax: null, schaal: 1 },
-    loper: { s: 1.47, h: 0.5, g: 0.6, hpMax: null, schaal: 0.9 },
     sjouwer: { s: 0.55, h: 2.5, g: 2.2, hpMax: 8, schaal: 1.35 },
     brander: { s: 1, h: 1, g: 1.3, hpMax: null, schaal: 1 },
     sluiper: { s: 1.35, h: 0.75, g: 1.1, hpMax: null, schaal: 0.75 },

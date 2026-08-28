@@ -1162,6 +1162,49 @@ voor upgrade/werkbank/pantserdrank/ratelaar. Kleuren overlappen deels
   BESTAANDE animatie-writes (zelfde properties, andere factoren — netto
   0 extra writes). Het hoofd-hoogte-anker (±0.03-band, zie beslissing
   16) blijft onaantastbaar: GEEN nieuwe y-offsets op de hoofdgroep.
+- **Ticket 150 breidt diezelfde set uit** met de drie assen die T148/T149
+  toevoegden, volgens exact hetzelfde principe (vermenigvuldigers op
+  bestaande writes, nul nieuwe animatiecodepaden — ontwerpbeslissing 104):
+  `gewichtFactor` (schaalt T148's zijwaartse pelvis-/chest-gewichts-
+  overdracht), `anticipatieExponent` (vervangt de globale constante in
+  T149's windup-armcurve `Math.pow(windupFractie, n)`) en `flinchFactor`
+  (schaalt de visuele hitreactie-uitslag). Waarden:
+
+  | type | gewichtFactor | anticipatieExponent | flinchFactor |
+  |---|---|---|---|
+  | normaal | 1 | 1.6 (= de globale basislijn) | 1 |
+  | loper | 0.55 | 2.2 | 1.35 |
+  | sjouwer | 1.9 | 0.75 | 0.45 |
+  | brander | 1.45 | 1.3 | 1.5 |
+  | sluiper | 0.3 | 2.6 | 1.15 |
+
+  Leesrichting: `anticipatieExponent` boven 1 = de arm blijft laag en
+  zwiept pas op het laatste moment omhoog (weinig telegraaf); onder 1 =
+  de arm gaat meteen omhoog en blíjft dreigend hangen (lange, goed
+  leesbare telegraaf). De Sjouwer is dus als enige een ease-OUT: bij zijn
+  0,85s-windup hoort een telegraaf die je ruim ziet aankomen. De Sluiper
+  zit aan de andere kant van het spectrum — hij kondigt zijn aanval het
+  minst aan, consistent met het feit dat hij ook nooit gromt.
+
+  **Bewust buiten scope: `KNOCKBACK_AFSTAND` blijft globaal.** Die
+  verplaatst de ondode écht en verandert dus de tijd-tot-de-speler; per
+  type schalen zou balans zijn, geen presentatie. `flinchFactor` raakt
+  alleen de pose (`FLINCH_HOOFD_HOEK`/`_ROMP_TWIST`/`_LICHAAM_DIP`).
+
+  De `gang`-lookup in `updateOndoden()` is hiervoor naar de TOP van de
+  lus-iteratie verplaatst: de windup-tak `continue`t vóór het
+  loop-animatieblok waar de lookup eerst stond. Nog steeds precies één
+  lookup per ondode per frame.
+- **Speeltoets-bijstelling (na T150): kleuren van normaal/loper/sluiper
+  lagen te dicht bij elkaar.** Alledrie zaten in dezelfde groenige hue-band
+  (sjouwer/brander waren al wel duidelijk anders door schaal resp. gloeiende
+  kern). Losgetrokken naar vijf eigen hue-families over het kleurenwiel:
+  normaal geel-groen (~75°, ongewijzigd anker), loper karmozijnrood (~0°, was
+  olijfgroen 0x8a9c4a/0xe8ff9c), sjouwer blauwgrijs (~215°, ongewijzigd),
+  brander oranje-bruin (~25°, ongewijzigd), sluiper violet (~262°, was
+  donkergroen 0x3c4a41/0xb8ffc8). Puur `kleur`/`oogKleur` in `ONDODE_TYPES`
+  — geen enkele gameplaymultiplier of de mist-oogmechaniek (die werkt op
+  `emissiveIntensity`, niet op hue) is aangeraakt.
 - **Geluidsprofiel per type**: `ondode.gromTimer` (init 4–9 s, dt-af);
   op 0 én afstand tot speler < 8 m → per-type grom (`piep`-compositie),
   nieuwe timer. Sluiper gromt NOOIT — stilte is zijn tell. Globale cap:
@@ -6177,6 +6220,90 @@ blijft ongewijzigd bestaan als ongebruikte grondslag (`test-texturenset.mjs`
 bewaakt weer expliciet dat 'ie nergens wordt toegepast) — mocht een latere
 ronde 'm alsnog ergens willen inzetten, dan hoeft alleen de toepassing
 teruggebouwd te worden, niet de tekenaar zelf.
+
+**Implementatieverslag Ticket 151 (Wereldmateriaal-pas): de pleister-familie
+alsnog uitgerold, ditmaal blijvend.** Twee stukken werk, beide binnen de
+bestaande texturenset/vuil-laag (geen nieuwe shaders, geen extra lichten,
+geen nieuwe materiaalfamilies).
+
+1. **`pleister` op de GANG_PLEISTER-muren.** Andere afweging dan de
+   atelier-poging hierboven: dat was BAKSTEEN vervangen door een NIEUWE
+   `ATELIER_PLEISTER`-kleur op muren die als baksteen bedoeld waren. Dit
+   ticket pakt muren die al `GANG_PLEISTER` heetten en er dus altijd al als
+   pleisterwerk bedoeld waren — de gang-scheidingsmuren, de vier
+   binnenplaats-muursegmenten, de deur3-lintel, de twee grachtgang-muren en
+   het kleine binnenplaats-gevelvlak (9 geometrieën in totaal, zie
+   `test-texturenset.mjs` §5c). `blok()` kreeg een optionele `familie`-
+   parameter (gebruikt `matFamilie(familie, kleur)` i.p.v. `mat(kleur,
+   ruwheid, metaal)` wanneer gezet), doorgegeven via `bouwMuur()`,
+   `bouwVulMuur()` en de lokale `bouwGrachtMuur()`; `bouwBinnenplaatsMuur()`
+   kreeg dezelfde parameter inline (bouwt zijn mesh niet via `blok()`). Elke
+   muur met een `familie` krijgt `userData.materiaalFamilie` gezet — dat is
+   zowel de test-marker als de haak voor punt 2 hieronder.
+
+   Vóór het vastzetten ECHT bekeken: de vorige poging werd teruggedraaid op
+   een ongedocumenteerde "beviel niet", dus deze keer eerst de rauwe canvas-
+   textuur zelf gedumpt (`map.image.toDataURL()` — een gewone 2D-canvas, dus
+   geen last van de bekende WebGL-`readPixels`/`toDataURL`-leegte-valkuil uit
+   §10.4.1) en losse in-scene screenshots met een tijdelijk opgehoogde
+   `toneMappingExposure` (2.4, alleen in de diagnose-sessie) om de
+   opzettelijk donkere sfeer even te omzeilen. Resultaat: een subtiele
+   wolkige, licht gebarsten grijstextuur die multiplicatief met
+   `GANG_PLEISTER` (0x2e332c) tint tot een donker, verweerd grijsgroen — geen
+   zichtbare naad, geen kleurclash, exact het "geverfde-maquette-DNA
+   behouden"-uitgangspunt uit T106/T107.
+
+2. **`VUIL_FAMILIE_FACTOR` — materiaalfamilie-gebonden vuil in
+   `bakDecorVuil()`.** `vuilSterkte()` was tot dit ticket zuiver
+   positie-gebaseerd: elke muur vervuilt identiek, ongeacht materiaal. Echt
+   pleisterwerk is zachter/poreuzer en toont vocht/scheuren/verwering
+   zichtbaarder dan baksteen. `VUIL_FAMILIE_FACTOR = { pleister: 1.35 }`
+   vermenigvuldigt de bestaande band/naad/vlek-uitkomst per geometrie (via
+   `o.userData.materiaalFamilie`, dezelfde marker als punt 1), geklemd op
+   maximaal 1. Geen nieuwe as, geen nieuwe tekenaar, dus nog steeds nul
+   extra draw calls/texturen — puur een sterkere multiplier op een bestaande
+   vertexkleur-write.
+
+**Basislijn-impact.** Draw calls/driehoeken op alle acht standpunten
+ONVERANDERD (`matFamilie()` vervangt alleen het materiaal-object, geen
+extra geometrie). Helderheid: zeven van de acht standpunten ruim binnen de
+2%-BAND. `binnenplaats` (waar zowel punt 1 als punt 2 samenkomen — vier van
+de negen pleistermuren staan daar) schoof net iets meer: gemiddelde 23,07 ->
+22,95 (binnen band), mediaan 21,03 -> 20,65 in de kale meting, en in de
+kleurgradings-neutraliteitstoets (§6 van `test-visuele-basislijn.mjs`, die
+de gegradeerde mediaan tegen deze tabel toetst) net onder de
+kwantisatievloer (21,03 -> 20,37, -3,1% t.o.v. -2%/0,5px-marge). `BASISLIJN.
+binnenplaats` in dat testbestand is bijgewerkt naar de nieuw gemeten
+waarden, met dezelfde toelichting als hierboven erbij in het testbestand
+zelf. De expliciet buiten-scope gelaten details uit B6 (vochtstreep onder
+dakramen, sleetplek rond deurgrepen — beide 10-30cm, te fijn voor het
+1-vertex-per-meter-raster) blijven ook na dit ticket buiten scope: dat is
+een canvas-textuur/decal-oplossing op zich, geen uitbreiding van de
+vertexkleur-laag.
+
+**Speeltoets-beslissing (na T150): de Loper volledig uit het spel
+verwijderd.** Speeltest-feedback: de Loper (karmozijnrood na de T150-
+kleurherziening) leek visueel/gedragsmatig te veel op de Brander en voegde
+te weinig eigen identiteit toe. In plaats van 'm nóg verder te
+differentiëren is hij geschrapt — vier types (normaal/sjouwer/brander/
+sluiper) i.p.v. vijf. Geraakt: `ONDODE_TYPES` (entry weg), `AANVAL_PROFIELEN`
+(entry weg), `ONDODE_TYPE_MIN_GOLF`/`ondodeTypeGewichten()`/
+`ONDODE_THREAT_KOSTEN` (loper-gewicht weg — de Stroomuitval-mix is nu
+`{normaal:1, sluiper:2}` i.p.v. `{normaal:1, loper:2, sluiper:2}`, en de
+normale golf-weging heeft nu nog maar twee golf-gated varianten: sjouwer
+vanaf golf 3, brander vanaf golf 4), `ONDODE_DOOD_DOOR_NAAM` (kill-feed-tekst
+weg), `speelAanvalGrom()`/`GROM_PROFIELEN` (loper's eigen geluidsregister
+weg — Sluiper behoudt zijn "kort en schril"-register). Geen enkele
+gameplaymultiplier van de overige vier types is aangeraakt. Veertien
+testbestanden gebruikten `'loper'` als spawn-type, type-array-lid, of
+in een balans-/snapshot-assertie — allemaal bijgewerkt (waar een test
+specifiek een `onderbreekbaarLichaam`-type nodig had, is de Sluiper
+ingevuld, die dezelfde eigenschap heeft). `ONDODE_TYPES`/`ONDODE_TYPE_MIN_
+GOLF`/etc. hierboven in dit document (§1 "Zombie-typedefinities") zijn
+BEWUST niet met terugwerkende kracht aangepast — die sectie is een
+historisch verslag van de v0.7-balanspatch en was door latere tickets (T4,
+T150) toch al ingehaald zonder ooit gecorrigeerd te zijn; dit volgt dezelfde
+conventie.
 
 **Implementatieverslag T108 (uitgevoerd, MET een bewuste scope-
 reductie).** Normal maps uit dezelfde hoogtebron als T107's

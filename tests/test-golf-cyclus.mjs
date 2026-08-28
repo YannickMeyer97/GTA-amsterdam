@@ -133,7 +133,7 @@ const uitputting = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   for (const o of [...d.ondoden]) d.doodOndode(o);
   for (const v of d.VENSTERS) v.planken = 0;
-  d.spelStaat.golf = 6;   // geen event, sjouwer/loper/brander toegestaan
+  d.spelStaat.golf = 6;   // geen event, sjouwer/brander toegestaan
   d.spelStaat.golfActief = true;
   d.spelStaat.budget = 0.5;
   const spawn = d.golfSpawnStap();

@@ -2323,6 +2323,17 @@ const VUIL_TINT_KELDER = { r: 0.90, g: 0.98, b: 0.93 };
 function vuilVloerNiveaus() { return [0, -KELDER_DIEPTE, VLIERING_Y]; }
 const VUIL_VLOER_MARGE = 0.12;       // m speling bij het herkennen van zo'n niveau
 
+// Ticket 151: materiaalfamilie-gebonden vuil/schade-variatie. `vuilSterkte()`
+// was tot nu toe puur positie-gebaseerd — elke muur vervuilt exact hetzelfde,
+// ongeacht materiaal. Echt pleisterwerk toont vocht/scheuren/verwering veel
+// zichtbaarder dan baksteen (het is zachter en poreuzer), dus de nieuwe
+// GANG_PLEISTER-muren (zie blok()/bouwBinnenplaatsMuur() se `familie`-
+// parameter) krijgen een bonus op de bestaande band/naad/vlek-berekening.
+// Geen nieuwe as, geen nieuwe tekenaar — alleen een multiplier op wat er al
+// stond, dus nog steeds nul extra draw calls/texturen. Families zonder
+// entry (steen, hout, ...) krijgen factor 1 (ongewijzigd).
+const VUIL_FAMILIE_FACTOR = { pleister: 1.35 };
+
 // Waarde-ruis op wereldcoördinaten: hoekpunten van een rooster van
 // VUIL_VLEK_SCHAAL meter, smoothstep-geïnterpoleerd. Deterministisch via de
 // bestaande hashNaarEenheid() (T104) — géén Math.random(), zodat het patroon
@@ -2410,10 +2421,18 @@ function bakDecorVuil(wortel) {
     // waar hij hoort.
     const kelder = minY < -0.5;
     const tint = kelder ? VUIL_TINT_KELDER : VUIL_TINT_BOVEN;
+    // Ticket 151: familieFactor komt van de MESH (o.userData), niet de
+    // geometrie — bij gedeelde geometrie (bv. twee muren met dezelfde
+    // afmeting) zou een geometrie-marker per definitie kunnen conflicteren
+    // als de twee meshes ooit een verschillende familie kregen. Muren zijn
+    // hier altijd unieke BoxGeometry-instanties (geen T69-cache zoals bij de
+    // ondoden), dus dat scenario doet zich niet voor, maar de lookup blijft
+    // bewust op het juiste object.
+    const familieFactor = VUIL_FAMILIE_FACTOR[o.userData.materiaalFamilie] ?? 1;
 
     for (let i = 0; i < pos.count; i++) {
       punt.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
-      const v = vuilSterkte(punt.x, punt.y, punt.z, vloerY, plafondY);
+      const v = Math.min(1, vuilSterkte(punt.x, punt.y, punt.z, vloerY, plafondY) * familieFactor);
       const donker = 1 - v;
       kleur.setXYZ(i,
         kleur.getX(i) * donker * (1 - v * (1 - tint.r)),
@@ -2426,9 +2445,15 @@ function bakDecorVuil(wortel) {
   return vlakken;
 }
 
-function blok(breedte, hoogte, diepte, kleur, ruwheid = 0.88, metaal = 0, segX = 1, segY = 1, segZ = 1, occlusie = false) {
+// Ticket 151: `familie` is optioneel en laat een muur de canvas-getekende
+// MATERIAAL_FAMILIES-textuur gebruiken (map+roughnessMap) i.p.v. de vlakke
+// mat(kleur, ruwheid, metaal) — zelfde mechanisme als de ooit-teruggedraaide
+// atelier-pleister-poging (zie ARCHITECTURE_NOTES §10.11), nu blijvend
+// gebruikt voor de GANG_PLEISTER-muren. `ruwheid`/`metaal` worden dan
+// genegeerd: de familie in MATERIAAL_FAMILIES bepaalt die.
+function blok(breedte, hoogte, diepte, kleur, ruwheid = 0.88, metaal = 0, segX = 1, segY = 1, segZ = 1, occlusie = false, familie = null) {
   const geometrie = new THREE.BoxGeometry(breedte, hoogte, diepte, segX, segY, segZ);
-  let materiaal = mat(kleur, ruwheid, metaal);
+  let materiaal = familie ? matFamilie(familie, kleur) : mat(kleur, ruwheid, metaal);
   if (occlusie) {
     bakMuurOcclusie(geometrie, hoogte);
     materiaal = matMetVertexKleur(materiaal);
@@ -2436,6 +2461,7 @@ function blok(breedte, hoogte, diepte, kleur, ruwheid = 0.88, metaal = 0, segX =
   const m = new THREE.Mesh(geometrie, materiaal);
   m.castShadow = true;
   m.receiveShadow = true;
+  if (familie) m.userData.materiaalFamilie = familie;
   return m;
 }
 // Muren zijn altijd een lange, dunne doos (breedte ÓF diepte is de dikte,
@@ -2700,9 +2726,9 @@ const BAKSTEEN = 0x54281f;
 // bestaande aanroep bouwt exact dezelfde muur als voorheen. De collision
 // (registreerRechthoek) is 2D en dus per definitie hoogte-onafhankelijk: een
 // lagere muur blokkeert nog steeds volledig, precies zoals bedoeld.
-function bouwMuur(x, z, breedte, diepte, kleur = BAKSTEEN, hoogte = KAMER_HOOGTE) {
+function bouwMuur(x, z, breedte, diepte, kleur = BAKSTEEN, hoogte = KAMER_HOOGTE, familie = null) {
   const { segX, segZ } = muurSegmenten(breedte, diepte);
-  const muur = blok(breedte, hoogte, diepte, kleur, 0.92, 0, segX, SUBDIVISIE_SEGMENTEN, segZ, true);
+  const muur = blok(breedte, hoogte, diepte, kleur, 0.92, 0, segX, SUBDIVISIE_SEGMENTEN, segZ, true, familie);
   muur.position.set(x, hoogte / 2, z);
   wereld.add(muur);
   registreerRechthoek(x - breedte / 2, x + breedte / 2, z - diepte / 2, z + diepte / 2);
@@ -2720,11 +2746,11 @@ function bouwMuur(x, z, breedte, diepte, kleur = BAKSTEEN, hoogte = KAMER_HOOGTE
 // beloopbaar blijven, en de collision in dit spel is 2D (een rechthoek zou
 // de hele doorgang blokkeren, ongeacht hoogte). Op deze hoogte kan niemand
 // er alsnog tegenaan lopen.
-function bouwVulMuur(x, z, breedte, diepte, vanY, totY, kleur = BAKSTEEN) {
+function bouwVulMuur(x, z, breedte, diepte, vanY, totY, kleur = BAKSTEEN, familie = null) {
   const hoogte = totY - vanY;
   if (hoogte <= 0) return null;
   const { segX, segZ } = muurSegmenten(breedte, diepte);
-  const dorpel = blok(breedte, hoogte, diepte, kleur, 0.92, 0, segX, SUBDIVISIE_SEGMENTEN, segZ, true);
+  const dorpel = blok(breedte, hoogte, diepte, kleur, 0.92, 0, segX, SUBDIVISIE_SEGMENTEN, segZ, true, familie);
   dorpel.position.set(x, vanY + hoogte / 2, z);
   dorpel.userData.vulMuur = true;   // debug/test-marker
   wereld.add(dorpel);
@@ -2844,8 +2870,8 @@ let gangVloerMesh;
   gangVloerMesh = vlak(0x1c1a16, DEUR_HALF * 2, gangDiepte, 0, GANG_Z_MIDDEN, 0, false);
   vlak(0x100e0b, DEUR_HALF * 2, gangDiepte, 0, GANG_Z_MIDDEN, KAMER_HOOGTE, true);
   // Gangmuren west en oost (x = ±DEUR_HALF), eigen pleister i.p.v. baksteen.
-  bouwMuur(-(DEUR_HALF + MUUR_DIKTE / 2), GANG_Z_MIDDEN, MUUR_DIKTE, gangDiepte, GANG_PLEISTER);
-  bouwMuur(DEUR_HALF + MUUR_DIKTE / 2, GANG_Z_MIDDEN, MUUR_DIKTE, gangDiepte, GANG_PLEISTER);
+  bouwMuur(-(DEUR_HALF + MUUR_DIKTE / 2), GANG_Z_MIDDEN, MUUR_DIKTE, gangDiepte, GANG_PLEISTER, KAMER_HOOGTE, 'pleister');
+  bouwMuur(DEUR_HALF + MUUR_DIKTE / 2, GANG_Z_MIDDEN, MUUR_DIKTE, gangDiepte, GANG_PLEISTER, KAMER_HOOGTE, 'pleister');
 }
 // Ticket 38: gang-vloer krijgt de 'steen'-familie (dof, mat) — zelfde kleur
 // (0x1c1a16), alleen roughness/metalness verandert naar de gedeelde familie.
@@ -3416,11 +3442,12 @@ let klinkersMesh;
   // boven de rand uitsteken — dat geeft de indruk van een echte Amsterdamse
   // achterplaats i.p.v. een gesloten doos. Collision blijft exact hetzelfde
   // (registreerRechthoek), dus de speler kan nergens doorheen.
-  function bouwBinnenplaatsMuur(x, z, breedte, diepte, hoogte = 2.15, kleur = GANG_PLEISTER) {
+  function bouwBinnenplaatsMuur(x, z, breedte, diepte, hoogte = 2.15, kleur = GANG_PLEISTER, familie = null) {
     const { segX, segZ } = muurSegmenten(breedte, diepte);
     const geometrie = new THREE.BoxGeometry(breedte, hoogte, diepte, segX, SUBDIVISIE_SEGMENTEN, segZ);
     bakMuurOcclusie(geometrie, hoogte);
-    const muur = new THREE.Mesh(geometrie, matMetVertexKleur(mat(kleur, 0.92)));
+    const muur = new THREE.Mesh(geometrie, matMetVertexKleur(familie ? matFamilie(familie, kleur) : mat(kleur, 0.92)));
+    if (familie) muur.userData.materiaalFamilie = familie;
     muur.position.set(x, hoogte / 2, z);
     muur.castShadow = true;
     muur.receiveShadow = true;
@@ -3442,7 +3469,7 @@ let klinkersMesh;
     wereld.add(afdek);
     return muur;
   }
-  bouwBinnenplaatsMuur(PLAATS_CX, PLAATS_Z_NOORD - MUUR_DIKTE / 2, PLAATS_DIEPTE + MUUR_DIKTE * 2, MUUR_DIKTE, 1.85, GANG_PLEISTER);
+  bouwBinnenplaatsMuur(PLAATS_CX, PLAATS_Z_NOORD - MUUR_DIKTE / 2, PLAATS_DIEPTE + MUUR_DIKTE * 2, MUUR_DIKTE, 1.85, GANG_PLEISTER, 'pleister');
   // Ticket 25 (Map-lus M2): de zuidmuur splitst in twee segmenten met een
   // deurgat x ∈ [DEUR3_X ± DEUR3_HALF] voor deur 3 (binnenplaats -> kelderhals).
   // ZUIDMUUR_HOOGTE gedeeld met deur3Mesh hieronder, zodat de deur-vulling
@@ -3452,10 +3479,10 @@ let klinkersMesh;
   const zuidmuurWestBreedte = (DEUR3_X - DEUR3_HALF) - ZUIDMUUR_XWEST;
   const zuidmuurOostBreedte = ZUIDMUUR_XOOST - (DEUR3_X + DEUR3_HALF);
   bouwBinnenplaatsMuur(ZUIDMUUR_XWEST + zuidmuurWestBreedte / 2, PLAATS_Z_ZUID + MUUR_DIKTE / 2,
-    zuidmuurWestBreedte, MUUR_DIKTE, ZUIDMUUR_HOOGTE, GANG_PLEISTER);
+    zuidmuurWestBreedte, MUUR_DIKTE, ZUIDMUUR_HOOGTE, GANG_PLEISTER, 'pleister');
   bouwBinnenplaatsMuur(ZUIDMUUR_XOOST - zuidmuurOostBreedte / 2, PLAATS_Z_ZUID + MUUR_DIKTE / 2,
-    zuidmuurOostBreedte, MUUR_DIKTE, ZUIDMUUR_HOOGTE, GANG_PLEISTER);
-  bouwBinnenplaatsMuur(PLAATS_X_OOST + MUUR_DIKTE / 2, DEUR2_Z, MUUR_DIKTE, PLAATS_BREEDTE + MUUR_DIKTE * 2, 2.55, GANG_PLEISTER);
+    zuidmuurOostBreedte, MUUR_DIKTE, ZUIDMUUR_HOOGTE, GANG_PLEISTER, 'pleister');
+  bouwBinnenplaatsMuur(PLAATS_X_OOST + MUUR_DIKTE / 2, DEUR2_Z, MUUR_DIKTE, PLAATS_BREEDTE + MUUR_DIKTE * 2, 2.55, GANG_PLEISTER, 'pleister');
 
   // --- Achtergevels, nepdoorgangen en balkonnetjes (v0.11) -----------------
   // Puur visuele diepte áchter de binnenplaatsmuren: geen collision (de
@@ -3651,9 +3678,9 @@ let klinkersMesh;
     // plaat in baksteen: hij hield aan de zijkanten zomaar op (je keek er
     // langs de leegte in) en de bakstenen textuur vloekte met de
     // grijsgroene pleistermuren eromheen. Nu drie dingen anders:
-    //   1. Zelfde materiaal als de binnenplaatsmuren (GANG_PLEISTER, plat
-    //      `mat()` zonder textuurfamilie) i.p.v. baksteen — hij hoort bij
-    //      dezelfde muren.
+    //   1. Zelfde materiaal als de binnenplaatsmuren (GANG_PLEISTER via de
+    //      'pleister'-familie, sinds Ticket 151) i.p.v. baksteen — hij hoort
+    //      bij dezelfde muren.
     //   2. Zijwangen die naar achteren teruglopen, zodat de gevel een hoek
     //      heeft i.p.v. in de lucht af te snijden.
     //   3. Een dakvlak eroverheen dat naar achteren steekt, zodat er iets
@@ -3663,7 +3690,7 @@ let klinkersMesh;
     // daar met 3,75 ruim boven — de zijwangen staan op x 4,6 en 12,6 en
     // vallen sowieso buiten die 9-11.
     const bkDiepte = 1.5;
-    const bkMat = mat(GANG_PLEISTER, 0.92);
+    const bkMat = matFamilie('pleister', GANG_PLEISTER);
     const bkGevel = new THREE.Mesh(new THREE.BoxGeometry(bkBreedte, bkHoogte, MUUR_DIKTE), bkMat);
     bkGevel.position.set(bkCx, bkOnder + bkHoogte / 2, bkZ);
     bkGevel.castShadow = true;
@@ -3894,11 +3921,12 @@ wereld.add(deur3Mesh);
 // marge als elke andere deur in dit pand) — zonder lintel bleef die 0,2 m
 // hierboven open, en daar keek je zo de onverlichte kelderhals in. Dat las
 // als een gat in de muur, niet als een deuropening. Zelfde
-// bouwVulMuur()-patroon als de gang-lintel (T87-fix); kleur GANG_PLEISTER
-// om bij de rest van de zuidmuur te matchen (die is met dezelfde kleur
-// gebouwd, niet BAKSTEEN — de vulmuur-default).
+// bouwVulMuur()-patroon als de gang-lintel (T87-fix); kleur GANG_PLEISTER +
+// de 'pleister'-familie (Ticket 151) om bij de rest van de zuidmuur te
+// matchen (die is met dezelfde kleur/familie gebouwd, niet BAKSTEEN — de
+// vulmuur-default).
 bouwVulMuur(DEUR3_X, PLAATS_Z_ZUID + MUUR_DIKTE / 2, DEUR3_HALF * 2, MUUR_DIKTE,
-  ZUIDMUUR_HOOGTE - 0.2, ZUIDMUUR_HOOGTE, GANG_PLEISTER);
+  ZUIDMUUR_HOOGTE - 0.2, ZUIDMUUR_HOOGTE, GANG_PLEISTER, 'pleister');
 const deur3Klink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), matFamilie('metaal', 0xd8c47a));
 deur3Klink.position.set(DEUR3_X + (DEUR3_HALF - 0.25), 1.0, PLAATS_Z_ZUID + MUUR_DIKTE / 2 - 0.1);
 deur3Klink.userData.materiaalFamilie = 'metaal';
@@ -4164,9 +4192,9 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
   const gangMidX = (GRACHTGANG_X_WEST + VLONDER_X_WEST) / 2;
   const vlonderMidX = (VLONDER_X_WEST + VLONDER_X_OOST) / 2;
 
-  function bouwGrachtMuur(x, z, breedte, diepte, kleur) {
+  function bouwGrachtMuur(x, z, breedte, diepte, kleur, familie = null) {
     const { segX, segZ } = muurSegmenten(breedte, diepte);
-    const muur = blok(breedte, KAMER_HOOGTE, diepte, kleur, 0.92, 0, segX, SUBDIVISIE_SEGMENTEN, segZ, true);
+    const muur = blok(breedte, KAMER_HOOGTE, diepte, kleur, 0.92, 0, segX, SUBDIVISIE_SEGMENTEN, segZ, true, familie);
     muur.position.set(x, KAMER_HOOGTE / 2, z);
     wereld.add(muur);
     registreerRechthoek(x - breedte / 2, x + breedte / 2, z - diepte / 2, z + diepte / 2);
@@ -4176,8 +4204,8 @@ bijkeukenVloerMesh.userData.materiaalFamilie = 'tegel';
   // zelfde stijl als de bestaande gang tussen woonkamer en atelier.
   vlak(GRACHTGANG_VLOER, GRACHTGANG_LENGTE, gangDiepte, gangMidX, gangCZ, 0, false);
   vlak(0x100e0b, GRACHTGANG_LENGTE, gangDiepte, gangMidX, gangCZ, KAMER_HOOGTE, true);
-  bouwGrachtMuur(gangMidX, gangCZ - GRACHTGANG_HALF - MUUR_DIKTE / 2, GRACHTGANG_LENGTE, MUUR_DIKTE, GANG_PLEISTER);
-  bouwGrachtMuur(gangMidX, gangCZ + GRACHTGANG_HALF + MUUR_DIKTE / 2, GRACHTGANG_LENGTE, MUUR_DIKTE, GANG_PLEISTER);
+  bouwGrachtMuur(gangMidX, gangCZ - GRACHTGANG_HALF - MUUR_DIKTE / 2, GRACHTGANG_LENGTE, MUUR_DIKTE, GANG_PLEISTER, 'pleister');
+  bouwGrachtMuur(gangMidX, gangCZ + GRACHTGANG_HALF + MUUR_DIKTE / 2, GRACHTGANG_LENGTE, MUUR_DIKTE, GANG_PLEISTER, 'pleister');
 
   // Vlonder-vloer (x ∈ [VLONDER_X_WEST, VLONDER_X_OOST]) — buiten, eigen
   // houten materiaal (Ticket 38: 'hout'-familie), geen plafond.
@@ -9106,14 +9134,14 @@ function speelExplosie()  { piep('sawtooth', 90, 30, 0.35, 0.16); setTimeout(() 
 function speelSpelerAu()  { piep('sawtooth', 160, 60, 0.18, 0.11); }
 // Ticket 31 (Aanval A2): hoorbare tells voor de aanvals-state-machine (T30).
 // speelAanvalGrom klinkt bij windup-start, per type een eigen register
-// (Sjouwer laag en lang, Loper/Sluiper kort en schril, normaal ertussenin).
+// (Sjouwer laag en lang, Sluiper kort en schril, normaal ertussenin).
 // De tellers zijn puur voor headless tests (er is geen andere manier om
 // Web Audio-aanroepen van buitenaf te verifiëren) — geen gameplay-effect.
 let aanvalGromTeller = 0, slagRaakTeller = 0, slagMisTeller = 0;
 function speelAanvalGrom(type) {
   aanvalGromTeller++;
   if (type === 'sjouwer') piep('sawtooth', 70, 110, 0.5, 0.09);
-  else if (type === 'loper' || type === 'sluiper') piep('sawtooth', 320, 440, 0.16, 0.07);
+  else if (type === 'sluiper') piep('sawtooth', 320, 440, 0.16, 0.07);
   else piep('sawtooth', 150, 220, 0.3, 0.08);
 }
 function speelSlagRaak() { slagRaakTeller++; piep('square', 100, 40, 0.12, 0.1); }   // doffe dreun, bovenop speelSpelerAu()
@@ -9267,7 +9295,6 @@ const AANVAL_HERSTEL_SNELHEIDSFACTOR = 0.4;   // beweegsnelheid tijdens 'herstel
 const AANVAL_PROFIELEN = {
   //           windup  herstel  raakBereik  raakHoek  schade  onderbreekbaarLichaam
   normaal: { windup: 0.45, herstel: 0.70, raakBereik: 1.6, raakHoek: 1.15, schade: 15, onderbreekbaarLichaam: false },
-  loper:   { windup: 0.33, herstel: 0.90, raakBereik: 1.5, raakHoek: 1.15, schade: 10, onderbreekbaarLichaam: true },
   sjouwer: { windup: 0.85, herstel: 1.00, raakBereik: 1.8, raakHoek: 1.40, schade: 25, onderbreekbaarLichaam: false },
   brander: { windup: 0.45, herstel: 0.70, raakBereik: 1.6, raakHoek: 1.15, schade: 15, onderbreekbaarLichaam: false },
   sluiper: { windup: 0.30, herstel: 0.80, raakBereik: 1.5, raakHoek: 1.15, schade: 12, onderbreekbaarLichaam: true },
@@ -9417,10 +9444,11 @@ function nieuweGromTimer() { return ONDODE_GROM_MIN_INTERVAL + Math.random() * (
 // (klassieke filtersweep-truc voor een gedempt, keelachtig geluid) en een
 // overwegend DALENDE toonhoogte met een kleine tussenstap voor wat
 // golving/onregelmatigheid. Volumes ongewijzigd t.o.v. de +20%-ronde
-// (0.054/0.042/0.054/0.048).
+// (sjouwer/brander/normaal: 0.054/0.054/0.048 — loper had 0.042, maar dat
+// type is op speelverzoek uit het spel verwijderd: leek qua kleur/gedrag te
+// veel op de Brander en voegde te weinig eigen identiteit toe).
 const GROM_PROFIELEN = {
   sjouwer: { golfvorm: 'sawtooth', startHz: 70,  dipHz: 58,  eindHz: 46,  filterStart: 900,  filterEind: 260, detune: 22, duur: 0.5,  volume: 0.054 },
-  loper:   { golfvorm: 'sawtooth', startHz: 190, dipHz: 165, eindHz: 130, filterStart: 1300, filterEind: 550, detune: 16, duur: 0.2,  volume: 0.042 },
   brander: { golfvorm: 'square',   startHz: 115, dipHz: 95,  eindHz: 66,  filterStart: 1000, filterEind: 240, detune: 26, duur: 0.38, volume: 0.054 },
   normaal: { golfvorm: 'sawtooth', startHz: 95,  dipHz: 80,  eindHz: 60,  filterStart: 950,  filterEind: 340, detune: 18, duur: 0.32, volume: 0.048 },
 };
@@ -9593,42 +9621,77 @@ function ondodeStartHP() {
 // loopFase-/romp-bob-/ledemaat-amplitude-writes in updateOndoden() (netto 0
 // extra writes). ampFactor ontbreekt bij de meeste types (default 1, alleen
 // de Sluiper heeft een expliciet afwijkende waarde — "korte" pasjes).
-const ONDODE_GANG_DEFAULT = { pasFactor: 1, bobFactor: 1, ampFactor: 1 };
+//
+// Ticket 150 (type-persoonlijkheid): dezelfde parameterset uitgebreid met de
+// drie assen die T148/T149 hebben toegevoegd, zodat de types ook DAAR van
+// elkaar verschillen zonder ook maar één nieuw animatiecodepad
+// (ontwerpbeslissing 104). Alledrie zijn — net als de drie hierboven —
+// zuivere vermenigvuldigers op writes die er al staan:
+//   gewichtFactor       schaalt T148's zijwaartse gewichtsoverdracht
+//                       (PELVIS_/CHEST_WEIGHT_SHIFT_AMPLITUDE). Hoog = een
+//                       zware massa die per pas hoorbaar overhelt, laag =
+//                       licht/glijdend, nauwelijks zijwaartse verplaatsing.
+//   anticipatieExponent schaalt T149's windup-armcurve
+//                       (Math.pow(windupFractie, n), zie updateOndoden()).
+//                       n > 1 = arm blijft laag en zwiept pas op het laatst
+//                       omhoog (weinig telegraaf, snappy); n < 1 = arm gaat
+//                       meteen omhoog en blíjft dreigend hangen (lange,
+//                       goed leesbare telegraaf). normaal houdt exact de
+//                       globale AANVAL_ANTICIPATIE_EXPONENT aan.
+//   flinchFactor        schaalt de VISUELE hitreactie-uitslag
+//                       (FLINCH_HOOFD_HOEK/_ROMP_TWIST/_LICHAAM_DIP). Bewust
+//                       NIET KNOCKBACK_AFSTAND: dat verplaatst de ondode
+//                       echt en verandert dus de tijd-tot-de-speler, en dit
+//                       ticket mag de balans niet raken. Puur pose, dus een
+//                       factor 0 zou nog steeds netjes op 0 uitkomen bij
+//                       fractie 0 (het reset-gedrag blijft ongewijzigd).
+const ONDODE_GANG_DEFAULT = { pasFactor: 1, bobFactor: 1, ampFactor: 1, gewichtFactor: 1, anticipatieExponent: AANVAL_ANTICIPATIE_EXPONENT, flinchFactor: 1 };
 const ONDODE_TYPES = {
   normaal: { snelheidMultiplier: 1,    hpMultiplier: 1, geldMultiplier: 1,   kleur: 0x5d7255, oogKleur: 0xd8ff6b, schaal: 1,
              gang: ONDODE_GANG_DEFAULT },
-  // Loper: snel maar breekbaar, lage beloning — dwingt de speler om te kiezen wie eerst.
-  // Ticket 4: 1.8->1.47 (1,5x1,47=2,205 m/s) — op 2,7 haalde hij een
-  // achteruit schietende speler te makkelijk in.
-  // Vorm: dun en voorovergebogen — een sprinter in aanzet.
-  loper:   { snelheidMultiplier: 1.47, hpMultiplier: 0.5, geldMultiplier: 0.6, kleur: 0x8a9c4a, oogKleur: 0xe8ff9c, schaal: 0.9,
-             vorm: { rompBreedte: 0.78, voorover: 0.18 },
-             gang: { pasFactor: 1.25, bobFactor: 0.8, ampFactor: 1 } },
   // Sjouwer: erg traag, zeer taai, hoge beloning — een blokkade die de doorgang dichtzet.
   // Ticket 5: hpMultiplier 4->2.5 — op 8 HP was hij wachttijd i.p.v. spanning.
   // Ticket 14: hpMax 8 — zonder plafond zou 2.5x op de late basis-HP (3-4)
   // weer 8-10 HP geven, precies de sponge die ontwerpbeslissing 11 verbiedt.
   // Vorm: breed met een bochel — een gedrongen sjouwerslijf.
+  // Ticket 150: massa. Hij helt per pas fors over (gewichtFactor ver boven 1),
+  // hij heft zijn arm juist VROEG en laat 'm dreigend hangen (exponent < 1 =
+  // ease-out, de lange, goed leesbare telegraaf die bij zijn 0,85s-windup
+  // hoort), en een treffer beweegt hem nauwelijks — hij is niet weg te duwen.
   sjouwer: { snelheidMultiplier: 0.55, hpMultiplier: 2.5, hpMax: 8, geldMultiplier: 2.2, kleur: 0x4a5568, oogKleur: 0x9cc8ff, schaal: 1.35,
              vorm: { rompBreedte: 1.3, bochel: true },
-             gang: { pasFactor: 0.8, bobFactor: 1.6, ampFactor: 1 } },
+             gang: { pasFactor: 0.8, bobFactor: 1.6, ampFactor: 1, gewichtFactor: 1.9, anticipatieExponent: 0.75, flinchFactor: 0.45 } },
   // Brander: normale snelheid/HP, ontploft bij overlijden (zie ontploiBrander).
   // Vorm: buikige romp met een gloeiende kern (emissive mesh, bewust GEEN
   // PointLight — 0 lights per ondode, zie ARCHITECTURE_NOTES §4.9).
+  // Ticket 150: instabiel. Zelfde pas/bob als normaal (zelfde snelheid), maar
+  // topzwaar — de buik slingert per pas duidelijk mee (gewichtFactor > 1) — en
+  // hij haalt gretig iets vroeger uit dan normaal. Bij een treffer lurcht hij
+  // het hardst van alle types: dat is de visuele hint dat er iets in zit dat
+  // zo meteen afgaat. Eigen object (niet meer ONDODE_GANG_DEFAULT bij
+  // referentie, want die deelde hij met `normaal`).
   brander: { snelheidMultiplier: 1,    hpMultiplier: 1,   geldMultiplier: 1.3, kleur: 0x8a4a2c, oogKleur: 0xffa03d, schaal: 1, explodeert: true,
              vorm: { buik: true },
-             gang: ONDODE_GANG_DEFAULT },
+             gang: { pasFactor: 1, bobFactor: 1, ampFactor: 1, gewichtFactor: 1.45, anticipatieExponent: 1.3, flinchFactor: 1.5 } },
   // Ticket 8: Sluiper — uitsluitend tijdens een Mistgolf (gating in
   // ondodeTypeGewichten(), zie Ticket 9). Klein en snel-ish, weinig HP,
   // met goed zichtbare ogen zodat hij in de mist eerlijk vindbaar blijft.
   // Vorm: ingedoken kop — hij besluipt je met de nek naar voren.
-  sluiper: { snelheidMultiplier: 1.35, hpMultiplier: 0.75, geldMultiplier: 1.1, kleur: 0x3c4a41, oogKleur: 0xb8ffc8, schaal: 0.75,
+  // Speeltoets-bijstelling: zat qua kleur te dicht bij normaal (zelfde
+  // groenige familie). Was 0x3c4a41/0xb8ffc8 — nu een spookachtig violet,
+  // ver van sjouwer se blauwgrijs (~215°) én van de rest van de groep.
+  sluiper: { snelheidMultiplier: 1.35, hpMultiplier: 0.75, geldMultiplier: 1.1, kleur: 0x5c4a80, oogKleur: 0xc8b8ff, schaal: 0.75,
              vorm: { ingedokenKop: true },
              // Korte, snelle pasjes met een lage bob (ampFactor < 1 verkleint
              // ook de ledemaat-zwaai, niet alleen de romp-bob).
-             gang: { pasFactor: 1.4, bobFactor: 0.5, ampFactor: 0.7 } },
+             // Ticket 150: "stilte is zijn tell" doortrekken naar de beweging.
+             // Hij glijdt bijna — de laagste gewichtsoverdracht van alle types
+             // — en kondigt zijn aanval het minst aan (hoogste exponent: de
+             // arm blijft laag tot vlak vóór de klap). Precies zoals hij ook
+             // nooit gromt: dit type geeft je zo min mogelijk vooraf.
+             gang: { pasFactor: 1.4, bobFactor: 0.5, ampFactor: 0.7, gewichtFactor: 0.3, anticipatieExponent: 2.6, flinchFactor: 1.15 } },
 };
-const ONDODE_TYPE_MIN_GOLF = { loper: 2, sjouwer: 3, brander: 4 };
+const ONDODE_TYPE_MIN_GOLF = { sjouwer: 3, brander: 4 };
 const BRANDER_EXPLOSIE_RADIUS = 3.0;
 const BRANDER_EXPLOSIE_SCHADE_SPELER = 25;
 const BRANDER_EXPLOSIE_SCHADE_ONDODE = 3;
@@ -9642,13 +9705,12 @@ function ondodeTypeGewichten() {
   // Sluipers — de eventgolf moet ANDERS voelen, niet gewoon voller.
   if (actieveEventGolf === 'mist') return { sluiper: 1 };
   // Ticket 46: Stroomuitval heeft een eigen, vaste mix (los van de normale
-  // golf-gebonden ontgrendeling) — donker + Lopers/Sluipers voelt anders
-  // dan gewoon meer normaal-type.
-  if (actieveEventGolf === 'stroomuitval') return { normaal: 1, loper: 2, sluiper: 2 };
+  // golf-gebonden ontgrendeling) — donker + Sluipers voelt anders dan
+  // gewoon meer normaal-type.
+  if (actieveEventGolf === 'stroomuitval') return { normaal: 1, sluiper: 2 };
   const golf = spelStaat.golf;
   return {
     normaal: 10,
-    loper: golf >= ONDODE_TYPE_MIN_GOLF.loper ? 4 : 0,
     sjouwer: golf >= ONDODE_TYPE_MIN_GOLF.sjouwer ? 3 : 0,
     brander: golf >= ONDODE_TYPE_MIN_GOLF.brander ? 3 : 0,
   };
@@ -9687,7 +9749,7 @@ const GOLF_BUDGET_BASIS   = 5;    // budget van golf 1
 const GOLF_BUDGET_GROEI   = 1.7;  // extra budget per volgende golf
 // Dreigingskosten per type: een Sjouwer "kost" drie normale ondoden.
 // (Latere event-elites: 4-6.)
-const ONDODE_THREAT_KOSTEN = { normaal: 1, loper: 1.4, brander: 1.8, sluiper: 1.5, sjouwer: 3 };
+const ONDODE_THREAT_KOSTEN = { normaal: 1, brander: 1.8, sluiper: 1.5, sjouwer: 3 };
 // Eventgolven (mist) krijgen iets minder budget: het event zelf ís de druk.
 const EVENT_GOLF_BUDGET_FACTOR = 0.9;
 
@@ -11153,7 +11215,7 @@ function spawnOndode(vensterIndex, type = 'normaal', traits = kiesOndodeTraits()
   const groep = maakOndodeModelV2(typeInfo, traits);
   groep.position.set(venster.x, 0, venster.z);
   const ondode = {
-    // HP: multiplier op de trap-basis, minimaal 1 (Loper/Sluiper) en gecapt
+    // HP: multiplier op de trap-basis, minimaal 1 (Sluiper) en gecapt
     // op het optionele type-plafond (Ticket 14: Sjouwer max 8).
     groep, type, hp: Math.max(1, Math.min(Math.round(ondodeStartHP() * typeInfo.hpMultiplier), typeInfo.hpMax ?? Infinity)),
     snelheid: ONDODE_SNELHEID * typeInfo.snelheidMultiplier, geldMultiplier: typeInfo.geldMultiplier,
@@ -12137,6 +12199,13 @@ function updateOndoden(dt) {
     const rechtstreeks = _tmpRechtstreeks.subVectors(speler.positie, positie);
     const afstand = rechtstreeks.length();
     const profiel = AANVAL_PROFIELEN[ondode.type] || AANVAL_PROFIELEN.normaal;
+    // Ticket 39 (Sfeer S2): per-type gang-ritme — vermenigvuldigers op de
+    // animatie-writes verderop (netto 0 extra transform-writes).
+    // Ticket 150: deze lookup stond eerst pas bij het loop-animatieblok, maar
+    // de gang-set stuurt nu ook de windup-armcurve (hieronder, in een tak die
+    // `continue`t vóór dat blok) en de flinch-uitslag. Nog steeds precies één
+    // lookup per ondode per frame — alleen eerder in dezelfde iteratie.
+    const gang = (ONDODE_TYPES[ondode.type] || ONDODE_TYPES.normaal).gang || ONDODE_GANG_DEFAULT;
 
     // 'windup': positie bevroren, alleen beperkt bijdraaien richting de
     // speler. Op het einde van de timer valt het discrete slag-moment:
@@ -12170,9 +12239,12 @@ function updateOndoden(dt) {
       const windupFractie = Math.min(1, 1 - Math.max(0, ondode.aanvalTimer) / profiel.windup);
       const delen = ondode.delen;
       // Ticket 149: anticipatie — alleen de arm-heffing loopt op de ease-in-
-      // curve (AANVAL_ANTICIPATIE_EXPONENT), hoofd/oog hieronder blijven op
-      // de lineaire windupFractie zelf.
-      const windupArmFractie = Math.pow(windupFractie, AANVAL_ANTICIPATIE_EXPONENT);
+      // curve, hoofd/oog hieronder blijven op de lineaire windupFractie zelf.
+      // Ticket 150: de exponent komt per type uit ONDODE_TYPES[..].gang
+      // (`normaal` houdt exact AANVAL_ANTICIPATIE_EXPONENT aan, dus die blijft
+      // de basislijn). Boven 1 = weinig telegraaf (arm zwiept pas laat op),
+      // onder 1 = een lange, dreigend vastgehouden telegraaf.
+      const windupArmFractie = Math.pow(windupFractie, gang.anticipatieExponent);
       const armNu = ARM_RUST_ROTATIE_X + (AANVAL_ARM_HOEK_WINDUP - ARM_RUST_ROTATIE_X) * windupArmFractie;
       if (delen.armL) delen.armL.rotation.x = armNu;
       if (delen.armR) delen.armR.rotation.x = armNu;
@@ -12344,9 +12416,8 @@ function updateOndoden(dt) {
     // anticipatie, impact-overshoot, flinch-differentiatie, val-easing)
     // hergebruiken uitsluitend diezelfde bestaande properties met een andere
     // wiskundige afbeelding van fractie -> waarde — 0 extra transform-writes.
-    // Ticket 39 (Sfeer S2): per-type gang-ritme — vermenigvuldigers op
-    // dezelfde writes hieronder (netto 0 extra transform-writes).
-    const gang = (ONDODE_TYPES[ondode.type] || ONDODE_TYPES.normaal).gang || ONDODE_GANG_DEFAULT;
+    // (`gang` is bovenaan deze lus-iteratie opgezocht — zie de toelichting
+    // daar; de windup-tak hierboven `continue`t en heeft 'm ook nodig.)
     // Ticket 148: voetslip-fix. `voorPos` (hierboven, vóór de beweging +
     // losBotsingenOp() gezet) is al een verse momentopname van DEZE aanroep —
     // in tegenstelling tot de speler se bobFase (module-level vorigeSpelerX/Z,
@@ -12454,7 +12525,9 @@ function updateOndoden(dt) {
       // verschuift zijwaarts naar het steunbeen precies wanneer hij ook naar
       // die kant kantelt (rotation.z hierboven), i.p.v. een losse, uit-fase
       // wiebel.
-      const pelvisShiftNu = faseL * PELVIS_WEIGHT_SHIFT_AMPLITUDE;
+      // Ticket 150: gewichtFactor uit de gang-set — de Sjouwer helt fors over,
+      // de Sluiper glijdt bijna. Zelfde write, andere amplitude.
+      const pelvisShiftNu = faseL * PELVIS_WEIGHT_SHIFT_AMPLITUDE * gang.gewichtFactor;
       delen.pelvis.position.x = pelvisShiftNu;
       // Speeltest-fix: zonder dit stonden de benen zichtbaar los van/naast
       // de romp — de beenbotten zijn nooit aan de romp-mesh geskind
@@ -12472,7 +12545,10 @@ function updateOndoden(dt) {
       // een kleine zijwaartse chest-verschuiving, zodat de gewichtsoverdracht
       // zichtbaar van de pelvis (hierboven) omhoog "golft" i.p.v. dat de twee
       // onafhankelijk bewegen.
-      delen.chest.position.x = Math.sin(ondode.loopFase - CHEST_LAG_FASE) * CHEST_WEIGHT_SHIFT_AMPLITUDE;
+      // Ticket 150: dezelfde gewichtFactor als de pelvis hierboven, zodat de
+      // gewichtsgolf per type als één geheel meeschaalt i.p.v. dat heup en
+      // borstkas los van elkaar sterker/zwakker worden.
+      delen.chest.position.x = Math.sin(ondode.loopFase - CHEST_LAG_FASE) * CHEST_WEIGHT_SHIFT_AMPLITUDE * gang.gewichtFactor;
       // Vervolg-fix (speeltest: "armen lijken soms los van de romp te
       // staan"): de schouderzone van de romp-mesh hangt vrijwel volledig aan
       // 'chest' (v2RompGewichten() geeft daar wChest≈1), maar armL/armR zijn
@@ -12524,7 +12600,9 @@ function updateOndoden(dt) {
           // het grootste deel van FLINCH_DUUR dicht bij de volle uitwijking
           // (een kort "duizelig" nagalmen) en klapt pas vlak vóór het einde
           // snel terug, i.p.v. gelijkmatig af te bouwen.
-          delen.hoofd.rotation.x -= FLINCH_HOOFD_HOEK * Math.sqrt(fractie);
+          // Ticket 150: uitslag per type geschaald (gang.flinchFactor) — een
+          // Sjouwer verzet nauwelijks, een Brander lurcht juist hard.
+          delen.hoofd.rotation.x -= FLINCH_HOOFD_HOEK * gang.flinchFactor * Math.sqrt(fractie);
         } else {
           // Speeltoets-bijstelling (na T149): dit was `fractie * fractie`, met
           // als idee "een snelle kinetische terugslag". In de praktijk maakte
@@ -12533,7 +12611,11 @@ function updateOndoden(dt) {
           // speeltest meldde dan ook dat lichaams-/armtreffers niet aanvoelden.
           // Terug naar lineair uitdoven; het onderscheid met de kop zit nu in
           // de kop-curve (sqrt, blijft juist lang hangen) plus de dip hieronder.
-          const lichaamFractie = fractie;
+          // Ticket 150: gang.flinchFactor schaalt de uitslag per type. Op de
+          // fractie zelf toegepast (niet los per as), zodat twist en dip
+          // exact in verhouding blijven — en fractie=0 blijft exact 0, dus
+          // het reset-gedrag hieronder verandert niet.
+          const lichaamFractie = fractie * gang.flinchFactor;
           // Zelfde skin-weight-argument als de bob hierboven: een lichaams-
           // treffer moet de HELE torso zichtbaar laten twisten, niet alleen
           // het smalle romp-gewogen bandje. Extra "ineenkrimpen" (position.y)
@@ -13066,7 +13148,7 @@ function berekenScore(bonus = 0) {
 }
 
 const ONDODE_DOOD_DOOR_NAAM = {
-  normaal: 'een ondode', loper: 'een Loper', sjouwer: 'een Sjouwer',
+  normaal: 'een ondode', sjouwer: 'een Sjouwer',
   brander: 'een Brander', sluiper: 'een Sluiper',
 };
 
@@ -15911,7 +15993,7 @@ window.AmsterdamUndeadDebug = {
   koopPantserdrank, pantserdrankPunt, pantserdrankMarkering,
   get pantserdrankGekocht() { return pantserdrankGekocht; },
   // v0.8: barricades op de vensters:
-  // v0.7: ondode-varianten (Loper/Sjouwer/Brander):
+  // v0.7: ondode-varianten (Sjouwer/Brander/Sluiper):
   ONDODE_TYPES, ONDODE_TYPE_MIN_GOLF, kiesOndodeType, ondodeTypeGewichten,
   kiesOndodeTraits,   // v0.8: cosmetische per-ondode variatie
   VARIATIE_PROFIELEN,   // Ticket 19: silhouetten + variatieprofielen
@@ -15949,7 +16031,7 @@ window.AmsterdamUndeadDebug = {
   // B6 (VISUEEL.md laag 3): vuil, aanslag en slijtage — zie test-vuil-slijtage.mjs.
   VUIL_BAND_HOOGTE, VUIL_BAND_STERKTE, VUIL_NAAD_HOOGTE, VUIL_NAAD_STERKTE,
   VUIL_VLEK_SCHAAL, VUIL_VLEK_STERKTE, VUIL_TINT_BOVEN, VUIL_TINT_KELDER,
-  VUIL_VLEK_DREMPEL_VAN, VUIL_VLEK_DREMPEL_TOT,
+  VUIL_VLEK_DREMPEL_VAN, VUIL_VLEK_DREMPEL_TOT, VUIL_FAMILIE_FACTOR,
   vuilVloerNiveaus, vuilRuis, vuilSterkte, bakDecorVuil, vuilVlakken,
   // Ticket 105: afgeschuinde randen (RoundedBoxGeometry, ongecachet — zie
   // toelichting bij geoAfgeschuind()).

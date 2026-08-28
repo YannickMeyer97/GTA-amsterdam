@@ -180,7 +180,7 @@ const gameOverTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.schrijfHighscore({ score: 5, golf: 1, datum: 'oud' });   // laag record, moet verslagen worden
   d.runStats.kills = 3; d.runStats.headshots = 1; d.runStats.schoten = 10; d.runStats.treffers = 4;
-  d.runStats.geldTotaal = 250; d.runStats.powerups = 2; d.runStats.doodDoor = 'loper';
+  d.runStats.geldTotaal = 250; d.runStats.powerups = 2; d.runStats.doodDoor = 'sjouwer';
   d.spelStaat.golf = 5;
   d.spelStaat.gameOver = false;
   d.gameOver();
@@ -198,7 +198,7 @@ check('gameOver() zet de score-tekst op de exacte berekenScore()-waarde',
 check('gameOver() toont kills/headshots/treffers/geld/powerups/doodDoor in de statsblok',
   gameOverTest.statsHTML.includes('Kills: 3') && gameOverTest.statsHTML.includes('Headshots: 1') &&
   gameOverTest.statsHTML.includes('Treffers: 4 / 10') && gameOverTest.statsHTML.includes('€250') &&
-  gameOverTest.statsHTML.includes('Power-ups: 2') && gameOverTest.statsHTML.includes('Loper'), gameOverTest);
+  gameOverTest.statsHTML.includes('Power-ups: 2') && gameOverTest.statsHTML.includes('Sjouwer'), gameOverTest);
 check('gameOver() overschrijft het lage oude record en toont NIEUW RECORD',
   gameOverTest.recordTekst === 'NIEUW RECORD!' && gameOverTest.opgeslagen.score === verwachteScore, gameOverTest);
 check('gameOverScherm wordt zichtbaar gemaakt',

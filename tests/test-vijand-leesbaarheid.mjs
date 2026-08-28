@@ -16,20 +16,20 @@ const pasTest = await page.evaluate(() => {
   for (const o of [...d.ondoden]) d.doodOndode(o);
   const normaal = d.spawnOndode(0, 'normaal');
   const sjouwer = d.spawnOndode(0, 'sjouwer');
-  const loper = d.spawnOndode(0, 'loper');
+  const sluiper = d.spawnOndode(0, 'sluiper');
   // Snelheid gelijktrekken zodat alleen het gang-ritme (pasFactor) overblijft.
-  normaal.snelheid = 2; sjouwer.snelheid = 2; loper.snelheid = 2;
-  const faseVoor = { normaal: normaal.loopFase, sjouwer: sjouwer.loopFase, loper: loper.loopFase };
+  normaal.snelheid = 2; sjouwer.snelheid = 2; sluiper.snelheid = 2;
+  const faseVoor = { normaal: normaal.loopFase, sjouwer: sjouwer.loopFase, sluiper: sluiper.loopFase };
   for (let i = 0; i < 10; i++) d.updateOndoden(0.05);
   const deltaNormaal = normaal.loopFase - faseVoor.normaal;
   const deltaSjouwer = sjouwer.loopFase - faseVoor.sjouwer;
-  const deltaLoper = loper.loopFase - faseVoor.loper;
-  return { deltaNormaal, deltaSjouwer, deltaLoper };
+  const deltaSluiper = sluiper.loopFase - faseVoor.sluiper;
+  return { deltaNormaal, deltaSjouwer, deltaSluiper };
 });
 check('Sjouwer (pasFactor 0.8) bouwt loopFase merkbaar TRAGER op dan normaal (pasFactor 1) bij gelijke snelheid',
   pasTest.deltaSjouwer < pasTest.deltaNormaal * 0.85, pasTest);
-check('Loper (pasFactor 1.25) bouwt loopFase merkbaar SNELLER op dan normaal bij gelijke snelheid',
-  pasTest.deltaLoper > pasTest.deltaNormaal * 1.15, pasTest);
+check('Sluiper (pasFactor 1.4) bouwt loopFase merkbaar SNELLER op dan normaal bij gelijke snelheid',
+  pasTest.deltaSluiper > pasTest.deltaNormaal * 1.15, pasTest);
 
 // --- 2. Sjouwer-romp-bob-amplitude >= 1.5x die van normaal -----------------
 const bobTest = await page.evaluate(() => {
@@ -167,6 +167,114 @@ check('Zodra de mist eindigt (ook midden in windup) staat oogBasisIntensiteit we
   randgevalTest.basisNaMistEinde === 1.4, randgevalTest);
 check('Na de volledige windup+herstel is de ondode terug in "jaag" met de oogintensiteit EXACT op 1.4 (niet op de oude mist-waarde)',
   randgevalTest.naHerstelStaat === 'jaag' && randgevalTest.naHerstelOog === 1.4, randgevalTest);
+
+// --- Ticket 150: type-persoonlijkheid op de drie assen die T148/T149
+// toevoegden. Alledrie zijn zuivere vermenigvuldigers uit
+// ONDODE_TYPES[..].gang op writes die er al stonden — deze tests meten dus
+// het EFFECT in de animatie, niet de tabelwaarde zelf (die zou een
+// tautologie zijn). Elke spawnOndode() hieronder krijgt expliciet het
+// 'standaard'-profiel (i.p.v. de default willekeurige kiesOndodeTraits()):
+// zonder dat kiest de loting soms 'eenarmig' (delen.armL bestaat dan niet),
+// wat deze drie metingen — die allemaal delen.armL/pelvis lezen — flaky
+// maakte. Puur een testfix, geen gedragswijziging. ------------------------
+
+// 5. gewichtFactor: zijwaartse pelvis-uitslag over een volledige loopcyclus,
+// bij GELIJKE snelheid (isoleert het gewicht van pasFactor/snelheid).
+const gewichtTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const uit = {};
+  for (const type of ['normaal', 'sjouwer', 'brander', 'sluiper']) {
+    for (const o of [...d.ondoden]) d.doodOndode(o);
+    const o = d.spawnOndode(0, type, { profiel: 'standaard', kromme: false, slepend: 0, armVerschil: 0, lengte: 1, strompelt: false });
+    o.groep.position.set(0, 0, -14);
+    o.snelheid = 2;
+    let maxAbs = 0;
+    for (let i = 0; i < 120; i++) {
+      d.updateOndoden(0.05);
+      if (o.delen.pelvis) maxAbs = Math.max(maxAbs, Math.abs(o.delen.pelvis.position.x));
+    }
+    uit[type] = maxAbs;
+  }
+  return uit;
+});
+check('Sjouwer helt per pas duidelijk verder zijwaarts over dan normaal (gewichtFactor 1.9)',
+  gewichtTest.sjouwer > gewichtTest.normaal * 1.5, gewichtTest);
+check('Sluiper glijdt: de laagste zijwaartse gewichtsoverdracht van alle types',
+  gewichtTest.sluiper < gewichtTest.normaal * 0.5
+  && Math.min(...Object.values(gewichtTest)) === gewichtTest.sluiper, gewichtTest);
+check('Brander is topzwaar: meer overhelling dan normaal, minder dan de Sjouwer',
+  gewichtTest.brander > gewichtTest.normaal && gewichtTest.brander < gewichtTest.sjouwer, gewichtTest);
+
+// 6. anticipatieExponent: hoe ver is de arm geheven op de HELFT van de eigen
+// windup? Genormaliseerd als fractie van de volle heffing, zodat types met
+// een verschillende windup-DUUR (0,30s vs 0,85s) eerlijk vergelijkbaar zijn —
+// dit meet puur de vorm van de curve, niet de lengte van de windup.
+const anticipatieTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const uit = {};
+  for (const type of ['normaal', 'sjouwer', 'brander', 'sluiper']) {
+    for (const o of [...d.ondoden]) d.doodOndode(o);
+    d.speler.positie.set(0, 0, 0);
+    const o = d.spawnOndode(0, type, { profiel: 'standaard', kromme: false, slepend: 0, armVerschil: 0, lengte: 1, strompelt: false });
+    o.groep.position.set(0, 0, -1.0);
+    o.aanvalVertraging = 0;
+    const dt = 1 / 60;
+    let n = 0;
+    while (o.aanvalStaat !== 'windup' && n < 5) { d.updateOndoden(dt); n++; }
+    const windupDuur = d.AANVAL_PROFIELEN[type].windup;
+    for (let i = 0; i < Math.round((windupDuur / 2) / dt); i++) d.updateOndoden(dt);
+    uit[type] = (o.delen.armL.rotation.x - d.ARM_RUST_ROTATIE_X)
+      / (d.AANVAL_ARM_HOEK_WINDUP - d.ARM_RUST_ROTATIE_X);
+  }
+  return uit;
+});
+check('Sjouwer telegrafeert het duidelijkst: arm al ruim over de helft geheven halverwege zijn windup (exponent < 1)',
+  anticipatieTest.sjouwer > 0.55 && anticipatieTest.sjouwer > anticipatieTest.normaal, anticipatieTest);
+check('Sluiper kondigt het minst aan: arm nog nauwelijks geheven halverwege (hoogste exponent)',
+  anticipatieTest.sluiper < 0.25
+  && Math.min(...Object.values(anticipatieTest)) === anticipatieTest.sluiper, anticipatieTest);
+check('normaal houdt exact de globale AANVAL_ANTICIPATIE_EXPONENT aan (basislijn ongewijzigd)',
+  Math.abs(anticipatieTest.normaal - Math.pow(0.5, await page.evaluate(() => window.AmsterdamUndeadDebug.AANVAL_ANTICIPATIE_EXPONENT))) < 0.02,
+  anticipatieTest);
+
+// 7. flinchFactor: romp-twist vlak na een OVERLEEFDE lichaamstreffer.
+const flinchTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const uit = {};
+  for (const type of ['normaal', 'sjouwer', 'brander', 'sluiper']) {
+    for (const o of [...d.ondoden]) d.doodOndode(o);
+    d.speler.positie.set(0, 0, 0);
+    const o = d.spawnOndode(0, type, { profiel: 'standaard', kromme: false, slepend: 0, armVerschil: 0, lengte: 1, strompelt: false });
+    o.groep.position.set(0, 0, -6);
+    o.hp = 99;   // moet de treffer overleven, anders is er geen flinch
+    d.raakOndode(o, o.groep.position, false, 1, false, 0);
+    d.updateOndoden(1 / 60);
+    uit[type] = o.delen.romp.rotation.y;
+  }
+  return uit;
+});
+check('Sjouwer is nauwelijks te verzetten: de kleinste flinch-uitslag van alle types',
+  flinchTest.sjouwer < flinchTest.normaal * 0.6
+  && Math.min(...Object.values(flinchTest)) === flinchTest.sjouwer, flinchTest);
+check('Brander lurcht het hardst (visuele hint dat hij instabiel is)',
+  Math.max(...Object.values(flinchTest)) === flinchTest.brander, flinchTest);
+
+// 8. Acceptatiecriterium "alle gameplaymultipliers ongewijzigd" — de
+// persoonlijkheid mag uitsluitend in presentatie zitten, nooit in balans.
+const statsOngewijzigd = await page.evaluate(() => {
+  const t = window.AmsterdamUndeadDebug.ONDODE_TYPES;
+  return {
+    normaal: [t.normaal.snelheidMultiplier, t.normaal.hpMultiplier, t.normaal.geldMultiplier],
+    sjouwer: [t.sjouwer.snelheidMultiplier, t.sjouwer.hpMultiplier, t.sjouwer.geldMultiplier, t.sjouwer.hpMax],
+    brander: [t.brander.snelheidMultiplier, t.brander.hpMultiplier, t.brander.geldMultiplier],
+    sluiper: [t.sluiper.snelheidMultiplier, t.sluiper.hpMultiplier, t.sluiper.geldMultiplier],
+  };
+});
+check('Ticket 150 raakt geen enkele gameplaymultiplier (snelheid/HP/geld/hpMax onveranderd)',
+  JSON.stringify(statsOngewijzigd) === JSON.stringify({
+    normaal: [1, 1, 1], sjouwer: [0.55, 2.5, 2.2, 8],
+    brander: [1, 1, 1.3], sluiper: [1.35, 0.75, 1.1],
+  }), statsOngewijzigd);
 
 const fails = report(errs);
 await browser.close();

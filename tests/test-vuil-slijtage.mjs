@@ -164,6 +164,36 @@ check('Geen enkele vertexkleur wordt LICHTER dan 1 — vuil maakt altijd donkerd
 check('En niets wordt volledig zwart (een muur blijft leesbaar, ook in de vuilste hoek)',
   muren.minComponent > 0.2, muren);
 
+// --- Ticket 151: materiaalfamilie-gebonden vuil-bonus (VUIL_FAMILIE_FACTOR).
+// Pleisterwerk toont vocht/schade zichtbaarder dan baksteen — een multiplier
+// op de BESTAANDE vuilSterkte()-uitkomst, geen nieuwe as. Puur op functie-
+// niveau getest (net als sectie 1/2 hierboven): een positie diep in de
+// aanslagband (dicht bij de vloer), zodat de vlek-ruiscomponent verwaarloosbaar
+// is t.o.v. de bijna-verzadigde band — vermijdt flakiness die zou ontstaan
+// door twee ECHTE muren op verschillende wereldposities (met eigen vlek-ruis)
+// te vergelijken.
+const familieTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const kaal = d.vuilSterkte(3.71, 0.05, -8.42, 0, null);
+  const metFactor = Math.min(1, kaal * d.VUIL_FAMILIE_FACTOR.pleister);
+  // Sanity: de rollout (Ticket 151, GANG_PLEISTER-muren) moet ook
+  // daadwerkelijk minstens één muur in de wereld met deze familie getagd
+  // hebben — anders is de bonus hierboven nooit ergens van toepassing.
+  let pleisterMurenGevonden = 0;
+  d.wereld.traverse((o) => {
+    if (o.userData.materiaalFamilie === 'pleister' && o.geometry?.userData.vuilVlak === 'muur') pleisterMurenGevonden++;
+  });
+  return { factor: d.VUIL_FAMILIE_FACTOR.pleister, kaal, metFactor, pleisterMurenGevonden };
+});
+check('VUIL_FAMILIE_FACTOR.pleister is een bonus (>1) die de vuilSterkte-uitkomst meetbaar verhoogt',
+  familieTest.factor > 1 && familieTest.metFactor > familieTest.kaal, familieTest);
+check('...maar blijft geklemd op maximaal 1, ook mét de bonus (nooit "meer dan volledig vuil")',
+  familieTest.metFactor <= 1, familieTest);
+check('Minstens één echte muur in de wereld draagt de pleister-familie mét vuilVlak-markering (de bonus is dus ergens van toepassing)',
+  familieTest.pleisterMurenGevonden > 0, familieTest);
+check('Een familie zonder eigen entry (bv. steen) krijgt factor 1 — geen bonus, geen straf',
+  (await page.evaluate(() => window.AmsterdamUndeadDebug.VUIL_FAMILIE_FACTOR.steen)) === undefined, {});
+
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 || errs.length > 0 ? 1 : 0);

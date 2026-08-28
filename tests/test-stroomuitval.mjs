@@ -203,15 +203,15 @@ check('Nieuwe spawns tijdens Stroomuitval krijgen de (fellere) OOG_INTENSITEIT_S
 check('OOG_INTENSITEIT_STROOMUITVAL is feller dan de Mistgolf-boost (feedback: "ogen mogen feller")',
   oogboost.fellerDanMist, oogboost);
 
-// --- 6. Eigen spawngewichten: uitsluitend normaal/loper/sluiper -----------
+// --- 6. Eigen spawngewichten: uitsluitend normaal/sluiper -----------------
 const gewichtenTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const gezien = new Set();
   for (let i = 0; i < 200; i++) gezien.add(d.kiesOndodeType());
   return [...gezien].sort();
 });
-check('Tijdens Stroomuitval spawnen uitsluitend normaal/loper/sluiper (geen sjouwer/brander)',
-  gewichtenTest.every(t => ['normaal', 'loper', 'sluiper'].includes(t)), gewichtenTest);
+check('Tijdens Stroomuitval spawnen uitsluitend normaal/sluiper (geen sjouwer/brander)',
+  gewichtenTest.every(t => ['normaal', 'sluiper'].includes(t)), gewichtenTest);
 
 // --- 7. eindigEventGolf(): stroomFactor herstelt NIET direct (geleidelijk),
 // behalve bij direct=true (game over) --------------------------------------

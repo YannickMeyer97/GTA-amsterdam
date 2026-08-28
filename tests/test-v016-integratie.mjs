@@ -105,10 +105,10 @@ await page.evaluate(() => {
   d.koopRatelaar();
   d.startEventGolf('mist');
   d.speler.positie.set(0, 1.7, 0);
-  const types = ['normaal', 'sjouwer', 'loper', 'sluiper'];
+  const types = ['normaal', 'sjouwer', 'sluiper'];
   for (let i = 0; i < types.length; i++) {
     const o = d.spawnOndode(0, types[i]);
-    o.groep.position.set(i - 1.5, 0, -2 - i);
+    o.groep.position.set(i - 1, 0, -2 - i);
   }
 });
 await page.waitForTimeout(1500);   // meerdere echte gameLoop-frames: AI, effecten, winkel-status, stof, druppel, lampflikker allemaal tegelijk

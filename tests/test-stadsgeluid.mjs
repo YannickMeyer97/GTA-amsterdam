@@ -1,7 +1,7 @@
 // Ticket 82: het geluid van Amsterdam — een vijfde, permanente audiolaag
 // (stadGainNode) met een vast plafond (0.0345, sinds de feedback-ronde +15%
 // t.o.v. de oorspronkelijke 0.03, aantoonbaar onder het gromvolume
-// 0.042-0.054, zelf ook +20% t.o.v. de oorspronkelijke 0.035-0.045) en twee
+// 0.048-0.054, zelf ook +20% t.o.v. de oorspronkelijke 0.035-0.045) en twee
 // zeldzame, willekeurig getimede
 // gebeurtenissen (verre scheepshoorn, verre stadsklok) die BUITEN de
 // gromband (120-340 Hz) blijven en via stadGainNode -> masterGainNode lopen
@@ -22,8 +22,8 @@ const plafondTest = await page.evaluate(() => {
     muziek: d.MUZIEK_VOLUME_PLAFOND,
   };
 });
-check('STADSBED_VOLUME_PLAFOND (0.0345) ligt onder het KLEINSTE gromvolume (0.042, de Loper)',
-  plafondTest.plafond < 0.042, plafondTest);
+check('STADSBED_VOLUME_PLAFOND (0.0345) ligt onder het KLEINSTE gromvolume (0.048, normaal)',
+  plafondTest.plafond < 0.048, plafondTest);
 check('STADSBED_VOLUME_PLAFOND + dreiging + muziek blijft ruim onder 1.0 (geen overstemming)',
   plafondTest.plafond + plafondTest.dreiging + plafondTest.muziek < 0.2, plafondTest);
 

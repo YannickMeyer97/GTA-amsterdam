@@ -15,6 +15,10 @@
 // Draai 'm met een stille machine, één keer op deze commit en één keer op de
 // vorige (git stash), en vergelijk (zelfde workflow als t140).
 //
+// Dit scenario dekt het hele ondode-animatieblok en wordt daarom door
+// meerdere tickets hergebruikt; de bestandsnaam verwijst naar het ticket dat
+// 'm bouwde, niet naar de enige afnemer. Metingen hieronder per ticket.
+//
 // GEMETEN BIJ T149 (deze omgeving, 26 ondoden dicht bij de speler, 90
 // opbouw- + 240 meetframes, stille machine):
 //   vóór T149 (HEAD): p95 266,7 ms   gemiddelde 248,9 ms
@@ -25,6 +29,18 @@
 // toegepast op dezelfde bestaande transform-writes — geen extra allocatie,
 // geen extra matrixwerk, geen extra transform-writes (zie de budget-
 // toelichting in updateOndoden()).
+//
+// GEMETEN BIJ T150 (zelfde scenario, zelfde omgeving, andere DAG-conditie):
+//   vóór T150 (HEAD, 2x): p95 400,0/366,7 ms   gemiddelde 358,3/338,3 ms
+//   ná  T150 (2x):        p95 333,3/333,3 ms   gemiddelde 307,0/301,3 ms
+// T150 meet dus SNELLER dan zijn eigen basislijn — wat vooral laat zien dat
+// de absolute getallen tussen sessies fors driften (de T149-basislijn stond
+// op 266 ms, dezelfde HEAD-code meet hier 400 ms). Les voor volgende
+// metingen: vergelijk ALTIJD met een vóór-meting uit dezelfde sessie
+// (git stash), nooit met een getal uit een eerder ticket — anders lees je
+// omgevingsdrift als een regressie. Inhoudelijk verwacht: T150 vervangt een
+// module-level constante door een property-read op een object dat al was
+// opgezocht, plus vier vermenigvuldigingen — nul extra werk per frame.
 import { openAmsterdamUndead, frames } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });

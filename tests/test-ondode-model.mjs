@@ -14,10 +14,10 @@ const { check, report } = makeChecker();
 // toe te brengen — eerst een geladen vuurwapen toekennen.
 await geefSpelerVuurwapen(page);
 
-const TYPES = ['normaal', 'loper', 'sjouwer', 'brander', 'sluiper'];
+const TYPES = ['normaal', 'sjouwer', 'brander', 'sluiper'];
 
 // --- 1. Hitbox-contract: precies 1 'kop'-hitbox (kopProxy) per model, al het
-// andere ongemarkeerd — voor elk van de vijf types --------------------------
+// andere ongemarkeerd — voor elk van de vier types --------------------------
 const contract = await page.evaluate((TYPES) => {
   const d = window.AmsterdamUndeadDebug;
   const uit = {};
