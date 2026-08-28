@@ -10,10 +10,12 @@
 //      Bewust met random-ish base64: echte samples zijn al gecomprimeerd, dus
 //      een blok herhaalde tekens zou gzip/de parser oneerlijk voordeel geven.
 //
-//   2. PIEK AAN GELIJKTIJDIGE OSCILLATORS. Wraps createOscillator/start/stop
-//      en speelt het zwaarst denkbare gevechtsmoment af (Ratelaar-vuurtempo
-//      met treffer+kop+kill+doorboring, plus grommen, plus event-geluiden).
-//      Bepaalt of voice-limiting/concurrency-beheer nodig is.
+//   2. PIEK AAN GELIJKTIJDIGE STEMMEN. Wraps createOscillator én (sinds
+//      T154) createBufferSource, plus start/stop, en speelt het zwaarst
+//      denkbare gevechtsmoment af (Ratelaar-vuurtempo met treffer+kop+kill+
+//      doorboring, plus grommen, plus event-geluiden). Bepaalt of
+//      voice-limiting/concurrency-beheer nodig is. T152 mat hier 16 zonder
+//      ruislaag; T154 voegt per ruisgeluid één bufferbron toe.
 //
 // De codec-kant (welke bytes kost een sample nou echt) zit in het
 // zusterscript `meet-audio-codecs.py` — die heeft een echte MP3/Vorbis-
@@ -111,20 +113,21 @@ const stemmen = await page.evaluate(async () => {
   const d = window.AmsterdamUndeadDebug;
   d.initGeluid();
   const ctx = d.masterGainNode.context;
-  let levend = 0, piek = 0, totaal = 0;
-  const origOsc = ctx.createOscillator.bind(ctx);
-  ctx.createOscillator = (...a) => {
-    const o = origOsc(...a);
-    totaal++;
-    const origStart = o.start.bind(o), origStop = o.stop.bind(o);
-    o.start = (...s) => { levend++; piek = Math.max(piek, levend); return origStart(...s); };
-    o.stop = (t) => {
+  let levend = 0, piek = 0, totaal = 0, oscillators = 0, ruisbronnen = 0;
+  const volg = (knoop) => {
+    const origStart = knoop.start.bind(knoop), origStop = knoop.stop.bind(knoop);
+    knoop.start = (...s) => { levend++; piek = Math.max(piek, levend); return origStart(...s); };
+    knoop.stop = (t) => {
       const wacht = Math.max(0, (t ?? ctx.currentTime) - ctx.currentTime);
       setTimeout(() => { levend--; }, wacht * 1000);
       return origStop(t);
     };
-    return o;
+    return knoop;
   };
+  const origOsc = ctx.createOscillator.bind(ctx);
+  const origBuf = ctx.createBufferSource.bind(ctx);
+  ctx.createOscillator = (...a) => { totaal++; oscillators++; return volg(origOsc(...a)); };
+  ctx.createBufferSource = (...a) => { totaal++; ruisbronnen++; return volg(origBuf(...a)); };
   const t0 = performance.now();
   // 30 stappen van 100 ms = het Canal Ripper-vuurtempo (schotCooldown 0,1 s),
   // met op elk schot de volledige trefferketen. Daar bovenop grommen (2 per
@@ -144,10 +147,13 @@ const stemmen = await page.evaluate(async () => {
   }
   await new Promise(r => setTimeout(r, 500));
   ctx.createOscillator = origOsc;
-  return { piek, totaal, duurMs: Math.round(performance.now() - t0) };
+  ctx.createBufferSource = origBuf;
+  return { piek, totaal, oscillators, ruisbronnen, duurMs: Math.round(performance.now() - t0) };
 });
 await browser.close();
 
-console.log(`  Piek gelijktijdig levend : ${stemmen.piek} oscillators`);
+console.log(`  Piek gelijktijdig levend : ${stemmen.piek} stemmen`);
 console.log(`  Totaal gestart           : ${stemmen.totaal} in ${stemmen.duurMs} ms (${(stemmen.totaal / (stemmen.duurMs / 1000)).toFixed(1)}/s)`);
+console.log(`     waarvan oscillators   : ${stemmen.oscillators}`);
+console.log(`     waarvan ruisbronnen   : ${stemmen.ruisbronnen}  (T154)`);
 console.log('  (de 5 permanente oscillators — dreigingsdrone 2 + akkoordbed 3 — zitten in de piek meegeteld)');

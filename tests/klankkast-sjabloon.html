@@ -1,0 +1,404 @@
+<title>Undead Klankkast</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500&family=DM+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --grond:      #EDE9DF;
+    --paneel:     #F7F5EF;
+    --paneel-op:  #FFFDF8;
+    --rand:       #D8D3C4;
+    --rand-zacht: #E5E1D5;
+    --inkt:       #191F1C;
+    --inkt-zacht: #5C6660;
+    --gedempt:    #8B948E;
+    --gaslicht:   #A9741B;
+    --gaslicht-vlak: #C9902F;
+    --gracht:     #4A6B76;
+    --gracht-vlak:#6E8A93;
+    --schaduw:    0 1px 2px rgba(25,31,28,.06), 0 8px 24px -12px rgba(25,31,28,.18);
+
+    --ruimte-1: .35rem;  --ruimte-2: .7rem;  --ruimte-3: 1.15rem;
+    --ruimte-4: 1.9rem;  --ruimte-5: 3.1rem; --ruimte-6: 5rem;
+    --display: "Bricolage Grotesque", "Trebuchet MS", system-ui, sans-serif;
+    --tekst:   "Instrument Sans", -apple-system, "Segoe UI", sans-serif;
+    --data:    "DM Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --grond:      #0E1416;
+      --paneel:     #151D1F;
+      --paneel-op:  #1B2426;
+      --rand:       #26312F;
+      --rand-zacht: #1F2A29;
+      --inkt:       #E6EAE5;
+      --inkt-zacht: #A2AEA8;
+      --gedempt:    #74807B;
+      --gaslicht:   #E0AE52;
+      --gaslicht-vlak: #D9A441;
+      --gracht:     #8FB0BA;
+      --gracht-vlak:#6E8A93;
+      --schaduw:    0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --grond:      #0E1416;
+    --paneel:     #151D1F;
+    --paneel-op:  #1B2426;
+    --rand:       #26312F;
+    --rand-zacht: #1F2A29;
+    --inkt:       #E6EAE5;
+    --inkt-zacht: #A2AEA8;
+    --gedempt:    #74807B;
+    --gaslicht:   #E0AE52;
+    --gaslicht-vlak: #D9A441;
+    --gracht:     #8FB0BA;
+    --gracht-vlak:#6E8A93;
+    --schaduw:    0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.7);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--grond);
+    color: var(--inkt);
+    font-family: var(--tekst);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-family: var(--display); font-weight: 700; text-wrap: balance; margin: 0; line-height: 1.1; }
+  .mono { font-family: var(--data); font-variant-numeric: tabular-nums; }
+
+  /* ---------- kop ---------- */
+  .kop {
+    border-bottom: 1px solid var(--rand);
+    background: linear-gradient(180deg, var(--paneel) 0%, var(--grond) 100%);
+  }
+  .kop-in {
+    max-width: 1180px; margin: 0 auto;
+    padding: var(--ruimte-6) var(--ruimte-4) var(--ruimte-5);
+    display: grid; gap: var(--ruimte-4);
+  }
+  .eyebrow {
+    font-family: var(--data); font-size: .68rem; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--gedempt);
+  }
+  h1 { font-size: clamp(2.6rem, 7vw, 4.6rem); letter-spacing: -.03em; }
+  h1 .vlam { color: var(--gaslicht); }
+  .lead { max-width: 60ch; color: var(--inkt-zacht); font-size: 1.06rem; }
+  .lead strong { color: var(--inkt); font-weight: 500; }
+
+  .cijfers { display: flex; flex-wrap: wrap; gap: var(--ruimte-4); padding-top: var(--ruimte-1); }
+  .cijfer { display: grid; gap: 2px; }
+  .cijfer b { font-family: var(--display); font-size: 1.7rem; font-weight: 700; letter-spacing: -.02em; }
+  .cijfer span { font-family: var(--data); font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; color: var(--gedempt); }
+
+  /* ---------- legenda ---------- */
+  .legenda {
+    position: sticky; top: 0; z-index: 20;
+    background: color-mix(in srgb, var(--grond) 92%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--rand);
+  }
+  .legenda-in {
+    max-width: 1180px; margin: 0 auto; padding: var(--ruimte-2) var(--ruimte-4);
+    display: flex; align-items: center; gap: var(--ruimte-3); flex-wrap: wrap;
+  }
+  .springlijst { display: flex; gap: var(--ruimte-1); flex-wrap: wrap; margin-right: auto; }
+  .springlijst a {
+    font-family: var(--data); font-size: .72rem; color: var(--inkt-zacht);
+    text-decoration: none; padding: 4px 9px; border-radius: 3px; border: 1px solid transparent;
+  }
+  .springlijst a:hover, .springlijst a:focus-visible { color: var(--inkt); border-color: var(--rand); background: var(--paneel); }
+  .sleutel { display: flex; gap: var(--ruimte-2); align-items: center; font-family: var(--data); font-size: .7rem; color: var(--gedempt); }
+  .stip { width: 9px; height: 9px; border-radius: 2px; display: inline-block; margin-right: 5px; vertical-align: -1px; }
+  .stip.oud { background: var(--gracht-vlak); }
+  .stip.nu  { background: var(--gaslicht-vlak); }
+
+  /* ---------- inhoud ---------- */
+  main { max-width: 1180px; margin: 0 auto; padding: var(--ruimte-5) var(--ruimte-4) var(--ruimte-6); }
+  .groep { margin-bottom: var(--ruimte-6); scroll-margin-top: 72px; }
+  .groep-kop { display: grid; gap: var(--ruimte-1); margin-bottom: var(--ruimte-3); padding-bottom: var(--ruimte-2); border-bottom: 2px solid var(--inkt); }
+  .groep-kop h2 { font-size: 1.5rem; letter-spacing: -.02em; }
+  .groep-kop p { margin: 0; color: var(--inkt-zacht); font-size: .93rem; max-width: 66ch; }
+
+  .rijen { display: grid; gap: var(--ruimte-2); }
+  .rij {
+    background: var(--paneel); border: 1px solid var(--rand-zacht); border-radius: 6px;
+    padding: var(--ruimte-3);
+    display: grid; grid-template-columns: minmax(0, 1fr) 190px auto; gap: var(--ruimte-3);
+    align-items: center;
+    transition: border-color .18s ease, background .18s ease;
+  }
+  .rij:hover { border-color: var(--rand); background: var(--paneel-op); }
+  .rij.speelt { border-color: var(--gaslicht); }
+
+  .rij-tekst { display: grid; gap: 3px; min-width: 0; }
+  .rij-titel { display: flex; align-items: baseline; gap: var(--ruimte-2); flex-wrap: wrap; }
+  .rij-titel h3 { font-size: 1.04rem; font-weight: 500; letter-spacing: -.01em; }
+  .merk {
+    font-family: var(--data); font-size: .62rem; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--gaslicht); border: 1px solid color-mix(in srgb, var(--gaslicht) 40%, transparent);
+    padding: 1px 6px; border-radius: 99px; white-space: nowrap;
+  }
+  .rij-tekst p { margin: 0; color: var(--inkt-zacht); font-size: .88rem; max-width: 62ch; }
+
+  canvas.spectrum { width: 190px; height: 46px; display: block; }
+  .spec-wrap { display: grid; gap: 3px; }
+  .spec-as { display: flex; justify-content: space-between; font-family: var(--data); font-size: .58rem; color: var(--gedempt); letter-spacing: .04em; }
+
+  .knoppen { display: flex; gap: var(--ruimte-1); }
+  button {
+    font-family: var(--data); font-size: .74rem; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--inkt); background: transparent;
+    border: 1px solid var(--rand); border-radius: 4px;
+    padding: 9px 13px; cursor: pointer; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 7px;
+    transition: border-color .15s ease, color .15s ease, background .15s ease;
+  }
+  button:hover { border-color: var(--inkt-zacht); }
+  button:focus-visible { outline: 2px solid var(--gaslicht); outline-offset: 2px; }
+  button .driehoek { width: 0; height: 0; border-left: 7px solid currentColor; border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+  button.oud { color: var(--gracht); border-color: color-mix(in srgb, var(--gracht) 35%, transparent); }
+  button.oud:hover { border-color: var(--gracht); }
+  button.nu { color: var(--gaslicht); border-color: color-mix(in srgb, var(--gaslicht) 42%, transparent); }
+  button.nu:hover { border-color: var(--gaslicht); }
+  button.aan { background: color-mix(in srgb, currentColor 14%, transparent); border-color: currentColor; }
+  button.aan .driehoek { border-left-color: currentColor; }
+
+  /* ---------- voet ---------- */
+  .voet { border-top: 1px solid var(--rand); background: var(--paneel); }
+  .voet-in { max-width: 1180px; margin: 0 auto; padding: var(--ruimte-5) var(--ruimte-4); display: grid; gap: var(--ruimte-3); }
+  .voet h2 { font-size: 1.15rem; }
+  .voet p { margin: 0; color: var(--inkt-zacht); font-size: .9rem; max-width: 72ch; }
+  .voet code { font-family: var(--data); font-size: .85em; color: var(--inkt); }
+
+  @media (max-width: 860px) {
+    .rij { grid-template-columns: 1fr; gap: var(--ruimte-2); }
+    canvas.spectrum { width: 100%; }
+    .spec-wrap { order: 3; }
+    .knoppen { order: 2; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+
+<header class="kop">
+  <div class="kop-in">
+    <div>
+      <div class="eyebrow">Amsterdam Undead &middot; Ticket 152&ndash;154</div>
+      <h1>De <span class="vlam">Klankkast</span></h1>
+    </div>
+    <p class="lead">
+      Elk geluid in het spel, met wanneer je het hoort. Alles wordt live gemaakt met Web Audio &mdash;
+      er zit <strong>geen enkele byte audio</strong> in het spelbestand. De audit van Ticket&nbsp;152 vond
+      &eacute;&eacute;n oorzaak achter bijna alle zwakke klanken: er was <strong>nergens een ruisbron</strong>,
+      dus elk geluid was een zuivere toon. Een knal is dat niet.
+      Ticket&nbsp;154 voegde die ruislaag toe &mdash; vijftien geluiden plus de drie gromtypes.
+      Bij alle negentien kun je hieronder <strong>voor en na naast elkaar horen</strong>.
+    </p>
+    <div class="cijfers">
+      <div class="cijfer"><b>41</b><span>klankbronnen</span></div>
+      <div class="cijfer"><b>18</b><span>kregen een ruislaag</span></div>
+      <div class="cijfer"><b>0</b><span>bytes aan assets</span></div>
+      <div class="cijfer"><b>+17,5&nbsp;KB</b><span>groei van het bestand</span></div>
+    </div>
+  </div>
+</header>
+
+<nav class="legenda" aria-label="Ga naar categorie">
+  <div class="legenda-in">
+    <div class="springlijst" id="springlijst"></div>
+    <div class="sleutel">
+      <span><span class="stip oud"></span>voor</span>
+      <span><span class="stip nu"></span>na</span>
+    </div>
+  </div>
+</nav>
+
+<main id="inhoud"></main>
+
+<footer class="voet">
+  <div class="voet-in">
+    <h2>Hoe deze opnames gemaakt zijn</h2>
+    <p>
+      Niet nagebouwd: de spelcode zelf heeft ze gespeeld. <code>window.AudioContext</code> is vervangen
+      door een proxy om een <code>OfflineAudioContext</code>, met een stuurbare klok, zodat elke
+      <code>speel*()</code>-aanroep zijn tonen netjes achter elkaar op &eacute;&eacute;n tijdlijn plant.
+      Wat je hoort is dus letterlijk de output van het spel. Voor de &quot;voor&quot;-versies is alleen de
+      ruislaag uitgezet. Zie <code>tests/maak-geluidsverslag.mjs</code>.
+    </p>
+    <p>
+      De hele set is met &eacute;&eacute;n gedeelde gain hard gezet (&times;2,8), zodat de onderlinge
+      verhoudingen &mdash; de met de hand afgeregelde mix &mdash; exact intact blijven. De druppeltik staat in
+      het spel op 0,0345 en zou anders niet te horen zijn op een laptop. De spectra tonen 60&nbsp;Hz tot
+      16&nbsp;kHz; binnen een geluid delen voor en na dezelfde schaal, anders normaliseer je juist het
+      verschil weg dat je wilt laten zien.
+    </p>
+  </div>
+</footer>
+
+<script>
+const DATA = "__DATA__";
+
+/* ---------- afspelen: altijd hoogstens één tegelijk ---------- */
+let bezig = null;
+function speel(knop, b64) {
+  if (bezig) {
+    bezig.audio.pause();
+    bezig.knop.classList.remove('aan');
+    bezig.knop.closest('.rij').classList.remove('speelt');
+    const zelfde = bezig.knop === knop;
+    bezig = null;
+    if (zelfde) return;
+  }
+  const audio = new Audio('data:audio/mpeg;base64,' + b64);
+  knop.classList.add('aan');
+  knop.closest('.rij').classList.add('speelt');
+  bezig = { audio, knop };
+  const stop = () => {
+    knop.classList.remove('aan');
+    knop.closest('.rij').classList.remove('speelt');
+    if (bezig && bezig.knop === knop) bezig = null;
+  };
+  audio.addEventListener('ended', stop);
+  audio.addEventListener('error', stop);
+  audio.play().catch(stop);
+}
+
+/* ---------- spectrum ---------- */
+function tekenSpectrum(canvas, lagen) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const b = canvas.getBoundingClientRect();
+  const B = Math.max(1, Math.round(b.width)), H = Math.max(1, Math.round(b.height));
+  canvas.width = B * dpr; canvas.height = H * dpr;
+  const c = canvas.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, B, H);
+  const stijl = getComputedStyle(document.documentElement);
+  const kleur = {
+    voor: stijl.getPropertyValue('--gracht-vlak').trim(),
+    na:   stijl.getPropertyValue('--gaslicht-vlak').trim(),
+    enkel:stijl.getPropertyValue('--gaslicht-vlak').trim(),
+  };
+  const n = (lagen.na || lagen.voor || lagen.enkel).length;
+  const bw = B / n;
+  // Volgorde is niet vrij: de balken van "na" eerst, daarna de lijn van
+  // "voor" eroverheen. Andersom verdwijnt de lijn achter de balken en zie je
+  // juist het verschil niet dat het plaatje moet tonen.
+  const balken = lagen.na || lagen.enkel;
+  if (balken) {
+    c.fillStyle = kleur.na;
+    c.globalAlpha = 0.8;
+    for (let i = 0; i < n; i++) {
+      const h = Math.max(balken[i] * (H - 3), 0.6);
+      c.fillRect(i * bw + 0.5, H - h, Math.max(bw - 1.1, 0.8), h);
+    }
+  }
+  if (lagen.voor) {
+    c.globalAlpha = 1;
+    c.strokeStyle = kleur.voor;
+    c.lineWidth = 1.5;
+    c.lineJoin = 'round';
+    c.beginPath();
+    for (let i = 0; i < n; i++) {
+      const h = Math.max(lagen.voor[i] * (H - 3), 0.6);
+      const x0 = i * bw, x1 = (i + 1) * bw, y = H - h;
+      if (i === 0) c.moveTo(x0, y); else c.lineTo(x0, y);
+      c.lineTo(x1, y);
+    }
+    c.stroke();
+  }
+  c.globalAlpha = 1;
+}
+
+/* ---------- opbouw ---------- */
+const inhoud = document.getElementById('inhoud');
+const springlijst = document.getElementById('springlijst');
+const canvassen = [];
+
+for (const groep of DATA.groepen) {
+  const id = 'g-' + groep.naam.toLowerCase().replace(/[^a-z]+/g, '-');
+  const a = document.createElement('a');
+  a.href = '#' + id; a.textContent = groep.naam;
+  springlijst.appendChild(a);
+
+  const sec = document.createElement('section');
+  sec.className = 'groep'; sec.id = id;
+  const kop = document.createElement('div');
+  kop.className = 'groep-kop';
+  const h2 = document.createElement('h2'); h2.textContent = groep.naam;
+  const p = document.createElement('p'); p.textContent = groep.intro;
+  kop.append(h2, p);
+  sec.appendChild(kop);
+
+  const rijen = document.createElement('div');
+  rijen.className = 'rijen';
+  for (const sleutel of groep.sleutels) {
+    const g = DATA.geluiden[sleutel];
+    const rij = document.createElement('div');
+    rij.className = 'rij';
+
+    const tekst = document.createElement('div');
+    tekst.className = 'rij-tekst';
+    const titelrij = document.createElement('div');
+    titelrij.className = 'rij-titel';
+    const h3 = document.createElement('h3'); h3.textContent = g.titel;
+    titelrij.appendChild(h3);
+    if (g.ab) {
+      const merk = document.createElement('span');
+      merk.className = 'merk mono';
+      merk.textContent = 'ruislaag ' + (g.db > 0 ? '+' : '') + String(g.db).replace('.', ',') + ' dB';
+      merk.title = 'Gemeten verhouding tussen de ruislaag en de getoonde laag van dit geluid.';
+      titelrij.appendChild(merk);
+    }
+    const uitleg = document.createElement('p'); uitleg.textContent = g.wanneer;
+    tekst.append(titelrij, uitleg);
+
+    const specWrap = document.createElement('div');
+    specWrap.className = 'spec-wrap';
+    const canvas = document.createElement('canvas');
+    canvas.className = 'spectrum';
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label',
+      g.ab ? 'Spectrum van ' + g.titel + ', voor en na de ruislaag' : 'Spectrum van ' + g.titel);
+    const as = document.createElement('div');
+    as.className = 'spec-as';
+    as.innerHTML = '<span>60&#8202;Hz</span><span>' + String(g.duur).replace('.', ',') + '&#8202;s</span><span>16&#8202;kHz</span>';
+    specWrap.append(canvas, as);
+    canvassen.push([canvas, g.spec]);
+
+    const knoppen = document.createElement('div');
+    knoppen.className = 'knoppen';
+    const maakKnop = (label, klasse, b64) => {
+      const k = document.createElement('button');
+      k.className = klasse;
+      k.innerHTML = '<span class="driehoek"></span>' + label;
+      k.addEventListener('click', () => speel(k, b64));
+      return k;
+    };
+    if (g.ab) {
+      knoppen.append(maakKnop('Voor', 'oud', g.audio.voor), maakKnop('Na', 'nu', g.audio.na));
+    } else {
+      knoppen.append(maakKnop('Speel', 'nu', g.audio.enkel));
+    }
+
+    rij.append(tekst, specWrap, knoppen);
+    rijen.appendChild(rij);
+  }
+  sec.appendChild(rijen);
+  inhoud.appendChild(sec);
+}
+
+const tekenAlles = () => canvassen.forEach(([c, s]) => tekenSpectrum(c, s));
+tekenAlles();
+let hertekenTimer;
+window.addEventListener('resize', () => { clearTimeout(hertekenTimer); hertekenTimer = setTimeout(tekenAlles, 120); });
+if (window.matchMedia) {
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  (mq.addEventListener ? mq.addEventListener.bind(mq, 'change') : mq.addListener.bind(mq))(tekenAlles);
+}
+</script>

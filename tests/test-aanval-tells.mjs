@@ -193,7 +193,10 @@ const anticipatie = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   for (const o of [...d.ondoden]) d.doodOndode(o);
   d.speler.positie.set(0, 0, 0);
-  const o = d.spawnOndode(0, 'normaal');
+  // Vaste standaard-traits: kiesOndodeTraits() kan 'eenarmig' opleveren, en
+  // dan bestaat delen.armL niet — deze sectie meet juist die arm.
+  const traits = { profiel: 'standaard', kromme: false, slepend: 0, armVerschil: 0, lengte: 1, strompelt: false };
+  const o = d.spawnOndode(0, 'normaal', traits);
   o.groep.position.set(0, 0, -1.0);
   o.aanvalVertraging = 0;
   const dt = 1 / 60;
@@ -220,7 +223,9 @@ const overshoot = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   for (const o of [...d.ondoden]) d.doodOndode(o);
   d.speler.positie.set(0, 0, 0);
-  const o = d.spawnOndode(0, 'normaal');
+  // Zelfde reden als hierboven: deze sectie leest delen.armL uit.
+  const traits = { profiel: 'standaard', kromme: false, slepend: 0, armVerschil: 0, lengte: 1, strompelt: false };
+  const o = d.spawnOndode(0, 'normaal', traits);
   o.groep.position.set(0, 0, -10);   // ver weg: geen nieuwe windup tijdens deze meting
   const herstelDuur = d.AANVAL_PROFIELEN.normaal.herstel;
   o.aanvalStaat = 'herstel';

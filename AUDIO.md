@@ -558,3 +558,105 @@ zonder verder eigenaarsbesluit starten zodra T153 klaar is. Concrete scope:
 
 Wat T154 **niet** doet: de mix "opnieuw ontwerpen", categorie-gains
 introduceren, of de abstracte UI-tonen realistischer maken.
+
+---
+
+## 8. Uitvoering T153 en T154
+
+Beide uitgevoerd. Wat er daadwerkelijk is gebouwd, en de één fout die daarbij
+gemaakt en gecorrigeerd is.
+
+### 8.1 T153 — de registry
+
+`GELUIDEN` bevat **36 geluiden** als data; `speelGeluid(naam, opties)` is de
+enige speler. De 35 `speel*()`-functies die erop uitkomen zijn dunne wrappers
+geworden, mét hun tellers. Buiten de tabel bleven, zoals gepland, de vier
+eigen ketens: dreigingsdrone, akkoordbed/`speelNevelklokToon`,
+`speelOndodeGrom` en `speelBootHoornGericht`.
+
+Twee dingen zijn bewust anders gedaan dan "exact reproduceren":
+
+- **De twaalf `setTimeout`-vervolgtonen zijn weg.** `piep()` en `stadPiep()`
+  kregen een optionele `startTijd` op de audioklok, en `vervolg[]` in de tabel
+  plant erop. Dat maakt de tijdrelatie tussen de tonen van één geluid exact en
+  immuun voor frame-jank. Wat het níét doet: een geplande staart stopt niet
+  bij pauze — net zomin als de hoofdtoon, die ook gewoon uitklinkt. Bij
+  staarten van 30-550 ms is dat het juiste gedrag, en de echte T33-bug (een
+  vaste `setTimeout(900)` die niet meer klopte met een variabele herlaadduur)
+  is iets anders en blijft opgelost.
+- **`categorie` staat wél in de tabel, maar stuurt niets.** Het is een label
+  voor documentatie en tests. Geen gain-bus, conform §6.2.
+
+Geborgd door `test-audioregistry.mjs` (18 checks), met als kern een
+overgetypte waardetabel van hoe elk geluid vóór T153 klonk. Verandert er ooit
+een getal, dan faalt die diff-audit.
+
+### 8.2 T154 — de ruislaag
+
+Eén `AudioBuffer` van 1 seconde witte ruis, gevuld in `initGeluid()`, daarna
+hergebruikt door elk ruisgeluid via `speelRuis()`: bufferbron → filter met
+frequentie-envelope → gain met volume-envelope → masterGainNode. Vijftien
+geluiden kregen een `ruis`-blok in `GELUIDEN`; de drie gromprofielen kregen
+`ruisVolume` (keelruis, door hetzelfde filter als de oscillators, dus zonder
+tweede panner) plus `GROM_TOONHOOGTE_VARIATIE` van ±7% per grom.
+
+Variatie is er nu op drie plekken: pitch op de trefferklanken (bestond al),
+afspeelsnelheid ±8% en een willekeurig startpunt in de ruisbuffer per
+afspeling, en toonhoogte per grom.
+
+**Kosten:** bestand 886,5 → 904,0 KB (+17,5 KB, uitsluitend code en
+commentaar; nog steeds nul assets). Piek aan gelijktijdige stemmen onder een
+kunstmatig maximale gevechtsbelasting: 16 → 22. Dat is nog altijd een orde
+van grootte onder wat een browser aankan, dus de conclusie van §6.2 (geen
+voice-limits nodig) blijft staan.
+
+### 8.3 De fout die hier gemaakt is, en waarom hij telt
+
+De eerste afstelling zette elk ruisvolume op ongeveer 0,6x het toonvolume,
+"duidelijk onder de toon". Dat was fout, en het scheelde **5 tot 23 dB**.
+
+De redenering klopte niet omdat twee ongelijke dingen vergeleken werden.
+`piep()`'s `volume` is de piekamplitude van een golfvorm waarvan alle energie
+in één smalle band zit. Het `volume` van een ruislaag is de gain vóór een
+lowpass die het leeuwendeel van het vermogen wegneemt: een filter op 1300 Hz
+laat van witte ruis nog ongeveer 6% van het vermogen door. De ruislaag zat
+daardoor bij de meeste geluiden onder de hoorbaarheidsdrempel — hij was er
+wel, maar je hoorde hem niet.
+
+**En de test stond groen.** `test-ruislaag.mjs` controleerde precies die
+verhouding tussen de twee nominale getallen en gaf daarmee vals vertrouwen.
+Dat is de eigenlijke les: een assertie op twee getallen die niet vergelijkbaar
+zijn, is erger dan geen assertie.
+
+Gecorrigeerd met een meting in plaats van een schatting.
+`tests/meet-ruislaag.mjs` rendert elke ruislaag en zijn toonlaag apart in een
+`OfflineAudioContext` — dus met de échte spelcode — en vergelijkt de RMS. De
+doelen per geluid volgen uit wat het geluid ís:
+
+| doel | geluiden | waarom |
+|---|---|---|
+| **+2 dB** | windvlaag | wind ís ruis |
+| **0 dB** | slagMis | een whoosh ís ruis |
+| **−1 tot −3 dB** | plankBreek, schot, droogKlik, explosie | versplintering en knallen zijn overwegend ruis |
+| **−4 tot −5 dB** | herlaad, herlaadKlaar, mesSteek, gangKraak, bijkeukenKraak | mechaniek en krakend hout |
+| **−6 dB** | raakTik, kopTik, killKnak, slagRaak, de drie grommen | hier draagt de toon de identiteit (per-wapen `raakToon`/`killToon`, het gromregister per type) |
+
+Alle achttien vallen binnen ±2,5 dB van hun doel. Omdat afspeelsnelheid,
+bufferstartpunt en gromtoonhoogte per afspeling gerandomiseerd zijn,
+schommelt één meting zo'n 2 dB; het script middelt daarom vier tot vijf
+afspelingen per conditie in plaats van de marge op te rekken.
+
+Wat er van de oude assertie over is: een grofmazige vangrail op de absolute
+waarden plus een groepscheck dat de gemiddelde ruisgain niet terugzakt naar
+de onhoorbare afstelling. De echte verhouding hoort gemeten te worden, niet
+afgelezen.
+
+### 8.4 Het geluidsverslag
+
+`tests/maak-geluidsverslag.mjs` rendert elk geluid naar een WAV plus een
+manifest met wat het is en wanneer je het hoort. Het bouwt de synthese niet
+na — het vervangt `window.AudioContext` door een proxy om een
+`OfflineAudioContext` met een stuurbare klok, zodat de spelcode zelf speelt en
+elk geluid netjes achter elkaar op één tijdlijn belandt. Voor de negentien
+aangepaste geluiden wordt twee keer gerenderd: één keer met de ruislaag uit
+(= exact hoe het vóór T154 klonk) en één keer normaal.

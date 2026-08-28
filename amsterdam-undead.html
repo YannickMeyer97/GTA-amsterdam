@@ -4969,7 +4969,7 @@ wereld.add(druppelMesh);
 let druppelTimer = 0;
 let druppelDuur = 3 + Math.random() * 3;
 let druppelTikTeller = 0;   // debug/test: telt elke daadwerkelijk gespeelde tik
-function speelDruppelTik() { druppelTikTeller++; piep('sine', 900, 500, 0.05, 0.0345); }   // Feedback: +15% (omgeving/sfeer)
+function speelDruppelTik() { druppelTikTeller++; speelGeluid('druppelTik'); }   // Feedback: +15% (omgeving/sfeer), zie GELUIDEN.druppelTik
 function updateDruppel(dt) {
   druppelTimer += dt;
   const voortgang = Math.min(1, druppelTimer / druppelDuur);
@@ -8869,18 +8869,21 @@ function schrijfStadsbedGain(doel) {
 // (test-geluidsknop.mjs: "connect(masterGainNode)", precies 1
 // "connect(audio.destination)" in de hele bron) blijft zo ongewijzigd en
 // onbewezen-veilig.
-function stadPiep(type, startHz, eindHz, duur, volume) {
+// Ticket 153: zelfde optionele startTijd als piep() hierboven, om dezelfde
+// reden (de tweede stadsklok-toon werd via setTimeout(380) gepland).
+function stadPiep(type, startHz, eindHz, duur, volume, startTijd) {
   if (!audio || !stadGainNode) return;
+  const t = startTijd === undefined ? audio.currentTime : startTijd;
   const osc = audio.createOscillator();
   const gain = audio.createGain();
   osc.type = type;
-  osc.frequency.setValueAtTime(startHz, audio.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(eindHz, audio.currentTime + duur);
-  gain.gain.setValueAtTime(volume, audio.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + duur);
+  osc.frequency.setValueAtTime(startHz, t);
+  osc.frequency.exponentialRampToValueAtTime(eindHz, t + duur);
+  gain.gain.setValueAtTime(volume, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + duur);
   osc.connect(gain).connect(stadGainNode);
-  osc.start();
-  osc.stop(audio.currentTime + duur);
+  osc.start(t);
+  osc.stop(t + duur);
 }
 // Verre scheepshoorn: bewust een ANDER register/timbre/duur dan de echte
 // ontsnappingsboot-hoorn (speelBootHoorn/speelBootHoornGericht: sine,
@@ -8890,7 +8893,7 @@ function stadPiep(type, startHz, eindHz, duur, volume) {
 let stadHoornTeller = 0;   // debug/test
 function speelVerreScheepshoorn() {
   stadHoornTeller++;
-  stadPiep('triangle', 92, 68, 1.6, 0.8);
+  speelGeluid('verreScheepshoorn');
 }
 // Verre stadsklok: eigen, hogere/ijlere klank dan de bestaande
 // speelGrachtklok() (440/660Hz) — beide boven de gromband, dus geen van
@@ -8898,8 +8901,7 @@ function speelVerreScheepshoorn() {
 let stadKlokTeller = 0;   // debug/test
 function speelVerreStadsklok() {
   stadKlokTeller++;
-  stadPiep('sine', 480, 450, 1.3, 0.6);
-  setTimeout(() => stadPiep('sine', 640, 600, 1.1, 0.4), 380);
+  speelGeluid('verreStadsklok');
 }
 const STAD_HOORN_MIN_INTERVAL = 50;    // s
 const STAD_HOORN_MAX_INTERVAL = 110;   // s
@@ -8952,6 +8954,13 @@ function initGeluid() {
     masterGainNode = audio.createGain();
     masterGainNode.gain.value = geluidGedempt ? 0 : 1;   // priming: als er al vóór de eerste klik gedempt was
     masterGainNode.connect(audio.destination);
+
+    // Ticket 154: één seconde witte ruis, één keer gevuld, daarna door elk
+    // ruisgeluid hergebruikt. Kost ~176 KB werkgeheugen en nul bytes op
+    // schijf — het is de enige "asset" in het spel en hij wordt hier ter
+    // plekke gemaakt. Bewust hier en niet lui-bij-eerste-gebruik: het vullen
+    // van 44100 samples midden in een vuurgevecht zou een frame kosten.
+    ruisBuffer = maakRuisBuffer();
 
     const osc1 = audio.createOscillator();
     const osc2 = audio.createOscillator();
@@ -9022,24 +9031,34 @@ function initGeluid() {
 let introMelodieTeller = 0;   // debug/test
 function speelIntroMelodie() {
   introMelodieTeller++;
-  piep('sine', 440, 440, 0.12, 0.05);
-  setTimeout(() => piep('sine', 554.37, 554.37, 0.12, 0.05), 130);
-  setTimeout(() => piep('sine', 659.25, 659.25, 0.12, 0.05), 260);
-  setTimeout(() => piep('sine', 880, 880, 0.2, 0.06), 390);
+  speelGeluid('introMelodie');
 }
 
 // Ticket 80: optionele pan (StereoPanner-conventie, rechts=+1). Bij
 // pan === 0 of weggelaten blijft de keten exact osc -> gain -> masterGainNode
 // (geen StereoPannerNode) — test-geluidsknop.mjs rekent op die kale keten.
-function piep(type, startHz, eindHz, duur, volume, pan) {
+// Ticket 153: optionele startTijd op de AUDIOKLOK (audio.currentTime-schaal).
+// Weggelaten = nu, exact het oude gedrag. Dit is wat de tien
+// setTimeout-vervolgtonen vervangt: een vervolgtoon 40 ms na de klap wordt
+// nu op audio.currentTime + 0.04 gepland i.p.v. via een JS-timer. Voordeel:
+// de tijdrelatie tussen de twee tonen is exact en immuun voor frame-jank,
+// en het geluid is daarmee één ondeelbaar ding i.p.v. twee losse
+// gebeurtenissen. Let op wat dit NIET oplost: een geplande vervolgtoon
+// klinkt nog steeds door als de speler intussen pauzeert — net als de
+// hoofdtoon zelf, die ook gewoon uitklinkt. Bij staarten van 30-550 ms is
+// dat geen bug maar het enige juiste gedrag; de echte T33-bug was iets
+// anders (een vaste setTimeout(900) die niet meer klopte met een variabele
+// herlaadduur), en die splitsing blijft ongemoeid.
+function piep(type, startHz, eindHz, duur, volume, pan, startTijd) {
   if (!audio) return;
+  const t = startTijd === undefined ? audio.currentTime : startTijd;
   const osc = audio.createOscillator();
   const gain = audio.createGain();
   osc.type = type;
-  osc.frequency.setValueAtTime(startHz, audio.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(eindHz, audio.currentTime + duur);
-  gain.gain.setValueAtTime(volume, audio.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + duur);
+  osc.frequency.setValueAtTime(startHz, t);
+  osc.frequency.exponentialRampToValueAtTime(eindHz, t + duur);
+  gain.gain.setValueAtTime(volume, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + duur);
   if (pan) {
     const panner = audio.createStereoPanner();
     panner.pan.value = pan;
@@ -9047,17 +9066,251 @@ function piep(type, startHz, eindHz, duur, volume, pan) {
   } else {
     osc.connect(gain).connect(masterGainNode);
   }
-  osc.start();
-  osc.stop(audio.currentTime + duur);
+  osc.start(t);
+  osc.stop(t + duur);
+}
+
+// ---------------------------------------------------------------------------
+// Ticket 153 — DE AUDIOREGISTRY
+//
+// Tot dit ticket waren de korte, eenmalige geluiden 35 losse functies die op
+// twee na allemaal exact hetzelfde deden: één of twee piep()-aanroepen met
+// andere getallen. Die getallen staan nu hier, als data. De speel*()-functies
+// eronder blijven bestaan als dunne wrappers — inclusief hun tellers, want
+// die zijn het testcontract (26 tellers over 17 testbestanden, zie AUDIO.md
+// §2). Elk piep()-argument uit de oude functies is hieronder één-op-één terug
+// te vinden; test-audioregistry.mjs bewaakt dat met een volledige
+// waardetabel.
+//
+// Wat hier BEWUST NIET in zit (T152 §6.2, en de opdracht van T153):
+//  - Categorie-gains. `categorie` hieronder is puur een label voor
+//    documentatie en tests; er hangt geen gain-bus aan. test-geluidsknop.mjs
+//    eist exact drie GainNode.connect(masterGainNode) in initGeluid(), en de
+//    mix is al per geluid met de hand afgeregeld (de +15%/+20%-rondes).
+//  - De eigen ketens: de dreigingsdrone, het akkoordbed/speelNevelklokToon,
+//    speelOndodeGrom (twee ontstemde oscillators door een lowpass) en
+//    speelBootHoornGericht (eigen panner + afstandsvolume). Die hebben elk
+//    een eigen levenscyclus en horen niet in een tabel van losse tonen.
+//
+// `bus: 'stad'` stuurt een geluid via stadPiep() naar stadGainNode i.p.v.
+// masterGainNode (T82's stadsbed). `vervolg[]` vervangt de tien
+// setTimeout-vervolgtonen: `na` is een offset in SECONDEN op de audioklok.
+// ---------------------------------------------------------------------------
+const GELUIDEN = {
+  // --- wapens en treffers ---------------------------------------------
+  // schot: toon komt per wapen uit ARSENAAL (schotToon), alleen het volume
+  // is gedeeld — vandaar geen start/eind/duur hier.
+  schot:         { categorie: 'wapen', type: 'sawtooth', volume: 0.1,
+                   ruis: { filterStart: 3800, filterEind: 350,  Q: 0.8, duur: 0.13, volume: 0.097 } },
+  droogKlik:     { categorie: 'wapen', type: 'square',   start: 200, eind: 180, duur: 0.04, volume: 0.06,
+                   ruis: { filterStart: 5000, filterEind: 1400, Q: 1.2, duur: 0.035, volume: 0.141 } },
+  herlaad:       { categorie: 'wapen', type: 'sine',     start: 300, eind: 500, duur: 0.15, volume: 0.06,
+                   ruis: { filterStart: 2600, filterEind: 700,  Q: 1.0, duur: 0.07, volume: 0.203 } },
+  herlaadKlaar:  { categorie: 'wapen', type: 'sine',     start: 500, eind: 700, duur: 0.12, volume: 0.06,
+                   ruis: { filterStart: 3200, filterEind: 1100, Q: 1.2, duur: 0.055, volume: 0.147 } },
+  wissel:        { categorie: 'wapen', type: 'triangle', start: 260, eind: 420, duur: 0.08, volume: 0.06 },
+  mesSteek:      { categorie: 'wapen', type: 'sawtooth', start: 380, eind: 90,  duur: 0.08, volume: 0.09,
+                   ruis: { filterStart: 2400, filterEind: 280,  Q: 0.9, duur: 0.075, volume: 0.141 } },
+  // raakTik/kopTik/killKnak: de start/eind/duur hieronder zijn exact de
+  // *_TOON_FALLBACK-waarden (de mes-audio). Met een vuurwapen in de hand
+  // overschrijft de wrapper ze met raakToon/kopToon/killToon uit ARSENAAL.
+  raakTik:       { categorie: 'wapen', type: 'square',   start: 320, eind: 90,  duur: 0.07, volume: 0.08,
+                   ruis: { filterStart: 1900, filterEind: 380,  Q: 0.9, duur: 0.05, volume: 0.278 } },
+  kopTik:        { categorie: 'wapen', type: 'square',   start: 460, eind: 140, duur: 0.08, volume: 0.09,
+                   ruis: { filterStart: 2800, filterEind: 520,  Q: 1.1, duur: 0.05, volume: 0.211 } },
+  killKnak:      { categorie: 'wapen', type: 'sawtooth', start: 200, eind: 40,  duur: 0.14, volume: 0.16,
+                   // T149-onderlaag: gelijktijdig (na: 0), draagt het gewicht.
+                   vervolg: [{ na: 0, type: 'sine', start: 95, eind: 42, duur: 0.26, volume: 0.13 }],
+                   ruis: { filterStart: 1300, filterEind: 180,  Q: 0.8, duur: 0.17, volume: 0.468 } },
+  doorboring:    { categorie: 'wapen', type: 'triangle', start: 620, eind: 110, duur: 0.16, volume: 0.07 },
+
+  // --- ondoden ---------------------------------------------------------
+  aanvalGromSjouwer: { categorie: 'ondode', type: 'sawtooth', start: 70,  eind: 110, duur: 0.5,  volume: 0.09 },
+  aanvalGromSluiper: { categorie: 'ondode', type: 'sawtooth', start: 320, eind: 440, duur: 0.16, volume: 0.07 },
+  aanvalGromNormaal: { categorie: 'ondode', type: 'sawtooth', start: 150, eind: 220, duur: 0.3,  volume: 0.08 },
+  slagRaak:      { categorie: 'ondode', type: 'square',   start: 100, eind: 40,  duur: 0.12, volume: 0.1,
+                   ruis: { filterStart: 950,  filterEind: 140,  Q: 0.8, duur: 0.1,  volume: 0.41 } },
+  slagMis:       { categorie: 'ondode', type: 'sine',     start: 240, eind: 90,  duur: 0.22, volume: 0.05,
+                   ruis: { filterStart: 420,  filterEind: 1500, Q: 1.4, duur: 0.2,  volume: 0.262, aanzet: 0.06 } },
+
+  // --- speler en wereld -------------------------------------------------
+  spelerAu:      { categorie: 'speler', type: 'sawtooth', start: 160, eind: 60,  duur: 0.18, volume: 0.11 },
+  plankBreek:    { categorie: 'wereld', type: 'sawtooth', start: 180, eind: 60,  duur: 0.09, volume: 0.09,
+                   ruis: { filterStart: 2400, filterEind: 320,  Q: 0.9, duur: 0.13, volume: 0.162 } },
+  explosie:      { categorie: 'wereld', type: 'sawtooth', start: 90,  eind: 30,  duur: 0.35, volume: 0.16,
+                   vervolg: [{ na: 0.04, type: 'square', start: 60, eind: 25, duur: 0.25, volume: 0.08 }],
+                   ruis: { filterStart: 1400, filterEind: 70,   Q: 0.7, duur: 0.42, volume: 0.441 } },
+  stroomklap:    { categorie: 'wereld', type: 'square',   start: 700, eind: 380, duur: 0.03, volume: 0.1,
+                   vervolg: [{ na: 0.03, type: 'sawtooth', start: 120, eind: 40, duur: 0.3, volume: 0.1 }] },
+  stroomHerstel: { categorie: 'wereld', type: 'sine',     start: 300, eind: 500, duur: 0.1,  volume: 0.06 },
+
+  // --- golf en meta ------------------------------------------------------
+  golfStart:     { categorie: 'meta', type: 'sawtooth', start: 130, eind: 260, duur: 0.18, volume: 0.08,
+                   vervolg: [{ na: 0.13, type: 'square', start: 200, eind: 340, duur: 0.22, volume: 0.06 }] },
+  golfKlaar:     { categorie: 'meta', type: 'sine',     start: 520, eind: 780, duur: 0.14, volume: 0.06,
+                   vervolg: [{ na: 0.15, type: 'sine', start: 780, eind: 1040, duur: 0.16, volume: 0.05 }] },
+  gameOver:      { categorie: 'meta', type: 'sawtooth', start: 300, eind: 70,  duur: 0.5,  volume: 0.12,
+                   vervolg: [{ na: 0.22, type: 'sine', start: 160, eind: 50, duur: 0.7, volume: 0.09 }] },
+  finaleLosgooien: { categorie: 'meta', type: 'sawtooth', start: 90, eind: 260, duur: 0.35, volume: 0.12 },
+  // Ticket 86: oplopende drieklank A-C#-E-A, ontgrendeld via het stadsarchief.
+  introMelodie:  { categorie: 'meta', type: 'sine', start: 440, eind: 440, duur: 0.12, volume: 0.05,
+                   vervolg: [{ na: 0.13, type: 'sine', start: 554.37, eind: 554.37, duur: 0.12, volume: 0.05 },
+                             { na: 0.26, type: 'sine', start: 659.25, eind: 659.25, duur: 0.12, volume: 0.05 },
+                             { na: 0.39, type: 'sine', start: 880,    eind: 880,    duur: 0.2,  volume: 0.06 }] },
+
+  // --- economie ----------------------------------------------------------
+  koop:          { categorie: 'economie', type: 'triangle', start: 420, eind: 900, duur: 0.1,  volume: 0.07 },
+  geenGeld:      { categorie: 'economie', type: 'square',   start: 220, eind: 120, duur: 0.12, volume: 0.06 },
+  smeed:         { categorie: 'economie', type: 'sawtooth', start: 180, eind: 60,  duur: 0.18, volume: 0.09,
+                   vervolg: [{ na: 0.09, type: 'triangle', start: 700, eind: 1100, duur: 0.09, volume: 0.08 }] },
+
+  // --- omgeving en sfeer --------------------------------------------------
+  druppelTik:    { categorie: 'omgeving', type: 'sine',     start: 900, eind: 500, duur: 0.05, volume: 0.0345 },
+  grachtklok:    { categorie: 'omgeving', type: 'sine',     start: 440, eind: 380, duur: 0.9,  volume: 0.0575,
+                   vervolg: [{ na: 0.55, type: 'sine', start: 660, eind: 560, duur: 0.9, volume: 0.04 }] },
+  gangKraak:     { categorie: 'omgeving', type: 'sawtooth', start: 90,  eind: 40,  duur: 0.35, volume: 0.069,
+                   ruis: { filterStart: 800,  filterEind: 120,  Q: 1.0, duur: 0.3,  volume: 0.185, aanzet: 0.02 } },
+  bijkeukenKraak:{ categorie: 'omgeving', type: 'sawtooth', start: 70,  eind: 30,  duur: 0.4,  volume: 0.0633,
+                   ruis: { filterStart: 650,  filterEind: 95,   Q: 1.0, duur: 0.34, volume: 0.208, aanzet: 0.02 } },
+  windvlaag:     { categorie: 'omgeving', type: 'sine',     start: 200, eind: 260, duur: 1.1,  volume: 0.04,
+                   vervolg: [{ na: 0.3, type: 'sine', start: 180, eind: 140, duur: 1.3, volume: 0.0345 }],
+                   ruis: { filterStart: 520,  filterEind: 240,  Q: 0.7, duur: 1.15, volume: 0.445, aanzet: 0.25, variatie: 0.03 } },
+  // De twee stadsbed-gebeurtenissen (T82): via stadGainNode, niet master.
+  verreScheepshoorn: { categorie: 'omgeving', bus: 'stad', type: 'triangle', start: 92, eind: 68, duur: 1.6, volume: 0.8 },
+  verreStadsklok:    { categorie: 'omgeving', bus: 'stad', type: 'sine', start: 480, eind: 450, duur: 1.3, volume: 0.6,
+                   vervolg: [{ na: 0.38, type: 'sine', start: 640, eind: 600, duur: 1.1, volume: 0.4 }] },
+
+  // --- boot ---------------------------------------------------------------
+  bootHoorn:     { categorie: 'boot', type: 'sine', start: 200, eind: 140, duur: 1.1, volume: 0.1 },
+  bootVertrek:   { categorie: 'boot', type: 'sine', start: 150, eind: 100, duur: 0.8, volume: 0.08 },
+};
+
+// ---------------------------------------------------------------------------
+// Ticket 154 — DE RUISBRON
+//
+// De audit van T152 vond één oorzaak achter bijna alle zwakke geluiden: er
+// zat in dit hele spel geen ruisbron. Elk geluid was een zuivere getoonde
+// golfvorm, en een breedbandige transiënt — een knal, versplinterend hout,
+// wind, een dreun — is met een enkele oscillator principieel niet te maken.
+// Daarom klonk een schot als een fluitje.
+//
+// Dit lost dat op ZONDER één byte aan assets: één buffer van 1 seconde witte
+// ruis, één keer gevuld bij initGeluid(), daarna eindeloos hergebruikt. De
+// vorm komt van het filter, niet van het bronmateriaal — een dichtvallende
+// lowpass leest als een klap, een oplopende als een whoosh.
+//
+// De getoonde laag blijft eronder staan en verandert niet: die draagt de
+// identiteit (per-wapen schotToon uit T34/T144, de +15%/+20%-mixrondes). De
+// ruis komt erbovenop.
+//
+// LET OP BIJ HET BIJSTELLEN VAN `volume` IN EEN `ruis`-BLOK. Die waarde is
+// NIET vergelijkbaar met het `volume` van de toon ernaast, en de eerste
+// afstelling van dit ticket ging daar 5 tot 23 dB de mist in. Het toonvolume
+// is de piekamplitude van een golfvorm waarvan alle energie in één smalle
+// band zit; het ruisvolume is de gain vóór een lowpass die het leeuwendeel
+// van het vermogen wegneemt (een filter op 1300 Hz laat van witte ruis nog
+// zo'n 6% van het vermogen door). Een ruisvolume dat hoger is dan het
+// toonvolume is dus normaal, geen fout. Wat de werkelijke verhouding is, kun
+// je alleen meten: `tests/meet-ruislaag.mjs` rendert beide lagen apart in een
+// OfflineAudioContext en vergelijkt de RMS tegen een doel per geluid
+// (AUDIO.md §8.3). Stel je hier iets bij, draai dat script dan.
+const RUIS_BUFFER_DUUR = 1.0;          // s — lang genoeg dat lussen niet hoorbaar is
+const RUIS_VARIATIE_STANDAARD = 0.08;  // ±8% afspeelsnelheid = ±8% spectrumverschuiving
+let ruisBuffer = null;
+function maakRuisBuffer() {
+  const lengte = Math.floor(audio.sampleRate * RUIS_BUFFER_DUUR);
+  const buffer = audio.createBuffer(1, lengte, audio.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < lengte; i++) data[i] = Math.random() * 2 - 1;
+  return buffer;
+}
+// Eén ruislaag. `r` is het `ruis`-blok uit een GELUIDEN-entry; `opties` draagt
+// pan en startTijd (zelfde conventie als piep()).
+// Keten: bufferbron -> filter met frequentie-envelope -> gain met
+// volume-envelope -> (panner) -> masterGainNode. Nooit rechtstreeks op
+// audio.destination, net als al het andere (Fix 4, de mastermute).
+function speelRuis(r, opties) {
+  if (!audio || !ruisBuffer) return;
+  const o = opties || {};
+  const t = o.startTijd === undefined ? audio.currentTime : o.startTijd;
+
+  const bron = audio.createBufferSource();
+  bron.buffer = ruisBuffer;
+  bron.loop = true;
+  // Twee gratis variatiebronnen, zodat tien schoten achter elkaar geen
+  // machinegeweer-monotonie worden (dezelfde gedachte als pitchVariatie()):
+  // een andere afspeelsnelheid verschuift het hele ruisspectrum, en een
+  // willekeurig startpunt zorgt dat niet elke tik met dezelfde samples begint.
+  const variatie = r.variatie === undefined ? RUIS_VARIATIE_STANDAARD : r.variatie;
+  bron.playbackRate.value = 1 + (Math.random() * 2 - 1) * variatie;
+  const offset = Math.random() * (RUIS_BUFFER_DUUR - 0.05);
+
+  const filter = audio.createBiquadFilter();
+  filter.type = r.filterType || 'lowpass';
+  filter.Q.value = r.Q === undefined ? 0.9 : r.Q;
+  filter.frequency.setValueAtTime(r.filterStart, t);
+  filter.frequency.exponentialRampToValueAtTime(r.filterEind, t + r.duur);
+
+  const gain = audio.createGain();
+  // Korte lineaire aanzet i.p.v. meteen op volledig volume: dat scheelt een
+  // klik aan het begin van de buffer. De verval-fase blijft exponentieel,
+  // net als bij piep().
+  const aanzet = Math.min(r.aanzet === undefined ? 0.002 : r.aanzet, r.duur * 0.5);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.linearRampToValueAtTime(r.volume, t + aanzet);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + r.duur);
+
+  if (o.pan) {
+    const panner = audio.createStereoPanner();
+    panner.pan.value = o.pan;
+    bron.connect(filter).connect(gain).connect(panner).connect(masterGainNode);
+  } else {
+    bron.connect(filter).connect(gain).connect(masterGainNode);
+  }
+  bron.start(t, offset);
+  bron.stop(t + r.duur);
+}
+
+// De enige speler van de tabel. `opties`:
+//   pan   — doorgegeven aan piep() (StereoPanner-conventie, rechts=+1)
+//   pitch — vermenigvuldigt ALLE frequenties, ook die van de vervolgtonen
+//           (pitchVariatie() gebruikt dit voor de ±5% op de trefferklanken)
+//   type/start/eind/duur — overschrijven de tabelwaarde, voor de geluiden
+//           waarvan de toon per wapen uit ARSENAAL komt
+// Alle tonen van één geluid worden op dezelfde `nu` gepland, zodat de
+// onderlinge timing exact klopt ongeacht wat de JS-thread intussen doet.
+function speelGeluid(naam, opties) {
+  const g = GELUIDEN[naam];
+  if (!g || !audio) return;
+  const o = opties || {};
+  const p = o.pitch === undefined ? 1 : o.pitch;
+  const nu = audio.currentTime;
+  const naarStad = g.bus === 'stad';
+  const type = o.type === undefined ? g.type : o.type;
+  const start = (o.start === undefined ? g.start : o.start) * p;
+  const eind = (o.eind === undefined ? g.eind : o.eind) * p;
+  const duur = o.duur === undefined ? g.duur : o.duur;
+  if (naarStad) stadPiep(type, start, eind, duur, g.volume, nu);
+  else piep(type, start, eind, duur, g.volume, o.pan, nu);
+  if (g.vervolg) {
+    for (const v of g.vervolg) {
+      if (naarStad) stadPiep(v.type, v.start * p, v.eind * p, v.duur, v.volume, nu + v.na);
+      else piep(v.type, v.start * p, v.eind * p, v.duur, v.volume, o.pan, nu + v.na);
+    }
+  }
+  // Ticket 154: de ruislaag, gelijktijdig met de hoofdtoon. Alleen de
+  // geluiden die er een hebben (zie de `ruis`-blokken in GELUIDEN); de
+  // stadsbed-bus krijgt er geen — die twee zijn bewust ijl en ver.
+  if (g.ruis && !naarStad) speelRuis(g.ruis, { pan: o.pan, startTijd: nu });
 }
 
 // Ticket 34: per-wapen schotgeluid via schotToon (§5.6) i.p.v. één vaste toon
 // voor beide wapens.
 function speelSchot() {
   const toon = wapenStaat.definitie.schotToon;
-  piep('sawtooth', toon.start, toon.eind, toon.duur, 0.1);
+  speelGeluid('schot', { start: toon.start, eind: toon.eind, duur: toon.duur });
 }
-function speelDroogKlik() { piep('square', 200, 180, 0.04, 0.06); }
+function speelDroogKlik() { speelGeluid('droogKlik'); }
 // Ticket 33: het herlaad-geluid was één functie die zijn tweede piep via een
 // vaste setTimeout(900) afspeelde — dat klopte niet met herlaadDuurSnel en
 // liep door tijdens pauze. Nu twee losse geluiden: het start-geluid hier
@@ -9066,17 +9319,17 @@ function speelDroogKlik() { piep('square', 200, 180, 0.04, 0.06); }
 // (zelfde patroon als Ticket 31's aanvalGromTeller) zodat tests de
 // audio-splitsing kunnen verifiëren zonder de Web Audio-output te horen.
 let herlaadStartTeller = 0, herlaadKlaarTeller = 0;
-function speelHerlaad()      { herlaadStartTeller++; piep('sine', 300, 500, 0.15, 0.06); }
-function speelHerlaadKlaar() { herlaadKlaarTeller++; piep('sine', 500, 700, 0.12, 0.06); }
+function speelHerlaad()      { herlaadStartTeller++; speelGeluid('herlaad'); }
+function speelHerlaadKlaar() { herlaadKlaarTeller++; speelGeluid('herlaadKlaar'); }
 
 // Ticket 34: kort wisselgeluidje bij wisselWapen().
 let wisselTeller = 0;
-function speelWissel() { wisselTeller++; piep('triangle', 260, 420, 0.08, 0.06); }
+function speelWissel() { wisselTeller++; speelGeluid('wissel'); }
 
 // Ticket 133: kort, scherp steekgeluidje — snelle neerwaartse sweep, duidelijk
 // anders dan de vuurwapen-schoten (geen sawtooth-knal, geen droge klik).
 let mesSteekTeller = 0;
-function speelMesSteek() { mesSteekTeller++; piep('sawtooth', 380, 90, 0.08, 0.09); }
+function speelMesSteek() { mesSteekTeller++; speelGeluid('mesSteek'); }
 
 // Ticket 33: hitmarker-audio met drie tiers + ±5% pitch-variatie per
 // afspeling, zodat de Ratelaar geen machinegeweer-monotonie wordt.
@@ -9094,27 +9347,24 @@ const KOP_TOON_FALLBACK = { type: 'square', start: 460, eind: 140, duur: 0.08 };
 const KILL_TOON_FALLBACK = { type: 'sawtooth', start: 200, eind: 40, duur: 0.14 };
 function speelRaakTik() {
   raakTikTeller++;
-  const p = pitchVariatie();
   const t = wapenStaat ? wapenStaat.definitie.raakToon : RAAK_TOON_FALLBACK;
-  piep(t.type, t.start * p, t.eind * p, t.duur, 0.08);
+  speelGeluid('raakTik', { ...t, pitch: pitchVariatie() });
 }
 function speelKopTik() {
   kopTikTeller++;
-  const p = pitchVariatie();
   const t = wapenStaat ? wapenStaat.definitie.kopToon : KOP_TOON_FALLBACK;
-  piep(t.type, t.start * p, t.eind * p, t.duur, 0.09);
+  speelGeluid('kopTik', { ...t, pitch: pitchVariatie() });
 }
 function speelKillKnak() {
   killKnakTeller++;
-  const p = pitchVariatie();
   const t = wapenStaat ? wapenStaat.definitie.killToon : KILL_TOON_FALLBACK;
-  piep(t.type, t.start * p, t.eind * p, t.duur, 0.16);
   // Speeltoets-bijstelling (na T149, "kill voelt zwaarder"): een lage,
   // wegzakkende onderlaag ONDER de bestaande per-wapen killToon. Die toon
   // blijft ongemoeid (hij draagt de wapenidentiteit uit T144) — dit voegt
-  // alleen het lijfelijke gewicht toe dat er miste. Geen eigen teller: dit is
-  // dezelfde gebeurtenis, killKnakTeller telt 'm al.
-  piep('sine', 95 * p, 42 * p, 0.26, 0.13);
+  // alleen het lijfelijke gewicht toe dat er miste. Sinds T153 is die
+  // onderlaag GELUIDEN.killKnak.vervolg[0] (na: 0, dus gelijktijdig). Geen
+  // eigen teller: dit is dezelfde gebeurtenis, killKnakTeller telt 'm al.
+  speelGeluid('killKnak', { ...t, pitch: pitchVariatie() });
 }
 // Ticket 143: de Doorboring (Canal Ripper, Smederij-niveau 2) was tot nu toe
 // alleen in de SCHADE merkbaar — een tweede doel viel om zonder dat er iets
@@ -9123,15 +9373,15 @@ function speelKillKnak() {
 // zodat het als "erdoorheen" leest en niet als een tweede losse treffer.
 // Eigen teller, zelfde patroon als de drie hierboven (test-haak).
 let doorboringTeller = 0;
-function speelDoorboring() { doorboringTeller++; const p = pitchVariatie(); piep('triangle', 620 * p, 110 * p, 0.16, 0.07); }
+function speelDoorboring() { doorboringTeller++; speelGeluid('doorboring', { pitch: pitchVariatie() }); }
 // Ticket 80: optionele bronpositie voor richtinghoren; zonder argumenten
 // (bv. toekomstige aanroepers) blijft dit gewoon mono, net als voorheen.
 function speelPlankBreek(bronX, bronZ) {
   const pan = bronX === undefined ? 0 : hoekNaarPan(berekenRelatieveHoek(bronX, bronZ, speler.positie.x, speler.positie.z, speler.yaw));
-  piep('sawtooth', 180, 60, 0.09, 0.09, pan);
+  speelGeluid('plankBreek', { pan });
 }
-function speelExplosie()  { piep('sawtooth', 90, 30, 0.35, 0.16); setTimeout(() => piep('square', 60, 25, 0.25, 0.08), 40); }
-function speelSpelerAu()  { piep('sawtooth', 160, 60, 0.18, 0.11); }
+function speelExplosie()  { speelGeluid('explosie'); }
+function speelSpelerAu()  { speelGeluid('spelerAu'); }
 // Ticket 31 (Aanval A2): hoorbare tells voor de aanvals-state-machine (T30).
 // speelAanvalGrom klinkt bij windup-start, per type een eigen register
 // (Sjouwer laag en lang, Sluiper kort en schril, normaal ertussenin).
@@ -9140,30 +9390,30 @@ function speelSpelerAu()  { piep('sawtooth', 160, 60, 0.18, 0.11); }
 let aanvalGromTeller = 0, slagRaakTeller = 0, slagMisTeller = 0;
 function speelAanvalGrom(type) {
   aanvalGromTeller++;
-  if (type === 'sjouwer') piep('sawtooth', 70, 110, 0.5, 0.09);
-  else if (type === 'sluiper') piep('sawtooth', 320, 440, 0.16, 0.07);
-  else piep('sawtooth', 150, 220, 0.3, 0.08);
+  if (type === 'sjouwer') speelGeluid('aanvalGromSjouwer');
+  else if (type === 'sluiper') speelGeluid('aanvalGromSluiper');
+  else speelGeluid('aanvalGromNormaal');
 }
-function speelSlagRaak() { slagRaakTeller++; piep('square', 100, 40, 0.12, 0.1); }   // doffe dreun, bovenop speelSpelerAu()
-function speelSlagMis()  { slagMisTeller++; piep('sine', 240, 90, 0.22, 0.05); }    // whoosh
+function speelSlagRaak() { slagRaakTeller++; speelGeluid('slagRaak'); }   // doffe dreun, bovenop speelSpelerAu()
+function speelSlagMis()  { slagMisTeller++; speelGeluid('slagMis'); }    // whoosh
 // Nieuwe sfeergeluiden (allemaal live via Web Audio, geen bestanden):
-function speelGolfStart() { piep('sawtooth', 130, 260, 0.18, 0.08); setTimeout(() => piep('square', 200, 340, 0.22, 0.06), 130); }
-function speelGolfKlaar() { piep('sine', 520, 780, 0.14, 0.06); setTimeout(() => piep('sine', 780, 1040, 0.16, 0.05), 150); }
-function speelGameOver()  { piep('sawtooth', 300, 70, 0.5, 0.12); setTimeout(() => piep('sine', 160, 50, 0.7, 0.09), 220); }
+function speelGolfStart() { speelGeluid('golfStart'); }
+function speelGolfKlaar() { speelGeluid('golfKlaar'); }
+function speelGameOver()  { speelGeluid('gameOver'); }
 // Zone-sfeergeluiden (Ticket V8): gedempte gracht-klok (zeldzaam, zone A),
 // een lage kraak bij de eerste stap de gang in, en een windvlaag bij de
 // eerste stap op de binnenplaats.
 // Feedback: alle omgeving-/sfeergeluiden +15% luider t.o.v. de oorspronkelijke
 // waarden (0.05/0.035, 0.06, 0.035/0.03, 0.055) — onderlinge verhoudingen ongewijzigd.
-function speelGrachtklok() { piep('sine', 440, 380, 0.9, 0.0575); setTimeout(() => piep('sine', 660, 560, 0.9, 0.04), 550); }
-function speelGangKraak()  { piep('sawtooth', 90, 40, 0.35, 0.069); }
-function speelWindvlaag()  { piep('sine', 200, 260, 1.1, 0.04); setTimeout(() => piep('sine', 180, 140, 1.3, 0.0345), 300); }
-function speelBijkeukenKraak() { piep('sawtooth', 70, 30, 0.4, 0.0633); }   // Ticket 27: eigen, iets lagere kraak dan de gang
+function speelGrachtklok() { speelGeluid('grachtklok'); }
+function speelGangKraak()  { speelGeluid('gangKraak'); }
+function speelWindvlaag()  { speelGeluid('windvlaag'); }
+function speelBijkeukenKraak() { speelGeluid('bijkeukenKraak'); }   // Ticket 27: eigen, iets lagere kraak dan de gang
 // Ticket 46 (eventgolf Stroomuitval): korte klik + zakkende zoem bij het
 // uitvallen van de stroom, een kort herstel-tikje zodra 'ie terugkomt.
 let stroomklapTeller = 0, stroomHerstelTeller = 0;
-function speelStroomklap()    { stroomklapTeller++; piep('square', 700, 380, 0.03, 0.1); setTimeout(() => piep('sawtooth', 120, 40, 0.3, 0.1), 30); }
-function speelStroomHerstel() { stroomHerstelTeller++; piep('sine', 300, 500, 0.1, 0.06); }
+function speelStroomklap()    { stroomklapTeller++; speelGeluid('stroomklap'); }
+function speelStroomHerstel() { stroomHerstelTeller++; speelGeluid('stroomHerstel'); }
 
 // Ticket 49: schrijft de dreigingsgain daadwerkelijk naar de gainNode (of
 // laat 'm ongemoeid als initGeluid() nog niet is aangeroepen — vóór de
@@ -9447,11 +9697,24 @@ function nieuweGromTimer() { return ONDODE_GROM_MIN_INTERVAL + Math.random() * (
 // (sjouwer/brander/normaal: 0.054/0.054/0.048 — loper had 0.042, maar dat
 // type is op speelverzoek uit het spel verwijderd: leek qua kleur/gedrag te
 // veel op de Brander en voegde te weinig eigen identiteit toe).
+// Ticket 154: `ruisVolume` is de keelruis — de rasp die een stem heeft en
+// een oscillator niet. Uitgedrukt als fractie van de oscillator-amplitude
+// (die is 1,0 vóór de gemeenschappelijke gain), dus 0,42 = de ruis staat
+// duidelijk ónder de toon. De ruis gaat door HETZELFDE filter en dezelfde
+// gain als de twee oscillators, dus hij erft de dalende cutoff, de envelope
+// én de pan — en er komt geen tweede panner bij (zie de opmerking hieronder).
 const GROM_PROFIELEN = {
-  sjouwer: { golfvorm: 'sawtooth', startHz: 70,  dipHz: 58,  eindHz: 46,  filterStart: 900,  filterEind: 260, detune: 22, duur: 0.5,  volume: 0.054 },
-  brander: { golfvorm: 'square',   startHz: 115, dipHz: 95,  eindHz: 66,  filterStart: 1000, filterEind: 240, detune: 26, duur: 0.38, volume: 0.054 },
-  normaal: { golfvorm: 'sawtooth', startHz: 95,  dipHz: 80,  eindHz: 60,  filterStart: 950,  filterEind: 340, detune: 18, duur: 0.32, volume: 0.048 },
+  sjouwer: { golfvorm: 'sawtooth', startHz: 70,  dipHz: 58,  eindHz: 46,  filterStart: 900,  filterEind: 260, detune: 22, duur: 0.5,  volume: 0.054, ruisVolume: 3.05 },
+  brander: { golfvorm: 'square',   startHz: 115, dipHz: 95,  eindHz: 66,  filterStart: 1000, filterEind: 240, detune: 26, duur: 0.38, volume: 0.054, ruisVolume: 4.44 },
+  normaal: { golfvorm: 'sawtooth', startHz: 95,  dipHz: 80,  eindHz: 60,  filterStart: 950,  filterEind: 340, detune: 18, duur: 0.32, volume: 0.048, ruisVolume: 3.2 },
 };
+// Ticket 154: per-grom toonhoogte-variatie. Twaalf ondoden grommen elk om de
+// 4-9 s; over tien golven zijn dat honderden grommen. Zonder variatie hoor je
+// dat het steeds exact dezelfde vier klanken zijn. ±7% op alle frequenties
+// tegelijk (dus het interval blijft kloppen, alleen het "individu" verschilt)
+// — dit is precies het voordeel dat een sampleset zou moeten inkopen met
+// extra varianten, en hier gratis is. Zie AUDIO.md §3.3.
+const GROM_TOONHOOGTE_VARIATIE = 0.07;
 // Ticket 80: optionele bronpositie voor richtinghoren; zonder argumenten
 // (bv. bestaande testaanroepen) blijft dit gewoon mono (geen panner), net
 // als voorheen. Precies ÉÉN StereoPannerNode per aanroep (gedeeld door
@@ -9486,16 +9749,36 @@ function speelOndodeGrom(type, bronX, bronZ) {
     filter.connect(gain);
   }
 
+  // Ticket 154: één toonhoogtefactor voor de hele grom, zodat elke ondode
+  // een eigen "stem" krijgt zonder dat het interval verandert.
+  const toonhoogte = 1 + (Math.random() * 2 - 1) * GROM_TOONHOOGTE_VARIATIE;
   for (const detune of [-p.detune, p.detune]) {
     const osc = audio.createOscillator();
     osc.type = p.golfvorm;
     osc.detune.value = detune;
-    osc.frequency.setValueAtTime(p.startHz, nu);
-    osc.frequency.linearRampToValueAtTime(p.dipHz, midden);
-    osc.frequency.exponentialRampToValueAtTime(p.eindHz, eind);
+    osc.frequency.setValueAtTime(p.startHz * toonhoogte, nu);
+    osc.frequency.linearRampToValueAtTime(p.dipHz * toonhoogte, midden);
+    osc.frequency.exponentialRampToValueAtTime(p.eindHz * toonhoogte, eind);
     osc.connect(filter);
     osc.start(nu);
     osc.stop(eind);
+  }
+
+  // Ticket 154: de keelruis. Bewust ná de oscillator-lus en op hetzelfde
+  // `filter`, zodat hij de dalende cutoff, de envelope én de eventuele
+  // panner deelt — dat houdt het bij precies één StereoPannerNode per grom
+  // (test-richtinghoren.mjs rekent daarop) en het is bovendien het juiste
+  // gedrag: keelruis en stemtoon horen door dezelfde "keel" te gaan.
+  if (ruisBuffer && p.ruisVolume) {
+    const ruisBron = audio.createBufferSource();
+    ruisBron.buffer = ruisBuffer;
+    ruisBron.loop = true;
+    ruisBron.playbackRate.value = toonhoogte;
+    const ruisGain = audio.createGain();
+    ruisGain.gain.value = p.ruisVolume;
+    ruisBron.connect(ruisGain).connect(filter);
+    ruisBron.start(nu, Math.random() * (RUIS_BUFFER_DUUR - 0.05));
+    ruisBron.stop(eind);
   }
 }
 
@@ -14047,14 +14330,11 @@ function toonMelding(tekst) {
   meldingTimer = setTimeout(() => { meldingUI.style.opacity = '0'; }, 1800);
 }
 
-function speelKoop()    { piep('triangle', 420, 900, 0.1, 0.07); }
-function speelGeenGeld() { piep('square', 220, 120, 0.12, 0.06); }
+function speelKoop()    { speelGeluid('koop'); }
+function speelGeenGeld() { speelGeluid('geenGeld'); }
 // Ticket 12: eigen, zwaardere "smeed-klap" i.p.v. de gewone koop-piep — een
-// dubbele toon (hoog gevolgd door laag) om het gewicht van de aankoop te onderscheiden.
-function speelSmeed() {
-  piep('sawtooth', 180, 60, 0.18, 0.09);
-  setTimeout(() => piep('triangle', 700, 1100, 0.09, 0.08), 90);
-}
+// dubbele toon (laag gevolgd door hoog) om het gewicht van de aankoop te onderscheiden.
+function speelSmeed() { speelGeluid('smeed'); }
 
 // --- De aankopen zelf ---------------------------------------------
 function koopDeur() {
@@ -14726,11 +15006,11 @@ let bootHoornTeller = 0;     // debug/test: 1x per aankomst
 let bootVertrekTeller = 0;   // debug/test: 1x per vertrek
 function speelBootHoorn() {
   bootHoornTeller++;
-  piep('sine', 200, 140, 1.1, 0.1);   // verre, lage hoorntoon — eigen, nieuw geluid
+  speelGeluid('bootHoorn');   // verre, lage hoorntoon — eigen, nieuw geluid
 }
 function speelBootVertrek() {
   bootVertrekTeller++;
-  piep('sine', 150, 100, 0.8, 0.08);   // korter/zachter, symmetrisch met de aankomst
+  speelGeluid('bootVertrek');   // korter/zachter, symmetrisch met de aankomst
 }
 
 // Feedback ("hoe kan de boot beter aangekondigd worden?"): optie 1 (minimap-
@@ -15096,7 +15376,7 @@ function updateFinaleInstap(dt) {
 // aangekomen"; dit hier is het tegenovergestelde moment).
 function speelFinaleLosgooien() {
   finaleLosgooienTeller++;
-  piep('sawtooth', 90, 260, 0.35, 0.12);   // oplopend, urgent — het omgekeerde van de dalende boothoorn
+  speelGeluid('finaleLosgooien');   // oplopend, urgent — het omgekeerde van de dalende boothoorn
 }
 
 // Ticket 147 (FINALE.md §2 beslissing 4): de vier escalatiekanalen, als
@@ -16179,6 +16459,7 @@ window.AmsterdamUndeadDebug = {
   ONDODE_GANG_DEFAULT, OOG_INTENSITEIT_MIST,
   ONDODE_GROM_MIN_INTERVAL, ONDODE_GROM_MAX_INTERVAL, ONDODE_GROM_BEREIK, ONDODE_GROM_GLOBALE_CAP,
   speelOndodeGrom, nieuweGromTimer, zetOogBasis,
+  GROM_PROFIELEN,   // Ticket 154: keelruis + toonhoogtevariatie per type
   get ondodeGromTeller() { return ondodeGromTeller; },
   get laatsteGromKlok() { return laatsteGromKlok; },
   set laatsteGromKlok(v) { laatsteGromKlok = v; },
@@ -16220,6 +16501,11 @@ window.AmsterdamUndeadDebug = {
   set dreigingsThrottleTimer(v) { dreigingsThrottleTimer = v; },
   // Fix 4: geluidsknop (master-mute)
   piep, zetGeluidGedempt, geluidKnop,
+  // Ticket 153: de audioregistry (zie test-audioregistry.mjs).
+  GELUIDEN, speelGeluid,
+  // Ticket 154: de ruisbron (zie test-ruislaag.mjs).
+  speelRuis, maakRuisBuffer, RUIS_BUFFER_DUUR, RUIS_VARIATIE_STANDAARD, GROM_TOONHOOGTE_VARIATIE,
+  get ruisBuffer() { return ruisBuffer; },
   // Ticket 75: muisgevoeligheid (voor tests: opslag + klemming + slider-koppeling)
   MUIS_GEVOELIGHEID_BASIS, MUIS_GEVOELIGHEID_KEY, MUIS_GEVOELIGHEID_MIN, MUIS_GEVOELIGHEID_MAX,
   leesGevoeligheid, schrijfGevoeligheid, gevoeligheidSlider,

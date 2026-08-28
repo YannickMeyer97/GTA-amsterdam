@@ -99,13 +99,23 @@ const plankTest = await page.evaluate(() => {
   return {
     aantal: aangemaakt.length,
     pan: aangemaakt.length ? aangemaakt[0].pan.value : null,
+    // Alle panners van één geluid moeten dezelfde kant op wijzen; één laag
+    // die de andere kant op pant zou het richtinghoren juist kapotmaken.
+    allePansGelijk: aangemaakt.every(p => Math.abs(p.pan.value - aangemaakt[0].pan.value) < 1e-9),
     verwachtePan,
     plankenVoor, plankenNa: venster.planken,
   };
 });
 check('beukBarricade() beukt daadwerkelijk een plank eraf', plankTest.plankenNa === plankTest.plankenVoor - 1, plankTest);
+// Ticket 154: speelPlankBreek heeft sindsdien TWEE klanklagen — de bestaande
+// getoonde sweep én een ruislaag (versplinterend hout is in werkelijkheid
+// vrijwel puur ruis). Elke laag heeft zijn eigen keten en dus zijn eigen
+// panner; wat ertoe doet is dat ze dezelfde pan dragen. Vergelijk
+// speelOndodeGrom hierboven: dáár deelt de ruis het filter met de
+// oscillators, dus daar blijft het bij één panner per grom.
 check('beukBarricade() speelt een gerichte plankbreek-pan (zelfde teken als de pure berekening)',
-  plankTest.aantal === 1 && Math.abs(plankTest.pan - plankTest.verwachtePan) < 0.001, plankTest);
+  plankTest.aantal === 2 && plankTest.allePansGelijk
+  && Math.abs(plankTest.pan - plankTest.verwachtePan) < 0.001, plankTest);
 
 // --- 7. Bron-check: piep()'s keten blijft exact osc -> gain -> masterGainNode
 // bij afwezige/nul pan (geen extra node ertussen) -----------------------

@@ -8978,6 +8978,34 @@ daarmee expliciet niet nodig — het uitvoeringsadvies bij T153 ("escaleer naar
 Opus 5 High wanneer T152 concludeert dat voice-limits nodig zijn") vervalt
 dus, T153 blijft een datatabel.
 
+**Implementatieverslag T153 en T154 (uitgevoerd).** Volledig verslag in
+`AUDIO.md` §8. De drie dingen die hier horen:
+
+1. **`GELUIDEN` + `speelGeluid(naam, opties)`** vervangen 35 bijna identieke
+   functies; die blijven als dunne wrappers bestaan mét hun tellers. De vier
+   eigen ketens (drone, akkoordbed, `speelOndodeGrom`,
+   `speelBootHoornGericht`) staan er bewust buiten. `piep()`/`stadPiep()`
+   kregen een optionele `startTijd` op de audioklok, waarmee alle twaalf
+   `setTimeout`-vervolgtonen verdwenen zijn.
+2. **Eén ruisbuffer van 1 s, gevuld in `initGeluid()`**, hergebruikt door
+   `speelRuis()` (bufferbron → filter met frequentie-envelope → gain →
+   masterGainNode) voor vijftien geluiden, plus keelruis in de drie
+   gromprofielen via hetzelfde filter als de oscillators — dus zonder tweede
+   panner, waardoor `test-richtinghoren.mjs`' "precies 1 panner per grom"
+   blijft kloppen. Bestand 886,5 → 904,0 KB (alleen code), stemmenpiek 16 →
+   22.
+3. **Een correctie die het onthouden waard is.** De eerste afstelling zette
+   elk ruisvolume op ~0,6x het toonvolume en dat was 5 tot 23 dB mis:
+   `piep()`'s volume is de piekamplitude van een smalbandige golfvorm, terwijl
+   een ruisvolume de gain is vóór een lowpass die het meeste vermogen
+   wegneemt (op 1300 Hz blijft ~6% over). De ruis was daardoor onhoorbaar —
+   **en de test stond groen**, omdat die precies die twee onvergelijkbare
+   getallen met elkaar vergeleek. Nu gemeten door `tests/meet-ruislaag.mjs`,
+   dat beide lagen apart rendert in een `OfflineAudioContext` en de RMS
+   vergelijkt; alle achttien lagen vallen binnen ±2,5 dB van een per geluid
+   beredeneerd doel. Algemene les voor dit project: een assertie op twee
+   getallen die niet dezelfde grootheid meten is erger dan geen assertie.
+
 ### 13.9 Architectuur binnen de single-file-regel
 
 **Ontwerpbeslissing 106: "incrementeel beter structureren" betekent hier

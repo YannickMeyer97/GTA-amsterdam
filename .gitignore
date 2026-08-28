@@ -1,0 +1,6 @@
+# Gegenereerde verslag-uitvoer. Beide mappen worden door een script in tests/
+# gevuld (maak-beeldverslag.mjs resp. maak-geluidsverslag.mjs) en zijn altijd
+# opnieuw te maken; ze horen niet in de repo — het geluidsverslag alleen al is
+# ~20 MB aan WAV en base64.
+tests/beeldverslag/
+tests/geluidsverslag/
