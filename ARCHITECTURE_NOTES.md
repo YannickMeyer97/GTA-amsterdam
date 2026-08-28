@@ -8931,6 +8931,53 @@ bekende valkuil: de `setTimeout`-vervolgtonen (`speelExplosie`,
 `speelStroomklap`) lopen door tijdens pauze — dat is in dit project al eerder
 een bug geweest (T33 moest `speelHerlaad` daarom splitsen).
 
+**Uitkomst van Ticket 152 (uitgevoerd) — zie `AUDIO.md` voor het volledige
+document, `tests/meet-audio-budget.mjs` en `tests/meet-audio-codecs.py` voor
+de metingen.**
+
+**De regelvraag is beantwoord: optie A.** De eigenaar heeft besloten dat de
+assetregel in `CLAUDE.md` ongewijzigd blijft — geen externe assets, ook niet
+als base64 data-URI in het HTML-bestand. Alle audio blijft procedureel. Dat
+maakt de goedkeurings-dependency van T154 vervuld zonder regelwijziging, en
+T154 wordt een kwaliteitspas op de bestaande synth-geluiden in plaats van een
+integratieticket (`AUDIO.md` §7).
+
+Vier dingen uit deze beslissing zijn hierboven bijgesteld:
+
+1. **De schatting in deze paragraaf klopte qua ordegrootte maar niet qua
+   conclusie.** Gemeten: mp3 64 kbps mono kost ~8,8 KB/s raw, ~11,7 KB/s als
+   base64 — vrijwel exact de ~11 KB/s die hier stond. Maar het bestand is
+   inmiddels 886 KB (niet 785 KB), en belangrijker: **de laadtijd reageert
+   niet meetbaar op bestandsgrootte.** Zelfs +600 KB blijft onder de
+   spreiding tussen laadbeurten van hetzelfde bestand. Het
+   bestandsgrootte-argument tegen samples houdt dus niet; de T152-aanbeveling
+   rust op andere gronden.
+2. **OGG valt af, niet WAV alleen.** Vorbis draagt een codebook-setup-header
+   van ~4,0 KB **per bestand**, onafhankelijk van duur en samplerate. Bij de
+   korte klanken van dit spel (meestal < 0,5 s) domineert die vaste kost
+   alles. Zou er ooit gesampled worden, dan MP3.
+3. **De echte auditbevinding is dat er geen ruisbron bestaat.** Geen
+   `createBufferSource`, geen `AudioBuffer`, nergens; alle 41 klankbronnen
+   zijn zuivere getoonde golfvormen met precies twee filters in het hele spel
+   (de lowpass in `speelOndodeGrom()`). Daarom klinkt een schot als een
+   fluitje. Dat is procedureel op te lossen — een lokaal gevulde ruisbuffer
+   kost nul bytes en breekt geen enkele projectregel. Vandaar de
+   classificatie-uitkomst SAMPLE 0 / HYBRID 0 / SYNTH KEEP 41, waarvan 13
+   "SYNTH+" (houden, maar de ruislaag nodig).
+4. **De twee harde migratie-eisen hierboven zijn scherper dan gedacht.** Het
+   zijn **26 tellers over 17 testbestanden**, niet 13; 23 van de 91
+   testbestanden raken audio. En de `setTimeout`-valkuil telt **twaalf
+   vervolgtonen in tien functies**, niet zes. `test-geluidsknop.mjs` eist
+   bovendien *exact drie* `GainNode.connect(masterGainNode)` en *exact één*
+   `connect(audio.destination)` in `initGeluid()` — dat is de reden dat
+   categorie-gains in T152 expliciet als "niet nodig" zijn geclassificeerd.
+
+Gemeten piek onder een kunstmatig maximale gevechtsbelasting: **16
+gelijktijdig levende oscillators**. Voice-limits en concurrency-beheer zijn
+daarmee expliciet niet nodig — het uitvoeringsadvies bij T153 ("escaleer naar
+Opus 5 High wanneer T152 concludeert dat voice-limits nodig zijn") vervalt
+dus, T153 blijft een datatabel.
+
 ### 13.9 Architectuur binnen de single-file-regel
 
 **Ontwerpbeslissing 106: "incrementeel beter structureren" betekent hier
