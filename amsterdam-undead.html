@@ -719,10 +719,22 @@ function mistDekking() {
 //    tweede, onafhankelijke vangrail).
 const ONDODE_MESH_LAYER = 1;
 const ONDODE_HITBOX_LAYER = 2;
+// Performance-audit (bevinding A1): `Raycaster.intersectObject()` test
+// alleen `object.layers`, nooit `object.visible` (zie three.module.js,
+// intersectObject()) — een onzichtbaar object op layer 0 is dus nog
+// gewoon raycastbaar. `wereld` bevat naast meshes ook puur-decoratieve
+// niet-Mesh-objecten (bv. bouwStofwolk()'s THREE.Points) die daardoor in
+// schiet()'s `intersectObject(wereld, true)` konden opduiken als eerste
+// treffer — met `face: null` (Points-intersecties hebben geen face),
+// terwijl schiet() onvoorwaardelijk `raak[0].face.normal` leest. Zelfde
+// oplossing als hierboven: zo'n object VAN layer 0 AF (dus niet meer
+// raycastbaar) en op deze eigen laag, die alleen de camera enablet.
+const WERELD_DECOR_LAYER = 3;
 
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 50);
 camera.rotation.order = 'YXZ';
 camera.layers.enable(ONDODE_MESH_LAYER);   // Ticket 120: V2-SkinnedMesh blijft zichtbaar
+camera.layers.enable(WERELD_DECOR_LAYER);   // Performance-audit A1: niet-raycastbaar decor blijft zichtbaar
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
@@ -5602,6 +5614,9 @@ function bouwStofwolk(x, z, kolomHoogte) {
   punten.userData.baseY = 0.6;
   punten.userData.fase = Math.random() * Math.PI * 2;
   punten.visible = false;   // getoggled door updateStofwolken() zodra de speler in het atelier staat
+  // Performance-audit (bevinding A1): op WERELD_DECOR_LAYER i.p.v. layer 0
+  // — puur decor, geen raycast-doel (zie de toelichting bij die constante).
+  punten.layers.set(WERELD_DECOR_LAYER);
   wereld.add(punten);
   return punten;
 }
@@ -15990,6 +16005,11 @@ window.AmsterdamUndeadDebug = {
   // pure functie die kant-en-klare BufferGeometry-instanties als invoer
   // neemt) rechtstreeks kunnen aanroepen zonder een ondode te hoeven spawnen.
   THREE,
+  // Performance-audit A1: layer-constante mee-exporteren, zelfde reden als
+  // ONDODE_MESH_LAYER/ONDODE_HITBOX_LAYER destijds NIET werden geëxporteerd
+  // (tests raakten die via de meshes/hitbox-proxies zelf) — hier is er geen
+  // object dat 'm dráágt om op te testen, dus moet de constante zelf mee.
+  WERELD_DECOR_LAYER,
   scene, camera, speler, obstakels, isVrijePlek, GRENS, losBotsingenOp,
   duwSpelerWegVanOndoden, SPELER_ONDODE_BOTSING_STRAAL, SPELER_ONDODE_ZACHTE_FACTOR,   // Fix 3: speler-ondode-botsing
   // Ticket 60: post-processing-pipeline (voor tests: composer/bloomPass bestaan
