@@ -7748,6 +7748,18 @@ function berekenSmederijBonus(staat) {
 // na: ze leggen alleen de VORM vast, zodat T140 (wapenpresentatielaag),
 // T137/T138/T139 (tier-visuals) en T153 (audioregistry) er later in kunnen
 // schrijven zonder deze tabel opnieuw te verbouwen. Niets leest ze nu.
+//
+// Ticket 155 (consolidatie): `smederijVisuals` en `niveau2Vermogen` erbij —
+// de twee dingen die tot dit ticket nog via `actiefWapenNaam === 'drukspuit'`
+// liepen. `smederijVisuals` bundelt de drie meshes die koopSmederij() een
+// ember-accent geeft (elders in het bestand gebouwd, dus hier alleen
+// verwezen — geen nieuwe geometrie). `niveau2Vermogen` is een LABEL, geen
+// functie: schiet() bevat nog steeds twee losse implementaties (een
+// ontploffing raakt geen specifiek tweede doel, Doorboring wél een tweede
+// ondode via de raycast-lijst), en die blijven expres apart — ze zijn te
+// verschillend om zonder gedragsverandering tot één generieke "vermogen"-
+// functie samen te voegen. Wat verandert is alleen de VOORWAARDE: schiet()
+// vraagt nu "welk vermogen hoort bij dit wapen" i.p.v. "is dit de Drukspuit".
 const ARSENAAL = {
   drukspuit: {
     klasse: 'vuurwapen',
@@ -7762,12 +7774,16 @@ const ARSENAAL = {
     // tabel — het model weet zelf wat het aanbiedt.
     presentatie: { basisX: WAPEN_BASIS_X, basisY: WAPEN_BASIS_Y, basisZ: WAPEN_BASIS_Z },
     audio: { schot: WAPEN_DRUKSPUIT.schotToon },
+    smederijVisuals: { accent: meterDrukspuit, visualsGroep: smederijVisualsDrukspuit, medaillon: ereplankMedaillonDrukspuit },
+    niveau2Vermogen: 'explosie',
   },
   ratelaar: {
     klasse: 'vuurwapen',
     definitie: WAPEN_RATELAAR,
     presentatie: { basisX: WAPEN_BASIS_X, basisY: WAPEN_BASIS_Y, basisZ: WAPEN_BASIS_Z },
     audio: { schot: WAPEN_RATELAAR.schotToon },
+    smederijVisuals: { accent: tandwielRatelaar, visualsGroep: smederijVisualsRatelaar, medaillon: ereplankMedaillonRatelaar },
+    niveau2Vermogen: 'doorboring',
   },
   // T133 voegt hier `mes: { klasse: 'mes', ... }` toe. Bewust nog NIET: een
   // half gebouwde mes-entry zou betekenen dat T133 een verbouwde kern én een
@@ -7904,8 +7920,15 @@ function activeerVuurwapen(naam) {
   actiefWapenNaam = naam;
   wapenStaat = wapenStaten[naam];
   inHandGroep = wapenStaat.definitie.groep;   // Ticket 132: presentatiepad volgt mee (OB100)
-  WAPEN_DRUKSPUIT.groep.visible = naam === 'drukspuit';
-  WAPEN_RATELAAR.groep.visible = naam === 'ratelaar';
+  // Ticket 155: was twee losse regels met de wapennaam letterlijk erin
+  // ("WAPEN_DRUKSPUIT.groep.visible = naam === 'drukspuit'") — schaalt niet
+  // voorbij twee vuurwapens en is precies de vergelijking die de grep-audit
+  // van dit ticket buiten ARSENAAL/wisselWapen() verbiedt. Nu een lus over
+  // het ARSENAAL: elk vuurwapenmodel is zichtbaar precies als zijn eigen
+  // sleutel het geactiveerde wapen is.
+  for (const entryNaam of Object.keys(ARSENAAL)) {
+    ARSENAAL[entryNaam].definitie.groep.visible = naam === entryNaam;
+  }
   // Ticket 134: het mes is na de EERSTE vuurwapen-aankoop nooit meer het
   // actieve wapen (hard requirement, §12.3) — dus ook nooit meer zichtbaar
   // als "in de hand". `steekMes()` blijft 'm gewoon kort inschakelen voor de
@@ -8529,6 +8552,14 @@ function schiet() {
   runStats.schoten++;   // Ticket 42: 1x per trekker, niet per pellet (T47)
   updateAmmoUI();
 
+  // Ticket 155: was tweemaal `actiefWapenNaam === 'drukspuit'` en eenmaal
+  // `actiefWapenNaam === 'ratelaar'`, alle drie gecombineerd met
+  // `wapenStaat.gesmeedNiveau2` — nu één opzoeking in ARSENAAL. De twee
+  // vermogens zelf (ontploffing resp. Doorboring) blijven bewust twee losse
+  // implementaties verderop: ze zijn te verschillend om zonder
+  // gedragsverandering tot één generieke functie samen te voegen.
+  const niveau2Vermogen = wapenStaat.gesmeedNiveau2 ? ARSENAAL[actiefWapenNaam].niveau2Vermogen : null;
+
   const { vlam, vlamLicht } = wapenStaat.definitie;
   terugslag = wapenStaat.definitie.terugslagSterkte;
   // Ticket 142: vuren vóórdat de vorige kick hersteld is, kost extra klim.
@@ -8649,7 +8680,7 @@ function schiet() {
       // Fix 5: AMSTEL-9 niveau 2 — kleine ontploffing op het raakpunt, ook
       // bij een directe treffer. De geraakte ondode zelf kreeg zijn schade
       // al via raakOndode() hierboven en is dus uitgesloten van de splash.
-      if (actiefWapenNaam === 'drukspuit' && wapenStaat.gesmeedNiveau2) {
+      if (niveau2Vermogen === 'explosie') {
         schotExplosie(ondodeRaak[0].point.x, ondodeRaak[0].point.y, ondodeRaak[0].point.z, obj.userData.ondode);
       }
       // Fix 5: Canal Ripper niveau 2 (Doorboring) — de kogel gaat door de
@@ -8657,7 +8688,7 @@ function schiet() {
       // verderop op dezelfde straal, met gereduceerde schade. Een muur
       // dichterbij dan dat tweede doel blokkeert de doorboring (anders zou
       // een kogel dwars door een muur een ondode in een andere ruimte raken).
-      if (actiefWapenNaam === 'ratelaar' && wapenStaat.gesmeedNiveau2) {
+      if (niveau2Vermogen === 'doorboring') {
         for (let i = 1; i < ondodeRaak.length; i++) {
           let obj2 = ondodeRaak[i].object;
           while (obj2 && !obj2.userData.ondode) obj2 = obj2.parent;
@@ -8701,7 +8732,7 @@ function schiet() {
   // Fix 5: AMSTEL-9 niveau 2 — ook een schot op de vloer/muur/plafond
   // ontploft, zodat de speler zombies indirect kan raken (bv. door vlak voor
   // hun voeten op de grond te schieten).
-  if (actiefWapenNaam === 'drukspuit' && wapenStaat.gesmeedNiveau2) {
+  if (niveau2Vermogen === 'explosie') {
     schotExplosie(raak[0].point.x, raak[0].point.y, raak[0].point.z, null);
   }
 }
@@ -14481,7 +14512,10 @@ function koopSmederij() {
   wapenStaat.magazijn = wapenStaat.magazijnMax;   // meteen volledig bijvullen, geen reload nodig
   // Visueel accent op het gesmede wapenonderdeel (geen nieuwe geometrie).
   // Bij niveau 2 opnieuw toegepast — onschuldig idempotent, geen apart visual nodig.
-  const accent = actiefWapenNaam === 'drukspuit' ? meterDrukspuit : tandwielRatelaar;
+  // Ticket 155: de drie meshes komen nu uit ARSENAAL[actiefWapenNaam]
+  // .smederijVisuals i.p.v. uit drie losse `actiefWapenNaam === 'drukspuit'`
+  // ternaries — zelfde meshes, één keer opgezocht i.p.v. drie keer vergeleken.
+  const { accent, visualsGroep, medaillon } = ARSENAAL[actiefWapenNaam].smederijVisuals;
   accent.material.color.setHex(SMEDERIJ_ACCENT_KLEUR);
   accent.material.emissive.setHex(SMEDERIJ_ACCENT_KLEUR);
   accent.material.emissiveIntensity = 1.4;   // Ticket 89: Bron-niveau (§10.5)
@@ -14492,12 +14526,10 @@ function koopSmederij() {
   // niveau 2 daadwerkelijk gekocht is, terwijl tier 1 al bij de eerste
   // aankoop zichtbaar wordt (ongewijzigd gedrag).
   const niveau = niveauIndex + 1;
-  const visualsGroep = actiefWapenNaam === 'drukspuit' ? smederijVisualsDrukspuit : smederijVisualsRatelaar;
   visualsGroep.visible = true;
   for (const kind of visualsGroep.children) kind.visible = kind.userData.tier <= niveau;
   // Ticket 85: het bijbehorende ereplank-medaillon oplicht — zelfde
   // materiaal-mutatie-patroon als het accent hierboven, geen nieuwe mesh.
-  const medaillon = actiefWapenNaam === 'drukspuit' ? ereplankMedaillonDrukspuit : ereplankMedaillonRatelaar;
   medaillon.material.color.setHex(SMEDERIJ_ACCENT_KLEUR);
   medaillon.material.emissive.setHex(SMEDERIJ_ACCENT_KLEUR);
   medaillon.material.emissiveIntensity = 1.3;   // Ticket 89: Bron-niveau (§10.5)

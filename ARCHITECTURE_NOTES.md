@@ -8803,6 +8803,66 @@ gemeten (zie de toelichting bij de sway-write in de gameLoop). Als
 **niet** gedragsneutraal en moet de oorzaak gevonden worden, niet de
 basislijn bijgewerkt.
 
+**Implementatieverslag T155 (ARSENAAL-consolidatie, uitgevoerd).** Het
+uitvoeringsplan plaatste dit ticket bewust laatst: pas na T144 (audio/
+identiteit), T140 (presentatie) en T153 (audioregistry) was duidelijk welke
+velden een wapen definitief draagt. De consolidatie zelf bleek klein — de
+vier lagen (gameplay, presentatie, tiers, audio, gunfeel) stonden al in
+ARSENAAL of op `WAPEN_DRUKSPUIT`/`WAPEN_RATELAAR` sinds T132/T140/T153. Wat
+overbleef waren twee concrete plekken die nog op de letterlijke wapennaam
+takten in plaats van op data uit ARSENAAL:
+
+1. **De Fix 5-niveau-2-vermogens in `schiet()`.** Twee losse
+   `if (actiefWapenNaam === 'drukspuit' && wapenStaat.gesmeedNiveau2)`
+   /`'ratelaar'`-vertakkingen (één ervan op twee plekken: bij een
+   ondode-treffer én bij een wereld-treffer) zijn vervangen door één opzoek
+   `const niveau2Vermogen = wapenStaat.gesmeedNiveau2 ? ARSENAAL[actiefWapenNaam].niveau2Vermogen : null;`
+   bovenaan de functie, met `niveau2Vermogen === 'explosie'` /
+   `'doorboring'` als voorwaarde op de bestaande plekken. De twee
+   IMPLEMENTATIES (schotExplosie() resp. de Doorboring-lus) blijven bewust
+   twee losse stukken code: ze zijn te verschillend (radius-splash tegenover
+   een raycast-lijst-doorloop) om zonder gedragsverandering tot één
+   generieke "vermogen"-functie te herleiden, en dat was ook niet gevraagd.
+   Alleen de VOORWAARDE werd data-driven.
+2. **`activeerVuurwapen()`'s modelzichtbaarheid.** Was twee losse regels
+   (`WAPEN_DRUKSPUIT.groep.visible = naam === 'drukspuit'`, idem Ratelaar) —
+   nu een lus over `Object.keys(ARSENAAL)`.
+3. **`koopSmederij()`'s drie ternaries** (`accent`/`visualsGroep`/`medaillon`
+   op basis van `actiefWapenNaam === 'drukspuit'`) zijn vervangen door één
+   `const { accent, visualsGroep, medaillon } = ARSENAAL[actiefWapenNaam].smederijVisuals;`.
+   Dat veld is nieuw in ARSENAAL en verwijst naar exact dezelfde meshes
+   (`meterDrukspuit`/`tandwielRatelaar` etc.) die de ternaries al gebruikten
+   — geen nieuwe geometrie, alleen een andere plek om ze op te zoeken.
+
+**Bewust ONGEMOEid gelaten**, met reden: `wisselWapen()`'s
+`actiefWapenNaam === 'drukspuit' ? 'ratelaar' : 'drukspuit'` (de Q-toggle IS
+letterlijk deze vergelijking — het acceptatiecriterium noemt deze functie
+zelf als uitzondering) en `koopRatelaar()`'s
+`if (actiefWapenNaam !== 'ratelaar') activeerVuurwapen('ratelaar')`. Die
+laatste is aantoonbaar een altijd-ware voorwaarde (`ratelaarGekocht`, en dus
+elke mogelijkheid dat `wapenStaten.ratelaar` bestaat, wordt pas twee regels
+hierboven waar), maar 'm weghalen zou geen gedrag veranderen en wél een niet
+gevraagde aanname over de aankoopvolgorde van een aangrenzend systeem hard
+vastleggen — precies de valkuil die dit ticket zelf noemt ("nu we toch bezig
+zijn"). Ook de per-wapen prijzen/winkelcoördinaten (`RATELAAR_PRIJS`,
+`AMSTEL9_X`, …) zijn niet naar ARSENAAL verhuisd: dat is economie-/
+wereldplaatsingsdata, geen gameplay/presentatie/tier/audio/gunfeel-gegeven,
+en test-arsenaal.mjs' contract (zie hieronder) dekt precies díé vijf lagen.
+
+**Bewaakt door `tests/test-arsenaal.mjs`** (50 checks): het volledige
+contract per wapen (20 gameplay-velden, presentatie, de drie
+smederijVisuals-meshes, de vier audiotonen, de gunfeel-karakteristiek), plus
+een grep-audit die bevestigt dat er nog precies twee
+`actiefWapenNaam`-vergelijkingen in de bron staan (de twee hierboven
+genoemde, bewust ongemoeide plekken) — en, sterker dan een statische
+grep-audit alleen, een gedragsproef: `ARSENAAL.drukspuit.niveau2Vermogen`
+tijdelijk omzetten naar `'doorboring'` en verifiëren dat de ontploffing dan
+daadwerkelijk NIET meer afgaat op een doel dat alleen door splash-schade te
+raken was. Dat bewijst dat `schiet()` het label uit ARSENAAL leest, niet dat
+er toevallig hetzelfde antwoord uit een intern "is dit de Drukspuit"-
+onderscheid rolt. Volledige suite groen zonder één aangepaste assertie
+elders — de enige slaagvoorwaarde van dit ticket.
+
 ### 13.5 Gunfeel: behaviour en presentation, en waarom de spec vóór het model komt
 
 De opdracht onderscheidt twee lagen, en dat onderscheid valt in deze codebase
