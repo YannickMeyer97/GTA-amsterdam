@@ -4,10 +4,12 @@
 `amsterdam-undead.html` (16 500 regels, 886 KB)
 
 **Status: het rapport hieronder is de oorspronkelijke, ongewijzigde review
-(uitsluitend meten, geen code aangeraakt). Ná afronding is in overleg met
-de eigenaar bevinding A1 (§3.1) alsnog opgelost — dat is de enige
-wijziging aan `amsterdam-undead.html` die volgde uit dit rapport. Zie de
-kanttekening bij A1 hieronder voor wat er precies gebeurde.**
+(uitsluitend meten, geen code aangeraakt). Ná afronding zijn in overleg met
+de eigenaar de bevindingen A1, A2 (optie A), A5, A6 en A7 alsnog opgelost —
+zie de kanttekening bij elke bevinding hieronder voor wat er precies
+gebeurde. A3, A4 en A8 staan bewust nog open: die vereisen een meting op
+echte hardware (A3/A4) of een expliciete scherpte/snelheid-keuze van de
+eigenaar (A8) die dit rapport niet voor hem kan maken.**
 
 ---
 
@@ -174,7 +176,14 @@ doorloopt. Plus `test-inslagen.mjs`/`test-omgeving-sfeer.mjs` groen.
 
 ---
 
-#### **A2 — `antialias: true` levert nul beeldwinst en betaalt wel** · P1
+#### **A2 — `antialias: true` levert nul beeldwinst en betaalt wel** · P1 — **opgelost (optie A)**
+
+> **Nawoord.** In overleg met de eigenaar is optie A gekozen:
+> `antialias: false`. Geen visueel verschil (de MSAA-buffer antialiaste
+> aantoonbaar niets), puur het stopzetten van de allocatie/resolve die er
+> elk frame voor gebeurde. Optie B (echte AA op de composer-rendertarget)
+> is bewust niet gekozen — dat is een kwaliteitsverbetering, geen
+> performancefix, en had een nieuwe T88-pixelmeting vereist.
 
 | | |
 | --- | --- |
@@ -315,7 +324,11 @@ standpunt in de startkamer waar de schaduw daadwerkelijk in beeld is.
 
 ---
 
-#### **A5 — Doorboring doet dezelfde wereld-raycast meerdere keren per schot** · P2
+#### **A5 — Doorboring doet dezelfde wereld-raycast meerdere keren per schot** · P2 — **opgelost**
+
+> **Nawoord.** De aanroep is vóór de lus gehesen, exact zoals voorgesteld.
+> Bewijsbaar gedragsidentiek: `test-arsenaal.mjs` (50 checks, incl. de
+> Doorboring-specifieke omstander-opstelling) blijft groen zonder wijziging.
 
 | | |
 | --- | --- |
@@ -361,7 +374,14 @@ straal, dezelfde treffers, dezelfde schade, dezelfde
 
 ---
 
-#### **A6 — Eerste `spawnOndode()` van een run kost 20 ms** · P2
+#### **A6 — Eerste `spawnOndode()` van een run kost 20 ms** · P2 — **opgelost**
+
+> **Nawoord.** Vóór `requestAnimationFrame(gameLoop)` bouwt en disposet het
+> spel nu één weggooi-ondode via `maakOndodeModelV2()` + `ruimGroepOp()` —
+> nooit toegevoegd aan `ondoden`/`ondodenGroep`, dus geen voetafdruk in
+> spelstate (geverifieerd: `ondoden.length` staat nog op 0 vóór de eerste
+> echte spawn). De JIT-warmloopkost valt daardoor in de laadtijd (die ruim
+> binnen budget blijft) i.p.v. op de eerste spawn van golf 1.
 
 | | |
 | --- | --- |
@@ -411,7 +431,11 @@ spawn 1 dan op ~1,5 ms uitkomt. Plus `test-resources.mjs` groen.
 
 ---
 
-#### **A7 — `setPixelRatio()` wordt niet opnieuw toegepast bij resize** · P3
+#### **A7 — `setPixelRatio()` wordt niet opnieuw toegepast bij resize** · P3 — **opgelost**
+
+> **Nawoord.** `renderer.setPixelRatio()` én `composer.setPixelRatio()`
+> toegevoegd aan de resize-handler, met dezelfde clamp als de initiële
+> instelling.
 
 | | |
 | --- | --- |

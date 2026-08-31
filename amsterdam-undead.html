@@ -736,7 +736,16 @@ camera.rotation.order = 'YXZ';
 camera.layers.enable(ONDODE_MESH_LAYER);   // Ticket 120: V2-SkinnedMesh blijft zichtbaar
 camera.layers.enable(WERELD_DECOR_LAYER);   // Performance-audit A1: niet-raycastbaar decor blijft zichtbaar
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+// Performance-audit (bevinding A2, optie 1): was `antialias: true`. MSAA op
+// de default framebuffer antialiast alleen wat er rechtstreeks naartoe
+// tekent — en dat is hier uitsluitend OutputPass' schermvullende quad (de
+// scene zelf gaat via composer.renderTarget1, dat in three r160 zónder
+// `samples` wordt aangemaakt). Een quad zonder interne randen heeft niets
+// te antialiassen: de MSAA-buffer werd elk frame gealloceerd en geresolved
+// voor een zichtbaar effect van nul. Geverifieerd via renderer/composer-
+// state (zie PERFORMANCE_AUDIT.md §3.1, A2) — dit is dus geen kwaliteits-
+// verlies, puur het stopzetten van een betaling zonder tegenprestatie.
+const renderer = new THREE.WebGLRenderer({ antialias: false });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
@@ -1109,7 +1118,18 @@ scene.add(hemisfeerLicht);
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
+  // Performance-audit (bevinding A7): devicePixelRatio kan wijzigen (browser-
+  // zoom, of het venster naar een scherm met andere DPI slepen) zonder dat
+  // hier een 'resize' op volgt vanzelf een nieuwe pixelratio te krijgen —
+  // zonder deze regel bleef de canvas op de OUDE ratio hangen (onscherp of
+  // onnodig zwaar). Zelfde clamp als de initiële renderer.setPixelRatio()
+  // hierboven.
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
+  // EffectComposer bevriest renderer.getPixelRatio() in zijn eigen
+  // constructor — zonder deze regel blijft composer op de ratio van bij het
+  // laden hangen, ook al is de renderer hierboven net bijgewerkt.
+  composer.setPixelRatio(Math.min(devicePixelRatio, 2));
   composer.setSize(innerWidth, innerHeight);
 });
 
@@ -8704,11 +8724,19 @@ function schiet() {
       // dichterbij dan dat tweede doel blokkeert de doorboring (anders zou
       // een kogel dwars door een muur een ondode in een andere ruimte raken).
       if (niveau2Vermogen === 'doorboring') {
+        // Performance-audit (bevinding A5): deze raycast stond IN de lus,
+        // maar `raycaster` wordt in de lus nergens aangeraakt — dus was
+        // elke iteratie identiek, terwijl de lus juist vaak 2-3x itereert
+        // (kop-/lichaamsproxies van dezelfde ondode) vóórdat de `continue`
+        // hierboven raakt. Eén keer vóór de lus is bewijsbaar
+        // gedragsidentiek (zelfde straal, zelfde treffers) en scheelt
+        // 0,192 ms per overbodige aanroep, gemeten in PERFORMANCE_AUDIT.md
+        // §3.1 (A5).
+        const muurErtussen = raycaster.intersectObject(wereld, true);
         for (let i = 1; i < ondodeRaak.length; i++) {
           let obj2 = ondodeRaak[i].object;
           while (obj2 && !obj2.userData.ondode) obj2 = obj2.parent;
           if (!obj2 || obj2.userData.ondode === obj.userData.ondode) continue;
-          const muurErtussen = raycaster.intersectObject(wereld, true);
           if (muurErtussen.length > 0 && muurErtussen[0].distance < ondodeRaak[i].distance) break;
           const kop2 = ondodeRaak[i].object.userData.lichaamsdeel === 'kop';
           raakOndode(obj2.userData.ondode, ondodeRaak[i].point, kop2, RIPPER_DOORBORING_SCHADEFACTOR);
@@ -15997,6 +16025,17 @@ function gameLoop(nu) {
   if (perfOverlayActief) verwerkPerfFrame(nu);
 }
 herbouwNavTabel();   // Ticket 28: eenmalige initiële tabel (lijn-graaf, alle deuren dicht)
+// Performance-audit (bevinding A6): maakOndodeModelV2() bouwt ~12 procedurele
+// deel-geometrieën, voegt ze samen (mergeGeometries) en zet skin-attributen
+// — gemeten 20ms op de EERSTE aanroep van een run (JIT-warmloop) tegenover
+// een mediaan van 1,5ms daarna. Zonder deze regel viel die 20ms-hik op de
+// eerste spawn van golf 1, het spannendste moment van de run. Hier bouwen
+// en meteen weggooien (nooit aan `ondoden`/`ondodenGroep` toegevoegd, dus
+// geen voetafdruk in spelstate) legt 'm in plaats daarvan in de laadtijd,
+// die toch al ruim binnen budget zit (±800ms gemeten, zie PERFORMANCE_
+// AUDIT.md §3.1, A6). ruimGroepOp() disposet 'm meteen weer volgens het
+// bestaande T70-contract — géén enkele resource blijft achter.
+ruimGroepOp(maakOndodeModelV2(ONDODE_TYPES.normaal, kiesOndodeTraits()));
 requestAnimationFrame(gameLoop);
 
 // Debug-hooks voor Playwright-tests (zelfde patroon als DamChaosDebug).
