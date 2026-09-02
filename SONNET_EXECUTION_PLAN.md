@@ -4706,16 +4706,91 @@ niet dekt. Er is geen verplichte volgorde en er is geen milestone: elk
 ticket is los af te ronden en los te laten vallen.
 
 ```
-T156 (leesbaarheid)   — onafhankelijk
-T157 (inslagsporen)   — onafhankelijk, wacht bij voorkeur op kwaliteitsinstelling
-T158 (economie)       — onafhankelijk, deel A en B apart uitvoerbaar
+T159 (kwaliteitsinstelling) — geen afhankelijkheden, maar DEBLOKKEERT A3/A4 en T157
+T156 (leesbaarheid)         — onafhankelijk
+T157 (inslagsporen)         — onafhankelijk, bij voorkeur ná T159
+T158 (economie)             — onafhankelijk, deel A en B apart uitvoerbaar
 ```
 
-**Nog niet in een ticket gegoten** (bewust, vereist eerst een eigenaars-
-beslissing): de kwaliteitsinstelling Laag/Normaal/Hoog uit dezelfde
-ontwerpsessie. Die is de logische thuisbasis voor de openstaande
-auditbevindingen A3 (zone-lichtculling) en A4 (schaduw-throttling), én de
-voorwaarde waaronder T157 zijn transparante vlakken mag kosten.
+T159 staat vooraan omdat het de enige is die iets ontgrendelt: de
+auditbevindingen A3 (zone-lichtculling) en A4 (schaduw-throttling) zijn
+in Ronde 11 bewust niet uitgevoerd omdat ze de zwaar getunede belichting
+raken, en T159 geeft ze een preset waarin dat expliciet toegestaan is.
+Wie T159 overslaat, houdt A3 en A4 permanent geblokkeerd.
+
+---
+
+### Ticket 159 — Kwaliteitsinstelling (Laag / Normaal / Hoog)
+
+**Doel.** De speler laten kiezen tussen beeldkwaliteit en soepelheid, en
+daarmee een thuis geven aan de auditbevindingen die niet op één vaste
+waarde te beslissen zijn.
+
+**Positie.** Eerst van deze ronde. Deblokkeert A3, A4 en (bij voorkeur)
+T157.
+
+**Werk.**
+- Drie presets in het bestaande instellingen-overlay, naast
+  `gevoeligheidSlider`. Verdeling:
+
+  | | Laag | **Normaal (default)** | Hoog |
+  | --- | --- | --- | --- |
+  | Pixelratio-plafond | 1 | **2** | 2 |
+  | Bloom | uit | **aan** | aan |
+  | Schaduwen | uit | **aan** | aan |
+  | Lichtculling (A3) | aan | **uit** | uit |
+  | Schaduw-throttling (A4) | aan | **uit** | uit |
+  | MSAA op composer-target (A2 optie B) | uit | **uit** | aan |
+
+- Opslag volgens het `leesGevoeligheid()`-patroon (T74/T75):
+  vormvalidatie, onbekende waarden negeren, veilige default Normaal,
+  alles in try/catch.
+- A3 en A4 hoeven **niet** in dit ticket geïmplementeerd te worden — de
+  preset mag ze aanvankelijk als no-op dragen. Wat dit ticket levert is
+  de plek waar ze mogen bestaan.
+
+**Buiten scope.** Automatische hardware-detectie (precies de gok die de
+audit niet kon maken). Losse schakelaars per effect. De
+toegankelijkheidsschakelaars uit **T115** (camerawieg, filmkorrel) — die
+blijven een aparte groep met een eigen reden van bestaan, en T115's regel
+"geen derde schakelaar omdat het kan" geldt daar onverkort. Kwaliteit en
+toegankelijkheid mogen in de UI niet door elkaar lopen.
+
+**Acceptatie.**
+- Op **Normaal** is elk T88-standpunt gelijk aan de huidige basislijn
+  binnen de bestaande marge, en zijn de `renderer.info`-tellingen
+  ongewijzigd. Dit is de kernvoorwaarde.
+- Op **Laag** is de drawingBuffer-resolutie aantoonbaar lager en het
+  aantal actieve lichten aantoonbaar kleiner.
+- De ogen van ondoden blijven op Laag leesbaar tijdens een Stroomuitval,
+  gemeten als luminantiecontrast tussen oog en achtergrond.
+- De keuze overleeft een herstart; corrupte opslag valt terug op Normaal.
+- Wisselen tussen presets lekt geen geometrie/textuur.
+- `test-visuele-basislijn.mjs` draait expliciet op Normaal.
+
+**Valkuil.** **Een kwaliteitsinstelling mag het spel nooit moeilijker
+maken.** Bloom uitzetten op Laag raakt precies de gloeiende ogen — en
+tijdens een Stroomuitval zijn die het enige waarop de speler een ondode
+kan zien aankomen. Zonder compensatie (bijvoorbeeld een hogere
+emissive-intensiteit op Laag) koopt de speler soepelheid met
+oneerlijkheid. Dat is de reden dat dit ticket een speeltoets nodig heeft
+en niet alleen een groen vinkje.
+
+Tweede valkuil: `samples` is een constructie-optie van de rendertarget,
+geen schakelaar. De MSAA-wissel vereist het opnieuw opbouwen van de
+composer-target inclusief `dispose()` van de oude (T70-contract), of
+anders een expliciete herstart.
+
+**Uitvoeringsadvies.** Sonnet 5 · xhigh · extended thinking On. De
+instelling, opslag en Normaal-pariteit zijn mechanisch en objectief
+toetsbaar; het raakwerk zit in de rendertarget-herbouw en in de
+preset-aware basislijntests. *Escaleer naar Opus 5 xhigh* wanneer de
+Normaal-pariteit niet exact te halen blijkt — dan zit er een verborgen
+afhankelijkheid tussen de renderconfiguratie en de T88-kalibratie die
+eerst begrepen moet worden. Review: automatische tests **plus** een
+speeltoets door de eigenaar op Laag, met name tijdens een Stroomuitval.
+Vertrouwen: hoog voor de infrastructuur, gemiddeld voor de inhoud van
+Laag.
 
 ---
 

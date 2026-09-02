@@ -4506,19 +4506,28 @@ Y-invariant, en zijn het minst vergevingsgezind.
 
 ---
 
-# v0.26 — Ronde 12: leesbaarheid, sporen en economie (gepland, nog NIET geïmplementeerd)
+# v0.26 — Ronde 12: instellingen, leesbaarheid, sporen en economie (gepland, nog NIET geïmplementeerd)
 
 Herkomst: de ontwerpsessie na de performance-audit van v0.23 (zie
-`PERFORMANCE_AUDIT.md`). Alle drie de tickets komen uit een gat dat
-`IDEEEN.md` niet dekt: T156 repareert een leesbaarheidsfout die alleen
-zichtbaar is als je naar de kleurwaarden zelf kijkt, T157 vult de enige as
-waarop dit spel zijn eigen voortgang niet toont, en T158 adresseert dat
+`PERFORMANCE_AUDIT.md`). Alle vier de tickets komen uit een gat dat
+`IDEEEN.md` niet dekt: **T159** geeft de speler grafische controle en
+daarmee een thuis aan de auditbevindingen die niet op één vaste waarde te
+beslissen zijn; **T156** repareert een leesbaarheidsfout die alleen
+zichtbaar is als je naar de kleurwaarden zelf kijkt; **T157** vult de enige
+as waarop dit spel zijn eigen voortgang niet toont; **T158** adresseert dat
 geld halverwege de run ophoudt een beslissing te zijn — én dat overschot
 volgens `berekenScore()` naar niets converteert.
 
-De drie zijn onafhankelijk van elkaar te bouwen. T156 is de goedkoopste en
-repareert een echte fout; T158 deel (A) is de kleinste ingreep met het
-grootste effect; T157 wacht bij voorkeur op een kwaliteitsinstelling.
+De vier zijn los van elkaar te bouwen, maar **T159 hoort eerst**: het is de
+enige die iets ontgrendelt. De auditbevindingen A3 (zone-lichtculling) en
+A4 (schaduw-throttling) zijn in v0.23 bewust niet uitgevoerd omdat ze de
+zwaar getunede belichting raken; T159 geeft ze een preset waarin dat
+expliciet toegestaan is. Zonder T159 blijven A3 en A4 permanent
+geblokkeerd, en moet T157 zijn transparante vlakken zonder vangnet
+verantwoorden.
+
+Daarna is de volgorde vrij: T156 is de goedkoopste en repareert een echte
+fout; T158 deel (A) is de kleinste ingreep met het grootste effect.
 
 ---
 
@@ -4603,8 +4612,8 @@ grootste effect; T157 wacht bij voorkeur op een kwaliteitsinstelling.
 - **Prioriteit:** middel
 - **Status:** open (gepland)
 - **Afhankelijk van:** T69/T70 (resource-discipline), en bij voorkeur ná
-  een kwaliteitsinstelling-ticket, zodat dit onder een kwaliteitsniveau
-  kan vallen (zie "Randgevallen").
+  **T159** (kwaliteitsinstelling), zodat de transparante vlakken onder
+  een kwaliteitsniveau kunnen vallen (zie "Randgevallen").
 - **Doel:** het gevecht zichtbaar achterlaten in de wereld zelf, zodat een
   kamer op golf 20 er anders uitziet dan op golf 1 — en zodat de speler
   zijn eigen tactiek terugziet in de ruimte.
@@ -4779,6 +4788,117 @@ grootste effect; T157 wacht bij voorkeur op een kwaliteitsinstelling.
 - **Sonnet solo:** deel (A) ja. Deel (B) nee — een nieuwe herbruikbare
   geldput raakt de rondebalans en verdient een speelsessie-oordeel, geen
   puur headless groen vinkje.
+
+---
+
+## Ticket 159 — Kwaliteitsinstelling (Laag / Normaal / Hoog)
+
+- **Type:** feature (performance/instellingen)
+- **Verbetergebied:** 7 (Renderbudget)
+- **Prioriteit:** hoog
+- **Status:** open (gepland)
+- **Afhankelijk van:** niets om te starten. **Blokkeert** wel de zinvolle
+  uitvoering van auditbevindingen A3 en A4, en is de gewenste voorwaarde
+  voor T157.
+- **Doel:** de speler laten kiezen tussen beeldkwaliteit en soepelheid, en
+  daarmee een thuis geven aan de drie auditbevindingen die niet op één
+  vaste waarde te beslissen zijn omdat het antwoord van de machine
+  afhangt.
+- **Huidige situatie:** er is geen enkele grafische instelling. Het
+  instellingenmenu bevat alleen de muisgevoeligheid (T75) en de
+  geluidsknop. De renderconfiguratie staat vast: `setPixelRatio(
+  Math.min(devicePixelRatio, 2))`, bloom aan, schaduwen aan, geen
+  lichtculling. Op een scherm met `devicePixelRatio` 2 rendert het spel
+  daardoor op vier keer zoveel fragmenten als op een gewoon scherm, elk
+  door 28 forward-lichten — zonder dat de speler daar iets aan kan doen.
+  `PERFORMANCE_AUDIT.md` laat drie bevindingen (A3, A4, A8) bewust open
+  omdat er geen universeel juiste waarde bestaat.
+- **Gewenste situatie:** drie presets in het bestaande instellingenmenu.
+  De verdeling is zo gekozen dat **Normaal exact de huidige stand is**:
+
+  | | Laag | **Normaal (default)** | Hoog |
+  | --- | --- | --- | --- |
+  | Pixelratio-plafond | 1 | **2** | 2 |
+  | Bloom | uit | **aan** | aan |
+  | Schaduwen | uit | **aan** | aan |
+  | Lichtculling (A3) | aan | **uit** | uit |
+  | Schaduw-throttling (A4) | aan | **uit** | uit |
+  | MSAA op de composer-target (A2 optie B) | uit | **uit** | aan |
+
+  Daarmee krijgt elke openstaande auditbevinding een plek zonder dat er
+  ook maar iets aan de standaardervaring verandert: A3, A4 en A8 leven
+  uitsluitend onder **Laag** (waar snelheid expliciet boven sfeer gaat,
+  dus waar de zwaar getunede helderheidsbalans niet leidend is), en A2
+  optie B — echte antialiasing, in de audit afgewezen als default omdat
+  het geld kost — wordt de reden dat **Hoog** bestaat.
+- **Codegebieden:** het bestaande instellingen-overlay (naast
+  `gevoeligheidSlider`), `leesGevoeligheid()`/`schrijfGevoeligheid()` als
+  opslagpatroon, `renderer.setPixelRatio()`/`composer.setPixelRatio()`,
+  `bloomPass.enabled`, `renderer.shadowMap.enabled`, en de plekken die
+  A3/A4 zouden aanraken (`lampLichten`, `renderer.shadowMap.autoUpdate`).
+- **Buiten scope:** automatische hardware-detectie (precies de gok die de
+  audit niet kon maken — de speler kiest); per-onderdeel-schakelaars voor
+  bloom/schaduw los (dat maakt het een ontwikkelaarsmenu); de
+  toegankelijkheidsschakelaars uit **T115** (camerawieg, filmkorrel) —
+  die blijven een aparte, eigen groep met een eigen reden van bestaan,
+  en T115's regel "geen derde schakelaar omdat het kan" geldt daar
+  onverkort. Kwaliteit en toegankelijkheid mogen in de UI niet door
+  elkaar lopen.
+- **Randgevallen:**
+  - **Normaal moet aantoonbaar identiek zijn aan vandaag.** Dit is de
+    belangrijkste eis van het ticket: de standaardervaring verandert
+    niet, ook niet een beetje. Toetsbaar met de bestaande
+    T88-pixelmeting.
+  - **De T88-helderheidsvangrail geldt niet op Laag.** Bloom en
+    schaduwen uitzetten verandert de luminantie per definitie; de
+    visuele basislijntests moeten expliciet op Normaal draaien, en Laag
+    heeft een eigen (ruimere) verwachting of een gemotiveerde
+    uitzondering. Zonder dit valt `test-visuele-basislijn.mjs` om op een
+    preset die juist bedoeld is om er anders uit te zien.
+  - **Een kwaliteitsinstelling mag het spel nooit moeilijker maken.**
+    Zie de valkuil hieronder — dit is geen detail maar de reden dat dit
+    ticket een speeltoets nodig heeft.
+  - **MSAA aan/uit vereist het opnieuw opbouwen van de
+    composer-rendertarget.** Anders dan pixelratio (waar
+    `setPixelRatio()` + `setSize()` volstaan) is `samples` een
+    constructie-optie. Ofwel de target netjes opnieuw opbouwen (inclusief
+    `dispose()` van de oude — T70-contract), ofwel deze ene wissel achter
+    een herstart zetten. Niet stilzwijgend lekken.
+  - **Opslag volgt T74/T75:** vormvalidatie bij het lezen, onbekende
+    waarden negeren, veilige default (**Normaal**), alles in try/catch —
+    `localStorage` kan ontbreken of geweigerd zijn.
+  - **De preset mag de spelbalans nergens raken:** geen invloed op
+    spawn, schade, hitboxen, threat-budget of score.
+- **Performancevoorwaarden:** op Normaal mogen draw calls, driehoeken,
+  geometrieën en texturen exact gelijk blijven aan vandaag (harde
+  assertie). Laag moet aantoonbaar mínder werk doen (lagere
+  lichttelling in de shader-uniforms, lagere drawingBuffer-resolutie).
+- **Acceptatiecriteria:**
+  - Op **Normaal** is een screenshot vanaf elk T88-standpunt gelijk aan
+    de huidige basislijn binnen de bestaande marge, en zijn de
+    `renderer.info`-tellingen ongewijzigd.
+  - Op **Laag** is de drawingBuffer-resolutie aantoonbaar lager en is het
+    aantal actieve lichten aantoonbaar kleiner.
+  - De ogen van ondoden blijven op **Laag** leesbaar tijdens een
+    Stroomuitval (zie de valkuil) — meetbaar als luminantiecontrast
+    tussen oog en achtergrond, niet als "het ziet er nog goed uit".
+  - De keuze overleeft een herstart; corrupte opslag valt terug op
+    Normaal zonder foutmelding.
+  - Wisselen van preset lekt geen geometrie/textuur (`test-resources.mjs`
+    over meerdere wissels heen).
+  - `obstakels.length` blijft 58; spawn-, schade- en scoregetallen
+    ongewijzigd.
+- **Testplan:** nieuw `tests/test-kwaliteitsinstelling.mjs` (preset-
+  persistentie, corrupte opslag, de niet-lekken-assertie over wissels,
+  de Normaal-is-identiek-assertie, de oogleesbaarheid op Laag);
+  `test-visuele-basislijn.mjs` expliciet vastzetten op Normaal;
+  volledige regressie.
+- **Rollback:** de preset-keuze verbergen en hard op Normaal zetten —
+  dan is het gedrag exact dat van vandaag.
+- **Sonnet solo:** deels. De instelling, opslag en Normaal-pariteit zijn
+  goed headless te toetsen. De **inhoud** van Laag (hoe ver mag het beeld
+  degraderen voordat het spel oneerlijk wordt) vraagt een speeltoets door
+  de eigenaar, met name tijdens een Stroomuitval.
 
 ---
 
