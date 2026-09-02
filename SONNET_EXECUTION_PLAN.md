@@ -4693,6 +4693,170 @@ achterlaten.
 
 ---
 
+# Ronde 12 (v0.26) — Leesbaarheid, sporen en economie
+
+Herkomst: de ontwerpsessie ná de performance-audit van Ronde 11 (zie
+`PERFORMANCE_AUDIT.md`). Volledige ticketbeschrijvingen staan in
+`ROADMAP.md` onder "v0.26 — Ronde 12"; hieronder staat alleen wat een
+uitvoerder nodig heeft.
+
+Deze ronde is **niet** de voortzetting van een architectuurlijn. Het zijn
+drie losse, onafhankelijke tickets die elk een gat dichten dat `IDEEEN.md`
+niet dekt. Er is geen verplichte volgorde en er is geen milestone: elk
+ticket is los af te ronden en los te laten vallen.
+
+```
+T156 (leesbaarheid)   — onafhankelijk
+T157 (inslagsporen)   — onafhankelijk, wacht bij voorkeur op kwaliteitsinstelling
+T158 (economie)       — onafhankelijk, deel A en B apart uitvoerbaar
+```
+
+**Nog niet in een ticket gegoten** (bewust, vereist eerst een eigenaars-
+beslissing): de kwaliteitsinstelling Laag/Normaal/Hoog uit dezelfde
+ontwerpsessie. Die is de logische thuisbasis voor de openstaande
+auditbevindingen A3 (zone-lichtculling) en A4 (schaduw-throttling), én de
+voorwaarde waaronder T157 zijn transparante vlakken mag kosten.
+
+---
+
+### Ticket 156 — De Brander leesbaar zonder kleur
+
+**Doel.** De Brander herkenbaar maken via een kanaal dat niet op
+kleurwaarneming leunt.
+
+**Positie.** Vrij. Geen afhankelijkheden — `delen.kern` en
+`KERNPULS_SCHAAL_BONUS` bestaan al sinds T21.
+
+**Werk.**
+- De bestaande kernpuls (nu alleen actief bij flinch) uitbreiden naar een
+  permanente, zachte rustpuls op de Brander.
+- Rustpuls en flinchpuls samenstellen tot **één** schrijfplek naar
+  `delen.kern.scale` — geen tweede, concurrerende schrijver.
+- Test schrijven vóór de implementatie: de grijswaarden-assertie is het
+  hele bewijs van dit ticket.
+
+**Buiten scope.** De kleuren zelf (T88/T89-kalibratie). De schaal van de
+Brander (raakt hitboxen). Een volledige kleurenblind-modus. Nieuwe meshes.
+
+**Acceptatie.**
+- In **grijswaarden** varieert de luminantie in de borstregio van een
+  Brander over de tijd, terwijl die bij een normale ondode vlak blijft —
+  op dezelfde afstand, in zowel de normale stand als tijdens een
+  Stroomuitval.
+- De flinchpuls blijft zichtbaar en onderscheidbaar van de rustpuls.
+- `schaal`, hitboxen, schade en explosieradius exact ongewijzigd;
+  `test-vijand-leesbaarheid.mjs` en `test-aanval-tells.mjs` groen.
+- Draw calls per ondode ongewijzigd; geen nieuwe allocatie in
+  `updateOndoden()`.
+
+**Valkuil.** Twee schrijvers naar `delen.kern.scale`. Als de rustpuls en
+de flinchpuls elkaar overschrijven, verdwijnt de treffer-feedback — en dat
+merk je pas in een speelsessie, niet in een assertie.
+
+**Uitvoeringsadvies.** Sonnet 5 · High · extended thinking Default.
+Kleine, goed afgebakende ingreep op bestaande infrastructuur met een
+objectieve slaagvoorwaarde. *Escaleer naar Sonnet 5 xhigh* wanneer de
+grijswaarden-assertie niet stabiel te krijgen is zonder de puls zo sterk
+te maken dat hij de emissie-hiërarchie (§10.5) doorbreekt. Review:
+automatische tests. Vertrouwen: hoog.
+
+---
+
+### Ticket 157 — De ruimte onthoudt het gevecht
+
+**Doel.** Blijvende inslagsporen, zodat een kamer op golf 20 er anders
+uitziet dan op golf 1.
+
+**Positie.** Bij voorkeur ná een kwaliteitsinstelling — dit is de eerste
+toevoeging sinds de audit die de renderkant echt raakt.
+
+**Werk.**
+- Eén vooraf gealloceerde pool (richtwaarde 40) die het oudste slot
+  hergebruikt. Bouwen bij het laden, nooit tijdens een golf.
+- Aanroepen vanuit het wereld-inslagpad in `schiet()` en vanuit
+  `doodOndode()` voor de vloervlek.
+- `polygonOffset` (of een offset langs de normaal) tegen z-fighting.
+
+**Buiten scope.** Decals op ondoden. Decals op bewegende objecten.
+Collision. Elk effect op pathing, spawn of schade. Opslag tussen runs.
+
+**Acceptatie.**
+- Na 25 gesimuleerde golven: `renderer.info.memory.geometries`,
+  `.textures` en de mesh-telling ongewijzigd t.o.v. golf 1.
+- Het 41e spoor hergebruikt aantoonbaar het 1e slot.
+- `obstakels.length` blijft 58.
+- Een decal ligt plat op het geraakte vlak, ook op schuine vlakken (dak,
+  trap), zonder z-fighting in een screenshot-test.
+- `test-resources.mjs` en `test-inslagen-rijker.mjs` groen.
+
+**Valkuil.** De T85-regel: mesh- en materiaaltelling mogen niet meegroeien
+met het golfnummer. Dat is letterlijk de bug die beslissing 63 dichtte.
+Tweede valkuil: `_tmpVecNormaal` is scratch-ruimte — kopiëren, niet de
+referentie bewaren (§7.9).
+
+**Uitvoeringsadvies.** Sonnet 5 · xhigh · extended thinking On. Nieuwe
+pool-infrastructuur plus een oriëntatieprobleem in 3D; de niet-groei-
+assertie is objectief, de z-fighting-controle niet. *Escaleer naar Opus 5
+xhigh* wanneer decals op schuine vlakken niet plat te krijgen zijn zonder
+per-vlak special cases. Review: automatische tests **plus** een visuele
+beoordeling. Vertrouwen: gemiddeld — de z-fighting-marge is
+hardware-afhankelijk.
+
+---
+
+### Ticket 158 — Geld houdt betekenis in de late run
+
+**Doel.** Voorkomen dat geld ophoudt een beslissing te zijn, en dat
+overschot naar niets converteert.
+
+**Positie.** Deel (A) vrij en veilig. Deel (B) raakt de rondebalans en
+hoort ná een speelsessie-oordeel, niet ervoor.
+
+**Werk — deel (A), de veilige basislaag.**
+- Restsaldo converteren naar score bij een geslaagde ontsnapping (en
+  eventueel bij game over, tegen een lagere koers).
+- Koers kalibreren tegen de bestaande scoretermen: een kill is 10, een
+  golf is 100. Geld moet per eenheid duidelijk mínder waard zijn.
+
+**Werk — deel (B), de laag die de keuze terugbrengt.**
+- Eén herbruikbaar kooppunt met **oplopende** prijs.
+- Voorkeursvorm is een *tempo*-aankoop (alle barricades in één keer
+  herstellen), geen *kracht*-aankoop — dat houdt de vijandbalans buiten
+  schot.
+- Volgt het bestaande herbruikbaar-patroon (Watertap/Provisiekast),
+  inclusief `status()` in `WINKEL_STIJLEN`.
+
+**Buiten scope.** Geld als apart veld in de highscore-opslag. Prijzen van
+bestaande eenmalige aankopen. Het inkomen zelf. Een tweede win-conditie.
+Alles wat `golfBudget()` of de spawn-druk aanraakt.
+
+**Acceptatie.**
+- Twee runs met identieke kills/headshots/golf maar verschillend
+  eindsaldo leveren een **verschillende** score op.
+- De conversie kent een vast plafond en wordt nooit de dominante
+  scoreterm (harde assertie op een lategame-simulatie).
+- Met een complete vluchtroute kan het saldo niet ongewaarschuwd onder
+  `ONTSNAPPING_PRIJS` (2500) zakken door de nieuwe geldput.
+- De prijs van de herbruikbare put stijgt aantoonbaar per gebruik.
+- `obstakels.length` blijft 58; `interactiePunten` groeit met exact 1.
+- `test-finale.mjs`, `test-score-stats.mjs` en `test-golf1-economie.mjs`
+  groen.
+
+**Valkuil.** `ONTSNAPPING_PRIJS` is een drempel, geen aankoop. Een speler
+die zich onder de 2500 uitgeeft terwijl zijn vluchtroute compleet is,
+koopt zichzelf uit zijn eigen winst. Tweede valkuil: als "alles
+herstellen" altijd de beste zet is, is het geen keuze maar een belasting.
+
+**Uitvoeringsadvies.** Deel (A): Sonnet 5 · High · extended thinking
+Default — kleine, geïsoleerde wijziging in `berekenScore()` met een
+objectieve assertie. Deel (B): **Opus 5 · xhigh** — een nieuwe geldput
+raakt de rondebalans, en de slaagvoorwaarde ("het moet een keuze zijn, geen
+belasting") is niet headless te toetsen. Review: deel (A) automatische
+tests; deel (B) speelsessie door de eigenaar. Vertrouwen: hoog voor (A),
+laag voor (B) tot er een speeltoets is geweest.
+
+---
+
 ## Herordenbaarheid — welk ticket mag je verschuiven?
 
 Nogmaals: "parallel" betekent hier **herordenbaar**, niet **gelijktijdig**

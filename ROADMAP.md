@@ -4506,7 +4506,7 @@ Y-invariant, en zijn het minst vergevingsgezind.
 
 ---
 
-# v0.24 — Ronde 12: leesbaarheid, sporen en economie (gepland, nog NIET geïmplementeerd)
+# v0.26 — Ronde 12: leesbaarheid, sporen en economie (gepland, nog NIET geïmplementeerd)
 
 Herkomst: de ontwerpsessie na de performance-audit van v0.23 (zie
 `PERFORMANCE_AUDIT.md`). Alle drie de tickets komen uit een gat dat
