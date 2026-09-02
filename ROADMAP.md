@@ -4506,13 +4506,19 @@ Y-invariant, en zijn het minst vergevingsgezind.
 
 ---
 
-# v0.24 — Ronde 12: leesbaarheid en sporen (gepland, nog NIET geïmplementeerd)
+# v0.24 — Ronde 12: leesbaarheid, sporen en economie (gepland, nog NIET geïmplementeerd)
 
 Herkomst: de ontwerpsessie na de performance-audit van v0.23 (zie
-`PERFORMANCE_AUDIT.md`). Beide tickets komen uit een gat dat `IDEEEN.md`
-niet dekt: T156 repareert een leesbaarheidsfout die alleen zichtbaar is
-als je naar de kleurwaarden zelf kijkt, T157 vult de enige as waarop dit
-spel zijn eigen voortgang niet toont.
+`PERFORMANCE_AUDIT.md`). Alle drie de tickets komen uit een gat dat
+`IDEEEN.md` niet dekt: T156 repareert een leesbaarheidsfout die alleen
+zichtbaar is als je naar de kleurwaarden zelf kijkt, T157 vult de enige as
+waarop dit spel zijn eigen voortgang niet toont, en T158 adresseert dat
+geld halverwege de run ophoudt een beslissing te zijn — én dat overschot
+volgens `berekenScore()` naar niets converteert.
+
+De drie zijn onafhankelijk van elkaar te bouwen. T156 is de goedkoopste en
+repareert een echte fout; T158 deel (A) is de kleinste ingreep met het
+grootste effect; T157 wacht bij voorkeur op een kwaliteitsinstelling.
 
 ---
 
@@ -4663,6 +4669,116 @@ spel zijn eigen voortgang niet toont.
   decal-aanroep dan over en het gedrag valt exact terug op vandaag.
 - **Sonnet solo:** ja, met de kanttekening dat de z-fighting-controle een
   visuele beoordeling vraagt (screenshot, niet alleen een assertie).
+
+---
+
+## Ticket 158 — Geld houdt betekenis in de late run
+
+- **Type:** feature (economie/balans)
+- **Verbetergebied:** 5 (Progressie en keuzes)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** niets mechanisch, maar zie de harde randvoorwaarde
+  rond `ONTSNAPPING_PRIJS` hieronder — dit ticket raakt de finale-economie
+  en moet dus ná FINALE.md's model gelezen worden, niet ervoor.
+- **Doel:** voorkomen dat geld halverwege de run ophoudt een beslissing te
+  zijn, en dat overschot aan het eind van de run naar niets converteert.
+- **Huidige situatie:** twee afzonderlijke problemen die op elkaar lijken
+  maar het niet zijn — beide geverifieerd in de code:
+
+  **(A) Overschot converteert naar niets.** `berekenScore()` is
+  `kills*10 + headshots*15 + (golf-1)*100 + bonus`, maal
+  `moeilijkheid.scoreFactor`. **`spelStaat.geld` komt er niet in voor.**
+  Wie de run uitspeelt met €9.000 op zak krijgt exact dezelfde score als
+  wie 'm uitspeelt met €0. Al dat verdiende geld is dode waarde.
+
+  **(B) Geld houdt op een keuze te zijn.** De eenmalige aankopen tellen op
+  tot ongeveer €22.900: deuren (500 + 1000 + 1200 + 800 + 900 + 700),
+  wapens (AMSTEL-9 450, Ratelaar 750), perks (Snelspanner 600,
+  Pantserdrank 1000, Autoherlader 1000) en de Smederij (3000 + 4000 per
+  wapen, dus 14.000 voor beide). Daarna resteren alleen nog
+  `AMMO_PRIJS` (300), `WATERTAP_PRIJS` (200) en de Provisiekast — alle
+  drie **vaste prijs en behoefte-gestuurd**: je koopt ze als je bijna
+  leeg of gewond bent, niet als afweging. Ze schalen niet mee met
+  rijkdom. Ondertussen blijft het inkomen wél stijgen
+  (`WAVE_BONUS_BASIS 75 + WAVE_BONUS_PER_GOLF 15` per golf, plus kills),
+  dus het gat groeit elke golf.
+
+- **Gewenste situatie:** beide problemen apart adresseren, want ze hebben
+  een andere oplossing en een heel ander risicoprofiel:
+
+  **Voor (A) — de veilige basislaag:** overgebleven geld converteert bij
+  een geslaagde ontsnapping (en eventueel bij game over, tegen een
+  lagere koers) naar score. Dit raakt **geen enkel balansgetal in de
+  golf-economie**: geen spawn-druk, geen threat-budget, geen wapenschade.
+  Het maakt alleen dat "geld verdienen" ook laat in de run nog ergens
+  toe leidt. Kleinste mogelijke ingreep met het grootste deel van het
+  effect.
+
+  **Voor (B) — de laag die de keuze terugbrengt:** één herbruikbaar
+  kooppunt met een **oplopende** prijs, zodat het meeschaalt met rijkdom
+  in plaats van een vaste aanschaf te zijn. Voorkeursvorm is een
+  *tempo*-aankoop, geen *kracht*-aankoop: bijvoorbeeld alle barricades
+  in het pand in één keer herstellen voor een prijs die per gebruik
+  stijgt. Dat hergebruikt het bestaande barricadesysteem, past bij de
+  belegeringsfictie, en — cruciaal — het maakt de speler niet sterker,
+  het koopt hem tijd. Daarmee blijft de zorgvuldig getunede
+  vijandbalans (geen bullet sponges, threat-budget per golf) buiten
+  schot.
+
+- **Codegebieden:** `berekenScore()`, `voltooiOntsnapping()` en het game
+  over-pad (voor A); een nieuw kooppunt in `interactiePunten` +
+  `WINKEL_STIJLEN` + de barricade-herstelcode (voor B).
+- **Buiten scope:** geld toevoegen aan de highscore-opslag als apart veld
+  (de score dekt het al); een prijs van een bestaande eenmalige aankoop
+  wijzigen; het inkomen zelf verhogen of verlagen; een tweede
+  win-conditie; alles wat `golfBudget()` of de spawn-druk aanraakt.
+- **Randgevallen:**
+  - **`ONTSNAPPING_PRIJS` (2500) is een harde drempel, geen aankoop.**
+    Een nieuwe geldput mag een speler nooit onder die drempel kunnen
+    duwen op een manier die de ontsnapping onbereikbaar maakt zonder dat
+    hij dat doorhad. Ofwel de put blokkeert zichzelf zodra het saldo
+    onder 2500 zou zakken terwijl de vluchtroute compleet is, ofwel de
+    UI waarschuwt expliciet. Dit is het belangrijkste risico van dit
+    ticket.
+  - **(A) mag de moeilijkheidsgraden niet scheeftrekken.** De
+    score-conversie loopt door `moeilijkheid.scoreFactor` heen; Toerist
+    geeft meer startgeld, dus een te gulle koers beloont juist de
+    makkelijkste stand. Koers kalibreren tegen de bestaande
+    scoretermen (een kill is 10, een golf is 100) — geld moet duidelijk
+    mínder waard zijn per eenheid dan spelen.
+  - **(B) mag geen verplichte uitgave worden.** Als "alles herstellen"
+    altijd de beste zet is, is het geen keuze maar een belasting. De
+    oplopende prijs moet snel genoeg stijgen dat er een moment komt
+    waarop je 'm bewust overslaat.
+  - **Geen nieuwe collision, geen nieuwe zone.** Het kooppunt uit (B)
+    hangt aan bestaand decor; `obstakels.length` blijft 58.
+  - **Herbruikbaarheid volgt het bestaande patroon** (Watertap /
+    Provisiekast), inclusief de `status()`-functie in `WINKEL_STIJLEN`
+    en `updateWinkelMarkeringen()`' teDuur/beschikbaar-logica.
+- **Performancevoorwaarden:** geen; dit is een economieticket. Mesh- en
+  materiaaltelling ongewijzigd op één kooppunt na (T85-regel).
+- **Acceptatiecriteria:**
+  - Twee runs met identieke kills/headshots/golf maar verschillend
+    eindsaldo leveren een **verschillende** score op (dekt A).
+  - De score-conversie is nooit groter dan een vast plafond én nooit
+    zo groot dat geld de dominante scoreterm wordt (harde assertie op
+    een lategame-simulatie).
+  - Met een complete vluchtroute kan het saldo niet ongewaarschuwd onder
+    `ONTSNAPPING_PRIJS` zakken door de nieuwe geldput.
+  - De prijs van de herbruikbare put stijgt aantoonbaar per gebruik.
+  - `obstakels.length` blijft 58; `interactiePunten` groeit met exact 1.
+  - `test-finale.mjs`, `test-score-stats.mjs` en `test-golf1-economie.mjs`
+    blijven groen.
+- **Testplan:** nieuw `tests/test-geldeconomie.mjs` met de twee
+  score-runs, het ontsnappingsdrempel-randgeval en de oplopende prijs;
+  een lategame-simulatie (golf 20+) die aantoont dat er op elk moment nog
+  een zinvolle uitgave bestaat; volledige regressie.
+- **Rollback:** de score-conversiefactor op 0 zetten en het kooppunt niet
+  registreren — dan valt het gedrag exact terug op vandaag.
+- **Sonnet solo:** deel (A) ja. Deel (B) nee — een nieuwe herbruikbare
+  geldput raakt de rondebalans en verdient een speelsessie-oordeel, geen
+  puur headless groen vinkje.
 
 ---
 
