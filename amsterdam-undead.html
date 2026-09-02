@@ -460,8 +460,10 @@
     box-shadow: 0 4px 16px rgba(0,0,0,0.4);
   }
   /* Ticket 86: Het stadsarchief — kleine toggle-knoppen, uit (grijs
-     omlijnd) totdat de speler 'm actief kiest. */
-  .archiefKnop {
+     omlijnd) totdat de speler 'm actief kiest.
+     Ticket 159: de kwaliteitsknoppen delen deze vormtaal (kleine pil, één
+     actief) — bewust dezelfde stijl, want het is hetzelfde soort keuze. */
+  .archiefKnop, .kwaliteitKnop {
     font-size: 12px;
     font-weight: 600;
     padding: 6px 12px;
@@ -470,7 +472,7 @@
     color: rgba(255,255,255,0.7);
     cursor: pointer;
   }
-  .archiefKnop.actief {
+  .archiefKnop.actief, .kwaliteitKnop.actief {
     background: #3fae63;
     border-color: #3fae63;
     color: #04170a;
@@ -550,6 +552,19 @@
   <div style="display:flex; align-items:center; gap:10px; justify-content:center; margin-top:16px; font-size:13px; opacity:0.85;">
     <label for="gevoeligheidSlider">🖱️ Muisgevoeligheid</label>
     <input type="range" id="gevoeligheidSlider" min="0.25" max="3" step="0.05" style="width:140px;">
+  </div>
+  <!-- Ticket 159 (v0.26): kwaliteitspreset. Bewust GESCHEIDEN van de
+       toegankelijkheidsschakelaars die T115 gaat toevoegen (camerawieg,
+       filmkorrel): dit gaat over hoe zwaar het spel is voor de machine,
+       die over hoe het spel op een speler inwerkt. Standaard `normaal`,
+       wat exact de stand van vóór T159 is. -->
+  <div style="display:flex; align-items:center; gap:10px; justify-content:center; margin-top:10px; font-size:13px; opacity:0.85;">
+    <span>🖥️ Beeldkwaliteit</span>
+    <div id="kwaliteitKnoppen" style="display:flex; gap:8px;">
+      <div class="kwaliteitKnop" data-kwaliteit="laag">Laag</div>
+      <div class="kwaliteitKnop" data-kwaliteit="normaal">Normaal</div>
+      <div class="kwaliteitKnop" data-kwaliteit="hoog">Hoog</div>
+    </div>
   </div>
   <!-- Ticket 86: Het stadsarchief — puur cosmetische ontgrendelingen over
        meerdere runs heen (zie updateArchiefUI()). Verborgen totdat er
@@ -731,6 +746,62 @@ const ONDODE_HITBOX_LAYER = 2;
 // raycastbaar) en op deze eigen laag, die alleen de camera enablet.
 const WERELD_DECOR_LAYER = 3;
 
+/* ================================================================
+   TICKET 159 (v0.26, ronde 12): kwaliteitsinstelling Laag/Normaal/Hoog.
+
+   Waarom dit bestaat: `PERFORMANCE_AUDIT.md` liet drie bevindingen
+   bewust open (A3 zone-lichtculling, A4 schaduw-throttling, A8
+   pixelratio-plafond) omdat er geen universeel juiste waarde bestaat —
+   het antwoord hangt van de machine af. Deze presets maken daar een
+   spelerkeuze van in plaats van een ontwikkelaarsgok.
+
+   DE KERNREGEL VAN DIT TICKET: **`normaal` is exact de stand van vóór
+   T159.** Wie niets aanraakt, merkt niets — geen enkele pixel verandert.
+   Alle drie de auditbevindingen leven daarom uitsluitend onder `laag`,
+   de enige preset waar snelheid expliciet boven sfeer gaat en de zwaar
+   getunede helderheidsbalans (T88) dus niet leidend is. `hoog` voegt
+   juist iets toe: A2 optie B, échte antialiasing op de composer-
+   rendertarget — in de audit afgewezen als default omdat het geld kost,
+   maar precies de reden dat `hoog` bestaat.
+
+   `lichtculling` is nu nog een NO-OP-vlag: T159 levert de plek waar A3
+   mag bestaan, niet A3 zelf (die raakt de belichting en verdient een
+   eigen ticket met pixelmeting). De vlag staat er al zodat dat
+   vervolgticket alleen nog hoeft in te vullen, niet te herstructureren.
+   ================================================================ */
+const KWALITEIT_KEY = 'amsterdamUndeadKwaliteit';
+const KWALITEIT_STANDAARD = 'normaal';
+const KWALITEIT_PRESETS = {
+  laag:    { label: 'Laag',    pixelRatioMax: 1, bloom: false, schaduwen: false, lichtculling: true,  samples: 0 },
+  normaal: { label: 'Normaal', pixelRatioMax: 2, bloom: true,  schaduwen: true,  lichtculling: false, samples: 0 },
+  hoog:    { label: 'Hoog',    pixelRatioMax: 2, bloom: true,  schaduwen: true,  lichtculling: false, samples: 4 },
+};
+// Vormvalidatie met veilige terugval, zelfde patroon als leesGevoeligheid()
+// (T75) en leesHighscore() (T74): een onbekende of corrupte sleutel mag het
+// spel nooit breken, en valt stil terug op de standaard.
+function leesKwaliteit() {
+  try {
+    const raw = localStorage.getItem(KWALITEIT_KEY);
+    return KWALITEIT_PRESETS[raw] ? raw : KWALITEIT_STANDAARD;
+  } catch {
+    return KWALITEIT_STANDAARD;
+  }
+}
+function schrijfKwaliteit(naam) {
+  try {
+    localStorage.setItem(KWALITEIT_KEY, naam);
+  } catch {
+    // Geweigerd of niet beschikbaar: niet bewaren, geen crash — zelfde
+    // stille fallback als schrijfGevoeligheid().
+  }
+}
+let kwaliteitNu = leesKwaliteit();
+function kwaliteitPreset() { return KWALITEIT_PRESETS[kwaliteitNu]; }
+// De pixelratio wordt op twee plekken gezet (hier bij het aanmaken en in de
+// resize-handler, bevinding A7) — één helper zodat die nooit uit elkaar
+// kunnen lopen.
+function kwaliteitPixelRatio() { return Math.min(devicePixelRatio, kwaliteitPreset().pixelRatioMax); }
+
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 50);
 camera.rotation.order = 'YXZ';
 camera.layers.enable(ONDODE_MESH_LAYER);   // Ticket 120: V2-SkinnedMesh blijft zichtbaar
@@ -747,8 +818,10 @@ camera.layers.enable(WERELD_DECOR_LAYER);   // Performance-audit A1: niet-raycas
 // verlies, puur het stopzetten van een betaling zonder tegenprestatie.
 const renderer = new THREE.WebGLRenderer({ antialias: false });
 renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
+// Ticket 159: plafond komt uit de preset (`normaal`/`hoog` = 2, de waarde
+// van vóór T159; `laag` = 1).
+renderer.setPixelRatio(kwaliteitPixelRatio());
+renderer.shadowMap.enabled = kwaliteitPreset().schaduwen;   // Ticket 159: uit op `laag`
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -762,7 +835,23 @@ document.body.appendChild(renderer.domElement);
 // OutputPass (herstelt de sRGB/ACES-uitvoer die de composer anders zou
 // overslaan). Exact 1 shadow-castende light blijft ongewijzigd (§7.9) — deze
 // pipeline voegt geen licht toe, alleen een schermvullend nabewerkingseffect.
-const composer = new EffectComposer(renderer);
+// Ticket 159: eigen rendertarget i.p.v. de impliciete van EffectComposer,
+// zodat `hoog` er `samples: 4` op kan zetten (A2 optie B — échte MSAA op de
+// scene-geometrie, wat de default framebuffer nooit kon leveren omdat daar
+// alleen OutputPass' schermvullende quad naartoe tekent). Alle overige
+// opties zijn LETTERLIJK de defaults die EffectComposer zelf zou kiezen
+// (HalfFloatType, schermgrootte maal pixelratio) — op `normaal`
+// (`samples: 0`) is dit dus exact dezelfde target als vóór T159.
+function maakComposerTarget() {
+  const t = new THREE.WebGLRenderTarget(
+    innerWidth * renderer.getPixelRatio(),
+    innerHeight * renderer.getPixelRatio(),
+    { type: THREE.HalfFloatType, samples: kwaliteitPreset().samples },
+  );
+  t.texture.name = 'EffectComposer.rt1';
+  return t;
+}
+const composer = new EffectComposer(renderer, maakComposerTarget());
 composer.addPass(new RenderPass(scene, camera));
 // Interne bloom-resolutie bewust LAAG (256x256, de eigen default van de
 // pass) i.p.v. schermresolutie: de blur-mipchain (5 niveaus, dus tot ~10
@@ -913,6 +1002,50 @@ const NAVERWERKING_SHADER = {
 const naverwerkingsPass = new ShaderPass(NAVERWERKING_SHADER);
 composer.addPass(naverwerkingsPass);
 composer.addPass(new OutputPass());
+
+// Ticket 159: een presetwissel tijdens het spelen. Alles wat hier gebeurt is
+// een no-op zolang de preset niet wijzigt, en op `normaal` zet het exact de
+// waarden terug die er vóór T159 al stonden.
+function pasKwaliteitToe(naam) {
+  if (!KWALITEIT_PRESETS[naam]) return;
+  const vorige = kwaliteitNu;
+  kwaliteitNu = naam;
+  const preset = kwaliteitPreset();
+
+  renderer.setPixelRatio(kwaliteitPixelRatio());
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setPixelRatio(kwaliteitPixelRatio());
+  composer.setSize(innerWidth, innerHeight);
+  bloomPass.enabled = preset.bloom;
+
+  // shadowMap.enabled wisselen vraagt om hercompilatie van de materialen:
+  // Three.js bakt de schaduw-branches in het shaderprogramma en ziet een
+  // gewijzigde vlag niet vanzelf. Zonder deze traversal blijft de oude
+  // stand zichtbaar tot een materiaal om een andere reden herbouwd wordt.
+  if (renderer.shadowMap.enabled !== preset.schaduwen) {
+    renderer.shadowMap.enabled = preset.schaduwen;
+    scene.traverse((o) => {
+      if (!o.material) return;
+      for (const m of (Array.isArray(o.material) ? o.material : [o.material])) {
+        if (m) m.needsUpdate = true;
+      }
+    });
+  }
+
+  // `samples` is een CONSTRUCTIE-optie van de rendertarget, geen schakelaar:
+  // de MSAA-wissel vraagt dus een nieuwe target. De oude wordt hier expliciet
+  // gedisposed (T70-contract) — anders lekt elke wissel een framebuffer.
+  if (KWALITEIT_PRESETS[vorige].samples !== preset.samples) {
+    composer.renderTarget1.dispose();
+    composer.renderTarget2.dispose();
+    const nieuw = maakComposerTarget();
+    composer.renderTarget1 = nieuw;
+    composer.renderTarget2 = nieuw.clone();
+    composer.renderTarget2.texture.name = 'EffectComposer.rt2';
+    composer.writeBuffer = composer.renderTarget1;
+    composer.readBuffer = composer.renderTarget2;
+  }
+}
 
 /* ================================================================
    TICKET 117 (v0.23, ronde 9 — Zombie V2 fundament): tijdelijk,
@@ -1124,12 +1257,13 @@ addEventListener('resize', () => {
   // zonder deze regel bleef de canvas op de OUDE ratio hangen (onscherp of
   // onnodig zwaar). Zelfde clamp als de initiële renderer.setPixelRatio()
   // hierboven.
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  // Ticket 159: plafond komt uit de actieve preset i.p.v. een vaste 2.
+  renderer.setPixelRatio(kwaliteitPixelRatio());
   renderer.setSize(innerWidth, innerHeight);
   // EffectComposer bevriest renderer.getPixelRatio() in zijn eigen
   // constructor — zonder deze regel blijft composer op de ratio van bij het
   // laden hangen, ook al is de renderer hierboven net bijgewerkt.
-  composer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  composer.setPixelRatio(kwaliteitPixelRatio());
   composer.setSize(innerWidth, innerHeight);
 });
 
@@ -6679,6 +6813,26 @@ gevoeligheidSlider.addEventListener('input', (e) => {
   muisGevoeligheidFactor = Math.max(MUIS_GEVOELIGHEID_MIN, Math.min(MUIS_GEVOELIGHEID_MAX, Number(e.target.value)));
   schrijfGevoeligheid(muisGevoeligheidFactor);
 });
+// Ticket 159: kwaliteitspreset-knoppen. Zelfde e.stopPropagation()-patroon
+// als de geluidsknop en de gevoeligheidsslider hierboven — het start-/
+// pauzescherm vraagt bij een klik pointer lock aan, en dat mag een klik op
+// een instelling niet doen.
+const kwaliteitKnoppen = document.getElementById('kwaliteitKnoppen');
+function tekenKwaliteitKnoppen() {
+  for (const knop of kwaliteitKnoppen.querySelectorAll('.kwaliteitKnop')) {
+    knop.classList.toggle('actief', knop.dataset.kwaliteit === kwaliteitNu);
+  }
+}
+kwaliteitKnoppen.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const knop = e.target.closest('.kwaliteitKnop');
+  if (!knop) return;
+  pasKwaliteitToe(knop.dataset.kwaliteit);
+  schrijfKwaliteit(kwaliteitNu);
+  tekenKwaliteitKnoppen();
+});
+tekenKwaliteitKnoppen();
+
 const hulpUI = document.getElementById('hulpUI');
 const richtkruis = document.getElementById('richtkruis');
 const ammoUI = document.getElementById('ammoUI');
@@ -16049,6 +16203,11 @@ window.AmsterdamUndeadDebug = {
   // (tests raakten die via de meshes/hitbox-proxies zelf) — hier is er geen
   // object dat 'm dráágt om op te testen, dus moet de constante zelf mee.
   WERELD_DECOR_LAYER,
+  // Ticket 159: kwaliteitspreset. `kwaliteitNu` is een getter omdat
+  // pasKwaliteitToe() de variabele herbindt (zelfde reden als wapenStaat).
+  KWALITEIT_PRESETS, KWALITEIT_KEY, KWALITEIT_STANDAARD,
+  get kwaliteitNu() { return kwaliteitNu; },
+  pasKwaliteitToe, leesKwaliteit, schrijfKwaliteit, kwaliteitPixelRatio,
   scene, camera, speler, obstakels, isVrijePlek, GRENS, losBotsingenOp,
   duwSpelerWegVanOndoden, SPELER_ONDODE_BOTSING_STRAAL, SPELER_ONDODE_ZACHTE_FACTOR,   // Fix 3: speler-ondode-botsing
   // Ticket 60: post-processing-pipeline (voor tests: composer/bloomPass bestaan

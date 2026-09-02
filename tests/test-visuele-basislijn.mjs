@@ -44,6 +44,17 @@ import { PNG } from 'pngjs';
 const { browser, page, errs } = await openVoorVisueleMeting();
 const { check, report } = makeChecker();
 
+// Ticket 159: deze hele basislijn is gemeten op de renderconfiguratie die
+// sinds T159 `normaal` heet. Dat is ook de standaardpreset, dus een verse
+// browsercontext komt daar vanzelf op uit — maar dat expliciet vastleggen
+// scheelt een mysterieuze drift als de standaard ooit verandert: dan faalt
+// hier één duidelijke check in plaats van tientallen luminantiebanden.
+// `laag` (bloom en schaduwen uit) hoort er per definitie anders uit te zien
+// en valt daarom buiten deze basislijn.
+const actievePreset = await page.evaluate(() => window.AmsterdamUndeadDebug.kwaliteitNu);
+check('De visuele basislijn meet op kwaliteitspreset `normaal` (de stand van vóór T159)',
+  actievePreset === 'normaal', { actievePreset });
+
 // Middenblok van het 640x400-scherm (15%-85% op beide assen) — vermijdt de
 // uiterste randen zonder de HUD-chrome bewust weg te snijden: die is nu
 // volledig deterministisch (spelActief staat nooit aan) en hoort dus gewoon

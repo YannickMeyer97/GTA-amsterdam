@@ -4735,19 +4735,25 @@ T157.
 
   | | Laag | **Normaal (default)** | Hoog |
   | --- | --- | --- | --- |
-  | Pixelratio-plafond | 1 | **2** | 2 |
+  | Pixelratio-plafond (A8) | 1 | **2** | 2 |
   | Bloom | uit | **aan** | aan |
   | Schaduwen | uit | **aan** | aan |
   | Lichtculling (A3) | aan | **uit** | uit |
-  | Schaduw-throttling (A4) | aan | **uit** | uit |
   | MSAA op composer-target (A2 optie B) | uit | **uit** | aan |
 
 - Opslag volgens het `leesGevoeligheid()`-patroon (T74/T75):
   vormvalidatie, onbekende waarden negeren, veilige default Normaal,
   alles in try/catch.
-- A3 en A4 hoeven **niet** in dit ticket geïmplementeerd te worden — de
-  preset mag ze aanvankelijk als no-op dragen. Wat dit ticket levert is
-  de plek waar ze mogen bestaan.
+- A3 hoeft **niet** in dit ticket geïmplementeerd te worden — de preset
+  mag de vlag aanvankelijk als no-op dragen. Wat dit ticket levert is de
+  plek waar A3 mag bestaan.
+- **A4 (schaduw-throttling) hoort niet in dit schema.** Op Laag staan de
+  schaduwen al volledig uit, dus valt er niets te throttlen; schaduwen-uit
+  domineert throttling volledig. A4 blijft open in
+  `PERFORMANCE_AUDIT.md`, maar wordt pas relevant bij een eventuele
+  vierde, tussenliggende preset — of als losse optimalisatie op Normaal,
+  en dan onder de oorspronkelijke voorwaarde: eerst meten op echte
+  hardware.
 
 **Buiten scope.** Automatische hardware-detectie (precies de gok die de
 audit niet kon maken). Losse schakelaars per effect. De

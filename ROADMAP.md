@@ -4791,12 +4791,30 @@ fout; T158 deel (A) is de kleinste ingreep met het grootste effect.
 
 ---
 
-## Ticket 159 — Kwaliteitsinstelling (Laag / Normaal / Hoog)
+## Ticket 159 — Kwaliteitsinstelling (Laag / Normaal / Hoog) ✅
 
 - **Type:** feature (performance/instellingen)
 - **Verbetergebied:** 7 (Renderbudget)
 - **Prioriteit:** hoog
-- **Status:** open (gepland)
+- **Status:** ✅ uitgevoerd (v0.26). `tests/test-kwaliteitsinstelling.mjs`
+  (34 checks) dekt de presettabel, de renderstaat per preset, het
+  terugkeren naar exact de uitgangsstaat, tien lekvrije preset-rondjes,
+  de opslag-randgevallen (onbekend, corrupt, leeg, geweigerde storage) en
+  de balans-onaantastbaarheid. `test-visuele-basislijn.mjs` pint zichzelf
+  nu expliciet op `normaal` vast. Volledige regressie: **97/97 groen**.
+
+  **Twee dingen bewust NIET meegeleverd, met reden:**
+  1. **A3 (zone-lichtculling) is een no-op-vlag.** `KWALITEIT_PRESETS.laag
+     .lichtculling` staat op `true` maar stuurt nog niets aan. Dit ticket
+     levert de plek waar A3 mag bestaan; A3 zelf raakt de belichting en
+     verdient een eigen ticket met de pixelmeting-vangrail uit T79.
+     Daarmee vervalt ook het acceptatiecriterium "op Laag is het aantal
+     actieve lichten aantoonbaar kleiner" — dat hoort bij dat
+     vervolgticket, niet bij dit ticket.
+  2. **De oogleesbaarheid op Laag is nog niet getoetst.** Bloom uit raakt
+     precies de gloeiende ogen, en tijdens een Stroomuitval zijn die het
+     enige zichtbare kanaal. Dit is een speelsessie-oordeel op echte
+     hardware, geen headless assertie — zie het openstaande punt hieronder.
 - **Afhankelijk van:** niets om te starten. **Blokkeert** wel de zinvolle
   uitvoering van auditbevindingen A3 en A4, en is de gewenste voorwaarde
   voor T157.
@@ -4818,19 +4836,29 @@ fout; T158 deel (A) is de kleinste ingreep met het grootste effect.
 
   | | Laag | **Normaal (default)** | Hoog |
   | --- | --- | --- | --- |
-  | Pixelratio-plafond | 1 | **2** | 2 |
+  | Pixelratio-plafond (A8) | 1 | **2** | 2 |
   | Bloom | uit | **aan** | aan |
   | Schaduwen | uit | **aan** | aan |
   | Lichtculling (A3) | aan | **uit** | uit |
-  | Schaduw-throttling (A4) | aan | **uit** | uit |
   | MSAA op de composer-target (A2 optie B) | uit | **uit** | aan |
 
   Daarmee krijgt elke openstaande auditbevinding een plek zonder dat er
-  ook maar iets aan de standaardervaring verandert: A3, A4 en A8 leven
+  ook maar iets aan de standaardervaring verandert: A3 en A8 leven
   uitsluitend onder **Laag** (waar snelheid expliciet boven sfeer gaat,
   dus waar de zwaar getunede helderheidsbalans niet leidend is), en A2
   optie B — echte antialiasing, in de audit afgewezen als default omdat
   het geld kost — wordt de reden dat **Hoog** bestaat.
+
+  **A4 (schaduw-throttling) staat bewust NIET in deze tabel.** Bij het
+  uitwerken bleek de oorspronkelijke opzet zichzelf tegen te spreken: op
+  Laag staan de schaduwen al volledig uit, en dan valt er niets te
+  throttlen. Schaduwen-uit domineert throttling volledig, dus A4 heeft in
+  dit drie-presets-schema geen zinvolle plek. A4 wordt daarmee pas
+  relevant als er ooit een vierde, tussenliggende preset komt die
+  schaduwen wél aanhoudt — of als losse optimalisatie op Normaal, en dan
+  onder de oorspronkelijke auditvoorwaarde: eerst meten op echte
+  hardware. Het blijft dus open in `PERFORMANCE_AUDIT.md`, maar niet als
+  onderdeel van dit ticket.
 - **Codegebieden:** het bestaande instellingen-overlay (naast
   `gevoeligheidSlider`), `leesGevoeligheid()`/`schrijfGevoeligheid()` als
   opslagpatroon, `renderer.setPixelRatio()`/`composer.setPixelRatio()`,
