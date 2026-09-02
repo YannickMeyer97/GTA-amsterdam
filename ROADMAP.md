@@ -4506,6 +4506,166 @@ Y-invariant, en zijn het minst vergevingsgezind.
 
 ---
 
+# v0.24 — Ronde 12: leesbaarheid en sporen (gepland, nog NIET geïmplementeerd)
+
+Herkomst: de ontwerpsessie na de performance-audit van v0.23 (zie
+`PERFORMANCE_AUDIT.md`). Beide tickets komen uit een gat dat `IDEEEN.md`
+niet dekt: T156 repareert een leesbaarheidsfout die alleen zichtbaar is
+als je naar de kleurwaarden zelf kijkt, T157 vult de enige as waarop dit
+spel zijn eigen voortgang niet toont.
+
+---
+
+## Ticket 156 — De Brander leesbaar zonder kleur
+
+- **Type:** fix (leesbaarheid/toegankelijkheid)
+- **Verbetergebied:** 1 (Combat-leesbaarheid)
+- **Prioriteit:** hoog
+- **Status:** open (gepland)
+- **Afhankelijk van:** niets — `delen.kern` en `KERNPULS_SCHAAL_BONUS`
+  bestaan al (T21/Z4).
+- **Doel:** de Brander herkenbaar maken via een kanaal dat niet op
+  kleurwaarneming leunt, zodat de enige ondode die schade uitdeelt bij
+  overlijden ook leesbaar is voor kleurenblinde spelers en in het donker.
+- **Huidige situatie:** `ONDODE_TYPES.normaal` en `ONDODE_TYPES.brander`
+  hebben **identieke `schaal: 1`** en dus een identiek silhouet. Het enige
+  onderscheid is kleur: lijf `0x5d7255` (groen) vs `0x8a4a2c` (roodbruin),
+  ogen `0xd8ff6b` (geelgroen) vs `0xffa03d` (oranje). Dat verschil ligt
+  precies op de rood-groen-as, waar deuteranopie/protanopie (~8% van de
+  mannen) slecht tot niet op discrimineert. De Sjouwer (`schaal: 1.35`) en
+  de Sluiper (`0.75`) zijn wél op silhouet te herkennen; juist de
+  gevaarlijkste variant niet. Tijdens een **Stroomuitval**-eventgolf is de
+  oogkleur bovendien het enige zichtbare kanaal, omdat de rest van het
+  lichaam in het donker wegvalt — de leesbaarheid is dus het slechtst
+  precies in de zwaarste golf.
+- **Gewenste situatie:** de Brander draagt een permanente, zachte
+  kernpuls: een ritmisch op- en afzwellende gloed in de borstkas. Dat is
+  een helderheids-/bewegingssignaal in plaats van een kleursignaal, dus
+  het werkt onafhankelijk van kleurwaarneming én het wordt in het donker
+  duidelijker in plaats van vager. Thematisch versterkt het bovendien de
+  tell: je ziet dát er iets in hem zit dat af kan gaan.
+- **Codegebieden:** `ONDODE_TYPES.brander`, `maakOndodeModelV2()`
+  (`delen.kern`), de animatiehelft van `updateOndoden()`,
+  `KERNPULS_SCHAAL_BONUS`.
+- **Buiten scope:** de kleuren zelf wijzigen (die dragen de sfeer en zijn
+  in T88/T89 gekalibreerd); de schaal van de Brander wijzigen (dat raakt
+  hitboxen); een volledige kleurenblind-modus voor de hele game; nieuwe
+  meshes toevoegen aan het ondode-model.
+- **Randgevallen:**
+  - **De bestaande flinch-kernpuls mag niet dubbel tellen.**
+    `raakOndode()` zet `kernPuls: ondode.type === 'brander'` en
+    `updateOndoden()` schaalt `delen.kern` daarop. De permanente puls moet
+    dáármee samengesteld worden (één schrijfplek naar `delen.kern.scale`),
+    niet als tweede, concurrerende schrijver — anders vechten ze om
+    dezelfde property en verdwijnt de treffer-feedback.
+  - **De puls mag de Brander niet vóór zijn eigen aanvals-tell verraden**
+    op een manier die de T31-windup overstemt: de aanvalstell blijft
+    leidend, dit is een identiteits-signaal, geen dreigings-signaal.
+  - **Emissie-hiërarchie (T89/§10.5):** de kern is een accent, geen Bron.
+    De puls mag de bloom-drempel niet structureel overschrijden, anders
+    gloeit elke Brander als een lantaarn.
+  - **Geen per-frame allocatie** en geen extra draw call — dit moet binnen
+    het bestaande 1-draw-call-per-ondode-budget blijven (§ZOMBIE_V2).
+- **Performancevoorwaarden:** draw calls en mesh-telling per ondode
+  ongewijzigd; geen nieuwe allocatie in `updateOndoden()`.
+- **Acceptatiecriteria:**
+  - Een Brander is in een **grijswaarden**-screenshot te onderscheiden van
+    een normale ondode op dezelfde afstand (harde, meetbare assertie: het
+    luminantieverschil in de borstregio varieert over de tijd, terwijl dat
+    bij een normale ondode vlak blijft).
+  - Hetzelfde geldt tijdens een actieve Stroomuitval.
+  - De bestaande flinch-kernpuls op een treffer blijft zichtbaar en
+    onderscheidbaar van de rustpuls.
+  - `hitboxen`, `schaal`, schade en explosieradius exact ongewijzigd —
+    `test-vijand-leesbaarheid.mjs` en `test-aanval-tells.mjs` blijven
+    groen.
+  - Draw calls per ondode ongewijzigd (`test-resources.mjs`).
+- **Testplan:** nieuw `tests/test-brander-leesbaarheid.mjs` met de
+  grijswaarden-assertie in beide lichtstanden; bestaande vijand- en
+  resourcetests + volledige regressie.
+- **Rollback:** de rustpuls-amplitude op 0 zetten — dan valt het gedrag
+  exact terug op de huidige flinch-only-situatie.
+- **Sonnet solo:** ja — mits de grijswaardentest vóór de implementatie
+  geschreven wordt (die is het hele bewijs van dit ticket).
+
+---
+
+## Ticket 157 — De ruimte onthoudt het gevecht (blijvende inslagsporen)
+
+- **Type:** feature (sfeer/visueel)
+- **Verbetergebied:** 4 (Sporen van de run)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** T69/T70 (resource-discipline), en bij voorkeur ná
+  een kwaliteitsinstelling-ticket, zodat dit onder een kwaliteitsniveau
+  kan vallen (zie "Randgevallen").
+- **Doel:** het gevecht zichtbaar achterlaten in de wereld zelf, zodat een
+  kamer op golf 20 er anders uitziet dan op golf 1 — en zodat de speler
+  zijn eigen tactiek terugziet in de ruimte.
+- **Huidige situatie:** inslagen geven deeltjes (`spawnImpact()`) en rook
+  (`spawnRook()`), beide uit een vaste pool en beide volledig vergankelijk.
+  Na twintig golven ziet de woonkamer er exact uit als bij het laden. Het
+  spel toont zijn voortgang uitsluitend in de HUD, nergens in de wereld.
+  T85 dekt dit niet: dat gaat over decor dat op **golfmijlpalen** van
+  materiaal wisselt, niet over sporen op de plek waar daadwerkelijk
+  geschoten is.
+- **Gewenste situatie:** een gepoolde set blijvende inslagsporen —
+  kogelgaten op muren/vloer, donkere vlekken waar een ondode viel. Vast
+  aantal (richtwaarde 40), waarbij een nieuw spoor het oudste hergebruikt
+  (positie/rotatie/zichtbaarheid overschrijven), zodat er nooit iets
+  bijkomt na het laden.
+- **Codegebieden:** `schiet()` (het wereld-inslagpad, incl. het al
+  berekende `_tmpVecNormaal`), `doodOndode()` voor de vloervlek,
+  een nieuwe pool naast `impactPool`/`tracerPool`, `ruimGroepOp()`.
+- **Buiten scope:** decals op ondoden zelf (die verdwijnen); decals die
+  meebewegen met bewegende objecten (deuren, boot); collision; elk effect
+  op pathing, spawn of schade; permanente opslag tussen runs.
+- **Randgevallen:**
+  - **De harde regel van T85 geldt onverkort:** mesh- en materiaaltelling
+    mogen niet meegroeien met het golfnummer. Een vooraf gealloceerde pool
+    van 40 voldoet daar per constructie aan — bouw hem één keer bij het
+    laden, nooit tijdens een golf. Dit is precies de valkuil die
+    beslissing 63 dichtte.
+  - **Z-fighting.** Een decal plat op een muur vecht met het muurvlak.
+    Gebruik `polygonOffset` (of een kleine offset langs de al beschikbare
+    wereld-ruimte normaal), niet een willekeurige "iets ervoor"-hack.
+  - **`_tmpVecNormaal` is scratch-ruimte.** `schiet()` documenteert dat
+    expliciet — de decal-code moet de waarde kopiëren, niet de referentie
+    bewaren (exact het aliasing-patroon dat §7.9 verbiedt).
+  - **Transparante vlakken kosten fill-rate.** Dit is de reden voor de
+    afhankelijkheid hierboven: 40 transparante quads is de eerste
+    toevoeging sinds de audit die de renderkant echt raakt. Zonder
+    kwaliteitsniveau om onder te vallen, moet de pool klein blijven.
+  - **Geen decal op een `Points`/niet-Mesh-treffer** — sinds de A1-fix
+    (WERELD_DECOR_LAYER) kan dat niet meer gebeuren, maar de decal-code
+    moet nog steeds op `raak[0].face` leunen en dus dezelfde aanname
+    dragen als de rest van dat pad.
+  - **De vloervlek bij een kill mag niet in de kelder/vliering door de
+    vloer zakken** — Y-hoogte volgt de sterfpositie, niet een aanname van
+    `y = 0`.
+- **Performancevoorwaarden:** mesh-, geometrie- en materiaaltelling
+  constant na 25 gesimuleerde golven (harde assertie); draw calls stijgen
+  met ten hoogste het aantal decal-batches (richtwaarde: 1, via één
+  gedeeld materiaal).
+- **Acceptatiecriteria:**
+  - Na 25 gesimuleerde golven zijn `renderer.info.memory.geometries` en
+    `.textures` en de mesh-telling ongewijzigd t.o.v. golf 1.
+  - Het 41e spoor hergebruikt aantoonbaar het 1e slot (pool wraps).
+  - `obstakels.length` blijft 58 — decals hebben nooit collision.
+  - Een decal ligt visueel plat op het geraakte vlak, ook op schuine
+    vlakken (dak, trap), zonder z-fighting in een screenshot-test.
+  - `test-resources.mjs` en `test-inslagen-rijker.mjs` blijven groen.
+- **Testplan:** uitbreiding van `test-resources.mjs`' lange-run-simulatie
+  met de decal-pool; nieuw `tests/test-inslagsporen.mjs` voor pool-wrap,
+  oriëntatie op een schuin vlak en de niet-groei-assertie; volledige
+  regressie.
+- **Rollback:** de pool-grootte op 0 zetten; `schiet()` slaat de
+  decal-aanroep dan over en het gedrag valt exact terug op vandaag.
+- **Sonnet solo:** ja, met de kanttekening dat de z-fighting-controle een
+  visuele beoordeling vraagt (screenshot, niet alleen een assertie).
+
+---
+
 ## Backlog — bevroren tickets (niet uitvoeren zonder expliciete opdracht)
 
 Op verzoek van de gebruiker: "het nieuwe wapen (ticket 47 en 48) hoef ik
