@@ -10110,6 +10110,19 @@ const FLINCH_LICHAAM_DIP  = 0.07;    // m — extra "ineenkrimpen" bij een licha
 // losBotsingenOp() klemt de knockback nog steeds (aparte test bewaakt dat).
 const KNOCKBACK_AFSTAND    = 0.22;   // m — totale verplaatsing over de flinch-duur
 const KERNPULS_SCHAAL_BONUS = 0.8;   // Brander-kern zwelt tijdelijk op bij een treffer
+// Ticket 156 (v0.26, leesbaarheid): permanente rustpuls op de Brander-kern,
+// zodat hij herkenbaar is via een kanaal dat niet op kleurwaarneming leunt
+// (zie de toelichting bij updateOndoden()'s kern-schrijfplek hieronder).
+// Bewust klein t.o.v. KERNPULS_SCHAAL_BONUS (0,8): de flinch-puls moet de
+// "ik ben net geraakt"-piek blijven, de rustpuls mag daar nooit mee
+// verward worden. ±14% (0,86x-1,14x) is duidelijk zichtbaar zonder in de
+// buurt van de 1,8x-flinchpiek te komen.
+const KERNPULS_RUST_AMPLITUDE = 0.14;
+// rad/s — traag genoeg om als "ademen" te lezen (periode ≈ π seconden ≈
+// 3,1s), niet als het snelle geflikker van de lampen hierboven (die op
+// t*7/t*17 draaien). Een langzame ademhaling past bij "er zit iets in hem
+// dat kan afgaan", niet bij paniek.
+const KERNPULS_RUST_SNELHEID = 2.0;
 
 // Bepaalt de start-HP van een ondode op basis van de huidige golf.
 function ondodeStartHP() {
@@ -11731,6 +11744,16 @@ function spawnOndode(vensterIndex, type = 'normaal', traits = kiesOndodeTraits()
     groep, type, hp: Math.max(1, Math.min(Math.round(ondodeStartHP() * typeInfo.hpMultiplier), typeInfo.hpMax ?? Infinity)),
     snelheid: ONDODE_SNELHEID * typeInfo.snelheidMultiplier, geldMultiplier: typeInfo.geldMultiplier,
     strompelt: traits.strompelt, loopFase: Math.random() * 10,   // (v0.8) willekeurige startfase: niet synchroon
+    // Ticket 156: rustpuls-klok voor de Brander-kern. Bewust een EIGEN,
+    // dt-gedreven accumulator i.p.v. de module-brede `klok` — dat geeft 'm
+    // automatisch dezelfde "staat stil tijdens pauze"-eigenschap (deze
+    // accumuleert alleen binnen updateOndoden(), en die draait sowieso
+    // alleen als spelActief), zonder van de rest van de spelklok af te
+    // hangen. Startwaarde is de random fase: zelfde "niet synchroon"-reden
+    // als loopFase hierboven, nu in één veld met de klok zelf i.p.v. een
+    // los faseveld. Kost niets voor de andere types (die hebben geen
+    // delen.kern en lezen dit veld dus nooit).
+    kernPulsTijd: Math.random() * Math.PI * 2,
     delen: groep.userData.delen,   // (Ticket 18) pivot-referenties voor de loop-animatie van fase 8
     flinch: null,   // Ticket 21 (Z4): { timer, soort, knokRichting, kernPuls } — gezet in raakOndode()
     // Ticket 30 (Aanval A1): 'jaag' -> 'windup' -> 'herstel' -> 'jaag'.
@@ -12718,6 +12741,32 @@ function updateOndoden(dt) {
     // lookup per ondode per frame — alleen eerder in dezelfde iteratie.
     const gang = (ONDODE_TYPES[ondode.type] || ONDODE_TYPES.normaal).gang || ONDODE_GANG_DEFAULT;
 
+    // Ticket 156: DE ENE schrijfplek naar delen.kern.scale (alleen de
+    // Brander heeft delen.kern — geen kost voor de andere vier types).
+    // Voorheen schreef de flinch-tak verderop dit rechtstreeks (reset naar
+    // 1 bij het aflopen, 1+fractie*KERNPULS_SCHAAL_BONUS tijdens); die twee
+    // schrijvers zijn hier samengevoegd tot één, met de permanente rustpuls
+    // als basis en de flinch-bonus er (additief) bovenop.
+    //
+    // BEWUST HELEMAAL VOORAAN in de loop, vóór de windup-tak hieronder —
+    // niet ná de flinch-afhandeling verderop, waar 'ie eerst stond. Reden
+    // (gevonden tijdens het testen, niet vooraf voorzien): de windup-tak
+    // en de windup-START-tak eindigen allebei op `continue`, dus alles ná
+    // die takken — inclusief de oorspronkelijke plek van dit blok — sloeg
+    // over zodra een Brander aan het uithalen was. Precies het moment
+    // waarop de speler het meeste baat heeft bij de tell, bevroor 'm dus
+    // stil. Hier, vóór beide `continue`s, loopt de rustpuls altijd door,
+    // ook tijdens een windup — wat overeenkomt met het randgeval "de puls
+    // mag de aanvalstell niet overstemmen": ze delen geen enkel kanaal
+    // (kern-scale vs. arm-/hoofdrotatie en oogintensiteit), dus ze kunnen
+    // nooit met elkaar concurreren, ongeacht wanneer in de loop dit staat.
+    if (ondode.delen.kern) {
+      ondode.kernPulsTijd += dt;
+      const rustPuls = KERNPULS_RUST_AMPLITUDE * Math.sin(ondode.kernPulsTijd * KERNPULS_RUST_SNELHEID);
+      const flinchFractie = (ondode.flinch && ondode.flinch.kernPuls) ? ondode.flinch.timer / FLINCH_DUUR : 0;
+      ondode.delen.kern.scale.setScalar(1 + rustPuls + flinchFractie * KERNPULS_SCHAAL_BONUS);
+    }
+
     // 'windup': positie bevroren, alleen beperkt bijdraaien richting de
     // speler. Op het einde van de timer valt het discrete slag-moment:
     // raak alleen bij (a) afstand binnen bereik, (b) de speler nog binnen
@@ -13103,7 +13152,6 @@ function updateOndoden(dt) {
       ondode.flinch.timer -= dt;
       if (ondode.flinch.timer <= 0) {
         ondode.flinch = null;
-        if (delen.kern) delen.kern.scale.setScalar(1);
       } else {
         const fractie = ondode.flinch.timer / FLINCH_DUUR;
         if (ondode.flinch.soort === 'kop') {
@@ -13150,7 +13198,6 @@ function updateOndoden(dt) {
             delen.armR.position.y -= dip;
           }
         }
-        if (ondode.flinch.kernPuls && delen.kern) delen.kern.scale.setScalar(1 + fractie * KERNPULS_SCHAAL_BONUS);
         positie.addScaledVector(ondode.flinch.knokRichting, (KNOCKBACK_AFSTAND / FLINCH_DUUR) * dt);
         losBotsingenOp(positie, ONDODE_STRAAL, true);
         positie.y = berekenVloerY(positie.x, positie.z);
@@ -16602,6 +16649,7 @@ window.AmsterdamUndeadDebug = {
   ROMP_BOB_HOOGTE, STROMPEL_BEEN_ZWAK, STROMPEL_BEEN_STERK,
   // Ticket 21: hitreacties-constanten (voor tests)
   FLINCH_DUUR, FLINCH_HOOFD_HOEK, FLINCH_ROMP_TWIST, KNOCKBACK_AFSTAND, KERNPULS_SCHAAL_BONUS,
+  KERNPULS_RUST_AMPLITUDE, KERNPULS_RUST_SNELHEID,   // Ticket 156
   // Power-ups: drop-systeem + effecten (Munitievoorraad/Dubbele Beloning/Eliminatiemodus/Kerninslag)
   POWERUP_TYPES, POWERUP_DROP_KANS, POWERUP_VERVAL_TIJD, POWERUP_PICKUP_RADIUS,
   POWERUP_DUBBELE_BELONING_DUUR, POWERUP_ELIMINATIEMODUS_DUUR,

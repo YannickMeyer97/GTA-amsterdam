@@ -259,12 +259,29 @@ const kernPuls = await page.evaluate(() => {
   const schaalDirectNa = o.delen.kern.scale.x;
   let tikken = 0;
   while (o.flinch !== null && tikken < 20) { d.updateOndoden(0.05); tikken++; }
-  const uit = { schaalVoor, schaalDirectNa, schaalNa: o.delen.kern.scale.x };
+  // Ticket 156: op de tick waarop flinch.timer voor het eerst <=0 wordt, is
+  // deze zelfde tick de EERSTE die geen bonus meer toevoegt — maar de
+  // kern-schrijfplek in updateOndoden() leest ondode.flinch.timer VÓÓR de
+  // decrement van diezelfde tick (zie de toelichting bij die schrijfplek),
+  // dus die allerlaatste actieve tick draagt nog een klein residueel stukje
+  // flinch-bonus (tot dt/FLINCH_DUUR * KERNPULS_SCHAAL_BONUS ≈ 0,15) bovenop
+  // de rustpuls. Eén tick extra ná de while-loop leest een moment waarop
+  // flinch al gegarandeerd de volle tick null was — pas dán is het zuiver
+  // de rustpuls-band.
+  d.updateOndoden(0.05);
+  const uit = { schaalVoor, schaalDirectNa, schaalNa: o.delen.kern.scale.x, rustAmplitude: d.KERNPULS_RUST_AMPLITUDE };
   d.doodOndode(o);
   return uit;
 });
 check('Brander-kern zwelt op bij een treffer', kernPuls.schaalDirectNa > kernPuls.schaalVoor, kernPuls);
-check('Brander-kern keert terug naar schaal 1 na herstel', kernPuls.schaalNa === 1, kernPuls);
+// Ticket 156 (v0.26): vóór dit ticket viel de kern na de flinch terug op
+// EXACT 1 (er was toen geen ander proces dat delen.kern.scale schreef). Sinds
+// T156 draait er een permanente rustpuls die nooit stilstaat — de kern komt
+// dus niet meer op precies 1 tot rust, maar keert wel duidelijk terug binnen
+// de rustpuls-band (1 ± KERNPULS_RUST_AMPLITUDE), ver onder de flinch-piek.
+check('Brander-kern keert terug binnen de rustpuls-band na herstel (niet meer exact 1 sinds T156 se permanente puls)',
+  Math.abs(kernPuls.schaalNa - 1) <= kernPuls.rustAmplitude + 1e-6
+  && kernPuls.schaalNa < kernPuls.schaalDirectNa, kernPuls);
 
 // --- 6. Geen flinch op een dodelijke treffer (ook niet tijdens Eliminatiemodus) -
 const geenFlinchOpDood = await page.evaluate(() => {

@@ -4531,12 +4531,41 @@ fout; T158 deel (A) is de kleinste ingreep met het grootste effect.
 
 ---
 
-## Ticket 156 — De Brander leesbaar zonder kleur
+## Ticket 156 — De Brander leesbaar zonder kleur ✅
 
 - **Type:** fix (leesbaarheid/toegankelijkheid)
 - **Verbetergebied:** 1 (Combat-leesbaarheid)
 - **Prioriteit:** hoog
-- **Status:** open (gepland)
+- **Status:** ✅ uitgevoerd (v0.26). De permanente rustpuls
+  (`KERNPULS_RUST_AMPLITUDE`/`KERNPULS_RUST_SNELHEID`, een dt-gedreven
+  `ondode.kernPulsTijd`-accumulator per ondode) is samengesteld met de
+  bestaande flinch-puls tot één schrijfplek naar `delen.kern.scale`.
+  `tests/test-brander-leesbaarheid.mjs` (12 checks) bewaakt de
+  grijswaarden-luminantievariatie in beide lichtstanden, de
+  flinch/rustpuls-onderscheidbaarheid, en dat alleen de Brander
+  `delen.kern` heeft. Volledige regressie (incl. `test-vijand-
+  leesbaarheid.mjs`, `test-aanval-tells.mjs`, `test-resources.mjs`): groen.
+
+  **Twee dingen gevonden tijdens de uitvoering, niet in het ticket
+  voorzien:**
+  1. **De schrijfplek moest verhuizen.** De oorspronkelijke plek (ná de
+     flinch-afhandeling) bleek onbereikbaar zodra een Brander in 'windup'
+     zit — die tak `continue`t vóór die plek, dus de rustpuls bevroor
+     precies tijdens een aanval. Verplaatst naar vóór de windup-tak, zodat
+     hij nu ELK frame draait, ongeacht `aanvalStaat`.
+  2. **De rustpuls loopt op een EIGEN per-ondode klok
+     (`ondode.kernPulsTijd`), niet op de module-brede `klok`.** Dat maakt
+     'm testbaar via directe `updateOndoden(dt)`-aanroepen (geen echte
+     rAF-frames nodig) én geeft 'm gratis dezelfde "staat stil tijdens
+     pauze"-eigenschap (de accumulator loopt alleen binnen
+     `updateOndoden()`, en die draait toch al alleen als `spelActief`).
+  3. **Een bestaande test moest mee** (`test-ondode-hitreacties.mjs`): die
+     verwachtte dat de kern na een flinch terugkeert naar EXACT schaal 1 —
+     dat klopt niet meer sinds de rustpuls nooit stilstaat. Bijgewerkt naar
+     een band-assertie (`|schaal-1| <= KERNPULS_RUST_AMPLITUDE`) met een
+     extra tick ná de flinch-while-loop (het allerlaatste actieve
+     flinch-tick draagt nog een klein residueel stukje bonus, zie de
+     toelichting in dat testbestand).
 - **Afhankelijk van:** niets — `delen.kern` en `KERNPULS_SCHAAL_BONUS`
   bestaan al (T21/Z4).
 - **Doel:** de Brander herkenbaar maken via een kanaal dat niet op
@@ -4576,9 +4605,18 @@ fout; T158 deel (A) is de kleinste ingreep met het grootste effect.
   - **De puls mag de Brander niet vóór zijn eigen aanvals-tell verraden**
     op een manier die de T31-windup overstemt: de aanvalstell blijft
     leidend, dit is een identiteits-signaal, geen dreigings-signaal.
-  - **Emissie-hiërarchie (T89/§10.5):** de kern is een accent, geen Bron.
-    De puls mag de bloom-drempel niet structureel overschrijden, anders
-    gloeit elke Brander als een lantaarn.
+  - **Emissie-hiërarchie (T89/§10.5) — correctie tijdens uitvoering:** dit
+    randgeval ging ervan uit dat `kernMateriaal` een Accent is. Dat bleek
+    fout: `kernMateriaal.emissiveIntensity` staat al op `EMISSIE_BRON_MAX`
+    (1,6) — de kern is en blijft een Bron, dat verandert dit ticket niet.
+    Wat wél telt: `kernMateriaal` is een GEDEELD materiaal
+    (`userData.gedeeld = true`), dus de intensiteit zelf kan sowieso niet
+    per instantie variëren zonder dat te doorbreken — de puls moet dus via
+    `scale`, niet via `emissiveIntensity`. Dat is precies het bestaande
+    kanaal van de flinch-puls. De echte grens is dus niet Accent-vs-Bron,
+    maar: de rustpuls-amplitude moet ruim onder `KERNPULS_SCHAAL_BONUS`
+    (0,8) blijven, zodat de flinch-piek duidelijk anders aanvoelt dan het
+    rustige ademen.
   - **Geen per-frame allocatie** en geen extra draw call — dit moet binnen
     het bestaande 1-draw-call-per-ondode-budget blijven (§ZOMBIE_V2).
 - **Performancevoorwaarden:** draw calls en mesh-telling per ondode

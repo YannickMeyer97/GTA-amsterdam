@@ -4800,7 +4800,7 @@ Laag.
 
 ---
 
-### Ticket 156 — De Brander leesbaar zonder kleur
+### Ticket 156 — De Brander leesbaar zonder kleur ✅ uitgevoerd (v0.26)
 
 **Doel.** De Brander herkenbaar maken via een kanaal dat niet op
 kleurwaarneming leunt.
@@ -4840,6 +4840,20 @@ objectieve slaagvoorwaarde. *Escaleer naar Sonnet 5 xhigh* wanneer de
 grijswaarden-assertie niet stabiel te krijgen is zonder de puls zo sterk
 te maken dat hij de emissie-hiërarchie (§10.5) doorbreekt. Review:
 automatische tests. Vertrouwen: hoog.
+
+**Nawoord.** De grijswaarden-assertie bleek inderdaad het lastigste deel,
+maar om een andere reden dan voorzien: niet de emissie-hiërarchie, maar
+CONTAMINATIE door bestaande animatiesystemen. `ondode.loopFase` loopt op
+werkelijk afgelegde afstand binnen één `updateOndoden()`-aanroep (T148),
+niet op tijd — een testopstelling die de ondode gewoon laat lopen (of
+zelfs teleporteert-en-terugzet) zwaait dus armen door de gemeten crop-
+regio, een confound die 80-100% schijnverschil gaf vóórdat de oorzaak
+gevonden was. Fix: `ondode.snelheid = 0` tijdens de meting. Zie de lange
+toelichting bovenaan `test-brander-leesbaarheid.mjs` voor de volledige
+diagnose (inclusief een vergelijkbare valkuil met `stroomFactor`'s eigen
+recovery-logica). Verder gevonden: de schrijfplek moest van ná naar vóór
+de windup-tak verhuizen (die tak `continue`t, wat de rustpuls tijdens een
+aanval liet bevriezen) — zie ROADMAP.md voor de volledige toelichting.
 
 ---
 
