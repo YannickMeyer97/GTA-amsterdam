@@ -300,7 +300,22 @@ const golfSimulatie = await page.evaluate(() => {
   const materialenVoor = new Set();
   d.scene.traverse(o => { if (o.isMesh) { meshVoor++; materialenVoor.add(o.material); } });
   const geometrieenVoor = d.renderer.info.memory.geometries;
+  const texturenVoor = d.renderer.info.memory.textures;
   const obstakelsVoor = d.obstakels.length;
+
+  // Ticket 157: de vloervlek-decal spawnt al vanzelf via elke lethale
+  // raakOndode()-hit hieronder (schadePerTreffer=999 hierboven maakt elke
+  // hit dodelijk, dus doodOndode() vuurt elke keer dat er een ondode
+  // staat) — geen aparte lus nodig om die kant te dekken. Het KOGELGAT-pad
+  // in schiet() wordt door deze simulatie nooit aangeraakt (die gebruikt
+  // rechtstreekse raakOndode()-aanroepen, geen echte raycast), dus die kant
+  // wordt hieronder los meegenomen: één schot per golf, recht vooruit op
+  // een muur, ver genoeg buiten de speelruimte om de golf-/ondoden-tellingen
+  // hierboven niet te verstoren.
+  if (!d.wapenStaten.drukspuit) d.wapenStaten.drukspuit = d.nieuweWapenStaat(d.WAPEN_DRUKSPUIT);
+  d.activeerVuurwapen('drukspuit');
+  d.initGeluid();
+  let kogelgatSchoten = 0, dodenTotaal = 0;
 
   const perGolf = [];
   let stervendenMax = 0, powerupsMax = 0, interactiePuntenMax = interactiePuntenStart;
@@ -313,12 +328,26 @@ const golfSimulatie = await page.evaluate(() => {
       d.updateGolf(0.05);
       d.updateStervenden(0.05);
       d.updatePowerups(0.05);
-      if (d.ondoden.length > 0) d.raakOndode(d.ondoden[0], d.ondoden[0].groep.position, false);
+      // schadePerTreffer=999 (hierboven) maakt elke treffer op een
+      // bestaande ondode dodelijk — elke iteratie hier vuurt dus
+      // doodOndode() en daarmee de Ticket 157-vloervlek.
+      if (d.ondoden.length > 0) { d.raakOndode(d.ondoden[0], d.ondoden[0].groep.position, false); dodenTotaal++; }
       stervendenMax = Math.max(stervendenMax, d.stervenden.length);
       powerupsMax = Math.max(powerupsMax, d.powerups.length);
       interactiePuntenMax = Math.max(interactiePuntenMax, d.interactiePunten.length);
       stappen++;
     }
+    // Eén kogelgat-schot per golf: recht naar het zuiden vanaf de
+    // startpositie, ruim voor de speelruimte-actie hierboven begint —
+    // wapenStaat/positie/yaw/pitch worden hier bewust ELKE golf opnieuw
+    // gezet, dus dit kan de rest van de simulatie niet beïnvloeden.
+    d.speler.positie.set(0, 0, 1);
+    d.speler.yaw = Math.PI; d.speler.pitch = 0;
+    d.updateSpeler(0);
+    d.wapenStaat.magazijn = 1;
+    d.wapenStaat.schietCooldown = 0;
+    d.schiet();
+    kogelgatSchoten++;
     perGolf.push({
       golf, ondodenNa: d.ondoden.length, stervendenNa: d.stervenden.length,
       powerupsNa: d.powerups.length, golfAfgerond: !d.spelStaat.golfActief, stappen,
@@ -330,13 +359,20 @@ const golfSimulatie = await page.evaluate(() => {
   const materialenNa = new Set();
   d.scene.traverse(o => { if (o.isMesh) { meshNa++; materialenNa.add(o.material); } });
   const geometrieenNa = d.renderer.info.memory.geometries;
+  const texturenNa = d.renderer.info.memory.textures;
 
   return {
     perGolf, stervendenMax, powerupsMax, interactiePuntenMax, interactiePuntenStart,
     interactiePuntenEind: d.interactiePunten.length,
     meshVoor, meshNa, materialenVoor: materialenVoor.size, materialenNa: materialenNa.size,
-    geometrieenVoor, geometrieenNa, obstakelsVoor, obstakelsNa: d.obstakels.length,
+    geometrieenVoor, geometrieenNa, texturenVoor, texturenNa,
+    obstakelsVoor, obstakelsNa: d.obstakels.length,
     etalageVoltooid: d.etalageVoltooid,
+    // Ticket 157: kogelgatSchoten + dodenTotaal samen ruim boven
+    // INSLAGSPOOR_MAX (40) — bewijst dat de pool tijdens deze normale,
+    // drukke simulatie meermaals gewrapt is, niet alleen in de losse
+    // synthetische pool-wrap-test.
+    kogelgatSchoten, dodenTotaal, inslagspoorMax: d.INSLAGSPOOR_MAX,
   };
 });
 
@@ -348,6 +384,10 @@ check(`(e) 'stervenden' blijft begrensd over 25 golven (opgeruimd door updateSte
   golfSimulatie.stervendenMax <= 30, golfSimulatie);
 check(`(e) 'powerups' blijft begrensd over 25 golven (max één drop-slot per golf + verval) — gemeten max: ${golfSimulatie.powerupsMax}`,
   golfSimulatie.powerupsMax <= 10, golfSimulatie);
+check(`(e) Ticket 157: samen ${golfSimulatie.kogelgatSchoten} kogelgat-schoten + ${golfSimulatie.dodenTotaal} doden ruim boven INSLAGSPOOR_MAX (${golfSimulatie.inslagspoorMax}) — de pool moet dus meermaals gewrapt zijn tijdens deze simulatie`,
+  golfSimulatie.kogelgatSchoten + golfSimulatie.dodenTotaal > golfSimulatie.inslagspoorMax * 2, golfSimulatie);
+check(`(e) Ticket 157: renderer.info.memory.textures groeit niet over 25 golven ondanks herhaaldelijk wrappende inslagsporen (${golfSimulatie.texturenVoor} -> ${golfSimulatie.texturenNa})`,
+  golfSimulatie.texturenNa === golfSimulatie.texturenVoor, golfSimulatie);
 check(`(e) 'interactiePunten' groeit niet onbegrensd over 25 golven (start ${golfSimulatie.interactiePuntenStart}, max ${golfSimulatie.interactiePuntenMax}, eind ${golfSimulatie.interactiePuntenEind})`,
   golfSimulatie.interactiePuntenMax <= golfSimulatie.interactiePuntenStart + 10, golfSimulatie);
 

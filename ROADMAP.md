@@ -4643,12 +4643,61 @@ fout; T158 deel (A) is de kleinste ingreep met het grootste effect.
 
 ---
 
-## Ticket 157 — De ruimte onthoudt het gevecht (blijvende inslagsporen)
+## Ticket 157 — De ruimte onthoudt het gevecht (blijvende inslagsporen) ✅
 
 - **Type:** feature (sfeer/visueel)
 - **Verbetergebied:** 4 (Sporen van de run)
 - **Prioriteit:** middel
-- **Status:** open (gepland)
+- **Status:** ✅ uitgevoerd (v0.26). Eén gedeelde pool
+  (`inslagsporenPool`, `INSLAGSPOOR_MAX = 40`) met ÉÉN gedeelde
+  `PlaneGeometry` en ÉÉN gedeelde canvas-textuur, round-robin
+  hergebruikt via `inslagspoorVolgende` — geen `actieveEffecten`-timer
+  (een spoor vervaagt nooit, het wordt alleen overschreven). Twee
+  aanroepplekken: `schiet()`'s wereld-inslagpad (kogelgat, hergebruikt
+  de al berekende `_tmpVecNormaal` synchroon, geen aliasing) en
+  `doodOndode()` (vloervlek, Y via `berekenVloerY()` — geen aanname
+  van `y = 0`, dus correct in kelder/vliering). Oriëntatie via
+  `quaternion.setFromUnitVectors()` op de meegegeven normaal, dus
+  generiek voor elk vlak — inclusief vlakken die de kaart zelf niet
+  heeft (er bestaat geen écht schuin oppervlak; de trap is gestapelde
+  rechte blokjes). Tegen z-fighting: een kleine positie-offset langs de
+  normaal ÉN `polygonOffset` op het materiaal, twee onafhankelijke
+  lagen.
+
+  **Gekoppeld aan T159:** `KWALITEIT_PRESETS.inslagsporen` (false op
+  `laag`, true op `normaal`/`hoog`) — de eerste toevoeging sinds die
+  audit die er daadwerkelijk gebruik van maakt, precies zoals de
+  afhankelijkheid hierboven voorschreef.
+
+  `tests/test-inslagsporen.mjs` (20 checks): pool-architectuur (gedeelde
+  geometrie/textuur, eigen material per slot), round-robin wrap (het
+  41e spoor overschrijft slot 0), oriëntatiewiskunde op vijf vlakken
+  incl. een synthetisch schuin vlak (geen enkele hoekafwijking >
+  0,0002°), de aliasing-regel (de aanroeper mag de normaal-vector na de
+  aanroep hergebruiken zonder het geplaatste spoor te veranderen), de
+  T159-kwaliteitsgate, en dat 60 extra spoorplaatsingen nul nieuwe
+  meshes toevoegen. Plus een z-fighting-proxycheck (twee opeenvolgende
+  renders van hetzelfde schuine decal moeten pixel-identiek zijn) en
+  een opgeslagen screenshot voor de visuele beoordeling die het ticket
+  zelf al voorschreef ("Sonnet solo: ja, met de kanttekening dat de
+  z-fighting-controle een visuele beoordeling vraagt") — visueel
+  gecontroleerd: het decal ligt plat/gekanteld op het vlak, geen
+  rafelranden of flikkering.
+
+  `tests/test-resources.mjs`'s bestaande 25-golven-simulatie uitgebreid:
+  elke lethale `raakOndode()`-hit (schadePerTreffer=999 maakt ze
+  allemaal lethaal) vuurt al vanzelf de vloervlek-decal, en één
+  kogelgat-schot per golf erbij toegevoegd voor het schiet()-pad. Over
+  25 golven: 420 doden + 25 schoten = 445 spoorplaatsingen (>10× de
+  poolgrootte), `renderer.info.memory.geometries`/`.textures` blijven
+  onveranderd. Ook `test-inslagen-rijker.mjs` blijft groen.
+
+  Volledige regressie tweemaal gedraaid: 98/98 en 92/99 (4 shards). Elke
+  afwijking herleid tot bekende, reeds bestaande CPU-contentie-flakes —
+  inclusief de eigen z-fighting-proxycheck (66px-verschil onder
+  parallelle belasting, 5/5 schoon in isolatie) en een niet-gerelateerde
+  ontsnappingspunt-test (3/3 schoon in isolatie) — geen van beide een
+  regressie.
 - **Afhankelijk van:** T69/T70 (resource-discipline), en bij voorkeur ná
   **T159** (kwaliteitsinstelling), zodat de transparante vlakken onder
   een kwaliteitsniveau kunnen vallen (zie "Randgevallen").

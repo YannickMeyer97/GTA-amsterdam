@@ -768,13 +768,19 @@ const WERELD_DECOR_LAYER = 3;
    mag bestaan, niet A3 zelf (die raakt de belichting en verdient een
    eigen ticket met pixelmeting). De vlag staat er al zodat dat
    vervolgticket alleen nog hoeft in te vullen, niet te herstructureren.
+
+   Ticket 157 (v0.26): `inslagsporen` volgt hier later bij — de eerste
+   toevoeging SINDS T159 die er daadwerkelijk gebruik van maakt. Blijvende
+   decals (kogelgaten, vloervlekken) zijn transparante vlakken, dus fill-
+   rate-kosten; op `laag` (waar snelheid expliciet boven sfeer gaat)
+   spawnen ze niet.
    ================================================================ */
 const KWALITEIT_KEY = 'amsterdamUndeadKwaliteit';
 const KWALITEIT_STANDAARD = 'normaal';
 const KWALITEIT_PRESETS = {
-  laag:    { label: 'Laag',    pixelRatioMax: 1, bloom: false, schaduwen: false, lichtculling: true,  samples: 0 },
-  normaal: { label: 'Normaal', pixelRatioMax: 2, bloom: true,  schaduwen: true,  lichtculling: false, samples: 0 },
-  hoog:    { label: 'Hoog',    pixelRatioMax: 2, bloom: true,  schaduwen: true,  lichtculling: false, samples: 4 },
+  laag:    { label: 'Laag',    pixelRatioMax: 1, bloom: false, schaduwen: false, lichtculling: true,  samples: 0, inslagsporen: false },
+  normaal: { label: 'Normaal', pixelRatioMax: 2, bloom: true,  schaduwen: true,  lichtculling: false, samples: 0, inslagsporen: true },
+  hoog:    { label: 'Hoog',    pixelRatioMax: 2, bloom: true,  schaduwen: true,  lichtculling: false, samples: 4, inslagsporen: true },
 };
 // Vormvalidatie met veilige terugval, zelfde patroon als leesGevoeligheid()
 // (T75) en leesHighscore() (T74): een onbekende of corrupte sleutel mag het
@@ -8693,6 +8699,97 @@ function updateEffecten(dt) {
   }
 }
 
+/* ================================================================
+   TICKET 157 (v0.26, ronde 12): blijvende inslagsporen — kogelgaten op
+   muren/vloer/plafond, donkere vlekken waar een ondode viel. Bewust GEEN
+   nieuw systeem in `actieveEffecten` (dat is de timer-/fade-machinerie
+   voor VERGANKELIJKE effecten): een inslagspoor vervaagt nooit uit
+   zichzelf, het wordt alleen overschreven door een NIEUW spoor zodra de
+   pool vol is. Round-robin i.p.v. het pakEffectSlot()-patroon hierboven
+   (dat kiest op kortste resterende levensduur — een concept dat een
+   permanent spoor niet heeft).
+
+   Randgeval T85/beslissing 63 (harde regel, ook voor dit ticket): mesh-,
+   geometrie- en materiaaltelling mogen NOOIT meegroeien met het golfnummer.
+   Daarom EEN gedeelde PlaneGeometry en EEN gedeelde canvas-textuur voor
+   alle INSLAGSPOOR_MAX sloten — precies zoals rookPool hierboven al doet —
+   gebouwd bij het laden, nooit tijdens een golf.
+   ================================================================ */
+const INSLAGSPOOR_MAX = 40;
+// Kleuren bewust NIET rood/bloed — het spel se bestaande dood-feedback
+// (spawnKillBurst, MATERIAAL_KLEUREN.vijand) is al sikkelijk groengeel,
+// nooit bloedrood. De vloervlek is een sterk gedimde versie van diezelfde
+// familie; het kogelgat is materiaal-onafhankelijk donkergrijs (een
+// schroeiplek oogt overal hetzelfde, ongeacht wat er geraakt is).
+const INSLAGSPOOR_KOGEL_KLEUR = 0x1c1a18;
+const INSLAGSPOOR_VLOER_KLEUR = 0x1f2a10;
+const INSLAGSPOOR_KOGEL_STRAAL = 0.1;   // m, diameter van het decal-vlak
+const INSLAGSPOOR_VLOER_STRAAL = 0.55;
+// Kleine offset langs de wereld-normaal, tegen z-fighting met het geraakte
+// vlak zelf — samen met polygonOffset hieronder (twee onafhankelijke
+// maatregelen tegen hetzelfde probleem, zie de toelichting bij Randgeval
+// "Z-fighting" in ROADMAP.md).
+const INSLAGSPOOR_NORMAAL_OFFSET = 0.004;
+function bouwInslagspoorTextuur() {
+  const n = 32;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = n;
+  const ctx = canvas.getContext('2d');
+  const midden = n / 2;
+  const gradient = ctx.createRadialGradient(midden, midden, 0, midden, midden, midden);
+  gradient.addColorStop(0, 'rgba(255,255,255,0.95)');
+  gradient.addColorStop(0.55, 'rgba(255,255,255,0.55)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, n, n);
+  return new THREE.CanvasTexture(canvas);
+}
+const INSLAGSPOOR_TEXTUUR = bouwInslagspoorTextuur();
+const INSLAGSPOOR_GEOMETRY = new THREE.PlaneGeometry(1, 1);
+function bouwInslagspoorSlot() {
+  const mesh = new THREE.Mesh(INSLAGSPOOR_GEOMETRY, new THREE.MeshBasicMaterial({
+    map: INSLAGSPOOR_TEXTUUR, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    // Randgeval "Z-fighting": een decal plat tegen een muur/vloer vecht met
+    // dat vlak zelf om dezelfde diepte. polygonOffset trekt de decal in de
+    // depth-buffer een fractie naar de camera toe, bovenop de kleine
+    // positie-offset langs de normaal hierboven — twee onafhankelijke lagen
+    // bescherming i.p.v. één "iets ervoor"-hack.
+    polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+  }));
+  mesh.visible = false;
+  scene.add(mesh);
+  return mesh;
+}
+// Ticket 157: EEN vooraf gealloceerde pool, gebouwd bij het laden — nooit
+// tijdens een golf. Vult `renderer.info.memory.geometries`/`.textures` met
+// exact 1 extra van elk, ongeacht hoeveel sporen er ooit geplaatst worden.
+const inslagsporenPool = [];
+for (let i = 0; i < INSLAGSPOOR_MAX; i++) inslagsporenPool.push(bouwInslagspoorSlot());
+let inslagspoorVolgende = 0;   // round-robin index: het OUDSTE spoor wordt altijd als eerste overschreven
+const _AS_Z = new THREE.Vector3(0, 0, 1);   // PlaneGeometry wijst standaard naar +Z
+const _AS_OMHOOG = new THREE.Vector3(0, 1, 0);   // "normaal" voor de vloervlek in doodOndode()
+const _tmpVecInslagspoor = new THREE.Vector3();
+
+// `punt`/`normaal` worden hier synchroon GELEZEN (positie-offset +
+// oriëntatie), nooit bewaard — veilig om schiet()'s scratch-vector
+// `_tmpVecNormaal` door te geven zonder de aliasing-regel uit §7.9 te
+// breken. Ticket 159: op de 'laag'-kwaliteitspreset spawnt dit systeem
+// helemaal niets (zie KWALITEIT_PRESETS.inslagsporen) — de enige
+// toevoeging sinds de performance-audit die transparante vlakken aan de
+// renderkant toevoegt, en 'laag' is precies de preset waar dat niet mag.
+function spawnInslagspoor(punt, normaal, kleur, straal) {
+  if (!kwaliteitPreset().inslagsporen) return;
+  const mesh = inslagsporenPool[inslagspoorVolgende];
+  inslagspoorVolgende = (inslagspoorVolgende + 1) % INSLAGSPOOR_MAX;
+  mesh.position.copy(punt).addScaledVector(normaal, INSLAGSPOOR_NORMAAL_OFFSET);
+  mesh.quaternion.setFromUnitVectors(_AS_Z, normaal);
+  mesh.rotateZ(Math.random() * Math.PI * 2);   // willekeurige rotatie om de eigen normaal: geen twee identiek uitgelijnde sporen
+  mesh.scale.setScalar(straal);
+  mesh.material.color.setHex(kleur);
+  mesh.material.opacity = 0.8 + Math.random() * 0.15;
+  mesh.visible = true;
+}
+
 // Zone-sfeergeluiden (Ticket V8): eenmalige triggers + een zeldzame ambient.
 // Eenmalig-per-zone via booleans (geen herhaalde meldingen); de klok-ambient
 // via een steeds opnieuw willekeurig verzette drempel.
@@ -8926,6 +9023,10 @@ function schiet() {
   spawnImpact(raak[0].point, MATERIAAL_KLEUREN[familie] ?? MATERIAAL_KLEUREN.steen, 3, _tmpVecNormaal,
     wapenStaat.definitie.impactSnelheidFactor);
   spawnRook(raak[0].point);
+  // Ticket 157: blijvend kogelgat, exact dezelfde normaal als de impact-
+  // deeltjes hierboven — nog steeds scratch-ruimte, spawnInslagspoor()
+  // leest 'm synchroon en bewaart geen referentie.
+  spawnInslagspoor(raak[0].point, _tmpVecNormaal, INSLAGSPOOR_KOGEL_KLEUR, INSLAGSPOOR_KOGEL_STRAAL);
   // Fix 5: AMSTEL-9 niveau 2 — ook een schot op de vloer/muur/plafond
   // ontploft, zodat de speler zombies indirect kan raken (bv. door vlak voor
   // hun voeten op de grond te schieten).
@@ -13314,6 +13415,17 @@ function doodOndode(ondode, punt = null, kop = false, doorMes = false) {
   const i = ondoden.indexOf(ondode);
   if (i !== -1) ondoden.splice(i, 1);
   spawnKillBurst(punt ?? ondode.groep.position, kop);
+  // Ticket 157: donkere vloervlek op de sterfplek — VÓÓR de Brander-tak
+  // hieronder, dus geldt voor elke dood (ook een explosie laat een
+  // scorch-achtige plek achter). Randgeval "geen aanname y=0": de kelder en
+  // de vliering liggen op een andere hoogte, dus de Y komt uit
+  // berekenVloerY() op de sterf-XZ, niet uit de (mogelijk kop-hoge)
+  // treffer-XYZ zelf.
+  {
+    const sterfPos = punt ?? ondode.groep.position;
+    _tmpVecInslagspoor.set(sterfPos.x, berekenVloerY(sterfPos.x, sterfPos.z), sterfPos.z);
+    spawnInslagspoor(_tmpVecInslagspoor, _AS_OMHOOG, INSLAGSPOOR_VLOER_KLEUR, INSLAGSPOOR_VLOER_STRAAL);
+  }
   // v0.7: een Brander ontploft bij overlijden, ongeacht de doodsoorzaak (dus
   // ook bij een kettingreactie door een andere explosie in bereik). Geen
   // lijk (ontwerpbeslissing 17): de groep is hierboven al uit ondodenGroep
@@ -16746,6 +16858,10 @@ window.AmsterdamUndeadDebug = {
   tracerPool, impactPool, actieveEffecten,
   // Ticket 94 (v0.22): rookpool + directionele/langgerekte impact-vonken
   ROOK_MAX, ROOK_LEVENSDUUR, ROOK_SCHAAL_BEGIN, ROOK_SCHAAL_EIND, spawnRook, rookPool,
+  // Ticket 157 (v0.26): blijvende inslagsporen
+  INSLAGSPOOR_MAX, INSLAGSPOOR_KOGEL_KLEUR, INSLAGSPOOR_VLOER_KLEUR,
+  INSLAGSPOOR_KOGEL_STRAAL, INSLAGSPOOR_VLOER_STRAAL, spawnInslagspoor, inslagsporenPool,
+  get inslagspoorVolgende() { return inslagspoorVolgende; },
   // Ticket 38 (Sfeer S1): materiaal-families + impactkleuren
   matFamilie, MATERIAAL_FAMILIES, matFamilieCache,
   // Ticket 58 (v0.19): PALET-systeem; Ticket 59 (v0.19): procedurele

@@ -4857,7 +4857,7 @@ aanval liet bevriezen) — zie ROADMAP.md voor de volledige toelichting.
 
 ---
 
-### Ticket 157 — De ruimte onthoudt het gevecht
+### Ticket 157 — De ruimte onthoudt het gevecht ✅ uitgevoerd (v0.26)
 
 **Doel.** Blijvende inslagsporen, zodat een kamer op golf 20 er anders
 uitziet dan op golf 1.
@@ -4896,6 +4896,19 @@ xhigh* wanneer decals op schuine vlakken niet plat te krijgen zijn zonder
 per-vlak special cases. Review: automatische tests **plus** een visuele
 beoordeling. Vertrouwen: gemiddeld — de z-fighting-marge is
 hardware-afhankelijk.
+
+**Nawoord.** `quaternion.setFromUnitVectors()` op de meegegeven normaal
+bleek genoeg voor elk vlak — geen per-vlak special cases nodig, ook niet
+voor een schuin vlak. De kaart zelf bleek geen enkel écht schuin
+oppervlak te hebben (de trap is gestapelde rechte blokjes, geen hellend
+vlak), dus de "dak/trap"-orientatietest uit de acceptatiecriteria is
+uitgevoerd op een synthetisch schuin vlak — grondiger dan aan één stuk
+bestaand decor gebonden te zijn, en dekt zo ook toekomstig decor. De
+z-fighting-screenshotcheck bleek zelf gevoelig voor CPU-belasting
+(66px-verschil onder de parallelle 4-shard-run, 5/5 schoon in isolatie)
+— exact hetzelfde patroon als de al bekende flakes elders in de suite,
+dus geaccepteerd als zodanig i.p.v. de assertie op te rekken. Gekoppeld
+aan T159's `inslagsporen`-vlag (uit op `laag`) zoals gepland.
 
 ---
 
