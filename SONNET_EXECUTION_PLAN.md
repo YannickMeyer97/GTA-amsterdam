@@ -4912,7 +4912,7 @@ aan T159's `inslagsporen`-vlag (uit op `laag`) zoals gepland.
 
 ---
 
-### Ticket 158 — Geld houdt betekenis in de late run
+### Ticket 158 — Geld houdt betekenis in de late run (deel A ✅ uitgevoerd, v0.26; deel B open)
 
 **Doel.** Voorkomen dat geld ophoudt een beslissing te zijn, en dat
 overschot naar niets converteert.
@@ -4962,6 +4962,26 @@ raakt de rondebalans, en de slaagvoorwaarde ("het moet een keuze zijn, geen
 belasting") is niet headless te toetsen. Review: deel (A) automatische
 tests; deel (B) speelsessie door de eigenaar. Vertrouwen: hoog voor (A),
 laag voor (B) tot er een speeltoets is geweest.
+
+**Nawoord (deel A).** `geldScoreBonus(koers, plafond)` gebruikt het
+huidige `spelStaat.geld` (restsaldo), niet `runStats.geldTotaal`
+(levenslang verdiend) — dat onderscheid was de eerste beslissing, vóór
+er ook maar een koers gekozen werd. Koers/plafond zijn gemeten via een
+scratch-simulatie (spender vs. hoarder, drie moeilijkheidsgraden, golf
+5-25), niet aangenomen: een spender houdt op golf 20-25 typisch
+€1000-2750 over vrijwel ongeacht moeilijkheidsgraad, wat het
+Toerist-scheeftrek-randgeval uit de valkuil-sectie in de praktijk
+ontkracht — één gedeelde koers/plafond bleek voldoende, geen aparte
+variant per moeilijkheidsgraad nodig (`moeilijkheid.scoreFactor` dekt
+fairness al voor elke scoreterm). Een hoarder loopt op tot ~€16.800 op
+golf 25; het plafond (€500 ontsnapping/€250 game over) vangt dat netjes
+op. Eén bestaande test (`test-ontsnapping.mjs`) bleek de nieuwe bonus
+niet te verwachten en is bijgewerkt (geld op 0 vlak vóór de winscherm-
+aanroep, ná de aftrekcheck die het restsaldo nog nodig had) — precies
+zo'n aanpassing als bij elk eerder ticket dit seizoen dat `berekenScore()`
+raakte. Volledige regressie tweemaal groen (96/100, 98/100), alle
+afwijkingen bekende CPU-contentie-flakes, 3/3 schoon in isolatie. Deel
+(B) is niet gestart.
 
 ---
 

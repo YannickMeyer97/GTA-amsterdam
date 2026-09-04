@@ -123,6 +123,7 @@ const ontsnapTest = await page.evaluate(() => {
     verwachtInstapTimer: d.FINALE_INSTAP_DUUR,
     winSchermVoorVoltooiing: document.getElementById('winScherm').style.display,
   };
+  d.spelStaat.geld = 0;   // T158: voorkomt dat de geld-score-bonus deze +1000-exacte-formuletoets verstoort (apart bewaakt in test-geldeconomie.mjs)
   d.voltooiOntsnapping();   // Ticket 146: forceert het einde van de instapfase
   return {
     promptTekst,

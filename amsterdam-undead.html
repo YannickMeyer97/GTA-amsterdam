@@ -13817,6 +13817,37 @@ function berekenScore(bonus = 0) {
   return Math.round((runStats.kills * 10 + runStats.headshots * 15 + (spelStaat.golf - 1) * 100 + bonus) * moeilijkheid.scoreFactor);
 }
 
+// Ticket 158 (v0.26, deel A): restsaldo converteert naar score, zodat
+// `spelStaat.geld` aan het eind van de run niet langer dode waarde is (zie
+// PERFORMANCE_AUDIT.md/ROADMAP.md T158 — vóór dit ticket kwam geld nergens
+// in berekenScore() voor). Loopt door DEZELFDE `bonus`-parameter als de
+// bestaande +1000-ontsnappingsbonus hierboven (Ticket 45) — geen nieuw
+// mechanisme, gewoon een tweede term die er vóór de scoreFactor-vermenig-
+// vuldiging bij opgeteld wordt.
+//
+// Koers en plafond zijn GEMETEN, niet aangenomen (tests/test-geldeconomie.mjs
+// documenteert de meting): een speler die alles koopt zodra het kan, houdt
+// op golf 20-25 typisch €1000-2750 over, vrijwel ongeacht moeilijkheidsgraad
+// (de aankopen zijn identiek; het difficulty-verschil loopt al via
+// scoreFactor, zoals bij elke andere scoreterm — een aparte koers per
+// moeilijkheidsgraad bleek dus niet nodig). Bij GELD_SCORE_KOERS_ONTSNAPPING
+// levert dat 150-410 punten op: duidelijk aanwezig, ver onder wat golf/kills
+// alleen al bijdragen. Een speler die NOOIT koopt (het uiterste, tot
+// ~€17.000 op golf 25) zou zonder plafond de score laten domineren — het
+// plafond dwingt dat af.
+//
+// Game over krijgt de HALVE koers en een lager plafond dan een geslaagde
+// ontsnapping: overleven met geld op zak moet altijd beter scoren dan
+// sterven met hetzelfde bedrag, anders beloont dit doelbewust doodgaan met
+// een vol magazijn geld.
+const GELD_SCORE_KOERS_ONTSNAPPING = 0.15;
+const GELD_SCORE_KOERS_GAME_OVER = 0.075;
+const GELD_SCORE_PLAFOND_ONTSNAPPING = 500;
+const GELD_SCORE_PLAFOND_GAME_OVER = 250;
+function geldScoreBonus(koers, plafond) {
+  return Math.min(plafond, Math.round(spelStaat.geld * koers));
+}
+
 const ONDODE_DOOD_DOOR_NAAM = {
   normaal: 'een ondode', sjouwer: 'een Sjouwer',
   brander: 'een Brander', sluiper: 'een Sluiper',
@@ -13978,7 +14009,9 @@ function gameOver() {
   bijwerkenStadsarchief();   // Ticket 86: run-einde — headshots/hoogste golf bijwerken
   document.getElementById('gameOverGolf').textContent = spelStaat.golf;
   document.getElementById('gameOverGeld').textContent = spelStaat.geld;
-  const score = berekenScore();
+  // Ticket 158 (deel A): restsaldo telt ook bij game over mee, tegen de
+  // lagere van de twee koersen (zie de toelichting bij berekenScore()).
+  const score = berekenScore(geldScoreBonus(GELD_SCORE_KOERS_GAME_OVER, GELD_SCORE_PLAFOND_GAME_OVER));
   document.getElementById('scoreTekst').textContent = score;
   const doodDoorTekst = runStats.doodDoor
     ? ` &nbsp;·&nbsp; Gevallen door: ${ONDODE_DOOD_DOOR_NAAM[runStats.doodDoor] ?? runStats.doodDoor}` : '';
@@ -15813,7 +15846,10 @@ function toonWinScherm() {
   document.getElementById('pandAdresWin').textContent = PAND_ADRES;   // Ticket 84
   document.getElementById('winGolf').textContent = spelStaat.golf;
   document.getElementById('winGeld').textContent = spelStaat.geld;
-  const score = berekenScore(1000);   // +1000 ontsnappingsbonus, vóór de moeilijkheids-scoreFactor
+  // Ticket 158 (deel A): restsaldo telt ook bij een geslaagde ontsnapping
+  // mee, bovenop de bestaande +1000 (beide vóór de moeilijkheids-
+  // scoreFactor, zie de toelichting bij berekenScore()/geldScoreBonus()).
+  const score = berekenScore(1000 + geldScoreBonus(GELD_SCORE_KOERS_ONTSNAPPING, GELD_SCORE_PLAFOND_ONTSNAPPING));
   document.getElementById('winScoreTekst').textContent = score;
   document.getElementById('winStats').innerHTML =
     `Kills: ${runStats.kills} &nbsp;·&nbsp; Headshots: ${runStats.headshots}<br>` +
@@ -16491,6 +16527,9 @@ window.AmsterdamUndeadDebug = {
   // Ticket 42: run-statistieken, score en highscore
   runStats, berekenScore, leesHighscore, schrijfHighscore, toonStartschermRecord,
   HIGHSCORE_KEY, ONDODE_DOOD_DOOR_NAAM,
+  // Ticket 158 (deel A): geld-naar-score-conversie
+  geldScoreBonus, GELD_SCORE_KOERS_ONTSNAPPING, GELD_SCORE_KOERS_GAME_OVER,
+  GELD_SCORE_PLAFOND_ONTSNAPPING, GELD_SCORE_PLAFOND_GAME_OVER,
   // Ticket 43: moeilijkheidsgraden
   MOEILIJKHEDEN, kiesMoeilijkheid, SPELER_REGEN_PER_SEC, SPELER_REGEN_VERTRAGING,
   get moeilijkheid() { return moeilijkheid; },

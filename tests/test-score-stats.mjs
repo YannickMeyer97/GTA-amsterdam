@@ -182,6 +182,12 @@ const gameOverTest = await page.evaluate(() => {
   d.runStats.kills = 3; d.runStats.headshots = 1; d.runStats.schoten = 10; d.runStats.treffers = 4;
   d.runStats.geldTotaal = 250; d.runStats.powerups = 2; d.runStats.doodDoor = 'sjouwer';
   d.spelStaat.golf = 5;
+  // Ticket 158 (deel A): gameOver() telt sinds dit ticket ook een
+  // geld-bonus mee in de score (zie tests/test-geldeconomie.mjs voor die
+  // kant) — expliciet op 0 zodat DEZE check exact de kale
+  // kills/headshots/golf-formule blijft meten, ongeacht wat eerdere
+  // secties in dit bestand al aan spelStaat.geld hebben toegevoegd.
+  d.spelStaat.geld = 0;
   d.spelStaat.gameOver = false;
   d.gameOver();
   return {

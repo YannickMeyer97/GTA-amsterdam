@@ -4773,7 +4773,65 @@ fout; T158 deel (A) is de kleinste ingreep met het grootste effect.
 - **Type:** feature (economie/balans)
 - **Verbetergebied:** 5 (Progressie en keuzes)
 - **Prioriteit:** middel
-- **Status:** open (gepland)
+- **Status:** deel (A) ✅ uitgevoerd (v0.26); deel (B) nog open (gepland,
+  wacht op een playtest-oordeel — zie "Sonnet solo" onderaan).
+
+  **Deel (A):** `geldScoreBonus(koers, plafond)` —
+  `Math.min(plafond, Math.round(spelStaat.geld * koers))` — met vier
+  constanten: `GELD_SCORE_KOERS_ONTSNAPPING` (0,15) /
+  `GELD_SCORE_PLAFOND_ONTSNAPPING` (€500) voor een geslaagde ontsnapping,
+  en een lagere `GELD_SCORE_KOERS_GAME_OVER` (0,075) /
+  `GELD_SCORE_PLAFOND_GAME_OVER` (€250) voor game over — sterven met geld
+  op zak scoort dus altijd lager dan overleven met hetzelfde bedrag. Beide
+  aanroepplekken (`toonWinScherm()`, `gameOver()`) geven de bonus door via
+  de bestaande `bonus`-parameter van `berekenScore()`, exact hetzelfde
+  patroon als de bestaande +1000-ontsnappingsbonus — geen aparte
+  moeilijkheidsuitzondering nodig, `moeilijkheid.scoreFactor` schaalt de
+  geld-term automatisch mee zoals elke andere scoreterm.
+
+  **Koers/plafond zijn gemeten, niet aangenomen** (scratch-simulatie na
+  kalibratie weer verwijderd): een "spender" die alles koopt zodra het kan
+  houdt op golf 20-25 typisch €1000-2750 over, vrijwel ongeacht
+  moeilijkheidsgraad — het randgeval-risico hierboven (Toerist met meer
+  startgeld scheeftrekken) bleek in de praktijk niet substantieel genoeg
+  om een aparte koers per moeilijkheidsgraad te rechtvaardigen. Een
+  "hoarder" (koopt niets) loopt op tot ~€16.800 op golf 25; daar vangt het
+  plafond op (bij €50.000 restsaldo blijft de bonus < 15% van de totale
+  score, ruim onder de dominantie-eis).
+
+  `tests/test-geldeconomie.mjs` (19 checks): de kale formule blijft
+  ongewijzigd zonder bonus-argument, `geldScoreBonus()`'s koers/plafond-
+  rekenwerk over een waardenbereik, de game-over-koers/-plafond zijn
+  aantoonbaar lager dan de ontsnappingsvariant, de kernbelofte via échte
+  `gameOver()`- en `toonWinScherm()`-aanroepen (identieke
+  kills/headshots/golf, verschillend restsaldo → verschillende score,
+  exact verschil geverifieerd), de plafond-dominantiegrens op golf
+  25/€50.000, en de scoreFactor-doorwerking.
+
+  **Eén bestaande test moest mee** (niet in het ticket voorzien):
+  `tests/test-ontsnapping.mjs` zette `spelStaat.geld = 5000` (na aftrek
+  van `ONTSNAPPING_PRIJS`: €2500 resterend) en verwachtte een score
+  zónder geld-bonus — brak zodra `toonWinScherm()` de nieuwe bonus
+  meetelde. Opgelost door `spelStaat.geld` naar 0 te zetten vlak vóór
+  `voltooiOntsnapping()` (ná de €2500-directe-aftrekcheck, die dat
+  restsaldo nog wél nodig heeft), zodat de bestaande +1000-bonusassertie
+  geïsoleerd blijft — dezelfde aanpak als de proactieve fix in
+  `tests/test-score-stats.mjs`'s game-over-sectie. Beide bestaande tests
+  (19/19 en 36/36 incl. `test-finale.mjs`) blijven groen.
+
+  Volledige regressie tweemaal gedraaid: 96/100 en 98/100 (4 shards).
+  Alle afwijkingen herleid tot bekende, reeds gedocumenteerde CPU-
+  contentie-flakes (`test-nachthemel.mjs`, `test-omgeving-sfeer.mjs` —
+  zelf al gedocumenteerd als klok-gevoelig sinds Ticket 78, met
+  ingebouwde herkansing —, `test-levend-water.mjs`,
+  `test-ondode-model-v2.mjs`, `test-golf1-economie.mjs`,
+  `test-texturenset.mjs`), stuk voor stuk 3/3 schoon in isolatie — geen
+  van alle een regressie.
+
+  **Deel (B)** (herbruikbaar kooppunt, geld als tempo-aankoop) is niet
+  gestart — vereist een playtest-oordeel over de oplopende prijs en het
+  randgeval rond `ONTSNAPPING_PRIJS`, zie de oorspronkelijke "Sonnet
+  solo: nee"-notitie hieronder.
 - **Afhankelijk van:** niets mechanisch, maar zie de harde randvoorwaarde
   rond `ONTSNAPPING_PRIJS` hieronder — dit ticket raakt de finale-economie
   en moet dus ná FINALE.md's model gelezen worden, niet ervoor.
