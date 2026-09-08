@@ -4768,13 +4768,87 @@ fout; T158 deel (A) is de kleinste ingreep met het grootste effect.
 
 ---
 
-## Ticket 158 — Geld houdt betekenis in de late run
+## Ticket 158 — Geld houdt betekenis in de late run ✅
 
 - **Type:** feature (economie/balans)
 - **Verbetergebied:** 5 (Progressie en keuzes)
 - **Prioriteit:** middel
-- **Status:** deel (A) ✅ uitgevoerd (v0.26); deel (B) nog open (gepland,
-  wacht op een playtest-oordeel — zie "Sonnet solo" onderaan).
+- **Status:** deel (A) ✅ en deel (B) ✅ uitgevoerd (v0.26). Deel (B) is
+  bewust **niet** gebouwd zoals dit ticket het beschreef — zie de meting
+  hieronder, die de premisse van het voorgestelde voertuig onderuit haalde.
+
+  **Deel (B) — waarom "alle barricades herstellen" niet gebouwd is.**
+  Vóór de bouw gemeten (`golfSpawnStap`/`VENSTERS`, 25 golven gesimuleerd):
+  - `golfSpawnStap()` kiest uitsluitend uit `VENSTERS`, en die lijst bevat
+    **twee** ramen — beide in dezelfde muur, 4 m uit elkaar, in de startkamer.
+    De andere drie raamlijsten krijgen wél barricades, maar worden nooit
+    gebeukt. Er zijn dus 6 beukbare planken in het hele pand, geen "rondje
+    door het gebouw".
+  - Die **6 planken sneuvelen allemaal in golf 1**. Golf 2 t/m 25: 0 planken,
+    0 beuk-events. De barricademechaniek is in de praktijk een golf-1-
+    mechaniek — een herstelknop had ná golf 1 niets te herstellen.
+  - Handmatig repareren **levert €20 per plank op** (`BARRICADE_REPARATIE_GELD`),
+    dus €120 voor alles. Een betaalde "herstel alles" zou strikt gedomineerd
+    zijn door de gratis variant die je juist geld oplevert.
+  Conclusie: het voorgestelde voertuig zou gegarandeerd dode content zijn
+  geworden. Op basis daarvan is (met akkoord van de eigenaar) gekozen voor
+  een variant die het ticketdoel wél haalt en het bestaande, feitelijk dode
+  barricadesysteem meteen nieuw leven inblaast.
+
+  **Deel (B) — wat er wél gebouwd is: barricadeversterking.** Eén herbruikbaar
+  kooppunt (`barricadeVersterkingPunt`, `WINKEL_STIJLEN.barricade`) midden
+  vóór de twee beukbare ramen — positie afgeleid uit `VENSTERS` zelf, geen
+  eigen decormesh, geen `registerObstakel`, dus `obstakels.length` blijft 58
+  en `interactiePunten` groeit met exact 1 (14 → 15). De aankoop tilt beide
+  ramen naar `BARRICADE_VERSTERKT_PLANKEN` (6), terwijl gratis repareren op
+  `BARRICADE_MAX_PLANKEN` (3) geplafonneerd blijft — daarmee is de betaalde
+  variant per constructie niet door de gratis variant te vervangen, en is de
+  dominantie die het oorspronkelijke voorstel sloopte structureel uitgesloten.
+
+  **Wat je koopt is tempo, geen kracht.** Elke intacte plank slikt één
+  spawn-stap zónder ondode (`golfSpawnStap` boekt daar geen budget voor af).
+  Gemeten op golf 20: na 10 s golf staan er zonder versterking 4 ondoden en
+  mét versterking **0**; na 20 s is dat 13 tegen **7**. De versterking is
+  volledig tijdelijk — aan het eind van de golf staan beide varianten weer op
+  0 planken, dus er is geen blijvende krachtwinst en de vijandbalans
+  (threat-budget, HP, schade) is niet aangeraakt.
+
+  **Prijscurve, geijkt op gemeten golfinkomen.** Gemeten inkomen per golf:
+  €248 (golf 3), €521 (golf 10), €923 (golf 20), €1044 (golf 25); het saldo
+  loopt pas vanaf golf ~18 op (€800-2700) omdat de eenmalige aankopen daarvóór
+  alles opslokken. `BARRICADE_VERSTERK_BASISPRIJS` 400 × factor 1,6 geeft
+  400 → 640 → 1020 → 1640 → 2620: de eerste twee zijn een makkelijk ja, de
+  derde kost een vol golfinkomen en vanaf de vierde sla je 'm bewust over.
+  Dat is precies de ticket-eis "geen belasting, maar een keuze".
+
+  **Het zwaarste randgeval is dichtgezet.** `barricadeVersterkRaaktOntsnapping()`
+  blokkeert de aankoop zodra de vluchtroute compleet is én het saldo er onder
+  `ONTSNAPPING_PRIJS` (2500) door zou zakken — de put blokkeert zichzelf in
+  plaats van alleen te waarschuwen, zodat het niet van oplettendheid afhangt.
+  Prompt én ringstatus leggen dat uit ('teDuur', geen pulserende "beschikbaar").
+
+  **Twee dingen gevonden tijdens de uitvoering:**
+  1. **`beukBarricade()`'s repareerpunt-logica moest mee.** Die gebruikte
+     `wasVol = planken >= maxPlanken` vóór het aftellen. Met een versterkte
+     barricade (6) leverde de eerste beuk daardoor een repareerpunt op dat
+     `repareerBarricade()` meteen weigert — een prompt die niets doet. Nu
+     verschijnt het punt pas zodra `planken < maxPlanken`, dus zodra
+     repareren ook echt kan. Voor de ongewijzigde situatie (max 3, nooit
+     versterkt) is dat exact hetzelfde gedrag als voorheen.
+  2. **Een vlakke tweede planklaag was op speelafstand onzichtbaar.** Eerst
+     lagen de versterkingsplanken op dezelfde hoogtes, iets naar voren — in
+     een screenshot niet van een gewone barricade te onderscheiden, terwijl
+     je wel €400+ betaalt. Nu gaan ze er als duidelijk gekruiste schoren
+     overheen (±0,38 rad, ±0,20 m verticaal, dus binnen het kozijnvlak — niet
+     de zwevende-plank-klacht van Ticket 57 terug). Visueel geverifieerd.
+
+  `tests/test-barricade-versterking.mjs` (32 checks) dekt de structuur-
+  invarianten (+1 interactiepunt, 58 obstakels, eigen markering/stijl), de
+  strikt stijgende prijscurve inclusief het "hier sla je 'm over"-punt, dat
+  gratis repareren geplafonneerd blijft, de repareerpunt-regressie hierboven
+  (incl. geen dubbele registratie), alle drie de takken van de ontsnappings-
+  drempel, de gemeten tempo-winst, en de T85-mesh-discipline (12 rondes
+  versterken + slopen voegen nul geometrieën/texturen toe).
 
   **Deel (A):** `geldScoreBonus(koers, plafond)` —
   `Math.min(plafond, Math.round(spelStaat.geld * koers))` — met vier
@@ -4869,7 +4943,10 @@ fout; T158 deel (A) is de kleinste ingreep met het grootste effect.
   toe leidt. Kleinste mogelijke ingreep met het grootste deel van het
   effect.
 
-  **Voor (B) — de laag die de keuze terugbrengt:** één herbruikbaar
+  **Voor (B) — de laag die de keuze terugbrengt** *(let op: de hieronder
+  voorgestelde VORM — bulk-herstel van barricades — is bij de uitvoering
+  verworpen op basis van een meting; zie de Status bovenaan. Het doel
+  hieronder is wél gehaald, met versterking i.p.v. herstel)*: één herbruikbaar
   kooppunt met een **oplopende** prijs, zodat het meeschaalt met rijkdom
   in plaats van een vaste aanschaf te zijn. Voorkeursvorm is een
   *tempo*-aankoop, geen *kracht*-aankoop: bijvoorbeeld alle barricades
@@ -4930,7 +5007,10 @@ fout; T158 deel (A) is de kleinste ingreep met het grootste effect.
   een zinvolle uitgave bestaat; volledige regressie.
 - **Rollback:** de score-conversiefactor op 0 zetten en het kooppunt niet
   registreren — dan valt het gedrag exact terug op vandaag.
-- **Sonnet solo:** deel (A) ja. Deel (B) nee — een nieuwe herbruikbare
+- **Sonnet solo:** deel (A) ja. Deel (B) nee — en dat bleek terecht: de
+  meting vóór de bouw haalde de premisse van het voorgestelde voertuig
+  onderuit, wat een expliciete ontwerpkeuze van de eigenaar vroeg vóór
+  er ook maar iets gebouwd werd. Oorspronkelijke redenering: een nieuwe herbruikbare
   geldput raakt de rondebalans en verdient een speelsessie-oordeel, geen
   puur headless groen vinkje.
 

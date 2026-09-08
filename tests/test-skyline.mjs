@@ -129,7 +129,7 @@ const invarianten = await page.evaluate(() => {
   return { obstakels: d.obstakels.length, interactiePunten: d.interactiePunten.length };
 });
 check('obstakels.length blijft 58 (T131-baseline; de skyline heeft geen collision)', invarianten.obstakels === 58, invarianten);
-check('interactiePunten.length blijft 14 (Ticket 134: AMSTEL-9)', invarianten.interactiePunten === 14, invarianten);
+check('interactiePunten.length blijft 15 (T134: AMSTEL-9; T158 deel B: barricadeversterking)', invarianten.interactiePunten === 15, invarianten);
 
 // --- 6. Geen enkel silhouetgebouw is een licht: puur geometrie (T113
 // voegt de emissieve raampjes pas later toe, dit ticket levert alleen de

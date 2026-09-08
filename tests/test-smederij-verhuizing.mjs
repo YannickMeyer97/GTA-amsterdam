@@ -106,8 +106,8 @@ const telling = await page.evaluate(() => window.AmsterdamUndeadDebug.interactie
 // sinds het schade-upgradepunt verwijderd is: 14 -> 13, en +1 sinds Ticket
 // 134 de AMSTEL-9 toevoegde: 13 -> 14. De strekking blijft: dit ticket
 // verplaatst de Smederij, het voegt er zelf geen toe.
-check('Er staan precies 14 interactiepunten geregistreerd (12 + De Zelflader op de vliering + Ticket 134 AMSTEL-9)',
-  telling === 14, { telling });
+check('Er staan precies 15 interactiepunten geregistreerd (12 + De Zelflader + T134 AMSTEL-9 + T158 deel B barricadeversterking)',
+  telling === 15, { telling });
 
 // --- 7. Precies één Smederij(-punt) — nooit een tweede --------------------
 const uniciteit = await page.evaluate(() => {

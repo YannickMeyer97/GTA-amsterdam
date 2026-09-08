@@ -6236,6 +6236,10 @@ const ICOON_GEO = {
   // in-hand-model.
   pistoolLoop: new THREE.BoxGeometry(0.16, 0.045, 0.05),
   pistoolGreep: new THREE.BoxGeometry(0.05, 0.14, 0.05),
+  // Ticket 158 deel B: twee gekruiste planken — het silhouet van een
+  // dichtgetimmerd raam, en daarmee onderscheidend van elk bestaand icoon
+  // hierboven (geen tweede tandwiel/sleutel-verwarring, zie de trommel).
+  plankBalk: new THREE.BoxGeometry(0.22, 0.045, 0.045),
 };
 // Ticket 89: BEWUST onder Bron (§10.5, 1,2-1,6) — de "beschikbaar"-status
 // van een winkelpunt wordt gedragen door de ringkleur/-opacity-puls
@@ -6287,6 +6291,12 @@ function bouwIcoonSleutel(g, kleur) {
   const ring = icoonMesh(ICOON_GEO.sleutelRing, kleur); ring.position.y = 1.4; g.add(ring);
   const steel = icoonMesh(ICOON_GEO.sleutelSteel, kleur); steel.position.y = 1.25; g.add(steel);
 }
+function bouwIcoonPlank(g, kleur) {
+  const balkA = icoonMesh(ICOON_GEO.plankBalk, kleur);
+  balkA.position.y = 1.35; balkA.rotation.z = 0.62; g.add(balkA);
+  const balkB = icoonMesh(ICOON_GEO.plankBalk, kleur);
+  balkB.position.y = 1.35; balkB.rotation.z = -0.62; g.add(balkB);
+}
 function bouwIcoonPistool(g, kleur) {
   const loop = icoonMesh(ICOON_GEO.pistoolLoop, kleur); loop.position.set(0.02, 1.42, 0); g.add(loop);
   const greep = icoonMesh(ICOON_GEO.pistoolGreep, kleur);
@@ -6317,6 +6327,16 @@ const WINKEL_STIJLEN = {
     status: () => pantserdrankGekocht ? 'gekocht' : (spelStaat.geld >= PANTSERDRANK_PRIJS ? 'beschikbaar' : 'teDuur') },
   watertap:     { kleur: 0x54c8e8, bouwIcoon: (g) => bouwIcoonDruppel(g, 0x54c8e8),
     status: () => spelerStaat.hp >= spelerStaat.hpMax ? 'nvt' : (spelStaat.geld >= WATERTAP_PRIJS ? 'beschikbaar' : 'teDuur') },
+  // Ticket 158 deel B: herbruikbaar, met een OPLOPENDE prijs — daarom nooit
+  // 'gekocht' (dat is de eindstatus van een eenmalige aankoop), maar wel
+  // 'nvt' zodra de barricades al volledig versterkt zijn: dan is er niets
+  // te kopen, zelfde behandeling als de Watertap bij volle HP. Een geblok-
+  // keerde ontsnappingsdrempel telt bewust als 'teDuur' — de ring hoort dan
+  // niet "beschikbaar" te pulsen voor een aankoop die T alsnog weigert
+  // (zelfde redenering als de ammo-'nvt' hierboven).
+  barricade:    { kleur: 0xe8c84a, bouwIcoon: (g) => bouwIcoonPlank(g, 0xe8c84a),
+    status: () => barricadesVolledigVersterkt() ? 'nvt'
+      : ((spelStaat.geld >= barricadeVersterkPrijs() && !barricadeVersterkRaaktOntsnapping()) ? 'beschikbaar' : 'teDuur') },
   // Ticket 134: eerste vuurwapen — status volgt `wapenStaten.drukspuit`
   // rechtstreeks (net als `ratelaarGekocht` hieronder voor de Ratelaar),
   // niet `wapenStaat`/`actiefWapenNaam` (die kunnen intussen op de Ratelaar
@@ -14503,12 +14523,59 @@ const VENSTERS_PLAATS = [
 const BARRICADE_MAX_PLANKEN = 3;
 const BARRICADE_REPARATIE_GELD = 20;
 
-function bouwBarricade(venster) {
+// --- Ticket 158 deel B: barricadeversterking als herbruikbare geldput -----
+// Gemeten uitgangspunt (de reden dat dit NIET de "herstel alles"-knop uit het
+// oorspronkelijke ticket werd): alleen de twee VENSTERS-ramen worden ooit
+// gebeukt, hun 6 planken sneuvelen allemaal in golf 1, en daarna staat de
+// barricademechaniek 24 golven lang op 0. Handmatig repareren LEVERT boven-
+// dien €20 per plank OP. Een betaalde "herstel alles" was dus strikt gedomi-
+// neerd door de gratis variant en had niets te herstellen — dode content.
+// Daarom versterkt deze aankoop BOVEN het gratis maximum uit: repareer-
+// Barricade() blijft op BARRICADE_MAX_PLANKEN (3) geplafonneerd, deze koop
+// tilt de vensters naar BARRICADE_VERSTERKT_PLANKEN (6). Wat je koopt is
+// tempo: elke intacte plank slikt één spawn-stap zonder ondode (zie
+// golfSpawnStap), dus 12 planken ≈ 13 s adempauze aan het begin van een golf
+// i.p.v. 6,6 s — en anders dan handmatig timmeren kan het midden in een golf,
+// zonder per plank stil te staan.
+const BARRICADE_VERSTERKT_PLANKEN = 6;
+// Prijscurve geijkt op gemeten golfinkomen (zie ROADMAP T158 deel B): rond
+// golf 18-25 verdient een speler €900-1100 per golf en houdt hij €800-2700
+// over. 400 -> 640 -> 1020 -> 1640 -> 2620: de eerste twee zijn een makkelijk
+// ja, de derde kost een vol golfinkomen, en vanaf de vierde sla je 'm bewust
+// over. Dat is precies de eis "geen belasting, maar een keuze".
+const BARRICADE_VERSTERK_BASISPRIJS = 400;
+const BARRICADE_VERSTERK_PRIJSFACTOR = 1.6;
+const BARRICADE_VERSTERK_LAAG_OFFSET = 0.07;   // 2e planklaag, iets de kamer in
+let barricadeVersterkingenGekocht = 0;
+function barricadeVersterkPrijs() {
+  const ruw = BARRICADE_VERSTERK_BASISPRIJS * Math.pow(BARRICADE_VERSTERK_PRIJSFACTOR, barricadeVersterkingenGekocht);
+  return Math.round(ruw / 10) * 10;   // ronde tientallen, leesbaar in de prompt
+}
+function barricadesVolledigVersterkt() {
+  return VENSTERS.every(v => v.planken >= BARRICADE_VERSTERKT_PLANKEN);
+}
+// Het belangrijkste randgeval van dit ticket: met een complete vluchtroute
+// mag deze put het saldo nooit ongemerkt onder ONTSNAPPING_PRIJS duwen —
+// dan koopt de speler zichzelf uit zijn eigen winst. De put blokkeert
+// zichzelf (i.p.v. alleen te waarschuwen), zodat het niet van oplettendheid
+// afhangt.
+function barricadeVersterkRaaktOntsnapping() {
+  if (vluchtOnderdelenOpgepakt < VLUCHT_ONDERDELEN.length) return false;
+  return spelStaat.geld - barricadeVersterkPrijs() < ONTSNAPPING_PRIJS;
+}
+
+// `versterkbaar`: alleen de VENSTERS-ramen worden ooit gebeukt én versterkt,
+// dus alleen die krijgen de extra planklaag aan meshes. De overige raamlijsten
+// (kamer2/plaats/bijkeuken) houden exact hun bestaande 3 planken — geen mesh
+// erbij voor iets dat daar nooit gebeurt.
+function bouwBarricade(venster, versterkbaar = false) {
   venster.maxPlanken = BARRICADE_MAX_PLANKEN;
   venster.planken = BARRICADE_MAX_PLANKEN;
+  venster.versterkbaar = versterkbaar;
   venster.plankMeshes = [];
   const plankMateriaal = new THREE.MeshStandardMaterial({ color: 0x5a4328, roughness: 0.85 });
-  for (let i = 0; i < BARRICADE_MAX_PLANKEN; i++) {
+  const teBouwen = versterkbaar ? BARRICADE_VERSTERKT_PLANKEN : BARRICADE_MAX_PLANKEN;
+  for (let i = 0; i < teBouwen; i++) {
     const plank = new THREE.Mesh(
       venster.spanX ? new THREE.BoxGeometry(1.1, 0.12, 0.05) : new THREE.BoxGeometry(0.05, 0.12, 1.1),
       plankMateriaal
@@ -14525,10 +14592,35 @@ function bouwBarricade(venster) {
     // overshoot, maar wel "niet kloppend" ogend, zelfde familie als de
     // zwevende-planken-klacht. `plankSpacing` laat de stapel breder uitwaaieren
     // zodat de 3 planken de volledige glashoogte overtuigend afdekken.
-    plank.position.set(venster.x, (venster.basisY ?? 1.2) + i * (venster.plankSpacing ?? 0.4), venster.z);
-    plank.rotation.z = (Math.random() - 0.5) * 0.12;   // licht scheve, haastig getimmerde look
+    // Ticket 158 deel B: de versterkingsplanken (index >= BARRICADE_MAX_PLANKEN)
+    // stapelen NIET verder omhoog — drie planken erbovenop zouden ruim boven
+    // het kozijn (en bij de lagere poorten zelfs boven de muur) uitsteken,
+    // precies de zwevende-planken-klacht die `basisY`/`plankSpacing` hierboven
+    // juist oplossen. Ze vormen een tweede laag op dezelfde hoogtes, een
+    // stukje de kamer in — de look van dubbel dichtgetimmerd.
+    const laag = Math.floor(i / BARRICADE_MAX_PLANKEN);      // 0 = basislaag, 1 = versterking
+    const rij = i % BARRICADE_MAX_PLANKEN;
+    const naarBinnen = laag * BARRICADE_VERSTERK_LAAG_OFFSET;
+    plank.position.set(
+      venster.x - (venster.spanX ? 0 : Math.sign(venster.x) * naarBinnen),
+      (venster.basisY ?? 1.2) + rij * (venster.plankSpacing ?? 0.4),
+      venster.z - (venster.spanX ? Math.sign(venster.z) * naarBinnen : 0)
+    );
+    // De basislaag blijft licht scheef en vrijwel horizontaal (haastig
+    // getimmerd). De versterkingslaag gaat er als DUIDELIJK gekruiste schoren
+    // overheen — een vlakke tweede laag op dezelfde hoogtes was op speel-
+    // afstand niet van een gewone barricade te onderscheiden, en dan zie je
+    // niet wat je voor je geld koopt. De schuinte blijft klein genoeg
+    // (±0.38 rad over 1,1 m = ±0,20 m) om binnen het kozijnvlak te blijven,
+    // dus niet de zwevende-plank-klacht van Ticket 57 terug.
+    plank.rotation.z = laag === 0
+      ? (Math.random() - 0.5) * 0.12
+      : (rij % 2 === 0 ? 1 : -1) * (0.38 + (Math.random() - 0.5) * 0.06);
     plank.castShadow = true;
-    wereld.add(plank);
+    // Alleen de basislaag hangt meteen in de wereld; de versterkingsplanken
+    // bestaan al (mesh-telling constant, T85) maar hangen er pas in zodra ze
+    // gekocht zijn — zelfde add/remove-boekhouding als beuk/repareer.
+    if (i < BARRICADE_MAX_PLANKEN) wereld.add(plank);
     venster.plankMeshes.push(plank);
   }
   venster.interactiePunt = {
@@ -14545,12 +14637,21 @@ function bouwBarricade(venster) {
 // de barricade voor het eerst schade heeft.
 function beukBarricade(venster) {
   if (venster.planken <= 0) return;   // al helemaal kapot; niets meer te beuken
-  const wasVol = venster.planken >= venster.maxPlanken;
   venster.planken--;
   const mesh = venster.plankMeshes[venster.planken];
   if (mesh) wereld.remove(mesh);
   speelPlankBreek(venster.x, venster.z);
-  if (wasVol) interactiePunten.push(venster.interactiePunt);
+  // Ticket 158 deel B: het repareerpunt hoort er pas in zodra handmatig
+  // repareren ook echt KAN, dus onder maxPlanken (3) — niet zodra er ook maar
+  // iets gesloopt is. Dat verschil bestond vóór dit ticket niet (planken kon
+  // nooit boven 3 komen, dus "was vol" == "kan repareren"), maar met een
+  // versterkte barricade (6) zou de oude wasVol-vorm een repareerpunt
+  // opleveren dat repareerBarricade() meteen weigert: een prompt die niets
+  // doet. Het `includes`-vangnet houdt 'm uniek, net als de oude eenmalige
+  // push (deze array telt ~15 punten; dit gebeurt hooguit een paar keer per golf).
+  if (venster.planken < venster.maxPlanken && !interactiePunten.includes(venster.interactiePunt)) {
+    interactiePunten.push(venster.interactiePunt);
+  }
 }
 
 // Speler herstelt één plank: +€20, en zodra de barricade weer compleet is
@@ -14570,7 +14671,42 @@ function repareerBarricade(venster) {
   updateHUD();
 }
 
-for (const venster of [...VENSTERS, ...VENSTERS_KAMER2, ...VENSTERS_PLAATS, ...VENSTERS_BIJKEUKEN]) bouwBarricade(venster);
+for (const venster of VENSTERS) bouwBarricade(venster, true);
+for (const venster of [...VENSTERS_KAMER2, ...VENSTERS_PLAATS, ...VENSTERS_BIJKEUKEN]) bouwBarricade(venster, false);
+
+// Ticket 158 deel B: één venster naar de versterkte stand tillen. Spiegelt de
+// mesh-boekhouding van repareerBarricade() (mesh op index `planken` erin, dán
+// ophogen), maar zonder de €20 — dit is een aankoop, geen klus.
+function versterkBarricade(venster) {
+  if (!venster.versterkbaar) return;
+  while (venster.planken < BARRICADE_VERSTERKT_PLANKEN) {
+    const mesh = venster.plankMeshes[venster.planken];
+    if (mesh && !mesh.parent) wereld.add(mesh);
+    venster.planken++;
+  }
+  // Boven maxPlanken kan handmatig repareren niets meer, dus het repareerpunt
+  // moet weg — anders blijft er een prompt staan die wordt geweigerd.
+  const pi = interactiePunten.indexOf(venster.interactiePunt);
+  if (pi !== -1) interactiePunten.splice(pi, 1);
+}
+
+function koopBarricadeVersterking() {
+  if (barricadesVolledigVersterkt()) { toonMelding('De barricades zijn al versterkt'); return; }
+  const prijs = barricadeVersterkPrijs();
+  if (spelStaat.geld < prijs) { toonMelding(`Nog €${prijs - spelStaat.geld} nodig`); speelGeenGeld(); return; }
+  if (barricadeVersterkRaaktOntsnapping()) {
+    toonMelding(`Niet nu — je houdt dan minder dan €${ONTSNAPPING_PRIJS} over voor de boot`);
+    speelGeenGeld();
+    return;
+  }
+  spelStaat.geld -= prijs;
+  barricadeVersterkingenGekocht++;
+  for (const venster of VENSTERS) versterkBarricade(venster);
+  speelKoop();
+  flitsMarkering(barricadeMarkering);
+  toonMelding(`Barricades versterkt — ${BARRICADE_VERSTERKT_PLANKEN} planken per raam`);
+  updateHUD();
+}
 
 // Golf-gestuurde spawn (zie updateGolf): kiest een venster; is die
 // gebarricadeerd, dan wordt er eerst op de planken gebeukt (geen ondode
@@ -14656,6 +14792,16 @@ wereld.add(ammoBand);
 const ammoMarkering = winkelMarkering(3, -2, 'ammo');
 
 const deurMarkering = winkelMarkering(0, DEUR_Z + 0.7, 'deur1');
+
+// Ticket 158 deel B: het versterkingspunt staat midden vóór de twee ramen die
+// daadwerkelijk gebeukt worden — afgeleid uit VENSTERS zelf, zodat het punt
+// meeverhuist als die lijst ooit verandert, en een meter de kamer in zodat je
+// er niet ín het kozijn voor hoeft te gaan staan. Bewust geen eigen decormesh
+// en geen registerObstakel: obstakels.length blijft 58 (ticket-eis) en de
+// speler kijkt bij de start al recht op deze plek.
+const BARRICADE_PUNT_X = VENSTERS.reduce((som, v) => som + v.x, 0) / VENSTERS.length;
+const BARRICADE_PUNT_Z = VENSTERS[0].z - 1;
+const barricadeMarkering = winkelMarkering(BARRICADE_PUNT_X, BARRICADE_PUNT_Z, 'barricade');
 
 // Dooft een interactiemarkering naar grijs (Ticket V7): visuele hint dat een
 // eenmalige aankoop hier niets meer te doen heeft.
@@ -15144,6 +15290,21 @@ const deur2Punt = {
   radius: 1.6,
   prompt: () => `Druk T: forceer de deur (€${DEUR2_PRIJS})`,
   actie: koopDeur2,
+};
+// Ticket 158 deel B: de prompt noemt altijd de ACTUELE (oplopende) prijs, en
+// legt bij een blokkade uit waarom er niets gebeurt — de speler mag nooit
+// tegen een dode T-toets aanlopen zonder reden (zelfde lijn als de
+// ammo-'nvt'-prompt en "HP is al vol" hieronder).
+const barricadeVersterkingPunt = {
+  naam: 'Barricadeversterking',
+  positie: new THREE.Vector3(BARRICADE_PUNT_X, 0, BARRICADE_PUNT_Z),
+  radius: 1.8,
+  prompt: () => barricadesVolledigVersterkt()
+    ? `Barricades zijn versterkt (${BARRICADE_VERSTERKT_PLANKEN}/${BARRICADE_VERSTERKT_PLANKEN} per raam)`
+    : (barricadeVersterkRaaktOntsnapping()
+      ? `Te duur nu — je houdt dan minder dan €${ONTSNAPPING_PRIJS} over voor de boot`
+      : `Druk T: barricades versterken (€${barricadeVersterkPrijs()} -> ${BARRICADE_VERSTERKT_PLANKEN} planken per raam)`),
+  actie: koopBarricadeVersterking,
 };
 const watertapPunt = {
   naam: 'Watertap',
@@ -15891,7 +16052,7 @@ function toonVluchtOnderdelenIndienDrempel() {
   }
 }
 
-const interactiePunten = [deurPunt, ammoPunt, werkbankPunt, pantserdrankPunt, deur2Punt, watertapPunt, ratelaarPunt, amstel9Punt, smederijPunt, deur3Punt, deur4Punt, deur5Punt, deur6Punt, autoHerladerPunt];
+const interactiePunten = [deurPunt, ammoPunt, werkbankPunt, pantserdrankPunt, deur2Punt, watertapPunt, ratelaarPunt, amstel9Punt, smederijPunt, deur3Punt, deur4Punt, deur5Punt, deur6Punt, autoHerladerPunt, barricadeVersterkingPunt];
 
 let huidigeInteractie = null;
 
@@ -16822,6 +16983,13 @@ window.AmsterdamUndeadDebug = {
   // Ticket 70: dispose-contract voor wegwerp-objecten (voor tests: cache-skip + explosie-opruimtimer)
   ruimGroepOp, explosies, updateExplosies, EXPLOSIE_FLITS_DUUR,
   BARRICADE_MAX_PLANKEN, BARRICADE_REPARATIE_GELD, bouwBarricade,
+  // Ticket 158 deel B
+  BARRICADE_VERSTERKT_PLANKEN, BARRICADE_VERSTERK_BASISPRIJS, BARRICADE_VERSTERK_PRIJSFACTOR,
+  barricadeVersterkPrijs, barricadesVolledigVersterkt, barricadeVersterkRaaktOntsnapping,
+  versterkBarricade, koopBarricadeVersterking, barricadeVersterkingPunt, barricadeMarkering,
+  BARRICADE_PUNT_X, BARRICADE_PUNT_Z,
+  get barricadeVersterkingenGekocht() { return barricadeVersterkingenGekocht; },
+  set barricadeVersterkingenGekocht(v) { barricadeVersterkingenGekocht = v; },
   beukBarricade, repareerBarricade, golfSpawnStap,
   kozijnSteeg, glasSteeg,   // Ticket 57: nieuw kozijn voor de steegdeur
   // v0.4: atelier (kamer 2) vergroot tot een L-vorm met een voorraadnis:

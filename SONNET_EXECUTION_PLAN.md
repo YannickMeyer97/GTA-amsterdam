@@ -4912,7 +4912,7 @@ aan T159's `inslagsporen`-vlag (uit op `laag`) zoals gepland.
 
 ---
 
-### Ticket 158 — Geld houdt betekenis in de late run (deel A ✅ uitgevoerd, v0.26; deel B open)
+### Ticket 158 — Geld houdt betekenis in de late run ✅ uitgevoerd (v0.26, deel A + deel B)
 
 **Doel.** Voorkomen dat geld ophoudt een beslissing te zijn, en dat
 overschot naar niets converteert.
@@ -4982,6 +4982,31 @@ zo'n aanpassing als bij elk eerder ticket dit seizoen dat `berekenScore()`
 raakte. Volledige regressie tweemaal groen (96/100, 98/100), alle
 afwijkingen bekende CPU-contentie-flakes, 3/3 schoon in isolatie. Deel
 (B) is niet gestart.
+
+**Nawoord (deel B).** Deel (B) is NIET het bulk-herstel geworden dat dit plan
+beschrijft. Meting vóór de bouw: `golfSpawnStap()` beukt alleen op `VENSTERS`,
+en die lijst telt twee ramen in dezelfde muur (6 planken); die 6 sneuvelen
+allemaal in golf 1, waarna de mechaniek 24 golven op 0 staat; en handmatig
+repareren lévert €20 per plank op. Een betaalde herstelknop was dus strikt
+gedomineerd door een gratis, geld-opleverende actie én had na golf 1 niets te
+herstellen — gegarandeerd dode content. Dat is precies het soort premissefout
+dat de "Sonnet solo: nee"-markering hier moest opvangen, en het is als
+ontwerpkeuze aan de eigenaar voorgelegd voordat er code geschreven werd.
+
+Wat er wél staat: een herbruikbaar versterkingspunt dat de twee ramen naar 6
+planken tilt terwijl gratis repareren op 3 geplafonneerd blijft — daarmee is
+dominantie door de gratis variant structureel uitgesloten in plaats van
+weggebalanceerd. Wat je koopt is tempo: elke intacte plank slikt één spawn-stap
+zonder ondode, gemeten op golf 20 als 0 vs 4 ondoden na 10 s en 7 vs 13 na 20 s,
+en volledig tijdelijk (beide eindigen op 0 planken). Prijs 400 × 1,6 per gebruik
+(400/640/1020/1640/2620), geijkt op gemeten golfinkomen (€923 op golf 20,
+€1044 op golf 25): twee comfortabele aankopen, dan een die een vol golfinkomen
+kost, daarna sla je 'm over. De ontsnappingsdrempel blokkeert de put zichzelf
+zodra de vluchtroute compleet is. Twee dingen kwamen pas bij het bouwen boven:
+`beukBarricade()`'s repareerpunt moest van "was vol" naar "kan repareren"
+(anders een prompt die niets doet zodra je versterkt bent), en een vlakke
+tweede planklaag bleek op speelafstand onzichtbaar — nu gekruiste schoren,
+visueel geverifieerd. `tests/test-barricade-versterking.mjs`: 32 checks.
 
 ---
 
