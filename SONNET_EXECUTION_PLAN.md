@@ -5117,6 +5117,183 @@ poortwachters.
 
 ---
 
+# Ronde 13 (v0.27) — Het Stadsarchief als winkel
+
+Volledige tickets staan in `ROADMAP.md` onder "v0.27 — Ronde 13"; hieronder
+staat alleen wat een uitvoerder nodig heeft.
+
+Anders dan ronde 12 is de volgorde hier **verplicht**: elk ticket levert het
+fundament voor het volgende.
+
+```
+T160 (fundament)  — opslag, twee valuta, migratie      | headless
+T161 (catalogus)  — ARCHIEF_ITEMS + toepassingshaken   | headless
+T162 (winkel-UI)  — het paneel in het startscherm      | + screenshot
+T163 (feedback)   — eindschermen + prijskalibratie     | + speeltoets
+```
+
+**De twee regels die deze hele ronde beheersen.**
+
+> **1. Niets mechanisch.** De verbodenlijst uit §9.2 geldt onverkort. Geen
+> item raakt `SPELER_HP_MAX`, een `*_PRIJS`, `GELD_PER_HIT`/`GELD_PER_KILL`,
+> `schadePerTreffer` of enig ander balansgetal. T161 bewaakt dit met een
+> bron-assertie, niet met een belofte.
+
+> **2. Geld is de prijs, punten zijn de sleutel.** Archiefgeld (restgeld na
+> een geslaagde ontsnapping) is het enige betaalmiddel. Mijlpaalpunten
+> worden nooit uitgegeven — ze bepalen alleen welke schappen zichtbaar zijn,
+> en lopen op bij élke run, ook een game over.
+
+**Gemeten uitgangspunt.** Restgeld na een geslaagde ontsnapping loopt van
+€233 (vroegste boot, golf 10) tot €10.195 (golf 22) — spreiding 40×. De
+prijsladder moet dat aankunnen: goedkope items bereikbaar na één vroege
+ontsnapping, prestige-items pas na een late. Bijvangst van dezelfde meting:
+wie álle upgrades koopt kan nooit ontsnappen (golf 22: €1.667 van de €2.500).
+Dat laatste is een bestaande balansobservatie, geen werk in deze ronde.
+
+---
+
+### Ticket 160 — Archieffundament
+
+**Doel.** Opslag met twee valuta die migreert zonder iets af te pakken.
+
+**Positie.** Eerst. T161-T163 kunnen niet zonder.
+
+**Werk.**
+- `geld` (integer) en `gekocht` (array van id's) toevoegen aan
+  `STADSARCHIEF_KEY`, met vormvalidatie veld voor veld.
+- `mijlpaalpunten(archief)` als pure functie over de bestaande statistieken.
+- Restgeld bijschrijven bij een geslaagde ontsnapping; bij game over alleen
+  de statistieken bijwerken.
+
+**Buiten scope.** Catalogus, UI, eindschermen. Punten uitgeven.
+
+**Acceptatie.**
+- Oud archief (zonder `geld`/`gekocht`) leest schoon, en al ontgrendelde
+  cosmetica staan daarna in `gekocht`.
+- Corrupte varianten (`'{}'`, `'null'`, tekst, `geld` als string/NaN/negatief)
+  geven een lege maar geldige staat.
+- `mijlpaalpunten()` is puur en monotoon.
+- Nul writes tijdens een golf.
+
+**Valkuil.** De migratie is het hele ticket. Een speler die kleurset,
+vlamtint en intromelodie al verdiend heeft en ze na de update kwijt is,
+is een regressie die geen enkele bestaande test vangt — schrijf die
+migratiematrix eerst.
+
+**Uitvoeringsadvies.** Sonnet 5 · High · extended thinking Default. Puur
+opslag- en validatiewerk met een objectieve matrix; zelfde familie als T74/
+T75. Review: automatische tests. Vertrouwen: hoog.
+
+---
+
+### Ticket 161 — De itemcatalogus
+
+**Doel.** Eén tabel waarin een nieuw item één regel is.
+
+**Positie.** Na T160, vóór elke UI.
+
+**Werk.**
+- `ARCHIEF_ITEMS` in de geest van `WINKEL_STIJLEN`/`ARSENAAL`: `id`, `naam`,
+  `categorie`, `prijs`, `puntenEis`, toepassingshaak.
+- De drie bestaande cosmetica worden gewone catalogusregels, met exact
+  ongewijzigd gedrag.
+- Richtwaarde 20-24 items over 5-6 categorieën, meerdere varianten per
+  categorie (de mondingsvlam in een reeks kleuren, niet één "vlam"-item).
+
+**Buiten scope.** UI (T162), definitieve prijzen (T163 — hier voorlopig).
+
+**Acceptatie.**
+- Unieke id's, eindige prijzen, geldige drempels.
+- Bron-assertie: geen toepassingshaak schrijft naar een §9.2-constante.
+- Elke ondode-kleurset haalt de T156-leesbaarheidsdrempel, in beide
+  lichtstanden.
+- `test-stadsarchief.mjs` blijft **ongewijzigd** groen.
+- Lichten 28, `obstakels` ongewijzigd, resourcecontract heel.
+
+**Valkuil.** Ondode-cosmetica. De eigenaar heeft die alleen toegestaan mét
+een geautomatiseerde leesbaarheidsgrens: Brander, Sjouwer en Sluiper moeten
+in grijswaarden herkenbaar blijven, óók tijdens een Stroomuitval. Schrijf
+die test vóór de eerste kleurset — exact zoals T156 het voordeed, inclusief
+de twee meetvallen die daar gedocumenteerd staan (`loopFase` koppelt aan
+afgelegde afstand, `stroomFactor` herstelt zichzelf).
+
+**Uitvoeringsadvies.** Sonnet 5 · xhigh · extended thinking On. De tabel is
+routine, de leesbaarheidsgrens niet. *Escaleer naar Opus 5 xhigh* wanneer
+een gewenste kleurset de drempel niet haalt zonder de tint onherkenbaar te
+maken — dan is het een ontwerpafweging, geen implementatiefout. Review:
+automatische tests. Vertrouwen: gemiddeld.
+
+---
+
+### Ticket 162 — De winkel in het startscherm
+
+**Doel.** 20+ items bedienbaar maken in een scherm dat al twee knoppenrijen
+draagt.
+
+**Positie.** Na T161.
+
+**Werk.**
+- Winkelpaneel met categorieën; vier itemtoestanden: vergrendeld (mét
+  zichtbare drempel), te duur, koopbaar, in bezit (met aan/uit).
+- Saldo en punten in beeld.
+- `tekenArchiefWinkel()` in de geest van `tekenKwaliteitKnoppen()` (T159).
+
+**Buiten scope.** Eindschermen (T163), nieuwe items.
+
+**Acceptatie.**
+- Vier toestanden zichtbaar verschillend en per item correct.
+- Aankoop boekt exact één keer af en overleeft een herladen.
+- Aan/uit werkt zonder herladen.
+- Een klik in het paneel start het spel niet.
+
+**Valkuil.** `e.stopPropagation()` op elke knop — zonder dat start een klik
+in de overlay het spel (T159 liep hier tegenaan). Tweede valkuil: het
+startscherm is óók het pauzescherm, dus het paneel moet passen of binnen
+zichzelf scrollen.
+
+**Uitvoeringsadvies.** Sonnet 5 · High · extended thinking Default. Bekend
+UI-patroon uit T159, alleen groter. Review: automatische tests **plus** een
+screenshot-beoordeling van de indeling. Vertrouwen: hoog voor het gedrag,
+gemiddeld voor de vormgeving.
+
+---
+
+### Ticket 163 — Verdienfeedback en prijskalibratie
+
+**Doel.** De lus sluiten en de ladder ijken.
+
+**Positie.** Laatst.
+
+**Werk.**
+- Beide eindschermen tonen bijgeschreven geld, verdiende punten en — met
+  nadruk — welk schap daarmee openging.
+- Prijzen en drempels ijken tegen de gemeten restgeldtabel.
+
+**Buiten scope.** Nieuwe items. Elke wijziging aan `berekenScore()`.
+
+**Acceptatie.**
+- Beide eindpaden tonen geld én punten, ook bij €0.
+- Een run die een schap ontgrendelt meldt dat expliciet.
+- Na één vroege ontsnapping (€233) is minstens één item bereikbaar; de
+  duurste vragen aantoonbaar een late ontsnapping.
+- Bron-assertie: de kalibratie raakt geen §9.2-constante.
+
+**Valkuil.** Dit ticket is de directe les uit het vervallen T158 deel B.
+Die mechaniek haalde alle 32 geautomatiseerde checks en sneuvelde alsnog,
+omdat de speler de waarde ervan nooit kon leren zien. Een winkel die je niet
+ziet vullen, gebruik je niet. Behandel de feedbackregel dus als de kern van
+dit ticket, niet als versiering — en houd het "nieuw schap open"-bericht
+nadrukkelijker dan welk getal ook.
+
+**Uitvoeringsadvies.** Sonnet 5 · High voor de feedbackregels (klein en
+objectief). Voor de prijsladder: de getallen zijn te meten, maar of het
+tempo lekker voelt is een speeltoets door de eigenaar — zelfde voorbehoud
+als bij T158. Vertrouwen: hoog voor de feedback, laag voor het tempo tot er
+gespeeld is.
+
+---
+
 ## Risicoregister — Ronde 11
 
 | # | Risico | Kans | Impact | Mitigatie |

@@ -4382,12 +4382,20 @@ Y-invariant, en zijn het minst vergevingsgezind.
 
 ---
 
-## Ticket 86 — Het stadsarchief
+## Ticket 86 — Het stadsarchief ✅
 
 - **Type:** feature (meta-progressie)
 - **Verbetergebied:** 5 (Meta-progressie zonder powercreep)
 - **Prioriteit:** middel
-- **Status:** open (gepland)
+- **Status:** ✅ uitgevoerd — **statuscorrectie**: dit ticket stond hier ten
+  onrechte nog als "open (gepland)", terwijl het gebouwd én getest is
+  (`tests/test-stadsarchief.mjs`, 40 checks groen). In de code:
+  `STADSARCHIEF_KEY` (`amsterdamUndeadArchief`) met `ontsnappingen`,
+  `headshotsTotaal` en `hoogsteGolf`, drie drempels
+  (`STADSARCHIEF_DREMPEL_*`) en drie cosmetische varianten — kleurset
+  (blauwe waas over de ondode-huidskleur), vlamtint (violette mondingsvlam)
+  en intromelodie — bedienbaar via `#archiefUI` op het startscherm.
+  Ontdekt tijdens de ontwerpsessie van Ronde 13, die hier bovenop bouwt.
 - **Afhankelijk van:** —
 - **Doel:** een reden om terug te komen die de balans niet kan raken:
   cosmetische ontgrendelingen over meerdere runs heen.
@@ -5278,6 +5286,316 @@ map-lus/kelder/gracht-ronde en blijft staan als historisch document).
 - geen grote rewrite, geen gedeelde engine in v1
 - geen externe assets; elke game blijft single-file
 - elke stap eerst testen (headless + handmatig) voordat die naar main gaat
+
+# v0.27 — Ronde 13: Het Stadsarchief als winkel (gepland, nog NIET geïmplementeerd)
+
+Herkomst: de eigenaar vond het bestaande Stadsarchief (T86) "een beetje
+random" — en dat klopt: het zijn drie losse cosmetische schakelaars achter
+drie losse mijlpalen, zonder economie, keuze of opbouw. Deze ronde maakt er
+een echte winkel van in het startscherm, met een ruime catalogus.
+
+**Wat deze ronde NIET is.** Geen powercreep. De verbodenlijst uit §9.2
+blijft onverkort gelden — geen enkel item raakt `SPELER_HP_MAX`, een
+`*_PRIJS`, `GELD_PER_HIT`/`GELD_PER_KILL`, `schadePerTreffer` of welk
+balansgetal dan ook. Alles wat je koopt is cosmetisch. Dat is een expliciete
+keuze van de eigenaar, en T161 bewaakt 'm met een bron-assertie.
+
+**De twee valuta, en waarom ze verschillende dingen doen.**
+- **Archiefgeld** is de portemonnee: het restgeld dat je na een geslaagde
+  ontsnapping overhoudt, opgeteld over runs heen. Dit dicht meteen een gat
+  dat sinds T158 openstaat: restgeld boven ~€3.333 levert nu niets meer op,
+  want daar plafonneert de score-conversie.
+- **Mijlpaalpunten** zijn de sleutel, geen betaalmiddel: ze bepalen WELKE
+  schappen zichtbaar zijn. Ze lopen op bij élke run, ook een game over, uit
+  de statistieken die het archief nu al bijhoudt.
+
+Zo krijgt elk van de twee een eigen rol: prestaties openen nieuwe schappen,
+geld koopt wat erin ligt. Dat voorkomt de val dat twee beurzen hetzelfde
+doen en je bij elk item moet uitleggen waarom je met de ene en niet met de
+andere betaalt.
+
+**Gemeten uitgangspunten** (simulatie, moeilijkheid Amsterdammer, ondoden
+insta-kill zodat het inkomenstempo los staat van combat-realisme):
+
+| golf | spender: op zak / rest na boot | spaarder: op zak / rest na boot |
+|---|---|---|
+| 10 | €291 — kan niet weg | €2.733 / **€233** |
+| 14 | €271 — kan niet weg | €5.395 / **€2.895** |
+| 18 | €647 — kan niet weg | €8.685 / **€6.185** |
+| 22 | €1.667 — kan niet weg | €12.695 / **€10.195** |
+
+Twee dingen die het ontwerp sturen. **(1)** Het restgeld na een ontsnapping
+loopt van €233 tot €10.195 — een spreiding van 40×. De prijsladder moet die
+spreiding aankunnen: goedkope items die na één vroege ontsnapping bereikbaar
+zijn, dure prestige-items die een late ontsnapping belonen. Dat maakt "nog
+één golf doorspelen vóór ik de boot pak" vanzelf een echte afweging.
+**(2)** Wie álle upgrades koopt kan nooit ontsnappen (op golf 22 nog steeds
+maar €1.667, ruim onder de €2.500-drempel). Dat is een bestaande
+balansobservatie, geen onderdeel van deze ronde — apart genoteerd onder
+"Losse bevindingen" hieronder.
+
+**Volgorde is hier wél verplicht**, anders dan in ronde 12: T160 → T161 →
+T162 → T163. Elk ticket levert het fundament voor het volgende, en T160 en
+T161 zijn allebei volledig headless testbaar vóór er één pixel UI bestaat.
+
+---
+
+## Ticket 160 — Archieffundament: twee valuta, opslag en migratie
+
+- **Type:** feature (meta-progressie/opslag)
+- **Verbetergebied:** 5 (Progressie en keuzes)
+- **Prioriteit:** hoog (fundament voor T161-T163)
+- **Status:** open (gepland)
+- **Afhankelijk van:** T86 (bestaat al, zie de statuscorrectie daar), T158
+  deel A (de score-conversie waarvan dit ticket het plafondgat dicht).
+- **Doel:** een betrouwbare, migreerbare opslag met twee valuta, zodat
+  T161-T163 alleen nog over inhoud en UI hoeven te gaan.
+- **Huidige situatie:** `STADSARCHIEF_KEY` (`amsterdamUndeadArchief`) bevat
+  `{ ontsnappingen, headshotsTotaal, hoogsteGolf, actief:{...} }`.
+  `stadsarchiefOntgrendelingen()` leidt daar drie booleans uit af. Er is
+  geen saldo, geen aankoopadministratie en geen puntbegrip.
+- **Gewenste situatie:** hetzelfde bestand, uitgebreid met `geld` (integer,
+  archiefsaldo) en `gekocht` (lijst item-id's). Plus een pure functie
+  `mijlpaalpunten(archief)` die uit de bestaande statistieken één oplopend
+  getal maakt, en de bijschrijving van restgeld bij een geslaagde
+  ontsnapping.
+- **Codegebieden:** `leesStadsarchief()`/`schrijfStadsarchief()`,
+  `bijwerkenStadsarchief()`, `voltooiOntsnapping()` (de bijschrijving),
+  `stadsarchiefOntgrendelingen()`.
+- **Buiten scope:** de itemcatalogus (T161), elke UI (T162), de
+  eindschermkoppeling (T163). Ook: het uitgeven van punten — punten zijn een
+  drempel, geen betaalmiddel.
+- **Randgevallen:**
+  - **Migratie van een bestaand archief mag niets afpakken.** Een speler die
+    kleurset/vlamtint/intromelodie al ontgrendeld heeft, moet die na de
+    migratie BEZITTEN (in `gekocht`), niet opnieuw hoeven kopen. Dit is het
+    zwaarste randgeval van dit ticket.
+  - **Ontbrekende velden zijn geen corruptie.** `geld` afwezig ⇒ 0,
+    `gekocht` afwezig ⇒ lege lijst. Bestaand contract uit T86: onbekende
+    sleutels worden GENEGEERD, niet als corrupt behandeld.
+  - **Vormvalidatie veld voor veld**, zoals `leesHighscore()` (T74): `geld`
+    moet een eindig, niet-negatief geheel getal zijn; `gekocht` een array
+    van strings. Bij twijfel de veilige default, nooit een crash.
+  - **`geld` kent een bovengrens** zodat een corrupte of gemanipuleerde
+    opslag geen onleesbare bedragen in de UI zet.
+  - **Alleen schrijven op run-einde**, nooit tijdens het spelen (bestaande
+    performancevoorwaarde uit T86).
+  - `localStorage` kan ontbreken/geweigerd zijn: `try/catch` om elke
+    toegang, stille fallback.
+- **Performancevoorwaarden:** geen; dit is opslaglogica. Nul writes tijdens
+  een golf.
+- **Acceptatiecriteria:**
+  - Een archief in het OUDE formaat (zonder `geld`/`gekocht`) leest zonder
+    fout, en de drie al ontgrendelde cosmetica staan daarna in `gekocht`.
+  - Corrupte opslag (`'{}'`, `'[]'`, `'null'`, willekeurige tekst, `geld`
+    als string/NaN/negatief) geeft een lege maar geldige staat.
+  - Een geslaagde ontsnapping schrijft exact het restsaldo bij; een game
+    over schrijft €0 bij maar verhoogt de mijlpaalstatistieken wél.
+  - `mijlpaalpunten()` is een pure functie en loopt monotoon op: geen enkele
+    runuitkomst kan het totaal laten dalen.
+  - Volledige regressie blijft groen.
+- **Testplan:** nieuw `tests/test-archief-fundament.mjs` met de
+  migratiematrix (oud formaat, leeg, corrupt, deels gevuld, onbekende
+  sleutels), de bijschrijving op beide eindpaden, en de monotonie van
+  `mijlpaalpunten()`. Model: `test-faalmodi.mjs` + `test-muisgevoeligheid.mjs`.
+- **Rollback:** de nieuwe velden niet lezen; het archief valt terug op T86-gedrag.
+- **Sonnet solo:** ja — volledig headless toetsbaar, en de migratiematrix is
+  objectief.
+
+---
+
+## Ticket 161 — De itemcatalogus
+
+- **Type:** feature (inhoud/architectuur)
+- **Verbetergebied:** 5 (Progressie en keuzes)
+- **Prioriteit:** hoog
+- **Status:** open (gepland)
+- **Afhankelijk van:** T160.
+- **Doel:** één centrale tabel die beschrijft wat er te koop is en hoe een
+  item zich toepast, zodat een nieuw item toevoegen één tabelregel is.
+- **Huidige situatie:** de drie cosmetica zitten als losse `if`-takken door
+  de code (`stadsarchiefOntgrendelingen().vlamTint && ...` op drie plekken:
+  mondingsvlam, ondode-huidskleur, intromelodie). Elk nieuw item zou een
+  vierde, vijfde en zesde losse tak betekenen.
+- **Gewenste situatie:** `ARCHIEF_ITEMS`, in dezelfde geest als
+  `WINKEL_STIJLEN` en `ARSENAAL`: per item een `id`, `naam`, `categorie`,
+  `prijs`, `puntenEis` en een toepassingshaak. De drie bestaande cosmetica
+  worden gewone catalogusregels, met exact ongewijzigd gedrag voor wie ze al
+  bezit. Richtwaarde **20-24 items over 5-6 categorieën**, met per categorie
+  meerdere varianten (bijvoorbeeld de mondingsvlam in een reeks kleuren) —
+  verzamelbaar, niet één item per categorie.
+- **Codegebieden:** het T86-blok, `updateWapenPresentatie()` (vlamtint),
+  de ondode-huidskleurregel, `speelIntroMelodie()`, en de nieuwe tabel.
+- **Buiten scope:** de UI (T162). Prijskalibratie (T163) — in dit ticket
+  krijgen items voorlopige prijzen, expliciet gemarkeerd als "nog te ijken".
+- **Randgevallen:**
+  - **De verbodenlijst uit §9.2 is een TESTEIS, geen belofte.** Een
+    bron-assertie moet aantonen dat geen enkele toepassingshaak naar een
+    balansconstante schrijft. Zelfde soort assertie als "nergens in het
+    bestand staat nog een setTimeout-vervolgtoon" (T-audio).
+  - **Ondode-kleursets mogen het type-onderscheid niet slopen.** Brander,
+    Sjouwer en Sluiper moeten herkenbaar blijven, óók in grijswaarden en
+    óók tijdens een Stroomuitval. De meetmethode uit T156
+    (`test-brander-leesbaarheid.mjs`) is hier het gereedschap: elke
+    ondode-kleurset moet die drempel halen. Dit is de reden dat de eigenaar
+    ondode-cosmetica alleen mét geautomatiseerde grens wilde.
+  - **Emissie-hiërarchie (§10.5) blijft gelden** voor elke kleur die op een
+    emissief materiaal landt: een cosmetisch item mag geen Accent naar
+    Bron-niveau tillen.
+  - **Gedeelde materialen blijven gedeeld.** `userData.gedeeld = true`
+    betekent dat een tint niet per instantie mag variëren; items die daarop
+    landen zetten de kleur globaal of niet.
+  - **Een onbekend item-id in `gekocht` wordt genegeerd**, niet als corrupt
+    behandeld — anders sloopt een teruggerolde versie de aankopen.
+  - **Id's zijn voor eeuwig.** Een id hernoemen is een migratieprobleem;
+    de tabel legt dat expliciet vast.
+- **Performancevoorwaarden:** de catalogus alloceert niets per frame. Een
+  toepassingshaak draait bij het starten van een run, niet in `gameLoop()`.
+  Mesh-, materiaal- en lichttelling ongewijzigd (§9.2 punt 2 en 5).
+- **Acceptatiecriteria:**
+  - Elk item heeft een geldig, uniek `id`, een eindige prijs en een
+    puntendrempel; geen twee items delen een id.
+  - Bron-assertie: geen enkele toepassingshaak raakt een constante uit de
+    §9.2-verbodenlijst.
+  - Elke ondode-kleurset haalt de T156-leesbaarheidsdrempel, in beide
+    lichtstanden.
+  - De drie bestaande cosmetica gedragen zich exact als vóór dit ticket
+    (`test-stadsarchief.mjs` blijft ongewijzigd groen).
+  - Lichten blijven 28, `obstakels` ongewijzigd, resourcecontract heel.
+- **Testplan:** nieuw `tests/test-archief-catalogus.mjs` (vormvalidatie,
+  uniciteit, §9.2-bronassertie, per-kleurset-leesbaarheid) + het
+  ongewijzigde `test-stadsarchief.mjs` + volledige regressie.
+- **Rollback:** de catalogus terugbrengen tot de drie bestaande items.
+- **Sonnet solo:** ja — mits de leesbaarheidstest vóór de kleursets
+  geschreven wordt, precies zoals bij T156.
+
+---
+
+## Ticket 162 — De winkel in het startscherm
+
+- **Type:** feature (UI)
+- **Verbetergebied:** 5 (Progressie en keuzes)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** T160 + T161.
+- **Doel:** de catalogus bedienbaar maken zonder het startscherm te laten
+  ontploffen.
+- **Huidige situatie:** `#archiefUI` is een rij van maximaal drie
+  toggle-knoppen, verborgen tot er iets ontgrendeld is. Dat schaalt niet
+  naar 20+ items, en het startscherm draagt al de moeilijkheidskeuze
+  (T-moeilijkheid) en de kwaliteitsknoppen (T159).
+- **Gewenste situatie:** een winkelpaneel met categorieën, waarin elk item
+  vier toestanden kent: **vergrendeld** (puntendrempel niet gehaald, met de
+  drempel zichtbaar zodat het een doel wordt), **te duur**, **koopbaar**, en
+  **in bezit** (met een aan/uit-schakelaar). Saldo en punten staan in beeld.
+- **Codegebieden:** de startscherm-HTML/CSS, een `tekenArchiefWinkel()` in
+  de geest van `tekenKwaliteitKnoppen()` (T159), de klikafhandeling.
+- **Buiten scope:** de eindschermkoppeling (T163). Nieuwe items.
+- **Randgevallen:**
+  - **Klikken in het paneel mag de pauze niet opheffen.** T159 liep hier
+    tegenaan: elke knop in de overlay heeft `e.stopPropagation()` nodig,
+    anders start de klik het spel.
+  - **Het paneel moet passen zonder te scrollen op een normaal scherm**, of
+    netjes scrollen binnen zichzelf — het startscherm is ook het
+    pauzescherm.
+  - **Een vergrendeld item toont zijn drempel, geen leegte.** Dat is precies
+    de les uit T158 deel B: een speler die niet kan zien wat iets waard is,
+    koopt het niet.
+  - **Kopen is onomkeerbaar en vraagt geen bevestiging** (het is cosmetisch,
+    de inzet is laag) — maar de knop mag nooit dubbel afboeken.
+  - Bij een geweigerde `localStorage` blijft de winkel zichtbaar en
+    bruikbaar binnen de sessie; alleen bewaren lukt niet.
+- **Performancevoorwaarden:** de winkel tekent alleen bij openen en na een
+  aankoop, nooit per frame (zelfde eis als `updateWinkelMarkeringen()`'s
+  overslag-optimalisatie).
+- **Acceptatiecriteria:**
+  - Alle vier de toestanden zijn zichtbaar verschillend en per item correct.
+  - Een aankoop trekt exact één keer af, schrijft door naar `localStorage`
+    en overleeft een herladen.
+  - Aan/uit-schakelen van een item in bezit werkt zonder herladen.
+  - Een klik in het paneel start het spel niet.
+  - `test-visuele-basislijn.mjs` blijft binnen de band (het startscherm is
+    geen 3D-standpunt, maar de overlay mag de meting niet verstoren).
+- **Testplan:** nieuw `tests/test-archief-winkel.mjs` (toestandsmatrix,
+  koopstroom, persistentie over een herlaad, `stopPropagation`) + volledige
+  regressie.
+- **Rollback:** `#archiefUI` terugzetten op de oude drie-knoppenrij; de
+  catalogus blijft dan bestaan maar is niet te bedienen.
+- **Sonnet solo:** ja, met de kanttekening dat de indeling van het paneel
+  een visuele beoordeling vraagt (screenshot), zoals bij T157.
+
+---
+
+## Ticket 163 — Wat leverde deze run op: verdienfeedback en prijskalibratie
+
+- **Type:** feature (feedback) + balans
+- **Verbetergebied:** 5 (Progressie en keuzes)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** T160-T162.
+- **Doel:** de lus sluiten. Zonder dit ticket verdient de speler valuta die
+  hij nergens ziet ontstaan, en zijn de prijzen ongeijkt.
+- **Huidige situatie:** het winscherm toont score/stats/record, het
+  gameoverscherm toont zijn eigen samenvatting. Geen van beide noemt het
+  archief.
+- **Gewenste situatie:** beide eindschermen tonen wat deze run het archief
+  opleverde — bijgeschreven geld, verdiende mijlpaalpunten, en vooral: welk
+  schap daarmee is opengegaan. Plus een geijkte prijsladder.
+- **Codegebieden:** `toonWinScherm()`, `gameOver()`, de eindscherm-HTML.
+- **Buiten scope:** nieuwe items of categorieën. Elke wijziging aan
+  `berekenScore()` (T158 deel A staat vast).
+- **Randgevallen:**
+  - **Dit ticket is de directe les uit T158 deel B.** Die mechaniek haalde
+    alle 32 geautomatiseerde checks en sneuvelde alsnog, omdat de speler de
+    waarde ervan niet kon leren zien. Een winkel die je niet ziet vullen,
+    gebruik je niet. De feedbackregel is dus geen versiering maar de kern.
+  - **Een game over mag niet als straf voelen op dit scherm**: hij levert
+    punten op, en dat moet er staan.
+  - **"Nieuw schap open" is het belangrijkste bericht** en verdient meer
+    nadruk dan een getal.
+  - **Prijzen worden geijkt, niet gegokt.** De ijking gebeurt tegen de
+    gemeten restgeldtabel bovenaan deze ronde (€233 na een vroege
+    ontsnapping tot €10.195 na een late), niet tegen een aanname.
+  - De kalibratie mag geen enkel balansgetal aanraken — alleen
+    `prijs`/`puntenEis` in de catalogus.
+- **Performancevoorwaarden:** geen; dit draait op run-einde.
+- **Acceptatiecriteria:**
+  - Beide eindschermen tonen bijgeschreven geld én punten, ook als het geld
+    €0 is.
+  - Een run die een nieuw schap ontgrendelt, meldt dat expliciet.
+  - Geijkte ladder: na één vroege ontsnapping (€233) is minstens één item
+    bereikbaar; de duurste items vragen aantoonbaar een late ontsnapping.
+  - Bron-assertie: de kalibratie raakt geen §9.2-constante.
+  - Volledige regressie groen.
+- **Testplan:** uitbreiding van `test-archief-winkel.mjs` of een nieuw
+  `tests/test-archief-feedback.mjs` (beide eindpaden, de
+  schap-ontgrendelmelding, de bereikbaarheidsassertie op de ladder).
+- **Rollback:** de regels op de eindschermen verbergen; prijzen terug naar
+  de voorlopige waarden uit T161.
+- **Sonnet solo:** ja voor de feedbackregels. Voor de prijsladder geldt
+  hetzelfde voorbehoud als bij T158: de getallen zijn te meten, maar of het
+  tempo *lekker* voelt is een speeltoets.
+
+---
+
+## Losse bevindingen uit de ontwerpsessie van Ronde 13
+
+Twee dingen die tijdens het meten bovenkwamen en die géén onderdeel van
+deze ronde zijn, maar te concreet om te laten verdampen:
+
+1. **Wie alle upgrades koopt, kan nooit ontsnappen.** Gemeten: een speler
+   die elke eenmalige aankoop doet zodra het kan, heeft op golf 22 nog maar
+   €1.667 — ruim onder de `ONTSNAPPING_PRIJS` van €2.500, en het gat wordt
+   niet kleiner. De win-conditie is dus alleen bereikbaar via bewust
+   sparen en dingen NIET kopen. Dat kan een mooie spanning zijn, maar het is
+   nu nergens vastgelegd als ontwerpkeuze en nergens aan de speler
+   uitgelegd. Verdient een eigen ticket.
+2. **Het barricadesysteem is dode content na golf 1.** Twee beukbare ramen,
+   zes planken, allemaal weg in golf 1; repareren levert geld op in plaats
+   van te kosten. Zie de vervallen T158 deel B voor de volledige meting.
+   Laten, leesbaarder maken of weghalen — nu is het geen van drieën bewust.
+
+---
 
 ## Later (na v1, alleen indien gewenst)
 - Meer kamers/grachtenzones, meer ondood-types, meer upgrades
