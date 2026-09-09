@@ -617,7 +617,7 @@ const invarianten = await page.evaluate(() => {
 check('Invariant 2: precies 28 lichten (1 hemisfeer + 27 point)', invarianten.lichten === 28, invarianten);
 check('Invariant 2: precies 1 schaduwwerpend licht', invarianten.schaduwwerpers === 1, invarianten);
 check('Invariant 5: obstakels.length blijft 58 (T131-baseline)', invarianten.obstakels === 58, invarianten);
-check('interactiePunten.length blijft 15 (T134: AMSTEL-9; T158 deel B: barricadeversterking)', invarianten.interactiePunten === 15, invarianten);
+check('interactiePunten.length blijft 14 (Ticket 134: AMSTEL-9 als kooppunt)', invarianten.interactiePunten === 14, invarianten);
 check('Post-processing: 4 passes (RenderPass/Bloom/naverwerking/Output, sinds T96 — blijft 4 voor de rest van de ronde, T97/T98 breiden de bestaande naverwerkingspass uit)', invarianten.composerPasses === 4, invarianten);
 
 // --- 4. Bronvorm van de assertie: een band, geen exact getal --------------

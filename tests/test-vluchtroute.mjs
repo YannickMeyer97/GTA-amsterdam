@@ -19,8 +19,8 @@ const laadTest = await page.evaluate(() => {
     meshesOnzichtbaar: d.VLUCHT_ONDERDELEN.map(o => o.mesh.visible),
   };
 });
-check('Bij het laden zijn er precies 15 interactiepunten (incl. deur5Punt, deur6Punt, De Zelflader, T134 AMSTEL-9 en T158 deel B barricadeversterking)',
-  laadTest.interactiePuntenLengte === 15, laadTest);
+check('Bij het laden zijn er precies 14 interactiepunten (incl. deur5Punt, deur6Punt, De Zelflader en — Ticket 134 — de AMSTEL-9)',
+  laadTest.interactiePuntenLengte === 14, laadTest);
 check('Bij het laden is geen enkel vluchtroute-onderdeel al zichtbaar',
   laadTest.onderdelenZichtbaar.every(v => v === false) && laadTest.meshesOnzichtbaar.every(v => v === false), laadTest);
 
@@ -139,8 +139,8 @@ check('Vóór de drempelgolf is geen enkel onderdeel zichtbaar of aanwezig als i
 check('Op de drempelgolf zelf wordt elk onderdeel zichtbaar én krijgt het een interactiepunt',
   drempelTest.resultaten.every(r => r.opDrempel.zichtbaar === true && r.opDrempel.meshZichtbaar === true && r.opDrempel.puntAanwezig === true),
   drempelTest);
-check('interactiePunten is nu 15 + 3 = 18 (alle drie tegelijk aanwezig)',
-  drempelTest.interactiePuntenNa === 18, drempelTest);
+check('interactiePunten is nu 14 + 3 = 17 (alle drie tegelijk aanwezig)',
+  drempelTest.interactiePuntenNa === 17, drempelTest);
 
 // --- 4. Herhaald aanroepen van toonVluchtOnderdelenIndienDrempel() creëert
 // GEEN dubbele punten/markeringen (idempotent zodra al zichtbaar) ----------
@@ -201,8 +201,8 @@ check('De HUD update meteen mee naar "Vluchtroute: 1/3" + het geldvereiste (Tick
 // Ticket 134 — de AMSTEL-9) + de 3 vluchtroute-punten allemaal weer weg = 14
 // — het ontsnappingspunt zelf verschijnt (sinds Ticket 55) pas na de
 // aankondigingsduur, dus meteen na de derde pickup is het nog 14, niet 15.
-check('Na alle drie: teller op 3, HUD toont 3/3 + geldvereiste, interactiePunten blijft op 15 (het ontsnappingspunt verschijnt pas na de T55-aankondiging)',
-  oppakTest.naAlle.teller === 3 && oppakTest.naAlle.hud === 'Vluchtroute: 3/3 · €2500 nodig' && oppakTest.naAlle.interactiePuntenNa === 15,
+check('Na alle drie: teller op 3, HUD toont 3/3 + geldvereiste, interactiePunten blijft op 14 (het ontsnappingspunt verschijnt pas na de T55-aankondiging)',
+  oppakTest.naAlle.teller === 3 && oppakTest.naAlle.hud === 'Vluchtroute: 3/3 · €2500 nodig' && oppakTest.naAlle.interactiePuntenNa === 14,
   oppakTest.naAlle);
 check('De derde pickup start wél meteen de T55-aankondigingsfase (hoorn + actieve timer)',
   oppakTest.naAlle.aankondigingActief && oppakTest.naAlle.hoornGespeeld, oppakTest.naAlle);
@@ -214,8 +214,8 @@ const winkelRegressie = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   return { winkelMarkeringenLengte: d.winkelMarkeringen.length };
 });
-check('winkelMarkeringen bevat de 15 bestaande + 3 (inmiddels opgepakte, dus nog wel gebouwde) vluchtroute-markeringen = 18',
-  winkelRegressie.winkelMarkeringenLengte === 18, winkelRegressie);
+check('winkelMarkeringen bevat de 14 bestaande + 3 (inmiddels opgepakte, dus nog wel gebouwde) vluchtroute-markeringen = 17',
+  winkelRegressie.winkelMarkeringenLengte === 17, winkelRegressie);
 
 const fails = report(errs);
 await browser.close();

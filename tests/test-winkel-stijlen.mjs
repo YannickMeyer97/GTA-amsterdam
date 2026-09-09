@@ -24,8 +24,8 @@ const opbouw = await page.evaluate(() => {
     })),
   };
 });
-check('Er zijn precies 15 winkelmarkeringen gebouwd (één per interactiepunt, incl. deur5, deur6/kelderoost, De Zelflader, T134 AMSTEL-9 en T158 deel B barricadeversterking)',
-  opbouw.aantal === 15, opbouw);
+check('Er zijn precies 14 winkelmarkeringen gebouwd (één per interactiepunt, incl. deur5, deur6/kelderoost, De Zelflader en — Ticket 134 — de AMSTEL-9)',
+  opbouw.aantal === 14, opbouw);
 check('Elke markering heeft 2 of 3 kinderen: 1 ring + 1-2 icoon-meshes (budget <= 3 meshes)',
   opbouw.perGroep.every(g => g.totaalKinderen === 2 || g.totaalKinderen === 3), opbouw);
 check('Bij elke markering is het eerste kind de vloerring',
@@ -56,8 +56,8 @@ const stijlInventaris = await page.evaluate(() => {
   return uit;
 });
 const stijlNamen = Object.keys(stijlInventaris);
-check('Er staan 16 stijlen in WINKEL_STIJLEN (15 statische interactiepunten, incl. deur5, deur6, De Zelflader, T134 AMSTEL-9 en T158 deel B barricadeversterking, + de gedeelde Ticket-44-vluchtroutestijl)',
-  stijlNamen.length === 16, stijlInventaris);
+check('Er staan 15 stijlen in WINKEL_STIJLEN (14 statische interactiepunten, incl. deur5, deur6, De Zelflader en — Ticket 134 — de AMSTEL-9, + de gedeelde Ticket-44-vluchtroutestijl)',
+  stijlNamen.length === 15, stijlInventaris);
 check('Voor elke stijl is de icoon-geometrie hergebruikt tussen twee bouwIcoon()-aanroepen (gedeelde cache)',
   stijlNamen.every(n => stijlInventaris[n].geometrieHergebruikt), stijlInventaris);
 check('Voor elke stijl krijgt elke bouwIcoon()-aanroep verse materials (geen materiaal-cache, blijft doofbaar)',

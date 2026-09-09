@@ -9,9 +9,7 @@
 // speler bij de boot staat (huidigeInteractie === ontsnappingsPunt) en
 // pauzeert zodra hij wegloopt; T nogmaals indrukken tijdens de fase doet
 // niets; de twee nieuwe HUD-teksten; doodgaan tijdens de fase is gewoon
-// game over, met opgeruimde instap-state; interactiePunten blijft gelijk
-// (de instapfase voegt geen punt toe — de test vergelijkt vóór/ná, niet
-// tegen een vast getal, dus T158 deel B's extra kooppunt raakt dit niet).
+// game over, met opgeruimde instap-state; interactiePunten blijft op 14.
 //
 // Ticket 147 (secties 8+): de vier escalatiekanalen uit FINALE.md §2
 // beslissing 4 — budget-injectie, beeld (fog/lampdip/vignet), geluid
