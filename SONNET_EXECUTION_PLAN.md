@@ -4987,13 +4987,20 @@ afwijkingen bekende CPU-contentie-flakes, 3/3 schoon in isolatie. Deel
 bulk-herstel geworden dat dit plan beschrijft, en uiteindelijk helemaal
 niets. Twee stappen:
 
-*Stap 1 — de premisse klopte niet.* Meting vóór de bouw: `golfSpawnStap()`
-beukt alleen op `VENSTERS`, en die lijst telt twee ramen in dezelfde muur
-(6 planken); die 6 sneuvelen allemaal in golf 1, waarna de mechaniek 24
-golven op 0 staat; en handmatig repareren lévert €20 per plank op. Een
-betaalde herstelknop was dus strikt gedomineerd door een gratis,
-geld-opleverende actie én had na golf 1 niets te herstellen. Dat is precies
-het soort premissefout dat de "Sonnet solo: nee"-markering moest opvangen.
+*Stap 1 — de premisse klopte niet* **(en de meting eronder klopte ook niet
+— zie de correctie).** Meting vóór de bouw: `golfSpawnStap()` beukt alleen
+op `VENSTERS`, en die lijst telt twee ramen in dezelfde muur (6 planken);
+die 6 sneuvelen allemaal in golf 1. Een betaalde herstelknop was dus strikt
+gedomineerd door een gratis, geld-opleverende actie én had na golf 1 niets
+te herstellen.
+
+> **Correctie (Ronde 13).** Die simulatie kocht geen deuren, terwijl
+> `VENSTERS` juist meegroeit met elke deur. Echt: tot **9** ramen en **27**
+> planken, actief tot ongeveer golf 15, en repareren is een herhaalbare
+> inkomstenbron (€160-540 per ronde). Het argument dat overeind blijft is
+> alleen het economische: gratis repareren lévert €20 per plank op, dus
+> betaald bulk-herstel blijft gedomineerd. Les: controleer of een "vaste"
+> lijst tijdens een run groeit voordat je er een conclusie op bouwt.
 
 *Stap 2 — de vervangende vorm haalde alle eisen en sneuvelde alsnog.* Er is
 een herbruikbaar versterkingspunt gebouwd (barricades naar 6 planken,

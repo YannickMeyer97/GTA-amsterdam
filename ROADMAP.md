@@ -4789,8 +4789,21 @@ fout; T158 deel (A) is de kleinste ingreep met het grootste effect.
 
   **Deel (B): waarom dit vervallen is.** Twee onafhankelijke redenen:
 
+  > **Correctie achteraf (ontwerpsessie Ronde 13).** De meting hieronder
+  > bevat een fout: de simulatie kocht geen deuren, en `VENSTERS` groeit
+  > juist mee met de deuren (`koopDeur()` voegt `VENSTERS_KAMER2` toe, enz.).
+  > In een echte run zijn het geen 2 maar tot **9** spawn-ramen met **27**
+  > planken, en loopt het systeem door tot ongeveer golf 15 in plaats van te
+  > stoppen na golf 1. Zie "Losse bevindingen" bij Ronde 13 voor de
+  > herstelmeting. Wat wél overeind blijft als argument tegen een betaalde
+  > bulk-herstelknop: gratis repareren lévert €20 per plank op, dus de
+  > betaalde variant bleef hoe dan ook gedomineerd door de gratis. En de
+  > uiteindelijke reden voor schrappen — de eigenaar vond de mechaniek niet
+  > boeiend — staat los van deze meting.
+
   *1. De premisse van het ticket klopte niet* (gemeten vóór de bouw,
-  `golfSpawnStap`/`VENSTERS`, 25 golven gesimuleerd):
+  `golfSpawnStap`/`VENSTERS`, 25 golven gesimuleerd — **zie de correctie
+  hierboven**):
   - `golfSpawnStap()` beukt uitsluitend op `VENSTERS`, en die lijst bevat
     **twee** ramen — beide in dezelfde muur, 4 m uit elkaar, in de
     startkamer. De andere drie raamlijsten krijgen wél barricades, maar
@@ -5376,6 +5389,23 @@ T161 zijn allebei volledig headless testbaar vóór er één pixel UI bestaat.
   `{ ontsnappingen, headshotsTotaal, hoogsteGolf, actief:{...} }`.
   `stadsarchiefOntgrendelingen()` leidt daar drie booleans uit af. Er is
   geen saldo, geen aankoopadministratie en geen puntbegrip.
+
+  **Hoe de opslag werkt (voor wie dit ticket oppakt).** Alles staat in
+  `localStorage` van de browser, als JSON onder één sleutel. Er zijn er in
+  totaal vier, elk met hun eigen lees/schrijf-paar en hetzelfde contract
+  (valideren bij lezen, veilige default bij twijfel, `try/catch` om elke
+  toegang):
+
+  | sleutel | inhoud |
+  |---|---|
+  | `amsterdamUndeadArchief` | het stadsarchief (dit ticket) |
+  | `amsterdamUndeadHighscore` | de highscore (T74) |
+  | `amsterdamUndeadGevoeligheid` | muisgevoeligheid (T75) |
+  | kwaliteitssleutel (T159) | grafische preset |
+
+  Belangrijk om te weten: dit is **per browser en per apparaat**. Er is geen
+  account en geen synchronisatie; site-data wissen betekent voortgang kwijt.
+  Het archief wordt alleen op run-einde geschreven, nooit tijdens het spelen.
 - **Gewenste situatie:** hetzelfde bestand, uitgebreid met `geld` (integer,
   archiefsaldo) en `gekocht` (lijst item-id's). Plus een pure functie
   `mijlpaalpunten(archief)` die uit de bestaande statistieken één oplopend
@@ -5638,20 +5668,61 @@ T161 zijn allebei volledig headless testbaar vóór er één pixel UI bestaat.
 
 ## Losse bevindingen uit de ontwerpsessie van Ronde 13
 
-Twee dingen die tijdens het meten bovenkwamen en die géén onderdeel van
-deze ronde zijn, maar te concreet om te laten verdampen:
+Twee dingen die tijdens het meten bovenkwamen. **Beide stonden hier eerst
+fout** — de eigenaar corrigeerde ze allebei, en hernieuwde metingen gaven
+hem gelijk. De oorspronkelijke, onjuiste versies staan erbij, omdat de
+meetfout zelf leerzaam is.
 
-1. **Wie alle upgrades koopt, kan nooit ontsnappen.** Gemeten: een speler
-   die elke eenmalige aankoop doet zodra het kan, heeft op golf 22 nog maar
-   €1.667 — ruim onder de `ONTSNAPPING_PRIJS` van €2.500, en het gat wordt
-   niet kleiner. De win-conditie is dus alleen bereikbaar via bewust
-   sparen en dingen NIET kopen. Dat kan een mooie spanning zijn, maar het is
-   nu nergens vastgelegd als ontwerpkeuze en nergens aan de speler
-   uitgelegd. Verdient een eigen ticket.
-2. **Het barricadesysteem is dode content na golf 1.** Twee beukbare ramen,
-   zes planken, allemaal weg in golf 1; repareren levert geld op in plaats
-   van te kosten. Zie de vervallen T158 deel B voor de volledige meting.
-   Laten, leesbaarder maken of weghalen — nu is het geen van drieën bewust.
+1. **Ontsnappen kan óók zonder te sparen — het duurt alleen langer.**
+   *Eerdere, onjuiste claim: "wie alle upgrades koopt kan nooit ontsnappen".*
+   Die claim kwam uit een meting die bij golf 22 stopte. Doorgemeten tot
+   golf 34 blijkt een speler die álles koopt gewoon de €2.500 te halen:
+
+   | ontsnappingsvenster | op zak (koopt alles) |
+   |---|---|
+   | golf 10 | €345 |
+   | golf 14 | €365 |
+   | golf 18 | €715 |
+   | golf 22 | €1.669 |
+   | golf 26 | **€3.285 — kan weg** |
+   | golf 34 | **€6.791 — kan weg** |
+
+   De echte spanning is dus niet "sparen of nooit ontsnappen", maar
+   **wanneer**: bewust sparen opent de boot al op golf 10, alles kopen stelt
+   'm uit tot ongeveer golf 26. Dat is een gezonde afweging en vraagt geen
+   ingreep. Wel de moeite waard: de speler krijgt dit nergens te horen.
+
+2. **Het barricadesysteem werkt zoals bedoeld — het is geen dode content.**
+   *Eerdere, onjuiste claim: "2 beukbare ramen, 6 planken, allemaal weg in
+   golf 1, daarna 24 golven stil".* De meetfout: `VENSTERS` is geen vaste
+   lijst maar **groeit mee met de deuren** — `koopDeur()` voegt
+   `VENSTERS_KAMER2` toe, `koopDeur2()` de binnenplaats en `koopDeur3()` de
+   bijkeuken. Mijn simulatie kocht geen deuren en bleef daardoor op 2 ramen
+   hangen. In een echte run:
+
+   | golf | spawn-ramen | planken vóór | gebeukt | planken ná |
+   |---|---|---|---|---|
+   | 1 | 2 | 6 | 6 | 0 |
+   | 5 | 5 | 9 | 0 | 9 |
+   | 10 | 9 | 12 | 9 | 3 |
+   | 15 | 9 | 1 | 1 | 0 |
+   | 25 | 9 | 0 | 0 | 0 |
+
+   Het systeem loopt dus door tot ongeveer **golf 15**, met maximaal 9 ramen
+   en 27 planken — elke deur die je koopt levert verse dichtgetimmerde ramen
+   op. En repareren is een **herhaalbare inkomstenbron**: gemeten €160-540
+   per herstelronde, waarna ze de volgende golf opnieuw sneuvelen. Precies
+   het vangnet dat de eigenaar beschrijft: te weinig geld, dan ga je planken
+   timmeren.
+
+   **Geen actie nodig** — dit is het systeem zoals het bedoeld is.
+
+**Wat dit betekent voor het vervallen T158 deel B.** De onderbouwing van dat
+ticket leunde op meetfout 2 hierboven en was dus deels onjuist. Wat wél
+overeind blijft: gratis repareren lévert geld op (€20 per plank), dus een
+betaalde bulk-herstelknop bleef gedomineerd door de gratis variant. En de
+reden dat het ticket uiteindelijk sneuvelde — de eigenaar vond de mechaniek
+niet boeiend — staat los van welke meting dan ook.
 
 ---
 
