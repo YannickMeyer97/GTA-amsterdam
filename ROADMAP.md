@@ -5893,6 +5893,211 @@ niet boeiend — staat los van welke meting dan ook.
 
 ---
 
+# v0.28 — Ronde 14: een rustig startscherm en twee losse eindjes (gepland, nog NIET geïmplementeerd)
+
+Herkomst: de oplevering van ronde 13. Het Stadsarchief werkt, maar de
+eigenaar vond het startscherm rommelig — en dat klopt: vier ongerelateerde
+dingen vechten daar om aandacht in één middenkolom. Daarnaast worden de twee
+losse bevindingen uit de ontwerpsessie van ronde 13 hier alsnog tickets.
+
+**T164 is de grote van deze ronde**; T165 en T166 zijn klein en los
+uitvoerbaar. Er is geen verplichte volgorde.
+
+```
+T164 (startscherm)   — herindeling, archiefpaneel, opruimen oude knoppenrij
+T165 (ontsnapping)   — de onbereikbare boot uitlegbaar maken
+T166 (barricades)    — een vangnet dat niemand kent
+```
+
+---
+
+## Ticket 164 — Het startscherm opgeruimd
+
+- **Type:** feature (UI/architectuur)
+- **Verbetergebied:** 8 (Presentatie en menu's)
+- **Prioriteit:** hoog
+- **Status:** open (gepland)
+- **Afhankelijk van:** T162 (de winkel), T163 (de badge leunt op
+  `archiefLaatsteWinst`/`archiefItemStatus`).
+- **Doel:** het startscherm terugbrengen tot één beslissing, met de
+  instellingen gegroepeerd en het archief achter één knop.
+- **Huidige situatie:** één lange middenkolom met de moeilijkheidskeuze, de
+  muisgevoeligheidsslider, de beeldkwaliteitsknoppen, de oude
+  T86-knoppenrij én de volledige winkellijst van 20 items. Er is geen
+  hiërarchie: de winkel weegt visueel even zwaar als de knop waarmee je
+  begint, en op een klein venster valt de onderkant weg.
+- **Gewenste situatie:** drie duidelijk gescheiden zones.
+  1. **Instellingenhoek rechtsboven.** De geluidsknop staat er al; daar komen
+     beeldkwaliteit en muisgevoeligheid bij, in één samenhangend blok. Alle
+     "hoe wil je het"-knoppen bij elkaar, weg uit de leesroute.
+  2. **Het midden gaat over één ding**: titel, adres, tagline, het hulpblok
+     en de moeilijkheidskeuze. Dat is wat je bij het starten beslist.
+  3. **Eén secundaire knop "🗄️ Het Stadsarchief"**, met een teller-badge
+     wanneer er iets nieuws te koop of te ontgrendelen is. De knop opent een
+     paneel óver het startscherm (achtergrond gedimd), sluitbaar met een
+     kruisje én met Esc.
+
+  De oude drie-knoppenrij (`#archiefUI`) verdwijnt: de winkel doet alles wat
+  die rij deed. De asserties in `test-stadsarchief.mjs` die op die knoppen
+  mikken verhuizen naar het winkelpad — ze worden bijgewerkt, niet geschrapt,
+  zodat het onderliggende gedrag (bezit + aangezet ⇒ toegepast) bewaakt blijft.
+- **Codegebieden:** de startscherm-HTML/CSS, `tekenArchiefWinkel()`,
+  `updateArchiefUI()` (vervalt of krimpt), de Esc-toetsafhandeling,
+  `zetArchiefItemActief()` (de legacy-vlaggen kunnen vereenvoudigen zodra de
+  knoppenrij weg is).
+- **Buiten scope:** nieuwe items of categorieën; prijzen of drempels; de
+  eindschermen (T163 is af); de HUD tijdens het spelen.
+- **Randgevallen:**
+  - **Esc is al de pauzetoets — dit is het zwaarste randgeval.** Staat het
+    archiefpaneel open, dan moet Esc dát sluiten en NIET het spel hervatten
+    of opnieuw pauzeren. Anders schiet de speler bij het sluiten van de
+    winkel per ongeluk het spel in.
+  - **`e.stopPropagation()` op alles** in de hoek én in het paneel. Het
+    startscherm heeft een click-listener die pointer lock aanvraagt; zonder
+    dat start elke klik op een instelling het spel. Dezelfde valkuil als
+    T159 en T162.
+  - **Het startscherm is óók het pauzescherm.** Het paneel moet dus ook
+    midden in een run te openen zijn, en sluiten mag de pauze niet opheffen.
+  - **De badge mag niet per frame herrekend worden** — hij verandert alleen
+    bij een run-einde of een aankoop. Zelfde discipline als
+    `updateWinkelMarkeringen()`.
+  - **De muisgevoeligheidsslider moet blijven werken zoals hij werkt**
+    (T75-contract: klemmen, opslaan, herstellen); dit ticket verplaatst hem
+    alleen.
+  - **Geen `localStorage`-sleutel verandert.** Dit is een herindeling, geen
+    datawijziging — een terugkerende speler mag niets kwijtraken.
+- **Performancevoorwaarden:** het paneel tekent alleen bij openen en na een
+  aankoop, nooit per frame. Geen nieuwe 3D-objecten; lichten, meshes en
+  `obstakels` ongewijzigd.
+- **Acceptatiecriteria:**
+  - Bij het laden toont het startscherm géén itemlijst meer.
+  - Geluid, beeldkwaliteit en muisgevoeligheid staan gegroepeerd rechtsboven
+    en werken alle drie ongewijzigd.
+  - De archiefknop opent en sluit het paneel; Esc sluit het paneel zonder het
+    spel te starten of te hervatten.
+  - De badge toont het juiste aantal en is afwezig wanneer er niets nieuws is.
+  - `#archiefUI` bestaat niet meer, en geen enkel item is nog op twee plekken
+    te bedienen.
+  - Een klik in de instellingenhoek of in het paneel vraagt geen pointer lock
+    aan.
+  - `test-visuele-basislijn.mjs` blijft binnen de band.
+- **Testplan:** nieuw `tests/test-startscherm-indeling.mjs` (zones aanwezig,
+  Esc-gedrag met en zonder open paneel, badge-telling, geen dubbele
+  bediening, stopPropagation) + bijgewerkte `test-stadsarchief.mjs` +
+  volledige regressie + een screenshot-beoordeling van de indeling.
+- **Rollback:** de oude middenkolom terugzetten; de winkel blijft dan werken
+  zoals in T162.
+- **Sonnet solo:** ja, met de kanttekening dat de indeling een visuele
+  beoordeling vraagt (screenshot), zoals bij T157 en T162.
+
+---
+
+## Ticket 165 — De boot die je niet ziet wegvaren
+
+- **Type:** fix (duidelijkheid/balans)
+- **Verbetergebied:** 5 (Progressie en keuzes)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** niets.
+- **Doel:** de spanning tussen "sterker worden" en "ontsnappen" van een
+  onbedoeld gevolg tot een bewuste, uitgelegde keuze maken.
+- **Huidige situatie:** gemeten (zie "Losse bevindingen" bij ronde 13). Een
+  speler die elke upgrade koopt zodra het kan, heeft op golf 22 nog maar
+  €1.669 en haalt de €2.500 voor de boot pas rond **golf 26**. Wie bewust
+  spaart, kan al op **golf 10** weg. Dat is op zichzelf een prima spanning —
+  maar hij staat nergens opgeschreven als ontwerpkeuze en wordt de speler
+  nergens verteld. Die merkt alleen dat de boot maar onbereikbaar blijft, en
+  weet niet dat dat aan zijn eigen koopgedrag ligt.
+- **Gewenste situatie:** de speler kan op elk moment zien hoe ver hij van de
+  boot af staat, en begrijpt dat uitgeven en ontsnappen elkaar beconcurreren.
+  De bestaande vluchtroute-HUD is de natuurlijke plek: die toont al
+  "Vluchtroute: 2/3 · €2500 nodig", maar zegt niets over wat je nu hébt.
+- **Codegebieden:** `updateVluchtrouteHUD()`, `updateOntsnappingVensterHUD()`,
+  eventueel de boot-aankondiging (T55).
+- **Buiten scope:** **`ONTSNAPPING_PRIJS` wijzigen** — dat is een constante
+  uit de §9.2-verbodenlijst, en dit ticket is een communicatieticket, geen
+  balansticket. Ook buiten scope: het inkomen, de prijzen van upgrades, en
+  elke vorm van korting of schaling.
+- **Randgevallen:**
+  - **Niet moraliseren.** De HUD mag tonen hoe ver je bent, niet suggereren
+    dat kopen fout is — sterker worden is een geldige strategie, en veel
+    spelers willen helemaal niet ontsnappen.
+  - De regel mag niet gaan schreeuwen zodra je één keer iets koopt; het is
+    informatie, geen waarschuwing.
+  - Vóór de vluchtroute compleet is, is het bedrag nog niet relevant — de
+    bestaande HUD toont het geldvereiste pas vanaf het eerste onderdeel
+    (T76), en dat ritme blijft.
+- **Performancevoorwaarden:** geen; dit is een HUD-tekst die al per zonewissel
+  of golfwissel geschreven wordt. Geen nieuwe per-frame writes.
+- **Acceptatiecriteria:**
+  - Met een complete vluchtroute is af te lezen hoeveel er nog aan de €2.500
+    ontbreekt (of dat je er al bent).
+  - Geen enkele constante uit de §9.2-verbodenlijst wijzigt (bron-assertie).
+  - Geen nieuwe per-frame HUD-writes (zelfde meetwijze als T-zonebanners).
+  - `test-vluchtroute.mjs`, `test-ontsnapping.mjs` en
+    `test-ontsnapping-vensters.mjs` blijven groen.
+- **Testplan:** uitbreiding van `tests/test-vluchtroute.mjs` met de nieuwe
+  HUD-toestanden (te weinig geld, precies genoeg, ruim genoeg) + de
+  write-telling + volledige regressie.
+- **Rollback:** de extra tekst weglaten; de HUD valt terug op de huidige regel.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 166 — Een vangnet dat niemand kent (barricades)
+
+- **Type:** fix (duidelijkheid)
+- **Verbetergebied:** 1 (Combat-leesbaarheid)
+- **Prioriteit:** laag
+- **Status:** open (gepland)
+- **Afhankelijk van:** niets.
+- **Doel:** het barricadesysteem van onzichtbaar vangnet tot bewust
+  hulpmiddel maken, zonder er iets aan te veranderen.
+- **Huidige situatie:** gemeten (zie "Losse bevindingen" bij ronde 13, incl.
+  de correctie op een eerdere meetfout). Het systeem werkt beter dan gedacht:
+  tot **9 ramen en 27 planken**, actief tot ongeveer **golf 15**, en elke
+  gekochte deur levert verse dichtgetimmerde ramen op. Repareren is een
+  **herhaalbare inkomstenbron** — gemeten €160-540 per herstelronde — én
+  elke intacte plank slikt een spawn-stap zonder ondode.
+
+  De eigenaar heeft bevestigd dat dit precies het bedoelde vangnet is: te
+  weinig geld, dan ga je planken timmeren. Het probleem is dus niet de
+  mechaniek maar de **vindbaarheid** — dezelfde eigenaar gaf aan het in de
+  praktijk nooit te doen, en de prompt bij een raam zegt alleen "Druk T:
+  plank repareren (+€20) — 0/3". Nergens staat dat planken spawns tegenhouden,
+  en nergens dat dit je uit een geldtekort kan helpen.
+- **Gewenste situatie:** de speler leert het systeem kennen op het moment dat
+  het zichtbaar is. Twee kleine ingrepen, allebei zonder mechanische wijziging:
+  een eenmalige hint wanneer in golf 1 de eerste barricade sneuvelt (dán zie
+  je planken breken en is de les concreet), en een promptregel die vertelt
+  wát een plank doet in plaats van alleen wat hij oplevert.
+- **Codegebieden:** `beukBarricade()` (het hint-moment), de
+  `interactiePunt.prompt()` in `bouwBarricade()`, `toonMelding()`.
+- **Buiten scope:** `BARRICADE_MAX_PLANKEN`, `BARRICADE_REPARATIE_GELD`, het
+  aantal ramen, de spawn-absorptie — met andere woorden: **elk getal**. Dit
+  is expliciet een communicatieticket. Ook buiten scope: een tweede poging
+  tot een betaalde barricade-aankoop (zie het vervallen T158 deel B).
+- **Randgevallen:**
+  - **De hint mag maar één keer per sessie**, zoals de bestaande
+    golf-10-ontsnappingsuitleg (`ontsnappingUitgelegd`).
+  - **Niet tijdens een hectisch moment schreeuwen**: golf 1 is rustig, dat is
+    precies waarom dat het juiste moment is.
+  - De promptregel moet kort blijven — hij staat midden in beeld tijdens een
+    golf.
+  - Geen enkele bestaande melding of prompt mag verdwijnen.
+- **Performancevoorwaarden:** geen.
+- **Acceptatiecriteria:**
+  - De hint vuurt precies één keer per sessie, bij de eerste gebroken plank.
+  - De reparatieprompt vertelt zowel de opbrengst als het effect.
+  - Bron-assertie: geen enkel barricadegetal is gewijzigd.
+  - `test-resources.mjs` en de bestaande barricade-asserties blijven groen.
+- **Testplan:** nieuw testblok bij de bestaande barricadetests (hint-teller,
+  promptinhoud, ongewijzigde getallen) + volledige regressie.
+- **Rollback:** hint en promptregel weglaten.
+- **Sonnet solo:** ja.
+
+---
+
 ## Later (na v1, alleen indien gewenst)
 - Meer kamers/grachtenzones, meer ondood-types, meer upgrades
 - Pas over gedeelde engine nadenken als beide games stabiel zijn

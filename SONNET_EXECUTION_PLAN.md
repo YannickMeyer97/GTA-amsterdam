@@ -5382,6 +5382,120 @@ gespeeld is.
 
 ---
 
+# Ronde 14 (v0.28) — Een rustig startscherm en twee losse eindjes
+
+Volledige tickets in `ROADMAP.md` onder "v0.28 — Ronde 14".
+
+```
+T164 (startscherm)  — herindeling + archiefpaneel + opruimen   | + screenshot
+T165 (ontsnapping)  — de onbereikbare boot uitlegbaar maken    | headless
+T166 (barricades)   — een vangnet dat niemand kent             | headless
+```
+
+Geen verplichte volgorde. T164 is verreweg de grootste.
+
+**De regel die T165 en T166 allebei bindt:** het zijn
+COMMUNICATIETICKETS. Geen enkel balansgetal wijzigt — niet de bootprijs, niet
+het inkomen, geen barricadegetal. Beide hebben een bron-assertie die dat
+bewaakt. Wie merkt dat een getal "eigenlijk ook wel anders zou moeten": dat
+is een ander ticket, en het vraagt een expliciete keuze van de eigenaar.
+
+---
+
+### Ticket 164 — Het startscherm opgeruimd
+
+**Doel.** Eén beslissing in het midden, instellingen in een hoek, het archief
+achter één knop.
+
+**Positie.** De grote van deze ronde.
+
+**Werk.**
+- Instellingenhoek rechtsboven: geluid (bestaat al) + beeldkwaliteit +
+  muisgevoeligheid, als één blok.
+- Midden houdt alleen titel/adres/tagline/hulpblok/moeilijkheidskeuze over.
+- Eén secundaire knop "🗄️ Het Stadsarchief" met teller-badge, die een paneel
+  óver het startscherm opent (gedimde achtergrond, kruisje én Esc).
+- `#archiefUI` (de oude drie-knoppenrij) verdwijnt; de bijbehorende
+  asserties in `test-stadsarchief.mjs` verhuizen naar het winkelpad.
+
+**Buiten scope.** Nieuwe items, prijzen, drempels, de eindschermen, de HUD.
+
+**Acceptatie.**
+- Geen itemlijst meer op het startscherm bij het laden.
+- Geluid/beeld/muis gegroepeerd rechtsboven en alle drie ongewijzigd werkend.
+- Esc sluit een open paneel zonder het spel te starten of te hervatten.
+- Badge klopt, en is afwezig als er niets nieuws is.
+- Geen item is nog op twee plekken te bedienen.
+- Klik in hoek of paneel vraagt geen pointer lock aan.
+
+**Valkuil.** **Esc is al de pauzetoets.** Staat het paneel open, dan moet Esc
+dát sluiten en verder niets doen — anders schiet de speler bij het sluiten van
+de winkel per ongeluk het spel in. Tweede valkuil, inmiddels drie tickets op
+rij dezelfde: `e.stopPropagation()` op élke klikbare plek in de overlay.
+Derde: het startscherm is óók het pauzescherm, dus alles moet ook midden in
+een run werken.
+
+**Uitvoeringsadvies.** Sonnet 5 · High · extended thinking Default. Bekend
+terrein (T159/T162), maar met meer verplaatswerk en één echt subtiel
+randgeval (Esc). Review: automatische tests **plus** een
+screenshot-beoordeling van de indeling. Vertrouwen: hoog voor het gedrag,
+gemiddeld voor de vormgeving.
+
+---
+
+### Ticket 165 — De boot die je niet ziet wegvaren
+
+**Doel.** Zichtbaar maken hoe ver je van de boot af staat.
+
+**Werk.** De vluchtroute-HUD toont niet alleen het geldvereiste maar ook hoe
+ver je er vanaf zit.
+
+**Buiten scope.** De bootprijs zelf (§9.2-verbodenlijst), het inkomen,
+upgradeprijzen, elke korting of schaling.
+
+**Acceptatie.**
+- Met een complete vluchtroute is af te lezen wat er nog ontbreekt.
+- Bron-assertie: geen §9.2-constante gewijzigd.
+- Geen nieuwe per-frame HUD-writes.
+- De drie ontsnappingstests blijven groen.
+
+**Valkuil.** Niet moraliseren. Gemeten: wie alles koopt haalt de boot pas
+rond golf 26, wie spaart al op golf 10 — maar sterker worden is een geldige
+strategie en veel spelers willen helemaal niet weg. De HUD toont een stand,
+geen oordeel, en gaat niet schreeuwen zodra je iets koopt.
+
+**Uitvoeringsadvies.** Sonnet 5 · High. Kleine, geïsoleerde HUD-wijziging met
+objectieve asserties. Vertrouwen: hoog.
+
+---
+
+### Ticket 166 — Een vangnet dat niemand kent
+
+**Doel.** Het barricadesysteem vindbaar maken zonder er iets aan te veranderen.
+
+**Werk.** Een eenmalige hint bij de eerste gebroken plank in golf 1, en een
+promptregel die vertelt wát een plank doet in plaats van alleen wat hij
+oplevert.
+
+**Buiten scope.** Elk getal. En: geen tweede poging tot een betaalde
+barricade-aankoop — zie het vervallen T158 deel B.
+
+**Acceptatie.**
+- Hint vuurt precies één keer per sessie.
+- De prompt noemt zowel opbrengst als effect.
+- Bron-assertie: geen barricadegetal gewijzigd.
+
+**Valkuil.** Dit ticket bestaat omdat de eigenaar zelf aangaf het systeem
+nooit te gebruiken — en het bij navraag wél te willen. Het probleem is dus
+vindbaarheid, niet mechaniek. Wie hier alsnog aan de getallen gaat zitten,
+lost het verkeerde probleem op. Gemeten waar het om gaat: tot 9 ramen en 27
+planken, actief tot ~golf 15, repareren levert €160-540 per ronde op.
+
+**Uitvoeringsadvies.** Sonnet 5 · High. Klein en objectief toetsbaar.
+Vertrouwen: hoog.
+
+---
+
 ## Risicoregister — Ronde 11
 
 | # | Risico | Kans | Impact | Mitigatie |
