@@ -5900,13 +5900,15 @@ eigenaar vond het startscherm rommelig — en dat klopt: vier ongerelateerde
 dingen vechten daar om aandacht in één middenkolom. Daarnaast worden de twee
 losse bevindingen uit de ontwerpsessie van ronde 13 hier alsnog tickets.
 
-**T164 is de grote van deze ronde**; T165 en T166 zijn klein en los
-uitvoerbaar. Er is geen verplichte volgorde.
+**T164 is de grote van deze ronde**; T165, T166 en T167 zijn klein en los
+uitvoerbaar. Er is geen verplichte volgorde — al leest de winkel na T167
+prettiger, dus die vóór T164 doen scheelt één keer screenshots beoordelen.
 
 ```
 T164 (startscherm)   — herindeling, archiefpaneel, opruimen oude knoppenrij
 T165 (ontsnapping)   — de onbereikbare boot uitlegbaar maken
 T166 (barricades)    — een vangnet dat niemand kent
+T167 (kleurnamen)    — gewone namen, één gedeelde ladder
 ```
 
 ---
@@ -6094,6 +6096,91 @@ T166 (barricades)    — een vangnet dat niemand kent
 - **Testplan:** nieuw testblok bij de bestaande barricadetests (hint-teller,
   promptinhoud, ongewijzigde getallen) + volledige regressie.
 - **Rollback:** hint en promptregel weglaten.
+- **Sonnet solo:** ja.
+
+---
+
+## Ticket 167 — Gewone kleurnamen, één gedeelde ladder
+
+- **Type:** fix (duidelijkheid/consistentie)
+- **Verbetergebied:** 5 (Progressie en keuzes)
+- **Prioriteit:** middel
+- **Status:** open (gepland)
+- **Afhankelijk van:** T161 (de catalogus). Kan vóór of ná T164.
+- **Doel:** de winkel leesbaar maken voor wie niet weet wat "amber" of
+  "magnesium" voor kleur is, en zorgen dat dezelfde kleur overal op
+  hetzelfde niveau staat.
+- **Huidige situatie:** twee klachten van de eigenaar, allebei terecht.
+  1. **Vage namen.** "Amberen vlam", "Magnesiumvlam" en "Koele waas" zijn
+     geen kleuren die je zonder nadenken herkent.
+  2. **Inconsistente niveaus.** IJsblauw is bij de vlam de op één na
+     goedkoopste optie (€650) maar bij het richtkruis juist de duurste
+     (€500 van de vier). Dezelfde kleur voelt daardoor willekeurig geprijsd.
+
+  Daarnaast zijn de twee categorienamen aangepast op verzoek:
+  **mondingsvlam → Vuurflits**, **richtkruis → Vizier**.
+- **Gewenste situatie:** één gedeelde kleurladder, in elke categorie in
+  dezelfde volgorde:
+
+  | niveau | kleur |
+  |---|---|
+  | 1 (goedkoopst) | Blauw |
+  | 2 | Groen |
+  | 3 | Oranje |
+  | 4 | Magenta / Paars |
+  | 5 (duurst) | Wit |
+
+  Kleuren die maar in één categorie voorkomen (Grijs, Sepia, Rood) vullen de
+  overgebleven plekken op zonder een gedeelde kleur te verdringen. Concreet:
+
+  - **Vuurflits** (5): Blauw, Groen, Oranje, Paars, Wit
+  - **Vizier** (4): Blauw, Groen, Oranje, Magenta
+  - **Ondode-kleurset** (4): Blauw, Groen, Grijs, Sepia
+  - **HUD-tint** (3): Blauw, Groen, Rood
+
+  Binnen een categorie is de itemnaam gewoon de kleur ("Blauw", "Groen") —
+  de categoriekop zegt al waar het over gaat, dus "Amberen vlam" wordt
+  simpelweg "Oranje" onder de kop *Vuurflits*.
+- **Codegebieden:** `ARCHIEF_ITEMS` (`naam`, `prijs`, `puntenEis`, en voor
+  een enkel item de kleurwaarde), `ARCHIEF_CATEGORIEEN` (de `naam`-velden).
+- **Buiten scope:** nieuwe items of categorieën; de startuitrusting; de
+  ijking van T163 als geheel (alleen de onderlinge VOLGORDE binnen een
+  categorie verschuift, niet het totaalbedrag of de spreiding over runs).
+- **Randgevallen:**
+  - **Item-id's veranderen NIET, en categorie-id's ook niet.** Dit is het
+    zwaarste randgeval. `gekocht` bewaart item-id's en
+    `actiefPerCategorie` bewaart categorie-id's; hernoemen betekent dat een
+    speler zijn aankopen en keuzes kwijtraakt. Alleen de zichtbare `naam`
+    verandert. Dat levert bewust een paar id's op die niet meer bij hun
+    kleur passen (`vlam-amber` heet straks "Oranje", `hud-koper` heet
+    "Blauw") — dat is de prijs voor het niet afpakken van bezit, en hoort
+    als comment in de tabel te staan zodat een latere lezer het niet
+    "opruimt".
+  - **De drie T86-id's blijven helemaal onaangeroerd** (`vlamTint`,
+    `kleurset`, `introMelodie`): daar hangt ook nog de migratie uit T160 aan.
+  - **De ladder moet strikt oplopend blijven per categorie** — anders is het
+    middel erger dan de kwaal. Dit is als assertie te toetsen.
+  - **De §9.2-verruiming blijft staan:** elk startuitrustingsitem blijft
+    duurder én hoger gedrempeld dan élk cosmetisch item, ook na het
+    herschikken.
+- **Performancevoorwaarden:** geen; dit zijn tabelwaarden.
+- **Acceptatiecriteria:**
+  - Geen enkele itemnaam bevat nog een kleur die niet in de ladder staat.
+  - Binnen elke categorie lopen prijs én puntendrempel strikt op met het
+    ladderniveau.
+  - Een kleur die in meerdere categorieën voorkomt, staat overal op hetzelfde
+    ladderniveau.
+  - Alle item-id's en categorie-id's zijn ongewijzigd t.o.v. T163 (harde
+    assertie op de volledige id-lijst).
+  - Startuitrusting blijft boven alle cosmetica op prijs én drempel.
+  - `test-archief-catalogus.mjs`, `test-archief-winkel.mjs` en
+    `test-archief-feedback.mjs` blijven groen.
+- **Testplan:** uitbreiding van `tests/test-archief-catalogus.mjs`: de
+  id-lijst als vastgelegde momentopname (zodat hernoemen opvalt), de
+  strikt-oplopende ladder per categorie, en de gelijke-niveau-eis voor
+  gedeelde kleuren. Plus volledige regressie.
+- **Rollback:** de oude namen en prijzen terugzetten; de id's zijn toch niet
+  aangeraakt, dus dat kan zonder gevolgen voor bestaande spelers.
 - **Sonnet solo:** ja.
 
 ---

@@ -5443,6 +5443,39 @@ gemiddeld voor de vormgeving.
 
 ---
 
+### Ticket 167 — Gewone kleurnamen, één gedeelde ladder
+
+**Doel.** Leesbare kleurnamen, en dezelfde kleur overal op hetzelfde niveau.
+
+**Werk.**
+- Categorienamen: **mondingsvlam → Vuurflist**, **richtkruis → Vizier**
+  (alleen het zichtbare label).
+- Eén gedeelde ladder: Blauw (1) → Groen (2) → Oranje (3) → Magenta/Paars (4)
+  → Wit (5). Unieke kleuren (Grijs, Sepia, Rood) vullen de resterende plekken.
+- Itemnaam wordt binnen een categorie gewoon de kleur; de kop zegt de rest.
+
+**Buiten scope.** Nieuwe items, startuitrusting, het totaalbedrag van de
+T163-ijking. Alleen de volgorde bínnen een categorie verschuift.
+
+**Acceptatie.**
+- Prijs én drempel lopen strikt op met het ladderniveau, per categorie.
+- Een gedeelde kleur staat overal op hetzelfde niveau.
+- Alle item- en categorie-id's ongewijzigd (harde assertie op de id-lijst).
+- Startuitrusting blijft boven alle cosmetica op prijs én drempel.
+
+**Valkuil.** **Verander geen id's.** `gekocht` bewaart item-id's en
+`actiefPerCategorie` bewaart categorie-id's — hernoemen pakt een speler zijn
+aankopen en keuzes af. Alleen `naam` verandert. Daardoor ontstaan bewust een
+paar id's die niet meer bij hun kleur passen (`vlam-amber` heet dan "Oranje",
+`hud-koper` heet "Blauw"); zet daar een comment bij, anders "ruimt" een
+latere lezer dat op en sloopt hij bestaande archieven. De drie T86-id's
+blijven sowieso onaangeroerd — daar hangt ook de T160-migratie aan.
+
+**Uitvoeringsadvies.** Sonnet 5 · High. Tabelwerk met objectieve asserties.
+Vertrouwen: hoog.
+
+---
+
 ### Ticket 165 — De boot die je niet ziet wegvaren
 
 **Doel.** Zichtbaar maken hoe ver je van de boot af staat.
