@@ -468,6 +468,18 @@
     border-radius: 999px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.4);
   }
+  /* Ticket 163: de verdienregel op de eindschermen. Het "nieuw schap open"-
+     bericht krijgt bewust meer nadruk dan de getallen — dat is het bericht
+     dat de speler terugbrengt naar de winkel. */
+  .archiefWinstRegel { margin-top: 8px; font-size: 13px; opacity: 0.9; }
+  .archiefWinstRegel .nieuw {
+    display: block;
+    margin-top: 4px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #9df0b5;
+  }
+
   /* Ticket 162: het winkelpaneel. Het startscherm is ook het PAUZEscherm,
      dus het paneel scrollt binnen zichzelf in plaats van de overlay te
      laten groeien. */
@@ -575,6 +587,9 @@
   <div class="statsBlok" id="gameOverStats"></div>
   <div class="scoreRegel">Score: <span id="scoreTekst">0</span></div>
   <div class="recordRegel" id="gameOverRecord"></div>
+  <!-- Ticket 163: wat deze run het archief opleverde. Ook bij een game over,
+       want die levert wél punten op — anders voelt de lus als straf. -->
+  <div class="archiefWinstRegel" id="gameOverArchief"></div>
   <div class="knop" id="opnieuwKnop">Opnieuw beginnen</div>
 </div>
 
@@ -585,6 +600,7 @@
   <div class="statsBlok" id="winStats"></div>
   <div class="scoreRegel">Score: <span id="winScoreTekst">0</span></div>
   <div class="recordRegel" id="winRecord"></div>
+  <div class="archiefWinstRegel" id="winArchief"></div>
   <div class="knoppenRij">
     <div class="knop" id="speelDoorKnop">Speel door (endless)</div>
     <div class="knop" id="opnieuwKnopWin">Opnieuw</div>
@@ -14135,6 +14151,40 @@ let archiefLaatsteWinst = { geld: 0, punten: 0 };
 // Aangeroepen vanuit toonWinScherm() (ontsnapping: true) en gameOver() —
 // beide zijn bestaande "run-einde"-momenten (schrijfHighscore() schrijft nu
 // al op precies diezelfde twee plekken, zelfde precedent).
+// Ticket 163: schrijft de verdienregel op het opgegeven eindscherm. Toont
+// geld én punten ALTIJD, ook als het geld €0 is — een game over levert punten
+// op, en dat hoort er te staan, anders voelt die uitkomst als pure straf.
+const ARCHIEF_WINST_MAX_NAMEN = 3;
+function toonArchiefWinst(elementId) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  const w = archiefLaatsteWinst;
+  const geldDeel = w.geld > 0
+    ? `+€${w.geld} archiefgeld`
+    : 'geen archiefgeld (alleen een geslaagde ontsnapping vult je beurs)';
+  let html = `🗄️ ${geldDeel} &nbsp;·&nbsp; +${w.punten} mijlpaalpunten`;
+  // Begrensd: een eerste geslaagde run kruist meerdere drempels tegelijk, en
+  // een opsomming van vijftien namen leest als ruis in plaats van als beloning.
+  if (w.nieuwOntgrendeld && w.nieuwOntgrendeld.length) {
+    const toon = w.nieuwOntgrendeld.slice(0, ARCHIEF_WINST_MAX_NAMEN);
+    const rest = w.nieuwOntgrendeld.length - toon.length;
+    html += `<span class="nieuw">🔓 Nieuw in de winkel: ${toon.join(', ')}`
+      + (rest > 0 ? ` en nog ${rest} ${rest === 1 ? 'ander item' : 'andere items'}` : '')
+      + `</span>`;
+  }
+  el.innerHTML = html;
+}
+// Ticket 163: welke items waren vóór deze run nog vergrendeld en zijn dat nu
+// niet meer? Dat is het bericht dat de speler terugbrengt naar de winkel, en
+// het is de reden dat dit ticket bestaat — zie het nawoord bij T158 deel B.
+// Veilig om ARCHIEF_ITEMS hier te noemen: deze functie draait pas bij een
+// run-einde, niet tijdens het initialiseren van het bestand.
+function nieuwOntgrendeldeItems(puntenVoor, puntenNa) {
+  if (puntenNa <= puntenVoor) return [];
+  return ARCHIEF_ITEMS
+    .filter(i => i.puntenEis > puntenVoor && i.puntenEis <= puntenNa)
+    .map(i => i.naam);
+}
 function bijwerkenStadsarchief(opties = {}) {
   const puntenVoor = mijlpaalpunten();
   const nieuweHeadshots = runStats.headshots - archiefHeadshotsBasis;
@@ -14158,7 +14208,13 @@ function bijwerkenStadsarchief(opties = {}) {
     bijgeschreven = Math.max(0, Math.floor(spelStaat.geld));
     stadsarchief.geld = Math.min(ARCHIEF_GELD_MAX, stadsarchief.geld + bijgeschreven);
   }
-  archiefLaatsteWinst = { geld: bijgeschreven, punten: mijlpaalpunten() - puntenVoor };
+  const puntenNa = mijlpaalpunten();
+  archiefLaatsteWinst = {
+    geld: bijgeschreven,
+    punten: puntenNa - puntenVoor,
+    nieuwOntgrendeld: nieuwOntgrendeldeItems(puntenVoor, puntenNa),
+  };
+  toonArchiefWinst(opties.ontsnapping ? 'winArchief' : 'gameOverArchief');
   schrijfStadsarchief(stadsarchief);
   updateArchiefUI();
   tekenArchiefWinkel();   // Ticket 162: saldo en punten zijn net veranderd
@@ -14196,33 +14252,33 @@ const ARCHIEF_SOORT_START = 'startuitrusting';
 
 const ARCHIEF_ITEMS = [
   // --- Mondingsvlam: de kleur van de schietvlam en het bijbehorende licht.
-  { id: 'vlamTint',      naam: 'Violette vlam',   categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 400,  puntenEis: 100, vlamKleur: 0xb478ff, legacyVlag: 'vlamTint' },
-  { id: 'vlam-ijs',      naam: 'IJsblauwe vlam',  categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 250,  puntenEis: 40,  vlamKleur: 0x7fd4ff },
-  { id: 'vlam-groen',    naam: 'Gifgroene vlam',  categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 350,  puntenEis: 90,  vlamKleur: 0x8cff9b },
-  { id: 'vlam-wit',      naam: 'Magnesiumvlam',   categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 600,  puntenEis: 160, vlamKleur: 0xf2f6ff },
-  { id: 'vlam-amber',    naam: 'Amberen vlam',    categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 300,  puntenEis: 60,  vlamKleur: 0xffb347 },
+  { id: 'vlamTint',      naam: 'Violette vlam',   categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1000,  puntenEis: 500, vlamKleur: 0xb478ff, legacyVlag: 'vlamTint' },
+  { id: 'vlam-ijs',      naam: 'IJsblauwe vlam',  categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 650,  puntenEis: 150,  vlamKleur: 0x7fd4ff },
+  { id: 'vlam-groen',    naam: 'Gifgroene vlam',  categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 900,  puntenEis: 350,  vlamKleur: 0x8cff9b },
+  { id: 'vlam-wit',      naam: 'Magnesiumvlam',   categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1500,  puntenEis: 700, vlamKleur: 0xf2f6ff },
+  { id: 'vlam-amber',    naam: 'Amberen vlam',    categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 800,  puntenEis: 250,  vlamKleur: 0xffb347 },
 
   // --- Ondode-kleurset: een tint OVER de bestaande huidskleur. Het is een
   // vermenigvuldiging, dus de onderlinge kleurverschillen tussen de types
   // blijven behouden — dat is precies waarom dit de T156-leesbaarheidsdrempel
   // haalt en waarom de tint nooit als vaste kleur gezet mag worden.
-  { id: 'kleurset',      naam: 'Koele waas',      categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 400, puntenEis: 100, ondodeTint: 0x8ab4ff, legacyVlag: 'kleurset' },
-  { id: 'ondode-as',     naam: 'Asgrijs',         categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 300, puntenEis: 70,  ondodeTint: 0xc2c2c2 },
-  { id: 'ondode-sepia',  naam: 'Sepia',           categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 350, puntenEis: 90,  ondodeTint: 0xd9b98a },
-  { id: 'ondode-mos',    naam: 'Mosgroen',        categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 450, puntenEis: 120, ondodeTint: 0xa8d18a },
+  { id: 'kleurset',      naam: 'Koele waas',      categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1000, puntenEis: 450, ondodeTint: 0x8ab4ff, legacyVlag: 'kleurset' },
+  { id: 'ondode-as',     naam: 'Asgrijs',         categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 800, puntenEis: 200,  ondodeTint: 0xc2c2c2 },
+  { id: 'ondode-sepia',  naam: 'Sepia',           categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 900, puntenEis: 300,  ondodeTint: 0xd9b98a },
+  { id: 'ondode-mos',    naam: 'Mosgroen',        categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1200, puntenEis: 650, ondodeTint: 0xa8d18a },
 
   // --- Richtkruis en HUD: puur DOM/CSS, raken de 3D-scene niet.
-  { id: 'richtkruis-amber',   naam: 'Amber richtkruis',   categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 150, puntenEis: 20,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(255,179,71,0.9)' },
-  { id: 'richtkruis-groen',   naam: 'Groen richtkruis',   categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 150, puntenEis: 20,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(140,255,155,0.9)' },
-  { id: 'richtkruis-magenta', naam: 'Magenta richtkruis', categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 200, puntenEis: 50,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(255,140,220,0.9)' },
-  { id: 'richtkruis-ijs',     naam: 'IJsblauw richtkruis',categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 200, puntenEis: 50,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(127,212,255,0.9)' },
-  { id: 'hud-koper',     naam: 'Koperen HUD',     categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 250,  puntenEis: 60,  cssVar: '--hud-kleur', cssWaarde: '#e8c08a' },
-  { id: 'hud-mint',      naam: 'Munt-HUD',        categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 250,  puntenEis: 60,  cssVar: '--hud-kleur', cssWaarde: '#a8f0d0' },
-  { id: 'hud-rood',      naam: 'Alarm-HUD',       categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1200, puntenEis: 400, cssVar: '--hud-kleur', cssWaarde: '#ff9a9a' },
+  { id: 'richtkruis-amber',   naam: 'Amber richtkruis',   categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 200, puntenEis: 0,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(255,179,71,0.9)' },
+  { id: 'richtkruis-groen',   naam: 'Groen richtkruis',   categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 300, puntenEis: 40,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(140,255,155,0.9)' },
+  { id: 'richtkruis-magenta', naam: 'Magenta richtkruis', categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 400, puntenEis: 80,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(255,140,220,0.9)' },
+  { id: 'richtkruis-ijs',     naam: 'IJsblauw richtkruis',categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 500, puntenEis: 120,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(127,212,255,0.9)' },
+  { id: 'hud-koper',     naam: 'Koperen HUD',     categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 650,  puntenEis: 100,  cssVar: '--hud-kleur', cssWaarde: '#e8c08a' },
+  { id: 'hud-mint',      naam: 'Munt-HUD',        categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 650,  puntenEis: 160,  cssVar: '--hud-kleur', cssWaarde: '#a8f0d0' },
+  { id: 'hud-rood',      naam: 'Alarm-HUD',       categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 2500, puntenEis: 900, cssVar: '--hud-kleur', cssWaarde: '#ff9a9a' },
 
   // --- Intro: de T86-melodie. Eén item; varianten hierop vragen extra
   // registry-ingangen en horen daarom bij een later ticket.
-  { id: 'introMelodie',  naam: 'Intromelodie',    categorie: 'intro', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 400, puntenEis: 150, legacyVlag: 'introMelodie' },
+  { id: 'introMelodie',  naam: 'Intromelodie',    categorie: 'intro', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1000, puntenEis: 400, legacyVlag: 'introMelodie' },
 
   // --- Startuitrusting. Elk item wijst naar een bestaande koopfunctie; de
   // schenking gaat via schenkAankoop(), dat het saldo tijdelijk ophoogt en
@@ -14231,9 +14287,9 @@ const ARCHIEF_ITEMS = [
   // `uitdoofVlag` benoemt de spelerstoestand die het item aanraakt: zodra een
   // gewone speler die zelf bereikt, is een run mét en zonder dit item niet
   // meer te onderscheiden. Dat maakt "het effect dooft uit" toetsbaar.
-  { id: 'start-deur1',      naam: 'Deur 1 staat open', categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 3000, puntenEis: 800,  schenk: () => koopDeur(),        uitdoofVlag: () => deurGekocht },
-  { id: 'start-amstel9',    naam: 'AMSTEL-9 op zak',   categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 4000, puntenEis: 1000, schenk: () => koopAmstel9(),     uitdoofVlag: () => !!wapenStaten.drukspuit },
-  { id: 'start-snelspanner',naam: 'Fast Hands vooraf', categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 5000, puntenEis: 1200, schenk: () => koopSnelspanner(), uitdoofVlag: () => snelspannerGekocht },
+  { id: 'start-deur1',      naam: 'Deur 1 staat open', categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 8000, puntenEis: 1100,  schenk: () => koopDeur(),        uitdoofVlag: () => deurGekocht },
+  { id: 'start-amstel9',    naam: 'AMSTEL-9 op zak',   categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 10000, puntenEis: 1400, schenk: () => koopAmstel9(),     uitdoofVlag: () => !!wapenStaten.drukspuit },
+  { id: 'start-snelspanner',naam: 'Fast Hands vooraf', categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 12000, puntenEis: 1700, schenk: () => koopSnelspanner(), uitdoofVlag: () => snelspannerGekocht },
 ];
 const ARCHIEF_ITEM_OP_ID = new Map(ARCHIEF_ITEMS.map(i => [i.id, i]));
 function archiefItem(id) { return ARCHIEF_ITEM_OP_ID.get(id) ?? null; }
@@ -17528,6 +17584,8 @@ window.AmsterdamUndeadDebug = {
   actieveStartuitrusting, pasArchiefStijlToe, schenkAankoop, pasStartuitrustingToe,
   // Ticket 162
   archiefItemStatus, koopArchiefItem, zetArchiefItemActief, tekenArchiefWinkel,
+  // Ticket 163
+  nieuwOntgrendeldeItems, toonArchiefWinst, ARCHIEF_WINST_MAX_NAMEN,
   ARCHIEF_STATUS_VERGRENDELD, ARCHIEF_STATUS_TEDUUR, ARCHIEF_STATUS_KOOPBAAR, ARCHIEF_STATUS_BEZIT,
   MIJLPAAL_PUNTEN_PER_ONTSNAPPING, MIJLPAAL_PUNTEN_PER_GOLF, MIJLPAAL_HEADSHOTS_PER_PUNT,
   mijlpaalpunten, migreerArchief,

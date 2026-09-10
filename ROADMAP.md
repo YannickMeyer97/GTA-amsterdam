@@ -5729,12 +5729,64 @@ T161 zijn allebei volledig headless testbaar vóór er één pixel UI bestaat.
 
 ---
 
-## Ticket 163 — Wat leverde deze run op: verdienfeedback en prijskalibratie
+## Ticket 163 — Wat leverde deze run op: verdienfeedback en prijskalibratie ✅
 
 - **Type:** feature (feedback) + balans
 - **Verbetergebied:** 5 (Progressie en keuzes)
 - **Prioriteit:** middel
-- **Status:** open (gepland)
+- **Status:** ✅ uitgevoerd (v0.27) — hiermee is ronde 13 compleet.
+  `toonArchiefWinst()` schrijft na elke run een regel op het bijbehorende
+  eindscherm: bijgeschreven geld, verdiende punten, en — met eigen opmaak en
+  meer nadruk — welke items er nieuw in de winkel liggen.
+  `tests/test-archief-feedback.mjs`: 16 checks.
+
+  **Een game over meldt óók iets.** Daar staat niet een kaal "+€0", maar
+  "geen archiefgeld (alleen een geslaagde ontsnapping vult je beurs)" plus de
+  wél verdiende punten. Zonder dat voelt de meest voorkomende runuitkomst als
+  pure straf, terwijl hij juist voortgang oplevert.
+
+  **De prijsladder is gemeten, niet gegokt.** Nieuwe meting van de opbrengst
+  per geslaagde run (spaarder, ongeveer de helft headshots):
+
+  | ontsnappen op | restgeld per run | punten na 1 / 3 / 8 runs |
+  |---|---|---|
+  | golf 10 | €1.489 | 205 / 416 / 944 |
+  | golf 14 | €5.919 | 248 / 464 / 1004 |
+  | golf 18 | €9.995 | 292 / 516 / 1077 |
+
+  Dat corrigeerde de eerdere aanname flink: de oorspronkelijke meting draaide
+  zónder headshots en gaf daardoor veel te lage bedragen (headshots geven
+  dubbel kill-geld). Met de oude prijzen was de hele catalogus na 2-3
+  geslaagde runs leeggekocht. De catalogus kost nu **€42.950** in totaal —
+  ongeveer zeven geslaagde runs op golf 14 — met het goedkoopste item op €200,
+  zodat zelfs de karigste vroege ontsnapping (€233) meteen iets oplevert.
+
+  **Twee dingen gevonden tijdens de uitvoering:**
+  1. **De eerste run ontgrendelde 15 van de 20 items tegelijk.** Zichtbaar
+     geworden in een screenshot van het winscherm: de melding werd een
+     opsomming van vijftien namen over twee regels, en het "schap gaat
+     open"-gevoel was daarmee in één klap opgebruikt. Puntendrempels
+     herverdeeld over de gemeten curve (nu 8 items na run 1, 13 na run 3,
+     17 na run 8, alles rond run 14), en de melding begrensd op drie namen
+     plus "en nog N andere items".
+  2. **Startuitrusting is verder naar achteren geschoven** (drempels
+     1100/1400/1700 in plaats van 600/800/1000), zodat het echt het eindspel
+     van de catalogus is — passend bij de eis "duur en lastig te unlocken".
+     Het blijft daarmee ruim boven élk cosmetisch item (hoogste: 900).
+
+  **Regressie, met een bevinding over de testmachine zelf.** De eerste
+  pogingen tot een volledige regressie werden telkens afgebroken en werden
+  steeds trager. Oorzaak bleek niet de code maar de omgeving: afgebroken
+  achtergrondruns lieten **44 verweesde Chromium-processen** achter, met een
+  load average van 18-22 op vier kernen. Dat verklaart met terugwerkende
+  kracht ook de oplopende timing-flakes in T161 en T162. Na het opruimen:
+  **101/104 groen**, het beste resultaat van de ronde. De hele
+  archief-oppervlakte (`fundament`, `catalogus`, `winkel`, `feedback`,
+  `stadsarchief` — 138 checks samen) is groen, en elk historisch flaky script
+  is los nagelopen en groen, inclusief `test-texturenset` dat onder belasting
+  faalde en schoon 3/3 haalt.
+
+- **Testplan:** uitgevoerd als `tests/test-archief-feedback.mjs`.
 - **Afhankelijk van:** T160-T162.
 - **Doel:** de lus sluiten. Zonder dit ticket verdient de speler valuta die
   hij nergens ziet ontstaan, en zijn de prijzen ongeijkt.

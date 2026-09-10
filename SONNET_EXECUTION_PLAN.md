@@ -5333,7 +5333,7 @@ gemiddeld voor de vormgeving.
 
 ---
 
-### Ticket 163 — Verdienfeedback en prijskalibratie
+### Ticket 163 — Verdienfeedback en prijskalibratie ✅ uitgevoerd (v0.27)
 
 **Doel.** De lus sluiten en de ladder ijken.
 
@@ -5359,6 +5359,20 @@ omdat de speler de waarde ervan nooit kon leren zien. Een winkel die je niet
 ziet vullen, gebruik je niet. Behandel de feedbackregel dus als de kern van
 dit ticket, niet als versiering — en houd het "nieuw schap open"-bericht
 nadrukkelijker dan welk getal ook.
+
+**Nawoord.** De feedbackregels waren inderdaad klein. Het werk zat in de
+ijking, en daar bleek een eerdere meting fout: die draaide zónder headshots
+en gaf daardoor veel te lage opbrengsten (headshots geven dubbel kill-geld).
+Echt gemeten levert een geslaagde run €1.489 (golf 10) tot €9.995 (golf 18)
+op. Met de oude prijzen was de catalogus na 2-3 runs leeg; nu kost hij
+€42.950 in totaal, ongeveer zeven geslaagde runs op golf 14.
+
+Tweede vondst, en die kwam uit een SCREENSHOT en niet uit een assertie: de
+eerste geslaagde run ontgrendelde 15 van de 20 items tegelijk, waardoor de
+melding een opsomming van vijftien namen werd en het "schap gaat open"-gevoel
+meteen op was. Drempels herverdeeld over de gemeten curve en de melding
+begrensd op drie namen. Les: een feedback-ticket verdient een visuele
+controle, want "de tekst klopt" en "de tekst leest goed" zijn niet hetzelfde.
 
 **Uitvoeringsadvies.** Sonnet 5 · High voor de feedbackregels (klein en
 objectief). Voor de prijsladder: de getallen zijn te meten, maar of het
