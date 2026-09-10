@@ -6034,12 +6034,32 @@ T167 (kleurnamen)    — gewone namen, één gedeelde ladder
 
 ---
 
-## Ticket 165 — De boot die je niet ziet wegvaren
+## Ticket 165 — De boot die je niet ziet wegvaren ✅
 
 - **Type:** fix (duidelijkheid/balans)
 - **Verbetergebied:** 5 (Progressie en keuzes)
 - **Prioriteit:** middel
-- **Status:** open (gepland)
+- **Status:** ✅ uitgevoerd (v0.28). `updateVluchtrouteHUD()` toont nu de
+  AFSTAND tot de boot in plaats van alleen het bedrag: "nog €1250 voor de
+  boot", of "boot betaalbaar (€2500)" zodra je er bent. Vóór het eerste
+  onderdeel blijft de regel kaal — het T76-ritme is ongemoeid.
+
+  **Er staat bewust geen oordeel in.** Sterker worden is een geldige
+  strategie en veel spelers willen helemaal niet weg; de regel toont een
+  stand, geen advies. Dat is als assertie vastgelegd (geen "te veel",
+  "verspild", "beter").
+
+  **Eén valkuil, en het is dezelfde als in T162.** De regel moet meebewegen
+  met je geld, dus hij hangt aan `updateHUD()` — maar die draait óók al
+  tijdens het opbouwen van het bestand, lang voordat de vluchtroutestaat en de
+  bootprijs gedeclareerd zijn. Dat gaf meteen een temporal-dead-zone-fout.
+  Anders dan in T162 viel die hier hard om in plaats van te worden opgeslokt
+  door een catch. Opgelost met een `hudVolledigGereed`-vlag die pas aan gaat
+  als het hele bestand doorlopen is.
+
+  Twee bestaande asserties in `test-vluchtroute.mjs` pinden de oude tekst
+  letterlijk vast; die zijn meeverhuisd naar de nieuwe vorm, met de T76-eis
+  (het geldvereiste is ontdekbaar vanaf het eerste onderdeel) onveranderd.
 - **Afhankelijk van:** niets.
 - **Doel:** de spanning tussen "sterker worden" en "ontsnappen" van een
   onbedoeld gevolg tot een bewuste, uitgelegde keuze maken.
@@ -6086,12 +6106,28 @@ T167 (kleurnamen)    — gewone namen, één gedeelde ladder
 
 ---
 
-## Ticket 166 — Een vangnet dat niemand kent (barricades)
+## Ticket 166 — Een vangnet dat niemand kent (barricades) ✅
 
 - **Type:** fix (duidelijkheid)
 - **Verbetergebied:** 1 (Combat-leesbaarheid)
 - **Prioriteit:** laag
-- **Status:** open (gepland)
+- **Status:** ✅ uitgevoerd (v0.28). Twee ingrepen, allebei zonder één getal
+  aan te raken. De reparatieprompt zei alleen wat je verdient; hij vertelt nu
+  ook wat een plank dóét: "Druk T: plank timmeren (+€20, houdt een ondode
+  tegen)". En bij de eerste gebroken plank verschijnt eenmalig per sessie een
+  hint dat terugtimmeren zowel een ondode tegenhoudt als geld oplevert —
+  precies op het moment dat je een plank ziet sneuvelen, en in golf 1 is het
+  rustig genoeg om dat te lezen. Zelfde eenmalig-patroon als de
+  golf-10-ontsnappingsuitleg.
+
+  Gemeten onderbouwing (zie "Losse bevindingen" bij ronde 13): tot 9 ramen en
+  27 planken, actief tot ongeveer golf 15, en terugtimmeren levert €160-540
+  per herstelronde op. Het systeem werkte dus prima — alleen niemand wist het.
+
+- **Testplan:** uitgevoerd als `tests/test-uitleg-boot-en-barricades.mjs`
+  (16 checks, samen met T165), inclusief een bron-assertie dat bootprijs,
+  barricadegetallen en inkomen onveranderd zijn. Volledige regressie
+  sequentieel in vier delen: **106/106, zonder één flake**.
 - **Afhankelijk van:** niets.
 - **Doel:** het barricadesysteem van onzichtbaar vangnet tot bewust
   hulpmiddel maken, zonder er iets aan te veranderen.

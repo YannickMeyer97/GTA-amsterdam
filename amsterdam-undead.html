@@ -14696,7 +14696,20 @@ function gameOver() {
 // met de ruwe hp — die moet zichtbaar vloeiend blijven vullen/leeglopen
 // i.p.v. in hp-stapjes te "springen".
 let hudLaatst = null;
+// Ticket 165: updateHUD() draait ook AL tijdens het opbouwen van het bestand,
+// lang voordat de vluchtroutestaat en de bootprijs bestaan. Die staan verderop
+// gedeclareerd, dus ze rechtstreeks aanroepen vanuit updateHUD() geeft een
+// temporal-dead-zone-fout. Deze vlag gaat pas aan als het hele bestand
+// doorlopen is; daarna beweegt de vluchtrouteregel gewoon mee met elke
+// geldwijziging. (Zelfde klasse fout als in T162 — daar werd hij alleen stil
+// opgeslokt door een catch, hier viel hij meteen om.)
+let hudVolledigGereed = false;
 function updateHUD() {
+  // De vluchtrouteregel toont sinds T165 een bedrag dat van `spelStaat.geld`
+  // afhangt, dus hij moet mee als het geld verandert. updateHUD() draait bij
+  // elke geldwijziging (kill, aankoop, golfbonus) en NIET per frame — precies
+  // het haakje dat hiervoor nodig is.
+  if (hudVolledigGereed) updateVluchtrouteHUD();
   const percentage = Math.max(0, spelerStaat.hp / spelerStaat.hpMax) * 100;
   hpBarBinnen.style.width = percentage + '%';
 
@@ -15179,7 +15192,10 @@ function bouwBarricade(venster) {
     naam: 'Barricade',
     positie: new THREE.Vector3(venster.x, 0, venster.z),
     radius: 1.8,
-    prompt: () => `Druk T: plank repareren (+€${BARRICADE_REPARATIE_GELD}) — ${venster.planken}/${venster.maxPlanken}`,
+    // Ticket 166: de prompt zei alleen wat je verdient, niet wat een plank
+    // doet. Elke intacte plank slikt een spawn-stap zonder ondode, en juist
+    // dat maakt terugtimmeren de moeite waard als je krap zit.
+    prompt: () => `Druk T: plank timmeren (+€${BARRICADE_REPARATIE_GELD}, houdt een ondode tegen) — ${venster.planken}/${venster.maxPlanken}`,
     actie: () => repareerBarricade(venster),
   };
 }
@@ -15187,8 +15203,20 @@ function bouwBarricade(venster) {
 // Een ondode "beukt" tegen een gebarricadeerd venster: geen directe spawn,
 // wel één plank minder. Wordt pas repareerbaar (in interactiePunten) zodra
 // de barricade voor het eerst schade heeft.
+// Ticket 166: het barricadesysteem is een vangnet dat vrijwel niemand kent —
+// terugtimmeren is een herhaalbare inkomstenbron (gemeten €160-540 per ronde)
+// én elke intacte plank kost de golf een spawn-stap. Die les landt het best
+// op het moment dat je een plank ziet sneuvelen, en golf 1 is rustig genoeg
+// om 'm te lezen. Eén keer per sessie, zelfde patroon als de golf-10-uitleg.
+let barricadeUitgelegd = false;
+let barricadeUitlegTeller = 0;   // debug/test: telt elke daadwerkelijk getoonde hint
 function beukBarricade(venster) {
   if (venster.planken <= 0) return;   // al helemaal kapot; niets meer te beuken
+  if (!barricadeUitgelegd) {
+    barricadeUitgelegd = true;
+    barricadeUitlegTeller++;
+    toonMelding('Ze slopen je barricades! Elke plank die je terugtimmert houdt een ondode tegen — en levert geld op.');
+  }
   const wasVol = venster.planken >= venster.maxPlanken;
   venster.planken--;
   const mesh = venster.plankMeshes[venster.planken];
@@ -15998,11 +16026,27 @@ function updateVluchtOnderdelenPuls(dt) {
 // ONTSNAPPING_PRIJS staat verderop in het bestand (STAP 9) — geen TDZ-
 // probleem, deze functie wordt pas ná module-load aangeroepen (bij een
 // echte pickup), net als updateOntsnappingVensterHUD() hieronder.
+// Ticket 165: de regel toont niet alleen WAT de boot kost maar ook hoe ver je
+// er vanaf staat. Gemeten aanleiding: wie elke upgrade koopt zodra het kan
+// heeft op golf 22 nog maar €1.669 en haalt de drempel pas rond golf 26,
+// terwijl wie bewust spaart al op golf 10 weg kan. Dat is een prima spanning,
+// maar de speler kreeg 'm nergens te zien — die merkte alleen dat de boot
+// onbereikbaar bleef, zonder te weten dat dat aan zijn eigen koopgedrag lag.
+//
+// Bewust GEEN oordeel in de tekst: sterker worden is een geldige strategie en
+// veel spelers willen helemaal niet weg. De regel toont een stand, geen advies.
+// Het ritme van T76 blijft: vóór het eerste onderdeel is het bedrag nog niet
+// relevant, dus dan blijft de regel kaal.
 function updateVluchtrouteHUD() {
   const el = document.getElementById('vluchtrouteUI');
-  el.textContent = vluchtOnderdelenOpgepakt === 0
-    ? `Vluchtroute: ${vluchtOnderdelenOpgepakt}/3`
-    : `Vluchtroute: ${vluchtOnderdelenOpgepakt}/3 · €${ONTSNAPPING_PRIJS} nodig`;
+  if (vluchtOnderdelenOpgepakt === 0) {
+    el.textContent = `Vluchtroute: ${vluchtOnderdelenOpgepakt}/3`;
+    return;
+  }
+  const tekort = ONTSNAPPING_PRIJS - spelStaat.geld;
+  el.textContent = tekort > 0
+    ? `Vluchtroute: ${vluchtOnderdelenOpgepakt}/3 · nog €${tekort} voor de boot`
+    : `Vluchtroute: ${vluchtOnderdelenOpgepakt}/3 · boot betaalbaar (€${ONTSNAPPING_PRIJS})`;
 }
 
 function raapVluchtOnderdeelOp(onderdeel) {
@@ -17029,6 +17073,11 @@ herbouwNavTabel();   // Ticket 28: eenmalige initiële tabel (lijn-graaf, alle d
 // AUDIT.md §3.1, A6). ruimGroepOp() disposet 'm meteen weer volgens het
 // bestaande T70-contract — géén enkele resource blijft achter.
 ruimGroepOp(maakOndodeModelV2(ONDODE_TYPES.normaal, kiesOndodeTraits()));
+// Ticket 165: vanaf hier bestaat alles, dus de vluchtrouteregel mag mee met
+// elke geldwijziging.
+hudVolledigGereed = true;
+updateVluchtrouteHUD();
+
 requestAnimationFrame(gameLoop);
 
 // Debug-hooks voor Playwright-tests (zelfde patroon als DamChaosDebug).
@@ -17466,6 +17515,10 @@ window.AmsterdamUndeadDebug = {
   // Ticket 70: dispose-contract voor wegwerp-objecten (voor tests: cache-skip + explosie-opruimtimer)
   ruimGroepOp, explosies, updateExplosies, EXPLOSIE_FLITS_DUUR,
   BARRICADE_MAX_PLANKEN, BARRICADE_REPARATIE_GELD, bouwBarricade,
+  // Ticket 166
+  get barricadeUitgelegd() { return barricadeUitgelegd; },
+  set barricadeUitgelegd(v) { barricadeUitgelegd = v; },
+  get barricadeUitlegTeller() { return barricadeUitlegTeller; },
   beukBarricade, repareerBarricade, golfSpawnStap,
   kozijnSteeg, glasSteeg,   // Ticket 57: nieuw kozijn voor de steegdeur
   // v0.4: atelier (kamer 2) vergroot tot een L-vorm met een voorraadnis:

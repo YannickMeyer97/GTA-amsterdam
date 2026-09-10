@@ -195,14 +195,23 @@ check('vóór het oppakken toont de HUD "Vluchtroute: 0/3"',
   oppakTest.hudVoor === 'Vluchtroute: 0/3', oppakTest);
 check('Na het oppakken van de Touwbundel (als tweede, niet als eerste): teller op 1, mesh+punt weg, Roeispaan blijft ongemoeid',
   oppakTest.naEen.teller === 1 && oppakTest.naEen.touwbundelWeg && oppakTest.naEen.roeispaanNogAanwezig, oppakTest.naEen);
-check('De HUD update meteen mee naar "Vluchtroute: 1/3" + het geldvereiste (Ticket 76: ontdekbaar vanaf het eerste onderdeel)',
-  oppakTest.naEen.hud === 'Vluchtroute: 1/3 · €2500 nodig', oppakTest.naEen);
+// Ticket 165 heeft de tweede helft van deze regel veranderd: waar eerst het
+// kale vereiste stond ("€2500 nodig") staat nu hoeveel je nog tekortkomt, of
+// dat de boot betaalbaar is. De EIS van T76 is ongewijzigd — het geldvereiste
+// moet ontdekbaar zijn vanaf het eerste onderdeel — dus die wordt hier nog
+// steeds getoetst, nu op de nieuwe vorm.
+check('De HUD update meteen mee naar "Vluchtroute: 1/3" + de geldstand (T76: ontdekbaar vanaf het eerste onderdeel; T165: nu als afstand tot de boot)',
+  oppakTest.naEen.hud.startsWith('Vluchtroute: 1/3 · ')
+  && /(nog €\d+ voor de boot|boot betaalbaar)/.test(oppakTest.naEen.hud), oppakTest.naEen);
 // interactiePunten: 14 basis (incl. deur5Punt, deur6Punt, De Zelflader en —
 // Ticket 134 — de AMSTEL-9) + de 3 vluchtroute-punten allemaal weer weg = 14
 // — het ontsnappingspunt zelf verschijnt (sinds Ticket 55) pas na de
 // aankondigingsduur, dus meteen na de derde pickup is het nog 14, niet 15.
 check('Na alle drie: teller op 3, HUD toont 3/3 + geldvereiste, interactiePunten blijft op 14 (het ontsnappingspunt verschijnt pas na de T55-aankondiging)',
-  oppakTest.naAlle.teller === 3 && oppakTest.naAlle.hud === 'Vluchtroute: 3/3 · €2500 nodig' && oppakTest.naAlle.interactiePuntenNa === 14,
+  oppakTest.naAlle.teller === 3
+  && oppakTest.naAlle.hud.startsWith('Vluchtroute: 3/3 · ')
+  && /(nog €\d+ voor de boot|boot betaalbaar)/.test(oppakTest.naAlle.hud)
+  && oppakTest.naAlle.interactiePuntenNa === 14,
   oppakTest.naAlle);
 check('De derde pickup start wél meteen de T55-aankondigingsfase (hoorn + actieve timer)',
   oppakTest.naAlle.aankondigingActief && oppakTest.naAlle.hoornGespeeld, oppakTest.naAlle);

@@ -5506,7 +5506,7 @@ Vertrouwen: hoog.
 
 ---
 
-### Ticket 165 — De boot die je niet ziet wegvaren
+### Ticket 165 — De boot die je niet ziet wegvaren ✅ uitgevoerd (v0.28)
 
 **Doel.** Zichtbaar maken hoe ver je van de boot af staat.
 
@@ -5527,12 +5527,24 @@ rond golf 26, wie spaart al op golf 10 — maar sterker worden is een geldige
 strategie en veel spelers willen helemaal niet weg. De HUD toont een stand,
 geen oordeel, en gaat niet schreeuwen zodra je iets koopt.
 
+**Nawoord.** De HUD-tekst was het makkelijke deel. Het lastige: de regel moet
+meebewegen met je geld, dus hij hangt aan `updateHUD()` — en die draait ook al
+tijdens het opbouwen van het bestand, vóórdat de vluchtroutestaat en de
+bootprijs bestaan. Meteen een temporal-dead-zone-fout, precies dezelfde klasse
+als in T162, alleen viel hij hier hard om in plaats van stil te worden
+opgeslokt. Opgelost met een `hudVolledigGereed`-vlag die pas aan gaat als het
+bestand helemaal doorlopen is.
+
+Dit is nu de tweede keer deze ronde. Vuistregel voor volgende tickets: een
+functie die tijdens het opbouwen van het bestand draait, mag niets aanraken
+dat verderop gedeclareerd staat — en `updateHUD()` is zo'n functie.
+
 **Uitvoeringsadvies.** Sonnet 5 · High. Kleine, geïsoleerde HUD-wijziging met
 objectieve asserties. Vertrouwen: hoog.
 
 ---
 
-### Ticket 166 — Een vangnet dat niemand kent
+### Ticket 166 — Een vangnet dat niemand kent ✅ uitgevoerd (v0.28)
 
 **Doel.** Het barricadesysteem vindbaar maken zonder er iets aan te veranderen.
 
