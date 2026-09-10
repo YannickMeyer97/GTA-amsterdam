@@ -415,6 +415,11 @@
     text-align: center;
     cursor: pointer;
     z-index: 10;
+    /* Ticket 162: vangnet voor kleine schermen. Het paneel scrollt al binnen
+       zichzelf; dit voorkomt dat de rest van de overlay onbereikbaar wordt
+       als alles samen tóch hoger uitvalt dan het venster. */
+    overflow-y: auto;
+    padding: 12px 0;
   }
   /* --- Fix 4 (feedback): geluidsknop rechtsboven in het start-/
        pauzescherm (dezelfde #startscherm-overlay dient voor allebei) --- */
@@ -463,6 +468,59 @@
     border-radius: 999px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.4);
   }
+  /* Ticket 162: het winkelpaneel. Het startscherm is ook het PAUZEscherm,
+     dus het paneel scrollt binnen zichzelf in plaats van de overlay te
+     laten groeien. */
+  #archiefWinkel {
+    margin-top: 14px;
+    text-align: left;
+    max-width: 560px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  #archiefWinkelLijst {
+    max-height: 26vh;
+    overflow-y: auto;
+    padding-right: 6px;
+  }
+  .archiefCategorie { margin-bottom: 10px; }
+  .archiefCategorieKop {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.55;
+    margin: 8px 0 4px;
+  }
+  .archiefRij {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 7px;
+    background: rgba(255,255,255,0.04);
+    margin-bottom: 3px;
+    font-size: 12px;
+  }
+  .archiefRij .naam { flex: 1; }
+  /* Vier toestanden, elk zichtbaar anders — dat is een acceptatie-eis. */
+  .archiefRij.vergrendeld { opacity: 0.45; }
+  .archiefRij.teDuur .status { color: #ff9a9a; }
+  .archiefRij.koopbaar { background: rgba(120,220,150,0.10); }
+  .archiefRij.koopbaar .status { color: #9df0b5; }
+  .archiefRij.bezit { background: rgba(120,180,255,0.10); }
+  .archiefRij .status { font-size: 11px; opacity: 0.9; white-space: nowrap; }
+  .archiefKnopje {
+    cursor: pointer;
+    padding: 3px 9px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.25);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .archiefKnopje:hover { background: rgba(255,255,255,0.12); }
+  .archiefKnopje.aan { background: rgba(120,180,255,0.28); border-color: rgba(160,210,255,0.6); }
+  .archiefWaarschuwing { font-size: 10px; opacity: 0.6; margin-top: 2px; }
+
   /* Ticket 86: Het stadsarchief — kleine toggle-knoppen, uit (grijs
      omlijnd) totdat de speler 'm actief kiest.
      Ticket 159: de kwaliteitsknoppen delen deze vormtaal (kleine pil, één
@@ -580,6 +638,18 @@
       <div class="archiefKnop" id="archiefVlamKnop" style="display:none;">🔥 Vlamkleur</div>
       <div class="archiefKnop" id="archiefMelodieKnop" style="display:none;">🎵 Intro</div>
     </div>
+  </div>
+  <!-- Ticket 162: de winkel. Altijd zichtbaar en ALTIJD compleet — elk item
+       staat er vanaf het eerste bezoek in, met prijs en ontgrendeleis, ook
+       als het nog ver weg is. Dat is een expliciete eis: je moet ergens
+       naartoe kunnen werken. -->
+  <div id="archiefWinkel">
+    <div style="font-size:12px; opacity:0.75; display:flex; justify-content:space-between; align-items:baseline;">
+      <span>🗄️ Stadsarchief</span>
+      <span id="archiefBeurs" style="font-size:12px;"></span>
+    </div>
+    <div id="archiefWinkelUitleg" style="font-size:10px; opacity:0.55; margin:2px 0 6px;"></div>
+    <div id="archiefWinkelLijst"></div>
   </div>
 </div>
 
@@ -13987,12 +14057,22 @@ function leesStadsarchief() {
     const gekochtRuw = Array.isArray(record.gekocht) ? record.gekocht : [];
     const gekocht = [...new Set(gekochtRuw.filter(v => typeof v === 'string' && v.length > 0))]
       .slice(0, ARCHIEF_GEKOCHT_MAX);
+    // `actiefPerCategorie`: categorie -> item-id. Bewust GEEN controle tegen
+    // ARCHIEF_CATEGORIEEN hier, om twee redenen. Ten eerste dezelfde als bij
+    // `gekocht`: een onbekende categorie hoort bewaard te blijven, zodat een
+    // teruggerolde versie de keuzes van een nieuwere niet wist. Ten tweede,
+    // en dringender: die tabel staat verderop in dit bestand, en deze functie
+    // draait al bij het initialiseren van `stadsarchief`. Ernaar verwijzen gaf
+    // een temporal-dead-zone-fout die door de catch hieronder werd opgeslokt —
+    // met als stil gevolg dat ELKE terugkerende speler zijn archief kwijtraakte.
+    // Zie test-archief-winkel.mjs, dat dit met een echte herlaad bewaakt.
     const perCategorieRuw = (record.actiefPerCategorie && typeof record.actiefPerCategorie === 'object')
       ? record.actiefPerCategorie : {};
     const perCategorie = {};
-    for (const cat of ARCHIEF_CATEGORIEEN) {
-      const waarde = perCategorieRuw[cat.id];
-      if (typeof waarde === 'string' && waarde.length > 0) perCategorie[cat.id] = waarde;
+    for (const sleutel of Object.keys(perCategorieRuw).slice(0, ARCHIEF_GEKOCHT_MAX)) {
+      const waarde = perCategorieRuw[sleutel];
+      if (typeof sleutel === 'string' && sleutel.length > 0
+        && typeof waarde === 'string' && waarde.length > 0) perCategorie[sleutel] = waarde;
     }
     return migreerArchief({
       ontsnappingen: geheelGetal(record.ontsnappingen),
@@ -14081,6 +14161,7 @@ function bijwerkenStadsarchief(opties = {}) {
   archiefLaatsteWinst = { geld: bijgeschreven, punten: mijlpaalpunten() - puntenVoor };
   schrijfStadsarchief(stadsarchief);
   updateArchiefUI();
+  tekenArchiefWinkel();   // Ticket 162: saldo en punten zijn net veranderd
 }
 
 // --- Ticket 161 (v0.27): de itemcatalogus ---------------------------------
@@ -14218,6 +14299,131 @@ function pasStartuitrustingToe() {
   return item.id;
 }
 
+// --- Ticket 162 (v0.27): de winkel in het startscherm ---------------------
+// Vier toestanden per item, elk zichtbaar anders:
+//   vergrendeld — puntendrempel niet gehaald. Toont hoeveel punten je nog
+//                 tekortkomt, nooit een leeg vakje met een slotje: dat is de
+//                 les uit het vervallen T158 deel B (wat je niet kunt zien,
+//                 streef je niet na).
+//   teDuur      — ontgrendeld, maar te weinig archiefgeld.
+//   koopbaar    — te koop.
+//   bezit       — gekocht (of via een T86-mijlpaal verdiend), met aan/uit.
+const ARCHIEF_STATUS_VERGRENDELD = 'vergrendeld';
+const ARCHIEF_STATUS_TEDUUR = 'teDuur';
+const ARCHIEF_STATUS_KOOPBAAR = 'koopbaar';
+const ARCHIEF_STATUS_BEZIT = 'bezit';
+function archiefItemStatus(item, a = stadsarchief) {
+  if (bezitArchiefItem(item, a)) return ARCHIEF_STATUS_BEZIT;
+  if (!archiefItemOntgrendeld(item, a)) return ARCHIEF_STATUS_VERGRENDELD;
+  return a.geld >= item.prijs ? ARCHIEF_STATUS_KOOPBAAR : ARCHIEF_STATUS_TEDUUR;
+}
+// Kopen is onomkeerbaar en vraagt geen bevestiging (het is cosmetisch, de
+// inzet is laag), maar mag nooit dubbel afboeken: elke voorwaarde wordt hier
+// opnieuw gecontroleerd, ongeacht wat de UI dacht.
+function koopArchiefItem(id) {
+  const item = archiefItem(id);
+  if (!item) return false;
+  if (archiefItemStatus(item) !== ARCHIEF_STATUS_KOOPBAAR) return false;
+  stadsarchief.geld -= item.prijs;
+  if (!stadsarchief.gekocht.includes(item.id)) stadsarchief.gekocht.push(item.id);
+  schrijfStadsarchief(stadsarchief);
+  speelKoop();
+  tekenArchiefWinkel();
+  return true;
+}
+// Aan/uit binnen een categorie. Per categorie is er hooguit één keuze, dus
+// een tweede aanzetten vervángt de eerste — voor startuitrusting is dat niet
+// alleen UI-gemak maar de harde regel uit de rondekop.
+function zetArchiefItemActief(id, aan) {
+  const item = archiefItem(id);
+  if (!item || !bezitArchiefItem(item)) return false;
+  if (!stadsarchief.actiefPerCategorie) stadsarchief.actiefPerCategorie = {};
+  if (aan) {
+    stadsarchief.actiefPerCategorie[item.categorie] = item.id;
+    // De drie T86-vlaggen zijn een tweede route naar dezelfde categorie; zet
+    // ze uit zodra hier expliciet iets anders gekozen wordt, anders blijft er
+    // een knop "aan" staan die niets meer doet.
+    for (const ander of ARCHIEF_ITEMS) {
+      if (ander.categorie === item.categorie && ander.legacyVlag && ander.id !== item.id) {
+        stadsarchief.actief[ander.legacyVlag] = false;
+      }
+    }
+    if (item.legacyVlag) stadsarchief.actief[item.legacyVlag] = true;
+  } else {
+    delete stadsarchief.actiefPerCategorie[item.categorie];
+    if (item.legacyVlag) stadsarchief.actief[item.legacyVlag] = false;
+  }
+  schrijfStadsarchief(stadsarchief);
+  pasArchiefStijlToe();
+  updateArchiefUI();
+  tekenArchiefWinkel();
+  return true;
+}
+
+const archiefWinkelLijst = document.getElementById('archiefWinkelLijst');
+const archiefBeurs = document.getElementById('archiefBeurs');
+const archiefWinkelUitleg = document.getElementById('archiefWinkelUitleg');
+// Volgorde binnen een categorie: het eerstvolgende HAALBARE item bovenaan,
+// zodat 20+ items niet ontmoedigen. Koopbaar eerst, dan bezit, dan te duur,
+// dan vergrendeld (oplopend naar drempel).
+const ARCHIEF_STATUS_VOLGORDE = {
+  [ARCHIEF_STATUS_KOOPBAAR]: 0, [ARCHIEF_STATUS_BEZIT]: 1,
+  [ARCHIEF_STATUS_TEDUUR]: 2, [ARCHIEF_STATUS_VERGRENDELD]: 3,
+};
+function tekenArchiefWinkel() {
+  if (!archiefWinkelLijst) return;
+  const punten = mijlpaalpunten();
+  archiefBeurs.textContent = `€${stadsarchief.geld} · ${punten} punten`;
+  archiefWinkelUitleg.textContent =
+    `Geld verdien je door te ONTSNAPPEN (je restsaldo gaat mee). `
+    + `Punten krijg je elke run: +${MIJLPAAL_PUNTEN_PER_ONTSNAPPING} per ontsnapping, `
+    + `+${MIJLPAAL_PUNTEN_PER_GOLF} per bereikte golf, +1 per ${MIJLPAAL_HEADSHOTS_PER_PUNT} headshots.`;
+
+  const stukken = [];
+  for (const categorie of ARCHIEF_CATEGORIEEN) {
+    const items = ARCHIEF_ITEMS.filter(i => i.categorie === categorie.id)
+      .map(i => ({ item: i, status: archiefItemStatus(i) }))
+      .sort((a, b) => (ARCHIEF_STATUS_VOLGORDE[a.status] - ARCHIEF_STATUS_VOLGORDE[b.status])
+        || (a.item.puntenEis - b.item.puntenEis));
+    if (!items.length) continue;
+    const rijen = items.map(({ item, status }) => {
+      const actief = actiefArchiefItem(item.categorie) === item;
+      let status_tekst = '', knop = '';
+      if (status === ARCHIEF_STATUS_VERGRENDELD) {
+        status_tekst = `nog ${item.puntenEis - punten} punten`;
+      } else if (status === ARCHIEF_STATUS_TEDUUR) {
+        status_tekst = `nog €${item.prijs - stadsarchief.geld} nodig`;
+      } else if (status === ARCHIEF_STATUS_KOOPBAAR) {
+        knop = `<span class="archiefKnopje" data-koop="${item.id}">Koop €${item.prijs}</span>`;
+      } else {
+        knop = `<span class="archiefKnopje ${actief ? 'aan' : ''}" data-zet="${item.id}" data-aan="${actief ? '0' : '1'}">${actief ? 'Aan' : 'Uit'}</span>`;
+      }
+      return `<div class="archiefRij ${status}" data-item="${item.id}">`
+        + `<span class="naam">${item.naam}</span>`
+        + (status_tekst ? `<span class="status">${status_tekst}</span>` : '')
+        + knop + `</div>`;
+    }).join('');
+    // Startuitrusting: de exclusiviteit moet VÓÓR de klik af te lezen zijn,
+    // niet pas erna.
+    const actieveStart = categorie.id === 'startuitrusting' ? actieveStartuitrusting() : null;
+    const noot = categorie.id === 'startuitrusting'
+      ? `<div class="archiefWaarschuwing">Er kan er maar één tegelijk aanstaan${actieveStart ? ` (nu: ${actieveStart.naam})` : ''} — een ander aanzetten schakelt deze uit. Gaat pas in bij een nieuwe run.</div>`
+      : '';
+    stukken.push(`<div class="archiefCategorie"><div class="archiefCategorieKop">${categorie.naam}</div>${rijen}${noot}</div>`);
+  }
+  archiefWinkelLijst.innerHTML = stukken.join('');
+}
+// stopPropagation is hier niet optioneel: zonder dat bubbelt elke klik door
+// naar de startscherm-listener, die pointer lock aanvraagt en het spel start
+// (exact de valkuil waar T159 tegenaan liep).
+archiefWinkelLijst?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const koop = e.target.closest('[data-koop]');
+  if (koop) { koopArchiefItem(koop.dataset.koop); return; }
+  const zet = e.target.closest('[data-zet]');
+  if (zet) zetArchiefItemActief(zet.dataset.zet, zet.dataset.aan === '1');
+});
+
 // Toont/verbergt elke archiefKnop op basis van stadsarchiefOntgrendelingen()
 // en zet de .actief-class op basis van stadsarchief.actief.* — puur
 // weergave, geen enkele hier gelezen waarde raakt een spelregel.
@@ -14247,11 +14453,27 @@ for (const naam in archiefKnoppen) {
     e.stopPropagation();   // zelfde reden als geluidKnop: mag het spel niet per ongeluk starten/hervatten
     if (!stadsarchiefOntgrendelingen()[naam]) return;   // defensief: verborgen knoppen zijn ook niet klikbaar
     stadsarchief.actief[naam] = !stadsarchief.actief[naam];
+    // Ticket 162: de oude knop en de winkel tonen dezelfde categorie, dus de
+    // winkel moet meebewegen — anders staat er in het ene paneel "Aan" en in
+    // het andere "Uit".
+    if (stadsarchief.actiefPerCategorie) {
+      const item = archiefItem(ARCHIEF_LEGACY_IDS[naam]);
+      if (item) {
+        if (stadsarchief.actief[naam]) stadsarchief.actiefPerCategorie[item.categorie] = item.id;
+        else if (stadsarchief.actiefPerCategorie[item.categorie] === item.id) delete stadsarchief.actiefPerCategorie[item.categorie];
+      }
+    }
     schrijfStadsarchief(stadsarchief);
     updateArchiefUI();
+    pasArchiefStijlToe();
+    tekenArchiefWinkel();
   });
 }
 updateArchiefUI();
+// Ticket 162: winkel meteen vullen, en de opgeslagen keuzes van een
+// terugkerende speler direct toepassen (niet pas bij kiesMoeilijkheid).
+tekenArchiefWinkel();
+pasArchiefStijlToe();
 
 function gameOver() {
   spelStaat.gameOver = true;
@@ -17304,6 +17526,9 @@ window.AmsterdamUndeadDebug = {
   ARCHIEF_ITEMS, ARCHIEF_CATEGORIEEN, ARCHIEF_SOORT_COSMETISCH, ARCHIEF_SOORT_START,
   archiefItem, archiefItemOntgrendeld, bezitArchiefItem, actiefArchiefItem,
   actieveStartuitrusting, pasArchiefStijlToe, schenkAankoop, pasStartuitrustingToe,
+  // Ticket 162
+  archiefItemStatus, koopArchiefItem, zetArchiefItemActief, tekenArchiefWinkel,
+  ARCHIEF_STATUS_VERGRENDELD, ARCHIEF_STATUS_TEDUUR, ARCHIEF_STATUS_KOOPBAAR, ARCHIEF_STATUS_BEZIT,
   MIJLPAAL_PUNTEN_PER_ONTSNAPPING, MIJLPAAL_PUNTEN_PER_GOLF, MIJLPAAL_HEADSHOTS_PER_PUNT,
   mijlpaalpunten, migreerArchief,
   get archiefLaatsteWinst() { return archiefLaatsteWinst; },

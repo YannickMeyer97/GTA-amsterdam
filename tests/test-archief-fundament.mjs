@@ -270,6 +270,33 @@ check('Een geschreven archief leest identiek terug (geld, gekochte items, teller
   && rondreis.terug.hoogsteGolf === rondreis.bron.hoogsteGolf
   && rondreis.terug.actief.introMelodie === true, rondreis);
 
+// --- 8b. HET ARCHIEF OVERLEEFT EEN ECHTE HERLAAD -----------------------
+// Deze check bestaat door schade en schande. Tijdens T162 bleek dat
+// leesStadsarchief() een verwijzing bevatte naar een tabel die verderop in
+// het bestand staat, terwijl de functie al draait bij het initialiseren van
+// `stadsarchief`. Dat gaf een temporal-dead-zone-fout die netjes werd
+// opgeslokt door de catch die voor CORRUPTE OPSLAG bedoeld is — met als stil
+// gevolg dat elke terugkerende speler zijn hele archief kwijtraakte.
+// Schrijven-en-teruglezen binnen dezelfde pagina (sectie 8) vangt dit NIET,
+// want dan is alles allang geïnitialiseerd. Alleen een echte herlaad doet dat.
+await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.schrijfStadsarchief({
+    ontsnappingen: 5, headshotsTotaal: 250, hoogsteGolf: 22,
+    geld: 4321, gekocht: ['vlam-ijs', 'richtkruis-amber'],
+    actiefPerCategorie: { mondingsvlam: 'vlam-ijs' }, versie: d.ARCHIEF_VERSIE,
+    actief: { kleurset: false, vlamTint: false, introMelodie: false },
+  });
+});
+await page.reload();
+await page.waitForFunction(() => !!window.AmsterdamUndeadDebug);
+const naHerladen = await page.evaluate(() => ({ ...window.AmsterdamUndeadDebug.stadsarchief }));
+check('Na een ECHTE herlaad is het archief compleet ingelezen — geen stille terugval op de lege staat',
+  naHerladen.geld === 4321 && naHerladen.ontsnappingen === 5
+  && naHerladen.gekocht.includes('vlam-ijs') && naHerladen.gekocht.includes('richtkruis-amber')
+  && naHerladen.actiefPerCategorie.mondingsvlam === 'vlam-ijs', naHerladen);
+await page.evaluate(() => localStorage.removeItem(window.AmsterdamUndeadDebug.STADSARCHIEF_KEY));
+
 // --- 9. Geweigerde localStorage blijft stil falen -----------------------
 const geweigerd = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;

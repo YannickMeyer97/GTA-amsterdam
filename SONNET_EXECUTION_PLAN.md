@@ -5278,7 +5278,7 @@ automatische tests. Vertrouwen: gemiddeld.
 
 ---
 
-### Ticket 162 — De winkel in het startscherm
+### Ticket 162 — De winkel in het startscherm ✅ uitgevoerd (v0.27)
 
 **Doel.** 20+ items bedienbaar maken in een scherm dat al twee knoppenrijen
 draagt.
@@ -5310,6 +5310,21 @@ draagt.
 in de overlay het spel (T159 liep hier tegenaan). Tweede valkuil: het
 startscherm is óók het pauzescherm, dus het paneel moet passen of binnen
 zichzelf scrollen.
+
+**Nawoord.** De UI zelf was inderdaad routine. Het echte werk zat in een bug
+die de UI-test blootlegde: `leesStadsarchief()` verwees naar de
+catalogustabel, die verderop in het bestand staat dan het punt waarop die
+functie draait. De resulterende temporal-dead-zone-fout werd opgeslokt door de
+catch die voor corrupte opslag bedoeld is, met als stil gevolg dat elke
+terugkerende speler zijn archief kwijtraakte. Alleen een test met een ECHTE
+`page.reload()` vangt dit — schrijven en teruglezen binnen dezelfde pagina
+niet, want dan is alles al geïnitialiseerd.
+
+Twee lessen voor de rest van deze ronde. (1) Een `try/catch` die bedoeld is
+voor slechte DATA verbergt ook programmeerfouten; zet er een herlaadtest naast
+zodra opslag en initialisatievolgorde elkaar raken. (2) Valideer opslag niet
+tegen een tabel die later in het bestand staat — en laat onbekende sleutels
+sowieso staan, zodat een teruggerolde versie niets van een nieuwere wist.
 
 **Uitvoeringsadvies.** Sonnet 5 · High · extended thinking Default. Bekend
 UI-patroon uit T159, alleen groter. Review: automatische tests **plus** een

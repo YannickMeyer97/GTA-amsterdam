@@ -5620,12 +5620,49 @@ T161 zijn allebei volledig headless testbaar vóór er één pixel UI bestaat.
 
 ---
 
-## Ticket 162 — De winkel in het startscherm
+## Ticket 162 — De winkel in het startscherm ✅
 
 - **Type:** feature (UI)
 - **Verbetergebied:** 5 (Progressie en keuzes)
 - **Prioriteit:** middel
-- **Status:** open (gepland)
+- **Status:** ✅ uitgevoerd (v0.27). `#archiefWinkel` in het startscherm, met
+  saldo + punten, een uitlegregel die vertelt hoe je béíde valuta verdient, en
+  per categorie een gesorteerde lijst. Vier toestanden met eigen klasse:
+  `vergrendeld` (toont "nog N punten"), `teDuur` ("nog €N nodig"), `koopbaar`
+  (koopknop) en `bezit` (aan/uit). `tests/test-archief-winkel.mjs`: 23 checks.
+
+  **Volledige zichtbaarheid is geleverd zoals gevraagd:** bij een leeg archief
+  staan alle 20 items al in beeld, elk met prijs en met wat je moet doen. Een
+  vergrendeld item toont "nog 40 punten", geen grijs vakje met een slotje. De
+  sortering zet het eerstvolgende haalbare item bovenaan, zodat 20+ items niet
+  ontmoedigen. Visueel gecontroleerd op 1280×800 met zowel een verse als een
+  gevorderde speler.
+
+  **Eén serieuze bug gevonden — door de test die een ECHTE herlaad doet.**
+  `leesStadsarchief()` verwees (via T161's `actiefPerCategorie`-validatie) naar
+  `ARCHIEF_CATEGORIEEN`, een `const` die verderop in het bestand staat, terwijl
+  die functie al draait bij het initialiseren van `stadsarchief`. Dat gaf een
+  temporal-dead-zone-fout, die netjes werd opgeslokt door de `try/catch` die
+  juist voor CORRUPTE OPSLAG bedoeld is. Stil gevolg: **elke terugkerende
+  speler zou bij het laden zijn hele archief kwijtraken** — geld, aankopen,
+  alles. Schrijven-en-teruglezen binnen dezelfde pagina vangt dit niet (dan is
+  alles al geïnitialiseerd); alleen een echte herlaad doet dat. Opgelost door
+  de validatie los te koppelen van de catalogus: onbekende categorieën blijven
+  gewoon bewaard, net als onbekende id's in `gekocht`, zodat een teruggerolde
+  versie de keuzes van een nieuwere niet wist. De herlaadcheck staat nu ook in
+  `test-archief-fundament.mjs`, waar iemand later naar opslaggaranties zoekt.
+
+  **Open punt voor T163 of later:** de oude drie-knoppenrij (`#archiefUI`) uit
+  T86 staat er nog naast en toont dezelfde drie items als de winkel. Voor een
+  nieuwe speler is die rij onzichtbaar (hij verschijnt pas bij een oude
+  mijlpaal), dus in de praktijk valt het mee — maar voor een terugkerende
+  speler is het dubbelop. Weghalen vraagt om aanpassingen in
+  `test-stadsarchief.mjs`, dus dat is een bewuste keuze, geen opruimklusje.
+
+  Volledige regressie: 97/103. De vijf afwijkingen (`test-camerabeweging`,
+  `test-normal-maps`, `test-omgeving-sfeer`, `test-ontsnapping-vensters`,
+  `test-trefferfeedback-per-wapen`) zijn bekende timing-/contentieflakes; drie
+  ervan zijn 3/3 schoon nagelopen in isolatie en geen ervan raakt archiefcode.
 - **Afhankelijk van:** T160 + T161.
 - **Doel:** de catalogus bedienbaar maken zonder het startscherm te laten
   ontploffen.
