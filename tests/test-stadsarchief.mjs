@@ -181,7 +181,7 @@ const bronAssertieTest = await page.evaluate(() => {
     d.schrijfStadsarchief.toString(),
     d.stadsarchiefOntgrendelingen.toString(),
     d.bijwerkenStadsarchief.toString(),
-    d.updateArchiefUI.toString(),
+    d.tekenArchiefWinkel.toString(),   // T164: verving updateArchiefUI()
     d.speelIntroMelodie.toString(),
   ];
   const verboden = [
@@ -245,66 +245,84 @@ check('Na de uiteindelijke dood (10 headshots totaal, golf 5): headshotsTotaal=1
 check('Het eindtotaal in het archief is exact gelijk aan runStats.headshots, nooit meer (geen dubbeltelling)',
   deltaTest.naDood.headshotsTotaal === deltaTest.eindeRunStatsHeadshots, deltaTest);
 
-// --- 9. UI: knoppen alleen zichtbaar zodra ontgrendeld, togglen op klik, ----
-// geen pointer-lock-aanvraag (zelfde stopPropagation-patroon als de
-// gevoeligheidsslider/geluidsknop).
-const uiVerborgenTest = await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  d.stadsarchief = { ontsnappingen: 0, headshotsTotaal: 0, hoogsteGolf: 0, actief: { kleurset: false, vlamTint: false, introMelodie: false } };
-  d.updateArchiefUI();
-  return {
-    archiefUIVerborgen: getComputedStyle(document.getElementById('archiefUI')).display === 'none',
-    kleursetKnopVerborgen: document.getElementById('archiefKleursetKnop').style.display === 'none',
-  };
+// --- 9. UI: bediening loopt sinds T164 via de WINKEL -----------------------
+// De oude drie-knoppenrij (#archiefUI) is in T164 vervallen; de winkel doet
+// alles wat die deed. Deze sectie is meeverhuisd, niet geschrapt: dezelfde
+// vier eisen worden nog steeds bewaakt, nu op het winkelpad.
+//   (a) een item dat je niet bezit is niet aan/uit te zetten
+//   (b) togglen werkt en wordt opgeslagen
+//   (c) klikken vraagt geen pointer lock aan (stopPropagation)
+//   (d) een niet-bezeten item aanzetten heeft geen effect
+const winkelBasis = (extra = {}) => ({
+  ontsnappingen: 0, headshotsTotaal: 0, hoogsteGolf: 0, geld: 0,
+  gekocht: [], actiefPerCategorie: {}, versie: 2,
+  actief: { kleurset: false, vlamTint: false, introMelodie: false },
+  ...extra,
 });
-check('Zonder enige ontgrendeling blijft de hele archief-UI verborgen', uiVerborgenTest.archiefUIVerborgen === true, uiVerborgenTest);
 
-const uiZichtbaarTest = await page.evaluate(() => {
+const nietBezitTest = await page.evaluate((basis) => {
   const d = window.AmsterdamUndeadDebug;
-  d.stadsarchief = { ontsnappingen: 3, headshotsTotaal: 0, hoogsteGolf: 0, actief: { kleurset: false, vlamTint: false, introMelodie: false } };
-  d.updateArchiefUI();
+  d.stadsarchief = { ...basis, versie: d.ARCHIEF_VERSIE };
+  d.tekenArchiefWinkel();
+  const rij = document.querySelector('.archiefRij[data-item="kleurset"]');
   return {
-    archiefUIZichtbaar: getComputedStyle(document.getElementById('archiefUI')).display !== 'none',
-    kleursetKnopZichtbaar: document.getElementById('archiefKleursetKnop').style.display !== 'none',
-    vlamKnopVerborgen: document.getElementById('archiefVlamKnop').style.display === 'none',
-    kleursetKnopNietActief: !document.getElementById('archiefKleursetKnop').classList.contains('actief'),
+    rijBestaat: !!rij,                                  // alles is altijd zichtbaar (T162)
+    status: d.archiefItemStatus(d.archiefItem('kleurset')),
+    heeftAanUitKnop: !!rij?.querySelector('[data-zet]'), // maar niet bedienbaar
   };
-});
-check('Met kleurset ontgrendeld: archief-UI en de kleurset-knop worden zichtbaar, de nog-niet-ontgrendelde vlam-knop niet',
-  uiZichtbaarTest.archiefUIZichtbaar && uiZichtbaarTest.kleursetKnopZichtbaar && uiZichtbaarTest.vlamKnopVerborgen &&
-  uiZichtbaarTest.kleursetKnopNietActief, uiZichtbaarTest);
+}, winkelBasis());
+check('Zonder bezit staat het item wél in de winkel maar is het niet aan/uit te zetten',
+  nietBezitTest.rijBestaat && !nietBezitTest.heeftAanUitKnop, nietBezitTest);
 
-const uiKlikTest = await page.evaluate(() => {
+const legacyBezitTest = await page.evaluate((basis) => {
   const d = window.AmsterdamUndeadDebug;
-  d.stadsarchief = { ontsnappingen: 3, headshotsTotaal: 0, hoogsteGolf: 0, actief: { kleurset: false, vlamTint: false, introMelodie: false } };
-  d.updateArchiefUI();
+  d.stadsarchief = { ...basis, versie: d.ARCHIEF_VERSIE, ontsnappingen: d.STADSARCHIEF_DREMPEL_ONTSNAPPINGEN };
+  d.tekenArchiefWinkel();
+  return {
+    kleursetBezit: d.bezitArchiefItem(d.archiefItem('kleurset')),
+    vlamBezit: d.bezitArchiefItem(d.archiefItem('vlamTint')),
+    kleursetKnop: !!document.querySelector('.archiefRij[data-item="kleurset"] [data-zet]'),
+  };
+}, winkelBasis());
+check('Met de oude ontsnappingsmijlpaal is de kleurset bezit en bedienbaar, de nog niet verdiende vlamtint niet',
+  legacyBezitTest.kleursetBezit && legacyBezitTest.kleursetKnop && !legacyBezitTest.vlamBezit, legacyBezitTest);
+
+const uiKlikTest = await page.evaluate((basis) => {
+  const d = window.AmsterdamUndeadDebug;
+  d.stadsarchief = { ...basis, versie: d.ARCHIEF_VERSIE, ontsnappingen: d.STADSARCHIEF_DREMPEL_ONTSNAPPINGEN };
+  d.tekenArchiefWinkel();
   let pointerLockCalls = 0;
   const orig = d.renderer.domElement.requestPointerLock;
   d.renderer.domElement.requestPointerLock = function (...a) { pointerLockCalls++; return orig.apply(this, a); };
-  document.getElementById('archiefKleursetKnop').click();
-  const naEersteKlik = { actief: d.stadsarchief.actief.kleurset, opgeslagen: JSON.parse(localStorage.getItem(d.STADSARCHIEF_KEY)).actief.kleurset, pointerLockCalls };
-  document.getElementById('archiefKleursetKnop').click();
-  const naTweedeKlik = { actief: d.stadsarchief.actief.kleurset };
+  document.querySelector('.archiefRij[data-item="kleurset"] [data-zet]').click();
+  const naEersteKlik = {
+    actief: d.actiefArchiefItem('ondode')?.id,
+    opgeslagen: JSON.parse(localStorage.getItem(d.STADSARCHIEF_KEY)).actiefPerCategorie.ondode,
+    pointerLockCalls,
+  };
+  document.querySelector('.archiefRij[data-item="kleurset"] [data-zet]').click();
+  const naTweedeKlik = { actief: d.actiefArchiefItem('ondode') };
   d.renderer.domElement.requestPointerLock = orig;
   localStorage.removeItem(d.STADSARCHIEF_KEY);
   return { naEersteKlik, naTweedeKlik };
-});
-check('Klikken op een ontgrendelde archief-knop togglet stadsarchief.actief.* aan en persisteert dat',
-  uiKlikTest.naEersteKlik.actief === true && uiKlikTest.naEersteKlik.opgeslagen === true, uiKlikTest);
-check('Nogmaals klikken togglet weer uit',
-  uiKlikTest.naTweedeKlik.actief === false, uiKlikTest);
-check('Klikken op een archief-knop vraagt GEEN pointer lock aan (stopPropagation)',
+}, winkelBasis());
+check('Aanzetten in de winkel maakt het item actief en persisteert dat',
+  uiKlikTest.naEersteKlik.actief === 'kleurset' && uiKlikTest.naEersteKlik.opgeslagen === 'kleurset', uiKlikTest);
+check('Nogmaals klikken zet het weer uit', uiKlikTest.naTweedeKlik.actief === null, uiKlikTest);
+check('Klikken in de winkel vraagt GEEN pointer lock aan (stopPropagation)',
   uiKlikTest.naEersteKlik.pointerLockCalls === 0, uiKlikTest);
 
-const uiGeblokkeerdKlikTest = await page.evaluate(() => {
+const uiGeblokkeerdKlikTest = await page.evaluate((basis) => {
   const d = window.AmsterdamUndeadDebug;
-  d.stadsarchief = { ontsnappingen: 0, headshotsTotaal: 0, hoogsteGolf: 0, actief: { kleurset: false, vlamTint: false, introMelodie: false } };
-  d.updateArchiefUI();
-  document.getElementById('archiefKleursetKnop').click();   // nog niet ontgrendeld: verborgen knop, klik mag niets doen
-  return { actief: d.stadsarchief.actief.kleurset };
-});
-check('Klikken op een nog-verborgen (niet-ontgrendelde) knop heeft geen effect (defensieve check in de handler)',
-  uiGeblokkeerdKlikTest.actief === false, uiGeblokkeerdKlikTest);
+  d.stadsarchief = { ...basis, versie: d.ARCHIEF_VERSIE };
+  d.tekenArchiefWinkel();
+  // Rechtstreeks aanzetten van iets dat je niet bezit moet geweigerd worden,
+  // ongeacht wat de UI toont — de guard zit in de logica, niet in de weergave.
+  const gelukt = d.zetArchiefItemActief('kleurset', true);
+  return { gelukt, actief: d.actiefArchiefItem('ondode') };
+}, winkelBasis());
+check('Een item dat je niet bezit aanzetten wordt geweigerd, ook bij een directe aanroep',
+  uiGeblokkeerdKlikTest.gelukt === false && uiGeblokkeerdKlikTest.actief === null, uiGeblokkeerdKlikTest);
 
 // --- 10. Cosmetische toepassing: kleurset-tint op de ondode-huidskleur -----
 // De huidkleur zit op het ENE gedeelde materiaal van de hele SkinnedMesh,

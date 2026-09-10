@@ -5913,12 +5913,52 @@ T167 (kleurnamen)    — gewone namen, één gedeelde ladder
 
 ---
 
-## Ticket 164 — Het startscherm opgeruimd
+## Ticket 164 — Het startscherm opgeruimd ✅
 
 - **Type:** feature (UI/architectuur)
 - **Verbetergebied:** 8 (Presentatie en menu's)
 - **Prioriteit:** hoog
-- **Status:** open (gepland)
+- **Status:** ✅ uitgevoerd (v0.28). Drie zones zoals gepland:
+  `#instellingenHoek` rechtsboven met geluid, beeldkwaliteit én
+  muisgevoeligheid; het midden nog uitsluitend titel, uitleg,
+  moeilijkheidskeuze en één knop `#archiefOpenKnop` met teller-badge; en
+  `#archiefPaneel` dat daarover valt met een gedimde achtergrond, sluitbaar
+  via het kruisje, een klik op de achtergrond én Esc.
+  `tests/test-startscherm-indeling.mjs`: 19 checks.
+
+  **Esc bleek eenvoudiger dan het ticket vreesde — en dat is een vondst op
+  zich.** Het spel heeft helemaal géén Esc-handler: pauzeren gebeurt doordat
+  de BROWSER pointer lock loslaat, waarna `pointerlockchange` het startscherm
+  toont. Het paneel is daardoor per constructie alleen bereikbaar terwijl het
+  spel al gepauzeerd is, dus de nieuwe Esc-listener kán het spel niet
+  hervatten. De guard op `archiefPaneelOpen()` zorgt dat Esc verder overal
+  ongemoeid blijft. Alle drie de gevallen (open paneel, gesloten paneel, geen
+  pointer lock aangevraagd) liggen als assertie vast.
+
+  **Eén echte bug tijdens het bouwen, meteen zichtbaar op de eerste
+  screenshot:** het paneel stond altijd open, met het hele startscherm
+  verduisterd tot gevolg. Oorzaak: het `hidden`-attribuut zet `display:none`
+  via de browserstijl, maar de eigen `display:flex` op `#archiefPaneel` is
+  specifieker en won. Opgelost met een expliciete
+  `#archiefPaneel[hidden] { display: none; }`, en de test controleert nu niet
+  alleen het attribuut maar ook de BEREKENDE display — anders zou dezelfde
+  fout opnieuw ongemerkt kunnen terugkomen.
+
+  **De itemlijst ademt nu.** Hij stond op `max-height: 26vh` omdat hij het
+  startscherm moest delen; in een eigen paneel is dat `flex: 1` geworden, wat
+  het verschil maakt tussen vier zichtbare regels en de hele catalogus.
+
+  **`#archiefUI` is verdwenen**, inclusief `updateArchiefUI()` en de drie
+  knoplisteners. De legacy-VLAGGEN in `stadsarchief.actief` blijven bestaan:
+  een terugkerende speler kan ze aan hebben staan, `actiefArchiefItem()` valt
+  daar nog op terug, en `zetArchiefItemActief()` schrijft ze bij. Sectie 9 van
+  `test-stadsarchief.mjs` is meeverhuisd naar het winkelpad — dezelfde vier
+  eisen (niet bedienbaar zonder bezit, togglen persisteert, geen pointer lock,
+  directe aanroep geweigerd), nu getoetst waar de bediening echt zit.
+
+  Volledige regressie sequentieel in vier delen: 105/105, op één kansflake na
+  (`test-ruislaag.mjs`, "20 grommen leveren 20 verschillende toonhoogtes op" —
+  19 van 20 uniek). Die is 5/5 schoon in isolatie en raakt geen UI-code.
 - **Afhankelijk van:** T162 (de winkel), T163 (de badge leunt op
   `archiefLaatsteWinst`/`archiefItemStatus`).
 - **Doel:** het startscherm terugbrengen tot één beslissing, met de

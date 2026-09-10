@@ -5402,7 +5402,7 @@ is een ander ticket, en het vraagt een expliciete keuze van de eigenaar.
 
 ---
 
-### Ticket 164 — Het startscherm opgeruimd
+### Ticket 164 — Het startscherm opgeruimd ✅ uitgevoerd (v0.28)
 
 **Doel.** Eén beslissing in het midden, instellingen in een hoek, het archief
 achter één knop.
@@ -5434,6 +5434,23 @@ de winkel per ongeluk het spel in. Tweede valkuil, inmiddels drie tickets op
 rij dezelfde: `e.stopPropagation()` op élke klikbare plek in de overlay.
 Derde: het startscherm is óók het pauzescherm, dus alles moet ook midden in
 een run werken.
+
+**Nawoord.** Het Esc-randgeval bleek minder eng dan gevreesd, om een reden
+die de moeite van het onthouden waard is: dit spel heeft geen Esc-handler.
+Pauzeren gebeurt doordat de browser pointer lock loslaat. Het paneel is
+daardoor alleen bereikbaar als het spel al gepauzeerd is, dus een
+Esc-listener kan het spel niet hervatten.
+
+De echte valkuil zat ergens anders en kwam uit een SCREENSHOT, niet uit een
+assertie: het `hidden`-attribuut zet `display:none` via de browserstijl, maar
+een eigen `display:flex` op hetzelfde element is specifieker en wint. Het
+paneel stond dus altijd open. Les voor elk volgend paneel: zet er expliciet
+`#element[hidden] { display: none; }` bij, en toets de BEREKENDE display in
+plaats van alleen het attribuut.
+
+Praktisch: de itemlijst stond op `max-height: 26vh` omdat hij het startscherm
+moest delen. In een eigen paneel moet dat `flex: 1` worden — anders verhuis je
+de lijst wel, maar blijft hij even klein.
 
 **Uitvoeringsadvies.** Sonnet 5 · High · extended thinking Default. Bekend
 terrein (T159/T162), maar met meer verplaatswerk en één echt subtiel
