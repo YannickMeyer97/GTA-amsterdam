@@ -5297,8 +5297,30 @@ een echte winkel van in het startscherm, met een ruime catalogus.
 **Wat deze ronde NIET is.** Geen powercreep. De verbodenlijst uit §9.2
 blijft onverkort gelden — geen enkel item raakt `SPELER_HP_MAX`, een
 `*_PRIJS`, `GELD_PER_HIT`/`GELD_PER_KILL`, `schadePerTreffer` of welk
-balansgetal dan ook. Alles wat je koopt is cosmetisch. Dat is een expliciete
-keuze van de eigenaar, en T161 bewaakt 'm met een bron-assertie.
+balansgetal dan ook. T161 bewaakt dat met een bron-assertie, niet met een
+belofte.
+
+**Eén bewuste, afgebakende verruiming: startuitrusting.** Het gros van de
+catalogus is cosmetisch, maar de eigenaar wil ook een klein aantal items
+waarmee je een run met iets extra's begint — nadrukkelijk duur en laat te
+ontgrendelen. Dat is een echte koerswijziging en verdient het om
+opgeschreven te worden in plaats van weggeredeneerd: technisch bréékt zo'n
+item §9.2 niet (het zet spelstaat bij runstart en schrijft nergens naar een
+verboden constante), maar het gaat wél in tegen de bedoeling van T86
+("buiten scope: elke ontgrendeling met een mechanisch effect"). De regel
+wordt daarom expliciet verruimd, onder drie voorwaarden die alle drie
+toetsbaar zijn:
+
+1. **Het effect dooft uit.** Startuitrusting raakt de opening, nooit het
+   late spel. Gratis met een vuurwapen beginnen scheelt de mesfase; op golf
+   10 heeft iedereen dat wapen toch. Wat eeuwig doorwerkt of stapelt (+HP,
+   +schade, blijvende kortingen) blijft verboden.
+2. **Hoogstens één startuitrustingsitem tegelijk actief.** Zonder deze rem
+   ontstaat een zichzelf versterkende lus: startuitrusting maakt ontsnappen
+   makkelijker, ontsnappen is de enige geldbron, en meer geld koopt meer
+   startuitrusting. Eén item per run knipt die lus door.
+3. **Duurste prijsklasse én hoogste puntendrempels.** Startuitrusting is het
+   eindspel van de catalogus, niet de eerste aankoop.
 
 **De twee valuta, en waarom ze verschillende dingen doen.**
 - **Archiefgeld** is de portemonnee: het restgeld dat je na een geslaagde
@@ -5419,11 +5441,14 @@ T161 zijn allebei volledig headless testbaar vóór er één pixel UI bestaat.
   vierde, vijfde en zesde losse tak betekenen.
 - **Gewenste situatie:** `ARCHIEF_ITEMS`, in dezelfde geest als
   `WINKEL_STIJLEN` en `ARSENAAL`: per item een `id`, `naam`, `categorie`,
-  `prijs`, `puntenEis` en een toepassingshaak. De drie bestaande cosmetica
-  worden gewone catalogusregels, met exact ongewijzigd gedrag voor wie ze al
-  bezit. Richtwaarde **20-24 items over 5-6 categorieën**, met per categorie
+  `prijs`, `puntenEis`, `soort` (`cosmetisch` of `startuitrusting`) en een
+  toepassingshaak. De drie bestaande cosmetica worden gewone
+  catalogusregels, met exact ongewijzigd gedrag voor wie ze al bezit.
+  Richtwaarde **20-24 items over 5-6 categorieën**, met per categorie
   meerdere varianten (bijvoorbeeld de mondingsvlam in een reeks kleuren) —
-  verzamelbaar, niet één item per categorie.
+  verzamelbaar, niet één item per categorie. Daarvan zijn er **hooguit 3-4
+  van het soort `startuitrusting`**, in de duurste prijsklasse en achter de
+  hoogste puntendrempels (zie de verruiming in de rondekop).
 - **Codegebieden:** het T86-blok, `updateWapenPresentatie()` (vlamtint),
   de ondode-huidskleurregel, `speelIntroMelodie()`, en de nieuwe tabel.
 - **Buiten scope:** de UI (T162). Prijskalibratie (T163) — in dit ticket
@@ -5432,7 +5457,18 @@ T161 zijn allebei volledig headless testbaar vóór er één pixel UI bestaat.
   - **De verbodenlijst uit §9.2 is een TESTEIS, geen belofte.** Een
     bron-assertie moet aantonen dat geen enkele toepassingshaak naar een
     balansconstante schrijft. Zelfde soort assertie als "nergens in het
-    bestand staat nog een setTimeout-vervolgtoon" (T-audio).
+    bestand staat nog een setTimeout-vervolgtoon" (T-audio). Let op: deze
+    assertie dekt startuitrusting NIET af — zo'n item zet spelstaat bij
+    runstart en komt dus nooit langs de verboden constanten. De drie
+    voorwaarden uit de rondekop zijn daarom apart te toetsen, zie hieronder.
+  - **Startuitrusting heeft zijn eigen drie testeisen.** (a) Hoogstens één
+    item van het soort `startuitrusting` kan tegelijk actief zijn — de
+    catalogus moet dat afdwingen, niet de UI. (b) Elk zo'n item is
+    aantoonbaar duurder én hoger gedrempeld dan élk cosmetisch item.
+    (c) Het effect dooft uit: er is een golf vanaf welke de run met en
+    zonder het item niet meer te onderscheiden is op de spelerstoestand die
+    het item aanraakt. Die golf is meetbaar en hoort als assertie vast te
+    liggen, anders is "het dooft uit" een mening.
   - **Ondode-kleursets mogen het type-onderscheid niet slopen.** Brander,
     Sjouwer en Sluiper moeten herkenbaar blijven, óók in grijswaarden en
     óók tijdens een Stroomuitval. De meetmethode uit T156
@@ -5457,6 +5493,11 @@ T161 zijn allebei volledig headless testbaar vóór er één pixel UI bestaat.
     puntendrempel; geen twee items delen een id.
   - Bron-assertie: geen enkele toepassingshaak raakt een constante uit de
     §9.2-verbodenlijst.
+  - Hoogstens één `startuitrusting`-item kan tegelijk actief zijn, afgedwongen
+    door de catalogus zelf.
+  - Elk `startuitrusting`-item is duurder en hoger gedrempeld dan elk
+    cosmetisch item.
+  - Voor elk `startuitrusting`-item ligt de uitdoofgolf vast als assertie.
   - Elke ondode-kleurset haalt de T156-leesbaarheidsdrempel, in beide
     lichtstanden.
   - De drie bestaande cosmetica gedragen zich exact als vóór dit ticket
@@ -5485,9 +5526,18 @@ T161 zijn allebei volledig headless testbaar vóór er één pixel UI bestaat.
   naar 20+ items, en het startscherm draagt al de moeilijkheidskeuze
   (T-moeilijkheid) en de kwaliteitsknoppen (T159).
 - **Gewenste situatie:** een winkelpaneel met categorieën, waarin elk item
-  vier toestanden kent: **vergrendeld** (puntendrempel niet gehaald, met de
-  drempel zichtbaar zodat het een doel wordt), **te duur**, **koopbaar**, en
-  **in bezit** (met een aan/uit-schakelaar). Saldo en punten staan in beeld.
+  vier toestanden kent: **vergrendeld** (puntendrempel niet gehaald),
+  **te duur**, **koopbaar**, en **in bezit** (met een aan/uit-schakelaar).
+  Saldo en punten staan in beeld.
+
+  **De hele catalogus is vanaf het eerste bezoek zichtbaar.** Er zijn geen
+  verborgen items, geen verrassingen en geen lege vakjes: elk item toont
+  altijd zijn naam, zijn prijs én wat je moet doen om het te ontgrendelen,
+  ook als dat nog ver weg is. Dat is een expliciete eis van de eigenaar —
+  je moet ergens naartoe kúnnen werken — en het is dezelfde les als in T163:
+  wat je niet ziet, streef je niet na. Om te voorkomen dat 20+ items
+  ontmoedigen, wordt er per categorie gegroepeerd en zo gesorteerd dat het
+  eerstvolgende haalbare item bovenaan staat.
 - **Codegebieden:** de startscherm-HTML/CSS, een `tekenArchiefWinkel()` in
   de geest van `tekenKwaliteitKnoppen()` (T159), de klikafhandeling.
 - **Buiten scope:** de eindschermkoppeling (T163). Nieuwe items.
@@ -5500,7 +5550,11 @@ T161 zijn allebei volledig headless testbaar vóór er één pixel UI bestaat.
     pauzescherm.
   - **Een vergrendeld item toont zijn drempel, geen leegte.** Dat is precies
     de les uit T158 deel B: een speler die niet kan zien wat iets waard is,
-    koopt het niet.
+    koopt het niet. Concreet: "nog 2 ontsnappingen" is bruikbaar, een grijs
+    vakje met een slotje niet.
+  - **Startuitrusting is zichtbaar maar duidelijk exclusief.** Zodra er één
+    actief is, moet in het paneel te zien zijn dat een tweede aanzetten de
+    eerste uitschakelt — niet pas ná de klik.
   - **Kopen is onomkeerbaar en vraagt geen bevestiging** (het is cosmetisch,
     de inzet is laag) — maar de knop mag nooit dubbel afboeken.
   - Bij een geweigerde `localStorage` blijft de winkel zichtbaar en
@@ -5510,6 +5564,10 @@ T161 zijn allebei volledig headless testbaar vóór er één pixel UI bestaat.
   overslag-optimalisatie).
 - **Acceptatiecriteria:**
   - Alle vier de toestanden zijn zichtbaar verschillend en per item correct.
+  - Elk item in de catalogus is bij een leeg archief al zichtbaar, mét prijs
+    en ontgrendeleis — geen enkel item is verborgen.
+  - Eén `startuitrusting`-item aanzetten schakelt een eerder actief item van
+    datzelfde soort uit, en dat is vóór de klik af te lezen.
   - Een aankoop trekt exact één keer af, schrijft door naar `localStorage`
     en overleeft een herladen.
   - Aan/uit-schakelen van een item in bezit werkt zonder herladen.

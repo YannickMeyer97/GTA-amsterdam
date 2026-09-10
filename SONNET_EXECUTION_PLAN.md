@@ -5134,10 +5134,18 @@ T163 (feedback)   — eindschermen + prijskalibratie     | + speeltoets
 
 **De twee regels die deze hele ronde beheersen.**
 
-> **1. Niets mechanisch.** De verbodenlijst uit §9.2 geldt onverkort. Geen
-> item raakt `SPELER_HP_MAX`, een `*_PRIJS`, `GELD_PER_HIT`/`GELD_PER_KILL`,
-> `schadePerTreffer` of enig ander balansgetal. T161 bewaakt dit met een
-> bron-assertie, niet met een belofte.
+> **1. Niets mechanisch — op één afgebakende uitzondering na.** De
+> verbodenlijst uit §9.2 geldt onverkort: geen item raakt `SPELER_HP_MAX`,
+> een `*_PRIJS`, `GELD_PER_HIT`/`GELD_PER_KILL`, `schadePerTreffer` of enig
+> ander balansgetal. T161 bewaakt dit met een bron-assertie, niet met een
+> belofte. De uitzondering is **startuitrusting** (3-4 items): die zet
+> spelstaat bij runstart en komt dus nooit langs een verboden constante — de
+> bron-assertie dekt 'm níét af. Daarvoor gelden drie eigen, toetsbare eisen:
+> het effect dooft uit (meetbare uitdoofgolf), hoogstens één tegelijk actief
+> (afgedwongen door de catalogus, niet door de UI), en duurder plus hoger
+> gedrempeld dan elk cosmetisch item. Reden voor eis 2: startuitrusting maakt
+> ontsnappen makkelijker, ontsnappen is de enige geldbron, en meer geld koopt
+> meer startuitrusting — zonder rem is dat een zichzelf versterkende lus.
 
 > **2. Geld is de prijs, punten zijn de sleutel.** Archiefgeld (restgeld na
 > een geslaagde ontsnapping) is het enige betaalmiddel. Mijlpaalpunten
@@ -5200,12 +5208,17 @@ T75. Review: automatische tests. Vertrouwen: hoog.
   ongewijzigd gedrag.
 - Richtwaarde 20-24 items over 5-6 categorieën, meerdere varianten per
   categorie (de mondingsvlam in een reeks kleuren, niet één "vlam"-item).
+- Een `soort`-veld (`cosmetisch` | `startuitrusting`), met hooguit 3-4 items
+  van het tweede soort.
 
 **Buiten scope.** UI (T162), definitieve prijzen (T163 — hier voorlopig).
 
 **Acceptatie.**
 - Unieke id's, eindige prijzen, geldige drempels.
 - Bron-assertie: geen toepassingshaak schrijft naar een §9.2-constante.
+- Hoogstens één `startuitrusting`-item tegelijk actief, afgedwongen door de
+  catalogus; elk zo'n item duurder en hoger gedrempeld dan elk cosmetisch
+  item; per item ligt de uitdoofgolf als assertie vast.
 - Elke ondode-kleurset haalt de T156-leesbaarheidsdrempel, in beide
   lichtstanden.
 - `test-stadsarchief.mjs` blijft **ongewijzigd** groen.
@@ -5237,12 +5250,19 @@ draagt.
 - Winkelpaneel met categorieën; vier itemtoestanden: vergrendeld (mét
   zichtbare drempel), te duur, koopbaar, in bezit (met aan/uit).
 - Saldo en punten in beeld.
+- **De hele catalogus is vanaf het eerste bezoek zichtbaar** — elk item met
+  naam, prijs en ontgrendeleis, ook wat nog ver weg is. Geen verborgen
+  items. Per categorie gegroepeerd, met het eerstvolgende haalbare item
+  bovenaan zodat 20+ items niet ontmoedigen.
 - `tekenArchiefWinkel()` in de geest van `tekenKwaliteitKnoppen()` (T159).
 
 **Buiten scope.** Eindschermen (T163), nieuwe items.
 
 **Acceptatie.**
 - Vier toestanden zichtbaar verschillend en per item correct.
+- Bij een leeg archief is élk item al zichtbaar, mét prijs en ontgrendeleis.
+- Eén `startuitrusting`-item aanzetten schakelt een eerder actief item van
+  datzelfde soort uit, en dat is vóór de klik af te lezen.
 - Aankoop boekt exact één keer af en overleeft een herladen.
 - Aan/uit werkt zonder herladen.
 - Een klik in het paneel start het spel niet.
