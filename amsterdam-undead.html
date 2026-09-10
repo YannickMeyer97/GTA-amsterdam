@@ -13906,13 +13906,57 @@ const STADSARCHIEF_KEY = 'amsterdamUndeadArchief';
 const STADSARCHIEF_DREMPEL_ONTSNAPPINGEN = 3;     // kleurset
 const STADSARCHIEF_DREMPEL_HEADSHOTS = 100;       // mondingsvlam-tint
 const STADSARCHIEF_DREMPEL_GOLF = 20;             // intro-melodie
+
+// --- Ticket 160 (v0.27): archieffundament voor de winkel ------------------
+// Twee valuta met VERSCHILLENDE rollen (zie ROADMAP v0.27):
+//   * `geld`   — de portemonnee. Loopt alleen vol bij een geslaagde
+//                ontsnapping, met het restsaldo dat je op zak had. Dit is
+//                tegelijk de bestemming van geld dat sinds T158 deel A
+//                boven het score-plafond (~€3.333) verdampte.
+//   * punten   — de SLEUTEL, geen betaalmiddel. Afgeleid uit de tellers die
+//                T86 al bijhoudt, dus per constructie monotoon: elke teller
+//                kan alleen stijgen, dus het puntentotaal ook.
+// `gekocht` is de enige opgeslagen VLAG in dit bestand. T86 vermijdt vlaggen
+// bewust ("ontgrendelingen zijn afgeleid van tellers"), maar een aankoop is
+// niet af te leiden uit een teller — die moet je onthouden. De vlaggenlijst
+// is daarom wel additief gehouden: er wordt nooit iets uit verwijderd.
+const ARCHIEF_VERSIE = 2;            // 1 = vóór de winkel (T86), 2 = met geld/gekocht
+const ARCHIEF_GELD_MAX = 9999999;    // bovengrens tegen corrupte/gemanipuleerde opslag in de UI
+const ARCHIEF_GEKOCHT_MAX = 500;     // idem: een gecraft archief mag geen eindeloze lijst opleveren
+// Weging van de mijlpaalpunten. Ontsnappen is zeldzaam en telt daarom zwaar;
+// headshots zijn er veel, dus die tellen per tien.
+const MIJLPAAL_PUNTEN_PER_ONTSNAPPING = 100;
+const MIJLPAAL_PUNTEN_PER_GOLF = 10;
+const MIJLPAAL_HEADSHOTS_PER_PUNT = 10;
+// De id's van de drie T86-cosmetica. Deze drie zijn VOOR EEUWIG vastgelegd:
+// de migratie van een oud archief hangt eraan, dus hernoemen betekent dat
+// bestaande spelers hun verdiende varianten kwijtraken. T161 moet exact deze
+// id's aanhouden voor deze drie items.
+const ARCHIEF_LEGACY_IDS = { kleurset: 'kleurset', vlamTint: 'vlamTint', introMelodie: 'introMelodie' };
 // De drie cosmetische varianten zelf — puur decoratief, geen van drieën
 // wordt door enige gameplay-formule gelezen.
 const STADSARCHIEF_KLEURSET_TINT = new THREE.Color(0x8ab4ff);   // koele blauwe waas over de ondode-huidskleur
 const STADSARCHIEF_VLAM_TINT = 0xb478ff;                        // violette mondingsvlam i.p.v. de wapen-eigen kleur
+// Ticket 160: een archief uit vóór de winkel (geen `versie`, of versie 1)
+// heeft zijn cosmetica verdiend met mijlpalen en zonder te betalen. Die
+// moeten na de update in bezit BLIJVEN — anders pakt een update iets af dat
+// de speler al had. De migratie zet ze daarom in `gekocht`. Ze is idempotent
+// (twee keer draaien verandert niets) en heeft geen apart schrijfmoment
+// nodig: het eerstvolgende run-einde bewaart de gemigreerde vorm vanzelf.
+function migreerArchief(archief) {
+  if (archief.versie >= ARCHIEF_VERSIE) return archief;
+  const ontgrendeld = stadsarchiefOntgrendelingen(archief);
+  for (const sleutel in ARCHIEF_LEGACY_IDS) {
+    const id = ARCHIEF_LEGACY_IDS[sleutel];
+    if (ontgrendeld[sleutel] && !archief.gekocht.includes(id)) archief.gekocht.push(id);
+  }
+  archief.versie = ARCHIEF_VERSIE;
+  return archief;
+}
 function leesStadsarchief() {
   const veiligeStaat = () => ({
     ontsnappingen: 0, headshotsTotaal: 0, hoogsteGolf: 0,
+    geld: 0, gekocht: [], versie: ARCHIEF_VERSIE,
     actief: { kleurset: false, vlamTint: false, introMelodie: false },
   });
   try {
@@ -13922,16 +13966,26 @@ function leesStadsarchief() {
     if (!record || typeof record !== 'object') return veiligeStaat();
     const geheelGetal = (v) => (Number.isInteger(v) && v >= 0) ? v : 0;
     const actiefRuw = (record.actief && typeof record.actief === 'object') ? record.actief : {};
-    return {
+    // `gekocht`: alleen niet-lege strings, ontdubbeld en begrensd. Onbekende
+    // id's blijven bewust staan (T161-randgeval: een teruggerolde versie mag
+    // aankopen van een nieuwere versie niet wissen).
+    const gekochtRuw = Array.isArray(record.gekocht) ? record.gekocht : [];
+    const gekocht = [...new Set(gekochtRuw.filter(v => typeof v === 'string' && v.length > 0))]
+      .slice(0, ARCHIEF_GEKOCHT_MAX);
+    return migreerArchief({
       ontsnappingen: geheelGetal(record.ontsnappingen),
       headshotsTotaal: geheelGetal(record.headshotsTotaal),
       hoogsteGolf: geheelGetal(record.hoogsteGolf),
+      geld: Math.min(ARCHIEF_GELD_MAX, geheelGetal(record.geld)),
+      gekocht,
+      // Ontbreekt `versie`, dan komt dit archief uit vóór de winkel (T86).
+      versie: geheelGetal(record.versie) || 1,
       actief: {
         kleurset: actiefRuw.kleurset === true,
         vlamTint: actiefRuw.vlamTint === true,
         introMelodie: actiefRuw.introMelodie === true,
       },
-    };
+    });
   } catch {
     return veiligeStaat();
   }
@@ -13956,15 +14010,49 @@ function stadsarchiefOntgrendelingen(a = stadsarchief) {
     introMelodie: a.hoogsteGolf >= STADSARCHIEF_DREMPEL_GOLF,
   };
 }
+// Ticket 160: de SLEUTEL-valuta. Een pure functie over de drie tellers die
+// T86 al bijhoudt — geen eigen opslag, geen eigen bijwerkmoment, en daardoor
+// per constructie monotoon: `ontsnappingen` en `headshotsTotaal` tellen
+// alleen op en `hoogsteGolf` is een Math.max(), dus geen enkele runuitkomst
+// kan dit totaal laten dalen. Punten worden nooit uitgegeven; ze bepalen
+// alleen welke schappen in de winkel zichtbaar zijn (T161/T162).
+function mijlpaalpunten(a = stadsarchief) {
+  return a.ontsnappingen * MIJLPAAL_PUNTEN_PER_ONTSNAPPING
+    + a.hoogsteGolf * MIJLPAAL_PUNTEN_PER_GOLF
+    + Math.floor(a.headshotsTotaal / MIJLPAAL_HEADSHOTS_PER_PUNT);
+}
+// Wat de LAATSTE run het archief opleverde. T160 vult dit alleen; T163
+// gebruikt het om op de eindschermen te tonen wat je verdiend hebt (en
+// waarom dat ticket bestaat: een winkel die je niet ziet vullen, gebruik je
+// niet — de les uit het vervallen T158 deel B).
+let archiefLaatsteWinst = { geld: 0, punten: 0 };
 // Aangeroepen vanuit toonWinScherm() (ontsnapping: true) en gameOver() —
 // beide zijn bestaande "run-einde"-momenten (schrijfHighscore() schrijft nu
 // al op precies diezelfde twee plekken, zelfde precedent).
 function bijwerkenStadsarchief(opties = {}) {
+  const puntenVoor = mijlpaalpunten();
   const nieuweHeadshots = runStats.headshots - archiefHeadshotsBasis;
   if (nieuweHeadshots > 0) stadsarchief.headshotsTotaal += nieuweHeadshots;
   archiefHeadshotsBasis = runStats.headshots;
   stadsarchief.hoogsteGolf = Math.max(stadsarchief.hoogsteGolf, spelStaat.golf);
-  if (opties.ontsnapping) stadsarchief.ontsnappingen++;
+  // Ticket 160: alleen een GESLAAGDE ontsnapping vult de portemonnee, met
+  // het restsaldo dat de speler op zak had. De kosten van de boot zijn op
+  // dit moment al afgeboekt (probeerOntsnapping() doet dat direct bij het
+  // starten van de instapfase, T146), dus `spelStaat.geld` is hier precies
+  // wat er ná de overtocht overblijft. Bij game over gebeurt dit bewust
+  // niet: die run levert wél punten op, maar geen geld.
+  // NB: de naam van die prijsconstante staat hier bewust niet uitgeschreven
+  // — test-stadsarchief.mjs scant deze functies op termen uit de
+  // §9.2-verbodenlijst en kan commentaar niet van code onderscheiden. Die
+  // strengheid is het vangnet waar de hele winkelronde op leunt, dus die
+  // laten we staan.
+  let bijgeschreven = 0;
+  if (opties.ontsnapping) {
+    stadsarchief.ontsnappingen++;
+    bijgeschreven = Math.max(0, Math.floor(spelStaat.geld));
+    stadsarchief.geld = Math.min(ARCHIEF_GELD_MAX, stadsarchief.geld + bijgeschreven);
+  }
+  archiefLaatsteWinst = { geld: bijgeschreven, punten: mijlpaalpunten() - puntenVoor };
   schrijfStadsarchief(stadsarchief);
   updateArchiefUI();
 }
@@ -17049,6 +17137,11 @@ window.AmsterdamUndeadDebug = {
   STADSARCHIEF_KEY, STADSARCHIEF_DREMPEL_ONTSNAPPINGEN, STADSARCHIEF_DREMPEL_HEADSHOTS, STADSARCHIEF_DREMPEL_GOLF,
   STADSARCHIEF_KLEURSET_TINT, STADSARCHIEF_VLAM_TINT,
   leesStadsarchief, schrijfStadsarchief, stadsarchiefOntgrendelingen, bijwerkenStadsarchief, updateArchiefUI, speelIntroMelodie,
+  // Ticket 160
+  ARCHIEF_VERSIE, ARCHIEF_GELD_MAX, ARCHIEF_GEKOCHT_MAX, ARCHIEF_LEGACY_IDS,
+  MIJLPAAL_PUNTEN_PER_ONTSNAPPING, MIJLPAAL_PUNTEN_PER_GOLF, MIJLPAAL_HEADSHOTS_PER_PUNT,
+  mijlpaalpunten, migreerArchief,
+  get archiefLaatsteWinst() { return archiefLaatsteWinst; },
   get stadsarchief() { return stadsarchief; },
   set stadsarchief(v) { stadsarchief = v; },
   get archiefHeadshotsBasis() { return archiefHeadshotsBasis; },

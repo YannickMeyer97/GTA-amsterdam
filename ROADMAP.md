@@ -5375,12 +5375,44 @@ T161 zijn allebei volledig headless testbaar vóór er één pixel UI bestaat.
 
 ---
 
-## Ticket 160 — Archieffundament: twee valuta, opslag en migratie
+## Ticket 160 — Archieffundament: twee valuta, opslag en migratie ✅
 
 - **Type:** feature (meta-progressie/opslag)
 - **Verbetergebied:** 5 (Progressie en keuzes)
 - **Prioriteit:** hoog (fundament voor T161-T163)
-- **Status:** open (gepland)
+- **Status:** ✅ uitgevoerd (v0.27). `leesStadsarchief()` kent nu `geld`
+  (geklemd op `ARCHIEF_GELD_MAX`), `gekocht` (strings, ontdubbeld, geklemd op
+  `ARCHIEF_GEKOCHT_MAX`) en `versie`. `mijlpaalpunten()` is een pure functie
+  over de drie bestaande tellers. `bijwerkenStadsarchief()` schrijft bij een
+  geslaagde ontsnapping het restsaldo bij en legt in `archiefLaatsteWinst`
+  vast wat de run opleverde — de haak die T163 straks leest.
+  `tests/test-archief-fundament.mjs`: 28 checks.
+
+  **De migratie is opgelost zonder migratievlag-administratie.** Een archief
+  zonder `versie` komt per definitie uit vóór de winkel; `migreerArchief()`
+  zet dan de al verdiende T86-cosmetica in `gekocht` en tilt de versie op.
+  Dat gebeurt in `leesStadsarchief()` zelf, is idempotent, en heeft geen
+  eigen schrijfmoment nodig — het eerstvolgende run-einde bewaart de
+  gemigreerde vorm vanzelf. Belangrijk detail dat de test bewaakt: een
+  archief dat al op de huidige versie staat krijgt **niets** cadeau, ook niet
+  als de oude drempels gehaald zijn. Zonder die grens zou elke nieuwe speler
+  de drie cosmetica gratis krijgen zodra hij de mijlpaal haalde, en was de
+  winkel voor die items zinloos.
+
+  **Eén vondst tijdens de uitvoering, door een bestaande test.**
+  `test-stadsarchief.mjs` bevat een §9.2-bronassertie die de archieffuncties
+  blind op verboden termen scant. Mijn toelichting bij de bijschrijving
+  noemde `ONTSNAPPING_PRIJS` in een **commentaarregel**, en dat brak de
+  assertie. Bewust opgelost door het commentaar te herschrijven in plaats van
+  de test slimmer te maken: die botheid (commentaar telt mee) is juist het
+  vangnet waar T161's eigen bronassertie op leunt, en een uitzondering voor
+  commentaar zou dat vangnet permanent verzwakken.
+
+  Volledige regressie: 99/101. De drie afwijkingen
+  (`test-omgeving-sfeer.mjs`, `test-levend-water.mjs`,
+  `test-golf-variatielimiter.mjs`) zijn alle drie 3/3 schoon in isolatie en
+  raken geen archiefcode — de eerste twee zijn bekende contentieflakes, de
+  derde is een kansassertie op spawn-variatie.
 - **Afhankelijk van:** T86 (bestaat al, zie de statuscorrectie daar), T158
   deel A (de score-conversie waarvan dit ticket het plafondgat dicht).
 - **Doel:** een betrouwbare, migreerbare opslag met twee valuta, zodat

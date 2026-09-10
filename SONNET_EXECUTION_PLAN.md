@@ -5168,7 +5168,7 @@ Dat laatste is een bestaande balansobservatie, geen werk in deze ronde.
 
 ---
 
-### Ticket 160 — Archieffundament
+### Ticket 160 — Archieffundament ✅ uitgevoerd (v0.27)
 
 **Doel.** Opslag met twee valuta die migreert zonder iets af te pakken.
 
@@ -5199,6 +5199,22 @@ migratiematrix eerst.
 **Uitvoeringsadvies.** Sonnet 5 · High · extended thinking Default. Puur
 opslag- en validatiewerk met een objectieve matrix; zelfde familie als T74/
 T75. Review: automatische tests. Vertrouwen: hoog.
+
+**Nawoord.** De migratie bleek inderdaad het hele ticket, en is opgelost
+zonder aparte administratie: een archief zonder `versie` komt per definitie
+uit vóór de winkel, dus `migreerArchief()` draait in `leesStadsarchief()`
+zelf, is idempotent en heeft geen eigen schrijfmoment nodig. De grens die de
+test bewaakt: een archief dat al op de huidige versie staat krijgt niets
+cadeau — anders krijgt élke nieuwe speler de drie T86-cosmetica gratis zodra
+hij de oude mijlpaal haalt, en is de winkel voor die items zinloos.
+
+Verrassing uit de hoek van een bestaande test: de §9.2-bronassertie in
+`test-stadsarchief.mjs` scant de archieffuncties blind op verboden termen en
+struikelde over `ONTSNAPPING_PRIJS` in een **commentaarregel**. Opgelost door
+het commentaar te herschrijven, niet de test. Die botheid is het vangnet waar
+T161's eigen bronassertie op leunt; een uitzondering voor commentaar zou het
+permanent verzwakken. Voor T161 betekent dit concreet: noem verboden
+constanten ook in toelichtingen niet bij naam.
 
 ---
 
