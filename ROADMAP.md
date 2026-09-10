@@ -5488,12 +5488,58 @@ T161 zijn allebei volledig headless testbaar vóór er één pixel UI bestaat.
 
 ---
 
-## Ticket 161 — De itemcatalogus
+## Ticket 161 — De itemcatalogus ✅
 
 - **Type:** feature (inhoud/architectuur)
 - **Verbetergebied:** 5 (Progressie en keuzes)
 - **Prioriteit:** hoog
-- **Status:** open (gepland)
+- **Status:** ✅ uitgevoerd (v0.27). `ARCHIEF_ITEMS`: **20 items over 6
+  categorieën** — mondingsvlam (5 kleuren), ondode-kleurset (4), richtkruis
+  (4), HUD-tint (3), intro (1) en startuitrusting (3). De drie T86-cosmetica
+  zijn gewone catalogusregels geworden; hun losse if-takken op drie plekken
+  zijn vervangen door `actiefArchiefItem(categorie)`.
+  `tests/test-archief-catalogus.mjs`: 29 checks.
+
+  **Actieve staat zonder tweerichtingssynchronisatie.** T86's drie
+  aan/uit-knoppen schrijven nog steeds hun eigen boolean; nieuwe items gebruiken
+  `actiefPerCategorie` (per categorie hooguit één keuze). `actiefArchiefItem()`
+  leest beide, met de expliciete keuze als winnaar. Zo blijft T86-gedrag exact
+  intact zonder twee mechanismen synchroon te houden — dat was de valkuil die
+  hier op de loer lag.
+
+  **Startuitrusting: schenken zonder na te bouwen.** `schenkAankoop()` hoogt
+  het saldo tijdelijk op, roept de ECHTE koopfunctie aan (die meldingen,
+  markeringen en activatie al regelt) en zet het saldo daarna exact terug via
+  een `finally`. Zo is er geen duplicaat van de aankooplogica, kost de
+  schenking niets, en blijft het saldo ook heel als een koopfunctie gooit.
+  De drie eisen uit de rondekop zijn alle drie afgedwongen én getoetst: één
+  tegelijk actief (structureel, want de keuze staat per categorie),
+  duurder + hoger gedrempeld dan élk cosmetisch item, en een uitdoofbare
+  spelerstoestand (`uitdoofVlag` per item).
+
+  **Twee dingen gevonden tijdens de uitvoering:**
+  1. **De leesbaarheidsassertie mat het verkeerde kanaal.** Eerste opzet eiste
+     dat ondode-types na een tint in grijswaarde onderscheidbaar bleven. Bij
+     het meten bleek het kleinste grijswaardeverschil **zonder enige tint** al
+     0,0022 op een schaal van 0-1 — het basisspel haalt die eis zelf niet. Dat
+     klopt ook: dit spel draagt type-onderscheid via gang-ritme, bob-amplitude,
+     oogintensiteit, silhouet en sinds T156 de kernpuls — juist omdát kleur het
+     niet droeg. De assertie is herschreven naar wat er wél toe doet: een tint
+     is een vermenigvuldiging op alleen de huidskleur, en een positieve
+     vermenigvuldiging keert de kleurvolgorde per kanaal nooit om. Dat is een
+     wiskundige garantie in plaats van een zelfverzonnen drempelgetal.
+  2. **Eén assertie in `test-stadsarchief.mjs` moest tóch mee** — het ticket
+     eiste dat dat bestand ongewijzigd bleef, en dat bleek niet houdbaar. De
+     assertie pinde de intromelodie-guard vast op zijn letterlijke tekst,
+     terwijl dit ticket die guard juist naar de catalogus verhuist. De EIS is
+     ongewijzigd (bezit én aangezet), dus de assertie is meeverhuisd naar de
+     nieuwe vorm en meteen versterkt met een gedragstoets: bezit-zonder-aanzetten
+     en aanzetten-zonder-bezit leveren allebei niets op. Netto 40 → 41 checks.
+
+  Volledige regressie: 97/102. De vier afwijkingen (`test-texturenset`,
+  `test-nachthemel`, `test-omgeving-sfeer`, `test-ontsnapping-vensters`) zijn
+  bekende timing-/contentieflakes; de laatste drie zijn 3/3 schoon in isolatie
+  en geen ervan raakt archiefcode.
 - **Afhankelijk van:** T160.
 - **Doel:** één centrale tabel die beschrijft wat er te koop is en hoe een
   item zich toepast, zodat een nieuw item toevoegen één tabelregel is.

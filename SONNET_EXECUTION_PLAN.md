@@ -5218,7 +5218,7 @@ constanten ook in toelichtingen niet bij naam.
 
 ---
 
-### Ticket 161 — De itemcatalogus
+### Ticket 161 — De itemcatalogus ✅ uitgevoerd (v0.27)
 
 **Doel.** Eén tabel waarin een nieuw item één regel is.
 
@@ -5253,6 +5253,22 @@ in grijswaarden herkenbaar blijven, óók tijdens een Stroomuitval. Schrijf
 die test vóór de eerste kleurset — exact zoals T156 het voordeed, inclusief
 de twee meetvallen die daar gedocumenteerd staan (`loopFase` koppelt aan
 afgelegde afstand, `stroomFactor` herstelt zichzelf).
+
+**Nawoord.** De leesbaarheidsgrens was inderdaad het lastige deel, maar
+anders dan verwacht: de eerste opzet mat huidsluminantie in grijswaarde, en
+toen bleek dat het basisspel die eis zélf niet haalt (kleinste verschil
+zonder tint: 0,0022 op 0-1). Type-onderscheid zit in dit spel in beweging,
+ogen, silhouet en de T156-kernpuls — niet in huidskleur. Herschreven naar de
+eigenschap die een tint veilig maakt: het is een vermenigvuldiging op alleen
+de huidskleur, en die keert de kleurvolgorde per kanaal nooit om. Les voor
+volgende tickets: toets een nieuwe eis eerst tegen de ONGEWIJZIGDE build —
+haalt het basisspel 'm niet, dan meet je het verkeerde kanaal.
+
+Tweede afwijking van het plan: de eis "test-stadsarchief.mjs blijft
+ongewijzigd groen" bleek niet houdbaar. Eén assertie pinde de
+intromelodie-guard op zijn letterlijke tekst vast, terwijl dit ticket die
+guard juist naar de catalogus verhuist. De eis erachter is ongewijzigd
+gebleven en de assertie is versterkt met een gedragstoets (40 → 41 checks).
 
 **Uitvoeringsadvies.** Sonnet 5 · xhigh · extended thinking On. De tabel is
 routine, de leesbaarheidsgrens niet. *Escaleer naar Opus 5 xhigh* wanneer

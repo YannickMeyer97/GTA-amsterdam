@@ -64,7 +64,10 @@
   #richtkruis::before, #richtkruis::after {
     content: "";
     position: absolute;
-    background: rgba(255,255,255,0.85);
+    /* Ticket 161: de fallback is de ONGEWIJZIGDE waarde, dus zolang er geen
+       archief-item actief is verandert er geen pixel — de visuele basislijn
+       blijft daardoor buiten schot. */
+    background: var(--richtkruis-kleur, rgba(255,255,255,0.85));
     box-shadow: 0 0 3px rgba(0,0,0,0.8);
   }
   #richtkruis::before { top: 9px; left: 0; width: 20px; height: 2px; }
@@ -195,7 +198,8 @@
     position: fixed;
     top: 16px;
     right: 16px;
-    color: #eaf2ea;
+    /* Ticket 161: idem — fallback is de bestaande kleur. */
+    color: var(--hud-kleur, #eaf2ea);
     background: rgba(20, 30, 45, 0.55);
     padding: 10px 16px;
     border-radius: 10px;
@@ -6898,6 +6902,12 @@ let moeilijkheidGekozen = false;
 function kiesMoeilijkheid(naam) {
   moeilijkheid = MOEILIJKHEDEN[naam] ?? MOEILIJKHEDEN.amsterdammer;
   spelStaat.geld = moeilijkheid.startGeld;
+  // Ticket 161: dit is het enige echte "run begint"-moment (herstarten gaat
+  // via een page-reload), dus hier landt de startuitrusting. Ná het zetten van
+  // het startsaldo, want schenkAankoop() zet het saldo exact terug naar wat
+  // het op dat moment was.
+  pasStartuitrustingToe();
+  pasArchiefStijlToe();
   document.getElementById('moeilijkheidKnoppen').style.display = 'none';
   // Feedback: "Kies je moeilijkheidsgraad" bleef staan bij elke latere
   // pauze (Esc), ook nadat de keuze al gemaakt was — dit gebeurt maar 1x
@@ -8907,12 +8917,12 @@ function schiet() {
   // Ticket 86: de archief-vlamtint is een DERDE optie, alleen relevant als
   // het wapen NIET gesmeed is (gesmeed heeft al zijn eigen, betekenisvolle
   // ember-accent — die twee visuele talen niet laten botsen).
-  const archiefVlamActief = stadsarchiefOntgrendelingen().vlamTint && stadsarchief.actief.vlamTint;
+  const archiefVlamItem = actiefArchiefItem('mondingsvlam');   // Ticket 161: catalogusregel i.p.v. één losse vlag
   const vlamKleur = wapenStaat.gesmeed ? SMEDERIJ_ACCENT_KLEUR
-    : (archiefVlamActief ? STADSARCHIEF_VLAM_TINT : wapenStaat.definitie.vlamKleurBasis);
+    : (archiefVlamItem ? archiefVlamItem.vlamKleur : wapenStaat.definitie.vlamKleurBasis);
   wapenStaat.definitie.vlamMateriaal.color.setHex(vlamKleur);
   vlamLicht.color.setHex(wapenStaat.gesmeed ? SMEDERIJ_ACCENT_KLEUR
-    : (archiefVlamActief ? STADSARCHIEF_VLAM_TINT : wapenStaat.definitie.vlamLichtKleurBasis));
+    : (archiefVlamItem ? archiefVlamItem.vlamKleur : wapenStaat.definitie.vlamLichtKleurBasis));
   // Ticket 90: per schot een andere rotatie/schaal, zodat de stervorm niet
   // elk schot identiek oogt — puur cosmetisch, geen invloed op de tracer/
   // raycast (die lezen vlam.getWorldPosition(), niet de rotatie/schaal).
@@ -9349,7 +9359,7 @@ function initGeluid() {
     // Ticket 86: de ontgrendelde intro-melodie, precies 1x — bij de
     // allereerste initGeluid()-aanroep deze sessie (binnen ditzelfde
     // !audio-blok, dat toch al maar 1x per sessie loopt).
-    if (stadsarchiefOntgrendelingen().introMelodie && stadsarchief.actief.introMelodie) {
+    if (actiefArchiefItem('intro')) {   // Ticket 161
       speelIntroMelodie();
     }
   }
@@ -11479,8 +11489,9 @@ function maakOndodeModelV2(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeT
 
   const tint = 0.85 + Math.random() * 0.3;   // zelfde per-ondode kleurvariatie als V1
   const huidKleur = new THREE.Color(typeInfo.kleur).multiplyScalar(tint);
-  if (stadsarchiefOntgrendelingen().kleurset && stadsarchief.actief.kleurset) {
-    huidKleur.multiply(STADSARCHIEF_KLEURSET_TINT);
+  const archiefOndodeItem = actiefArchiefItem('ondode');   // Ticket 161
+  if (archiefOndodeItem) {
+    huidKleur.multiply(_tmpArchiefTint.setHex(archiefOndodeItem.ondodeTint));
   }
 
   const bones = bouwOndodeBotstructuurV2();
@@ -13937,6 +13948,10 @@ const ARCHIEF_LEGACY_IDS = { kleurset: 'kleurset', vlamTint: 'vlamTint', introMe
 // wordt door enige gameplay-formule gelezen.
 const STADSARCHIEF_KLEURSET_TINT = new THREE.Color(0x8ab4ff);   // koele blauwe waas over de ondode-huidskleur
 const STADSARCHIEF_VLAM_TINT = 0xb478ff;                        // violette mondingsvlam i.p.v. de wapen-eigen kleur
+// Ticket 161: hergebruikte temp-kleur voor de ondode-tint. De catalogus
+// bewaart hex-getallen (JSON-vriendelijk); dit voorkomt een THREE.Color per
+// gespawnde ondode.
+const _tmpArchiefTint = new THREE.Color();
 // Ticket 160: een archief uit vóór de winkel (geen `versie`, of versie 1)
 // heeft zijn cosmetica verdiend met mijlpalen en zonder te betalen. Die
 // moeten na de update in bezit BLIJVEN — anders pakt een update iets af dat
@@ -13956,7 +13971,7 @@ function migreerArchief(archief) {
 function leesStadsarchief() {
   const veiligeStaat = () => ({
     ontsnappingen: 0, headshotsTotaal: 0, hoogsteGolf: 0,
-    geld: 0, gekocht: [], versie: ARCHIEF_VERSIE,
+    geld: 0, gekocht: [], versie: ARCHIEF_VERSIE, actiefPerCategorie: {},
     actief: { kleurset: false, vlamTint: false, introMelodie: false },
   });
   try {
@@ -13972,6 +13987,13 @@ function leesStadsarchief() {
     const gekochtRuw = Array.isArray(record.gekocht) ? record.gekocht : [];
     const gekocht = [...new Set(gekochtRuw.filter(v => typeof v === 'string' && v.length > 0))]
       .slice(0, ARCHIEF_GEKOCHT_MAX);
+    const perCategorieRuw = (record.actiefPerCategorie && typeof record.actiefPerCategorie === 'object')
+      ? record.actiefPerCategorie : {};
+    const perCategorie = {};
+    for (const cat of ARCHIEF_CATEGORIEEN) {
+      const waarde = perCategorieRuw[cat.id];
+      if (typeof waarde === 'string' && waarde.length > 0) perCategorie[cat.id] = waarde;
+    }
     return migreerArchief({
       ontsnappingen: geheelGetal(record.ontsnappingen),
       headshotsTotaal: geheelGetal(record.headshotsTotaal),
@@ -13980,6 +14002,10 @@ function leesStadsarchief() {
       gekocht,
       // Ontbreekt `versie`, dan komt dit archief uit vóór de winkel (T86).
       versie: geheelGetal(record.versie) || 1,
+      // Ticket 161: per categorie hooguit één gekozen item. Alleen bekende
+      // categorieën en niet-lege strings; de rest wordt genegeerd, niet als
+      // corrupt behandeld (zelfde lijn als `gekocht`).
+      actiefPerCategorie: perCategorie,
       actief: {
         kleurset: actiefRuw.kleurset === true,
         vlamTint: actiefRuw.vlamTint === true,
@@ -14055,6 +14081,141 @@ function bijwerkenStadsarchief(opties = {}) {
   archiefLaatsteWinst = { geld: bijgeschreven, punten: mijlpaalpunten() - puntenVoor };
   schrijfStadsarchief(stadsarchief);
   updateArchiefUI();
+}
+
+// --- Ticket 161 (v0.27): de itemcatalogus ---------------------------------
+// Eén centrale tabel, in dezelfde geest als WINKEL_STIJLEN en ARSENAAL: een
+// item toevoegen is één regel, niet een vierde losse if-tak door de code.
+// Vóór dit ticket zaten de drie T86-cosmetica als losse takken op drie
+// plekken (mondingsvlam, ondode-huidskleur, intromelodie); die zijn nu
+// gewone catalogusregels geworden, met exact ongewijzigd gedrag.
+//
+// LET OP voor wie hier items bijzet: noem constanten uit de §9.2-verbodenlijst
+// ook in COMMENTAAR niet bij naam. De bronassertie in test-stadsarchief.mjs en
+// in test-archief-catalogus.mjs scant deze functies blind en kan commentaar
+// niet van code onderscheiden. Die botheid is het vangnet, niet een bug.
+//
+// `id` is VOOR EEUWIG: de migratie in leesStadsarchief() en het `gekocht`-veld
+// in de opslag hangen eraan. Hernoemen = een speler zijn aankoop afpakken.
+const ARCHIEF_CATEGORIEEN = [
+  { id: 'mondingsvlam',    naam: 'Mondingsvlam' },
+  { id: 'ondode',          naam: 'Ondode-kleurset' },
+  { id: 'richtkruis',      naam: 'Richtkruis' },
+  { id: 'hud',             naam: 'HUD-tint' },
+  { id: 'intro',           naam: 'Intro' },
+  { id: 'startuitrusting', naam: 'Startuitrusting' },
+];
+// Twee soorten. `cosmetisch` raakt per definitie geen enkele spelregel.
+// `startuitrusting` is de afgebakende verruiming uit de rondekop: het effect
+// dooft uit, er kan er maar ÉÉN tegelijk actief zijn, en ze zijn duurder en
+// hoger gedrempeld dan elk cosmetisch item. Alle drie die eisen worden
+// afgedwongen door de catalogus zelf en getoetst in test-archief-catalogus.mjs.
+const ARCHIEF_SOORT_COSMETISCH = 'cosmetisch';
+const ARCHIEF_SOORT_START = 'startuitrusting';
+
+const ARCHIEF_ITEMS = [
+  // --- Mondingsvlam: de kleur van de schietvlam en het bijbehorende licht.
+  { id: 'vlamTint',      naam: 'Violette vlam',   categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 400,  puntenEis: 100, vlamKleur: 0xb478ff, legacyVlag: 'vlamTint' },
+  { id: 'vlam-ijs',      naam: 'IJsblauwe vlam',  categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 250,  puntenEis: 40,  vlamKleur: 0x7fd4ff },
+  { id: 'vlam-groen',    naam: 'Gifgroene vlam',  categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 350,  puntenEis: 90,  vlamKleur: 0x8cff9b },
+  { id: 'vlam-wit',      naam: 'Magnesiumvlam',   categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 600,  puntenEis: 160, vlamKleur: 0xf2f6ff },
+  { id: 'vlam-amber',    naam: 'Amberen vlam',    categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 300,  puntenEis: 60,  vlamKleur: 0xffb347 },
+
+  // --- Ondode-kleurset: een tint OVER de bestaande huidskleur. Het is een
+  // vermenigvuldiging, dus de onderlinge kleurverschillen tussen de types
+  // blijven behouden — dat is precies waarom dit de T156-leesbaarheidsdrempel
+  // haalt en waarom de tint nooit als vaste kleur gezet mag worden.
+  { id: 'kleurset',      naam: 'Koele waas',      categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 400, puntenEis: 100, ondodeTint: 0x8ab4ff, legacyVlag: 'kleurset' },
+  { id: 'ondode-as',     naam: 'Asgrijs',         categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 300, puntenEis: 70,  ondodeTint: 0xc2c2c2 },
+  { id: 'ondode-sepia',  naam: 'Sepia',           categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 350, puntenEis: 90,  ondodeTint: 0xd9b98a },
+  { id: 'ondode-mos',    naam: 'Mosgroen',        categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 450, puntenEis: 120, ondodeTint: 0xa8d18a },
+
+  // --- Richtkruis en HUD: puur DOM/CSS, raken de 3D-scene niet.
+  { id: 'richtkruis-amber',   naam: 'Amber richtkruis',   categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 150, puntenEis: 20,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(255,179,71,0.9)' },
+  { id: 'richtkruis-groen',   naam: 'Groen richtkruis',   categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 150, puntenEis: 20,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(140,255,155,0.9)' },
+  { id: 'richtkruis-magenta', naam: 'Magenta richtkruis', categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 200, puntenEis: 50,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(255,140,220,0.9)' },
+  { id: 'richtkruis-ijs',     naam: 'IJsblauw richtkruis',categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 200, puntenEis: 50,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(127,212,255,0.9)' },
+  { id: 'hud-koper',     naam: 'Koperen HUD',     categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 250,  puntenEis: 60,  cssVar: '--hud-kleur', cssWaarde: '#e8c08a' },
+  { id: 'hud-mint',      naam: 'Munt-HUD',        categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 250,  puntenEis: 60,  cssVar: '--hud-kleur', cssWaarde: '#a8f0d0' },
+  { id: 'hud-rood',      naam: 'Alarm-HUD',       categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1200, puntenEis: 400, cssVar: '--hud-kleur', cssWaarde: '#ff9a9a' },
+
+  // --- Intro: de T86-melodie. Eén item; varianten hierop vragen extra
+  // registry-ingangen en horen daarom bij een later ticket.
+  { id: 'introMelodie',  naam: 'Intromelodie',    categorie: 'intro', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 400, puntenEis: 150, legacyVlag: 'introMelodie' },
+
+  // --- Startuitrusting. Elk item wijst naar een bestaande koopfunctie; de
+  // schenking gaat via schenkAankoop(), dat het saldo tijdelijk ophoogt en
+  // daarna EXACT terugzet. Zo wordt de bestaande aankooplogica hergebruikt in
+  // plaats van nagebouwd, en kost de schenking de speler niets.
+  // `uitdoofVlag` benoemt de spelerstoestand die het item aanraakt: zodra een
+  // gewone speler die zelf bereikt, is een run mét en zonder dit item niet
+  // meer te onderscheiden. Dat maakt "het effect dooft uit" toetsbaar.
+  { id: 'start-deur1',      naam: 'Deur 1 staat open', categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 3000, puntenEis: 800,  schenk: () => koopDeur(),        uitdoofVlag: () => deurGekocht },
+  { id: 'start-amstel9',    naam: 'AMSTEL-9 op zak',   categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 4000, puntenEis: 1000, schenk: () => koopAmstel9(),     uitdoofVlag: () => !!wapenStaten.drukspuit },
+  { id: 'start-snelspanner',naam: 'Fast Hands vooraf', categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 5000, puntenEis: 1200, schenk: () => koopSnelspanner(), uitdoofVlag: () => snelspannerGekocht },
+];
+const ARCHIEF_ITEM_OP_ID = new Map(ARCHIEF_ITEMS.map(i => [i.id, i]));
+function archiefItem(id) { return ARCHIEF_ITEM_OP_ID.get(id) ?? null; }
+
+// Een item is ONTGRENDELD zodra het puntentotaal de drempel haalt; dat bepaalt
+// alleen of het te koop is, niet of je het hebt.
+function archiefItemOntgrendeld(item, a = stadsarchief) {
+  return mijlpaalpunten(a) >= item.puntenEis;
+}
+// BEZIT: gekocht, of — voor de drie T86-items — verdiend via de oude
+// mijlpaaldrempel. Die tweede tak moet blijven: T86 gaf ze zonder betaling, en
+// test-stadsarchief.mjs rekent daar (terecht) op.
+function bezitArchiefItem(item, a = stadsarchief) {
+  if (a.gekocht && a.gekocht.includes(item.id)) return true;
+  return !!(item.legacyVlag && stadsarchiefOntgrendelingen(a)[item.legacyVlag]);
+}
+// Welk item is er in deze categorie actief? Een expliciete keuze in
+// `actiefPerCategorie` wint; anders valt het terug op de drie oude
+// aan/uit-knoppen, die hun eigen boolean blijven schrijven. Zo blijft T86's
+// UI-gedrag exact zoals het was, zonder twee mechanismen te synchroniseren.
+function actiefArchiefItem(categorie, a = stadsarchief) {
+  const gekozen = a.actiefPerCategorie ? a.actiefPerCategorie[categorie] : null;
+  if (gekozen) {
+    const item = archiefItem(gekozen);
+    if (item && item.categorie === categorie && bezitArchiefItem(item, a)) return item;
+  }
+  for (const item of ARCHIEF_ITEMS) {
+    if (item.categorie !== categorie || !item.legacyVlag) continue;
+    if (a.actief && a.actief[item.legacyVlag] && bezitArchiefItem(item, a)) return item;
+  }
+  return null;
+}
+// Hooguit één startuitrustingsitem tegelijk — afgedwongen door de catalogus,
+// niet door de UI. Zonder deze rem stapelen ze en wordt elke volgende run
+// makkelijker dan de vorige (zie de rondekop over de zichzelf versterkende lus).
+function actieveStartuitrusting(a = stadsarchief) {
+  return actiefArchiefItem('startuitrusting', a);
+}
+// Past de CSS-gedreven items toe. Zet de variabele alleen wanneer er echt iets
+// actief is, zodat de standaardstaat pixel-identiek blijft aan vóór dit ticket.
+function pasArchiefStijlToe() {
+  for (const categorie of ['richtkruis', 'hud']) {
+    const item = actiefArchiefItem(categorie);
+    const alleVars = new Set(ARCHIEF_ITEMS.filter(i => i.categorie === categorie).map(i => i.cssVar));
+    for (const v of alleVars) if (v) document.documentElement.style.removeProperty(v);
+    if (item && item.cssVar) document.documentElement.style.setProperty(item.cssVar, item.cssWaarde);
+  }
+}
+// Schenkt een bestaande aankoop zonder de speler te laten betalen: saldo
+// tijdelijk ophogen, de ECHTE koopfunctie laten draaien (die regelt melding,
+// markering en activatie), daarna het saldo exact terugzetten.
+function schenkAankoop(koop) {
+  const saldoVoor = spelStaat.geld;
+  spelStaat.geld = ARCHIEF_GELD_MAX;
+  try { koop(); } finally { spelStaat.geld = saldoVoor; }
+}
+// Aangeroepen bij het begin van een run (kiesMoeilijkheid). Idempotent: elke
+// koopfunctie stopt zelf zodra het betreffende bezit er al is.
+function pasStartuitrustingToe() {
+  const item = actieveStartuitrusting();
+  if (!item || !item.schenk) return null;
+  schenkAankoop(item.schenk);
+  return item.id;
 }
 
 // Toont/verbergt elke archiefKnop op basis van stadsarchiefOntgrendelingen()
@@ -17139,6 +17300,10 @@ window.AmsterdamUndeadDebug = {
   leesStadsarchief, schrijfStadsarchief, stadsarchiefOntgrendelingen, bijwerkenStadsarchief, updateArchiefUI, speelIntroMelodie,
   // Ticket 160
   ARCHIEF_VERSIE, ARCHIEF_GELD_MAX, ARCHIEF_GEKOCHT_MAX, ARCHIEF_LEGACY_IDS,
+  // Ticket 161
+  ARCHIEF_ITEMS, ARCHIEF_CATEGORIEEN, ARCHIEF_SOORT_COSMETISCH, ARCHIEF_SOORT_START,
+  archiefItem, archiefItemOntgrendeld, bezitArchiefItem, actiefArchiefItem,
+  actieveStartuitrusting, pasArchiefStijlToe, schenkAankoop, pasStartuitrustingToe,
   MIJLPAAL_PUNTEN_PER_ONTSNAPPING, MIJLPAAL_PUNTEN_PER_GOLF, MIJLPAAL_HEADSHOTS_PER_PUNT,
   mijlpaalpunten, migreerArchief,
   get archiefLaatsteWinst() { return archiefLaatsteWinst; },
