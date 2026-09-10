@@ -14235,9 +14235,9 @@ function bijwerkenStadsarchief(opties = {}) {
 // `id` is VOOR EEUWIG: de migratie in leesStadsarchief() en het `gekocht`-veld
 // in de opslag hangen eraan. Hernoemen = een speler zijn aankoop afpakken.
 const ARCHIEF_CATEGORIEEN = [
-  { id: 'mondingsvlam',    naam: 'Mondingsvlam' },
+  { id: 'mondingsvlam',    naam: 'Vuurflits' },   // id blijft historisch, zie ARCHIEF_ITEMS
   { id: 'ondode',          naam: 'Ondode-kleurset' },
-  { id: 'richtkruis',      naam: 'Richtkruis' },
+  { id: 'richtkruis',      naam: 'Vizier' },      // idem
   { id: 'hud',             naam: 'HUD-tint' },
   { id: 'intro',           naam: 'Intro' },
   { id: 'startuitrusting', naam: 'Startuitrusting' },
@@ -14250,35 +14250,53 @@ const ARCHIEF_CATEGORIEEN = [
 const ARCHIEF_SOORT_COSMETISCH = 'cosmetisch';
 const ARCHIEF_SOORT_START = 'startuitrusting';
 
+// Eén gedeelde KLEURLADDER (Ticket 167). Dezelfde kleur staat overal op
+// hetzelfde niveau, zodat een prijs nooit willekeurig voelt:
+//   1 Blauw · 2 Groen · 3 Oranje · 4 Magenta/Paars · 5 Wit
+// Kleuren die maar in één categorie voorkomen (Grijs, Sepia, Rood) vullen de
+// resterende plekken op zonder een gedeelde kleur te verdringen. Binnen een
+// categorie is de naam gewoon de kleur — de categoriekop zegt de rest al.
+//
+// LET OP — id's zijn VOOR EEUWIG en zijn hier bewust NIET meegehernoemd.
+// `gekocht` bewaart item-id's en `actiefPerCategorie` bewaart categorie-id's;
+// hernoemen pakt een speler zijn aankopen en keuzes af. Daardoor passen een
+// paar id's niet meer bij hun kleur: `vlam-amber` heet nu Oranje, `hud-koper`
+// heet nu Blauw, en de categorie-id's zijn nog `mondingsvlam`/`richtkruis`
+// terwijl ze Vuurflits/Vizier heten. Dat is geen slordigheid maar de prijs
+// voor het niet afpakken van bezit — niet "opruimen".
 const ARCHIEF_ITEMS = [
-  // --- Mondingsvlam: de kleur van de schietvlam en het bijbehorende licht.
-  { id: 'vlamTint',      naam: 'Violette vlam',   categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1000,  puntenEis: 500, vlamKleur: 0xb478ff, legacyVlag: 'vlamTint' },
-  { id: 'vlam-ijs',      naam: 'IJsblauwe vlam',  categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 650,  puntenEis: 150,  vlamKleur: 0x7fd4ff },
-  { id: 'vlam-groen',    naam: 'Gifgroene vlam',  categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 900,  puntenEis: 350,  vlamKleur: 0x8cff9b },
-  { id: 'vlam-wit',      naam: 'Magnesiumvlam',   categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1500,  puntenEis: 700, vlamKleur: 0xf2f6ff },
-  { id: 'vlam-amber',    naam: 'Amberen vlam',    categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 800,  puntenEis: 250,  vlamKleur: 0xffb347 },
+  // --- Vuurflits (categorie-id blijft `mondingsvlam`): de kleur van de vlam
+  // bij het schieten en het bijbehorende licht.
+  { id: 'vlam-ijs',      naam: 'Blauw',   niveau: 1, categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 650,  puntenEis: 150, vlamKleur: 0x7fd4ff },
+  { id: 'vlam-groen',    naam: 'Groen',   niveau: 2, categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 800,  puntenEis: 250, vlamKleur: 0x8cff9b },
+  { id: 'vlam-amber',    naam: 'Oranje',  niveau: 3, categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 900,  puntenEis: 350, vlamKleur: 0xffb347 },
+  { id: 'vlamTint',      naam: 'Paars',   niveau: 4, categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1000, puntenEis: 500, vlamKleur: 0xb478ff, legacyVlag: 'vlamTint' },
+  { id: 'vlam-wit',      naam: 'Wit',     niveau: 5, categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1500, puntenEis: 700, vlamKleur: 0xf2f6ff },
 
   // --- Ondode-kleurset: een tint OVER de bestaande huidskleur. Het is een
   // vermenigvuldiging, dus de onderlinge kleurverschillen tussen de types
   // blijven behouden — dat is precies waarom dit de T156-leesbaarheidsdrempel
   // haalt en waarom de tint nooit als vaste kleur gezet mag worden.
-  { id: 'kleurset',      naam: 'Koele waas',      categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1000, puntenEis: 450, ondodeTint: 0x8ab4ff, legacyVlag: 'kleurset' },
-  { id: 'ondode-as',     naam: 'Asgrijs',         categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 800, puntenEis: 200,  ondodeTint: 0xc2c2c2 },
-  { id: 'ondode-sepia',  naam: 'Sepia',           categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 900, puntenEis: 300,  ondodeTint: 0xd9b98a },
-  { id: 'ondode-mos',    naam: 'Mosgroen',        categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1200, puntenEis: 650, ondodeTint: 0xa8d18a },
+  { id: 'kleurset',      naam: 'Blauw',   niveau: 1, categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 800,  puntenEis: 200, ondodeTint: 0x8ab4ff, legacyVlag: 'kleurset' },
+  { id: 'ondode-mos',    naam: 'Groen',   niveau: 2, categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 900,  puntenEis: 300, ondodeTint: 0xa8d18a },
+  { id: 'ondode-as',     naam: 'Grijs',   niveau: 3, categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1000, puntenEis: 450, ondodeTint: 0xc2c2c2 },
+  { id: 'ondode-sepia',  naam: 'Sepia',   niveau: 4, categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1200, puntenEis: 650, ondodeTint: 0xd9b98a },
 
-  // --- Richtkruis en HUD: puur DOM/CSS, raken de 3D-scene niet.
-  { id: 'richtkruis-amber',   naam: 'Amber richtkruis',   categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 200, puntenEis: 0,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(255,179,71,0.9)' },
-  { id: 'richtkruis-groen',   naam: 'Groen richtkruis',   categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 300, puntenEis: 40,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(140,255,155,0.9)' },
-  { id: 'richtkruis-magenta', naam: 'Magenta richtkruis', categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 400, puntenEis: 80,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(255,140,220,0.9)' },
-  { id: 'richtkruis-ijs',     naam: 'IJsblauw richtkruis',categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 500, puntenEis: 120,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(127,212,255,0.9)' },
-  { id: 'hud-koper',     naam: 'Koperen HUD',     categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 650,  puntenEis: 100,  cssVar: '--hud-kleur', cssWaarde: '#e8c08a' },
-  { id: 'hud-mint',      naam: 'Munt-HUD',        categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 650,  puntenEis: 160,  cssVar: '--hud-kleur', cssWaarde: '#a8f0d0' },
-  { id: 'hud-rood',      naam: 'Alarm-HUD',       categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 2500, puntenEis: 900, cssVar: '--hud-kleur', cssWaarde: '#ff9a9a' },
+  // --- Vizier (categorie-id blijft `richtkruis`) en HUD: puur DOM/CSS, raken
+  // de 3D-scene niet.
+  { id: 'richtkruis-ijs',     naam: 'Blauw',   niveau: 1, categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 200, puntenEis: 0,   cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(127,212,255,0.9)' },
+  { id: 'richtkruis-groen',   naam: 'Groen',   niveau: 2, categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 300, puntenEis: 40,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(140,255,155,0.9)' },
+  { id: 'richtkruis-amber',   naam: 'Oranje',  niveau: 3, categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 400, puntenEis: 80,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(255,179,71,0.9)' },
+  { id: 'richtkruis-magenta', naam: 'Magenta', niveau: 4, categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 500, puntenEis: 120, cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(255,140,220,0.9)' },
+  // `hud-koper` was koperkleurig; sinds T167 is dit de blauwe trede van de
+  // ladder. Alleen de id herinnert nog aan de oude kleur (zie de kop).
+  { id: 'hud-koper',     naam: 'Blauw',   niveau: 1, categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 600,  puntenEis: 100, cssVar: '--hud-kleur', cssWaarde: '#9fd4ff' },
+  { id: 'hud-mint',      naam: 'Groen',   niveau: 2, categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 800,  puntenEis: 160, cssVar: '--hud-kleur', cssWaarde: '#a8f0d0' },
+  { id: 'hud-rood',      naam: 'Rood',    niveau: 3, categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 2500, puntenEis: 900, cssVar: '--hud-kleur', cssWaarde: '#ff9a9a' },
 
   // --- Intro: de T86-melodie. Eén item; varianten hierop vragen extra
   // registry-ingangen en horen daarom bij een later ticket.
-  { id: 'introMelodie',  naam: 'Intromelodie',    categorie: 'intro', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1000, puntenEis: 400, legacyVlag: 'introMelodie' },
+  { id: 'introMelodie',  naam: 'Intromelodie', niveau: 1, categorie: 'intro', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1000, puntenEis: 400, legacyVlag: 'introMelodie' },
 
   // --- Startuitrusting. Elk item wijst naar een bestaande koopfunctie; de
   // schenking gaat via schenkAankoop(), dat het saldo tijdelijk ophoogt en
@@ -14287,9 +14305,9 @@ const ARCHIEF_ITEMS = [
   // `uitdoofVlag` benoemt de spelerstoestand die het item aanraakt: zodra een
   // gewone speler die zelf bereikt, is een run mét en zonder dit item niet
   // meer te onderscheiden. Dat maakt "het effect dooft uit" toetsbaar.
-  { id: 'start-deur1',      naam: 'Deur 1 staat open', categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 8000, puntenEis: 1100,  schenk: () => koopDeur(),        uitdoofVlag: () => deurGekocht },
-  { id: 'start-amstel9',    naam: 'AMSTEL-9 op zak',   categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 10000, puntenEis: 1400, schenk: () => koopAmstel9(),     uitdoofVlag: () => !!wapenStaten.drukspuit },
-  { id: 'start-snelspanner',naam: 'Fast Hands vooraf', categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 12000, puntenEis: 1700, schenk: () => koopSnelspanner(), uitdoofVlag: () => snelspannerGekocht },
+  { id: 'start-deur1',      naam: 'Deur 1 staat open', niveau: 1, categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 8000, puntenEis: 1100,  schenk: () => koopDeur(),        uitdoofVlag: () => deurGekocht },
+  { id: 'start-amstel9',    naam: 'AMSTEL-9 op zak',   niveau: 2, categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 10000, puntenEis: 1400, schenk: () => koopAmstel9(),     uitdoofVlag: () => !!wapenStaten.drukspuit },
+  { id: 'start-snelspanner',naam: 'Fast Hands vooraf', niveau: 3, categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 12000, puntenEis: 1700, schenk: () => koopSnelspanner(), uitdoofVlag: () => snelspannerGekocht },
 ];
 const ARCHIEF_ITEM_OP_ID = new Map(ARCHIEF_ITEMS.map(i => [i.id, i]));
 function archiefItem(id) { return ARCHIEF_ITEM_OP_ID.get(id) ?? null; }

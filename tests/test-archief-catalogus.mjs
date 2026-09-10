@@ -251,7 +251,7 @@ const leesbaarheid = await page.evaluate(() => {
   const items = d.ARCHIEF_ITEMS.filter(i => i.categorie === 'ondode');
   // Welke velden mag een ondode-item hebben? Alles wat oogkleur, schaal of
   // animatie zou kunnen aanraken hoort er NIET in.
-  const toegestaneVelden = new Set(['id', 'naam', 'categorie', 'soort', 'prijs', 'puntenEis', 'ondodeTint', 'legacyVlag']);
+  const toegestaneVelden = new Set(['id', 'naam', 'categorie', 'soort', 'prijs', 'puntenEis', 'ondodeTint', 'legacyVlag', 'niveau']);
   const resultaten = items.map((item) => {
     const tint = new d.THREE.Color(item.ondodeTint);
     const naTint = typen.map(t => {
@@ -367,6 +367,72 @@ check('Zonder actief item wordt er geen enkele stijlvariabele gezet — de stand
   stijl.schoon.richtkruis === '' && stijl.schoon.hud === '', stijl);
 check('Met een actief item wordt de variabele wél gezet, en na uitzetten weer opgeruimd',
   stijl.metItem !== '' && stijl.naUitzetten === '', stijl);
+
+// --- 12. Ticket 167: gewone kleurnamen en één gedeelde ladder -----------
+// Twee klachten lagen hieraan ten grondslag: namen als "Amberen vlam" en
+// "Magnesiumvlam" zijn geen herkenbare kleuren, en dezelfde kleur stond op
+// verschillende niveaus (ijsblauw was bij de vlam de op één na goedkoopste
+// optie maar bij het vizier juist de duurste). Beide worden hier bewaakt.
+const ladderT167 = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const perCategorie = {};
+  for (const cat of d.ARCHIEF_CATEGORIEEN) {
+    perCategorie[cat.id] = d.ARCHIEF_ITEMS
+      .filter(i => i.categorie === cat.id)
+      .sort((a, b) => a.niveau - b.niveau)
+      .map(i => ({ id: i.id, naam: i.naam, niveau: i.niveau, prijs: i.prijs, punten: i.puntenEis }));
+  }
+  // Welke kleur staat op welk niveau, per categorie waarin hij voorkomt?
+  const perKleur = {};
+  for (const i of d.ARCHIEF_ITEMS) {
+    (perKleur[i.naam] = perKleur[i.naam] || []).push({ categorie: i.categorie, niveau: i.niveau });
+  }
+  return {
+    perCategorie, perKleur,
+    alleNiveausGeldig: d.ARCHIEF_ITEMS.every(i => Number.isInteger(i.niveau) && i.niveau >= 1),
+    categorieNamen: Object.fromEntries(d.ARCHIEF_CATEGORIEEN.map(c => [c.id, c.naam])),
+  };
+});
+check('Elk item draagt een geldig ladderniveau', ladderT167.alleNiveausGeldig, ladderT167);
+check('Binnen elke categorie loopt de prijs strikt op met het ladderniveau',
+  Object.values(ladderT167.perCategorie).every(lijst =>
+    lijst.every((it, i) => i === 0 || it.prijs > lijst[i - 1].prijs)), ladderT167.perCategorie);
+check('Binnen elke categorie loopt ook de puntendrempel strikt op met het ladderniveau',
+  Object.values(ladderT167.perCategorie).every(lijst =>
+    lijst.every((it, i) => i === 0 || it.punten > lijst[i - 1].punten)), ladderT167.perCategorie);
+check('Een kleur die in meerdere categorieën voorkomt staat overal op HETZELFDE niveau (de kern van T167)',
+  Object.values(ladderT167.perKleur).every(v => new Set(v.map(x => x.niveau)).size === 1),
+  ladderT167.perKleur);
+check('Blauw is overal de goedkoopste trede en Groen overal de tweede',
+  (ladderT167.perKleur['Blauw'] ?? []).every(x => x.niveau === 1)
+  && (ladderT167.perKleur['Groen'] ?? []).every(x => x.niveau === 2), ladderT167.perKleur);
+check('De categorieën heten Vuurflits en Vizier, terwijl hun id\'s historisch blijven (anders raakt een speler zijn keuzes kwijt)',
+  ladderT167.categorieNamen.mondingsvlam === 'Vuurflits'
+  && ladderT167.categorieNamen.richtkruis === 'Vizier', ladderT167.categorieNamen);
+
+// De id-lijst als vastgelegde momentopname. Id's zijn VOOR EEUWIG: ze staan
+// in `gekocht` en `actiefPerCategorie` van elke bestaande speler. Wie er hier
+// een hernoemt, pakt bezit af — deze assertie maakt dat zichtbaar in plaats
+// van stil.
+const VASTGELEGDE_IDS = [
+  'vlam-ijs', 'vlam-groen', 'vlam-amber', 'vlamTint', 'vlam-wit',
+  'kleurset', 'ondode-mos', 'ondode-as', 'ondode-sepia',
+  'richtkruis-ijs', 'richtkruis-groen', 'richtkruis-amber', 'richtkruis-magenta',
+  'hud-koper', 'hud-mint', 'hud-rood',
+  'introMelodie',
+  'start-deur1', 'start-amstel9', 'start-snelspanner',
+];
+const VASTGELEGDE_CATEGORIEEN = ['mondingsvlam', 'ondode', 'richtkruis', 'hud', 'intro', 'startuitrusting'];
+const idsNu = await page.evaluate(() => ({
+  items: window.AmsterdamUndeadDebug.ARCHIEF_ITEMS.map(i => i.id).sort(),
+  categorieen: window.AmsterdamUndeadDebug.ARCHIEF_CATEGORIEEN.map(c => c.id).sort(),
+}));
+check('De item-id\'s zijn exact de vastgelegde set — hernoemen zou bestaande aankopen wissen',
+  idsNu.items.join(',') === [...VASTGELEGDE_IDS].sort().join(','),
+  { nu: idsNu.items, verwacht: [...VASTGELEGDE_IDS].sort() });
+check('De categorie-id\'s zijn eveneens ongewijzigd — die staan in `actiefPerCategorie`',
+  idsNu.categorieen.join(',') === [...VASTGELEGDE_CATEGORIEEN].sort().join(','),
+  { nu: idsNu.categorieen, verwacht: [...VASTGELEGDE_CATEGORIEEN].sort() });
 
 const fails = report(errs);
 await browser.close();

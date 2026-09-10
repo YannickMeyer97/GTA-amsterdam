@@ -6100,12 +6100,45 @@ T167 (kleurnamen)    — gewone namen, één gedeelde ladder
 
 ---
 
-## Ticket 167 — Gewone kleurnamen, één gedeelde ladder
+## Ticket 167 — Gewone kleurnamen, één gedeelde ladder ✅
 
 - **Type:** fix (duidelijkheid/consistentie)
 - **Verbetergebied:** 5 (Progressie en keuzes)
 - **Prioriteit:** middel
-- **Status:** open (gepland)
+- **Status:** ✅ uitgevoerd (v0.28). De catalogus draagt nu een expliciet
+  `niveau`-veld en gewone kleurnamen: binnen een categorie heet een item
+  simpelweg "Blauw", "Groen", "Oranje", "Paars"/"Magenta", "Wit" — de
+  categoriekop zegt de rest al. Categorienamen: **Vuurflits** en **Vizier**.
+  `tests/test-archief-catalogus.mjs` groeide van 29 naar 37 checks.
+
+  **Wat er precies geschoven is.** Prijs én puntendrempel lopen nu binnen elke
+  categorie strikt op met het ladderniveau, en een gedeelde kleur staat overal
+  op hetzelfde niveau — dat laatste is de kern van dit ticket en is als
+  assertie vastgelegd. Concreet verschoven: bij de Vuurflits wisselden Groen
+  en Oranje van plek (Groen was duurder dan Oranje), bij het Vizier ging
+  Blauw van de duurste naar de goedkoopste trede, en bij de HUD stonden twee
+  items op exact dezelfde prijs (€650), wat "strikt oplopend" onmogelijk
+  maakte — die zijn nu €600/€800. `hud-koper` is van koperkleurig naar blauw
+  gegaan om de blauwe trede te kunnen vullen.
+
+  **Id's zijn onaangeroerd, en dat is met opzet zichtbaar lelijk.**
+  `vlam-amber` heet nu "Oranje", `hud-koper` heet "Blauw", en de
+  categorie-id's zijn nog `mondingsvlam`/`richtkruis` terwijl ze Vuurflits en
+  Vizier heten. Hernoemen zou bestaande aankopen (`gekocht`) en keuzes
+  (`actiefPerCategorie`) wissen. Er staat een comment bij zodat een latere
+  lezer dit niet "opruimt", én een assertie die de volledige id-lijst als
+  momentopname vastlegt — hernoemen valt daarmee op in plaats van stil te
+  gebeuren.
+
+  **Eén observatie uit de visuele controle, bewust niet aangepast.** Binnen
+  een categorie sorteert de winkel op status (koopbaar bovenaan, dan bezit,
+  dan vergrendeld), dus de ladder is niet van boven naar beneden af te lezen.
+  Bínnen elke statusgroep staat hij wél op volgorde. Dat blijft zo: wat je nu
+  kunt doen hoort bovenaan, en dat weegt zwaarder dan een leesbare prijslijst.
+
+  Volledige regressie sequentieel gedraaid (de parallelle runner bleef op deze
+  machine afgebroken worden): 104/104 groen, met één flake die op de
+  herhaling schoon was.
 - **Afhankelijk van:** T161 (de catalogus). Kan vóór of ná T164.
 - **Doel:** de winkel leesbaar maken voor wie niet weet wat "amber" of
   "magnesium" voor kleur is, en zorgen dat dezelfde kleur overal op

@@ -5443,7 +5443,7 @@ gemiddeld voor de vormgeving.
 
 ---
 
-### Ticket 167 — Gewone kleurnamen, één gedeelde ladder
+### Ticket 167 — Gewone kleurnamen, één gedeelde ladder ✅ uitgevoerd (v0.28)
 
 **Doel.** Leesbare kleurnamen, en dezelfde kleur overal op hetzelfde niveau.
 
@@ -5470,6 +5470,19 @@ paar id's die niet meer bij hun kleur passen (`vlam-amber` heet dan "Oranje",
 `hud-koper` heet "Blauw"); zet daar een comment bij, anders "ruimt" een
 latere lezer dat op en sloopt hij bestaande archieven. De drie T86-id's
 blijven sowieso onaangeroerd — daar hangt ook de T160-migratie aan.
+
+**Nawoord.** Een expliciet `niveau`-veld per item maakte de eis toetsbaar in
+plaats van een kwestie van smaak: prijs én drempel moeten strikt oplopen met
+het niveau, en een gedeelde kleur moet overal hetzelfde niveau hebben. Twee
+dingen kwamen daardoor pas boven: bij de HUD stonden twee items op exact
+dezelfde prijs (waardoor "strikt oplopend" onmogelijk was) en bij de
+Vuurflits was Groen duurder dan Oranje. Allebei gecorrigeerd.
+
+Praktisch punt voor volgende tickets: de parallelle testrunner werd op deze
+machine herhaaldelijk afgebroken zonder output. Sequentieel draaien via
+`AMSTERDAM_UNDEAD_SHARD=i/n node run-all.mjs`, met n groot genoeg dat elk
+deel binnen de tijdslimiet past, werkt wél — en geeft bovendien minder
+timing-flakes omdat er geen onderlinge contentie is.
 
 **Uitvoeringsadvies.** Sonnet 5 · High. Tabelwerk met objectieve asserties.
 Vertrouwen: hoog.
