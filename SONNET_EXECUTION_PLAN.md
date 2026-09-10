@@ -5448,7 +5448,7 @@ gemiddeld voor de vormgeving.
 **Doel.** Leesbare kleurnamen, en dezelfde kleur overal op hetzelfde niveau.
 
 **Werk.**
-- Categorienamen: **mondingsvlam → Vuurflist**, **richtkruis → Vizier**
+- Categorienamen: **mondingsvlam → Vuurflits**, **richtkruis → Vizier**
   (alleen het zichtbare label).
 - Eén gedeelde ladder: Blauw (1) → Groen (2) → Oranje (3) → Magenta/Paars (4)
   → Wit (5). Unieke kleuren (Grijs, Sepia, Rood) vullen de resterende plekken.
