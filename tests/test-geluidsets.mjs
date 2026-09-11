@@ -131,6 +131,48 @@ check('De vier muziekstemmingen zijn alle vier verschillend',
 check('De vier wapenklanken zijn alle vier verschillend',
   new Set(varianten.wapen).size === 4, varianten.wapen);
 
+// --- 4b. Ticket 174: verschillen in METHODE, niet alleen in getallen ----
+// DE LES VAN DIT TICKET. In T173 verschilden de vier sets alleen in drie
+// frequenties (muziek) of in golfvorm plus één filtergetal (wapens).
+// Envelope en signaalketen waren identiek, en dat hoorde je: vier keer
+// hetzelfde geluid in een andere toonsoort. Gemeten na T174 loopt het
+// spectrale zwaartepunt van de muziek van 98 Hz (Diep water) tot 3019 Hz
+// (Kortsluiting) — een factor 30. Deze assertie bewaakt de OORZAAK daarvan:
+// elke set moet zich op meerdere synthese-assen onderscheiden.
+const methode = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const muziekAssen = ['typen', 'detune', 'zwel', 'verval', 'interval',
+    'filter', 'tremolo', 'ringmod', 'vervorming', 'galm', 'arpeggio'];
+  const wapenAssen = ['type', 'pitch', 'lagen'];
+  const perMuziekset = Object.entries(d.MUZIEK_STEMMINGEN)
+    .filter(([naam]) => naam !== 'standaard')
+    .map(([naam, set]) => ({ naam, assen: muziekAssen.filter(a => set[a] !== undefined).length }));
+  const perWapenset = Object.entries(d.WAPEN_KLANKSETS)
+    .filter(([naam]) => naam !== 'standaard')
+    .map(([naam, set]) => ({
+      naam,
+      assen: wapenAssen.filter(a => set[a] !== undefined).length,
+      lagen: (set.lagen || []).length,
+    }));
+  return {
+    perMuziekset, perWapenset,
+    // De standaard blijft juist kaal: geen enkel extra veld, anders is de
+    // keten niet meer die van vóór T173.
+    standaardMuziekAssen: muziekAssen.filter(a => d.MUZIEK_STEMMINGEN.standaard[a] !== undefined),
+    standaardHeeftLagen: d.WAPEN_KLANKSETS.standaard.lagen !== undefined,
+    // Envelopes moeten onderling verschillen, anders voelt het ritme gelijk.
+    zwellen: Object.values(d.MUZIEK_STEMMINGEN).map(s => s.zwel ?? d.NEVELKLOK_ZWEL_TIJD),
+  };
+});
+check('Elke muziekset onderscheidt zich op minstens vier synthese-assen, niet alleen op toonhoogte',
+  methode.perMuziekset.every(m => m.assen >= 4), methode.perMuziekset);
+check('Elke wapenset voegt echte lagen toe in plaats van alleen een andere golfvorm',
+  methode.perWapenset.every(w => w.lagen >= 3), methode.perWapenset);
+check('De vier muzieksets hebben elk een eigen envelope — het ritme verschilt, niet alleen de klank',
+  new Set(methode.zwellen).size === 4, methode.zwellen);
+check('De standaardset blijft juist kaal: geen enkel extra veld, dus exact de keten van vóór T173',
+  methode.standaardMuziekAssen.length === 0 && methode.standaardHeeftLagen === false, methode);
+
 // --- 5. Een klankset raakt GEEN enkel balansgetal ----------------------
 // Dit is de belangrijkste check van het bestand. Een wapenset mag de klank
 // kleuren; zodra hij aan schade, vuursnelheid, spreiding of magazijn komt, is

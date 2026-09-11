@@ -5893,7 +5893,7 @@ niet boeiend — staat los van welke meting dan ook.
 
 ---
 
-# v0.28 — Ronde 14: een rustig startscherm en twee losse eindjes (gepland, nog NIET geïmplementeerd)
+# v0.28 — Ronde 14: een rustig startscherm en twee losse eindjes ✅ uitgevoerd
 
 Herkomst: de oplevering van ronde 13. Het Stadsarchief werkt, maar de
 eigenaar vond het startscherm rommelig — en dat klopt: vier ongerelateerde
@@ -6663,6 +6663,262 @@ te duur.
 - **Testplan:** nieuw testbestand dat per variant toetst dat de registry
   daadwerkelijk andere parameters oplevert, dat de standaardset
   bit-voor-bit ongewijzigd is, en dat de kanalen onafhankelijk schakelen.
+
+---
+
+# v0.32 — Ronde 18: klanken die echt verschillen
+
+## Ticket 174 — Vier sets die niet op elkaar lijken ✅
+
+- **Type:** feature (audio)
+- **Verbetergebied:** 6 (Audio)
+- **Status:** ✅ uitgevoerd (v0.32). `tests/test-geluidsets.mjs` 19 → 23 checks,
+  `test-achtergrondmuziek.mjs` 30 → 31.
+- **Aanleiding.** De eigenaar, na het beluisteren van de T173-sets: *"ik vind
+  alle klanken nog wel echt veel op elkaar lijken. kunnen we daar niet wat
+  gekker in gaan? ik weet dat er ergens iets staat over regels?"*
+- **Wat de regels blijken te zeggen.** `CLAUDE.md` verbiedt bestaande IP en
+  **externe assets**; `AUDIO.md` legt daarbovenop een bewijslast op voor
+  samples. Over de synthese**methode** zeggen ze niets. `WaveShaperNode`,
+  ringmodulatie, `DelayNode`, filtertypes buiten lowpass en per-stem envelopes
+  waren simpelweg nooit gebruikt — allemaal toegestaan en nul bytes. De regels
+  waren dus niet de beperking.
+- **De echte oorzaak, en de les van dit ticket.** In T173 verschilden de vier
+  muzieksets alleen in DRIE FREQUENTIES en de wapensets in golfvorm plus één
+  filtergetal. Envelope, cadans en signaalketen waren in alle vier identiek.
+  **Klankkleur komt veel meer uit de methode en de envelope dan uit de
+  toonhoogte** — het resultaat was vier keer hetzelfde geluid in een andere
+  toonsoort, en dat hoorde je ook.
+- **Gemeten resultaat** (spectraal zwaartepunt van het venster rond de piek):
+
+  | muziekset | centroid | energie < 200 Hz |
+  |---|---|---|
+  | standaard | 249 Hz | 34% |
+  | Diep water | 98 Hz | 95% |
+  | Grachtgloed | 594 Hz | 0% |
+  | Kortsluiting | 3019 Hz | 5% |
+
+  Een factor 30 tussen de uitersten, waar de vier sets eerder vrijwel
+  samenvielen. Wapens: Dof 574 Hz (47% laag), standaard 3572 Hz, Scherp
+  3788 Hz, Diep 2125 Hz (40% laag).
+- **Werk.**
+  - Elke muziekset bepaalt nu zijn eigen golfvormen, detune, zwel/verval,
+    cadans, filtertype, tremolo, ringmodulatie, vervorming, galm en arpeggio.
+    Diep water is een trage sub met deining en een openende lowpass;
+    Grachtgloed is getokkeld (de drie stemmen vallen na elkaar in) met een
+    delay-terugkoppeling; Kortsluiting is ringgemoduleerd, vervormd en
+    stotterend via een snelle tremolo.
+  - Wapensets krijgen gestapelde `lagen` bovenop het basisschot — het recept
+    dat AUDIO.md §3.2 het bewezen patroon in dit project noemt.
+  - `bouwMuziekPatch()` bouwt die keten RUNTIME op en breekt hem weer af.
+- **Valkuil die dat afdwong.** `test-achtergrondmuziek.mjs` en
+  `test-geluidsknop.mjs` toetsen de audioketen via BRONASSERTIES op
+  `initGeluid()`: exact drie `muziekOscN.start()`, exact drie
+  `muziekOscN.connect(nevelklokGainNode)`, één
+  `nevelklokGainNode.connect(muziekGainNode)`, en geen `.stop(`. Alle nieuwe
+  knopen worden daarom buiten `initGeluid()` gebouwd, tussen nevelklok en
+  muziekGain in. Zo blijven het volumebudget en de zwel-envelope precies waar
+  ze waren, en blijft de bedoeling van die asserties intact.
+- **Eén assertie moest wel mee.** De envelope-check pinde de letterlijke
+  constantennamen (`nu + NEVELKLOK_ZWEL_TIJD`), terwijl een set nu zijn eigen
+  tijden mag hebben. De EIS van Fix 2 — lineair omhoog, exponentieel omlaag —
+  is ongewijzigd, dus die wordt nu op de vórm getoetst, plus gedragsmatig dat
+  de standaardset exact op de twee constanten uitkomt (30 → 31 checks).
+- **Acceptatie:** de standaardset is bit-voor-bit onaangeroerd (geen enkel
+  extra veld); elke set onderscheidt zich op ≥ 4 synthese-assen; elke wapenset
+  voegt ≥ 3 lagen toe; alle vier de envelopes verschillen; geen enkel
+  balansgetal aangeraakt en `schotToon` per wapen intact.
+- **Meetfout onderweg, voor de eerlijkheid.** Mijn eerste centroid-meting gaf
+  voor élk bestand exact 11025 Hz. Dat is sr/4 — een aliasing-artefact van
+  decimatie in mijn eigen DFT, niet iets aan de audio. Opnieuw gemeten met een
+  echte FFT.
+
+---
+
+# v0.33 — Ronde 19: de assetregel, chirurgisch
+
+## Ticket 175 — De chirurgische assetuitzondering ✅ GOEDGEKEURD, bouw nog te doen
+
+- **Type:** beslissing + feature (audio/projectregel)
+- **Verbetergebied:** 6 (Audio)
+- **Status:** ✅ **§D beantwoord met JA door de eigenaar (v0.33).** De
+  uitzondering staat sinds dit besluit in `CLAUDE.md` onder "Werkwijze",
+  woordelijk zoals in §D voorgesteld, met de IP-regel er expliciet naast.
+  Daarmee vervalt de 🔒-blokkade.
+
+  **Wat er nog NIET is gebouwd:** de opnamen, `ASSETS.md`,
+  `test-assetregister.mjs` en `test-ondode-stemmen.mjs`. Dit ticket is dus
+  half af — het besluit is genomen, fase 1 moet nog worden uitgevoerd, en dat
+  kan pas zodra er licentie-gecontroleerde opnamen zijn. **Zolang `ASSETS.md`
+  niet bestaat, mag er geen enkele base64-blob in het spelbestand staan** —
+  dat is precies wat `test-assetregister.mjs` straks bewaakt.
+
+  **De volgorde doet ertoe:** eerst `ASSETS.md` + de registertest, dán pas de
+  eerste opname insluiten. Andersom bouw je de grens pas nadat hij al een keer
+  overschreden is.
+- **Aanleiding.** Vraag van de eigenaar na T174: *"zijn er externe assets die
+  je zou kunnen gebruiken als ik in claude.md zou aangeven dat dat wel zou
+  mogen? wat voor geluiden kunnen het dan worden? zitten daar nadelen aan?"*
+  T152 legde deze vraag al voor en het antwoord was **optie A** (regel
+  ongewijzigd). `AUDIO.md` §5 bewaart de afgewezen alternatieven expliciet
+  "mocht de beslissing ooit heroverwogen worden" — dit ticket is die
+  heroverweging, maar dan afgebakend tot het kleinst mogelijke gebied.
+
+### A. Wat er sinds T152 veranderd is
+
+Het hoofdargument voor optie A was: *de kwaliteitskloof komt doordat er geen
+ruisbron is, niet doordat er geen opname is.* Dat is inmiddels uitgevoerd
+(T154 bracht `ruisBuffer`/`speelRuis`, T174 bracht WaveShaper,
+ringmodulatie, delay en per-stem envelopes). **De procedurele winst is
+daarmee binnengehaald, en het argument is opgebruikt.** Wat overblijft is de
+ene categorie waar synthese tegen een echt plafond loopt, en die benoemde
+`AUDIO.md` §3.3 al: **menselijke stem**.
+
+### B. De afbakening — wat er WEL en NIET onder valt
+
+**Fase 1 (het voorstel):** uitsluitend **ondode-stemmen**. Vier types
+(normaal, brander, sluiper, sjouwer), drie basisopnamen per type, elk ±0,5 s.
+
+**Fase 2 (apart besluit, niet nu):** één omgevingsloop van 15-25 s. Groter
+effect op sfeer, maar ook veruit de grootste byte-post; hoort een eigen
+afweging te krijgen in plaats van mee te liften.
+
+**Expliciet buiten scope, voor altijd:**
+- Alle UI-tonen (kopen, golfstart, game over, wisselen). Die moeten *leesbaar*
+  zijn, niet realistisch — een pictogram werkt beter dan een foto.
+- Scheepshoorns, klokken, druppels: in werkelijkheid al harmonische tonen.
+  Synthese is daar de directe route, niet de goedkope.
+- `speelSpelerAu`: ook stem, maar functioneert als schadefeedback naast het
+  vignet en de richtingspijl (T68), niet als personage-uiting.
+- Muziek en wapenklank. Die zijn net in T173/T174 procedureel gebouwd.
+- **Grafische assets.** Dit ticket gaat over audio en niets anders; de regel
+  over textures en modellen blijft onaangeroerd.
+
+### C. Het architectuurprincipe dat dit ticket draagt
+
+> **De procedurele grom blijft bestaan en wordt de permanente terugval.**
+
+Geen vervanging, maar een laag erboven. Dat lost in één klap vier
+problemen op die optie B in `AUDIO.md` §5 duur maakten:
+
+1. **Het faalpad is gratis.** Faalt `decodeAudioData`, of draait het spel
+   ergens waar de assets niet beschikbaar zijn, dan klinkt gewoon de huidige
+   grom. Het T74-contract ("zichtbare faalmodi") vraagt hier dus geen nieuw
+   foutscherm — er is geen stilte om te melden.
+2. **Rollback is triviaal.** Eén vlag uit, en het spel is bit-voor-bit terug
+   bij vandaag.
+3. **`file://` blijft werken**, want alles is base64 in het bestand: geen
+   `fetch()`, dus geen CORS-probleem bij dubbelklikken.
+4. **De mix hoeft niet integraal opnieuw.** De sample wordt op het gemeten
+   volume van de huidige grom gezet; de andere 40 bronnen blijven onaangeroerd.
+
+### D. DE VRAAG AAN DE EIGENAAR
+
+De regel in `CLAUDE.md` luidt nu:
+
+> *geen frameworks, geen externe assets, geen textures/modellen, alleen
+> Three.js via de bestaande importmap-CDN en simpele geometrieën*
+
+Voorgestelde vervanging (alleen als §D met ja wordt beantwoord):
+
+> *geen frameworks, geen externe assets, geen textures/modellen, alleen
+> Three.js via de bestaande importmap-CDN en simpele geometrieën.*
+> ***Eén uitzondering, vastgelegd in T175:*** *ingesloten audiofragmenten
+> (base64 data-URI, nooit een los bestand) voor menselijke stem, mits elk
+> fragment een regel heeft in `ASSETS.md` met bron, auteur, licentie (CC0 of
+> gelijkwaardig), datum en SHA-256. Alle overige audio blijft procedureel.
+> Deze uitzondering geldt niet voor beeld.*
+
+**BEANTWOORD (v0.33): ja.** De tekst hierboven staat inmiddels in
+`CLAUDE.md`. De rest van dit ticket blijft staan als onderbouwing van dat
+besluit én als bouwopdracht voor fase 1.
+
+### E. Het variatieprobleem, en waarom het oplosbaar is
+
+`AUDIO.md` §3.3 rekende met 8 varianten per type × 4 types ≈ 140 KB, en
+concludeerde terecht dat het anti-herhalingsbudget de werkelijke kostenpost
+is: twaalf ondoden grommen elk om de 4-9 s, dus honderden grommen per run.
+Te weinig varianten en je hoort na drie golven een loop — **erger dan de
+huidige klank**.
+
+Die rekensom gaat echter uit van kale sample-wisseling. Met procedurele
+variatie ÓP de sample wordt het aantal benodigde basisopnamen veel kleiner:
+
+| middel | effect |
+|---|---|
+| `playbackRate` randomiseren (±12%) | verschuift toonhoogte én duur |
+| `detune` op de BufferSource | fijnere toonhoogtespreiding |
+| lowpass-cutoff randomiseren | dichterbij/verderaf, doffer/scherper |
+| startoffset in de buffer | niet elke grom begint gelijk |
+| de bestaande procedurele grom eronder mengen | ademt variatie in |
+
+Dat is exact het patroon dat `speelRuis()` al gebruikt (zie de toelichting
+daar: "twee gratis variatiebronnen, zodat tien schoten achter elkaar geen
+machinegeweer-monotonie worden"). Daarmee volstaan **3 basisopnamen per
+type**: 12 fragmenten ≈ **71 KB base64**, ofwel +7% op een bestand van
+1001 KB.
+
+### F. Het herkomstregister
+
+Nieuw bestand `ASSETS.md`, één regel per fragment: id, bestandsnaam, bron-URL,
+auteur, licentie, ophaaldatum, SHA-256 van het ruwe bestand, en de bewerking
+(trimmen/normaliseren/coderen). Dit is de "licentie-administratie die dit
+project nu niet heeft" uit `AUDIO.md` §5 — en zonder die administratie hoort
+de uitzondering er niet te komen.
+
+**Toetsbaar maken:** `test-assetregister.mjs` faalt zodra er een base64
+audio-blob in `amsterdam-undead.html` staat zonder bijbehorende regel in
+`ASSETS.md`. Zo kan de regel niet stilletjes uitdijen.
+
+**Herkomst blijft mensenwerk.** Ik kan een licentie niet betrouwbaar
+verifiëren; de eigenaar controleert elke bron vóór opname in het register.
+De IP-regel blijft daarnaast onverkort gelden: ook mét deze uitzondering is
+audio uit bestaande games uitgesloten.
+
+### G. Risico's
+
+- **Herhaling** — zie §E. Als de gemeten variatie onvoldoende blijkt, is het
+  ticket mislukt en gaat de vlag uit; dat is een acceptatiecriterium, geen
+  nazorg.
+- **Sluipende uitbreiding.** "Assets mogen" wordt makkelijk "dus ook hier".
+  Daartegen: de uitzondering noemt één categorie bij naam, en
+  `test-assetregister.mjs` bewaakt de grens machinaal.
+- **De per-type identiteit.** De grom is nu per type geparametriseerd
+  (twee ontstemde oscillators door een lowpass met dalende cutoff). Vier types
+  moeten hoorbaar verschillend blijven — dezelfde discipline als `schotToon`
+  bij de wapensets in T174.
+- **Bestandsgrootte is NIET het risico.** `AUDIO.md` §4.5 mat dat expliciet:
+  geen meetbaar effect op de laadtijd.
+
+### H. Acceptatiecriteria
+
+- Elk ingesloten fragment heeft een complete regel in `ASSETS.md`; de test
+  faalt zonder.
+- De vier ondode-types blijven hoorbaar van elkaar te onderscheiden (gemeten,
+  niet op gehoor — spectraal zwaartepunt per type, zoals in T174).
+- Twintig achtereenvolgende grommen van hetzelfde type leveren aantoonbaar
+  verschillende signalen op (geen identieke buffers/parameters).
+- Met de vlag uit is het spel bit-voor-bit identiek aan vóór dit ticket.
+- Faalt het decoderen, dan klinkt de procedurele grom en is er geen stilte.
+- Bestandsgroei ≤ 10%.
+- Geen enkel ander geluid aangeraakt; `test-audioregistry.mjs` blijft groen.
+
+### I. Testplan
+
+Nieuw `tests/test-ondode-stemmen.mjs` (variatie, per-type-onderscheid,
+terugvalpad met een gesaboteerde `decodeAudioData`, vlag-uit-gelijkheid) +
+nieuw `tests/test-assetregister.mjs` + volledige regressie.
+
+### J. Rollback
+
+Vlag uit. Omdat de procedurele grom blijft bestaan, is dat een volledige
+terugkeer zonder verder werk. De base64-blobs en `ASSETS.md` kunnen dan in een
+tweede stap verwijderd worden.
+
+### K. Wat dit ticket NIET is
+
+Geen algemene versoepeling van de assetregel, geen beeldassets, geen
+vervanging van bestaande geluiden, en geen laadpad over het netwerk.
 
 ---
 

@@ -5776,6 +5776,108 @@ vóór en ná elke set in plaats van een handmatig lijstje velden te vergelijken
 
 ---
 
+# Ronde 18 (v0.32) — Klanken die echt verschillen
+
+### Ticket 174 — Vier sets die niet op elkaar lijken ✅ uitgevoerd (v0.32)
+
+**DE LES, en hij is breder dan audio.** De eigenaar vond de vier geluidssets
+uit T173 allemaal op elkaar lijken, en vroeg of "de regels" dat in de weg
+zaten. Dat deden ze niet. De regels verbieden externe assets en bestaande IP;
+over de synthesemethode zeggen ze niets. Ik had alleen de GETALLEN gevarieerd
+binnen één vaste methode: drie frequenties bij de muziek, een golfvorm plus
+één filtergetal bij de wapens. Envelope, cadans en signaalketen waren in alle
+vier de sets identiek.
+
+**Variatie in parameters is geen variatie in karakter.** Klankkleur komt veel
+meer uit de methode en de envelope dan uit de toonhoogte. Vier keer hetzelfde
+patroon met andere getallen levert vier keer hetzelfde ding op — en dat geldt
+net zo goed voor visuele varianten, vijandgedrag of wapens. Wie "varianten"
+bouwt en ze op elkaar vindt lijken, moet niet aan de getallen draaien maar aan
+de methode.
+
+Gemeten verschil na de herbouw: het spectrale zwaartepunt van de muzieksets
+loopt van 98 Hz tot 3019 Hz, een factor 30, waar de vier sets eerder vrijwel
+samenvielen.
+
+**Wat het gereedschap was dat ik liet liggen:** `WaveShaperNode`,
+ringmodulatie (een gain waarvan de gain-parameter door een oscillator wordt
+gestuurd), `DelayNode` met terugkoppeling, filtertypes buiten lowpass,
+per-stem envelopes voor arpeggio, en per-set zwel/verval/cadans. Allemaal
+standaard Web Audio, nul externe bestanden.
+
+**Valkuil — bronasserties op de audioketen.** `test-achtergrondmuziek.mjs` en
+`test-geluidsknop.mjs` toetsen de keten via REGEX OP DE BRON van
+`initGeluid()`: exact drie oscillator-starts, exact drie connects naar
+`nevelklokGainNode`, één connect naar `muziekGainNode`, geen `.stop(`. Nieuwe
+knopen horen daarom buiten `initGeluid()` gebouwd te worden — runtime, tussen
+nevelklok en muziekGain in. Dan blijven volumebudget, zwel-envelope én de
+bedoeling van die asserties intact.
+
+**Eén assertie moest wel mee, en dat is te verantwoorden.** De envelope-check
+pinde `nu + NEVELKLOK_ZWEL_TIJD` letterlijk, terwijl een set nu eigen tijden
+mag hebben. De eis van Fix 2 (lineair op, exponentieel af) is ongewijzigd, dus
+die wordt nu op de vorm getoetst plus gedragsmatig: zonder set moeten de
+tijden exact de twee constanten zijn.
+
+**Meetfout, genoteerd omdat hij leerzaam is.** Mijn eerste centroid-meting gaf
+voor élk bestand exact 11025 Hz. Dat is sr/4 — aliasing door decimatie in mijn
+eigen DFT. Een meting die voor alle invoer hetzelfde antwoord geeft, meet
+niets; dat is het signaal om de meter te wantrouwen, niet de data.
+
+---
+
+# Ronde 19 (v0.33) — De assetregel, chirurgisch
+
+### Ticket 175 — De chirurgische assetuitzondering ✅ besluit genomen, bouw open
+
+**Volledig ticket in `ROADMAP.md` onder "v0.33 — Ronde 19".**
+
+**Het besluit is genomen (ja) en `CLAUDE.md` is aangepast.** Wat nog open
+staat is fase 1 zelf: `ASSETS.md`, `test-assetregister.mjs`,
+`test-ondode-stemmen.mjs` en de opnamen.
+
+**Bouw in deze volgorde, en niet anders:** eerst `ASSETS.md` plus de
+registertest, dán pas de eerste opname insluiten. Andersom bouw je de grens
+pas nadat hij al een keer overschreden is. Zolang `ASSETS.md` niet bestaat
+hoort er geen enkele base64-blob in het spelbestand te staan. Zelfde patroon als
+T152/`AUDIO.md`: een projectregel wijzigen hoort een apart, zichtbaar besluit
+te zijn, nooit een bijvangst van een feature.
+
+**De kern in één zin.** Sta ingesloten audiofragmenten toe voor uitsluitend
+menselijke stem (ondode-grommen), als base64 in het bestand, met een
+verplicht herkomstregister — en laat al het andere procedureel.
+
+**Het ontwerpprincipe dat alles draagt:** de procedurele grom BLIJFT bestaan
+en wordt de permanente terugval, niet vervangen. Dat maakt het faalpad gratis
+(geen stilte om te melden, dus geen nieuw T74-foutscherm), de rollback
+triviaal, en het houdt `file://` werkend omdat er niets te laden valt.
+
+**Waarom dit nu pas bespreekbaar is.** Het hoofdargument van T152 tegen
+samples — "de kwaliteitskloof is procedureel op te lossen" — is inmiddels
+uitgevoerd (T154 ruisbron, T174 WaveShaper/ringmod/delay). Dat argument is
+dus opgebruikt. Wat overblijft is de ene categorie die AUDIO.md §3.3 al
+aanwees: menselijke stem.
+
+**De valkuil die het ticket klein houdt.** `AUDIO.md` rekende 8 sample-
+varianten per type nodig tegen herhaling (≈140 KB). Die som gaat uit van kale
+sample-wisseling. Met procedurele variatie ÓP de sample (playbackRate,
+detune, filter-cutoff, startoffset, en de synth-grom eronder gemengd)
+volstaan er 3 per type: ≈71 KB, +7%. Dat is exact het patroon dat
+`speelRuis()` al toepast tegen "machinegeweer-monotonie".
+
+**Wat een uitvoerder hier vooral moet weerstaan:** de neiging om "als assets
+toch mogen" ook even de schoten, de wind of het hout te samplen. De
+uitzondering noemt één categorie bij naam, en `test-assetregister.mjs`
+bewaakt die grens machinaal — een base64-blob zonder regel in `ASSETS.md`
+laat de suite falen.
+
+**Uitvoeringsadvies.** Niet aan Sonnet geven zolang de status 🔒 is. Daarna:
+fase 1 alleen, met de meting van per-type-onderscheid en variatie als
+acceptatiecriterium — niet op gehoor beoordelen, dat is precies waar T174 op
+misging.
+
+---
+
 ## Risicoregister — Ronde 11
 
 | # | Risico | Kans | Impact | Mitigatie |

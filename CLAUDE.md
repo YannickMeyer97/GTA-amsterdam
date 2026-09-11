@@ -25,6 +25,8 @@ README.md                       → speler-gerichte uitleg
 ## Werkwijze
 - **Wijzig `defend-national-monument.html` NIET, tenzij de gebruiker er expliciet om vraagt.**
 - Elke game blijft één zelfstandig HTML-bestand: geen frameworks, geen externe assets, geen textures/modellen, alleen Three.js via de bestaande importmap-CDN en simpele geometrieën.
+  - **Eén uitzondering, vastgelegd in T175:** ingesloten audiofragmenten (base64 data-URI, nooit een los bestand) voor menselijke stem, mits elk fragment een regel heeft in `ASSETS.md` met bron, auteur, licentie (CC0 of gelijkwaardig), datum en SHA-256. Alle overige audio blijft procedureel. Deze uitzondering geldt niet voor beeld.
+  - De IP-regels hierboven blijven onverkort gelden: ook onder deze uitzondering is audio uit bestaande games uitgesloten.
 - Hergebruik uit de bestaande game gaat via **kopiëren en aanpassen** in `amsterdam-undead.html`, nooit via gedeelde JS/CSS-bestanden of het aanpassen van de bestaande game.
 - Kleine stappen: één ticket per keer (zie ROADMAP.md), na elke stap syntax-/laadcheck en de relevante tests.
 - Commit/push alleen op expliciet verzoek van de gebruiker.

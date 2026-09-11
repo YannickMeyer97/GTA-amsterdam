@@ -215,19 +215,40 @@ check('NEVELKLOK_ZWEL_TIJD (1.4s, Fix 2: korter+lineair) + NEVELKLOK_VERVAL_TIJD
 // van het spel, precies wanneer een speler zou testen) nauwelijks hoorbaar
 // was. De verval-fase blijft bewust WEL exponentieel (klinkt voor een
 // wegstervende bel natuurlijk, en de hoorbaarheid speelt daar niet meer). --
+// Ticket 174 heeft de twee tijden GEPARAMETRISEERD: een gekochte muziekset mag
+// zijn eigen zwel/verval hebben, want daar zit het verschil tussen een klok,
+// een trage puls en een tokkel. De EIS van Fix 2 is ongewijzigd — lineair
+// omhoog, exponentieel omlaag — dus die wordt hier nu op de vorm getoetst in
+// plaats van op de letterlijke constantennamen, en daarnaast GEDRAGSMATIG:
+// zonder gekochte set moeten de tijden exact de twee constanten zijn.
 const envelopeVorm = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const bron = d.speelNevelklokToon.toString();
+  // Zonder set: welke tijden gebruikt de functie werkelijk?
+  d.stadsarchief = {
+    ontsnappingen: 0, headshotsTotaal: 0, hoogsteGolf: 0, golvenTotaal: 0, geld: 0,
+    gekocht: [], actiefPerCategorie: {}, versie: d.ARCHIEF_VERSIE,
+    actief: { kleurset: false, vlamTint: false, introMelodie: false },
+  };
+  const stemming = d.actieveMuziekStemming();
   return {
-    opbouwIsLineair: /linearRampToValueAtTime\(1, nu \+ NEVELKLOK_ZWEL_TIJD\)/.test(bron),
+    opbouwIsLineair: /linearRampToValueAtTime\(1, nu \+ zwel\)/.test(bron),
     opbouwIsNietExponentieel: !/exponentialRampToValueAtTime\(1,/.test(bron),
-    vervalIsExponentieel: /exponentialRampToValueAtTime\(0\.0001, nu \+ NEVELKLOK_ZWEL_TIJD \+ NEVELKLOK_VERVAL_TIJD\)/.test(bron),
+    vervalIsExponentieel: /exponentialRampToValueAtTime\(0\.0001, nu \+ zwel \+ verval\)/.test(bron),
+    // De standaardset heeft geen eigen tijden, dus valt de functie terug op
+    // de constanten — exact het gedrag van vóór dit ticket.
+    standaardZwel: stemming.zwel ?? d.NEVELKLOK_ZWEL_TIJD,
+    standaardVerval: stemming.verval ?? d.NEVELKLOK_VERVAL_TIJD,
+    constZwel: d.NEVELKLOK_ZWEL_TIJD, constVerval: d.NEVELKLOK_VERVAL_TIJD,
   };
 });
 check('speelNevelklokToon(): de opbouw naar de piek gebruikt linearRampToValueAtTime',
   envelopeVorm.opbouwIsLineair && envelopeVorm.opbouwIsNietExponentieel, envelopeVorm);
 check('speelNevelklokToon(): het verval na de piek blijft exponentialRampToValueAtTime',
   envelopeVorm.vervalIsExponentieel, envelopeVorm);
+check('Zonder gekochte muziekset zijn de zwel/verval-tijden exact de twee constanten (Fix 2 onaangeroerd)',
+  envelopeVorm.standaardZwel === envelopeVorm.constZwel
+  && envelopeVorm.standaardVerval === envelopeVorm.constVerval, envelopeVorm);
 
 // --- 10. Fix 2: de drie partialen liggen een octaaf hoger dan de eerste
 // (te weinig hoorbare) versie — E3/C#4/D4 i.p.v. E2/C#3/D3, ruim boven het

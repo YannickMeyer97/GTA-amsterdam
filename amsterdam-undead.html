@@ -9691,28 +9691,107 @@ function initGeluid() {
 // in één oogopslag te zien wat een variant verschuift, en kan een test de
 // standaard bit-voor-bit vergelijken met de registry.
 let muziekOscillatoren = null;
+//
+// TICKET 174 — waarom deze tabel er zo anders uitziet dan in T173. Toen
+// verschilden de vier sets alleen in DRIE FREQUENTIES; envelope, golfvorm en
+// signaalketen waren identiek. Het resultaat was vier keer hetzelfde geluid in
+// een andere toonsoort, en dat hoorde je ook. Klankkleur komt veel meer uit de
+// METHODE en de ENVELOPE dan uit de toonhoogte. Elke set bepaalt daarom nu
+// zijn eigen golfvormen, envelope, cadans, filter, modulatie en galm.
+//
+// Wat de regels toestaan (CLAUDE.md + AUDIO.md): alles procedureel, geen
+// externe assets, geen bestaande IP. Over de synthesemethode zeggen ze niets —
+// WaveShaper, ringmodulatie, delay en filtertypes buiten lowpass waren
+// gewoon nooit gebruikt. AUDIO.md §3.2 noemt lagen stapelen bovendien het
+// bewezen recept in dit project.
 const MUZIEK_STEMMINGEN = {
-  // De bestaande stemming: E3 met een halve-toon-wrijving C#4/D4 erboven.
-  standaard: { frequenties: [164.82, 277.18, 293.66], toelichting: 'E3 + C#4/D4' },
-  // Laag en mineur: hetzelfde beier-idee, maar een octaaf donkerder en zonder
-  // de scherpe secunde — klinkt als water onder de stad.
-  donker:    { frequenties: [110.00, 130.81, 164.81], toelichting: 'A2 + C3/E3' },
-  // Open en warm: een kwint met een grote terts hoog erboven.
-  gracht:    { frequenties: [146.83, 220.00, 369.99], toelichting: 'D3 + A3/F#4' },
-  // Gespannen: een tritonus in het midden, die blijft wringen.
-  spanning:  { frequenties: [164.82, 233.08, 349.23], toelichting: 'E3 + Bb3/F4' },
+  // ONGEWIJZIGD, en dat is een harde eis: wie niets koopt hoort exact wat hij
+  // altijd al hoorde. Geen enkel veld hieronder buiten `frequenties` — de
+  // patchbouwer slaat dan alles over en de keten blijft letterlijk die van
+  // vóór T173.
+  standaard: {
+    frequenties: [164.82, 277.18, 293.66], toelichting: 'E3 + C#4/D4 — klokkenbed',
+  },
+  // DIEP WATER: geen klok maar een trage, zware puls. Sub-octaaf, langzame
+  // tremolo als deining, en een lowpass die tijdens de zwel opengaat — het
+  // geluid komt naar je toe in plaats van dat het aanslaat.
+  donker: {
+    frequenties: [55, 82.41, 110], typen: ['sine', 'triangle', 'sine'],
+    detune: [0, 6, -6],
+    zwel: 2.8, verval: 5.5, interval: 11,
+    filter: { type: 'lowpass', start: 140, eind: 700, Q: 5 },
+    tremolo: { hz: 0.55, diepte: 0.5 },
+    toelichting: 'A1 + E2/A2 — trage sub met deining',
+  },
+  // GRACHTGLOED: getokkeld in plaats van aangehouden. De drie stemmen vallen
+  // na elkaar in (arpeggio) en een delay met terugkoppeling laat ze over
+  // elkaar heen buitelen, als weerkaatsing tussen de gevels.
+  gracht: {
+    frequenties: [293.66, 440, 587.33], typen: ['triangle', 'triangle', 'sine'],
+    detune: [0, 5, -5],
+    zwel: 0.015, verval: 2.4, interval: 9, arpeggio: 0.3,
+    filter: { type: 'highpass', start: 200, eind: 200, Q: 0.7 },
+    galm: { tijd: 0.34, terugkoppeling: 0.45, mix: 0.55 },
+    toelichting: 'D4/A4/D5 — tokkel met weerkaatsing',
+  },
+  // KORTSLUITING: ringmodulatie maakt som- en verschiltonen die niet in de
+  // toonladder passen — dat is wat metaal metaal laat klinken. Plus een
+  // snelle tremolo (stotteren) en een bandpass die dichtknijpt.
+  spanning: {
+    frequenties: [98, 138.59, 233.08], typen: ['sawtooth', 'square', 'sawtooth'],
+    detune: [0, 11, -9],
+    zwel: 0.5, verval: 3.2, interval: 10,
+    filter: { type: 'bandpass', start: 1100, eind: 300, Q: 2.5 },
+    ringmod: 63, vervorming: 0.5,
+    tremolo: { hz: 8.5, diepte: 0.75 },
+    toelichting: 'G2 + C#3/Bb3 — ringgemoduleerd, stotterend',
+  },
 };
+// Ticket 174: hetzelfde probleem als bij de muziek. Golfvorm en één
+// filtergetal verschuiven levert vier keer hetzelfde schot op. Elke set krijgt
+// daarom eigen LAGEN — het recept dat AUDIO.md §3.2 het bewezen patroon in dit
+// project noemt. `lagen` wordt door speelSchot() afgespeeld bovenop het
+// basisschot; `na` is de vertraging in seconden.
+//
+// Wat GEEN enkele set aanraakt: `schotToon` (de per-wapen identiteit uit
+// T34/T144). Elke laag hieronder is relatief aan die toon of staat op een
+// vaste lage frequentie, zodat een Drukspuit in élke set van een Ratelaar te
+// onderscheiden blijft.
 const WAPEN_KLANKSETS = {
   // Exact de waarden uit de `schot`-ingang in GELUIDEN — de standaard mag
-  // niets verschuiven.
+  // niets verschuiven, en heeft dus ook geen lagen.
   standaard: { type: 'sawtooth', ruis: { filterStart: 3800, filterEind: 350, Q: 0.8, duur: 0.13 } },
-  // Gedempt en zwaar: driehoek i.p.v. zaagtand, ruis veel lager gefilterd en
-  // iets langer — alsof je binnen schiet met de deuren dicht.
-  dof:       { type: 'triangle', ruis: { filterStart: 1500, filterEind: 170, Q: 0.7, duur: 0.16 } },
-  // Droog en bijtend: blokgolf, ruis hoog en kort.
-  scherp:    { type: 'square',   ruis: { filterStart: 6200, filterEind: 900, Q: 1.4, duur: 0.08 } },
-  // Veel onderkant: de toon een kwint omlaag, ruis diep en lang.
-  diep:      { type: 'sawtooth', pitch: 0.66, ruis: { filterStart: 2100, filterEind: 110, Q: 0.9, duur: 0.2 } },
+  // DOF — binnen schieten met de deuren dicht. Driehoek, ruis diep
+  // weggefilterd, en eronder een trage lage dreun die natrilt.
+  dof: {
+    type: 'triangle', ruis: { filterStart: 1200, filterEind: 140, Q: 0.7, duur: 0.19 },
+    lagen: [
+      { na: 0,     type: 'sine',     freqFactor: 0.28, eindFactor: 0.18, duur: 0.26, volume: 0.085 },
+      { na: 0.015, type: 'triangle', freqFactor: 0.5,  eindFactor: 0.3,  duur: 0.14, volume: 0.03 },
+      { na: 0.05,  ruis: { filterStart: 500, filterEind: 90, Q: 0.6, duur: 0.22, volume: 0.028 } },
+    ],
+  },
+  // SCHERP — een droge knal met een slapback-echo, alsof het tussen de gevels
+  // terugkaatst. De echo is één herhaling op 55 ms, niet een galmstaart.
+  scherp: {
+    type: 'square', ruis: { filterStart: 7200, filterEind: 1100, Q: 1.6, duur: 0.06 },
+    lagen: [
+      { na: 0,     ruis: { filterStart: 9000, filterEind: 4000, Q: 2.2, duur: 0.025, volume: 0.05 } },
+      { na: 0.055, type: 'square', freqFactor: 1.0, eindFactor: 0.6, duur: 0.05, volume: 0.028 },
+      { na: 0.055, ruis: { filterStart: 5200, filterEind: 900, Q: 1.4, duur: 0.05, volume: 0.022 } },
+      { na: 0.115, ruis: { filterStart: 3400, filterEind: 700, Q: 1.2, duur: 0.045, volume: 0.012 } },
+    ],
+  },
+  // DIEP — een duikende sub eronder, met een octaaf-laag die meeduikt. Het
+  // basisschot zelf zakt een kwint (pitch 0.66).
+  diep: {
+    type: 'sawtooth', pitch: 0.66, ruis: { filterStart: 1900, filterEind: 90, Q: 1.1, duur: 0.22 },
+    lagen: [
+      { na: 0,    type: 'sine',     freqFactor: 0.22, eindFactor: 0.1,  duur: 0.34, volume: 0.1 },
+      { na: 0,    type: 'sawtooth', freqFactor: 0.45, eindFactor: 0.14, duur: 0.18, volume: 0.035 },
+      { na: 0.09, type: 'sine',     freqFactor: 0.16, eindFactor: 0.09, duur: 0.3,  volume: 0.045 },
+    ],
+  },
 };
 function actieveMuziekStemming() {
   const item = actiefGeluid('muziek');
@@ -9722,6 +9801,117 @@ function actieveWapenklank() {
   const item = actiefGeluid('wapen');
   return WAPEN_KLANKSETS[item?.wapenklank] ?? WAPEN_KLANKSETS.standaard;
 }
+// De extra knopen van de actieve muziekset. Worden BUITEN initGeluid() gebouwd
+// en weer afgebroken: initGeluid() moet letterlijk drie oscillator-starts en
+// drie connects naar nevelklokGainNode blijven bevatten (bronasserties in
+// test-achtergrondmuziek.mjs bewaken die keten). Alles hieronder hangt tussen
+// nevelklokGainNode en muziekGainNode in, dus het volumebudget en de
+// zwel-envelope blijven precies waar ze waren.
+let muziekPatch = null;
+function breekMuziekPatchAf() {
+  if (!muziekPatch) return;
+  for (const bron of muziekPatch.bronnen) { try { bron.stop(); } catch { /* al gestopt */ } }
+  for (const knoop of muziekPatch.knopen) { try { knoop.disconnect(); } catch { /* al los */ } }
+  try { nevelklokGainNode.disconnect(); } catch { /* al los */ }
+  for (const { osc, gain } of muziekPatch.stemmen) {
+    try { osc.disconnect(); } catch { /* al los */ }
+    try { gain.disconnect(); } catch { /* al los */ }
+  }
+  muziekPatch = null;
+}
+// Een zachte, symmetrische verzadigingscurve (tanh-achtig). Geen harde clip:
+// die klinkt als een kapotte speaker in plaats van als karakter.
+function maakVervormingCurve(hoeveelheid) {
+  const n = 1024, curve = new Float32Array(n), k = hoeveelheid * 40;
+  for (let i = 0; i < n; i++) {
+    const x = (i * 2) / n - 1;
+    curve[i] = (1 + k) * x / (1 + k * Math.abs(x));
+  }
+  return curve;
+}
+function bouwMuziekPatch(stemming) {
+  if (!audio || !nevelklokGainNode || !muziekGainNode || !muziekOscillatoren) return;
+  breekMuziekPatchAf();
+  // De standaardset heeft geen enkel extra veld: dan blijft de keten exact
+  // nevelklok -> muziekGain, zoals vóór dit ticket.
+  const extra = stemming.filter || stemming.tremolo || stemming.ringmod
+    || stemming.vervorming || stemming.galm || stemming.arpeggio;
+  for (const osc of muziekOscillatoren) { try { osc.disconnect(); } catch { /* al los */ } }
+  const stemmen = [];
+  if (stemming.arpeggio) {
+    // Per stem een eigen gain, zodat speelNevelklokToon() ze na elkaar kan
+    // laten invallen. Nog steeds ALLEMAAL via nevelklokGainNode — de
+    // zwel-envelope blijft dus de baas over het geheel.
+    for (const osc of muziekOscillatoren) {
+      const gain = audio.createGain();
+      gain.gain.value = 1;
+      osc.connect(gain).connect(nevelklokGainNode);
+      stemmen.push({ osc, gain });
+    }
+  } else {
+    for (const osc of muziekOscillatoren) osc.connect(nevelklokGainNode);
+  }
+  if (!extra) {
+    nevelklokGainNode.connect(muziekGainNode);
+    muziekPatch = { knopen: [], bronnen: [], stemmen, stemming };
+    return;
+  }
+
+  const knopen = [], bronnen = [];
+  let punt = nevelklokGainNode;
+  if (stemming.filter) {
+    const f = audio.createBiquadFilter();
+    f.type = stemming.filter.type;
+    f.Q.value = stemming.filter.Q;
+    f.frequency.value = stemming.filter.start;
+    punt.connect(f); punt = f; knopen.push(f);
+  }
+  if (stemming.vervorming) {
+    const vorm = audio.createWaveShaper();
+    vorm.curve = maakVervormingCurve(stemming.vervorming);
+    vorm.oversample = '2x';
+    punt.connect(vorm); punt = vorm; knopen.push(vorm);
+  }
+  if (stemming.ringmod) {
+    // Ringmodulatie: het signaal door een gain waarvan de gain-parameter zelf
+    // door een oscillator wordt aangestuurd. Dat maakt som- en verschiltonen
+    // die niet in de toonladder passen — precies wat metaal metaal laat
+    // klinken.
+    const ring = audio.createGain();
+    ring.gain.value = 0;
+    const mod = audio.createOscillator();
+    mod.type = 'sine'; mod.frequency.value = stemming.ringmod;
+    mod.connect(ring.gain); mod.start();
+    punt.connect(ring); punt = ring; knopen.push(ring, mod); bronnen.push(mod);
+  }
+  if (stemming.tremolo) {
+    const trem = audio.createGain();
+    trem.gain.value = 1 - stemming.tremolo.diepte;
+    const lfo = audio.createOscillator();
+    lfo.type = 'sine'; lfo.frequency.value = stemming.tremolo.hz;
+    const diepte = audio.createGain();
+    diepte.gain.value = stemming.tremolo.diepte;
+    lfo.connect(diepte).connect(trem.gain); lfo.start();
+    punt.connect(trem); punt = trem; knopen.push(trem, lfo, diepte); bronnen.push(lfo);
+  }
+  punt.connect(muziekGainNode);
+  if (stemming.galm) {
+    // Delay met terugkoppeling: weerkaatsing tussen de gevels. Bewust géén
+    // eigen connect op masterGainNode — alles blijft binnen het muziekbudget.
+    const delay = audio.createDelay(1.5);
+    delay.delayTime.value = stemming.galm.tijd;
+    const terug = audio.createGain();
+    terug.gain.value = stemming.galm.terugkoppeling;
+    const mix = audio.createGain();
+    mix.gain.value = stemming.galm.mix;
+    punt.connect(delay);
+    delay.connect(terug).connect(delay);
+    delay.connect(mix).connect(muziekGainNode);
+    knopen.push(delay, terug, mix);
+  }
+  muziekPatch = { knopen, bronnen, stemmen, stemming };
+}
+
 // Stemt de lopende muziek om. Glijdt standaard (MUZIEK_GLIJTIJD) zodat het
 // omzetten in de winkel niet klikt; bij het opstarten mag het direct.
 function pasGeluidsetToe(opties) {
@@ -9740,7 +9930,10 @@ function pasGeluidsetToe(opties) {
     if (doel === undefined) continue;
     if (glijden) muziekOscillatoren[i].frequency.setTargetAtTime(doel, nu, MUZIEK_GLIJTIJD);
     else muziekOscillatoren[i].frequency.value = doel;   // werkt ook als de klok stilstaat
+    muziekOscillatoren[i].type = (stemming.typen && stemming.typen[i]) || 'sine';
+    muziekOscillatoren[i].detune.value = (stemming.detune && stemming.detune[i]) || 0;
   }
+  bouwMuziekPatch(stemming);
 }
 
 // Ticket 86: een korte, oplopende drieklank (A-C#-E-A) — eigen, herkenbaar
@@ -10074,6 +10267,18 @@ function speelSchot() {
     pitch: klank.pitch,
     ruis: klank.ruis,
   });
+  // Ticket 174: de extra lagen van een gekochte set. Relatief aan schotToon,
+  // zodat het wapenonderscheid intact blijft.
+  if (!klank.lagen || !audio) return;
+  const nu = audio.currentTime;
+  for (const laag of klank.lagen) {
+    const t = nu + (laag.na || 0);
+    if (laag.type) {
+      piep(laag.type, toon.start * laag.freqFactor, toon.eind * laag.eindFactor,
+        laag.duur, laag.volume, 0, t);
+    }
+    if (laag.ruis) speelRuis(laag.ruis, { startTijd: t });
+  }
 }
 function speelDroogKlik() { speelGeluid('droogKlik'); }
 // Ticket 33: het herlaad-geluid was één functie die zijn tweede piep via een
@@ -10237,8 +10442,27 @@ function speelNevelklokToon() {
   // NEVELKLOK_ZWEL_TIJD hierboven. De verval-fase blijft wel exponentieel:
   // dat klinkt voor een wegstervende bel juist wél natuurlijk, en de
   // hoorbaarheid-timing speelt daar niet (de toon is dan al lang gehoord).
-  nevelklokGainNode.gain.linearRampToValueAtTime(1, nu + NEVELKLOK_ZWEL_TIJD);
-  nevelklokGainNode.gain.exponentialRampToValueAtTime(0.0001, nu + NEVELKLOK_ZWEL_TIJD + NEVELKLOK_VERVAL_TIJD);
+  // Ticket 174: een gekochte muziekset mag zijn eigen envelope hebben — dat is
+  // waar het verschil tussen "een klok" en "een trage puls" of "een tokkel"
+  // vandaan komt, veel meer dan uit de noten. Zonder set blijven het exact de
+  // twee constanten hierboven.
+  const stemming = actieveMuziekStemming();
+  const zwel = stemming.zwel ?? NEVELKLOK_ZWEL_TIJD;
+  const verval = stemming.verval ?? NEVELKLOK_VERVAL_TIJD;
+  nevelklokGainNode.gain.linearRampToValueAtTime(1, nu + zwel);
+  nevelklokGainNode.gain.exponentialRampToValueAtTime(0.0001, nu + zwel + verval);
+  // Arpeggio: de drie stemmen vallen na elkaar in in plaats van tegelijk.
+  // Alleen mogelijk als bouwMuziekPatch() per stem een gain heeft gezet.
+  if (stemming.arpeggio && muziekPatch && muziekPatch.stemmen.length) {
+    muziekPatch.stemmen.forEach(({ gain }, i) => {
+      const t = nu + i * stemming.arpeggio;
+      gain.gain.cancelScheduledValues(nu);
+      gain.gain.setValueAtTime(0.0001, nu);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.linearRampToValueAtTime(1, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.02 + verval);
+    });
+  }
 }
 // Aangeroepen 1x per frame vanuit de spelActief-tak van de gameLoop. De
 // aankondigingstimer en de nevelklok-cadans tellen ELKE frame af (niet
@@ -10250,7 +10474,9 @@ function updateAchtergrondmuziek(dt) {
   if (muziekAankondigingTimer > 0) muziekAankondigingTimer -= dt;
   nevelklokTimer -= dt;
   if (nevelklokTimer <= 0) {
-    nevelklokTimer += NEVELKLOK_HERHAAL_INTERVAL;
+    // Ticket 174: ook de cadans is per set — een tokkel die elke 13s komt
+    // voelt als een klok, elke 9s als muziek.
+    nevelklokTimer += actieveMuziekStemming().interval ?? NEVELKLOK_HERHAAL_INTERVAL;
     speelNevelklokToon();
   }
   muziekThrottleTimer -= dt;
