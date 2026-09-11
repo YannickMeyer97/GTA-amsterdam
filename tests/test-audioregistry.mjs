@@ -50,9 +50,32 @@ const VOOR_T153 = {
   golfKlaar:     ['sine',     520,    780,    0.14, 0.06, [0.15, 'sine',     780, 1040, 0.16, 0.05]],
   gameOver:      ['sawtooth', 300,    70,     0.5,  0.12, [0.22, 'sine',     160, 50,   0.7,  0.09]],
   finaleLosgooien: ['sawtooth', 90,   260,    0.35, 0.12],
-  introMelodie:  ['sine',     440,    440,    0.12, 0.05, [0.13, 'sine', 554.37, 554.37, 0.12, 0.05],
-                                                          [0.26, 'sine', 659.25, 659.25, 0.12, 0.05],
-                                                          [0.39, 'sine', 880,    880,    0.2,  0.06]],
+  // Ticket 173 (ronde 17): DE ENIGE ingang in deze tabel die bewust is
+  // gewijzigd sinds T153. De oude waarde staat hieronder voor de
+  // herkenbaarheid; de eigenaar vond de intro "een kort klein melodietje wat
+  // je bijna niet eens merkt" en dat klopte — vier sinustonen, samen 0,6s, op
+  // volume 0,05. Vervangen door een beiaardfiguur van ruim vijf seconden.
+  //   was: ['sine', 440, 440, 0.12, 0.05,
+  //         [0.13,'sine',554.37,554.37,0.12,0.05],
+  //         [0.26,'sine',659.25,659.25,0.12,0.05],
+  //         [0.39,'sine',880,880,0.2,0.06]]
+  // De rest van de tabel blijft de diff-audit van T153: elk ander geluid moet
+  // exact zijn oude waarde houden. Wie hier een tweede regel wijzigt zonder
+  // ticket, ziet dat meteen.
+  introMelodie:  ['sine',   587.33, 587.33, 1.1,  0.075,
+                  [0.00, 'sine',     880,    880,    0.55, 0.028],
+                  [0.55, 'sine',     440,    440,    1.1,  0.070],
+                  [0.55, 'sine',     659.25, 659.25, 0.5,  0.024],
+                  [1.10, 'sine',     739.99, 739.99, 1.1,  0.068],
+                  [1.10, 'sine',     1108.7, 1108.7, 0.45, 0.020],
+                  [1.75, 'sine',     587.33, 587.33, 1.3,  0.072],
+                  [1.75, 'sine',     293.66, 293.66, 1.3,  0.038],
+                  [2.45, 'sine',     493.88, 493.88, 1.3,  0.062],
+                  [3.10, 'sine',     440,    440,    1.5,  0.058],
+                  [3.75, 'sine',     369.99, 369.99, 1.7,  0.048],
+                  [2.90, 'sine',     73.42,  69.30,  2.6,  0.055],
+                  [2.90, 'triangle', 146.83, 138.59, 2.2,  0.022],
+                  [4.40, 'sine',     293.66, 293.66, 1.9,  0.044]],
   koop:          ['triangle', 420,    900,    0.1,  0.07],
   geenGeld:      ['square',   220,    120,    0.12, 0.06],
   smeed:         ['sawtooth', 180,    60,     0.18, 0.09, [0.09, 'triangle', 700, 1100, 0.09, 0.08]],

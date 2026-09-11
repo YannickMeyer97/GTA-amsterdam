@@ -24,6 +24,12 @@ async function zetArchief(opzet) {
       ontsnappingen: opzet.ontsnappingen ?? 0,
       headshotsTotaal: opzet.headshots ?? 0,
       hoogsteGolf: opzet.golf ?? 0,
+      // Ticket 169: de puntenbron is het OPGETELDE aantal golven over alle
+      // runs. `golf` hierboven is nog het record en telt niet meer mee voor
+      // punten, dus een opzet die een gevorderde speler wil voorstellen moet
+      // `golven` zetten. Standaard gelijk aan het record: dat is de stand van
+      // iemand die precies één run heeft gespeeld.
+      golvenTotaal: opzet.golven ?? opzet.golf ?? 0,
       geld: opzet.geld ?? 0,
       gekocht: opzet.gekocht ?? [],
       actiefPerCategorie: opzet.actief ?? {},
@@ -78,7 +84,10 @@ check('Elk vergrendeld item toont concreet hoeveel punten je nog tekortkomt',
 check('Een vergrendeld item heeft geen koopknop', vergrendeld.geenKoopknop, vergrendeld);
 
 // --- 3. De vier toestanden zijn per item correct én zichtbaar anders ----
-await zetArchief({ ontsnappingen: 4, headshots: 400, golf: 26, geld: 300, gekocht: ['richtkruis-amber'] });
+// Een speler met een flink aantal runs achter de rug (200 golven opgeteld),
+// maar met weinig geld op zak — zo komen alle vier de toestanden voor: goedkope
+// items koopbaar, dure items te duur, de zwaarste nog vergrendeld.
+await zetArchief({ ontsnappingen: 4, headshots: 400, golf: 26, golven: 200, geld: 300, gekocht: ['richtkruis-amber'] });
 const toestanden = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const perStatus = {};
@@ -233,8 +242,8 @@ check('Klikken in de winkel vraagt géén pointer lock aan — het spel start du
 const sortering = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.stadsarchief = {
-    ontsnappingen: 2, headshotsTotaal: 200, hoogsteGolf: 20, geld: 300,
-    gekocht: [], actiefPerCategorie: {}, versie: d.ARCHIEF_VERSIE,
+    ontsnappingen: 2, headshotsTotaal: 200, hoogsteGolf: 20, golvenTotaal: 150,
+    geld: 300, gekocht: [], actiefPerCategorie: {}, versie: d.ARCHIEF_VERSIE,
     actief: { kleurset: false, vlamTint: false, introMelodie: false },
   };
   d.tekenArchiefWinkel();

@@ -5458,6 +5458,18 @@ randgeval (Esc). Review: automatische tests **plus** een
 screenshot-beoordeling van de indeling. Vertrouwen: hoog voor het gedrag,
 gemiddeld voor de vormgeving.
 
+**Naschrift na speelfeedback.** Precies dat "gemiddeld voor de vormgeving"
+bleek terecht, en op een manier die het noteren waard is: bij het verplaatsen
+van een instelling naar een compacte hoek is de verleiding groot om het
+tekstlabel weg te laten en alleen het icoontje te houden. Dat is precies één
+stap te ver — "🖥️" naast Laag/Normaal/Hoog vertelt niemand dat het over
+beeldkwaliteit gaat. Regel: een emoji is een ACCENT bij een label, nooit het
+label zelf. Wil je smal blijven, stapel dan verticaal (kopje bóven de
+bediening) in plaats van het kopje te schrappen. De asserties hiervoor staan
+in `test-startscherm-indeling.mjs` (nu 22 checks): elke rij draagt een
+uitgeschreven kopje, het kopje van een slider is een echte `<label for>`, en
+het icoontje is aantoonbaar groter dan de omringende tekst.
+
 ---
 
 ### Ticket 167 — Gewone kleurnamen, één gedeelde ladder ✅ uitgevoerd (v0.28)
@@ -5568,6 +5580,199 @@ planken, actief tot ~golf 15, repareren levert €160-540 per ronde op.
 
 **Uitvoeringsadvies.** Sonnet 5 · High. Klein en objectief toetsbaar.
 Vertrouwen: hoog.
+
+---
+
+# Ronde 15 (v0.29) — Het archiefpaneel leesbaar en af
+
+Volledig ticket in `ROADMAP.md` onder "v0.29 — Ronde 15". Eén ticket,
+ontstaan uit speelfeedback met screenshot.
+
+### Ticket 168 — Het archiefpaneel leesbaar en af ✅ uitgevoerd (v0.29)
+
+**Doel.** Het paneel dat T164 opleverde leesbaar maken, en meteen afmaken.
+
+**Waarom.** Gemeten in het paneel: `body → color rgb(0,0,0)` en
+`#archiefPaneelBinnen → color rgb(0,0,0)` op `background rgba(14,20,30,0.96)`.
+Alle tekst zwart op bijna-zwart, contrast 1,05:1. Oorzaak: het paneel staat
+sinds T164 bewust buiten `#startscherm`, maar `color: white` stond alléén op
+`#startscherm` en `html, body` zet geen `color`.
+
+**Werk.** Tekstkleur op `#archiefPaneel`; dekkend paneel; kleurstaal per rij
+uit de échte itemdata; plakkende categoriekoppen; voortgangsbalk naar de
+drempel; saldo en punten als twee chips met eigen kleur; dode
+`#archiefWinkel`-CSS opgeruimd.
+
+**Buiten scope.** Elk getal. Prijzen, drempels, id's, catalogus, eindschermen,
+HUD, instellingenhoek.
+
+**Acceptatie.**
+- Élk tekstelement haalt ≥ 4,5:1 tegen zijn werkelijke achtergrond, gemeten.
+- Elk gekleurd item toont exact de kleur die het in het spel oplevert.
+- De categoriekop blijft in beeld tijdens het scrollen.
+- Balkfracties kloppen; geld en punten zijn zonder tekst te onderscheiden.
+- De vier toestanden blijven onderscheidbaar (T162-eis).
+- Momentopname van alle prijzen/drempels/id's onveranderd.
+
+**Valkuil — en dit is de belangrijkste les van deze ronde.** T164 leverde 22
+groene checks op terwijl het scherm onbruikbaar was, omdat élke check naar
+STRUCTUUR keek: bestaat het element, zit het op de juiste plek, draagt het de
+juiste klasse. Allemaal waar. Geen enkele keek naar de berekende
+eindtoestand. Dat is precies dezelfde klasse fout als de
+`hidden`/`display:flex`-bug van T164 zelf, alleen in omgekeerde richting.
+Vuistregel: bij UI-tickets is minstens één assertie op een BEREKENDE
+eigenschap (kleur, contrast, display, positie na scrollen) verplicht — een
+structuurcheck zegt niets over zichtbaarheid.
+
+**Nawoord.** De contrastmeting verdiende zichzelf meteen terug. Vergrendelde
+items werden gedempt met `opacity` op het staal, en dat trof ook de
+icoonstalen (🎒/🎵): 2,64:1, terwijl alle tekst eromheen op 6,4:1 stond. Op de
+screenshot zag dat er prima uit. Fix: dempen geldt alleen voor échte
+kleurstalen, `.archiefStaal:not(.icoon)`.
+
+Algemener: **`opacity` is het verkeerde gereedschap om tekst mee te dimmen
+zodra er kleur in de buurt staat.** Het dimt namelijk ook precies wat je wél
+wilde laten zien — het kleurstaal, de gekleurde chip, het icoon. Alle
+gedempte tekst in het paneel (categoriekopjes, uitlegregel, vergrendelde
+rijen) is daarom omgezet naar een expliciete tekstkleur. Bijkomend voordeel:
+een expliciete kleur is meetbaar tegen zijn achtergrond, een opacity-stapel
+veel lastiger.
+
+Praktisch: plakkende koppen (`position: sticky`) werken alleen als de
+container erachter DEKKEND is. Op het oorspronkelijke paneel van 0.96 alpha
+schemerden de rijen er zichtbaar doorheen.
+
+**Uitvoeringsadvies.** Sonnet 5 · High. Mits de contrastmeting
+geautomatiseerd is — met het blote oog beoordelen is precies wat hier
+misging. Vertrouwen: hoog.
+
+---
+
+# Ronde 16 (v0.30) — De meta-progressie strakker
+
+Volledige tickets in `ROADMAP.md` onder "v0.30 — Ronde 16".
+
+### Ticket 169 — Punten tellen op per gespeelde run ✅ uitgevoerd (v0.30)
+
+**Doel.** Vaak spelen moet de vooruitgang zijn, in plaats van één goede run.
+
+**Waarom.** De golfpunten kwamen uit `hoogsteGolf`, een record. Gemeten: run 1
+op golf 25 gaf 440 punten (250 uit dat record), run 2 t/m 10 nog maar 190. 13
+van de 20 items stonden al na één run open. Het systeem beloonde precies het
+verkeerde.
+
+**Werk.** Nieuwe teller `golvenTotaal` (som over alle runs) wordt de
+puntenbron; `hoogsteGolf` blijft als record voor de T86-drempel maar telt niet
+meer mee. Opslagversie 2 → 3 met migratie. Drempeltabel herijkt.
+
+**IJking.** Representatieve run uit het echte golfbudget: golf 20, ~115
+headshots, ontsnapt met €1273 → 311 punten per run. Vizier open in run 1,
+cosmetica runs 3-9, startuitrusting runs 11/13/15.
+
+**Valkuil 1 — de migratie.** `golvenTotaal` vullen met `hoogsteGolf` is de
+mildste eerlijke invulling: die golven zijn aantoonbaar gehaald, en
+per-run-historie is nooit bewaard. Op 0 zetten zou een bestaande speler
+terugzetten naar niets.
+
+**Valkuil 2 — de monotonie van T160.** Die eigenschap ("geen runuitkomst kan
+het puntentotaal laten dalen") mag niet sneuvelen. Een som van niet-negatieve
+getallen daalt net zo min als een maximum, dus hij houdt — maar het is het
+soort eigenschap dat je per ongeluk weggooit, dus hij staat als assertie vast.
+
+**Nawoord — wat dit over FIXTURES leerde.** De inhoudelijke wijziging was
+klein; het meeste werk zat in testfixtures die stilzwijgend van betekenis
+veranderden. Drie bestanden zetten een archief neer via `hoogsteGolf` om "een
+gevorderde speler" voor te stellen. Die fixtures bleven syntactisch geldig,
+maar stelden na dit ticket een beginner voor — waardoor asserties over "alle
+vier de toestanden" en over een koopknop iets anders maten dan ze beweerden.
+Vuistregel: **een fixture die een spelerstand voorstelt, moet die stand
+uitdrukken in de variabele die het spel er echt voor gebruikt** — en als die
+variabele verandert, is elke fixture eromheen verdacht, ook de groene.
+
+**Uitvoeringsadvies.** Sonnet 5 · High. Het datamodel is klein, maar de
+migratie en de fixtures vragen zorg. Vertrouwen: hoog, mits de meting van
+"hoeveel runs per item" geautomatiseerd in de suite staat — anders verschuift
+de balans ongemerkt bij het volgende ticket.
+
+---
+
+### Ticket 170 — AMSTEL-9 wordt de zwaarste startuitrusting ✅ uitgevoerd (v0.30)
+
+**Werk.** `start-amstel9` en `start-snelspanner` wisselen van ladderniveau.
+
+**Valkuil.** Alleen niveau/prijs/drempel verhuizen. `id`, `schenk` en
+`uitdoofVlag` horen bij het item; een id verplaatsen koppelt bestaande
+aankopen aan het verkeerde item.
+
+---
+
+### Ticket 171 — De smederij €1000 goedkoper ✅ uitgevoerd (v0.30)
+
+**Werk.** `SMEDERIJ_PRIJS` 3000 → 2000, `SMEDERIJ2_PRIJS` 4000 → 3000.
+
+**Nawoord.** Eén regel code, acht rode checks. De testfixture zette €3000 neer
+als "genoeg voor niveau 1, niet voor niveau 2" — met de nieuwe prijzen koopt
+dat allebei, en zeven vervolgchecks vielen om op een wapenstand die niet klopte.
+Omgezet naar `d.SMEDERIJ_PRIJS` en `d.SMEDERIJ2_PRIJS - 1`. **Les: een fixture
+die een prijsgrens toetst, leest die prijs uit het spel.** Een herhaald getal
+in een test is een tweede bron van waarheid, en die loopt vroeg of laat uit de
+pas — precies zoals het kleurstaal in T168 dat niet mocht.
+
+---
+
+# Ronde 17 (v0.31) — Het archiefmenu op orde en hoorbaar
+
+Volledige tickets in `ROADMAP.md` onder "v0.31 — Ronde 17".
+
+### Ticket 172 — Gelijke kleurladders, eigen volgorde, betere namen ✅
+
+**Nawoord — drie keer dezelfde fout in één CSS-eigenschap.** De plakkende
+categoriekoppen van T168 bleken een gat te hebben: op elke overgang tussen
+twee categorieën was de bovenrand van de lijst een paar pixels lang onbedekt.
+Drie oorzaken, en alle drie hetzelfde patroon — **ruimte die buiten het
+sticky-blok valt, duwt de kop te vroeg weg**: de marge tussen de blokken; de
+ondermarge van de laatste rij, die door margin collapsing het blok uit lekte;
+en de eigen ondermarge van de kop, want de sticky-clamp houdt de márge-box
+binnen het blok. Vuistregel voor elke plakkende kop: **alle ruimte eromheen is
+padding, nooit marge** — en tussenruimte hoort bij de vólgende rij, niet onder
+de vorige.
+
+Over de test: mijn eerste versie eiste dat een kop exact op `top: 0` stond.
+Te streng — een uitgaande kop wórdt omhoog geduwd door de volgende en staat
+dan even negatief; dat is correct gedrag. De eis is niet "een kop staat op 0"
+maar "de bovenrand is nooit onbedekt". En: de test loopt nu de héle
+scrollrange af in stapjes van 20px, want het gat was ~5px breed en zat precies
+op de overgang. Vier steekproeven vinden zoiets alleen bij toeval.
+
+---
+
+### Ticket 173 — Geluiden die je écht hoort ✅
+
+**Werk.** Openingstune van 0,6s → 6,3s (beiaardfiguur, eigen motief), drie
+muziekstemmingen en drie wapenklanken, in één schap met drie kanalen.
+
+**Het kanaalmechanisme, en waarom het niets kostte.** `actiefPerCategorie` is
+een vrije string→string-map waarin onbekende sleutels bewaard blijven (een
+eigenschap die T161 er bewust in heeft gezet, voor teruggerolde versies).
+Geluidsitems worden daarom bewaard onder `geluid:<kanaal>` in plaats van onder
+hun categorie. Eén schap, drie onafhankelijke keuzes, nul opslagwijzigingen,
+nul migratie. Een bestaande, goed gekozen invariant betaalde zichzelf hier
+terug.
+
+**Valkuil — geplande AudioParams.** De muziekset schakelde niet om.
+`setValueAtTime()`/`setTargetAtTime()` doen NIETS zolang de AudioContext
+suspended is: `currentTime` staat stil, dus het event vuurt nooit. Dat lijkt
+een headless-artefact maar is het niet — de speler kiest zijn muziekset in het
+menu, waar de context nog suspended kan zijn. Nu alleen glijden bij
+`audio.state === 'running'`, anders direct `.value` zetten. **Een geplande
+AudioParam is geen opdracht maar een afspraak met een klok die stil kan
+staan.**
+
+**Valkuil — de klankset mag alleen klank zijn.** `schotToon` (per-wapen
+identiteit uit T34/T144) blijft in élke set onaangeroerd; een set verandert
+alleen golfvorm en ruisfilter. De test serialiseert de hele wapendefinitie
+vóór en ná elke set in plaats van een handmatig lijstje velden te vergelijken
+— zo valt ook een eigenschap op die ik niet bij naam had bedacht.
 
 ---
 

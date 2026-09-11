@@ -204,16 +204,21 @@ const drukspuitKoop = await page.evaluate(() => {
   d.spelStaat.geld = 100;
   d.koopSmederij();   // te weinig geld: mag niets doen
   const teWeinig = { gesmeed: d.wapenStaat.gesmeed, geld: d.spelStaat.geld };
-  d.spelStaat.geld = 3000;
+  // Precies de prijs van niveau 1 in de beurs — uitgedrukt in de constante
+  // zelf, niet als los getal. Ronde 16 verlaagde die prijs van 3000 naar
+  // 2000, en toen bleek dat een hardgecodeerde 3000 hier stilzwijgend óók
+  // niveau 2 betaalbaar maakte: de assertie meette daarna iets anders dan
+  // ze beweerde. Een fixture die de prijs uit het spel leest, kan dat niet.
+  d.spelStaat.geld = d.SMEDERIJ_PRIJS;
   d.koopSmederij();   // nu wel genoeg geld
   const na = { gesmeed: d.wapenStaat.gesmeed, magazijnMax: d.wapenStaat.magazijnMax, magazijn: d.wapenStaat.magazijn, geld: d.spelStaat.geld };
-  return { teWeinig, na };
+  return { teWeinig, na, prijs: d.SMEDERIJ_PRIJS };
 });
 check('koopSmederij() met te weinig geld doet niets',
   drukspuitKoop.teWeinig.gesmeed === false && drukspuitKoop.teWeinig.geld === 100, drukspuitKoop.teWeinig);
-check('Drukspuit smeden: gesmeed=true, magazijn 8->12 (direct volledig bijgevuld), kost €3000',
+check('Drukspuit smeden: gesmeed=true, magazijn 8->12 (direct volledig bijgevuld), kost exact SMEDERIJ_PRIJS',
   drukspuitKoop.na.gesmeed === true && drukspuitKoop.na.magazijnMax === 12 &&
-  drukspuitKoop.na.magazijn === 12 && drukspuitKoop.na.geld === 0, drukspuitKoop.na);
+  drukspuitKoop.na.magazijn === 12 && drukspuitKoop.na.geld === 0, drukspuitKoop);
 
 // --- Fix 5: koopSmederij() een tweede keer koopt nu niveau 2 i.p.v. een
 // pure no-op — met te weinig geld voor het (duurdere) niveau 2 gebeurt er
@@ -221,16 +226,20 @@ check('Drukspuit smeden: gesmeed=true, magazijn 8->12 (direct volledig bijgevuld
 // niveau-2-kooppad zelf staat verderop in dit bestand (Fix 5-sectie).
 const tweedeAankoopTeWeinig = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  d.spelStaat.geld = 3000;   // genoeg voor niveau 1 (al gekocht), NIET voor niveau 2
+  // Eén euro te weinig voor niveau 2 — dat is de grens die deze check bedoelt
+  // te toetsen, en die blijft kloppen bij elke prijswijziging.
+  d.spelStaat.geld = d.SMEDERIJ2_PRIJS - 1;
   d.koopSmederij();
   return {
     gesmeed: d.wapenStaat.gesmeed, gesmeedNiveau2: d.wapenStaat.gesmeedNiveau2,
     magazijnMax: d.wapenStaat.magazijnMax, geld: d.spelStaat.geld,
+    verwachtGeld: d.SMEDERIJ2_PRIJS - 1,
   };
 });
 check('Een tweede koopSmederij()-aanroep met te weinig geld voor niveau 2 verandert niets',
   tweedeAankoopTeWeinig.gesmeed === true && tweedeAankoopTeWeinig.gesmeedNiveau2 === false &&
-  tweedeAankoopTeWeinig.magazijnMax === 12 && tweedeAankoopTeWeinig.geld === 3000, tweedeAankoopTeWeinig);
+  tweedeAankoopTeWeinig.magazijnMax === 12
+  && tweedeAankoopTeWeinig.geld === tweedeAankoopTeWeinig.verwachtGeld, tweedeAankoopTeWeinig);
 
 // --- Schade na smeden: Drukspuit bodyshot 2.5, headshot 3.5 (Ticket 11) --
 const drukspuitSchade = await page.evaluate(() => {

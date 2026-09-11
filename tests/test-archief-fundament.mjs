@@ -141,37 +141,44 @@ check('Een absurd lange `gekocht`-lijst wordt afgekapt op de bovengrens', grenze
 // --- 6. mijlpaalpunten(): puur en monotoon ------------------------------
 const punten = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  const a = { ontsnappingen: 2, headshotsTotaal: 55, hoogsteGolf: 17 };
+  // Ticket 169: de golf-as is `golvenTotaal` (een som over alle runs), niet
+  // meer `hoogsteGolf` (een record). `hoogsteGolf` staat er bewust nog bij en
+  // MAG het puntentotaal niet beïnvloeden — dat toetst de laatste check.
+  const a = { ontsnappingen: 2, headshotsTotaal: 55, golvenTotaal: 17, hoogsteGolf: 9 };
   const eerste = d.mijlpaalpunten(a);
   const tweede = d.mijlpaalpunten(a);
   const verwacht = 2 * d.MIJLPAAL_PUNTEN_PER_ONTSNAPPING
     + 17 * d.MIJLPAAL_PUNTEN_PER_GOLF
     + Math.floor(55 / d.MIJLPAAL_HEADSHOTS_PER_PUNT);
+  // Het record mag de punten niet raken: alleen hoogsteGolf verhogen doet niets.
+  const recordNegeert = d.mijlpaalpunten({ ...a, hoogsteGolf: 999 }) === eerste;
   // Monotonie: elke afzonderlijke teller ophogen mag het totaal nooit laten dalen.
   let monotoon = true;
-  let vorige = d.mijlpaalpunten({ ontsnappingen: 0, headshotsTotaal: 0, hoogsteGolf: 0 });
+  let vorige = d.mijlpaalpunten({ ontsnappingen: 0, headshotsTotaal: 0, golvenTotaal: 0 });
   const nulpunt = vorige;
   for (let stap = 1; stap <= 40; stap++) {
-    const nu = d.mijlpaalpunten({ ontsnappingen: stap, headshotsTotaal: stap * 7, hoogsteGolf: stap });
+    const nu = d.mijlpaalpunten({ ontsnappingen: stap, headshotsTotaal: stap * 7, golvenTotaal: stap });
     if (nu < vorige) monotoon = false;
     vorige = nu;
   }
   // Ook per as afzonderlijk, want een run hoeft niet alle drie te verhogen.
-  for (const as of ['ontsnappingen', 'headshotsTotaal', 'hoogsteGolf']) {
-    let v = d.mijlpaalpunten({ ontsnappingen: 3, headshotsTotaal: 30, hoogsteGolf: 9 });
+  for (const as of ['ontsnappingen', 'headshotsTotaal', 'golvenTotaal']) {
+    let v = d.mijlpaalpunten({ ontsnappingen: 3, headshotsTotaal: 30, golvenTotaal: 9 });
     for (let stap = 1; stap <= 30; stap++) {
-      const basis = { ontsnappingen: 3, headshotsTotaal: 30, hoogsteGolf: 9 };
+      const basis = { ontsnappingen: 3, headshotsTotaal: 30, golvenTotaal: 9 };
       basis[as] += stap;
       const nu = d.mijlpaalpunten(basis);
       if (nu < v) monotoon = false;
       v = nu;
     }
   }
-  return { eerste, tweede, verwacht, monotoon, nulpunt };
+  return { eerste, tweede, verwacht, monotoon, nulpunt, recordNegeert };
 });
 check('mijlpaalpunten() is een pure functie — twee aanroepen met hetzelfde archief geven hetzelfde getal',
   punten.eerste === punten.tweede, punten);
 check('mijlpaalpunten() volgt exact de gedocumenteerde weging', punten.eerste === punten.verwacht, punten);
+check('Het golf-RECORD telt niet mee voor de punten — alleen de opgetelde golven (T169)',
+  punten.recordNegeert, punten);
 check('Een leeg archief levert 0 punten op', punten.nulpunt === 0, punten);
 check('mijlpaalpunten() is monotoon: geen enkele teller-ophoging kan het totaal laten dalen (gezamenlijk én per as)',
   punten.monotoon, punten);

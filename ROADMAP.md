@@ -6032,6 +6032,19 @@ T167 (kleurnamen)    — gewone namen, één gedeelde ladder
 - **Sonnet solo:** ja, met de kanttekening dat de indeling een visuele
   beoordeling vraagt (screenshot), zoals bij T157 en T162.
 
+**Bijstelling na speelfeedback (v0.28).** Bij de verhuizing naar de hoek
+verloren de twee rijen hun tekstlabel: waar eerst "Beeldkwaliteit" en
+"Muisgevoeligheid" stond, bleef alleen een emoji over (🖥️ / 🖱️). De speler
+zag daardoor drie knopjes "Laag/Normaal/Hoog" zonder te weten waar ze bij
+hoorden. Een emoji is een accent, geen label — die les staat nu ook als
+assertie in `test-startscherm-indeling.mjs` (22 checks). Beide rijen dragen
+weer een uitgeschreven kopje (`.instelKop`, klein en in kapitalen) boven de
+bediening in plaats van ernaast, zodat de hoek smal blijft; het kopje van de
+muisrij is een echte `<label for="gevoeligheidSlider">`. De icoontjes gingen
+van 12px mee-schalend naar een eigen `.instelIcoon` van 16px, en de slider
+werd 120 → 150px breed nu er ruimte onder het kopje is. Geen enkele
+instelling van gedrag veranderd.
+
 ---
 
 ## Ticket 165 — De boot die je niet ziet wegvaren ✅
@@ -6291,6 +6304,365 @@ T167 (kleurnamen)    — gewone namen, één gedeelde ladder
 - **Rollback:** de oude namen en prijzen terugzetten; de id's zijn toch niet
   aangeraakt, dus dat kan zonder gevolgen voor bestaande spelers.
 - **Sonnet solo:** ja.
+
+---
+
+# v0.29 — Ronde 15: het archiefpaneel leesbaar en af
+
+Eén ticket, ontstaan uit speelfeedback met screenshot: het paneel dat T164
+opleverde is in de praktijk niet te lezen.
+
+## Ticket 168 — Het archiefpaneel leesbaar en af ✅
+
+- **Status:** ✅ uitgevoerd (v0.29). Nieuw
+  `tests/test-archiefpaneel-leesbaarheid.mjs`: 19 checks, waarvan de
+  contrastmeting over alle 56 tekstelementen in het paneel de belangrijkste
+  is. `test-archief-winkel.mjs` (23), `test-startscherm-indeling.mjs` (22),
+  `test-archief-catalogus.mjs` (37), `test-archief-feedback.mjs` (16),
+  `test-archief-fundament.mjs` (29) en `test-stadsarchief.mjs` (41) bleven
+  ongewijzigd groen — precies zoals de bedoeling bij een opmaakticket.
+
+  **De meting vond meteen iets dat het oog niet zag.** Het dempen van
+  vergrendelde items ging via `opacity` op het staal, en dat trof ook de
+  icoonstalen (🎒/🎵) van Intro en Startuitrusting: die zakten naar 2,64:1
+  terwijl alle tekst eromheen op 6,4:1 stond. Een icoonstaal is geen
+  kleurmonster maar een leesbaar teken, dus het dempen geldt nu alleen voor
+  échte kleurstalen (`.archiefStaal:not(.icoon)`). Zonder de geautomatiseerde
+  meting was dit er niet uitgekomen — op de screenshot zag het er prima uit.
+
+  **Tweede vondst tijdens het bouwen:** `opacity` bleek überhaupt het
+  verkeerde gereedschap voor dimmen zodra er kleur in een rij zit. De
+  categoriekopjes, de uitlegregel en de vergrendelde rijen zijn daarom
+  allemaal omgezet naar een expliciete tekstkleur. Dimmen met `opacity` dimt
+  ook wat je juist wilde laten zien.
+
+- **Type:** bugfix + feature (UI)
+- **Verbetergebied:** 8 (Presentatie en menu's)
+- **Prioriteit:** hoog — het is deels een echte bug, geen smaakkwestie.
+- **Probleem, gemeten.** `#archiefPaneel` staat sinds T164 bewust BUITEN
+  `#startscherm`, zodat het er ook tijdens een pauze overheen valt. Maar
+  `color: white` stond alleen op `#startscherm` en `html, body` zet helemaal
+  geen `color`. Gemeten in het paneel:
+
+  ```
+  body                  → color rgb(0, 0, 0)
+  #archiefPaneelBinnen  → color rgb(0, 0, 0) op background rgba(14,20,30,0.96)
+  ```
+
+  Álle tekst in het paneel is dus zwart op bijna-zwart, contrast ≈ 1,05:1
+  (WCAG-ondergrens voor gewone tekst is 4,5:1). Daar bovenop staan de
+  categoriekopjes op `opacity: 0.55`, de uitlegregel op `0.6` en vergrendelde
+  rijen op `0.45` — die blijven zwak zodra de tekst wél wit is.
+
+  **Waarom de 22 checks van T164 dit niet vonden:** geen enkele assertie keek
+  naar kleur. Ze toetsten of elementen bestaan, of ze op de juiste plek zitten
+  en of ze de juiste klasse dragen — allemaal waar, terwijl het scherm
+  onbruikbaar was. Structuurchecks zeggen niets over zichtbaarheid. Dat is
+  dezelfde les als de `hidden`/`display:flex`-bug van T164 zelf, nu in
+  omgekeerde richting: toets de BEREKENDE eindtoestand, niet de intentie.
+
+- **Doel.** Het paneel leesbaar maken, en meteen afmaken: het is de plek waar
+  de speler zijn beloning uitgeeft en die verdient meer dan een grijze lijst.
+- **Gekozen richting (voorgelegd aan de gebruiker, alle vier bevestigd):**
+  1. Leesbaarheid repareren **plus** een stevige opknapbeurt — zelfde
+     indeling, veel beter uiterlijk.
+  2. **Kleurstaal per rij.** Bijna elk item ís een kleur (Blauw, Groen,
+     Sepia…), en die kleur staat al in de data (`vlamKleur`, `ondodeTint`,
+     `cssWaarde`). Elke rij krijgt links een staaltje in de echte kleur, zodat
+     je ziet wat je koopt in plaats van het woord te moeten vertalen.
+     Categorieën zonder kleur (Intro, Startuitrusting) krijgen een icoontje.
+  3. **Eén scroll houden, met plakkende categoriekoppen.** De sortering
+     (koopbaar bovenaan) blijft; alleen blijft de kop in beeld tijdens het
+     scrollen.
+  4. **Voortgangsbalkje** bij wat je nog niet kunt krijgen, zodat je ziet dát
+     je ergens naartoe werkt in plaats van alleen dat je er nog niet bent.
+- **Buiten scope.** Prijzen, drempels, item-id's, de catalogus, de
+  eindschermen, de HUD, de instellingenhoek. Er verandert **niets** aan
+  gedrag of balans — het is een presentatieticket.
+- **Werk.**
+  - `color` expliciet op `#archiefPaneel` zetten (niet op `body` — dat raakt
+    ook de foutmelding-overlay en de HUD).
+  - `#archiefPaneelBinnen` volledig dekkend maken, zodat plakkende koppen geen
+    doorschijnende naad geven.
+  - Opacity-dimmen vervangen door expliciete tekstkleuren: dimmen via
+    `opacity` maakt óók het kleurstaal grauw.
+  - Kleurstaal + categorie-icoon, plakkende koppen, voortgangsbalk, en de
+    vier toestanden met een eigen accentrand.
+  - Saldo en punten als twee losse chips in plaats van één grijze regel, met
+    onderscheidende kleuren voor geld en punten — die twee lopen nu door
+    elkaar.
+  - Dode CSS opruimen: `#archiefWinkel` bestaat sinds T164 niet meer als
+    element.
+- **Risico's:**
+  - **De bestaande statusteksten moeten letterlijk blijven.**
+    `test-archief-winkel.mjs` toetst `/nog \d+ punten/` en `/nog €\d+ nodig/`
+    op `textContent`. De balk komt ernaast, niet in plaats daarvan.
+  - **Kleurstalen mogen geen tweede waarheid worden.** Het staal wordt
+    afgeleid uit dezelfde velden die het spel echt gebruikt; geen losse
+    tabel met kleurcodes die uit de pas kan gaan lopen.
+- **Acceptatiecriteria:**
+  - Elk tekstelement in het paneel haalt minstens 4,5:1 contrast tegen de
+    werkelijke achtergrond (gemeten, niet geschat).
+  - Elk cosmetisch item toont een staal in exact de kleur die het item in het
+    spel oplevert; elk ander item toont een icoon.
+  - De categoriekop blijft in beeld tijdens het scrollen.
+  - Vergrendelde en te dure items tonen een balk die de juiste fractie van de
+    drempel weergeeft (0 bij niets, vol bij precies gehaald).
+  - Geld- en puntentekort zijn ook zonder de tekst te lezen uit elkaar te
+    houden.
+  - De vier toestanden blijven visueel onderscheidbaar (T162-eis).
+  - Geen enkele prijs, drempel of id gewijzigd (harde assertie).
+- **Testplan:** nieuw `tests/test-archiefpaneel-leesbaarheid.mjs` met een
+  echte contrastmeting (berekende kleur + effectieve achtergrond → WCAG-ratio)
+  over álle tekst in het paneel, plus stalen, plakkende koppen, balkfracties
+  en een onveranderd-assertie op de catalogus. Bestaande
+  `test-archief-winkel.mjs` (19) en `test-startscherm-indeling.mjs` (22)
+  blijven ongewijzigd groen. Plus screenshot-beoordeling en volledige
+  regressie.
+- **Rollback:** de CSS terugzetten; er is geen datamodel aangeraakt.
+- **Sonnet solo:** ja, mits de contrastmeting geautomatiseerd is — met het
+  blote oog beoordelen is precies wat hier misging.
+
+---
+
+# v0.30 — Ronde 16: de meta-progressie strakker
+
+Drie wensen van de eigenaar na een speelsessie: upgrades zijn te makkelijk te
+krijgen, de startuitrusting staat in de verkeerde volgorde, en de smederij is
+te duur.
+
+## Ticket 169 — Punten tellen op per gespeelde run ✅
+
+- **Type:** feature (balans/architectuur)
+- **Verbetergebied:** 9 (Meta-progressie)
+- **Prioriteit:** hoog
+- **Status:** ✅ uitgevoerd (v0.30). Nieuw `tests/test-meta-progressie.mjs`:
+  20 checks.
+
+- **Het probleem, gemeten.** De golfpunten kwamen uit `hoogsteGolf`, en dat is
+  een **record**, geen optelsom. Meting vóór dit ticket, tien identieke runs
+  op golf 25 met 900 headshots:
+
+  | run | puntentotaal | winst die run |
+  |---|---|---|
+  | 1 | 440 | 440 |
+  | 2 | 630 | 190 |
+  | 3 | 820 | 190 |
+  | 10 | 2150 | 190 |
+
+  57% van de punten in run 1 kwam uit die eenmalige recordbonus. Gevolg:
+  **13 van de 20 items waren al na één run ontgrendeld**, en 15 van de 20 waren
+  met het restgeld van één run (€1273) te betalen. Wie vaak speelde werd juist
+  het minst beloond — precies omgekeerd aan de bedoeling van een archief.
+
+- **De ingreep.** Elke run telt zijn eigen gehaalde golven op bij een nieuwe
+  teller `golvenTotaal`, en dat is sinds nu de puntenbron. `hoogsteGolf`
+  blijft bestaan als record (de intromelodie-drempel van T86 hangt eraan) maar
+  telt niet meer mee voor punten — daar staat een aparte assertie op.
+  Opslagversie 2 → 3.
+
+- **De ijking.** Gemeten representatieve run (uit het echte golfbudget van het
+  spel): golf 20, ~115 headshots, ontsnapt met €1273 restgeld. Dat is **311
+  punten en €1273 per run**, en die winst is nu stabiel in plaats van
+  inzakkend. Daaruit volgde deze ladder:
+
+  | categorie | items | ontgrendeld in run |
+  |---|---|---|
+  | Vizier (instap) | Blauw €200/0 · Groen €300/150 · Oranje €400/350 · Magenta €500/550 | 1, 1, 2, 2 |
+  | HUD-tint | Blauw €600/800 · Groen €800/1100 · Rood €2500/2600 | 3, 4, 9 |
+  | Vuurflits | Blauw €650/900 · Groen €800/1250 · Oranje €900/1600 · Paars €1000/2000 · Wit €1500/2800 | 3, 5, 6, 7, 9 |
+  | Ondode-kleurset | Blauw €800/1000 · Groen €900/1400 · Grijs €1000/1800 · Sepia €1200/2400 | 4, 5, 6, 8 |
+  | Intro | Intromelodie €1000/1500 | 5 |
+  | Startuitrusting | Deur 1 €8000/3400 · Fast Hands €10000/4000 · AMSTEL-9 €12000/4650 | 11, 13, **15** |
+
+  De hele catalogus kost €45.050 terwijl 15 runs €19.095 opleveren — geld
+  blijft dus de tweede rem en er valt écht te kiezen.
+
+- **Keuzes die de eigenaar heeft gemaakt:** punten optellen (niet alleen
+  drempels verhogen), het zwaarste item op ~15 runs, en één categorie (het
+  Vizier) die vanaf run 1 open blijft zodat je meteen iets kunt kopen.
+- **Buiten scope.** De §9.2-verbodenlijst blijft onaangeroerd: geen golfbudget,
+  geen HP, geen wapenschade, geen inkomsten per kill. Alleen drempels, prijzen
+  en de puntenbron.
+- **Risico's:**
+  - **De migratie mag niets afpakken.** `golvenTotaal` wordt gevuld met
+    `hoogsteGolf` — de mildste invulling die eerlijk is, want die golven zijn
+    aantoonbaar gehaald. Per-run-historie is nooit bewaard, dus meer weten we
+    niet. Gekochte items en saldo blijven sowieso staan; alleen toekómstige
+    ontgrendelingen worden zwaarder.
+  - **De monotonie moest intact blijven.** Een som van niet-negatieve getallen
+    daalt net zo min als een maximum, dus de T160-eigenschap "geen enkele
+    runuitkomst kan het puntentotaal laten dalen" geldt nog steeds.
+- **Acceptatiecriteria:**
+  - Zes identieke runs leveren elk (vrijwel) dezelfde puntenwinst op.
+  - De opgetelde golven zijn de som, niet het record; het record telt niet mee
+    voor punten.
+  - Een game over telt zijn golven mee, maar levert nog steeds geen geld op.
+  - Ná één run is hooguit één categorie open, en hooguit 4 van de 20 items.
+  - Het zwaarste item kost 13-18 runs.
+  - Migratie vanaf versie 1 én versie 2 behoudt alles en vult de startsom.
+  - `golvenTotaal` is net zo streng gevalideerd als `geld`.
+- **Testplan:** nieuw `tests/test-meta-progressie.mjs`; bijgewerkte fixtures in
+  `test-archief-fundament.mjs`, `test-archief-winkel.mjs` en
+  `test-archiefpaneel-leesbaarheid.mjs`; volledige regressie.
+- **Rollback:** `mijlpaalpunten()` terug op `hoogsteGolf` en de oude
+  drempeltabel terugzetten. `golvenTotaal` mag dan blijven staan — een
+  onbekend veld wordt genegeerd, niet als corrupt behandeld.
+
+---
+
+## Ticket 170 — AMSTEL-9 wordt de zwaarste startuitrusting ✅
+
+- **Type:** balans (klein)
+- **Status:** ✅ uitgevoerd (v0.30).
+- **Wens.** Het wapen op zak scheelt het meest in de vroege golven en hoort
+  daarom de zwaarste trede te zijn, niet de middelste.
+- **Werk.** `start-amstel9` en `start-snelspanner` wisselen van ladderniveau:
+  AMSTEL-9 gaat naar niveau 3 (€12.000 / 4650 punten), Fast Hands naar niveau 2
+  (€10.000 / 4000 punten).
+- **Valkuil, en dit is de belangrijke:** **alleen niveau, prijs en drempel
+  verhuizen.** `id`, `schenk` en `uitdoofVlag` horen bij het item zelf en
+  blijven staan — een id verplaatsen zou bestaande aankopen aan het verkeerde
+  item koppelen. De id-momentopname in `test-archief-catalogus.mjs` bewaakt dat.
+- **Acceptatie:** de ladder blijft strikt oplopend in prijs én drempel, alle
+  id's ongewijzigd, startuitrusting blijft boven alle cosmetica.
+
+---
+
+## Ticket 171 — De smederij €1000 goedkoper ✅
+
+- **Type:** balans (klein)
+- **Status:** ✅ uitgevoerd (v0.30).
+- **Wens.** Beide smederij-upgrades €1000 omlaag: 3000 → 2000 en 4000 → 3000.
+  De smederij was in de praktijk een eindspel-luxe die je zelden haalde.
+- **Werk.** `SMEDERIJ_PRIJS` en `SMEDERIJ2_PRIJS`. Het onderlinge verschil
+  (niveau 2 duurder) blijft.
+- **Wat dit blootlegde.** `test-smederij.mjs` zette €3000 in de beurs met het
+  commentaar "genoeg voor niveau 1, NIET voor niveau 2". Met de nieuwe prijzen
+  koopt dat allebei — de assertie mat daarna iets anders dan ze beweerde, en
+  zeven volgende checks vielen als domino's om. Beide bedragen zijn omgezet
+  naar de constanten zelf (`d.SMEDERIJ_PRIJS`, `d.SMEDERIJ2_PRIJS - 1`), zodat
+  een volgende prijswijziging ze niet meer stilzwijgend van betekenis verandert.
+  **Les:** een fixture die een prijsgrens bedoelt te toetsen, moet die prijs uit
+  het spel lezen en niet als los getal herhalen.
+
+---
+
+# v0.31 — Ronde 17: het archiefmenu op orde
+
+## Ticket 172 — Gelijke kleurladders, eigen volgorde, betere namen ✅
+
+- **Type:** feature (UI/balans, klein)
+- **Status:** ✅ uitgevoerd (v0.31).
+- **Wensen van de eigenaar:**
+  1. Vuurflits en Vizier moeten **exact dezelfde kleuren** hebben van goedkoop
+     naar duur.
+  2. Menuvolgorde: Startuitrusting → Vuurflits → Vizier → Zombie-teint →
+     HUD-tint → Geluiden.
+  3. `Ondode-kleurset` → **Zombie-teint**, `Intro` → **Geluiden**.
+- **Werk.**
+  - Het Vizier had vier treden (Blauw, Groen, Oranje, Magenta), de Vuurflits
+    vijf (Blauw, Groen, Oranje, Paars, Wit). De eerste drie kleurwaarden waren
+    al identiek; Magenta is Paars geworden (zelfde violet als `vlamTint`) en er
+    is een witte trede bijgekomen: `richtkruis-wit` (€600 / 800 punten).
+  - Categorievolgorde en twee categorienamen gewijzigd. **Alleen namen** — de
+    id's `ondode` en `intro` blijven, want die staan in `actiefPerCategorie`
+    van elke bestaande speler.
+  - `richtkruis-magenta` houdt zijn id maar heet nu Paars, net als
+    `hud-koper` (blauw) en `vlam-amber` (oranje). Dat is bewust en er staat
+    een comment bij: wie dit "opruimt", pakt spelers hun aankopen af.
+- **Wat dit blootlegde — een echt gat in de plakkende koppen van T168.** De
+  scrollmeting viel om, en niet door de nieuwe volgorde: op de overgang tussen
+  twee categorieën was de bovenrand van de lijst een paar pixels lang door
+  gééns kop bedekt. Drie oorzaken, stuk voor stuk onzichtbaar met het oog en
+  alle drie dezelfde fout — **ruimte die buiten het sticky-blok valt duwt de
+  kop te vroeg weg**:
+  1. `margin-bottom` op `.archiefCategorie` (ruimte tussen de blokken);
+  2. de ondermarge van de laatste `.archiefRij`, die door margin collapsing
+     het blok uit lekte;
+  3. de eigen `margin-bottom` van de kop — de sticky-clamp houdt de
+     márge-box binnen het blok, dus ook die duwde 5px te vroeg.
+  Alles is nu padding binnen het blok, of marge bovenop de vólgende rij. De
+  test loopt sindsdien de héle scrollrange af in stapjes van 20px (45 standen)
+  in plaats van vier steekproeven — het gat was maar ~5px scroll breed en zat
+  precies op de overgang, dus steekproeven vinden zoiets alleen bij toeval.
+- **Ook geleerd over de test zelf.** De eerste versie eiste dat een kop exact
+  op `top: 0` stond. Dat is te streng: een uitgaande kop wórdt omhoog geduwd
+  door de volgende en staat dan even op een negatieve top — correct
+  sticky-gedrag en visueel precies goed. De eis is niet "een kop staat op 0"
+  maar "de bovenrand is nooit onbedekt".
+- **Acceptatie:** kleurladders identiek, volgorde zoals gevraagd, alle id's
+  ongewijzigd, ladder strikt oplopend, 45 scrollstanden met bedekte bovenrand.
+
+---
+
+## Ticket 173 — Geluiden die je écht hoort ✅
+
+- **Type:** feature (audio)
+- **Verbetergebied:** 6 (Audio) + 9 (Meta-progressie)
+- **Prioriteit:** midden
+- **Status:** ✅ uitgevoerd (v0.31). Nieuw `tests/test-geluidsets.mjs`: 19
+  checks. Het schap "Geluiden" telt nu zeven items over drie kanalen.
+
+  **Wat er gebouwd is.** De openingstune is een beiaardfiguur van 6,3 seconden
+  geworden (was 0,6): zeven klokslagen in een dalende figuur, elk met een
+  zachte boventoon erover, en daaronder vanaf 2,9s een lage naklank die licht
+  omlaag glijdt — water en mist onder de klokken. Eigen motief. Daarnaast drie
+  muziekstemmingen (Diep water A2+C3/E3, Grachtgloed D3+A3/F#4, Kortsluiting
+  E3+Bb3/F4) en drie wapenklanken (Dof: driehoek met laag gefilterde ruis;
+  Scherp: blokgolf, hoge korte ruis; Diep: een kwint omlaag met veel
+  onderkant).
+
+  **Het kanaalmechanisme.** `actiefPerCategorie` is een vrije string→string-map
+  waarin onbekende sleutels bewaard blijven. Door geluidsitems onder
+  `geluid:<kanaal>` te bewaren in plaats van onder hun categorie, staan intro,
+  muziek en wapenklank onafhankelijk aan — één schap, drie keuzes — en dat
+  kostte geen enkele opslagwijziging of migratie. Binnen één kanaal geldt wél
+  exclusiviteit, en kleuritems blijven onveranderd exclusief per categorie;
+  allebei staan als assertie vast, zodat de afwijking niet doorlekt.
+
+  **Een echte bug die de test blootlegde, en niet alleen in de test.** De
+  muziekset schakelde niet om. Oorzaak: `setValueAtTime()` en
+  `setTargetAtTime()` doen niets zolang de AudioContext *suspended* is —
+  `currentTime` staat dan stil, dus het geplande event vuurt nooit. Dat leek
+  eerst een headless-artefact, maar het raakt echte spelers: je kiest je
+  muziekset in het menu, en daar kán de context nog suspended zijn omdat er
+  nog geen klik is geweest. Nu wordt er alleen geglеden als `audio.state ===
+  'running'`, en anders direct `.value` gezet. **Les: een geplande AudioParam
+  is geen opdracht maar een afspraak met een klok die stil kan staan.**
+- **Aanleiding.** De eigenaar: *"ik vind het nu eigenlijk niet heel boeiend qua
+  intro, je krijgt alleen een kort klein melodietje wat je bijna niet eens
+  merkt."* Gemeten en hij heeft gelijk: de hele intro is één registry-ingang
+  van vier sinustonen, samen ~0,6 seconde, op volume 0,05-0,06. Dat is het
+  enige dat het schap `Geluiden` op dit moment te bieden heeft.
+- **Wat er al wél is** (en dus te variëren valt): een continue sfeerdrone van
+  drie aangehouden tonen (E3/C#4/D4) die met de actie mee zwelt, een stadsbed,
+  en alle wapen-, ondode-, HUD- en economiegeluiden als procedurele
+  registry-ingangen.
+- **Gekozen richting (voorgelegd aan de eigenaar):**
+  1. Twee families om te kopen: **achtergrondmuziek** en **wapengeluiden** —
+     precies de twee die je het vaakst hoort.
+  2. **Eén schap "Geluiden"**, niet per familie een eigen schap.
+  3. De intro wordt een **echte tune van 4-6 seconden**: een Amsterdams
+     beiaardmotief dat uitsterft in water- en mistgeluid.
+- **Architectuurpunt dat hieruit volgt.** Het bestaande model laat per
+  categorie één actief item toe, en dat klopt voor kleuren (twee
+  vizierkleuren tegelijk kan niet). Voor geluid niet: muziek, wapenklank en
+  de intro zijn verschillende KANALEN. Strikte exclusiviteit zou betekenen dat
+  het aanzetten van een muziekset je intro-tune uitschakelt. Binnen dit ene
+  schap gaan de items daarom onafhankelijk aan en uit, één keuze per kanaal.
+- **Buiten scope.** Elk balansgetal. Wapengeluiden raken uitsluitend de
+  klánk — nooit schade, vuursnelheid, spreiding of magazijn. De bestaande
+  gunfeel- en trefferfeedback-tests moeten groen blijven met de standaardset.
+- **Risico's:**
+  - **Geen externe assets.** Alles procedureel via de bestaande registry en
+    Web Audio, zoals de hele game.
+  - **Geen bestaande IP.** Eigen motief, geen bestaand deuntje.
+  - **De standaardset moet exact blijven wat hij nu is**, anders verandert dit
+    ticket stilzwijgend het spel voor wie niets koopt.
+- **Testplan:** nieuw testbestand dat per variant toetst dat de registry
+  daadwerkelijk andere parameters oplevert, dat de standaardset
+  bit-voor-bit ongewijzigd is, en dat de kanalen onafhankelijk schakelen.
 
 ---
 

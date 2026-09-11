@@ -40,8 +40,13 @@ const vorm = await page.evaluate(() => {
     onbekend: d.archiefItem('bestaat-niet-123'),
   };
 });
-check(`De catalogus telt ${vorm.aantal} items over ${vorm.categorieen.length} categorieën (richtwaarde 20-24)`,
-  vorm.aantal >= 20 && vorm.aantal <= 24 && vorm.categorieen.length >= 5, vorm);
+// De bovengrens is opgerekt van 24 naar 30: ronde 17 voegde een witte
+// viziertrede toe (T172) en zes geluidsitems (T173). De ondergrens blijft
+// staan — de winkel moet gevuld genoeg zijn om ergens naartoe te werken — en
+// de bovengrens blijft bestaan omdat een eindeloze lijst onoverzichtelijk
+// wordt, precies het probleem dat T164 en T168 moesten oplossen.
+check(`De catalogus telt ${vorm.aantal} items over ${vorm.categorieen.length} categorieën (richtwaarde 20-30)`,
+  vorm.aantal >= 20 && vorm.aantal <= 30 && vorm.categorieen.length >= 5, vorm);
 check('Elk item heeft een geldig id, naam, bestaande categorie, positieve prijs, drempel en bekend soort',
   vorm.allesGeldig, vorm);
 check('Alle id\'s zijn uniek (een id is voor eeuwig — hergebruik pakt een speler zijn aankoop af)',
@@ -417,9 +422,14 @@ check('De categorieën heten Vuurflits en Vizier, terwijl hun id\'s historisch b
 const VASTGELEGDE_IDS = [
   'vlam-ijs', 'vlam-groen', 'vlam-amber', 'vlamTint', 'vlam-wit',
   'kleurset', 'ondode-mos', 'ondode-as', 'ondode-sepia',
+  // Ronde 17: `richtkruis-wit` erbij, zodat het Vizier dezelfde vijf treden
+  // heeft als de Vuurflits. Toevoegen mag; hernoemen nooit.
   'richtkruis-ijs', 'richtkruis-groen', 'richtkruis-amber', 'richtkruis-magenta',
+  'richtkruis-wit',
   'hud-koper', 'hud-mint', 'hud-rood',
-  'introMelodie',
+  // Ronde 17 (T173): het schap "Geluiden" met drie kanalen.
+  'introMelodie', 'muziek-donker', 'muziek-gracht', 'muziek-spanning',
+  'wapen-dof', 'wapen-scherp', 'wapen-diep',
   'start-deur1', 'start-amstel9', 'start-snelspanner',
 ];
 const VASTGELEGDE_CATEGORIEEN = ['mondingsvlam', 'ondode', 'richtkruis', 'hud', 'intro', 'startuitrusting'];

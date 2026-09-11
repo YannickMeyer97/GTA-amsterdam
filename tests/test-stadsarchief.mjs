@@ -409,9 +409,12 @@ check('speelIntroMelodie() werkt en verhoogt de test-teller bij elke aanroep',
 // Ticket 161 heeft deze guard VERPLAATST naar de catalogus: waar hier eerst
 // letterlijk `stadsarchiefOntgrendelingen().introMelodie &&
 // stadsarchief.actief.introMelodie` stond, roept initGeluid() nu
-// actiefArchiefItem('intro') aan. De EIS is ongewijzigd — de melodie mag
-// alleen klinken als het item zowel in bezit als aangezet is — dus deze
-// assertie toetst nu diezelfde eis op de nieuwe vorm, en daarnaast
+// actiefArchiefItem('intro') aan. Ticket 173 verplaatste hem nog een keer,
+// naar actiefGeluid('intro'): geluidsitems delen één schap maar niet één
+// keuze, en worden daarom onder hun KANAAL bewaard in plaats van onder hun
+// categorie. De EIS is in beide verhuizingen ongewijzigd gebleven — de
+// melodie mag alleen klinken als het item zowel in bezit als aangezet is —
+// dus deze assertie toetst diezelfde eis op de nieuwe vorm, en daarnaast
 // GEDRAGSMATIG: bezit zonder aanzetten, en aanzetten zonder bezit, mogen
 // allebei niets opleveren.
 const introMelodieGateTest = await page.evaluate(() => {
@@ -419,18 +422,19 @@ const introMelodieGateTest = await page.evaluate(() => {
   const bron = d.initGeluid.toString();
   const maak = (gekocht, actief) => ({
     ontsnappingen: 0, headshotsTotaal: 0, hoogsteGolf: 0, geld: 0,
-    gekocht, actiefPerCategorie: actief ? { intro: 'introMelodie' } : {},
+    // Ticket 173: de sleutel is nu het kanaal, niet de categorie.
+    gekocht, actiefPerCategorie: actief ? { [d.ARCHIEF_KANAAL_PREFIX + 'intro']: 'introMelodie' } : {},
     versie: d.ARCHIEF_VERSIE, actief: { kleurset: false, vlamTint: false, introMelodie: false },
   });
   return {
-    heeftGuard: /actiefArchiefItem\(\s*'intro'\s*\)/.test(bron),
+    heeftGuard: /actiefGeluid\(\s*'intro'\s*\)/.test(bron),
     roeptSpeelIntroMelodieAan: bron.includes('speelIntroMelodie()'),
-    bezitZonderAanzetten: d.actiefArchiefItem('intro', maak(['introMelodie'], false)),
-    aanzettenZonderBezit: d.actiefArchiefItem('intro', maak([], true)),
-    beide: d.actiefArchiefItem('intro', maak(['introMelodie'], true)),
+    bezitZonderAanzetten: d.actiefGeluid('intro', maak(['introMelodie'], false)),
+    aanzettenZonderBezit: d.actiefGeluid('intro', maak([], true)),
+    beide: d.actiefGeluid('intro', maak(['introMelodie'], true)),
   };
 });
-check('initGeluid() roept speelIntroMelodie() alleen aan achter de ontgrendeld-EN-actief-guard (sinds T161 via de catalogus)',
+check('initGeluid() roept speelIntroMelodie() alleen aan achter de ontgrendeld-EN-actief-guard (sinds T173 via het kanaal)',
   introMelodieGateTest.heeftGuard && introMelodieGateTest.roeptSpeelIntroMelodieAan, introMelodieGateTest);
 check('...en die guard eist echt bezit EN aanzetten: elk van de twee alleen levert niets op',
   introMelodieGateTest.bezitZonderAanzetten === null && introMelodieGateTest.aanzettenZonderBezit === null

@@ -815,8 +815,11 @@ z=5   └──────s──────────s───────
   achtervolger de speler nooit in — de dreiging moet dus uit tegemoet-
   komende spawns en de omsingelende navigatie komen, en die zijn er.
 - Economie: deur 3 + deur 4 (€2000 samen) passen tussen deur 2 (€1000) en
-  de Smederij (2 × €3000) — de lus is een mid-game aankoop, de Smederij
-  blijft de eind-sink (beslissing 7). De Provisiekast (€350) maakt de
+  de Smederij — de lus is een mid-game aankoop, de Smederij blijft de
+  eind-sink (beslissing 7). De smederijtredes zijn in ronde 16 verlaagd naar
+  €2000 en €3000 (waren €3000 en €4000); de ordening blijft daarmee intact,
+  en `test-map-lus-balans.mjs` toetst hem tegen de constante in plaats van
+  tegen een vast bedrag. De Provisiekast (€350) maakt de
   bijkeuken blijvend relevant zonder de ammo-economie te verdubbelen: zelfde
   kogels, andere plek.
 - Oude ruimtes blijven relevant: de enige upgrade-punten voor schade

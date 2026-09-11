@@ -51,6 +51,35 @@ check('Het midden draagt nog de moeilijkheidskeuze en één archiefknop',
 check('De itemlijst staat niet meer in het startscherm, maar bestaat wel (in het paneel)',
   !zones.lijstInStartscherm && zones.lijstBestaatWel, zones);
 
+// --- 1b. De rijen zeggen in woorden waar ze over gaan --------------------
+// Bij de eerste versie van de hoek droegen de twee rijen alleen een emoji
+// (🖥️ / 🖱️). Dat bleek onleesbaar: je zag drie knopjes "Laag/Normaal/Hoog"
+// zonder te weten waar ze bij hoorden. Een emoji is een accent, geen label.
+const labels = await page.evaluate(() => {
+  const rijen = [...document.querySelectorAll('#instellingenHoek .instelRij')];
+  const lees = (kind) => {
+    const rij = rijen.find(r => r.querySelector(kind));
+    const kop = rij?.querySelector('.instelKop');
+    const icoon = kop?.querySelector('.instelIcoon');
+    // Alleen de tekst, zonder het icoontje zelf.
+    const zonderIcoon = kop ? kop.textContent.replace(icoon?.textContent ?? '', '').trim() : '';
+    return {
+      tekst: zonderIcoon,
+      icoonPx: icoon ? parseFloat(getComputedStyle(icoon).fontSize) : 0,
+      basisPx: rij ? parseFloat(getComputedStyle(rij).fontSize) : 0,
+      koppeling: kop?.tagName === 'LABEL' ? kop.getAttribute('for') : null,
+    };
+  };
+  return { kwaliteit: lees('#kwaliteitKnoppen'), muis: lees('#gevoeligheidSlider') };
+});
+check('De beeldkwaliteitsrij draagt een uitgeschreven kopje, niet alleen een emoji',
+  /beeldkwaliteit/i.test(labels.kwaliteit.tekst), labels);
+check('De muisrij draagt een uitgeschreven kopje, en dat kopje hoort bij de slider (<label for>)',
+  /gevoeligheid/i.test(labels.muis.tekst) && labels.muis.koppeling === 'gevoeligheidSlider', labels);
+check('De icoontjes zijn groter dan de omringende tekst — accent, geen ruis',
+  labels.kwaliteit.icoonPx > labels.kwaliteit.basisPx
+  && labels.muis.icoonPx > labels.muis.basisPx, labels);
+
 // --- 2. Bij het laden staat het paneel dicht ----------------------------
 const beginDicht = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;

@@ -5,7 +5,9 @@
 // speler in BEIDE looprichtingen (vooruit A->D via B/C, achteruit A->E->D via
 // de terugdeur) — de kelderhals-plug (smalle doorgang, zone-graaf) blokkeert
 // niets, (3) de deur3+deur4-economie (€2000 samen) past exact tussen deur 2
-// (€1000) en de Smederij (2x€3000) zoals ARCHITECTURE_NOTES §4.8 voorschrijft.
+// (€1000) en de Smederij zoals ARCHITECTURE_NOTES §4.8 voorschrijft. De
+// smederijprijs is in ronde 16 verlaagd naar €2000 per trede; de assertie
+// hieronder rekent daarom met de constante, niet met een vast bedrag.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
@@ -37,14 +39,14 @@ check('Pacing-plafond ongewijzigd: effectiefMaxActief() met 4 zones == de 3-zone
   pacing.vierZones.max === pacing.drieZones.max, pacing);
 
 // --- 2. Economie: deur3 (€1200) + deur4 (€800) = €2000, past tussen deur2
-// (€1000) en de Smederij (2x€3000 = €6000) ----------------------------------
+// (€1000) en twee tredes Smederij ------------------------------------------
 const economie = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   return {
     deur2: d.DEUR2_PRIJS, lusSamen: d.DEUR3_PRIJS + d.DEUR4_PRIJS, smederijTotaal: d.SMEDERIJ_PRIJS * 2,
   };
 });
-check('Deur3+deur4 samen (€2000) ligt strikt tussen deur2 (€1000) en 2x de Smederij (€6000) — mid-game aankoop, geen nieuwe eind-sink',
+check('Deur3+deur4 samen (€2000) ligt strikt tussen deur2 (€1000) en 2x de Smederij — mid-game aankoop, geen nieuwe eind-sink',
   economie.deur2 < economie.lusSamen && economie.lusSamen < economie.smederijTotaal, economie);
 
 // --- 3. Reachability op golf 8+, BEIDE looprichtingen, met de volledige lus

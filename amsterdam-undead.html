@@ -441,14 +441,28 @@
     border-radius: 12px;
     padding: 10px;
   }
+  /* Ticket 164 (bijstelling): het kale 🖥️-icoontje bleek niet te vertellen
+     waar de rij over gaat. De rij draagt nu een uitgeschreven kopje boven de
+     bediening — verticaal gestapeld, zodat de hoek smal blijft. */
   .instelRij {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 5px;
     font-size: 12px;
     opacity: 0.85;
     white-space: nowrap;
   }
+  .instelKop {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.72);
+  }
+  .instelIcoon { font-size: 16px; line-height: 1; }
   #geluidKnop {
     width: 42px;
     height: 42px;
@@ -532,6 +546,12 @@
     align-items: center;
     justify-content: center;
     padding: 24px;
+    /* Ticket 168: DIT is de bugfix. Het paneel staat sinds T164 bewust buiten
+       #startscherm (zodat het er tijdens een pauze overheen valt), maar
+       `color: white` stond alléén op #startscherm en `body` zet geen color.
+       Alles hierbinnen was dus zwarte tekst op een bijna-zwart paneel:
+       contrast 1,05:1. Erf nooit stilzwijgend van body — die is hier zwart. */
+    color: #eef4f0;
   }
   #archiefPaneelBinnen {
     position: relative;
@@ -539,13 +559,36 @@
     max-height: 82vh;
     display: flex;
     flex-direction: column;
-    background: rgba(14, 20, 30, 0.96);
-    border: 1px solid rgba(255,255,255,0.10);
+    /* Ticket 168: volledig dekkend i.p.v. 0.96 — de plakkende categoriekoppen
+       hieronder moeten de rijen die eronderdoor scrollen écht afdekken. Bij
+       een doorschijnend paneel schemeren die er anders doorheen. */
+    background: #0e1620;
+    border: 1px solid rgba(255,255,255,0.12);
     border-radius: 16px;
     padding: 20px 22px 18px;
     text-align: left;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.55);
   }
-  #archiefPaneelKop { font-size: 20px; font-weight: 800; margin-bottom: 2px; }
+  #archiefPaneelKop {
+    font-size: 21px;
+    font-weight: 800;
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+  }
+  /* Ticket 168: saldo en punten waren één grijze regel waarin de twee valuta
+     door elkaar liepen. Nu twee chips met elk hun eigen kleur — dezelfde
+     kleuren die hieronder de voortgangsbalken dragen, zodat "geld" en
+     "punten" overal in het paneel hetzelfde signaal hebben. */
+  #archiefBeurs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .beursChip {
+    padding: 3px 11px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 700;
+    border: 1px solid transparent;
+  }
+  .beursChip.geld { background: rgba(255,208,138,0.14); border-color: rgba(255,208,138,0.35); color: #ffd08a; }
+  .beursChip.punten { background: rgba(138,180,255,0.14); border-color: rgba(138,180,255,0.35); color: #a8c6ff; }
   #archiefSluitKnop {
     position: absolute;
     top: 12px;
@@ -575,13 +618,14 @@
 
   /* Ticket 162: het winkelpaneel. Het startscherm is ook het PAUZEscherm,
      dus het paneel scrollt binnen zichzelf in plaats van de overlay te
-     laten groeien. */
-  #archiefWinkel {
-    margin-top: 14px;
-    text-align: left;
-    max-width: 560px;
-    margin-left: auto;
-    margin-right: auto;
+     laten groeien. (T164 verplaatste de lijst naar een eigen paneel; de
+     #archiefWinkel-wrapper die hier stond bestond sindsdien niet meer als
+     element en is in T168 opgeruimd.) */
+  #archiefWinkelUitleg {
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: rgba(238,244,240,0.72);
+    margin: 2px 0 12px;
   }
   #archiefWinkelLijst {
     /* Ticket 164: de lijst zit nu in een eigen paneel in plaats van in de
@@ -590,45 +634,136 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding-right: 6px;
+    padding-right: 8px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.22) transparent;
   }
-  .archiefCategorie { margin-bottom: 10px; }
+  #archiefWinkelLijst::-webkit-scrollbar { width: 8px; }
+  #archiefWinkelLijst::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.18);
+    border-radius: 4px;
+  }
+  /* Ticket 172: tussen twee categorieën zit GEEN ruimte meer — niet als
+     marge en ook niet als padding. Een plakkende kop mag namelijk alleen
+     binnen zijn eigen blok blijven, en elke ruimte onderaan dat blok duwt hem
+     te vroeg omhoog: dan is de bovenrand van de lijst even door niets bedekt
+     en ben je kwijt waar je zit. De visuele scheiding zit daarom in de kop
+     zélf (zijn eigen padding hieronder), want die reist mee. Gevonden met de
+     scrollmeting in test-archiefpaneel-leesbaarheid.mjs; met het oog zie je
+     zo'n gat van een paar pixels niet. */
+  .archiefCategorie { margin: 0; padding: 0; }
+  /* Ticket 168: de kop blijft plakken tijdens het scrollen — met 20 items in
+     6 categorieën ben je anders kwijt waar je zit. Werkt alleen doordat
+     #archiefPaneelBinnen dekkend is; op een doorschijnend paneel schemeren
+     de rijen eronderdoor. */
   .archiefCategorieKop {
+    position: sticky;
+    top: 0;
+    z-index: 1;
     font-size: 11px;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    opacity: 0.55;
-    margin: 8px 0 4px;
+    font-weight: 700;
+    color: rgba(238,244,240,0.68);
+    background: #0e1620;
+    /* De ruime bovenmarge is de scheiding tussen categorieën; hij hoort bij
+       de kop en niet bij het blok, zie de toelichting hierboven. */
+    /* Alle ruimte rond de kop is PADDING, nooit marge. De sticky-clamp houdt
+       de marge-box binnen het blok, dus een ondermarge duwt de kop een paar
+       pixels te vroeg weg — net genoeg om de bovenrand even onbedekt te
+       laten. Met padding valt dat samen en neemt de volgende kop naadloos
+       over. */
+    padding: 16px 0 6px;
+    margin: 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
   }
   .archiefRij {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 5px 8px;
-    border-radius: 7px;
-    background: rgba(255,255,255,0.04);
-    margin-bottom: 3px;
-    font-size: 12px;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.045);
+    border-left: 3px solid transparent;
+    font-size: 13px;
+    overflow: hidden;
   }
+  /* Ticket 172: de tussenruimte staat BOVEN elke volgende rij, niet onder
+     elke rij. Een ondermarge op de laatste rij lekt namelijk het blok uit
+     (margin collapsing) en maakt zo alsnog een gat tussen twee categorieën —
+     precies het gat dat de plakkende kop moest voorkomen. */
+  .archiefRij + .archiefRij { margin-top: 4px; }
   .archiefRij .naam { flex: 1; }
-  /* Vier toestanden, elk zichtbaar anders — dat is een acceptatie-eis. */
-  .archiefRij.vergrendeld { opacity: 0.45; }
-  .archiefRij.teDuur .status { color: #ff9a9a; }
-  .archiefRij.koopbaar { background: rgba(120,220,150,0.10); }
-  .archiefRij.koopbaar .status { color: #9df0b5; }
-  .archiefRij.bezit { background: rgba(120,180,255,0.10); }
-  .archiefRij .status { font-size: 11px; opacity: 0.9; white-space: nowrap; }
+  /* Ticket 168: het kleurstaal. De kleur komt uit dezelfde velden die het
+     spel écht gebruikt (vlamKleur / ondodeTint / cssWaarde), nooit uit een
+     losse tabel — anders kan het staal uit de pas gaan lopen met wat je
+     werkelijk koopt. Categorieën zonder kleur tonen een icoon. */
+  .archiefStaal {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.35);
+    box-shadow: 0 0 8px rgba(0,0,0,0.5) inset;
+  }
+  .archiefStaal.icoon {
+    border: none;
+    box-shadow: none;
+    font-size: 14px;
+    line-height: 16px;
+    text-align: center;
+  }
+  /* Vier toestanden, elk zichtbaar anders — dat is een acceptatie-eis.
+     Ticket 168: het dimmen ging via `opacity` op de hele rij, wat sinds het
+     kleurstaal niet meer kan: dat maakt óók het staal grauw, terwijl dat
+     juist moet laten zien wát er op slot zit. Dus dimmen via tekstkleur. */
+  .archiefRij.vergrendeld { color: rgba(238,244,240,0.62); }
+  /* Alleen het KLEURstaal wordt gedempt bij een vergrendeld item — een
+     icoonstaal is geen kleurmonster maar een leesbaar teken, en zakte door
+     dit dempen onder de contrastgrens (gevonden door de meting, niet met
+     het oog). */
+  .archiefRij.vergrendeld .archiefStaal:not(.icoon) { opacity: 0.5; }
+  .archiefRij.teDuur { border-left-color: rgba(255,208,138,0.55); }
+  .archiefRij.teDuur .status { color: #ffc987; }
+  .archiefRij.koopbaar { background: rgba(120,220,150,0.13); border-left-color: #7fd99a; }
+  .archiefRij.koopbaar .status { color: #a5f2bc; }
+  .archiefRij.bezit { background: rgba(120,180,255,0.13); border-left-color: #8ab4ff; }
+  .archiefRij .status { font-size: 11.5px; white-space: nowrap; }
+  /* Ticket 168: de voortgangsbalk langs de onderrand van de rij. Hij vervangt
+     de statustekst niet — die blijft letterlijk staan — maar laat zien dát je
+     ergens naartoe werkt. Geld en punten hebben elk hun eigen kleur, dezelfde
+     als hun chip bovenin, zodat het tekort ook zonder de tekst te lezen is. */
+  .archiefVoortgang {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 3px;
+    background: rgba(255,255,255,0.07);
+  }
+  .archiefVoortgangBalk { height: 100%; border-radius: 0 2px 2px 0; }
+  .archiefVoortgang.geld .archiefVoortgangBalk { background: #ffd08a; }
+  .archiefVoortgang.punten .archiefVoortgangBalk { background: #8ab4ff; }
   .archiefKnopje {
     cursor: pointer;
-    padding: 3px 9px;
-    border-radius: 6px;
-    border: 1px solid rgba(255,255,255,0.25);
-    font-size: 11px;
+    padding: 4px 11px;
+    border-radius: 7px;
+    border: 1px solid rgba(255,255,255,0.28);
+    font-size: 11.5px;
+    font-weight: 600;
     white-space: nowrap;
   }
-  .archiefKnopje:hover { background: rgba(255,255,255,0.12); }
+  .archiefKnopje:hover { background: rgba(255,255,255,0.14); }
+  .archiefKnopje[data-koop] { border-color: rgba(127,217,154,0.6); color: #a5f2bc; }
+  .archiefKnopje[data-koop]:hover { background: rgba(127,217,154,0.2); }
   .archiefKnopje.aan { background: rgba(120,180,255,0.28); border-color: rgba(160,210,255,0.6); }
-  .archiefWaarschuwing { font-size: 10px; opacity: 0.6; margin-top: 2px; }
+  .archiefWaarschuwing {
+    font-size: 10.5px;
+    line-height: 1.45;
+    color: rgba(238,244,240,0.62);
+    margin-top: 5px;
+  }
 
   /* Ticket 86: Het stadsarchief — kleine toggle-knoppen, uit (grijs
      omlijnd) totdat de speler 'm actief kiest.
@@ -710,7 +845,7 @@
   <div id="instellingenHoek">
     <button id="geluidKnop" type="button" aria-label="Geluid aan/uit">🔊</button>
     <div class="instelRij">
-      <span>🖥️</span>
+      <div class="instelKop"><span class="instelIcoon">🖥️</span>Beeldkwaliteit</div>
       <div id="kwaliteitKnoppen" style="display:flex; gap:6px;">
         <div class="kwaliteitKnop" data-kwaliteit="laag">Laag</div>
         <div class="kwaliteitKnop" data-kwaliteit="normaal">Normaal</div>
@@ -718,8 +853,8 @@
       </div>
     </div>
     <div class="instelRij">
-      <label for="gevoeligheidSlider">🖱️</label>
-      <input type="range" id="gevoeligheidSlider" min="0.25" max="3" step="0.05" style="width:120px;">
+      <label class="instelKop" for="gevoeligheidSlider"><span class="instelIcoon">🖱️</span>Muisgevoeligheid</label>
+      <input type="range" id="gevoeligheidSlider" min="0.25" max="3" step="0.05" style="width:150px;">
     </div>
   </div>
   <h1>AMSTERDAM UNDEAD</h1>
@@ -749,8 +884,11 @@
   <div id="archiefPaneelBinnen">
     <button id="archiefSluitKnop" type="button" aria-label="Sluiten">×</button>
     <div id="archiefPaneelKop">🗄️ Het Stadsarchief</div>
-    <div id="archiefBeurs" style="font-size:13px; opacity:0.9;"></div>
-    <div id="archiefWinkelUitleg" style="font-size:11px; opacity:0.6; margin:4px 0 10px;"></div>
+    <!-- Ticket 168: de inline `opacity` die hier stond is weg. Dimmen via
+         opacity op een container dimt ook de gekleurde chips en stalen
+         erbinnen; kleur zetten doet dat niet. Zie de CSS hierboven. -->
+    <div id="archiefBeurs"></div>
+    <div id="archiefWinkelUitleg"></div>
     <div id="archiefWinkelLijst"></div>
   </div>
 </div>
@@ -9504,9 +9642,12 @@ function initGeluid() {
     // verhouding als C#3/D3) en dus het "beieren"-karakter blijven
     // hetzelfde; ruim boven de dreigingsdrone (55/57 Hz) blijven de twee
     // lagen dus nog steeds gescheiden.
-    const muziekOsc1 = audio.createOscillator();
-    const muziekOsc2 = audio.createOscillator();
-    const muziekOsc3 = audio.createOscillator();
+    // Ticket 173: de drie oscillatoren worden bewaard (waren lokaal), zodat
+    // een gekochte muziekset ze kan omstemmen. De standaardstemming hieronder
+    // is exact ongewijzigd — wie niets koopt hoort precies wat hij altijd al
+    // hoorde, en daar staat een assertie op.
+    muziekOscillatoren = [audio.createOscillator(), audio.createOscillator(), audio.createOscillator()];
+    const [muziekOsc1, muziekOsc2, muziekOsc3] = muziekOscillatoren;
     muziekOsc1.type = 'sine'; muziekOsc1.frequency.value = 164.82;   // E3
     muziekOsc2.type = 'sine'; muziekOsc2.frequency.value = 277.18;   // C#4
     muziekOsc3.type = 'sine'; muziekOsc3.frequency.value = 293.66;   // D4
@@ -9531,14 +9672,81 @@ function initGeluid() {
     // Ticket 86: de ontgrendelde intro-melodie, precies 1x — bij de
     // allereerste initGeluid()-aanroep deze sessie (binnen ditzelfde
     // !audio-blok, dat toch al maar 1x per sessie loopt).
-    if (actiefArchiefItem('intro')) {   // Ticket 161
+    // Ticket 173: een gekochte muziekset meteen toepassen, vóór de eerste
+    // toon klinkt — anders hoor je een seconde de standaardstemming.
+    pasGeluidsetToe({ direct: true });
+    if (actiefGeluid('intro')) {   // Ticket 173 (was actiefArchiefItem)
       speelIntroMelodie();
     }
   }
   if (audio.state === 'suspended') audio.resume();
 }
+// --- Ticket 173: geluidssets ------------------------------------------------
+// Twee families, allebei puur KLANK. Geen enkele waarde hieronder raakt
+// schade, vuursnelheid, spreiding, magazijn of bereik — `schotToon` (de
+// per-wapen identiteit uit T34/T144) blijft volledig onaangeroerd, en een
+// wapenset verandert alleen de golfvorm en de ruisfilter.
+//
+// De standaardsets staan er expliciet bij in plaats van als "geen set". Zo is
+// in één oogopslag te zien wat een variant verschuift, en kan een test de
+// standaard bit-voor-bit vergelijken met de registry.
+let muziekOscillatoren = null;
+const MUZIEK_STEMMINGEN = {
+  // De bestaande stemming: E3 met een halve-toon-wrijving C#4/D4 erboven.
+  standaard: { frequenties: [164.82, 277.18, 293.66], toelichting: 'E3 + C#4/D4' },
+  // Laag en mineur: hetzelfde beier-idee, maar een octaaf donkerder en zonder
+  // de scherpe secunde — klinkt als water onder de stad.
+  donker:    { frequenties: [110.00, 130.81, 164.81], toelichting: 'A2 + C3/E3' },
+  // Open en warm: een kwint met een grote terts hoog erboven.
+  gracht:    { frequenties: [146.83, 220.00, 369.99], toelichting: 'D3 + A3/F#4' },
+  // Gespannen: een tritonus in het midden, die blijft wringen.
+  spanning:  { frequenties: [164.82, 233.08, 349.23], toelichting: 'E3 + Bb3/F4' },
+};
+const WAPEN_KLANKSETS = {
+  // Exact de waarden uit de `schot`-ingang in GELUIDEN — de standaard mag
+  // niets verschuiven.
+  standaard: { type: 'sawtooth', ruis: { filterStart: 3800, filterEind: 350, Q: 0.8, duur: 0.13 } },
+  // Gedempt en zwaar: driehoek i.p.v. zaagtand, ruis veel lager gefilterd en
+  // iets langer — alsof je binnen schiet met de deuren dicht.
+  dof:       { type: 'triangle', ruis: { filterStart: 1500, filterEind: 170, Q: 0.7, duur: 0.16 } },
+  // Droog en bijtend: blokgolf, ruis hoog en kort.
+  scherp:    { type: 'square',   ruis: { filterStart: 6200, filterEind: 900, Q: 1.4, duur: 0.08 } },
+  // Veel onderkant: de toon een kwint omlaag, ruis diep en lang.
+  diep:      { type: 'sawtooth', pitch: 0.66, ruis: { filterStart: 2100, filterEind: 110, Q: 0.9, duur: 0.2 } },
+};
+function actieveMuziekStemming() {
+  const item = actiefGeluid('muziek');
+  return MUZIEK_STEMMINGEN[item?.muziek] ?? MUZIEK_STEMMINGEN.standaard;
+}
+function actieveWapenklank() {
+  const item = actiefGeluid('wapen');
+  return WAPEN_KLANKSETS[item?.wapenklank] ?? WAPEN_KLANKSETS.standaard;
+}
+// Stemt de lopende muziek om. Glijdt standaard (MUZIEK_GLIJTIJD) zodat het
+// omzetten in de winkel niet klikt; bij het opstarten mag het direct.
+function pasGeluidsetToe(opties) {
+  if (!audio || !muziekOscillatoren) return;
+  const stemming = actieveMuziekStemming();
+  const nu = audio.currentTime;
+  // Glijden mag alleen als de klok ook echt loopt. Een geplande waarde
+  // (setTargetAtTime/setValueAtTime) doet NIETS zolang de AudioContext
+  // suspended is: currentTime staat stil, dus het event vuurt nooit en de
+  // stemming zou stilletjes op de oude waarde blijven hangen. Dat is geen
+  // testartefact — de speler kiest zijn muziekset in het menu, en daar kan de
+  // context nog suspended zijn omdat er nog geen klik is geweest.
+  const glijden = !opties?.direct && audio.state === 'running';
+  for (let i = 0; i < muziekOscillatoren.length; i++) {
+    const doel = stemming.frequenties[i];
+    if (doel === undefined) continue;
+    if (glijden) muziekOscillatoren[i].frequency.setTargetAtTime(doel, nu, MUZIEK_GLIJTIJD);
+    else muziekOscillatoren[i].frequency.value = doel;   // werkt ook als de klok stilstaat
+  }
+}
+
 // Ticket 86: een korte, oplopende drieklank (A-C#-E-A) — eigen, herkenbaar
 // geluid, niet hergebruikt van elders in het spel.
+// Ticket 173 verving die door een beiaardfiguur van ruim vijf seconden; zie
+// de `introMelodie`-ingang in GELUIDEN.
 let introMelodieTeller = 0;   // debug/test
 function speelIntroMelodie() {
   introMelodieTeller++;
@@ -9663,11 +9871,40 @@ const GELUIDEN = {
   gameOver:      { categorie: 'meta', type: 'sawtooth', start: 300, eind: 70,  duur: 0.5,  volume: 0.12,
                    vervolg: [{ na: 0.22, type: 'sine', start: 160, eind: 50, duur: 0.7, volume: 0.09 }] },
   finaleLosgooien: { categorie: 'meta', type: 'sawtooth', start: 90, eind: 260, duur: 0.35, volume: 0.12 },
-  // Ticket 86: oplopende drieklank A-C#-E-A, ontgrendeld via het stadsarchief.
-  introMelodie:  { categorie: 'meta', type: 'sine', start: 440, eind: 440, duur: 0.12, volume: 0.05,
-                   vervolg: [{ na: 0.13, type: 'sine', start: 554.37, eind: 554.37, duur: 0.12, volume: 0.05 },
-                             { na: 0.26, type: 'sine', start: 659.25, eind: 659.25, duur: 0.12, volume: 0.05 },
-                             { na: 0.39, type: 'sine', start: 880,    eind: 880,    duur: 0.2,  volume: 0.06 }] },
+  // Ticket 173: de openingstune. Was vier kale sinustonen van samen 0,6s op
+  // volume 0,05 — je hoorde hem niet eens. Nu een beiaardfiguur van ruim vijf
+  // seconden: een dalende klokreeks die uitsterft in een lage aangehouden
+  // toon, met daaronder een zachte naklank. Eigen motief, geen bestaand
+  // deuntje (IP-regel uit CLAUDE.md).
+  //
+  // De klokklank komt uit twee tonen per slag: de grondtoon plus een zachte
+  // kwint eroverheen die iets korter is. Dat is wat een klok van een piepje
+  // onderscheidt — een enkele sinus klinkt altijd als een toongenerator.
+  introMelodie:  { categorie: 'meta', type: 'sine', start: 587.33, eind: 587.33, duur: 1.1, volume: 0.075,
+                   vervolg: [
+                     // slag 1 (D5) — de boventoon
+                     { na: 0.00, type: 'sine', start: 880,    eind: 880,    duur: 0.55, volume: 0.028 },
+                     // slag 2 (A4)
+                     { na: 0.55, type: 'sine', start: 440,    eind: 440,    duur: 1.1,  volume: 0.070 },
+                     { na: 0.55, type: 'sine', start: 659.25, eind: 659.25, duur: 0.5,  volume: 0.024 },
+                     // slag 3 (F#5) — de figuur wipt omhoog
+                     { na: 1.10, type: 'sine', start: 739.99, eind: 739.99, duur: 1.1,  volume: 0.068 },
+                     { na: 1.10, type: 'sine', start: 1108.7, eind: 1108.7, duur: 0.45, volume: 0.020 },
+                     // slag 4 (D5), zwaarder
+                     { na: 1.75, type: 'sine', start: 587.33, eind: 587.33, duur: 1.3,  volume: 0.072 },
+                     { na: 1.75, type: 'sine', start: 293.66, eind: 293.66, duur: 1.3,  volume: 0.038 },
+                     // slag 5 (B4) en 6 (A4): de daling zet in
+                     { na: 2.45, type: 'sine', start: 493.88, eind: 493.88, duur: 1.3,  volume: 0.062 },
+                     { na: 3.10, type: 'sine', start: 440,    eind: 440,    duur: 1.5,  volume: 0.058 },
+                     // slag 7 (F#4), al veel zachter
+                     { na: 3.75, type: 'sine', start: 369.99, eind: 369.99, duur: 1.7,  volume: 0.048 },
+                     // de lage naklank: water en mist onder de klokken door.
+                     // Glijdt licht omlaag, zoals een scheepshoorn over water.
+                     { na: 2.90, type: 'sine',     start: 73.42, eind: 69.30, duur: 2.6, volume: 0.055 },
+                     { na: 2.90, type: 'triangle', start: 146.83, eind: 138.59, duur: 2.2, volume: 0.022 },
+                     // laatste slag (D4), sterft uit
+                     { na: 4.40, type: 'sine', start: 293.66, eind: 293.66, duur: 1.9,  volume: 0.044 },
+                   ] },
 
   // --- economie ----------------------------------------------------------
   koop:          { categorie: 'economie', type: 'triangle', start: 420, eind: 900, duur: 0.1,  volume: 0.07 },
@@ -9812,14 +10049,31 @@ function speelGeluid(naam, opties) {
   // Ticket 154: de ruislaag, gelijktijdig met de hoofdtoon. Alleen de
   // geluiden die er een hebben (zie de `ruis`-blokken in GELUIDEN); de
   // stadsbed-bus krijgt er geen — die twee zijn bewust ijl en ver.
-  if (g.ruis && !naarStad) speelRuis(g.ruis, { pan: o.pan, startTijd: nu });
+  // Ticket 173: een klankset mag de ruislaag overschrijven. Het VOLUME komt
+  // altijd uit de registry — een set kleurt de klank en mag hem niet harder
+  // maken dan het gebalanceerde niveau.
+  if (g.ruis && !naarStad) {
+    const ruis = o.ruis ? { ...g.ruis, ...o.ruis, volume: g.ruis.volume } : g.ruis;
+    speelRuis(ruis, { pan: o.pan, startTijd: nu });
+  }
 }
 
 // Ticket 34: per-wapen schotgeluid via schotToon (§5.6) i.p.v. één vaste toon
 // voor beide wapens.
+// Ticket 173: de klankset verandert de GOLFVORM en de RUISFILTER, nooit
+// `schotToon` — dat is de per-wapen identiteit uit T34/T144 en dus wat een
+// Drukspuit van een Ratelaar onderscheidt. Een set mag die identiteit
+// kleuren, niet uitwissen: elk wapen blijft zijn eigen toonhoogte en duur
+// houden, in elke set.
 function speelSchot() {
   const toon = wapenStaat.definitie.schotToon;
-  speelGeluid('schot', { start: toon.start, eind: toon.eind, duur: toon.duur });
+  const klank = actieveWapenklank();
+  speelGeluid('schot', {
+    start: toon.start, eind: toon.eind, duur: toon.duur,
+    type: klank.type,
+    pitch: klank.pitch,
+    ruis: klank.ruis,
+  });
 }
 function speelDroogKlik() { speelGeluid('droogKlik'); }
 // Ticket 33: het herlaad-geluid was één functie die zijn tweede piep via een
@@ -14103,11 +14357,22 @@ const STADSARCHIEF_DREMPEL_GOLF = 20;             // intro-melodie
 // bewust ("ontgrendelingen zijn afgeleid van tellers"), maar een aankoop is
 // niet af te leiden uit een teller — die moet je onthouden. De vlaggenlijst
 // is daarom wel additief gehouden: er wordt nooit iets uit verwijderd.
-const ARCHIEF_VERSIE = 2;            // 1 = vóór de winkel (T86), 2 = met geld/gekocht
+const ARCHIEF_VERSIE = 3;            // 1 = vóór de winkel (T86), 2 = met geld/gekocht, 3 = opgetelde golven
 const ARCHIEF_GELD_MAX = 9999999;    // bovengrens tegen corrupte/gemanipuleerde opslag in de UI
+const ARCHIEF_GOLVEN_MAX = 999999;   // idem voor de opgetelde golven
 const ARCHIEF_GEKOCHT_MAX = 500;     // idem: een gecraft archief mag geen eindeloze lijst opleveren
 // Weging van de mijlpaalpunten. Ontsnappen is zeldzaam en telt daarom zwaar;
 // headshots zijn er veel, dus die tellen per tien.
+//
+// TICKET 169 (ronde 16) — waarom golven nu OPGETELD worden. Tot deze ronde
+// kwamen de golfpunten uit `hoogsteGolf`, een record. Gemeten gevolg: één run
+// tot golf 25 leverde 440 punten op, waarvan 250 uit dat record — en elke
+// volgende run op dezelfde diepte nog maar 190, want het record stond al.
+// Wie vaak speelde werd dus nauwelijks beloond, terwijl één goede run bijna
+// de hele winkel opende (13 van de 20 items al in run 1). Sinds T169 telt
+// elke run zijn eigen gehaalde golven op bij `golvenTotaal`, zodat herhaald
+// spelen is wat vooruitgang oplevert. `hoogsteGolf` blijft bestaan als
+// record — de intromelodie-drempel van T86 hangt eraan.
 const MIJLPAAL_PUNTEN_PER_ONTSNAPPING = 100;
 const MIJLPAAL_PUNTEN_PER_GOLF = 10;
 const MIJLPAAL_HEADSHOTS_PER_PUNT = 10;
@@ -14130,19 +14395,27 @@ const _tmpArchiefTint = new THREE.Color();
 // de speler al had. De migratie zet ze daarom in `gekocht`. Ze is idempotent
 // (twee keer draaien verandert niets) en heeft geen apart schrijfmoment
 // nodig: het eerstvolgende run-einde bewaart de gemigreerde vorm vanzelf.
+// Ticket 169 voegt daar de stap naar versie 3 aan toe: `golvenTotaal` bestond
+// nog niet, dus wordt hij gevuld met `hoogsteGolf`. Dat is bewust de mildste
+// invulling die eerlijk is — die golven zijn aantoonbaar gehaald. Meer kunnen
+// we niet weten (per-run-historie is nooit bewaard), en 0 zou een bestaande
+// speler terugzetten naar niets.
 function migreerArchief(archief) {
   if (archief.versie >= ARCHIEF_VERSIE) return archief;
-  const ontgrendeld = stadsarchiefOntgrendelingen(archief);
-  for (const sleutel in ARCHIEF_LEGACY_IDS) {
-    const id = ARCHIEF_LEGACY_IDS[sleutel];
-    if (ontgrendeld[sleutel] && !archief.gekocht.includes(id)) archief.gekocht.push(id);
+  if (archief.versie < 2) {
+    const ontgrendeld = stadsarchiefOntgrendelingen(archief);
+    for (const sleutel in ARCHIEF_LEGACY_IDS) {
+      const id = ARCHIEF_LEGACY_IDS[sleutel];
+      if (ontgrendeld[sleutel] && !archief.gekocht.includes(id)) archief.gekocht.push(id);
+    }
   }
+  if (archief.versie < 3 && !archief.golvenTotaal) archief.golvenTotaal = archief.hoogsteGolf;
   archief.versie = ARCHIEF_VERSIE;
   return archief;
 }
 function leesStadsarchief() {
   const veiligeStaat = () => ({
-    ontsnappingen: 0, headshotsTotaal: 0, hoogsteGolf: 0,
+    ontsnappingen: 0, headshotsTotaal: 0, hoogsteGolf: 0, golvenTotaal: 0,
     geld: 0, gekocht: [], versie: ARCHIEF_VERSIE, actiefPerCategorie: {},
     actief: { kleurset: false, vlamTint: false, introMelodie: false },
   });
@@ -14180,6 +14453,11 @@ function leesStadsarchief() {
       ontsnappingen: geheelGetal(record.ontsnappingen),
       headshotsTotaal: geheelGetal(record.headshotsTotaal),
       hoogsteGolf: geheelGetal(record.hoogsteGolf),
+      // Ronde 16: het OPGETELDE aantal gehaalde golven over alle runs. Dit is
+      // sinds T169 de puntenbron; `hoogsteGolf` blijft ernaast staan als
+      // record voor de intromelodie-drempel uit T86. Ontbreekt het veld, dan
+      // vult migreerArchief() het (versie 2 -> 3).
+      golvenTotaal: Math.min(ARCHIEF_GOLVEN_MAX, geheelGetal(record.golvenTotaal)),
       geld: Math.min(ARCHIEF_GELD_MAX, geheelGetal(record.geld)),
       gekocht,
       // Ontbreekt `versie`, dan komt dit archief uit vóór de winkel (T86).
@@ -14218,15 +14496,18 @@ function stadsarchiefOntgrendelingen(a = stadsarchief) {
     introMelodie: a.hoogsteGolf >= STADSARCHIEF_DREMPEL_GOLF,
   };
 }
-// Ticket 160: de SLEUTEL-valuta. Een pure functie over de drie tellers die
-// T86 al bijhoudt — geen eigen opslag, geen eigen bijwerkmoment, en daardoor
-// per constructie monotoon: `ontsnappingen` en `headshotsTotaal` tellen
-// alleen op en `hoogsteGolf` is een Math.max(), dus geen enkele runuitkomst
-// kan dit totaal laten dalen. Punten worden nooit uitgegeven; ze bepalen
-// alleen welke schappen in de winkel zichtbaar zijn (T161/T162).
+// Ticket 160: de SLEUTEL-valuta. Een pure functie over de tellers die T86 al
+// bijhoudt — geen eigen opslag, geen eigen bijwerkmoment, en daardoor per
+// constructie monotoon: alle drie de tellers kunnen alleen optellen, dus geen
+// enkele runuitkomst kan dit totaal laten dalen. Punten worden nooit
+// uitgegeven; ze bepalen alleen welke schappen in de winkel zichtbaar zijn
+// (T161/T162).
+// Ticket 169 verving `hoogsteGolf` (een record) door `golvenTotaal` (een som).
+// De monotonie blijft daarmee intact — een som van niet-negatieve getallen
+// daalt net zo min als een maximum — maar herhaald spelen telt nu wél mee.
 function mijlpaalpunten(a = stadsarchief) {
   return a.ontsnappingen * MIJLPAAL_PUNTEN_PER_ONTSNAPPING
-    + a.hoogsteGolf * MIJLPAAL_PUNTEN_PER_GOLF
+    + (a.golvenTotaal ?? 0) * MIJLPAAL_PUNTEN_PER_GOLF
     + Math.floor(a.headshotsTotaal / MIJLPAAL_HEADSHOTS_PER_PUNT);
 }
 // Wat de LAATSTE run het archief opleverde. T160 vult dit alleen; T163
@@ -14277,6 +14558,11 @@ function bijwerkenStadsarchief(opties = {}) {
   if (nieuweHeadshots > 0) stadsarchief.headshotsTotaal += nieuweHeadshots;
   archiefHeadshotsBasis = runStats.headshots;
   stadsarchief.hoogsteGolf = Math.max(stadsarchief.hoogsteGolf, spelStaat.golf);
+  // Ticket 169: élke run telt zijn eigen gehaalde golven op. Dit is de enige
+  // puntenbron die met spéélfrequentie meegroeit; `hoogsteGolf` hierboven
+  // blijft een record en telt niet meer mee voor punten.
+  stadsarchief.golvenTotaal = Math.min(ARCHIEF_GOLVEN_MAX,
+    (stadsarchief.golvenTotaal ?? 0) + Math.max(0, Math.floor(spelStaat.golf)));
   // Ticket 160: alleen een GESLAAGDE ontsnapping vult de portemonnee, met
   // het restsaldo dat de speler op zak had. De kosten van de boot zijn op
   // dit moment al afgeboekt (probeerOntsnapping() doet dat direct bij het
@@ -14320,13 +14606,18 @@ function bijwerkenStadsarchief(opties = {}) {
 //
 // `id` is VOOR EEUWIG: de migratie in leesStadsarchief() en het `gekocht`-veld
 // in de opslag hangen eraan. Hernoemen = een speler zijn aankoop afpakken.
+// De VOLGORDE van deze lijst is de volgorde in de winkel. Ronde 17: het
+// zwaarste schap staat bewust bovenaan — dat is waar je naartoe speelt — en
+// daarna loopt het van wat je het meest ziet (je eigen vuurflits en vizier)
+// naar wat je het minst ziet. Namen zijn vrij te wijzigen, id's nooit: die
+// staan in `actiefPerCategorie` van elke bestaande speler.
 const ARCHIEF_CATEGORIEEN = [
-  { id: 'mondingsvlam',    naam: 'Vuurflits' },   // id blijft historisch, zie ARCHIEF_ITEMS
-  { id: 'ondode',          naam: 'Ondode-kleurset' },
-  { id: 'richtkruis',      naam: 'Vizier' },      // idem
-  { id: 'hud',             naam: 'HUD-tint' },
-  { id: 'intro',           naam: 'Intro' },
   { id: 'startuitrusting', naam: 'Startuitrusting' },
+  { id: 'mondingsvlam',    naam: 'Vuurflits' },   // id blijft historisch, zie ARCHIEF_ITEMS
+  { id: 'richtkruis',      naam: 'Vizier' },      // idem
+  { id: 'ondode',          naam: 'Zombie-teint' },
+  { id: 'hud',             naam: 'HUD-tint' },
+  { id: 'intro',           naam: 'Geluiden' },
 ];
 // Twee soorten. `cosmetisch` raakt per definitie geen enkele spelregel.
 // `startuitrusting` is de afgebakende verruiming uit de rondekop: het effect
@@ -14353,36 +14644,64 @@ const ARCHIEF_SOORT_START = 'startuitrusting';
 const ARCHIEF_ITEMS = [
   // --- Vuurflits (categorie-id blijft `mondingsvlam`): de kleur van de vlam
   // bij het schieten en het bijbehorende licht.
-  { id: 'vlam-ijs',      naam: 'Blauw',   niveau: 1, categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 650,  puntenEis: 150, vlamKleur: 0x7fd4ff },
-  { id: 'vlam-groen',    naam: 'Groen',   niveau: 2, categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 800,  puntenEis: 250, vlamKleur: 0x8cff9b },
-  { id: 'vlam-amber',    naam: 'Oranje',  niveau: 3, categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 900,  puntenEis: 350, vlamKleur: 0xffb347 },
-  { id: 'vlamTint',      naam: 'Paars',   niveau: 4, categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1000, puntenEis: 500, vlamKleur: 0xb478ff, legacyVlag: 'vlamTint' },
-  { id: 'vlam-wit',      naam: 'Wit',     niveau: 5, categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1500, puntenEis: 700, vlamKleur: 0xf2f6ff },
+  { id: 'vlam-ijs',      naam: 'Blauw',   niveau: 1, categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 650,  puntenEis: 900,  vlamKleur: 0x7fd4ff },
+  { id: 'vlam-groen',    naam: 'Groen',   niveau: 2, categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 800,  puntenEis: 1250, vlamKleur: 0x8cff9b },
+  { id: 'vlam-amber',    naam: 'Oranje',  niveau: 3, categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 900,  puntenEis: 1600, vlamKleur: 0xffb347 },
+  { id: 'vlamTint',      naam: 'Paars',   niveau: 4, categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1000, puntenEis: 2000, vlamKleur: 0xb478ff, legacyVlag: 'vlamTint' },
+  { id: 'vlam-wit',      naam: 'Wit',     niveau: 5, categorie: 'mondingsvlam', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1500, puntenEis: 2800, vlamKleur: 0xf2f6ff },
 
   // --- Ondode-kleurset: een tint OVER de bestaande huidskleur. Het is een
   // vermenigvuldiging, dus de onderlinge kleurverschillen tussen de types
   // blijven behouden — dat is precies waarom dit de T156-leesbaarheidsdrempel
   // haalt en waarom de tint nooit als vaste kleur gezet mag worden.
-  { id: 'kleurset',      naam: 'Blauw',   niveau: 1, categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 800,  puntenEis: 200, ondodeTint: 0x8ab4ff, legacyVlag: 'kleurset' },
-  { id: 'ondode-mos',    naam: 'Groen',   niveau: 2, categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 900,  puntenEis: 300, ondodeTint: 0xa8d18a },
-  { id: 'ondode-as',     naam: 'Grijs',   niveau: 3, categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1000, puntenEis: 450, ondodeTint: 0xc2c2c2 },
-  { id: 'ondode-sepia',  naam: 'Sepia',   niveau: 4, categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1200, puntenEis: 650, ondodeTint: 0xd9b98a },
+  { id: 'kleurset',      naam: 'Blauw',   niveau: 1, categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 800,  puntenEis: 1000, ondodeTint: 0x8ab4ff, legacyVlag: 'kleurset' },
+  { id: 'ondode-mos',    naam: 'Groen',   niveau: 2, categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 900,  puntenEis: 1400, ondodeTint: 0xa8d18a },
+  { id: 'ondode-as',     naam: 'Grijs',   niveau: 3, categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1000, puntenEis: 1800, ondodeTint: 0xc2c2c2 },
+  { id: 'ondode-sepia',  naam: 'Sepia',   niveau: 4, categorie: 'ondode', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1200, puntenEis: 2400, ondodeTint: 0xd9b98a },
 
   // --- Vizier (categorie-id blijft `richtkruis`) en HUD: puur DOM/CSS, raken
   // de 3D-scene niet.
+  // Het Vizier is bewust de INSTAPcategorie: hij gaat als enige vrijwel meteen
+  // open, zodat je na je eerste run al iets kunt kopen en ziet hoe de winkel
+  // werkt. Blauw op €200 / 0 punten is daarbij een harde ondergrens — zie de
+  // ijking in test-archief-feedback.mjs, die toetst dat het restgeld van de
+  // vroegst mogelijke ontsnapping (€233) minstens één item dekt.
+  // Ronde 17: Vuurflits en Vizier lopen door exact dezelfde kleurladder —
+  // Blauw, Groen, Oranje, Paars, Wit — zodat "trede 4" overal hetzelfde
+  // betekent. De eerste drie kleurwaarden waren al gelijk aan die van de
+  // vuurflits; Magenta is daarom Paars geworden (zelfde violet als
+  // `vlamTint`) en er is een witte trede bijgekomen.
+  // `richtkruis-magenta` heet dus niet meer naar zijn kleur — net als
+  // `hud-koper` en `vlam-amber`. Dat is bewust: een id hernoemen zou een
+  // speler zijn aankoop afpakken. Niet "opruimen".
   { id: 'richtkruis-ijs',     naam: 'Blauw',   niveau: 1, categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 200, puntenEis: 0,   cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(127,212,255,0.9)' },
-  { id: 'richtkruis-groen',   naam: 'Groen',   niveau: 2, categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 300, puntenEis: 40,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(140,255,155,0.9)' },
-  { id: 'richtkruis-amber',   naam: 'Oranje',  niveau: 3, categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 400, puntenEis: 80,  cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(255,179,71,0.9)' },
-  { id: 'richtkruis-magenta', naam: 'Magenta', niveau: 4, categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 500, puntenEis: 120, cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(255,140,220,0.9)' },
+  { id: 'richtkruis-groen',   naam: 'Groen',   niveau: 2, categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 300, puntenEis: 150, cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(140,255,155,0.9)' },
+  { id: 'richtkruis-amber',   naam: 'Oranje',  niveau: 3, categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 400, puntenEis: 350, cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(255,179,71,0.9)' },
+  { id: 'richtkruis-magenta', naam: 'Paars',   niveau: 4, categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 500, puntenEis: 550, cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(180,120,255,0.9)' },
+  { id: 'richtkruis-wit',     naam: 'Wit',     niveau: 5, categorie: 'richtkruis', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 600, puntenEis: 800, cssVar: '--richtkruis-kleur', cssWaarde: 'rgba(242,246,255,0.9)' },
   // `hud-koper` was koperkleurig; sinds T167 is dit de blauwe trede van de
   // ladder. Alleen de id herinnert nog aan de oude kleur (zie de kop).
-  { id: 'hud-koper',     naam: 'Blauw',   niveau: 1, categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 600,  puntenEis: 100, cssVar: '--hud-kleur', cssWaarde: '#9fd4ff' },
-  { id: 'hud-mint',      naam: 'Groen',   niveau: 2, categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 800,  puntenEis: 160, cssVar: '--hud-kleur', cssWaarde: '#a8f0d0' },
-  { id: 'hud-rood',      naam: 'Rood',    niveau: 3, categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 2500, puntenEis: 900, cssVar: '--hud-kleur', cssWaarde: '#ff9a9a' },
+  { id: 'hud-koper',     naam: 'Blauw',   niveau: 1, categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 600,  puntenEis: 800,  cssVar: '--hud-kleur', cssWaarde: '#9fd4ff' },
+  { id: 'hud-mint',      naam: 'Groen',   niveau: 2, categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 800,  puntenEis: 1100, cssVar: '--hud-kleur', cssWaarde: '#a8f0d0' },
+  { id: 'hud-rood',      naam: 'Rood',    niveau: 3, categorie: 'hud', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 2500, puntenEis: 2600, cssVar: '--hud-kleur', cssWaarde: '#ff9a9a' },
 
   // --- Intro: de T86-melodie. Eén item; varianten hierop vragen extra
   // registry-ingangen en horen daarom bij een later ticket.
-  { id: 'introMelodie',  naam: 'Intromelodie', niveau: 1, categorie: 'intro', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1000, puntenEis: 400, legacyVlag: 'introMelodie' },
+  // Ticket 173: het schap "Geluiden" (categorie-id blijft historisch `intro`).
+  // Drie KANALEN die onafhankelijk aan kunnen staan: de openingstune, de
+  // achtergrondmuziek en de wapenklank. Zie archiefSleutelVan() — het `kanaal`
+  // bepaalt waaronder de keuze bewaard wordt, niet de categorie.
+  //
+  // De `niveau`-ladder loopt door alle drie de kanalen heen, want prijs en
+  // drempel moeten binnen een categorie strikt oplopen (T167). Dat betekent
+  // niet dat je ze in die volgorde moet kopen — ze sluiten elkaar niet uit.
+  { id: 'introMelodie',  naam: 'Openingstune',      niveau: 1, categorie: 'intro', kanaal: 'intro',  soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1000, puntenEis: 1500, legacyVlag: 'introMelodie' },
+  { id: 'muziek-donker', naam: 'Muziek: Diep water', niveau: 2, categorie: 'intro', kanaal: 'muziek', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1100, puntenEis: 1700, muziek: 'donker' },
+  { id: 'muziek-gracht', naam: 'Muziek: Grachtgloed', niveau: 3, categorie: 'intro', kanaal: 'muziek', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1200, puntenEis: 1900, muziek: 'gracht' },
+  { id: 'muziek-spanning', naam: 'Muziek: Kortsluiting', niveau: 4, categorie: 'intro', kanaal: 'muziek', soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1300, puntenEis: 2100, muziek: 'spanning' },
+  { id: 'wapen-dof',     naam: 'Wapens: Dof',       niveau: 5, categorie: 'intro', kanaal: 'wapen',  soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1400, puntenEis: 2300, wapenklank: 'dof' },
+  { id: 'wapen-scherp',  naam: 'Wapens: Scherp',    niveau: 6, categorie: 'intro', kanaal: 'wapen',  soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1500, puntenEis: 2500, wapenklank: 'scherp' },
+  { id: 'wapen-diep',    naam: 'Wapens: Diep',      niveau: 7, categorie: 'intro', kanaal: 'wapen',  soort: ARCHIEF_SOORT_COSMETISCH, prijs: 1600, puntenEis: 2700, wapenklank: 'diep' },
 
   // --- Startuitrusting. Elk item wijst naar een bestaande koopfunctie; de
   // schenking gaat via schenkAankoop(), dat het saldo tijdelijk ophoogt en
@@ -14391,12 +14710,29 @@ const ARCHIEF_ITEMS = [
   // `uitdoofVlag` benoemt de spelerstoestand die het item aanraakt: zodra een
   // gewone speler die zelf bereikt, is een run mét en zonder dit item niet
   // meer te onderscheiden. Dat maakt "het effect dooft uit" toetsbaar.
-  { id: 'start-deur1',      naam: 'Deur 1 staat open', niveau: 1, categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 8000, puntenEis: 1100,  schenk: () => koopDeur(),        uitdoofVlag: () => deurGekocht },
-  { id: 'start-amstel9',    naam: 'AMSTEL-9 op zak',   niveau: 2, categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 10000, puntenEis: 1400, schenk: () => koopAmstel9(),     uitdoofVlag: () => !!wapenStaten.drukspuit },
-  { id: 'start-snelspanner',naam: 'Fast Hands vooraf', niveau: 3, categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 12000, puntenEis: 1700, schenk: () => koopSnelspanner(), uitdoofVlag: () => snelspannerGekocht },
+  // De volgorde binnen de ladder is een SPELKEUZE, geen eigenschap van het
+  // item: het wapen op zak is de zwaarste trede, want dat scheelt het meeste
+  // in de vroege golven. `id`, `schenk` en `uitdoofVlag` horen bij het item en
+  // blijven dus staan; alleen niveau/prijs/drempel verhuizen mee.
+  { id: 'start-deur1',      naam: 'Deur 1 staat open', niveau: 1, categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 8000, puntenEis: 3400,  schenk: () => koopDeur(),        uitdoofVlag: () => deurGekocht },
+  { id: 'start-snelspanner',naam: 'Fast Hands vooraf', niveau: 2, categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 10000, puntenEis: 4000, schenk: () => koopSnelspanner(), uitdoofVlag: () => snelspannerGekocht },
+  { id: 'start-amstel9',    naam: 'AMSTEL-9 op zak',   niveau: 3, categorie: 'startuitrusting', soort: ARCHIEF_SOORT_START, prijs: 12000, puntenEis: 4650, schenk: () => koopAmstel9(),     uitdoofVlag: () => !!wapenStaten.drukspuit },
 ];
 const ARCHIEF_ITEM_OP_ID = new Map(ARCHIEF_ITEMS.map(i => [i.id, i]));
 function archiefItem(id) { return ARCHIEF_ITEM_OP_ID.get(id) ?? null; }
+
+// Ticket 168: het kleurstaal in de winkel. Bijna elk item ÍS een kleur, en die
+// kleur staat hierboven al — dus lees hem daar uit in plaats van er een tweede
+// tabel naast te zetten die uit de pas kan gaan lopen met wat je werkelijk
+// koopt. Levert `null` op voor items zonder kleur (Intro, Startuitrusting);
+// die krijgen het categorie-icoon hieronder.
+function archiefItemKleur(item) {
+  if (typeof item.vlamKleur === 'number') return '#' + item.vlamKleur.toString(16).padStart(6, '0');
+  if (typeof item.ondodeTint === 'number') return '#' + item.ondodeTint.toString(16).padStart(6, '0');
+  if (typeof item.cssWaarde === 'string') return item.cssWaarde;
+  return null;
+}
+const ARCHIEF_CATEGORIE_ICOON = { intro: '🎵', startuitrusting: '🎒' };
 
 // Een item is ONTGRENDELD zodra het puntentotaal de drempel haalt; dat bepaalt
 // alleen of het te koop is, niet of je het hebt.
@@ -14414,11 +14750,37 @@ function bezitArchiefItem(item, a = stadsarchief) {
 // `actiefPerCategorie` wint; anders valt het terug op de drie oude
 // aan/uit-knoppen, die hun eigen boolean blijven schrijven. Zo blijft T86's
 // UI-gedrag exact zoals het was, zonder twee mechanismen te synchroniseren.
+// Ticket 173: geluidsitems delen één schap ("Geluiden") maar niet één keuze.
+// Muziek, wapenklank en de intro zijn verschillende KANALEN — strikte
+// exclusiviteit zou betekenen dat het aanzetten van een muziekset je
+// intro-tune uitschakelt. Een item met een `kanaal` wordt daarom onder dat
+// kanaal bewaard in plaats van onder zijn categorie. Dat kost geen enkele
+// opslagwijziging: `actiefPerCategorie` is een vrije string->string-map en
+// onbekende sleutels blijven bewaard (zie leesStadsarchief).
+const ARCHIEF_KANAAL_PREFIX = 'geluid:';
+function archiefSleutelVan(item) {
+  return item.kanaal ? ARCHIEF_KANAAL_PREFIX + item.kanaal : item.categorie;
+}
+// Welk item staat er op dit kanaal aan? Alleen voor items MET een kanaal.
+function actiefGeluid(kanaal, a = stadsarchief) {
+  const gekozen = a.actiefPerCategorie ? a.actiefPerCategorie[ARCHIEF_KANAAL_PREFIX + kanaal] : null;
+  if (gekozen) {
+    const item = archiefItem(gekozen);
+    if (item && item.kanaal === kanaal && bezitArchiefItem(item, a)) return item;
+  }
+  // Terugval op de oude T86-vlag: wie de intromelodie via een mijlpaal
+  // verdiende en 'm had aanstaan, houdt hem aan.
+  for (const item of ARCHIEF_ITEMS) {
+    if (item.kanaal !== kanaal || !item.legacyVlag) continue;
+    if (a.actief && a.actief[item.legacyVlag] && bezitArchiefItem(item, a)) return item;
+  }
+  return null;
+}
 function actiefArchiefItem(categorie, a = stadsarchief) {
   const gekozen = a.actiefPerCategorie ? a.actiefPerCategorie[categorie] : null;
   if (gekozen) {
     const item = archiefItem(gekozen);
-    if (item && item.categorie === categorie && bezitArchiefItem(item, a)) return item;
+    if (item && item.categorie === categorie && !item.kanaal && bezitArchiefItem(item, a)) return item;
   }
   for (const item of ARCHIEF_ITEMS) {
     if (item.categorie !== categorie || !item.legacyVlag) continue;
@@ -14499,23 +14861,29 @@ function zetArchiefItemActief(id, aan) {
   const item = archiefItem(id);
   if (!item || !bezitArchiefItem(item)) return false;
   if (!stadsarchief.actiefPerCategorie) stadsarchief.actiefPerCategorie = {};
+  // Ticket 173: geluidsitems worden onder hun KANAAL bewaard, niet onder hun
+  // categorie — zo kunnen muziek, wapenklank en intro naast elkaar aanstaan
+  // binnen hetzelfde schap. Kleuritems houden de categorie als sleutel: twee
+  // vizierkleuren tegelijk kan immers niet.
+  const sleutel = archiefSleutelVan(item);
   if (aan) {
-    stadsarchief.actiefPerCategorie[item.categorie] = item.id;
-    // De drie T86-vlaggen zijn een tweede route naar dezelfde categorie; zet
+    stadsarchief.actiefPerCategorie[sleutel] = item.id;
+    // De drie T86-vlaggen zijn een tweede route naar dezelfde sleutel; zet
     // ze uit zodra hier expliciet iets anders gekozen wordt, anders blijft er
     // een knop "aan" staan die niets meer doet.
     for (const ander of ARCHIEF_ITEMS) {
-      if (ander.categorie === item.categorie && ander.legacyVlag && ander.id !== item.id) {
+      if (archiefSleutelVan(ander) === sleutel && ander.legacyVlag && ander.id !== item.id) {
         stadsarchief.actief[ander.legacyVlag] = false;
       }
     }
     if (item.legacyVlag) stadsarchief.actief[item.legacyVlag] = true;
   } else {
-    delete stadsarchief.actiefPerCategorie[item.categorie];
+    delete stadsarchief.actiefPerCategorie[sleutel];
     if (item.legacyVlag) stadsarchief.actief[item.legacyVlag] = false;
   }
   schrijfStadsarchief(stadsarchief);
   pasArchiefStijlToe();
+  pasGeluidsetToe();   // Ticket 173: muziek schakelt meteen om
   tekenArchiefWinkel();
   werkArchiefBadgeBij();   // Ticket 164
   return true;
@@ -14531,14 +14899,31 @@ const ARCHIEF_STATUS_VOLGORDE = {
   [ARCHIEF_STATUS_KOOPBAAR]: 0, [ARCHIEF_STATUS_BEZIT]: 1,
   [ARCHIEF_STATUS_TEDUUR]: 2, [ARCHIEF_STATUS_VERGRENDELD]: 3,
 };
+// Ticket 168: hoe ver ben je op weg naar iets dat je nog niet kunt krijgen?
+// `nu/eis` als percentage, altijd binnen 0-100 — een drempel van 0 kan niet
+// vergrendeld zijn, maar deel er voor de zekerheid niet doorheen.
+function archiefVoortgangFractie(nu, eis) {
+  if (!(eis > 0)) return 1;
+  return Math.max(0, Math.min(1, nu / eis));
+}
+function archiefVoortgangHTML(soort, nu, eis) {
+  const pct = (archiefVoortgangFractie(nu, eis) * 100).toFixed(1);
+  return `<span class="archiefVoortgang ${soort}" data-fractie="${pct}">`
+    + `<span class="archiefVoortgangBalk" style="width:${pct}%"></span></span>`;
+}
 function tekenArchiefWinkel() {
   if (!archiefWinkelLijst) return;
   const punten = mijlpaalpunten();
-  archiefBeurs.textContent = `€${stadsarchief.geld} · ${punten} punten`;
+  // Ticket 168: twee chips i.p.v. één regel. Geld en punten zijn twee losse
+  // valuta met elk hun eigen bron, en die liepen in "€0 · 1176 punten" door
+  // elkaar. De chipkleuren komen terug in de voortgangsbalken hieronder.
+  archiefBeurs.innerHTML = `<span class="beursChip geld">€${stadsarchief.geld}</span>`
+    + `<span class="beursChip punten">${punten} punten</span>`;
   archiefWinkelUitleg.textContent =
     `Geld verdien je door te ONTSNAPPEN (je restsaldo gaat mee). `
     + `Punten krijg je elke run: +${MIJLPAAL_PUNTEN_PER_ONTSNAPPING} per ontsnapping, `
-    + `+${MIJLPAAL_PUNTEN_PER_GOLF} per bereikte golf, +1 per ${MIJLPAAL_HEADSHOTS_PER_PUNT} headshots.`;
+    + `+${MIJLPAAL_PUNTEN_PER_GOLF} per gehaalde golf en +1 per ${MIJLPAAL_HEADSHOTS_PER_PUNT} headshots — `
+    + `elke run telt op bij je totaal, dus vaker spelen loont.`;
 
   const stukken = [];
   for (const categorie of ARCHIEF_CATEGORIEEN) {
@@ -14549,20 +14934,30 @@ function tekenArchiefWinkel() {
     if (!items.length) continue;
     const rijen = items.map(({ item, status }) => {
       const actief = actiefArchiefItem(item.categorie) === item;
-      let status_tekst = '', knop = '';
+      let status_tekst = '', knop = '', voortgang = '';
       if (status === ARCHIEF_STATUS_VERGRENDELD) {
+        // De teksten blijven letterlijk zoals ze waren: T162 legde ze vast als
+        // acceptatie-eis ("wat je niet kunt zien, streef je niet na"). De balk
+        // komt ernaast, nooit in plaats ervan.
         status_tekst = `nog ${item.puntenEis - punten} punten`;
+        voortgang = archiefVoortgangHTML('punten', punten, item.puntenEis);
       } else if (status === ARCHIEF_STATUS_TEDUUR) {
         status_tekst = `nog €${item.prijs - stadsarchief.geld} nodig`;
+        voortgang = archiefVoortgangHTML('geld', stadsarchief.geld, item.prijs);
       } else if (status === ARCHIEF_STATUS_KOOPBAAR) {
         knop = `<span class="archiefKnopje" data-koop="${item.id}">Koop €${item.prijs}</span>`;
       } else {
         knop = `<span class="archiefKnopje ${actief ? 'aan' : ''}" data-zet="${item.id}" data-aan="${actief ? '0' : '1'}">${actief ? 'Aan' : 'Uit'}</span>`;
       }
+      const kleur = archiefItemKleur(item);
+      const staal = kleur
+        ? `<span class="archiefStaal" style="background:${kleur}" data-kleur="${kleur}"></span>`
+        : `<span class="archiefStaal icoon">${ARCHIEF_CATEGORIE_ICOON[item.categorie] ?? '✦'}</span>`;
       return `<div class="archiefRij ${status}" data-item="${item.id}">`
+        + staal
         + `<span class="naam">${item.naam}</span>`
         + (status_tekst ? `<span class="status">${status_tekst}</span>` : '')
-        + knop + `</div>`;
+        + knop + voortgang + `</div>`;
     }).join('');
     // Startuitrusting: de exclusiviteit moet VÓÓR de klik af te lezen zijn,
     // niet pas erna.
@@ -15094,10 +15489,14 @@ const RATELAAR_PRIJS   = 750;   // eenmalig: tweede wapen, op de binnenplaats
 // nieuwe speeltest.
 const AMSTEL9_PRIJS    = 450;
 // Ticket 12: De Smederij — late-game geldsink, per wapen (zie ARCHITECTURE_NOTES §2.7-8).
-const SMEDERIJ_PRIJS   = 3000;  // eenmalig per wapen: Smederij-schadebonus + groter magazijn
+// Ronde 16: allebei €1000 omlaag (was 3000/4000). De smederij was in de
+// praktijk een eindspel-luxe die je zelden haalde; met 2000/3000 is de eerste
+// trede binnen bereik rond de golven waarin de wapenschade begint achter te
+// lopen. Het onderlinge verschil (niveau 2 duurder dan niveau 1) blijft.
+const SMEDERIJ_PRIJS   = 2000;  // eenmalig per wapen: Smederij-schadebonus + groter magazijn
 // Fix 5: tweede, duurdere Smederij-upgrade per wapen (na de eerste), met een
 // grotere schadebonus dan niveau 1 — zie smederijConfig[1] bij elk wapen.
-const SMEDERIJ2_PRIJS  = 4000;
+const SMEDERIJ2_PRIJS  = 3000;
 // Fix 5: AMSTEL-9 niveau 2 — kleine ontploffing per schot (schotExplosie()).
 const AMSTEL9_EXPLOSIE_RADIUS       = 2.0;   // m, kleiner dan de Brander-explosie (3.0)
 const AMSTEL9_EXPLOSIE_SCHADEFACTOR = 0.6;   // splash op ANDERE ondoden, niet de volle wapenschade
@@ -17747,7 +18146,7 @@ window.AmsterdamUndeadDebug = {
   STADSARCHIEF_KLEURSET_TINT, STADSARCHIEF_VLAM_TINT,
   leesStadsarchief, schrijfStadsarchief, stadsarchiefOntgrendelingen, bijwerkenStadsarchief, speelIntroMelodie,
   // Ticket 160
-  ARCHIEF_VERSIE, ARCHIEF_GELD_MAX, ARCHIEF_GEKOCHT_MAX, ARCHIEF_LEGACY_IDS,
+  ARCHIEF_VERSIE, ARCHIEF_GELD_MAX, ARCHIEF_GOLVEN_MAX, ARCHIEF_GEKOCHT_MAX, ARCHIEF_LEGACY_IDS,
   // Ticket 161
   ARCHIEF_ITEMS, ARCHIEF_CATEGORIEEN, ARCHIEF_SOORT_COSMETISCH, ARCHIEF_SOORT_START,
   archiefItem, archiefItemOntgrendeld, bezitArchiefItem, actiefArchiefItem,
@@ -17758,6 +18157,12 @@ window.AmsterdamUndeadDebug = {
   nieuwOntgrendeldeItems, toonArchiefWinst, ARCHIEF_WINST_MAX_NAMEN,
   // Ticket 164
   zetArchiefPaneel, archiefPaneelOpen, werkArchiefBadgeBij, archiefKoopbaarAantal,
+  archiefItemKleur, archiefVoortgangFractie, ARCHIEF_CATEGORIE_ICOON,
+  // Ticket 173
+  actiefGeluid, archiefSleutelVan, ARCHIEF_KANAAL_PREFIX, speelSchot,
+  MUZIEK_STEMMINGEN, WAPEN_KLANKSETS, actieveMuziekStemming, actieveWapenklank,
+  pasGeluidsetToe,
+  get muziekOscillatoren() { return muziekOscillatoren; },
   ARCHIEF_STATUS_VERGRENDELD, ARCHIEF_STATUS_TEDUUR, ARCHIEF_STATUS_KOOPBAAR, ARCHIEF_STATUS_BEZIT,
   MIJLPAAL_PUNTEN_PER_ONTSNAPPING, MIJLPAAL_PUNTEN_PER_GOLF, MIJLPAAL_HEADSHOTS_PER_PUNT,
   mijlpaalpunten, migreerArchief,
