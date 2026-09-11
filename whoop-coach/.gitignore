@@ -1,9 +1,0 @@
-# Door Python gegenereerd
-__pycache__/
-*.py[cod]
-
-# Lokale gegevens horen nooit in de repo: hier staan je client secret en
-# je WHOOP-tokens in. De tool zet ze standaard in ~/.whoop-coach.
-.whoop-coach/
-tokens.json
-config.json
