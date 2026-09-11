@@ -5826,55 +5826,19 @@ niets; dat is het signaal om de meter te wantrouwen, niet de data.
 
 ---
 
-# Ronde 19 (v0.33) — De assetregel, chirurgisch
+# Ronde 19 (v0.33) — VERVALLEN, naar de backlog
 
-### Ticket 175 — De chirurgische assetuitzondering ✅ besluit genomen, bouw open
+Ticket 175 (de chirurgische assetuitzondering) is op verzoek van de eigenaar
+naar de backlog verplaatst voordat er iets van gebouwd was. De volledige
+uitwerking staat bewaard in `ROADMAP.md` onder "Backlog — bevroren tickets".
 
-**Volledig ticket in `ROADMAP.md` onder "v0.33 — Ronde 19".**
-
-**Het besluit is genomen (ja) en `CLAUDE.md` is aangepast.** Wat nog open
-staat is fase 1 zelf: `ASSETS.md`, `test-assetregister.mjs`,
-`test-ondode-stemmen.mjs` en de opnamen.
-
-**Bouw in deze volgorde, en niet anders:** eerst `ASSETS.md` plus de
-registertest, dán pas de eerste opname insluiten. Andersom bouw je de grens
-pas nadat hij al een keer overschreden is. Zolang `ASSETS.md` niet bestaat
-hoort er geen enkele base64-blob in het spelbestand te staan. Zelfde patroon als
-T152/`AUDIO.md`: een projectregel wijzigen hoort een apart, zichtbaar besluit
-te zijn, nooit een bijvangst van een feature.
-
-**De kern in één zin.** Sta ingesloten audiofragmenten toe voor uitsluitend
-menselijke stem (ondode-grommen), als base64 in het bestand, met een
-verplicht herkomstregister — en laat al het andere procedureel.
-
-**Het ontwerpprincipe dat alles draagt:** de procedurele grom BLIJFT bestaan
-en wordt de permanente terugval, niet vervangen. Dat maakt het faalpad gratis
-(geen stilte om te melden, dus geen nieuw T74-foutscherm), de rollback
-triviaal, en het houdt `file://` werkend omdat er niets te laden valt.
-
-**Waarom dit nu pas bespreekbaar is.** Het hoofdargument van T152 tegen
-samples — "de kwaliteitskloof is procedureel op te lossen" — is inmiddels
-uitgevoerd (T154 ruisbron, T174 WaveShaper/ringmod/delay). Dat argument is
-dus opgebruikt. Wat overblijft is de ene categorie die AUDIO.md §3.3 al
-aanwees: menselijke stem.
-
-**De valkuil die het ticket klein houdt.** `AUDIO.md` rekende 8 sample-
-varianten per type nodig tegen herhaling (≈140 KB). Die som gaat uit van kale
-sample-wisseling. Met procedurele variatie ÓP de sample (playbackRate,
-detune, filter-cutoff, startoffset, en de synth-grom eronder gemengd)
-volstaan er 3 per type: ≈71 KB, +7%. Dat is exact het patroon dat
-`speelRuis()` al toepast tegen "machinegeweer-monotonie".
-
-**Wat een uitvoerder hier vooral moet weerstaan:** de neiging om "als assets
-toch mogen" ook even de schoten, de wind of het hout te samplen. De
-uitzondering noemt één categorie bij naam, en `test-assetregister.mjs`
-bewaakt die grens machinaal — een base64-blob zonder regel in `ASSETS.md`
-laat de suite falen.
-
-**Uitvoeringsadvies.** Niet aan Sonnet geven zolang de status 🔒 is. Daarna:
-fase 1 alleen, met de meting van per-type-onderscheid en variatie als
-acceptatiecriterium — niet op gehoor beoordelen, dat is precies waar T174 op
-misging.
+**Eén ding om te weten als je hier langskomt:** het REGELBESLUIT is wél
+genomen en staat in `CLAUDE.md` — ingesloten audiofragmenten voor menselijke
+stem zijn formeel toegestaan, mits geregistreerd in `ASSETS.md`. Maar
+`ASSETS.md` en `test-assetregister.mjs` bestaan niet. **De permissie loopt dus
+vooruit op de handhaving.** Bouw nooit als eerste een opname in; bouw eerst het
+register en de registertest. Wie de regel liever dichtzet tot het zover is,
+haalt de twee regels uit `CLAUDE.md` onder "Werkwijze".
 
 ---
 
