@@ -5842,6 +5842,92 @@ haalt de twee regels uit `CLAUDE.md` onder "Werkwijze".
 
 ---
 
+# Ronde 20 (v0.34) — Amsterdam Undead op mobiel
+
+Volledige tickets in `ROADMAP.md` onder "v0.34 — Ronde 20".
+
+```
+T176 (besturingsgate)  ← fundament
+   ├─ T177 (touch: lopen/kijken/vuren) ─ T178 (contextknop)
+   ├─ T179 (liggend + lay-out)
+   └─ T180 (prestaties, meting op toestel)
+T181 (speeltest) ← eigenaarswerk, doorlopend
+```
+
+**De diagnose in één zin.** Alles hangt aan Pointer Lock (15 plekken), dat op
+mobiel niet bestaat; er is geen enkele touch-handler. Maar de simulatiegate is
+**één regel** (`spelActief`, r17250), dus het oppervlak is klein.
+
+**Begin met meten, niet met bouwen.** `composer.render()` staat BUITEN de
+`spelActief`-tak (r17686 vs r17251), dus de volledige renderpijplijn draait nu
+al elke frame op een telefoon — alleen de simulatie staat stil. De eigenaar
+kan daardoor op de live URL, zonder één regel code, vaststellen of het toestel
+dit beeld aankan. Kan het dat niet, dan is de hele besturingsronde weggegooid
+werk. In de eerste opzet van deze ronde stond dat ticket achteraan; dat was
+verkeerd om.
+
+**Vier dingen die ontbreken en die je op mobiel nodig hebt** (alle vier
+geteld, alle vier op nul): fullscreen, wake lock, een besturingsuitleg die bij
+de modus past (r794 en r864 noemen nu letterlijk WASD en muis), en het besef
+dat Web Audio op iOS de hardware mute-schakelaar volgt — stil spel is daar
+geen bug.
+
+### T176 — de besturingsgate
+
+**Detecteer het apparaat niet, reageer op de invoer.** UA-sniffing is
+onbetrouwbaar (iPad meldt zich als Mac), `maxTouchPoints` is waar op
+touch-laptops, en `(pointer: coarse)` beschrijft alleen het primaire
+invoerapparaat. Laat het eerste echte invoerevent de modus zetten — een
+`touchstart` betekent touch, een geslaagde pointer lock betekent muis — en
+laat wisselen toe. Dan volgt de modus wat de speler dóét in plaats van wat het
+toestel beweert te zijn.
+
+**Houd CSS en JS gescheiden.** De draai-overlay en het tonen van de
+touch-knoppen kunnen volledig via `@media (orientation: portrait)` en
+`@media (pointer: coarse)`. JS hoeft alleen de besturingsgate te regelen. Er
+staat nu nog geen enkele `@media`-regel in het bestand.
+
+**De harde ontwerpeis, en het is er echt een:** het desktoppad moet
+*letterlijk* pointer-lock-gedreven blijven. Tien testbestanden mocken
+`document.pointerLockElement` en `helpers.mjs` doet dat centraal; zodra het
+desktoppad iets anders gaat gebruiken, valt de hele suite om. Bouw dus een
+abstractie ERBOVEN, vervang de bestaande vergelijking niet.
+
+**Tweede valkuil, subtieler.** `openVoorVisueleMeting()` mockt bewust GEEN
+pointer lock, zodat `spelActief` false blijft en klok, druppels, stofwolken en
+ondoden stilstaan tijdens visuele metingen. Als de nieuwe touch-vlag daar per
+ongeluk waar wordt, gaan alle visuele basislijnmetingen zwerven — en dat merk
+je pas rondes later. Lees de toelichting bij die helper vóór je begint.
+
+### T177 — touch-invoer
+
+**Multi-touch is waar dit stukgaat.** Lopen, kijken en vuren gebeuren
+tegelijk; elke aanraking moet bij zijn eigen `identifier` blijven horen. Een
+tweede vinger die de stick steelt is de klassieke fout.
+
+**Hergebruik wat er al is:** het kijkpad kan door dezelfde yaw/pitch-code als
+`mousemove`, inclusief de bestaande gevoeligheidsinstelling uit T75. Niet
+nabouwen.
+
+Playwright kan touch emuleren (`hasTouch`, `page.touchscreen`), dus dit is
+gewoon headless te toetsen — ook het multi-touch-geval, en juist dat.
+
+### T178 — de contextknop
+
+Het spel weet al wat er kan: interactiepunten hebben een `prompt()` die de
+juiste tekst oplevert. Bouw daar geen tweede waarheid naast.
+
+### T179/T180
+
+Vergeet `env(safe-area-inset-*)` niet — zonder dat belanden knoppen onder de
+systeembalk, en dat wordt standaard over het hoofd gezien.
+
+**T180 is niet af zonder meting op een echt toestel.** De headless Chromium
+hier zegt niets over een mobiele GPU. Wie dit ticket "klaar" meldt op basis
+van een schatting, levert niets.
+
+---
+
 ## Risicoregister — Ronde 11
 
 | # | Risico | Kans | Impact | Mitigatie |

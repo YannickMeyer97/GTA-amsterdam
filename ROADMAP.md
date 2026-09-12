@@ -6951,6 +6951,294 @@ te duur.
 
 ---
 
+# v0.34 — Ronde 20: Amsterdam Undead op mobiel
+
+Herkomst: de eigenaar speelt het spel op de laptop naar tevredenheid, maar op
+de telefoon werkt het niet. Onderzocht vóór het plannen, en de diagnose is
+eenduidig.
+
+## De diagnose
+
+**Eén oorzaak, en die is fundamenteel: alles hangt aan Pointer Lock.** Op 15
+plekken staat `document.pointerLockElement === renderer.domElement`. Pointer
+Lock bestaat niet op iOS Safari en is mobiel in de praktijk onbruikbaar. Op
+een telefoon faalt `requestPointerLock()` dus stil: de HUD verschijnt nooit,
+`spelActief` wordt nooit waar, en er simuleert niets.
+
+Daarnaast: **nul touch-afhandeling.** Geen enkele `touchstart`, `touchmove` of
+`pointerdown` in het bestand. Alle invoer is toetsenbord plus muis.
+
+**Maar het oppervlak is klein.** De 15 plekken vallen in vijf groepjes:
+
+| groep | regels | wat het doet |
+|---|---|---|
+| simulatiegate | 17250 | `spelActief` — de enige plek die bepaalt of de wereld draait |
+| actietoetsen | 7059, 7064, 7068, 7076 | guards op R, T, Q, V |
+| starten | 7202, 7246 | `requestPointerLock()` bij een klik |
+| zichtbaarheid | 7250 | `pointerlockchange` toont/verbergt de HUD-chrome |
+| invoer | 7279, 7289, 7356 | kijken, schieten, lopen |
+| verlaten | 15308, 17182 | `exitPointerLock()` bij ontsnapping en game over |
+
+Dat de simulatiegate **één regel** is, maakt dit een haalbare ronde in plaats
+van een herschrijving.
+
+## Wat al goed staat
+
+Meer dan verwacht: de viewport-meta staat er, de kwaliteitspresets bestaan al
+(`laag` zet pixelRatio op 1 en bloom/schaduwen/inslagsporen uit — precies wat
+een telefoon nodig heeft), audio start al op een gebruikersgebaar (mobiel
+verplicht), en het archiefpaneel is al `min(620px, 100%)`.
+
+## Keuzes van de eigenaar
+
+1. **Alleen liggend**, met een "draai je toestel"-overlay in staande stand.
+2. **Stick links, slepen rechts om te kijken, vuurknop rechtsonder.**
+3. **Eén contextknop** (die T en R samenvoegt en toont wat er nú kan) plus een
+   wapenwissel- en een mesknop, plus een klein pauzeknopje.
+
+## Publicatie
+
+GitHub Pages staat al aan op de repo en de repo is publiek; de verwachte URL
+is `https://yannickmeyer97.github.io/GTA-amsterdam/`. Pushen naar `main` ís
+dus publiceren — geen build, geen pipeline, het zijn statische bestanden.
+(Vanuit de ontwikkelomgeving is die URL niet bereikbaar om te controleren; de
+eigenaar toetst hem op het toestel zelf.)
+
+## Volgorde en afhankelijkheden
+
+**De meting gaat vóór alles uit, en die kan vandaag al.** `composer.render()`
+staat BUITEN de `spelActief`-tak (r17686 versus r17251): de volledige
+renderpijplijn — scene, bloom, schaduwen — draait nu al elke frame op de
+telefoon, ook al simuleert er niets en reageert er niets. De eigenaar kan dus
+**op de live URL, zonder één regel code, meten of het toestel dit beeld
+überhaupt aankan.** Blijkt het antwoord nee, dan is de hele besturingsronde
+zinloos tot dat opgelost is. Daarom staat T180 vooraan in plaats van
+achteraan — dat was in de eerste opzet van deze ronde verkeerd om.
+
+```
+T180-meting (NU al mogelijk, geen code)  ← de-riskt de hele ronde
+   │
+T176 (besturingsgate)  ← fundament, alles hangt hieraan
+   ├─ T177 (touch: lopen/kijken/vuren)
+   │     └─ T178 (contextknop + actieknoppen + kloppende besturingsuitleg)
+   ├─ T179 (liggend + lay-out + fullscreen)   ← nodig om te kunnen speeltesten
+   └─ T180-bijstelling                         ← pas ná de meting
+T181 (publiceren + speeltest)                  ← doorlopend, eigenaarswerk
+```
+
+## Bekende mobiele valkuilen (gecontroleerd tegen de code)
+
+Vier dingen die niet in het spel zitten en die op een telefoon wél nodig zijn.
+Alle vier gemeten, geen van alle aanwezig:
+
+- **Fullscreen ontbreekt** (`requestFullscreen`: 0 treffers). De adresbalk van
+  een mobiele browser eet een flinke hap van een liggend scherm, en verschijnt
+  opnieuw bij elke scroll-achtige veeg. Zonder fullscreen speelt dit niet.
+- **Wake lock ontbreekt** (`wakeLock`: 0 treffers). Tussen twee golven raak je
+  het scherm niet aan; de telefoon valt dan in slaap midden in een run.
+- **De besturingsuitleg zou liegen.** Twee plekken noemen letterlijk WASD en
+  de muis: `#hulpUI` (r794, de balk tijdens het spelen) en het uitlegblok op
+  het startscherm (r864). Op touch kloppen die niet meer.
+- **iOS en de zijschakelaar.** Web Audio respecteert op iOS de hardware
+  mute-schakelaar. Staat die aan, dan is het spel stil zonder dat er iets
+  kapot is — een speeltest-valkuil, geen bug. Waard om te weten vóór er een
+  uur in "waarom hoor ik niks" gaat zitten.
+
+---
+
+## Ticket 176 — De besturingsgate loskoppelen van Pointer Lock
+
+- **Type:** architectuur (fundament)
+- **Prioriteit:** hoog — zonder dit werkt geen enkel ander mobiel ticket.
+- **Doel.** Eén begrip "de speler bestuurt het spel", met twee implementaties:
+  pointer lock op desktop, een expliciete vlag op touch.
+- **Detecteer het APPARAAT niet — reageer op de INVOER.** Dit is de kern van
+  het ticket en het is makkelijk fout te doen:
+  - *User-agent sniffen* is onbetrouwbaar: iPad Safari meldt zich als een
+    desktop-Mac, en elk nieuw toestel breekt de lijst opnieuw.
+  - `navigator.maxTouchPoints > 0` is óók waar op een touchscreen-laptop met
+    muis — daar wil je juist de muisbesturing.
+  - `matchMedia('(pointer: coarse)')` is beter, maar beschrijft het
+    *primaire* invoerapparaat. Een telefoon met een bluetooth-toetsenbord of
+    een laptop in tabletstand vallen er alsnog verkeerd uit.
+  - **De robuuste vorm: laat het eerste echte invoerevent beslissen.** Een
+    `touchstart` zet de modus op touch; een geslaagde pointer lock zet hem op
+    muis. Wisselen mag op elk moment — wie een telefoon aan een muis hangt,
+    krijgt gewoon muisbesturing zodra hij die gebruikt. Geen apparatenlijst
+    die veroudert, en per constructie correct: de modus volgt wat de speler
+    werkelijk doet.
+- **Twee lagen, en houd ze gescheiden.** CSS kan het meeste zelf: de
+  draai-overlay is puur `@media (orientation: portrait)` en de touch-knoppen
+  kunnen via `@media (pointer: coarse)` verschijnen, zónder JavaScript. JS
+  beslist alléén over de besturingsgate. Er staat vandaag nog geen enkele
+  `@media`-regel in het bestand, dus dit is nieuw terrein — maar het scheelt
+  een hoop conditionele logica.
+- **Werk.**
+  - `besturingModus` ('muis' | 'touch'), gezet door het eerste invoerevent
+    zoals hierboven, niet door een apparaatcheck bij het laden.
+  - `besturingActief()` — op desktop letterlijk de bestaande
+    pointer-lock-vergelijking, op touch een `touchSessieActief`-vlag.
+  - Alle 15 plekken uit de tabel hierboven gaan hier doorheen.
+  - `pointerlockchange` wordt een dunne wrapper om een nieuwe
+    `zetBesturingActief(bool)`, die de HUD-chrome toont/verbergt. Touch roept
+    diezelfde functie aan.
+  - Starten en verlaten krijgen per modus hun eigen tak.
+- **Buiten scope.** Elke vorm van touch-invoer. Dit ticket verandert op
+  desktop **niets** aan gedrag; het maakt alleen ruimte.
+- **Risico's:**
+  - **De testopstelling hangt hieraan.** `CLAUDE.md` waarschuwt er zelf voor:
+    de pauzegate bepaalt of de loop simuleert, en tests moeten pointer lock
+    simuleren. Tien testbestanden doen dat expliciet en `helpers.mjs`
+    overschrijft `document.pointerLockElement` centraal. **Daarom moet het
+    desktoppad letterlijk pointer-lock-gedreven blijven** — dan blijft de hele
+    bestaande suite ongewijzigd groen. Dat is een harde ontwerpeis, geen
+    voorkeur.
+  - **`openVoorVisueleMeting()` mag niet per ongeluk activeren.** Die helper
+    mockt bewust GEEN pointer lock, zodat `spelActief` false blijft en de
+    wereld stilstaat tijdens visuele metingen. De nieuwe touch-vlag moet daar
+    net zo goed uit blijven, anders gaan alle visuele basislijnmetingen
+    zwerven.
+- **Acceptatie:** volledige regressie groen zonder één aangepaste assertie;
+  `spelActief` blijft op desktop exact dezelfde uitkomst geven; op een
+  gesimuleerd touch-apparaat wordt de gate waar zonder pointer lock.
+- **Testplan:** nieuw `tests/test-besturingsmodus.mjs` (beide modi, de
+  gate-uitkomst, de visuele-meting-uitzondering) + volledige regressie.
+
+---
+
+## Ticket 177 — Touch: lopen, kijken, vuren
+
+- **Type:** feature (invoer)
+- **Afhankelijk van:** T176.
+- **Werk.**
+  - **Linkerhelft:** virtuele stick. `touchstart` zet de oorsprong waar je
+    hem neerzet (geen vaste plek — dat speelt beter), `touchmove` levert een
+    richtingsvector die dezelfde beweegcode voedt als WASD nu.
+  - **Rechterhelft:** slepen om te kijken, via hetzelfde yaw/pitch-pad als
+    `mousemove`. **Hergebruikt de bestaande gevoeligheidsinstelling** (T75) —
+    die staat al in het startscherm en werkt hier net zo goed.
+  - **Vuurknop** rechtsonder: indrukken en vasthouden = dezelfde staat als
+    muisknop ingedrukt.
+- **Risico's:**
+  - **Multi-touch is waar dit soort besturing stukgaat.** Lopen, kijken en
+    vuren gebeuren tegelijk. Elke aanraking moet bij zijn eigen `identifier`
+    blijven horen; een tweede vinger mag de stick niet stelen.
+  - **Browserpaniek:** zonder `touch-action: none` en `preventDefault()`
+    scrollt en zoomt de pagina onder je duim weg.
+- **Acceptatie:** drie gelijktijdige aanrakingen (lopen + kijken + vuren)
+  werken onafhankelijk; een vinger loslaten stopt alleen díé invoer; de pagina
+  scrollt of zoomt nooit tijdens het spelen.
+- **Testplan:** nieuw `tests/test-touchbesturing.mjs`. Playwright kan touch
+  emuleren (`hasTouch`, `page.touchscreen`), dus dit is gewoon headless te
+  toetsen — inclusief het multi-touch-geval, dat is juist de moeite waard.
+  Vraagt een uitbreiding van `helpers.mjs` met een touch-context.
+
+---
+
+## Ticket 178 — De contextknop en de vaste actieknoppen
+
+- **Type:** feature (UI)
+- **Afhankelijk van:** T177.
+- **Werk.**
+  - **Eén contextknop** die toont wat er nú kan. Het spel weet dat al: de
+    interactiepunten hebben een `prompt()` die precies de juiste tekst
+    oplevert (kopen, deur openen, plank timmeren). Is er geen punt in bereik
+    en is het magazijn niet vol, dan wordt het herladen.
+  - **Twee vaste knoppen:** wapenwissel en mes.
+  - **Een klein pauzeknopje**, want Esc bestaat niet op een telefoon.
+- **En de besturingsuitleg moet meeveranderen.** Twee plekken noemen nu
+  letterlijk WASD en de muis: `#hulpUI` (r794, de balk onderin tijdens het
+  spelen) en het uitlegblok op het startscherm (r864). Op touch staat daar
+  dus een leugen. Ze horen bij de actieve besturingsmodus te passen — en dit
+  is precies het soort ding dat blijft staan omdat geen enkele test naar
+  tekst kijkt, dus het is hier een acceptatiecriterium.
+- **Risico.** De knop mag nooit leeg of dubbelzinnig zijn. Als er niets te
+  doen is, hoort hij uit te grijzen in plaats van te verdwijnen — een knop die
+  van plek of aanwezigheid wisselt onder je duim is erger dan een inactieve.
+- **Acceptatie:** de contextknop toont in elke situatie dezelfde actie als de
+  T-toets zou uitvoeren; pauzeren werkt zonder toetsenbord; geen enkele actie
+  is op mobiel onbereikbaar.
+
+---
+
+## Ticket 179 — Liggend, en de lay-out voor een smal scherm
+
+- **Type:** feature (UI)
+- **Afhankelijk van:** T176. Kan parallel aan T177/T178 — en is nodig om
+  überhaupt te kunnen speeltesten.
+- **Werk.**
+  - Staande stand toont een "draai je toestel"-overlay; het spel pauzeert.
+  - **Fullscreen aanvragen bij het starten** (`requestFullscreen`, nu 0
+    treffers in het bestand). Zonder dit eet de adresbalk een flinke hap van
+    een liggend telefoonscherm en komt hij bij elke veeg terug. Let op: dit
+    mág alleen vanuit een gebruikersgebaar, dus het hoort aan dezelfde klik
+    als het starten — en het kan geweigerd worden, dus het spel moet ook
+    zónder fullscreen speelbaar blijven.
+  - **Wake lock** (`navigator.wakeLock`, nu 0 treffers) zodat het scherm niet
+    uitgaat tussen twee golven, wanneer je het toestel even niet aanraakt.
+    Niet overal beschikbaar; faalt stil terugvallen.
+  - **Safe-area-insets** (`env(safe-area-inset-*)`) voor notches en de
+    home-indicator. Zonder dit belanden knoppen onder de systeembalk — dit
+    wordt standaard vergeten.
+  - HUD, minimap en richtkruis schalen naar ~700×360 CSS-px.
+  - Startscherm, instellingenhoek en archiefpaneel nalopen op die maat.
+- **Acceptatie:** niets valt buiten beeld of onder een systeembalk op de
+  gangbare toestelmaten; de winkel is met een duim te bedienen.
+
+---
+
+## Ticket 180 — Prestaties op een telefoon
+
+- **Type:** performance
+- **Afhankelijk van:** NIETS voor het meetdeel — zie hieronder. Alleen het
+  bijstellen wacht op T177/T179.
+- **DEEL A — meten, en dat kan vandaag al.** `composer.render()` staat buiten
+  de `spelActief`-tak, dus de volledige renderpijplijn draait nu al elke frame
+  op de telefoon: scene, bloom, schaduwen, de hele nabewerking. Alleen de
+  simulatie staat stil. **Open dus de live URL op het toestel en kijk wat het
+  beeld doet**, nog vóór er iets gebouwd is. Drie metingen, elk met een andere
+  kwaliteitspreset (de knoppen staan al rechtsboven in het startscherm):
+  framerate, en of het toestel warm wordt.
+  - Dit is de goedkoopste risicoreductie van de hele ronde. Kan de telefoon de
+    scene niet renderen, dan is een besturingsschema bouwen weggegooid werk
+    tot dat opgelost is.
+  - Let op: zonder pointer lock staat de HUD uit, dus de perf-overlay (F3)
+    is nu niet bereikbaar op mobiel. Voor deel A volstaat het blote oog —
+    "vloeiend / schokkerig / diavoorstelling" is genoeg om de vraag te
+    beantwoorden.
+- **DEEL B — bijstellen, ná de meting.**
+  - Op een touch-apparaat standaard de preset `laag` kiezen, tenzij de speler
+    zelf al iets gekozen heeft (die keuze staat al in localStorage, T75-patroon).
+  - Meten, dan pas bijstellen: eerst vaststellen wat er werkelijk knelt
+    (pixelRatio, bloom, schaduwen, aantal ondoden) voordat er iets omlaag gaat.
+- **Eerlijke beperking.** **Dit is niet vanuit de ontwikkelomgeving te meten.**
+  Er is geen telefoon beschikbaar; de headless Chromium hier zegt niets over
+  een mobiele GPU. De meting hoort op het toestel van de eigenaar, met de
+  bestaande perf-overlay (F3 bestaat niet op mobiel — die moet dus ook via een
+  knop of een querystring bereikbaar worden).
+- **Acceptatie:** een speelbare framerate op het toestel van de eigenaar, met
+  de meting erbij. Zonder die meting is dit ticket niet af.
+
+---
+
+## Ticket 181 — Publiceren en speeltesten
+
+- **Type:** proces
+- **Werk.** Controleren of de Pages-URL live is, en zo niet: Pages aanzetten
+  op `main` / root. Daarna een korte speeltestronde per ticket, op het echte
+  toestel.
+- **Twee dingen die tijd kosten als je ze niet weet.** Een Pages-deploy staat
+  er pas een halve tot hele minuut ná de push, en mobiele browsers cachen
+  agressief — een update zie je soms pas na een harde refresh of met een
+  querystring achter de URL (`?v=2`). Wie dat niet weet, zoekt een bug in code
+  die het toestel nog niet eens geladen heeft.
+- **Waarom een eigen ticket.** De hele ronde leunt op feedback die alleen de
+  eigenaar kan geven. Elke geautomatiseerde test hier toetst *mechaniek*, niet
+  *of het lekker speelt met twee duimen* — en dat laatste is precies waar een
+  touch-besturing op staat of valt.
+
+---
+
 ## Later (na v1, alleen indien gewenst)
 - Meer kamers/grachtenzones, meer ondood-types, meer upgrades
 - Pas over gedeelde engine nadenken als beide games stabiel zijn
