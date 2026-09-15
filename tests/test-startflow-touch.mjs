@@ -94,14 +94,53 @@ check('De moeilijkheidskeuze is gewoon aangekomen', na.moeilijkheid === 'Amsterd
 // --- 3. Alle vijf de knoppen zijn er ook echt ----------------------------
 const knoppen = await page.evaluate(() => {
   const out = {};
-  for (const id of ['touchStick', 'touchVuur', 'touchContext', 'touchWissel', 'touchMes', 'touchPauze']) {
+  for (const id of ['touchStick', 'touchVuur', 'touchContext', 'touchWissel', 'touchPauze']) {
     const el = document.getElementById(id);
     out[id] = !!el && getComputedStyle(el).display !== 'none';
   }
   return out;
 });
-check('Stick, vuurknop, contextknop, wisselknop, mesknop en pauzeknop staan allemaal op het scherm',
+check('Stick, vuurknop, contextknop, wisselknop en pauzeknop staan allemaal op het scherm',
   Object.values(knoppen).every(Boolean), knoppen);
+
+/* --- 3b. Zonder mesknop moet VUUR het mes doen --------------------------
+   De mesknop is op verzoek verwijderd. Dat kon alleen omdat
+   `probeerTeSchieten()` zelf al steekt zolang er geen vuurwapen is:
+   `if (!wapenStaat) { steekMes(); return; }`.
+
+   Dat is geen detail maar de voorwaarde: het mes is het STARTwapen, dus
+   zonder dat vangnet is golf 1 op een telefoon onspeelbaar — je kunt dan
+   niets raken, dus geen geld verdienen, dus nooit een wapen kopen.
+
+   Deze test is de juiste plek omdat het spel hier nog in zijn BEGINstaat
+   is: net gestart, niets gekocht, mes actief. Elders in de suite zijn er al
+   wapens gekocht en is die situatie niet meer echt na te bootsen. */
+const beginstaat = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  return { wapenStaat: d.wapenStaat, actiefWapen: d.actiefWapenNaam };
+});
+check('Bij het starten is er nog geen vuurwapen — het mes is het actieve wapen',
+  beginstaat.wapenStaat === null || beginstaat.wapenStaat === undefined, beginstaat);
+
+const vuurknopSteekt = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.mesStaat.cooldownTimer = 0;
+  const voor = d.mesStaat.cooldownTimer;
+  const el = document.getElementById('touchVuur');
+  const r = el.getBoundingClientRect();
+  const x = r.left + r.width / 2, y = r.top + r.height / 2;
+  const maak = () => new Touch({ identifier: 9, target: el, clientX: x, clientY: y, pageX: x, pageY: y });
+  el.dispatchEvent(new TouchEvent('touchstart', {
+    cancelable: true, bubbles: true,
+    touches: [maak()], targetTouches: [maak()], changedTouches: [maak()],
+  }));
+  el.dispatchEvent(new TouchEvent('touchend', {
+    cancelable: true, bubbles: true, touches: [], targetTouches: [], changedTouches: [maak()],
+  }));
+  return { voor, na: d.mesStaat.cooldownTimer };
+});
+check('Een tik op VUUR steekt met het mes zolang er geen vuurwapen is — zonder dit is golf 1 op een telefoon onspeelbaar',
+  vuurknopSteekt.voor === 0 && vuurknopSteekt.na > 0, vuurknopSteekt);
 
 // --- 4. Pauzeren en hervatten, allebei met een tik -----------------------
 await page.evaluate(() => {

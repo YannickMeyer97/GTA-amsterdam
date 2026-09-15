@@ -577,24 +577,25 @@
      echt vrije ruimte, en daar past dit precies in.
      `test-contextknop.mjs` meet alle rechthoeken en faalt op elke
      overlap, zodat dit niet terug kan sluipen. */
-  #touchWissel, #touchMes {
+  #touchWissel {
     width: 58px;
     height: 58px;
     font-size: 24px;
   }
-  /* Feedback-fix: mes en wapenwissel staan nu BOVEN ELKAAR in plaats van in
-     een rij naast de vuurknop, en de kolom is naar links geschoven.
+  /* Feedback-fix: de mesknop is op touch VERVALLEN, en daarmee is de rij weer
+     kort genoeg om rechtsonder te passen.
 
-     Waarom: in de oude rij (wissel - mes - vuur) zat op duimhoogte nog 10 px
-     en 12 px tussen de knoppen. Er was dus geen plek om je duim neer te
-     zetten om rond te kijken zonder een knop te raken; je kwam altijd op
-     VUUR uit en schoot mee. Nu ligt er een vrije strook van ~160 px tussen
-     de kolom en de vuurknop, precies op de hoogte waar je duim rust.
+     Waarom dat mocht: `probeerTeSchieten()` steekt zelf al met het mes zolang
+     er geen vuurwapen is (`if (!wapenStaat) { steekMes(); return; }`), dus de
+     VUUR-knop dekt golf 1 volledig. Wat je op een telefoon verliest is
+     uitsluitend het steken ná een wapenaankoop — een bewuste keuze van de
+     eigenaar, niet iets wat over het hoofd gezien is. Op toetsenbord blijft
+     `V` gewoon bestaan.
 
-     Recht boven elkaar, niet schuin naar rechts: schuin rechts zou het mes
-     juist ín die strook duwen. */
-  #touchWissel { right: 268px; bottom: 24px; }
-  #touchMes    { right: 268px; bottom: 92px; }
+     De vrije kijkstrook waar dit ticket om begon blijft: met alleen deze
+     knop naast de vuurknop ligt er ~124 px open tussen het schermmidden en
+     de wisselknop, plus 80 px tussen wissel en vuur. */
+  #touchWissel { right: 188px; bottom: 24px; }
   /* De contextknop is een pil met tekst: hij moet leesbaar zijn, want hij
      is het enige dat vertelt wát je koopt of opent. */
   #touchContext {
@@ -647,11 +648,43 @@
      binnen het veilige gebied. `max()` zodat een toestel zónder notch
      gewoon de oorspronkelijke marge houdt. */
   html.touchModus #touchVuur   { right: max(20px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom)); }
-  html.touchModus #touchWissel { right: max(268px, calc(env(safe-area-inset-right) + 248px)); bottom: max(24px, env(safe-area-inset-bottom)); }
-  html.touchModus #touchMes    { right: max(268px, calc(env(safe-area-inset-right) + 248px)); bottom: max(92px, calc(env(safe-area-inset-bottom) + 68px)); }
+  html.touchModus #touchWissel { right: max(188px, calc(env(safe-area-inset-right) + 168px)); bottom: max(24px, env(safe-area-inset-bottom)); }
   html.touchModus #touchContext { right: max(20px, env(safe-area-inset-right)); bottom: max(108px, calc(env(safe-area-inset-bottom) + 90px)); }
   html.touchModus #touchPauze  { left: max(16px, env(safe-area-inset-left)); top: max(62px, calc(env(safe-area-inset-top) + 46px)); }
   html.touchModus #menuLink    { left: max(16px, env(safe-area-inset-left)); top: max(16px, env(safe-area-inset-top)); }
+
+  /* Feedback-fix: het startscherm is op een telefoon te groot — de titel en
+     de koppen zijn op 52 px gemaakt voor een laptopscherm, en de
+     instellingenhoek liep over de tekst eronder heen.
+
+     Alles krimpt hier met ÉÉN transform in plaats van per element. Dat is
+     hier extra verdedigbaar omdat het startscherm vol inline font-sizes zit
+     (moeilijkheidslabel, recordregel, uitlegblok) die een losse font-size-
+     regel gewoon zouden overrulen — hetzelfde dat eerder bij de HUD misging.
+     `transform-origin: top center` + de bestaande `overflow-y: auto` zorgen
+     dat de inhoud bovenaan begint en bereikbaar blijft als hij toch niet past.
+
+     De instellingenhoek krimpt daarbovenop nog eens apart: die stond los
+     rechtsboven en liep bij de oude maat over de titel. */
+  html.touchModus #startscherm > *:not(#instellingenHoek):not(#archiefPaneel) {
+    transform: scale(0.78);
+    transform-origin: top center;
+  }
+  /* De titel is op 52 px gemaakt voor een laptop en bleef zelfs geschaald
+     486 px breed — breed genoeg om ónder de instellingenhoek door te lopen.
+     Gemeten: met 34 px past hij ruim binnen de vrije breedte ernaast. */
+  html.touchModus #startscherm h1 { font-size: 34px; letter-spacing: 1px; margin-bottom: 0; }
+  html.touchModus #startscherm h2 { font-size: 15px; margin-bottom: 8px; }
+  html.touchModus #startscherm .uitleg { padding: 8px 16px; font-size: 14px; line-height: 1.5; margin-bottom: 12px; }
+  html.touchModus #moeilijkheidLabel { margin-bottom: 8px !important; }
+  html.touchModus #instellingenHoek {
+    top: max(8px, env(safe-area-inset-top));
+    right: max(8px, env(safe-area-inset-right));
+    padding: 6px 8px;
+    gap: 5px;
+    transform: scale(0.82);
+    transform-origin: top right;
+  }
 
   /* Feedback-fix: staand pauzeert het spel en vraagt dit scherm om te
      draaien. z-index boven het startscherm (10) en het archiefpaneel (12),
@@ -1112,7 +1145,6 @@
        vast. Alle vier grijzen uit als er niets te doen is. -->
   <div id="touchContext" class="touchActie"><span aria-hidden="true">⚡</span><span id="touchContextLabel">Herladen</span></div>
   <div id="touchWissel" class="touchActie" title="Wissel van wapen">🔄</div>
-  <div id="touchMes" class="touchActie" title="Steken">🔪</div>
   <div id="touchPauze" class="touchActie" title="Pauze">⏸</div>
 </div>
 <!-- Feedback-fix: staand is dit spel onspeelbaar — de knoppen staan op
@@ -8072,7 +8104,6 @@ function koppelActieknop(id, actie) {
 
 const touchContextKnop = koppelActieknop('touchContext', () => bepaalTouchContext().actie());
 const touchWisselKnop = koppelActieknop('touchWissel', wisselWapen);
-const touchMesKnop = koppelActieknop('touchMes', steekMes);
 // Pauze mag NIET door de `uit`-controle heen vallen: hij is altijd actief.
 // Pauze staat bewust NIET in werkTouchActieknoppenBij(): hij krijgt dus nooit
 // de `uit`-klasse en is altijd bruikbaar. Vandaar ook geen const-binding — er
@@ -8098,8 +8129,6 @@ function werkTouchActieknoppenBij() {
   }
   zetActieknopActief(touchContextKnop, context.actief);
   zetActieknopActief(touchWisselKnop, wisselWapenMogelijk());
-  // Het mes kent geen bezitsvoorwaarde, alleen zijn eigen cooldown.
-  zetActieknopActief(touchMesKnop, mesStaat.cooldownTimer <= 0);
 }
 
 /* De besturingsuitleg moet meeveranderen met de modus. Twee plekken noemden

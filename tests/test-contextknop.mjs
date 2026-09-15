@@ -285,24 +285,31 @@ const naWissel = await page.evaluate(() => window.AmsterdamUndeadDebug.actiefWap
 check('Een tik op de wisselknop wisselt echt van wapen',
   naWissel !== wisselTwee.wapenVoor, { voor: wisselTwee.wapenVoor, na: naWissel });
 
-const mesVoor = await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  d.mesStaat.cooldownTimer = 0;
-  d.werkTouchActieknoppenBij();
-  return { uit: document.getElementById('touchMes').classList.contains('uit') };
-});
-check('Zonder cooldown is de mesknop actief', mesVoor.uit === false, mesVoor);
-await tik('#touchMes');
-const mesNa = await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  const cooldown = d.mesStaat.cooldownTimer;
-  d.werkTouchActieknoppenBij();
-  return { cooldown, uit: document.getElementById('touchMes').classList.contains('uit') };
-});
-check('Een tik op de mesknop steekt echt en zet de cooldown',
-  mesNa.cooldown > 0, mesNa);
-check('Tijdens de mes-cooldown grijst de knop uit',
-  mesNa.uit === true, mesNa);
+/* --- 7b. Er is GEEN mesknop op touch ------------------------------------
+   Verwijderd op verzoek van de eigenaar, na speeltest: hij vond het icoon
+   niet mooi en de knoppenrij te vol.
+
+   Dat mocht, en dat is niet vanzelfsprekend — het mes is namelijk het
+   STARTwapen, dus zonder ergens te kunnen steken zou golf 1 onspeelbaar
+   zijn. Wat dit redt staat in `probeerTeSchieten()`:
+   `if (!wapenStaat) { steekMes(); return; }` — de VUUR-knop steekt zelf al
+   zolang er geen vuurwapen is. Wat je op een telefoon kwijtraakt is
+   uitsluitend het steken NA een wapenaankoop.
+
+   Deze twee checks bewaken precies dat: de knop is weg, en de vangnet-regel
+   die dat draaglijk maakt werkt nog. Sneuvelt die regel ooit, dan is golf 1
+   op een telefoon stuk — en dat wil je niet pas bij een speeltest merken. */
+const geenMesknop = await page.evaluate(() => ({
+  bestaat: !!document.getElementById('touchMes'),
+  knoppen: [...document.querySelectorAll('#touchBediening .touchActie')].map(el => el.id),
+}));
+check('De mesknop bestaat niet meer op touch',
+  geenMesknop.bestaat === false && !geenMesknop.knoppen.includes('touchMes'), geenMesknop);
+
+// De bijbehorende gedragstoets (VUUR steekt zonder vuurwapen) staat in
+// test-startflow-touch.mjs, want daar is het spel nog in zijn BEGINstaat —
+// hier zijn inmiddels twee wapens gekocht en is die situatie niet meer echt
+// na te bootsen zonder de staat te forceren.
 
 /* --- 8. Pauzeren zonder toetsenbord -------------------------------------- */
 const pauzeVoor = await page.evaluate(() => window.AmsterdamUndeadDebug.besturingActief());
@@ -324,12 +331,12 @@ const dragTest = await page.evaluate(() => {
   d.speler.yaw = 0; d.speler.pitch = 0;
   return { yawVoor: d.speler.yaw };
 });
-await raakElement('#touchMes', 'touchstart', 77);
+await raakElement('#touchWissel', 'touchstart', 77);
 const naKnopAanraking = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   return { kijkVinger: d.touchKijkVinger, yaw: d.speler.yaw, stickVinger: d.touchStick.vinger };
 });
-await raakElement('#touchMes', 'touchend', 77);
+await raakElement('#touchWissel', 'touchend', 77);
 check('Een duim op een actieknop start geen kijk-drag en steelt de stick niet',
   naKnopAanraking.kijkVinger === null && naKnopAanraking.stickVinger === null
   && naKnopAanraking.yaw === dragTest.yawVoor, { dragTest, naKnopAanraking });
@@ -353,7 +360,7 @@ const indeling = await page.evaluate(() => {
   d.speler.positie.set(punt.positie.x, punt.positie.y ?? 0, punt.positie.z);
   d.updateInteracties();
   d.werkTouchActieknoppenBij();
-  const ids = ['touchVuur', 'touchMes', 'touchWissel', 'touchContext', 'touchPauze',
+  const ids = ['touchVuur', 'touchWissel', 'touchContext', 'touchPauze',
     'hudUI', 'menuLink', 'ammoUI', 'hulpUI', 'minimapUI', 'interactiePrompt'];
   const rects = {};
   for (const id of ids) {
@@ -372,10 +379,10 @@ const indeling = await page.evaluate(() => {
   }
   const buiten = namen.filter(n => rects[n][0] < 0 || rects[n][1] < 0
     || rects[n][2] > window.innerWidth || rects[n][3] > window.innerHeight);
-  const knoppen = ['touchVuur', 'touchMes', 'touchWissel', 'touchContext', 'touchPauze'];
+  const knoppen = ['touchVuur', 'touchWissel', 'touchContext', 'touchPauze'];
   return { rects, botsingen, buiten, alleKnoppenAanwezig: knoppen.every(k => k in rects) };
 });
-check('Alle vijf de touch-knoppen staan op het scherm bij een liggend telefoonformaat',
+check('Alle vier de touch-knoppen staan op het scherm bij een liggend telefoonformaat',
   indeling.alleKnoppenAanwezig, indeling.rects);
 check('Geen enkel vast UI-element overlapt een ander op 740×360',
   indeling.botsingen.length === 0, indeling.botsingen);
