@@ -56,7 +56,7 @@ sluiper (uitsluitend tijdens een Mistgolf, stil, ingedoken). Elk type heeft een 
 aanvalsprofiel (`AANVAL_PROFIELEN`: windup, herstel, schade, bereik) en een
 wind-up-state-machine (`aanvalStaat`: jaag → windup → herstel) met zichtbare/hoorbare
 tells (arm omhoog, oogpuls, grom). Cosmetische variatie zit los van het type in
-`VARIATIE_PROFIELEN` (mager, gebocheld, eenarmig, ingedokenKop, …) en wordt gecombineerd
+`VARIATIE_PROFIELEN` (mager, gebocheld, ingedokenKop, …) en wordt gecombineerd
 via `kiesOndodeTraits()`.
 
 **Golf- en spawnlogica.** Threat-budget in plaats van kill-aantal: `golfBudget(golf) =

@@ -5872,7 +5872,18 @@ de modus past (r794 en r864 noemen nu letterlijk WASD en muis), en het besef
 dat Web Audio op iOS de hardware mute-schakelaar volgt — stil spel is daar
 geen bug.
 
-### T176 — de besturingsgate
+### T176 — de besturingsgate ✅ uitgevoerd (v0.34)
+
+**Nawoord — hoe een brede tekstvervanging een bug maakte.** De veertien
+plekken omzetten ging met één `replace` over het hele bestand, en die raakte
+ook een regel bínnen `zetBesturingModus()`. Die functie zette daardoor eerst
+de modus op `touch` en riep dán de afsluitcode aan, die vervolgens de
+touch-tak nam, geen touch-sessie zag en niets deed: **pointer lock bleef
+vastzitten bij het wisselen.** Twee lessen. Eén: bij een moduswissel sluit je
+eerst de OUDE besturing af en zet je pas daarna de modus om — anders kijkt de
+afsluitcode al naar de nieuwe wereld. Twee: een brede tekstvervanging over een
+bestand van 17.000 regels raakt ook de code die je net geschreven hebt; tel
+achteraf hoeveel treffers er waren en kijk ze stuk voor stuk na.
 
 **Detecteer het apparaat niet, reageer op de invoer.** UA-sniffing is
 onbetrouwbaar (iPad meldt zich als Mac), `maxTouchPoints` is waar op
@@ -5925,6 +5936,37 @@ systeembalk, en dat wordt standaard over het hoofd gezien.
 **T180 is niet af zonder meting op een echt toestel.** De headless Chromium
 hier zegt niets over een mobiele GPU. Wie dit ticket "klaar" meldt op basis
 van een schatting, levert niets.
+
+---
+
+### Ticket 182 — Het 'eenarmige' profiel verwijderd ✅ uitgevoerd
+
+**Buiten de mobiele ronde om**, op verzoek van de eigenaar. Volledig ticket
+in `ROADMAP.md`.
+
+**Meer dan een tabelregel.** Zeven `if (delen.armL)`-guards in de
+animatiecode bestonden uitsluitend om deze variant op te vangen. Die zijn
+allemaal ontrold naar hun kale schrijfactie, want `delen.armL` is
+sindsdien onvoorwaardelijk aanwezig — een guard om een altijd-waar
+conditie is geen defensieve code meer, het is ruis.
+
+**Les uit T176 toegepast: geen brede tekstvervanging meer over
+guard-regels.** Bij T176 raakte een brede `replace` per ongeluk een zojuist
+geschreven regel (de moduswissel-bug). Deze keer zijn de zeven guard-regels
+één voor één op exact regelnummer vervangen en individueel geverifieerd
+tegen de bronregel vóór het schrijven — een assert per regel, geen
+globale substitutie.
+
+**Historische documentatie blijft historisch.** Tickets 19/31/126
+beschrijven wat er destijds gebouwd is; waar dat door de verwijdering
+feitelijk onjuist werd, staat er een korte, gedateerde vervolgnoot bij
+(zowel hier als in `ARCHITECTURE_NOTES.md`) in plaats van een stille
+herschrijving.
+
+**Geverifieerd, niet aangenomen.** De testbug die dit profiel veroorzaakte
+kwam voor bij 19% van de spawns. Na de verwijdering: 10 herhaalde volledige
+runs van `test-ondode-model-v2.mjs`, allemaal groen — de eerdere
+instabiliteit is aantoonbaar weg, niet alleen "zou nu moeten".
 
 ---
 

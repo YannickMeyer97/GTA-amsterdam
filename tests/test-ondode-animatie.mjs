@@ -102,22 +102,10 @@ check('Alleen de strompelaar krijgt de romp-wiebel (rotation.z != 0), normaal ni
 check('De wiebel zit NIET meer op de root (rotation.z blijft 0 daar)',
   strompel.strompelRootZ === 0, strompel);
 
-// --- 4. Eenarmig-profiel: animatie crasht niet zonder armL ----------------
-const eenarmig = await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  for (const o of [...d.ondoden]) d.doodOndode(o);
-  const traits = { profiel: 'eenarmig', kromme: false, slepend: 0, armVerschil: 0, lengte: 1, strompelt: true };
-  const o = d.spawnOndode(0, 'normaal', traits);
-  o.groep.position.set(0, 0, -10);
-  d.speler.positie.set(0, 0, 0);
-  let fout = null;
-  try { for (let i = 0; i < 10; i++) d.updateOndoden(0.1); } catch (e) { fout = String(e); }
-  const uit = { fout, armLOntbreekt: o.delen.armL === undefined, armRDraait: o.delen.armR.rotation.x !== d.ARM_RUST_ROTATIE_X };
-  d.doodOndode(o);
-  return uit;
-});
-check('Eenarmig + strompelt: updateOndoden() crasht niet zonder armL, armR animeert gewoon door',
-  eenarmig.fout === null && eenarmig.armLOntbreekt && eenarmig.armRDraait, eenarmig);
+// (Ticket 182 verwijderde het 'eenarmig'-profiel; de test die hier stond —
+// "animatie crasht niet zonder armL" — verviel met het profiel zelf.
+// `delen.armL` is nu altijd aanwezig, dus is er geen apart randgeval meer
+// om hier te bewaken.)
 
 // --- 5. Perf-notitie: 14 ondoden, 20 ticks — geen crash, indicatieve tijd -
 const perf = await page.evaluate(() => {

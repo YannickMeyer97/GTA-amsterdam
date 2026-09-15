@@ -30,7 +30,7 @@ import { PNG } from 'pngjs';
 
 const { check, report } = makeChecker();
 
-// Vaste traits: geen 'eenarmig'/kromme-rug/lengteverschil-ruis in de crop.
+// Vaste traits: geen kromme-rug/lengteverschil-ruis in de crop.
 const TRAITS = { profiel: 'standaard', kromme: false, slepend: 0, armVerschil: 0, lengte: 1, strompelt: false };
 const HERHALINGEN = 10, STAP_DT = 0.05, STAPPEN_PER_METING = 6;   // 10 metingen over 3s (~1 rustpuls-periode)
 

@@ -59,6 +59,11 @@ const spawnStructuur = await page.evaluate(() => {
     isSkinnedMesh: delen.skinnedMesh.isSkinnedMesh === true,
     skeletonBoneCount: delen.skeleton.bones.length,
     skeletonBoneNamen: delen.skeleton.bones.map(b => b.name),
+    // Ticket 182 verwijderde het 'eenarmig'-profiel (miste de linkerarm) —
+    // `delen.armL` is sindsdien altijd een Bone, zonder uitzondering. Vóór
+    // T182 was dat 81% van de tijd waar (het profiel kwam 19% van de spawns
+    // voor), en die 19% liet deze test af en toe crashen — zie het nawoord
+    // bij T176 in ROADMAP.md voor de volledige geschiedenis.
     armLIsBone: delen.armL.isBone === true,
     armRIsBone: delen.armR.isBone === true,
     beenLIsBone: delen.beenL.isBone === true,

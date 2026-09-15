@@ -204,8 +204,6 @@ const v2Profielen = await page.evaluate(() => {
     if (!o) { uit[profiel] = { fout }; continue; }
     const g = o.delen.skinnedMesh.geometry;
     g.computeBoundingBox();
-    // Loopanimatie draaien: een bot zonder gebonden vertices (eenarmig) mag
-    // geen renderfout of NaN opleveren.
     o.groep.position.set(0, 0, -10);
     try { for (let i = 0; i < 5; i++) d.updateOndoden(0.05); } catch (e) { fout = String(e); }
     uit[profiel] = {
@@ -219,16 +217,17 @@ const v2Profielen = await page.evaluate(() => {
   }
   return uit;
 });
-check('V2: alle zeven variatieprofielen bouwen en animeren zonder fout',
+check('V2: alle variatieprofielen bouwen en animeren zonder fout',
   Object.values(v2Profielen).every(p => p.fout === null), v2Profielen);
 check("V2: 'mager' krijgt rompFactor 0,8 + dunnere armen, 'breed' rompFactor 1,2 (exact VARIATIE_PROFIELEN)",
   v2Profielen.mager.rompBreedte === 0.8 && v2Profielen.mager.armDikte === 0.85 &&
   v2Profielen.breed.rompBreedte === 1.2 && v2Profielen.standaard.rompBreedte === 1, v2Profielen);
 check("V2: 'gebocheld' levert daadwerkelijk een bochel op",
   v2Profielen.gebocheld.heeftBochel === true && v2Profielen.standaard.heeftBochel === false, v2Profielen);
-check("V2: alleen 'eenarmig' mist delen.armL; het SKELET houdt al zijn botten (een bot zonder gebonden vertices is onschuldig)",
-  v2Profielen.eenarmig.heeftArmL === false &&
-  Object.entries(v2Profielen).every(([n, p]) => n === 'eenarmig' || p.heeftArmL === true) &&
+// Ticket 182 verwijderde het 'eenarmig'-profiel — delen.armL is sindsdien
+// bij ELK profiel aanwezig, zonder uitzondering.
+check("V2: elk profiel heeft delen.armL (Ticket 182: 'eenarmig' bestaat niet meer), het skelet houdt zijn 9 botten",
+  Object.values(v2Profielen).every(p => p.heeftArmL === true) &&
   Object.values(v2Profielen).every(p => p.botAantal === 9), v2Profielen);
 
 // Regressie-anker: de type-definities zelf mogen door fase 5 NIET zijn

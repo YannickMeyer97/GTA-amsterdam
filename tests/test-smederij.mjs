@@ -706,7 +706,7 @@ const explosieGating = await page.evaluate(() => {
   d.camera.updateMatrixWorld(true);
 
   // kiesOndodeTraits() (het default 3e argument van spawnOndode()) loot een
-  // WILLEKEURIGE lengte (0,82x-1,18x) en houding (kromme rug, eenarmig...)
+  // WILLEKEURIGE lengte (0,82x-1,18x) en houding (kromme rug, gebocheld...)
   // per ondode — bij een korte/kromme "doel" kan de vaste horizontale
   // schiet()-raycast (yaw=0, pitch=0) zijn hitbox soms net missen. Expliciete,
   // vaste traits maken de rechtstreekse treffer hier deterministisch.
@@ -762,7 +762,7 @@ const doorboring = await page.evaluate(() => {
   d.WAPEN_RATELAAR.spreadNdc = 0;
 
   // kiesOndodeTraits() (het default 3e argument van spawnOndode()) loot een
-  // WILLEKEURIGE lengte (0,82x-1,18x) en houding (kromme rug, eenarmig...)
+  // WILLEKEURIGE lengte (0,82x-1,18x) en houding (kromme rug, gebocheld...)
   // per ondode — bij een korte/kromme A kan de vaste horizontale schiet()-
   // raycast (yaw=0, pitch=0) zijn hitbox soms net missen en in plaats daarvan
   // dieper doorschieten naar B (het EIGENLIJKE doorboringspad, maar dan al

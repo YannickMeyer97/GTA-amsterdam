@@ -95,11 +95,11 @@ const contract = await page.evaluate((TYPES) => {
   }
   return slecht;
 }, TYPES);
-check("Alle 28 type x profiel-combinaties: kopProxy is 'kop' met straal 0.18, lichaamProxy bestaat",
+const aantalCombinaties = await page.evaluate(() => Object.keys(window.AmsterdamUndeadDebug.VARIATIE_PROFIELEN).length) * TYPES.length;
+check(`Alle ${aantalCombinaties} type x profiel-combinaties: kopProxy is 'kop' met straal 0.18, lichaamProxy bestaat`,
   contract.length === 0, contract);
 
-// --- 4. Raycast-sweep: headshot per type x 3 profielen, en de rechterarm
-// blijft raakbaar op het eenarmige profiel ---------------------------------
+// --- 4. Raycast-sweep: headshot per type x 2 profielen -------------------
 function mikCode(type, profielTraits, mikX, mikY) {
   return `
     const d = window.AmsterdamUndeadDebug;
@@ -129,34 +129,16 @@ function mikCode(type, profielTraits, mikX, mikY) {
 }
 
 for (const type of TYPES) {
-  for (const profiel of ['mager', 'gebocheld', 'eenarmig']) {
+  for (const profiel of ['mager', 'gebocheld']) {
     const kop = await page.evaluate(new Function(mikCode(type, vasteTraits(profiel), 0, 1.58)));
     check(`${type} x ${profiel}: headshot op (0, 1.58) blijft slagen (schade 2)`, kop.schade === 2, kop);
   }
-  const arm = await page.evaluate(new Function(mikCode(type, vasteTraits('eenarmig'), 0.24, 1.13)));
-  check(`${type} x eenarmig: de rechterarm (0.24, 1.13) blijft een lichaamstreffer (schade 1)`, arm.schade === 1, arm);
 }
 
-// --- 5. Eenarmig-profiel: delen.armL ontbreekt, en de samengestelde
-// geometrie heeft minder vertices dan het standaard-profiel (armGeoL +
-// handGeoL worden simpelweg niet toegevoegd) -------------------------------
-const eenarmig = await page.evaluate(({ traitsStr, standaardStr }) => {
-  const d = window.AmsterdamUndeadDebug;
-  for (const o of [...d.ondoden]) d.doodOndode(o);
-  const standaard = d.spawnOndode(0, 'normaal', eval(`(${standaardStr})`));
-  const vertexStandaard = standaard.delen.skinnedMesh.geometry.attributes.position.count;
-  d.doodOndode(standaard);
-  const o = d.spawnOndode(0, 'normaal', eval(`(${traitsStr})`));
-  const uit = {
-    armL: o.delen.armL === undefined, armR: !!o.delen.armR,
-    vertexEenarmig: o.delen.skinnedMesh.geometry.attributes.position.count,
-    vertexStandaard,
-  };
-  d.doodOndode(o);
-  return uit;
-}, { traitsStr: vasteTraits('eenarmig'), standaardStr: vasteTraits('standaard') });
-check('Eenarmig: delen.armL ontbreekt, delen.armR bestaat, minder vertices dan het standaard-profiel',
-  eenarmig.armL && eenarmig.armR && eenarmig.vertexEenarmig < eenarmig.vertexStandaard, eenarmig);
+// (Ticket 182 verwijderde het 'eenarmig'-profiel; de raycast-check op de
+// rechterarm en de eigen vertex-telling hieronder verwezen daar specifiek
+// naar en zijn met het profiel meegesneuveld. `delen.armL` bestaat nu
+// onvoorwaardelijk, dus dat is ook geen apart randgeval meer.)
 
 // --- 6. Stats blijven byte-voor-byte ongewijzigd --------------------------
 const stats = await page.evaluate(() => {

@@ -7050,22 +7050,97 @@ const speler = {
   snelheid: 4.5,
 };
 
+/* --- Ticket 176: de besturingsmodus ---------------------------------------
+   Tot dit ticket hing ALLES aan Pointer Lock: op vijftien plekken stond
+   `document.pointerLockElement === renderer.domElement`, en die vergelijking
+   bepaalde of de wereld simuleerde, of de HUD zichtbaar was, of je kon
+   schieten en of R/T/Q/V iets deden. Pointer Lock bestaat niet op iOS Safari
+   en is mobiel in de praktijk onbruikbaar — op een telefoon faalde
+   `requestPointerLock()` dus stil en gebeurde er helemaal niets.
+
+   HET SPEL KIEST NIET OP GROND VAN WAT HET TOESTEL BEWEERT TE ZIJN, MAAR VAN
+   WAT DE SPELER DOET. User-agent sniffen liegt (iPad Safari meldt zich als
+   een desktop-Mac), `navigator.maxTouchPoints > 0` is óók waar op een
+   touchscreen-laptop waar je juist de muis wilt, en `(pointer: coarse)`
+   beschrijft alleen het PRIMAIRE invoerapparaat — een telefoon aan een
+   bluetooth-muis valt daar verkeerd uit. Het eerste echte invoerevent zet de
+   modus, en wisselen mag op elk moment. Geen apparatenlijst die veroudert.
+
+   HARDE EIS: in de muismodus is de gate hieronder LETTERLIJK de vergelijking
+   van vóór dit ticket. Tien testbestanden en `helpers.mjs` mocken
+   `document.pointerLockElement` om precies deze uitkomst te sturen; zodra het
+   desktoppad iets anders gaat gebruiken, valt de hele suite om. De abstractie
+   komt er dus BOVENOP, hij vervangt niets.
+
+   En let op `openVoorVisueleMeting()` in de tests: die mockt bewust GEEN
+   pointer lock, zodat de wereld stilstaat tijdens visuele metingen. Daarom
+   begint `touchSessieActief` op false en zet niets hem aan behalve een echte
+   aanraking — anders gaan alle visuele basislijnmetingen zwerven. */
+let besturingModus = 'muis';     // 'muis' | 'touch'
+let touchSessieActief = false;   // alleen betekenisvol in de touch-modus
+
+function zetBesturingModus(modus) {
+  if (modus === besturingModus) return;
+  // LET OP DE VOLGORDE: eerst de OUDE besturing afsluiten, dan pas de modus
+  // omzetten. Andersom kijkt de afsluitcode al naar de nieuwe modus en laat
+  // ze de oude gate openstaan — pointer lock bleef dan vastzitten terwijl de
+  // speler al op touch was overgestapt.
+  if (besturingModus === 'muis') {
+    if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
+  } else if (touchSessieActief) {
+    touchSessieActief = false;
+    zetBesturingActief(false);
+  }
+  besturingModus = modus;
+}
+
+// DE gate. Alles wat vroeger rechtstreeks naar pointer lock keek, gaat nu
+// hierdoorheen.
+function besturingActief() {
+  return besturingModus === 'touch'
+    ? touchSessieActief
+    : document.pointerLockElement === renderer.domElement;
+}
+
+// Het spel starten of hervatten vanuit het startscherm, in beide modi.
+function startBesturing() {
+  if (besturingModus === 'touch') {
+    touchSessieActief = true;
+    zetBesturingActief(true);
+  } else {
+    renderer.domElement.requestPointerLock();
+  }
+}
+
+// Terug naar het startscherm/eindscherm. In de muismodus doet het loslaten van
+// pointer lock dat via `pointerlockchange`; in de touch-modus is er geen
+// browser-event, dus moet het hier expliciet.
+function verlaatBesturing() {
+  if (besturingModus === 'touch') {
+    if (!touchSessieActief) return;
+    touchSessieActief = false;
+    zetBesturingActief(false);
+  } else if (document.pointerLockElement === renderer.domElement) {
+    document.exitPointerLock();
+  }
+}
+
 const ingedrukt = {};
 addEventListener('keydown', e => {
   ingedrukt[e.code] = true;
   // R herlaadt. !e.repeat voorkomt dat ingedrukt houden steeds opnieuw
   // herladen() aanroept; alleen binnen pointer lock, zelfde patroon als
   // de T/X-acties in defend-national-monument.html.
-  if (e.code === 'KeyR' && !e.repeat && document.pointerLockElement === renderer.domElement) {
+  if (e.code === 'KeyR' && !e.repeat && besturingActief()) {
     herladen();
   }
   // T activeert het dichtstbijzijnde interactiepunt (deur/ammo-kist/werkbank/...).
   // Zelfde !e.repeat + pointer-lock-patroon als in defend-national-monument.html.
-  if (e.code === 'KeyT' && !e.repeat && document.pointerLockElement === renderer.domElement) {
+  if (e.code === 'KeyT' && !e.repeat && besturingActief()) {
     activeerHuidigeInteractie();
   }
   // Q wisselt van wapen (v0.6), alleen als De Ratelaar al gekocht is.
-  if (e.code === 'KeyQ' && !e.repeat && document.pointerLockElement === renderer.domElement) {
+  if (e.code === 'KeyQ' && !e.repeat && besturingActief()) {
     wisselWapen();
   }
   // Ticket 133 (Ronde 10, §12.3): V steekt met het mes — een ACTIE, geen
@@ -7073,7 +7148,7 @@ addEventListener('keydown', e => {
   // nooit aan). Altijd beschikbaar, los van welk vuurwapen actief is; zelfde
   // !e.repeat + pointer-lock-patroon als R/T/Q. steekMes() bewaakt zijn eigen
   // cooldown, dus geen extra gate hier nodig.
-  if (e.code === 'KeyV' && !e.repeat && document.pointerLockElement === renderer.domElement) {
+  if (e.code === 'KeyV' && !e.repeat && besturingActief()) {
     steekMes();
   }
   // Ticket 117 (Zombie V2 fase 0): F3 toggelt het tijdelijke perf-overlay.
@@ -7199,7 +7274,7 @@ document.getElementById('speelDoorKnop').addEventListener('click', () => {
   // accurate "Boot over N golven" voor het volgende venster.
   updateOntsnappingVensterHUD();
   initGeluid();
-  renderer.domElement.requestPointerLock();
+  startBesturing();   // Ticket 176
 });
 
 // Ticket 43: moeilijkheidsgraden — de keuze is eenmalig per run (een
@@ -7246,8 +7321,11 @@ startscherm.addEventListener('click', () => {
   renderer.domElement.requestPointerLock();
 });
 
-document.addEventListener('pointerlockchange', () => {
-  const actief = document.pointerLockElement === renderer.domElement;
+// Ticket 176: de body van de oude `pointerlockchange`-handler, nu een functie
+// die BEIDE modi aanroepen. De muismodus doet dat via het browser-event
+// hieronder (ongewijzigd gedrag); de touch-modus roept hem rechtstreeks aan,
+// want daar is geen event.
+function zetBesturingActief(actief) {
   hulpUI.style.display = actief ? 'block' : 'none';
   richtkruis.style.display = actief ? 'block' : 'none';
   ammoUI.style.display = actief ? 'block' : 'none';
@@ -7273,10 +7351,18 @@ document.addEventListener('pointerlockchange', () => {
     verbergInteractiePrompt();     // geen hangende "druk T"-prompt tijdens pauze
     golfBannerUI.style.opacity = '0';
   }
+}
+
+document.addEventListener('pointerlockchange', () => {
+  // Alleen betekenisvol in de muismodus. Wisselt de speler naar touch, dan
+  // gooit zetBesturingModus() pointer lock los en zou dit event het
+  // startscherm terugzetten terwijl de touch-sessie juist begint.
+  if (besturingModus !== 'muis') return;
+  zetBesturingActief(document.pointerLockElement === renderer.domElement);
 });
 
 addEventListener('mousemove', e => {
-  if (document.pointerLockElement !== renderer.domElement) return;
+  if (besturingModus !== 'muis' || !besturingActief()) return;
   speler.yaw -= e.movementX * MUIS_GEVOELIGHEID_BASIS * muisGevoeligheidFactor;
   speler.pitch -= e.movementY * MUIS_GEVOELIGHEID_BASIS * muisGevoeligheidFactor;
   speler.pitch = Math.max(-1.45, Math.min(1.45, speler.pitch));
@@ -7286,7 +7372,7 @@ addEventListener('mousemove', e => {
 // in probeerTeSchieten regelt het tempo).
 let schietKnopIngedrukt = false;
 addEventListener('mousedown', e => {
-  if (document.pointerLockElement === renderer.domElement && e.button === 0) {
+  if (besturingModus === 'muis' && besturingActief() && e.button === 0) {
     schietKnopIngedrukt = true;
     probeerTeSchieten();
   }
@@ -7353,7 +7439,10 @@ function isVrijePlek(x, z, marge = 0.5) {
 }
 
 function updateSpeler(dt) {
-  if (document.pointerLockElement === renderer.domElement) {
+  // Ticket 176: draait ook in de touch-modus. `ingedrukt` blijft de bron voor
+  // de looprichting; T177 vult die straks vanuit de virtuele stick, zodat
+  // hieronder niets hoeft te veranderen.
+  if (besturingActief()) {
     let stapVooruit = 0, stapZijwaarts = 0;
     if (ingedrukt['KeyW']) stapVooruit += 1;
     if (ingedrukt['KeyS']) stapVooruit -= 1;
@@ -11271,9 +11360,11 @@ const VENSTERS = [
 // verschijning kleurt bovenop de bestaande losse traits. Puur cosmetisch:
 // stats en het hitbox-contract (ontwerpbeslissing 16) blijven ongewijzigd.
 // Marges bewust klein gehouden (±20% op de romp, lengte 0.82–1.18) zodat
-// raycasts betrouwbaar blijven; het hoofd wordt NOOIT verkleind, en
-// 'eenarmig' laat ALTIJD de linkerarm weg — de raycast-regressietests mikken
-// op de rechterarm (x = +0.24), die moet er dus altijd zijn.
+// raycasts betrouwbaar blijven; het hoofd wordt NOOIT verkleind.
+// Ticket 182: het 'eenarmig'-profiel (miste de linkerarm) is verwijderd op
+// verzoek van de eigenaar — voegde weinig toe. Elke ondode heeft sindsdien
+// altijd beide armen; de `delen.armL`-guards die dat elders opving zijn in
+// hetzelfde ticket meegesneuveld (zie updateOndoden()).
 const VARIATIE_PROFIELEN = {
   standaard: {},
   mager:     { rompFactor: 0.8, armDikteFactor: 0.85 },
@@ -11281,7 +11372,6 @@ const VARIATIE_PROFIELEN = {
   gebocheld: { bochel: true, forceerKromme: true },
   lang:      { lengteMin: 1.08, lengteMax: 1.18 },
   kort:      { lengteMin: 0.82, lengteMax: 0.9 },
-  eenarmig:  { mistArmL: true },
 };
 const VARIATIE_PROFIEL_NAMEN = Object.keys(VARIATIE_PROFIELEN);
 function kiesOndodeTraits() {
@@ -12202,14 +12292,10 @@ function maakOndodeModelV2(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeT
   const torsoGeo = bouwV2RompGeometrie(detail, rompBreedte);
   const hoofdGeo = bouwV2HoofdGeometrie(detail);
   // Ticket 126: armlengteverschil per kant, identieke formule als V1.
-  // Het 'eenarmig'-profiel laat ALTIJD de linkerarm weg (delen.armL blijft
-  // undefined) — updateOndoden()/de aanvalcode hebben daar al `if
-  // (delen.armL)`-guards voor, en de raycast-regressietests mikken bewust
-  // op de rechterarm.
   const armLengteL = 1 - traits.armVerschil, armLengteR = 1 + traits.armVerschil;
-  const armGeoL = profiel.mistArmL ? null : bouwV2ArmGeometrie(detail, -1, armLengteL, armDikteFactor);
+  const armGeoL = bouwV2ArmGeometrie(detail, -1, armLengteL, armDikteFactor);
   const armGeoR = bouwV2ArmGeometrie(detail, 1, armLengteR, armDikteFactor);
-  const handGeoL = profiel.mistArmL ? null : bouwV2HandGeometrie(detail, -1, armLengteL);
+  const handGeoL = bouwV2HandGeometrie(detail, -1, armLengteL);
   const handGeoR = bouwV2HandGeometrie(detail, 1, armLengteR);
   const bochelGeo = heeftBochel ? bouwV2BochelGeometrie(detail) : null;
   const buikGeo = vorm.buik ? bouwV2BuikGeometrie(detail) : null;
@@ -12245,8 +12331,8 @@ function maakOndodeModelV2(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeT
     // zoals V1's bochel-materiaal.
     ...(bochelGeo ? [{ boneNaam: 'chest', geometrie: bochelGeo, tint: 0.85 }] : []),
     ...(buikGeo ? [{ boneNaam: 'romp', geometrie: buikGeo, tint: 1 }] : []),
-    ...(armGeoL ? [{ boneNaam: 'armL', geometrie: armGeoL, tint: 1 }] : []),
-    ...(handGeoL ? [{ boneNaam: 'armL', geometrie: handGeoL, tint: 0.92 }] : []),
+    { boneNaam: 'armL', geometrie: armGeoL, tint: 1 },
+    { boneNaam: 'armL', geometrie: handGeoL, tint: 0.92 },
     { boneNaam: 'armR', geometrie: armGeoR, tint: 1 },
     { boneNaam: 'armR', geometrie: handGeoR, tint: 0.92 },
   ]);
@@ -12256,7 +12342,7 @@ function maakOndodeModelV2(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeT
   // in tegenstelling tot V1) en moeten hier expliciet weg.
   for (const g of [beenGeoL, beenGeoR, voetGeoL, voetGeoR, torsoGeo, hoofdGeo,
                    armGeoL, armGeoR, handGeoL, handGeoR, bochelGeo, buikGeo]) {
-    if (g) g.dispose();   // armL/hand/bochel/buik zijn null bij eenarmig resp. types zonder bochel/buik
+    if (g) g.dispose();   // bochel/buik zijn null bij types zonder bochel/buik
   }
 
   // Eén materiaal-instantie voor het HELE lichaam — vertexColors:true zodat
@@ -12361,17 +12447,11 @@ function maakOndodeModelV2(typeInfo = ONDODE_TYPES.normaal, traits = kiesOndodeT
   // ontbreken) blijft vanzelf ongemoeid.
   delen.pelvis = bones.pelvis;
   delen.chest = bones.chest;
-  // Ticket 126: het 'eenarmig'-profiel. De BOT blijft in het skelet staan
-  // (een bone waar geen enkele vertex aan gebonden is, is voor Three.js
-  // volstrekt onschuldig — geverifieerd in test-varianten.mjs), maar
-  // `delen.armL` verdwijnt, precies zoals in V1. Alle schrijvers hebben
-  // daar al een guard voor.
-  if (profiel.mistArmL) delen.armL = undefined;
-  // Ticket 124/125/126: de afgeleide vormparameters expliciet bewaren. Ze
+  // Ticket 124/125: de afgeleide vormparameters expliciet bewaren. Ze
   // zijn niet uit de samengestelde geometrie terug te meten (een bounding
   // box wordt door de ARMEN bepaald, niet door de romp), dus zonder dit veld
   // is "past de Sjouwer-breedte echt toe?" alleen met het oog te toetsen.
-  delen.vormParams = { rompBreedte, rugHoek, armDikteFactor, heeftBochel, heeftBuik: !!vorm.buik, mistArmL: !!profiel.mistArmL };
+  delen.vormParams = { rompBreedte, rugHoek, armDikteFactor, heeftBochel, heeftBuik: !!vorm.buik };
 
   // === Houding (Ticket 124/125/126) ============================================
   // MOET na skinnedMesh.bind() gebeuren: bind() legt de huidige bot-standen
@@ -13570,7 +13650,7 @@ function updateOndoden(dt) {
       // onder 1 = een lange, dreigend vastgehouden telegraaf.
       const windupArmFractie = Math.pow(windupFractie, gang.anticipatieExponent);
       const armNu = ARM_RUST_ROTATIE_X + (AANVAL_ARM_HOEK_WINDUP - ARM_RUST_ROTATIE_X) * windupArmFractie;
-      if (delen.armL) delen.armL.rotation.x = armNu;
+      delen.armL.rotation.x = armNu;
       if (delen.armR) delen.armR.rotation.x = armNu;
       delen.hoofd.rotation.x = delen.hoofd.userData.baseRotX - AANVAL_HOOFD_KANTEL * windupFractie;
       // Ticket 39: oogBasisIntensiteit i.p.v. de hardcoded constante — zo
@@ -13778,7 +13858,7 @@ function updateOndoden(dt) {
       delen.beenR.scale.y = 1 - kniebuigR * KNIE_BUIG_FACTOR;
     }
     // Armen zwaaien in tegenfase t.o.v. het been aan dezelfde kant (Ticket 20).
-    if (delen.armL) delen.armL.rotation.x = ARM_RUST_ROTATIE_X - faseL * BEEN_LOOP_AMPLITUDE * ARM_LOOP_FACTOR;
+    delen.armL.rotation.x = ARM_RUST_ROTATIE_X - faseL * BEEN_LOOP_AMPLITUDE * ARM_LOOP_FACTOR;
     if (delen.armR) delen.armR.rotation.x = ARM_RUST_ROTATIE_X - faseR * BEEN_LOOP_AMPLITUDE * ARM_LOOP_FACTOR;
     // Elleboog-buig-illusie: zelfde principe als de knie hierboven. Arm L
     // volgt -faseL (dus dezelfde fase als been R), dus hergebruikt
@@ -13787,7 +13867,7 @@ function updateOndoden(dt) {
     // in de GEOMETRIE zelf (bouwV2ArmGeometrie), armL/armR se bone-scale
     // wordt door niets anders gebruikt.
     if (delen.pelvis) {
-      if (delen.armL) delen.armL.scale.y = 1 - kniebuigR * ELLEBOOG_BUIG_FACTOR;
+      delen.armL.scale.y = 1 - kniebuigR * ELLEBOOG_BUIG_FACTOR;
       delen.armR.scale.y = 1 - kniebuigL * ELLEBOOG_BUIG_FACTOR;
     }
     // Ticket 31 (Aanval A2): tijdens de eerste helft van 'herstel' zakken de
@@ -13804,7 +13884,7 @@ function updateOndoden(dt) {
         // bij de handoff naar de normale loop-zwaai hierboven. Oog blijft op
         // de lineaire herstelFractie (ongewijzigd) — puur presentatie op de arm.
         const armNu = AANVAL_ARM_HOEK_WINDUP + (ARM_RUST_ROTATIE_X - AANVAL_ARM_HOEK_WINDUP) * easeOutBack(herstelFractie);
-        if (delen.armL) delen.armL.rotation.x = armNu;
+        delen.armL.rotation.x = armNu;
         if (delen.armR) delen.armR.rotation.x = armNu;
         // Ticket 39: ondode.oogBasisIntensiteit i.p.v. de hardcoded constante
         // — als de mist intussen nog actief is, herstelt dit naar 2.6, niet
@@ -13881,7 +13961,7 @@ function updateOndoden(dt) {
       // zichtbaar los van de statisch blijvende arm. armen krijgen nu
       // dezelfde sway/bob als chest, op andere assen dan hun swing
       // (rotation.z/position.y i.p.v. rotation.x), dus geen conflict.
-      if (delen.armL) { delen.armL.rotation.z = chestSwayNu; delen.armL.position.y = delen.armL.userData.baseY + rompBobNu; }
+      delen.armL.rotation.z = chestSwayNu; delen.armL.position.y = delen.armL.userData.baseY + rompBobNu;
       delen.armR.rotation.z = chestSwayNu; delen.armR.position.y = delen.armR.userData.baseY + rompBobNu;
     }
 
@@ -13909,7 +13989,7 @@ function updateOndoden(dt) {
     if (delen.pelvis) delen.pelvis.rotation.y = 0;
     if (delen.chest) {
       delen.chest.rotation.y = 0;
-      if (delen.armL) delen.armL.rotation.y = 0;
+      delen.armL.rotation.y = 0;
       delen.armR.rotation.y = 0;
     }
     if (ondode.flinch) {
@@ -13957,7 +14037,7 @@ function updateOndoden(dt) {
             // Zelfde reden als de sway/bob-fix hierboven: de arm moet met
             // het (chest-gewogen) schoudervlak meetwisten, anders scheurt de
             // schouder zichtbaar los tijdens de flinch.
-            if (delen.armL) { delen.armL.rotation.y = FLINCH_ROMP_TWIST * lichaamFractie; delen.armL.position.y -= dip; }
+            delen.armL.rotation.y = FLINCH_ROMP_TWIST * lichaamFractie; delen.armL.position.y -= dip;
             delen.armR.rotation.y = FLINCH_ROMP_TWIST * lichaamFractie;
             delen.armR.position.y -= dip;
           }
@@ -15305,7 +15385,7 @@ function gameOver() {
   instapActief = false;
   instapTimer = 0;
   herstelFinaleEscalatie();   // Ticket 147: fog terug, ook als de speler tijdens de instap sterft
-  if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
+  verlaatBesturing();   // Ticket 176
 }
 
 // Ticket 71 (v0.20, §8.4.1): onthoudt de laatst GESCHREVEN weergavestaat en
@@ -17179,7 +17259,7 @@ function toonWinScherm() {
   }
   winScherm.style.display = 'flex';
   speelGolfKlaar();   // hergebruikt het bestaande "succes"-geluid, geen nieuw geluid nodig
-  if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
+  verlaatBesturing();   // Ticket 176
 }
 
 // Aangeroepen vanuit startGolf(): onthult onderdelen zodra hun drempelgolf
@@ -17247,7 +17327,7 @@ function gameLoop(nu) {
   // Alles wat de wereld laat "leven" staat stil zolang het spel gepauzeerd is
   // (pointer lock inactief) of voorbij is (game over), zelfde patroon als
   // defend-national-monument.html.
-  const spelActief = document.pointerLockElement === renderer.domElement && !spelStaat.gameOver;
+  const spelActief = besturingActief() && !spelStaat.gameOver;
   if (spelActief) {
     // klok telt ALLEEN tijdens actief spel op: zo is de spel-tijd (o.a. de
     // regen-vertraging en schot-cooldown) niet via pauze te omzeilen (fix #1).
@@ -18386,6 +18466,10 @@ window.AmsterdamUndeadDebug = {
   archiefItemKleur, archiefVoortgangFractie, ARCHIEF_CATEGORIE_ICOON,
   // Ticket 173
   actiefGeluid, archiefSleutelVan, ARCHIEF_KANAAL_PREFIX, speelSchot,
+  // Ticket 176
+  besturingActief, zetBesturingModus, zetBesturingActief, startBesturing, verlaatBesturing,
+  get besturingModus() { return besturingModus; },
+  get touchSessieActief() { return touchSessieActief; },
   MUZIEK_STEMMINGEN, WAPEN_KLANKSETS, actieveMuziekStemming, actieveWapenklank,
   pasGeluidsetToe,
   get muziekOscillatoren() { return muziekOscillatoren; },

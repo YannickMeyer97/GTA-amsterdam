@@ -7046,10 +7046,75 @@ Alle vier gemeten, geen van alle aanwezig:
 
 ---
 
-## Ticket 176 — De besturingsgate loskoppelen van Pointer Lock
+## Ticket 176 — De besturingsgate loskoppelen van Pointer Lock ✅
 
 - **Type:** architectuur (fundament)
 - **Prioriteit:** hoog — zonder dit werkt geen enkel ander mobiel ticket.
+- **Status:** ✅ uitgevoerd (v0.34). Nieuw `tests/test-besturingsmodus.mjs`:
+  12 checks. De pointer-lock-vergelijking komt nog op vier plekken voor, en
+  alle vier zitten ze BINNEN de nieuwe abstractie (de muistak van
+  `besturingActief()`, `zetBesturingModus()`, `verlaatBesturing()` en de
+  `pointerlockchange`-handler). Overal elders loopt het nu via de gate.
+
+  **Eén echte bug tijdens het bouwen, en een leerzame.** Ik heb de veertien
+  plekken met een brede tekstvervanging omgezet, en die raakte óók een regel
+  binnen `zetBesturingModus()` zelf. Gevolg: die functie zette eerst de modus
+  op `touch` en riep daarna `verlaatBesturing()` aan — die nam vervolgens de
+  touch-tak, zag geen touch-sessie, en deed niets. **Pointer lock bleef dus
+  vastzitten bij het wisselen van modus.** De les is de volgorde: bij een
+  moduswissel moet eerst de OUDE besturing worden afgesloten en pas daarna de
+  modus omgezet, anders kijkt de afsluitcode al naar de nieuwe wereld. Ligt nu
+  als assertie vast.
+
+  **Nazorg: een "flake" die er geen was.** De regressie van dit ticket meldde
+  109/110, met `test-ondode-model-v2.mjs` als enige niet-groene — een crash,
+  geen gefaalde assertie. Diezelfde crash zat óók in de T174-run, en ik heb
+  hem toen afgedaan als CPU-druk, op grond van drie groene isolatieruns.
+  **Dat was fout, twee keer.** De echte oorzaak: er bestaat een ondode-variant
+  zonder linkerarm (`eenarmig`, `if (profiel.mistArmL) delen.armL =
+  undefined`), en de test ging er onvoorwaardelijk van uit dat elke spawn er
+  twee heeft. Gemeten is **19% van de spawns eenarmig** — met drie
+  isolatieruns was de kans om dat te missen 0,81³ ≈ 53%, dus "drie keer groen"
+  was nauwelijks bewijs. De test toetst nu het hele contract ("armL is een
+  Bone, tenzij de variant hem mist — dan undefined"), geverifieerd over 400
+  spawns in beide takken.
+
+  **De les is niet "beter opletten" maar "tel je worpen".** Een willekeurige
+  variant van 19% verstopt zich moeiteloos achter een handvol runs. Bij een
+  crash die niet reproduceert: reken uit hoeveel herhalingen je nodig hebt
+  voordat groen íets betekent, in plaats van er drie te doen en het een flake
+  te noemen.
+
+  **Opvolging (Ticket 182): het 'eenarmig'-profiel is inmiddels helemaal
+  verwijderd** — de eigenaar vond het weinig toevoegen. De contractfix
+  hierboven is daarmee met terugwerkende kracht overbodig geworden
+  (`delen.armL` is nu onvoorwaardelijk aanwezig, dus er valt niets meer te
+  onderscheiden), maar de les over het tellen van worpen blijft staan: dat
+  is precies waarom deze twee foutieve "flake"-diagnoses hier woordelijk
+  bewaard blijven in plaats van stilletjes gecorrigeerd.
+
+  **Twee wankele determinisme-checks, en waarom die hier géén T176-probleem
+  zijn.** In de allerlaatste volledige run vielen twee bit-voor-bit-
+  screenshotchecks om (`test-levend-water`, `test-nachthemel`). Die toetsen
+  precies de bevriezing die aan `spelActief` hangt, dus verdacht — maar het
+  bewijs wijst de andere kant op: in drie eerdere volledige runs waren ze
+  groen, en één daarvan (`reg-t176`) bevatte de codewijziging van dit ticket
+  al. Het enige verschil met de falende run is een aanpassing in een ánder
+  testbestand. In isolatie: 6/6 groen voor allebei, en `test-levend-water`
+  haalde het bij de retry van de runner alsnog.
+
+  Let op dat dit ándersoortig bewijs is dan bij de eenarmige ondode hierboven.
+  Daar was "groen in isolatie" zwak omdat de faalkans per worp 19% was. Hier is
+  het doorslaggevende bewijs niet de isolatie maar dat dezélfde code drie
+  volledige runs groen haalde. Conclusie: een bestaande, belastingsgevoelige
+  broosheid in twee visuele determinismechecks — geen regressie van T176.
+  Wat ik NIET kan zeggen is dat ik de oorzaak ken; dat verdient een eigen
+  ticket als het vaker terugkomt.
+
+  **Wat dit ticket bewust NIET doet:** er is nog geen enkele touch-handler.
+  `zetBesturingModus('touch')` is alleen vanuit een test te bereiken. Het
+  eerste echte invoerevent gaat de modus zetten in T177 — dit ticket maakt
+  daar alleen ruimte voor.
 - **Doel.** Eén begrip "de speler bestuurt het spel", met twee implementaties:
   pointer lock op desktop, een expliciete vlag op touch.
 - **Detecteer het APPARAAT niet — reageer op de INVOER.** Dit is de kern van
@@ -7236,6 +7301,94 @@ Alle vier gemeten, geen van alle aanwezig:
   eigenaar kan geven. Elke geautomatiseerde test hier toetst *mechaniek*, niet
   *of het lekker speelt met twee duimen* — en dat laatste is precies waar een
   touch-besturing op staat of valt.
+
+---
+
+## Ticket 182 — Het 'eenarmige' profiel verwijderd ✅
+
+- **Type:** cleanup (klein, buiten de mobiele ronde om)
+- **Status:** ✅ uitgevoerd.
+- **Aanleiding.** Op verzoek van de eigenaar: *"de 1 armige zombie mag er wel
+  uit, voegt voor mij niet veel toe dus verwijder dat hele stuk uit de code."*
+  Toevallig ook het profiel achter de "19% eenarmig"-testbug uit het T176-
+  nawoord hierboven.
+- **Meer dan één regel.** Het profiel zelf (`eenarmig: { mistArmL: true }`
+  in `VARIATIE_PROFIELEN`) was de kleinste helft. Zeven `if (delen.armL)`-
+  guards in de animatiecode (windup, loop-zwaai, elleboogbuiging,
+  romp-sway/bob, flinch-twist) bestonden UITSLUITEND om deze variant op te
+  vangen. Die zijn allemaal opgelost naar de kale schrijfactie: `delen.armL`
+  is sindsdien onvoorwaardelijk een `THREE.Bone`, dus een guard eromheen was
+  na de verwijdering dode conditie geworden, geen defensieve code.
+- **Werk.**
+  - `eenarmig` uit `VARIATIE_PROFIELEN`.
+  - De ternaries die `armGeoL`/`handGeoL` op `null` zetten voor dit profiel:
+    weg — beide worden nu altijd gebouwd, zoals `armGeoR`/`handGeoR` al
+    deden.
+  - `if (profiel.mistArmL) delen.armL = undefined;` weg; `delen.armL =
+    bones.armL` is nu de enige, onvoorwaardelijke toewijzing.
+  - `mistArmL` uit `delen.vormParams` — een veld dat na de verwijdering
+    altijd `false` zou zijn, is geen veld meer waard.
+  - De composietgeometrie-array kreeg `armL`/`handL` als kale entries
+    (zoals `armR`/`handR`), niet langer een conditionele spread.
+  - De zeven `if (delen.armL)`-guards ontrold naar hun kale schrijfactie.
+  - Vijf testbestanden bijgewerkt of ontdaan van hun eenarmig-specifieke
+    testblokken (`test-aanval-tells.mjs`, `test-ondode-animatie.mjs`,
+    `test-ondode-model-v2.mjs`, `test-ondode-vormen.mjs`,
+    `test-varianten.mjs`), plus stale voorbeeldteksten in commentaar op drie
+    andere plekken.
+- **Risico's:**
+  - **Mechanische refactor, dus regel-voor-regel geverifieerd.** De
+    tekstvervanging voor de tabelregel was breed genoeg om ook een eigen,
+    zojuist geschreven regel te raken (zie de moduswissel-bug bij T176) —
+    daarvan geleerd, dus de zeven guard-regels zijn dit keer één voor één op
+    exact regelnummer vervangen en elk apart geverifieerd, niet met een
+    brede `replace` over het hele bestand.
+  - **De historische documentatie is niet herschreven.** Tickets 19/31/126
+    in dit bestand en in `ARCHITECTURE_NOTES.md` beschrijven wat er destijds
+    gebouwd is en blijven dat doen; waar een historische passage door de
+    verwijdering feitelijk onjuist zou worden (bijvoorbeeld "arm-pivots
+    kunnen ontbreken"), staat er een korte, gedateerde vervolgnoot bij in
+    plaats van een stille correctie.
+- **Acceptatiecriteria:**
+  - Geen enkele spawn kan nog een ontbrekende arm hebben — geverifieerd over
+    400 spawns (was de meting achter de 19%-bug) en 10 herhaalde volledige
+    runs van `test-ondode-model-v2.mjs`.
+  - Geen resterende `eenarmig`/`mistArmL`-code, alleen nog verwijzende
+    commentaarregels met Ticket 182 erbij.
+  - Volledige regressie groen.
+- **Testplan:** de vijf bijgewerkte testbestanden + volledige regressie.
+- **Rollback:** het profiel, de ternaries en de zeven guards terugzetten uit
+  git-historie; niets anders in de codebase hangt hiervan af.
+
+**Nazorg: één rode check onderzocht, niet weggewuifd.** De volledige
+regressie na dit ticket gaf 109/110, met `test-camerabeweging.mjs` als enige
+niet-groene — een schotenreeks waarbij `o.hp` na 20 raakschoten volledig
+ongewijzigd bleef. Dat leek in eerste instantie op T182 te kunnen wijzen
+(minder werk per spawn omdat `armGeoL`/`handGeoL` niet meer soms werden
+overgeslagen), dus is dit ditmaal ECHT vergeleken in plaats van drie keer
+herhaald en "flake" genoemd: `git stash` op alleen `amsterdam-undead.html`,
+10 isolatieruns tegen de code van vóór dit ticket, dan terugzetten en 10
+runs tegen de nieuwe code.
+
+Uitkomst: **1/10 faalde op de OUDE code, 3/10 op de nieuwe** — met exact
+hetzelfde symptoom (`hpVoor === hpNa`, en zelfs identieke `bobFaseActief`-
+waarden tussen de gefaalde runs). Dat bewijst twee dingen tegelijk: (1) dit
+is een bestaand, in de test zelf al gedocumenteerd race-scenario ("het
+golfsysteem kan tijdens de rAF-waits een echte ondode spawnen die de
+raycast blokkeert" — de fix uit T132 bleek dit niet volledig te dichten),
+dus GEEN regressie die T182 heeft veroorzaakt; en (2) bij n=10 tegen n=10 is
+1 versus 3 statistisch niet hard te onderscheiden van ruis — ik kan dus niet
+uitsluiten dat de iets hogere spawnkost (elke ondode bouwt nu altijd beide
+armen) de kans marginaal heeft verschoven, en beweer dat ook niet met meer
+zekerheid dan de data toelaat.
+
+Dit blijft daarom een bestaande fragiliteit in `test-camerabeweging.mjs`,
+niet een game-logicafout — de raycast en de treffer-afhandeling zelf zijn
+correct, alleen de testopzet is gevoelig voor een golfspawn die toevallig in
+de schootslinie staat. Buiten scope van dit ticket om te repareren (dat
+verdient een eigen, kleine hardening-ticket als de eigenaar dat wil); hier
+alleen vastgelegd zodat een volgende sessie niet opnieuw drie keer moet
+herhalen om tot dezelfde conclusie te komen.
 
 ---
 

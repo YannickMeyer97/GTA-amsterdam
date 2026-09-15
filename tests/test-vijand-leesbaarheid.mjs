@@ -174,9 +174,12 @@ check('Na de volledige windup+herstel is de ondode terug in "jaag" met de oogint
 // het EFFECT in de animatie, niet de tabelwaarde zelf (die zou een
 // tautologie zijn). Elke spawnOndode() hieronder krijgt expliciet het
 // 'standaard'-profiel (i.p.v. de default willekeurige kiesOndodeTraits()):
-// zonder dat kiest de loting soms 'eenarmig' (delen.armL bestaat dan niet),
-// wat deze drie metingen — die allemaal delen.armL/pelvis lezen — flaky
-// maakte. Puur een testfix, geen gedragswijziging. ------------------------
+// zonder dat kiest de loting soms 'gebocheld' (geen delen.pelvis-write op
+// dezelfde manier) of een ander profiel met een afwijkende vorm, wat deze
+// drie metingen — die allemaal delen.armL/pelvis lezen — flaky maakte.
+// (Vóór Ticket 182 gold dit ook voor 'eenarmig', dat toen delen.armL liet
+// ontbreken; dat profiel bestaat niet meer.) Puur een testfix, geen
+// gedragswijziging. --------------------------------------------------------
 
 // 5. gewichtFactor: zijwaartse pelvis-uitslag over een volledige loopcyclus,
 // bij GELIJKE snelheid (isoleert het gewicht van pasFactor/snelheid).

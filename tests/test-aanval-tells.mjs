@@ -2,8 +2,8 @@
 // aanvals-state-machine. Bewaakt: armen lerpen naar de windup-houding en
 // bereiken die op het slag-moment, de ogen pulsen tijdens de wind-up en
 // keren gegarandeerd terug naar de basiswaarde na herstel, het hoofd
-// kantelt licht achterover, een eenarmige ondode crasht niet, en de drie
-// nieuwe audiofuncties worden daadwerkelijk aangeroepen (via debug-tellers).
+// kantelt licht achterover, en de drie nieuwe audiofuncties worden
+// daadwerkelijk aangeroepen (via debug-tellers).
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
@@ -110,36 +110,10 @@ const hoofdKantel = await page.evaluate(() => {
 check('Tegen het einde van de wind-up wijkt het hoofd merkbaar af van de rust-rotatie (achterover kantelen)',
   Math.abs(hoofdKantel.hoofdRotXTegenEinde - hoofdKantel.baseRotX) > 0.05, hoofdKantel);
 
-// --- 4. Eenarmig profiel: geen crash, alleen de rechterarm krijgt een write -
-const eenarmig = await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  for (const o of [...d.ondoden]) d.doodOndode(o);
-  d.speler.positie.set(0, 0, 0);
-  const traits = { profiel: 'eenarmig', kromme: false, slepend: 0, armVerschil: 0, lengte: 1, strompelt: false };
-  const o = d.spawnOndode(0, 'normaal', traits);
-  o.groep.position.set(0, 0, -1.0);
-  o.aanvalVertraging = 0;
-  const armLOntbreekt = o.delen.armL === undefined;
-  const dt = 1 / 60;
-  const windupDuur = d.AANVAL_PROFIELEN.normaal.windup;
-  const herstelDuur = d.AANVAL_PROFIELEN.normaal.herstel;
-  const totaalStappen = Math.ceil((windupDuur + herstelDuur) / dt) + 5;
-  let fout = null;
-  try {
-    for (let i = 0; i < totaalStappen; i++) d.updateOndoden(dt);
-  } catch (e) {
-    fout = e.message;
-  }
-  const armRGeschreven = o.delen.armR.rotation.x !== d.ARM_RUST_ROTATIE_X;
-  d.doodOndode(o);
-  return { armLOntbreekt, fout, armRGeschreven };
-});
-check('Eenarmig-profiel: delen.armL ontbreekt zoals verwacht',
-  eenarmig.armLOntbreekt, eenarmig);
-check('Eenarmig-profiel: de wind-up/herstel-tell crasht niet (geen console-/JS-fout)',
-  eenarmig.fout === null, eenarmig);
-check('Eenarmig-profiel: de aanwezige rechterarm krijgt wel gewoon de tell-pose',
-  eenarmig.armRGeschreven, eenarmig);
+// (Ticket 182 verwijderde het 'eenarmig'-profiel; de test die hier stond —
+// "geen crash, alleen de rechterarm krijgt een write" — verviel met het
+// profiel zelf. `delen.armL` is nu altijd aanwezig, dus is er geen apart
+// randgeval meer om hier te bewaken.)
 
 // --- 5. Audio: windup-start speelt een grom, raak/mis spelen verschillende
 // geluiden (via debug-tellers) ----------------------------------------------
@@ -193,8 +167,8 @@ const anticipatie = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   for (const o of [...d.ondoden]) d.doodOndode(o);
   d.speler.positie.set(0, 0, 0);
-  // Vaste standaard-traits: kiesOndodeTraits() kan 'eenarmig' opleveren, en
-  // dan bestaat delen.armL niet — deze sectie meet juist die arm.
+  // Vaste standaard-traits om andere geloote vorm-ruis (bochel, lengte) uit
+  // de meting te houden — deze sectie meet specifiek de arm-curve.
   const traits = { profiel: 'standaard', kromme: false, slepend: 0, armVerschil: 0, lengte: 1, strompelt: false };
   const o = d.spawnOndode(0, 'normaal', traits);
   o.groep.position.set(0, 0, -1.0);

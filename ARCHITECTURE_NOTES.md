@@ -911,8 +911,10 @@ op symboolnaam. Ontwerpbeslissingen 21–32 in §2 horen bij deze ronde.
 - Ondode-state op het object (`spawnOndode`, ±2738): `groep, type, hp,
   snelheid, geldMultiplier, strompelt, loopFase, delen, flinch,
   meleeTimer, vastTijd, ontwijkTimer, ontwijkZijkant, ontwijkStartPos`.
-  `delen` bevat `beenL/beenR/romp/hoofd/armL?/armR?/kern?` (arm-pivots
-  kunnen ontbreken: 'eenarmig'-profiel heeft geen `armL`).
+  `delen` bevat `beenL/beenR/romp/hoofd/armL/armR/kern?` (`armL`/`armR`
+  waren tot Ticket 182 optioneel — het 'eenarmig'-profiel liet `armL`
+  ontbreken; dat profiel is sindsdien verwijderd en beide armen zijn nu
+  altijd aanwezig).
 - `gameLoop` klemt dt op 0.05 s (regel ±3951) — timers kunnen nooit
   meer dan 50 ms per frame verspringen.
 
@@ -992,9 +994,10 @@ slag, nooit dubbele schade. Game over: `spelerSchade` checkt al
   schril, normaal middenin); `speelSlagRaak()` (doffe dreun) bij raak
   bovenop het bestaande `speelSpelerAu()`; `speelSlagMis()` (whoosh) bij
   mis. Allemaal `piep()`-composities, geen bestanden.
-- **Eenarmigen** ('eenarmig'-profiel, geen `armL`): de tell werkt met
-  één arm — alle arm-writes moeten `if (delen.armX)` blijven checken
-  (bestaand patroon in de animatie-helft).
+- **Eenarmigen** — vervallen. Het 'eenarmig'-profiel (geen `armL`) is in
+  Ticket 182 verwijderd op verzoek van de eigenaar; de `if
+  (delen.armX)`-guards die dit opving zijn in hetzelfde ticket
+  meegesneuveld, want `delen.armL` bestaat sindsdien altijd.
 
 ### 5.4 Codekaart — schieten & feedback (huidige staat)
 
@@ -5719,7 +5722,9 @@ ook expliciet zoals de ticket-spec vraagt.
 
 `test-ondode-model.mjs` uitgebreid met 5 checks: elk van de vijf
 `ONDODE_TYPES` krijgt exact 2 schouders en 2 handen (met neutrale traits,
-zodat het 'eenarmig'-profiel de telling niet toevallig verstoort), de vod
+zodat een geloot profiel de telling niet toevallig verstoort — destijds
+vooral relevant voor het inmiddels verwijderde 'eenarmig'-profiel, T182),
+de vod
 gebruikt de nieuwe gedeelde `vodGerafeld`-geometrie, geen van de nieuwe
 delen draagt ooit een kop-markering, en `geoCache.size` blijft exact
 gelijk over 50 spawn/kill-cycli (de drie nieuwe geometrieën blijven
