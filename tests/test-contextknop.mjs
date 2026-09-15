@@ -410,6 +410,55 @@ check('HUD en minimap samen blijven onder 16% van het scherm',
   (vlak(maten.hud) + vlak(maten.minimap)) / schermVlak < 0.16,
   { ...maten, samen: (vlak(maten.hud) + vlak(maten.minimap)) / schermVlak });
 
+/* Er moet RUIMTE ZIJN OM TE KIJKEN op duimhoogte. Deze check bestaat omdat
+   de knoppen ooit in een rij naast elkaar stonden (wissel - mes - vuur) met
+   10 px en 12 px ertussen: er was letterlijk geen plek om je duim neer te
+   zetten zonder een knop te raken, dus elke poging om rond te kijken landde
+   op VUUR en schoot mee. In de CSS zie je zo'n verschil niet — 10 px en
+   160 px lezen precies hetzelfde. Dus wordt het gemeten.
+
+   Met het LANGST mogelijke knoplabel erin, want de contextknop is rechts
+   verankerd en groeit naar links mee met zijn tekst; bij een kort label zou
+   deze check te makkelijk slagen. */
+const corridor = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  let langste = '';
+  for (const p of d.interactiePunten) {
+    const t = typeof p.prompt === 'function' ? p.prompt() : p.prompt;
+    const o = d.ontleedInteractiePrompt(t);
+    if (o.uitvoerbaar) {
+      const k = d.kortInteractieLabel(o.label);
+      if (k.length > langste.length) langste = k;
+    }
+  }
+  document.getElementById('touchContextLabel').textContent = langste;
+
+  // Duimhoogte: 60 px boven de onderrand, waar een duim in ruststand ligt.
+  const duimY = window.innerHeight - 60;
+  const blokkades = [];
+  for (const el of document.querySelectorAll('#touchBediening > *')) {
+    if (el.hidden) continue;
+    const s = getComputedStyle(el);
+    if (s.display === 'none' || s.pointerEvents === 'none') continue;
+    const b = el.getBoundingClientRect();
+    if (b.top <= duimY && duimY <= b.bottom) blokkades.push({ id: el.id, x1: b.left, x2: b.right });
+  }
+  blokkades.sort((a, b) => a.x1 - b.x1);
+  // Grootste aaneengesloten vrije breedte op de RECHTERHELFT (het kijkgebied).
+  let breedste = 0, waar = null, cursor = window.innerWidth / 2;
+  for (const blok of [...blokkades, { id: 'rand', x1: window.innerWidth, x2: window.innerWidth }]) {
+    if (blok.x1 > cursor && blok.x1 - cursor > breedste) {
+      breedste = blok.x1 - cursor;
+      waar = `${Math.round(cursor)}-${Math.round(blok.x1)}`;
+    }
+    cursor = Math.max(cursor, blok.x2);
+  }
+  return { langsteLabel: langste, duimY, breedste: Math.round(breedste), waar,
+    blokkades: blokkades.map(b => `${b.id}(${Math.round(b.x1)}-${Math.round(b.x2)})`) };
+});
+check('Op duimhoogte ligt er een vrije strook van minstens 120 px om in rond te kijken zonder een knop te raken',
+  corridor.breedste >= 120, corridor);
+
 /* --- 9b. De muistekst overleeft een heen-en-weer -------------------------
    De muisvariant wordt bij het laden uit de HTML gelezen in plaats van
    overgetypt — bij het overtypen ging het meteen mis met de spaties rond de

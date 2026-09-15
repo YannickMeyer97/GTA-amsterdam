@@ -582,15 +582,32 @@
     height: 58px;
     font-size: 24px;
   }
-  #touchMes    { right: 120px; bottom: 24px; }
-  #touchWissel { right: 188px; bottom: 24px; }
+  /* Feedback-fix: mes en wapenwissel staan nu BOVEN ELKAAR in plaats van in
+     een rij naast de vuurknop, en de kolom is naar links geschoven.
+
+     Waarom: in de oude rij (wissel - mes - vuur) zat op duimhoogte nog 10 px
+     en 12 px tussen de knoppen. Er was dus geen plek om je duim neer te
+     zetten om rond te kijken zonder een knop te raken; je kwam altijd op
+     VUUR uit en schoot mee. Nu ligt er een vrije strook van ~160 px tussen
+     de kolom en de vuurknop, precies op de hoogte waar je duim rust.
+
+     Recht boven elkaar, niet schuin naar rechts: schuin rechts zou het mes
+     juist ín die strook duwen. */
+  #touchWissel { right: 268px; bottom: 24px; }
+  #touchMes    { right: 268px; bottom: 92px; }
   /* De contextknop is een pil met tekst: hij moet leesbaar zijn, want hij
      is het enige dat vertelt wát je koopt of opent. */
   #touchContext {
     right: 20px;
     bottom: 108px;
     min-width: 150px;
-    max-width: 44vw;
+    /* Feedback-fix: deze pil is RECHTS verankerd en groeit naar links mee met
+       zijn tekst. Op 44vw liep hij bij een lang label tot over de mes-knop
+       heen — een botsing die alleen bij bepáálde interactiepunten optreedt,
+       dus precies het soort dat je pas in een potje tegenkomt. Nu begrensd
+       tot vlak naast de knoppenkolom. Een te lang label krijgt een beletsel-
+       teken; de volledige tekst staat toch al in de prompt erboven. */
+    max-width: min(230px, 38vw);
     height: 48px;
     padding: 0 16px;
     border-radius: 24px;
@@ -630,8 +647,8 @@
      binnen het veilige gebied. `max()` zodat een toestel zónder notch
      gewoon de oorspronkelijke marge houdt. */
   html.touchModus #touchVuur   { right: max(20px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom)); }
-  html.touchModus #touchMes    { right: max(120px, calc(env(safe-area-inset-right) + 100px)); bottom: max(24px, env(safe-area-inset-bottom)); }
-  html.touchModus #touchWissel { right: max(188px, calc(env(safe-area-inset-right) + 168px)); bottom: max(24px, env(safe-area-inset-bottom)); }
+  html.touchModus #touchWissel { right: max(268px, calc(env(safe-area-inset-right) + 248px)); bottom: max(24px, env(safe-area-inset-bottom)); }
+  html.touchModus #touchMes    { right: max(268px, calc(env(safe-area-inset-right) + 248px)); bottom: max(92px, calc(env(safe-area-inset-bottom) + 68px)); }
   html.touchModus #touchContext { right: max(20px, env(safe-area-inset-right)); bottom: max(108px, calc(env(safe-area-inset-bottom) + 90px)); }
   html.touchModus #touchPauze  { left: max(16px, env(safe-area-inset-left)); top: max(62px, calc(env(safe-area-inset-top) + 46px)); }
   html.touchModus #menuLink    { left: max(16px, env(safe-area-inset-left)); top: max(16px, env(safe-area-inset-top)); }
@@ -716,8 +733,22 @@
      knop met VUUR erop en een 🔪 hebben geen bijschrift nodig. Op desktop
      blijft hij ongewijzigd staan, want daar zijn de toetsen niet zichtbaar. */
   html.touchModus #hulpUI { display: none !important; }
-  html.touchModus #ammoUI { right: 254px; bottom: 12px; font-size: 13px; padding: 4px 9px; }
-  html.touchModus #interactiePrompt { bottom: 118px; font-size: 13px; padding: 6px 14px; }
+  /* De munitieteller stond links van de oude knoppenrij; sinds die rij een
+     kolom werd, botste hij met de wisselknop. Nu naast de minimap, ver buiten
+     de duimzone — daar hoeft hij ook niet aangeraakt te worden. */
+  html.touchModus #ammoUI {
+    right: auto;
+    left: max(128px, calc(env(safe-area-inset-left) + 116px));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    font-size: 13px;
+    padding: 4px 9px;
+  }
+  /* De prompt staat gecentreerd en wordt met een lange tekst breed genoeg om
+     de meskolom te raken (gemeten: "Tik ⚡ : forceer de deur naar
+     kelderoost"). Hij gaat daarom boven de hele knoppengroep uit in plaats
+     van ernaast te passen — bij een gecentreerd element is de breedte niet
+     te sturen zonder de tekst te verminken. */
+  html.touchModus #interactiePrompt { bottom: 168px; font-size: 13px; padding: 6px 14px; }
 
   /* Feedback-fix: HUD en minimap aten samen ruim een kwart van een liggend
      telefoonscherm (gemeten op 740×360: HUD 314×181, minimap 160×160). Ze
