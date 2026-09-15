@@ -7171,10 +7171,52 @@ Alle vier gemeten, geen van alle aanwezig:
 
 ---
 
-## Ticket 177 — Touch: lopen, kijken, vuren
+## Ticket 177 — Touch: lopen, kijken, vuren ✅
 
 - **Type:** feature (invoer)
 - **Afhankelijk van:** T176.
+- **Status:** ✅ uitgevoerd (v0.34). Nieuw `tests/test-touchbesturing.mjs`:
+  24 checks, waarvan zes specifiek over gelijktijdige vingers.
+
+  **Wat er gebouwd is.** Een BEWEEGLIJKE stick op de linkerhelft (verschijnt
+  waar je duim landt, niet op een vaste plek — dat speelt merkbaar beter op
+  een scherm zonder tactiele houvast), slepen op de rechterhelft om te
+  kijken, en een vuurknop rechtsonder die exact dezelfde vlag zet als de
+  linkermuisknop. `helpers.mjs` heeft er een `touch`-optie bij die de
+  Playwright-context met `hasTouch` opent.
+
+  **De stick is ANALOOG.** Half duwen is half zo snel lopen: de kracht
+  (0-1) gaat als losse factor in de bestaande bewegingsformule. Het
+  toetsenbord houdt kracht 1, en vermenigvuldigen met exact 1.0 is
+  bit-exact in IEEE754 — voor muisspelers verandert er dus geen enkele
+  uitkomst, en dat is als assertie vastgelegd.
+
+  **Eén bron voor de kijkrekensom.** `draaiKijkrichting(dx, dy, schaal)`
+  wordt nu door zowel `mousemove` als de touch-drag gebruikt, zodat er niet
+  twee versies van dezelfde formule (inclusief de pitch-klem) kunnen
+  ontstaan. De muis gebruikt schaal 1, touch een eigen factor omdat een
+  duimveeg veel minder pixels aflegt dan een muisbeweging. De
+  gevoeligheidsinstelling uit T75 werkt daardoor gratis mee op touch — ook
+  dat ligt als assertie vast (dubbele gevoeligheid = dubbele draaiing).
+
+- **Waar dit soort besturing normaal op stukgaat, en hoe het hier is
+  afgevangen.** Lopen, kijken en vuren gebeuren tegelijk. Elke aanraking
+  hangt daarom aan zijn eigen `identifier`:
+  - een tweede duim op de linkerhelft steelt de stick niet;
+  - één vinger loslaten stopt alléén die invoer (drie losse checks: kijken
+    los laat stick én vuur staan, stick los laat vuur staan);
+  - de vuurknop stopt de propagatie, zodat een duim daarop geen kijk-drag
+    start op de rechterhelft;
+  - `touch-action: none` plus `preventDefault()` voorkomen dat de pagina
+    onder je duim wegscrollt of zoomt.
+- **Hangende invoer bij een moduswissel of pauze.** Pauzeren met de duim op
+  de stick zou de speler anders eindeloos laten doorlopen; `laatTouchStickLos()`
+  hangt daarom aan dezelfde reset als de bestaande muisknop-ontklemming, én
+  aan de moduswissel. Getoetst: na pauzeren beweegt de speler geen millimeter
+  meer.
+- **Buiten scope, bewust.** De lay-out (liggend afdwingen, safe-area-insets,
+  schaling) is T179; de actieknoppen (contextknop, mes, wapenwissel, pauze)
+  zijn T178. Dit ticket levert werkende invoer, geen afgewerkt scherm.
 - **Werk.**
   - **Linkerhelft:** virtuele stick. `touchstart` zet de oorsprong waar je
     hem neerzet (geen vaste plek — dat speelt beter), `touchmove` levert een

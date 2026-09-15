@@ -5910,7 +5910,30 @@ ondoden stilstaan tijdens visuele metingen. Als de nieuwe touch-vlag daar per
 ongeluk waar wordt, gaan alle visuele basislijnmetingen zwerven — en dat merk
 je pas rondes later. Lees de toelichting bij die helper vóór je begint.
 
-### T177 — touch-invoer
+### T177 — touch-invoer ✅ uitgevoerd (v0.34)
+
+**Nawoord.** Het multi-touch-risico bleek goed te bewaken: zes van de 24
+checks gaan specifiek over gelijktijdige vingers, en Playwright kan met
+`hasTouch` echte `TouchEvent`s versturen met een volledige
+`touches`/`changedTouches`-lijst. Dat betekent dat "drie vingers tegelijk"
+gewoon headless te toetsen is — geen handmatige speeltest nodig om de
+kern-fout van dit soort besturing uit te sluiten.
+
+**Twee dingen die de code klein hielden.** (1) De stick levert een ANALOGE
+kracht die als losse factor in de bestaande bewegingsformule gaat; het
+toetsenbord houdt kracht 1, en `* 1.0` is bit-exact, dus de muismodus
+verandert aantoonbaar niets. (2) `draaiKijkrichting()` is nu de enige plek
+waar yaw/pitch (inclusief de klem) berekend wordt — muis en touch verschillen
+alleen in schaal. Zonder die samenvoeging had de pitch-klem op twee plekken
+gestaan, en dat loopt vroeg of laat uit de pas.
+
+**Valkuil die de test zelf blootlegde:** de "steelt de stick niet"-check laat
+bewust een vinger vastzitten. De sectie erna begon daardoor met een bezette
+stick en mat niets — een testopzet-fout, geen codefout, maar wel precies het
+soort stille no-op waar een groene check niets bewijst. Expliciet losgelaten
+aan het begin van die sectie.
+
+
 
 **Multi-touch is waar dit stukgaat.** Lopen, kijken en vuren gebeuren
 tegelijk; elke aanraking moet bij zijn eigen `identifier` blijven horen. Een

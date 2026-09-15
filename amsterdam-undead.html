@@ -463,6 +463,65 @@
     color: rgba(255,255,255,0.72);
   }
   .instelIcoon { font-size: 16px; line-height: 1; }
+  /* --- Ticket 177: de touch-bediening ------------------------------------
+     `hidden` doet hier het echte werk (zie de T164-les: een eigen
+     display-regel op hetzelfde element zou de browserstijl overschrijven,
+     dus staat die expliciet hieronder). De stick is BEWEEGLIJK: hij springt
+     naar waar je duim landt in plaats van op een vaste plek te staan — dat
+     speelt merkbaar beter op een scherm zonder tactiele houvast. */
+  #touchBediening[hidden] { display: none; }
+  #touchBediening {
+    position: fixed;
+    inset: 0;
+    z-index: 9;          /* onder het startscherm (10) en het archiefpaneel (12) */
+    pointer-events: none; /* de laag zelf vangt niets; de knoppen hieronder wel */
+  }
+  #touchStick {
+    position: absolute;
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.22);
+    background: rgba(12, 18, 28, 0.28);
+    /* Positie wordt per aanraking gezet; tot die tijd buiten beeld. */
+    left: -999px;
+    top: -999px;
+    pointer-events: none;
+  }
+  #touchStickKnop {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 52px;
+    height: 52px;
+    margin: -26px 0 0 -26px;
+    border-radius: 50%;
+    background: rgba(230, 240, 235, 0.42);
+    border: 1px solid rgba(255,255,255,0.35);
+  }
+  #touchVuur {
+    position: absolute;
+    right: 28px;
+    bottom: 28px;
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    background: rgba(200, 70, 60, 0.30);
+    border: 2px solid rgba(255, 140, 130, 0.55);
+    color: #ffe8e4;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    user-select: none;
+  }
+  #touchVuur.ingedrukt { background: rgba(220, 90, 75, 0.55); }
+  /* Zonder dit scrollt en zoomt de pagina onder je duim weg zodra je veegt. */
+  html.touchModus, html.touchModus body { touch-action: none; overscroll-behavior: none; }
+
   #geluidKnop {
     width: 42px;
     height: 42px;
@@ -793,6 +852,14 @@
 <a id="menuLink" href="index.html">← Menu</a>
 <div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; klik = schieten &nbsp;·&nbsp; V = steken &nbsp;·&nbsp; R = herladen &nbsp;·&nbsp; T = kopen/gebruiken &nbsp;·&nbsp; Q = wisselen van wapen &nbsp;·&nbsp; Esc = pauze</div>
 <div id="richtkruis" style="display:none"></div>
+<!-- Ticket 177: de touch-bediening. Staat standaard uit en wordt pas getoond
+     zodra de besturingsmodus op 'touch' springt (T176) — op een laptop is er
+     dus letterlijk niets veranderd. De lay-out (liggend, safe-area-insets)
+     is T179; hier gaat het alleen om werkende invoer. -->
+<div id="touchBediening" hidden>
+  <div id="touchStick"><div id="touchStickKnop"></div></div>
+  <div id="touchVuur">VUUR</div>
+</div>
 <div id="hitmarker"><span></span><span></span><span></span><span></span></div>
 <div id="interactiePrompt"></div>
 <div id="meldingUI"></div>
@@ -7092,6 +7159,11 @@ function zetBesturingModus(modus) {
     zetBesturingActief(false);
   }
   besturingModus = modus;
+  // Ticket 177: een hangende stick/vuurknop van de vorige modus mag niet
+  // blijven staan — anders loopt de speler door zonder dat er iets aanraakt.
+  laatTouchStickLos();
+  schietKnopIngedrukt = false;
+  toonTouchBediening(modus === 'touch' && besturingActief());
 }
 
 // DE gate. Alles wat vroeger rechtstreeks naar pointer lock keek, gaat nu
@@ -7124,6 +7196,123 @@ function verlaatBesturing() {
     document.exitPointerLock();
   }
 }
+
+/* --- Ticket 177: touch-invoer ---------------------------------------------
+   Drie kanalen die TEGELIJK moeten werken: lopen (linkerhelft), kijken
+   (rechterhelft) en vuren (de knop). Dat is precies waar dit soort
+   besturing normaal op stukgaat, dus elke aanraking wordt bijgehouden op
+   zijn eigen `identifier` — een tweede vinger mag de stick nooit stelen.
+
+   De stick is BEWEEGLIJK: hij verschijnt waar je duim landt. Op een scherm
+   zonder tactiele houvast speelt dat merkbaar beter dan een vaste plek, en
+   het scheelt bovendien de discussie over waar die vaste plek dan moet
+   staan bij verschillende schermmaten.
+
+   Het kijkpad hergebruikt bewust dezelfde yaw/pitch-code als de muis,
+   inclusief de gevoeligheidsinstelling uit T75 — die staat al in het
+   startscherm en werkt hier net zo goed. Alleen de schaal verschilt: een
+   duimveeg legt veel minder pixels af dan een muisbeweging. */
+const TOUCH_STICK_STRAAL = 52;      // px: volledige uitslag op deze afstand
+const TOUCH_STICK_DODE_ZONE = 6;    // px: onder deze uitslag geen beweging
+const TOUCH_KIJK_FACTOR = 2.6;      // duimveeg vs muisbeweging, per pixel
+
+const touchStick = { vinger: null, oorsprongX: 0, oorsprongY: 0, x: 0, y: 0, kracht: 0 };
+let touchKijkVinger = null, touchKijkX = 0, touchKijkY = 0;
+
+// Eén plek die de yaw/pitch bijwerkt, zodat muis en touch niet uit elkaar
+// kunnen lopen. De klem op de pitch hoort bij deze rekensom, niet bij de
+// aanroeper.
+function draaiKijkrichting(dx, dy, schaal) {
+  speler.yaw -= dx * MUIS_GEVOELIGHEID_BASIS * muisGevoeligheidFactor * schaal;
+  speler.pitch -= dy * MUIS_GEVOELIGHEID_BASIS * muisGevoeligheidFactor * schaal;
+  speler.pitch = Math.max(-1.45, Math.min(1.45, speler.pitch));
+}
+
+function toonTouchBediening(aan) {
+  const laag = document.getElementById('touchBediening');
+  if (laag) laag.hidden = !aan;
+  document.documentElement.classList.toggle('touchModus', !!aan);
+  if (!aan) laatTouchStickLos();
+}
+function laatTouchStickLos() {
+  touchStick.vinger = null;
+  touchStick.x = 0; touchStick.y = 0; touchStick.kracht = 0;
+  const stick = document.getElementById('touchStick');
+  if (stick) { stick.style.left = '-999px'; stick.style.top = '-999px'; }
+  const knop = document.getElementById('touchStickKnop');
+  if (knop) knop.style.transform = '';
+}
+function zetTouchStick(klientX, klientY) {
+  let dx = klientX - touchStick.oorsprongX;
+  let dy = klientY - touchStick.oorsprongY;
+  const afstand = Math.hypot(dx, dy);
+  if (afstand < TOUCH_STICK_DODE_ZONE) {
+    touchStick.x = 0; touchStick.y = 0; touchStick.kracht = 0;
+  } else {
+    // Buiten de straal blijft de richting behouden maar de kracht op 1 —
+    // verder duwen doet niets extra's, en de knop loopt niet weg.
+    const begrensd = Math.min(afstand, TOUCH_STICK_STRAAL);
+    touchStick.x = dx / afstand;
+    touchStick.y = dy / afstand;
+    touchStick.kracht = begrensd / TOUCH_STICK_STRAAL;
+    dx = touchStick.x * begrensd; dy = touchStick.y * begrensd;
+  }
+  const knop = document.getElementById('touchStickKnop');
+  if (knop) knop.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
+}
+
+// De eerste echte aanraking bepaalt de modus — geen apparaatdetectie, zie
+// de toelichting bij zetBesturingModus() hierboven.
+addEventListener('touchstart', () => zetBesturingModus('touch'), { passive: true, capture: true });
+
+addEventListener('touchstart', (e) => {
+  if (besturingModus !== 'touch' || !besturingActief()) return;
+  const helft = window.innerWidth / 2;
+  for (const aanraking of e.changedTouches) {
+    // De vuurknop heeft eigen listeners en stopt daar de propagatie; alles
+    // wat hier binnenkomt is dus speelveld.
+    if (aanraking.clientX < helft) {
+      if (touchStick.vinger !== null) continue;   // stick al bezet: niet stelen
+      touchStick.vinger = aanraking.identifier;
+      touchStick.oorsprongX = aanraking.clientX;
+      touchStick.oorsprongY = aanraking.clientY;
+      const stick = document.getElementById('touchStick');
+      if (stick) {
+        stick.style.left = `${aanraking.clientX - 60}px`;
+        stick.style.top = `${aanraking.clientY - 60}px`;
+      }
+      zetTouchStick(aanraking.clientX, aanraking.clientY);
+    } else if (touchKijkVinger === null) {
+      touchKijkVinger = aanraking.identifier;
+      touchKijkX = aanraking.clientX;
+      touchKijkY = aanraking.clientY;
+    }
+  }
+  e.preventDefault();
+}, { passive: false });
+
+addEventListener('touchmove', (e) => {
+  if (besturingModus !== 'touch' || !besturingActief()) return;
+  for (const aanraking of e.changedTouches) {
+    if (aanraking.identifier === touchStick.vinger) {
+      zetTouchStick(aanraking.clientX, aanraking.clientY);
+    } else if (aanraking.identifier === touchKijkVinger) {
+      draaiKijkrichting(aanraking.clientX - touchKijkX, aanraking.clientY - touchKijkY, TOUCH_KIJK_FACTOR);
+      touchKijkX = aanraking.clientX;
+      touchKijkY = aanraking.clientY;
+    }
+  }
+  e.preventDefault();
+}, { passive: false });
+
+function beeindigTouch(e) {
+  for (const aanraking of e.changedTouches) {
+    if (aanraking.identifier === touchStick.vinger) laatTouchStickLos();
+    else if (aanraking.identifier === touchKijkVinger) touchKijkVinger = null;
+  }
+}
+addEventListener('touchend', beeindigTouch, { passive: true });
+addEventListener('touchcancel', beeindigTouch, { passive: true });
 
 const ingedrukt = {};
 addEventListener('keydown', e => {
@@ -7326,6 +7515,9 @@ startscherm.addEventListener('click', () => {
 // hieronder (ongewijzigd gedrag); de touch-modus roept hem rechtstreeks aan,
 // want daar is geen event.
 function zetBesturingActief(actief) {
+  // Ticket 177: de touch-bediening hoort bij de HUD-chrome — zichtbaar
+  // tijdens het spelen, weg zodra je pauzeert, en alleen in de touch-modus.
+  toonTouchBediening(actief && besturingModus === 'touch');
   hulpUI.style.display = actief ? 'block' : 'none';
   richtkruis.style.display = actief ? 'block' : 'none';
   ammoUI.style.display = actief ? 'block' : 'none';
@@ -7348,6 +7540,7 @@ function zetBesturingActief(actief) {
     startscherm.querySelector('h2').textContent = 'Gepauzeerd, klik om verder te spelen';
     for (const k in ingedrukt) ingedrukt[k] = false;
     schietKnopIngedrukt = false;   // muisknop kan "hangen" als focus verloren ging tijdens het vasthouden
+    laatTouchStickLos();           // Ticket 177: idem voor een duim die bij het pauzeren op de stick stond
     verbergInteractiePrompt();     // geen hangende "druk T"-prompt tijdens pauze
     golfBannerUI.style.opacity = '0';
   }
@@ -7363,9 +7556,9 @@ document.addEventListener('pointerlockchange', () => {
 
 addEventListener('mousemove', e => {
   if (besturingModus !== 'muis' || !besturingActief()) return;
-  speler.yaw -= e.movementX * MUIS_GEVOELIGHEID_BASIS * muisGevoeligheidFactor;
-  speler.pitch -= e.movementY * MUIS_GEVOELIGHEID_BASIS * muisGevoeligheidFactor;
-  speler.pitch = Math.max(-1.45, Math.min(1.45, speler.pitch));
+  // Ticket 177: via dezelfde helper als de touch-drag, zodat er niet twee
+  // versies van deze rekensom kunnen ontstaan. Schaal 1 = ongewijzigd gedrag.
+  draaiKijkrichting(e.movementX, e.movementY, 1);
 });
 
 // Schieten met de linkermuisknop. Ingedrukt houden blijft vuren (de cooldown
@@ -7380,6 +7573,28 @@ addEventListener('mousedown', e => {
 addEventListener('mouseup', e => {
   if (e.button === 0) schietKnopIngedrukt = false;
 });
+
+// Ticket 177: de vuurknop zet exact dezelfde vlag als de linkermuisknop —
+// ingedrukt houden blijft vuren, de cooldown in probeerTeSchieten() regelt
+// het tempo. stopPropagation zodat een duim op deze knop geen kijk-drag
+// start op de rechterhelft van het scherm.
+const touchVuurKnop = document.getElementById('touchVuur');
+touchVuurKnop?.addEventListener('touchstart', (e) => {
+  e.stopPropagation();
+  e.preventDefault();
+  zetBesturingModus('touch');
+  if (!besturingActief()) return;
+  schietKnopIngedrukt = true;
+  touchVuurKnop.classList.add('ingedrukt');
+  probeerTeSchieten();
+}, { passive: false });
+const laatVuurknopLos = (e) => {
+  e.stopPropagation();
+  schietKnopIngedrukt = false;
+  touchVuurKnop.classList.remove('ingedrukt');
+};
+touchVuurKnop?.addEventListener('touchend', laatVuurknopLos);
+touchVuurKnop?.addEventListener('touchcancel', laatVuurknopLos);
 
 // --- Botsingen: duw een punt (met straal) uit alle obstakels ----
 // magKelderBinnen (Ticket 62, v0.19, §7.5.1; §7.5.7 herziening): zowel de
@@ -7448,6 +7663,16 @@ function updateSpeler(dt) {
     if (ingedrukt['KeyS']) stapVooruit -= 1;
     if (ingedrukt['KeyD']) stapZijwaarts += 1;
     if (ingedrukt['KeyA']) stapZijwaarts -= 1;
+    // Ticket 177: de virtuele stick levert een ANALOGE richting — half
+    // duwen is half zo snel lopen. Het toetsenbord blijft digitaal (kracht
+    // 1), en `* 1` is bit-exact in IEEE754, dus voor muisspelers verandert
+    // er geen enkele uitkomst.
+    let kracht = 1;
+    if (touchStick.kracht > 0) {
+      stapZijwaarts = touchStick.x;
+      stapVooruit = -touchStick.y;   // scherm-y loopt omlaag, vooruit is omhoog
+      kracht = touchStick.kracht;
+    }
 
     if (stapVooruit !== 0 || stapZijwaarts !== 0) {
       const sin = Math.sin(speler.yaw), cos = Math.cos(speler.yaw);
@@ -7456,8 +7681,8 @@ function updateSpeler(dt) {
       const lengte = Math.hypot(bewegingX, bewegingZ);
       bewegingX /= lengte; bewegingZ /= lengte;
 
-      speler.positie.x += bewegingX * speler.snelheid * dt;
-      speler.positie.z += bewegingZ * speler.snelheid * dt;
+      speler.positie.x += bewegingX * speler.snelheid * kracht * dt;
+      speler.positie.z += bewegingZ * speler.snelheid * kracht * dt;
     }
   }
 
@@ -18468,6 +18693,11 @@ window.AmsterdamUndeadDebug = {
   actiefGeluid, archiefSleutelVan, ARCHIEF_KANAAL_PREFIX, speelSchot,
   // Ticket 176
   besturingActief, zetBesturingModus, zetBesturingActief, startBesturing, verlaatBesturing,
+  // Ticket 177
+  touchStick, draaiKijkrichting, laatTouchStickLos, toonTouchBediening,
+  TOUCH_STICK_STRAAL, TOUCH_STICK_DODE_ZONE, TOUCH_KIJK_FACTOR,
+  get touchKijkVinger() { return touchKijkVinger; },
+  get schietKnopIngedrukt() { return schietKnopIngedrukt; },
   get besturingModus() { return besturingModus; },
   get touchSessieActief() { return touchSessieActief; },
   MUZIEK_STEMMINGEN, WAPEN_KLANKSETS, actieveMuziekStemming, actieveWapenklank,

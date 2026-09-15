@@ -42,26 +42,31 @@ export const executablePathOptie = existsSync(LOKAAL_CHROMIUM_PAD) ? { executabl
 // testscript los (zonder run-all.mjs), dan ontbreekt de gedeelde browser en
 // valt dit terug op een eigen, lokaal gelanceerde browser — ongewijzigd
 // gedrag t.o.v. vóór dit ticket.
-async function verkrijgBrowserEnContext() {
+async function verkrijgBrowserEnContext({ touch = false } = {}) {
   const gedeeld = globalThis.__AMSTERDAM_UNDEAD_SHARED_BROWSER__;
   const viewport = { width: 640, height: 400 };
+  // Ticket 177: een context met `hasTouch` laat Playwright echte
+  // TouchEvents versturen (page.touchscreen + Touch-constructor in de
+  // pagina). Zonder deze vlag bestaat `window.ontouchstart` niet en worden
+  // touch-listeners nooit geraakt.
+  const opties = touch ? { viewport, hasTouch: true } : { viewport };
   if (gedeeld) {
-    const context = await gedeeld.newContext({ viewport });
+    const context = await gedeeld.newContext(opties);
     // Enige methode die testscripts ooit op het geretourneerde `browser`-
     // object aanroepen is .close() (geverifieerd over alle testscripts) —
     // deze wrapper hoeft dus niets anders na te bootsen.
     return { browser: { close: () => context.close() }, context };
   }
   const browser = await chromium.launch(executablePathOptie);
-  const context = await browser.newContext({ viewport });
+  const context = await browser.newContext(opties);
   return { browser, context };
 }
 
 // Opent amsterdam-undead.html headless en geeft { browser, page, errs } terug.
 // errs verzamelt console errors + pageerrors zodat elk testscript aan het
 // eind kan controleren dat het spel zonder JS-fouten laadt.
-export async function openAmsterdamUndead({ simuleerPointerLock = false } = {}) {
-  const { browser, context } = await verkrijgBrowserEnContext();
+export async function openAmsterdamUndead({ simuleerPointerLock = false, touch = false } = {}) {
+  const { browser, context } = await verkrijgBrowserEnContext({ touch });
   const page = await context.newPage();
   const errs = [];
   page.on('pageerror', e => errs.push(String(e)));
