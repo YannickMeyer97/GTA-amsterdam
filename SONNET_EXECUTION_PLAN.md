@@ -5848,7 +5848,7 @@ Volledige tickets in `ROADMAP.md` onder "v0.34 — Ronde 20".
 
 ```
 T176 (besturingsgate)  ← fundament
-   ├─ T177 (touch: lopen/kijken/vuren) ─ T178 (contextknop)
+   ├─ T177 (touch: lopen/kijken/vuren) ✅ ─ T178 (contextknop) ✅
    ├─ T179 (liggend + lay-out)
    └─ T180 (prestaties, meting op toestel)
 T181 (speeltest) ← eigenaarswerk, doorlopend
@@ -5946,10 +5946,46 @@ nabouwen.
 Playwright kan touch emuleren (`hasTouch`, `page.touchscreen`), dus dit is
 gewoon headless te toetsen — ook het multi-touch-geval, en juist dat.
 
-### T178 — de contextknop
+### T178 — de contextknop ✅ uitgevoerd (v0.34)
 
-Het spel weet al wat er kan: interactiepunten hebben een `prompt()` die de
-juiste tekst oplevert. Bouw daar geen tweede waarheid naast.
+**Nawoord.** 41 checks in `tests/test-contextknop.mjs`, allemaal groen.
+
+**De waarheid stond er al, maar werd alleen geschreven.** Alle achttien
+prompt-teksten volgen de afspraak "`Druk T: ` = uitvoerbaar, gewone tekst =
+mededeling". De contextknop is de eerste code die die afspraak LEEST. Zodra
+je op een conventie gaat leunen die nergens bewaakt wordt, is de volgende
+toevoeging die 'm breekt een kwestie van tijd — dus staat er nu een check
+op die over álle interactiepunten heen loopt.
+
+**Eén functie voor tonen én uitvoeren.** `bepaalTouchContext()` geeft
+`{ label, actief, actie }`, en zowel het renderen als de tik lezen díé. De
+gevaarlijkste variant van deze bug is een knop die iets anders koopt dan er
+op staat, en dat kan alleen ontstaan als tekst en actie uit verschillende
+bronnen komen. Om dezelfde reden zijn `herladenMogelijk()` en
+`wisselWapenMogelijk()` UIT `herladen()`/`wisselWapen()` getrokken in plaats
+van ernaast nagebouwd: anders moet de knop raden of hij mag uitgrijzen.
+
+**De les van dit ticket: tekst die niet meebeweegt wordt nooit gevonden.**
+Het ticket noemde twee plekken met "WASD" en "muis". Bij het bouwen bleken
+er vier: de interactieprompt zei óók "Druk T", en er staat één melding in
+het spel die een toets noemt ("Druk Q om te wisselen"). Geen enkele test
+keek naar tekst, dus niets van dit alles was ooit opgevallen. Als je een
+tweede invoermodus toevoegt, is "grep op de toetsnamen" een verplichte stap,
+geen bonus.
+
+**En de val bij het overtypen van bestaande tekst.** De hint-balk werd eerst
+overgetypt naar een JS-constante — en dat was meteen mis: de opmaak gebruikt
+`" &nbsp;·&nbsp; "` (spatie, harde spatie, puntje, harde spatie, spatie) en
+de nagetypte versie had alleen de harde spaties. Opgelost door de muistekst
+bij het laden uit `hulpUI.textContent` te lezen. Zo is "op desktop verandert
+er niets" geen belofte maar een eigenschap, en een check legt vast dat de
+tekst na een rondje touch byte voor byte terugkomt.
+
+**Lay-out hoor je te meten, niet te kiezen.** De eerste plaatsing van de
+knoppen las prima in de CSS en lag op 740×360 dwars over de HUD en de
+munitieteller. In code is dat onzichtbaar. De test meet nu alle zichtbare
+vaste UI-rechthoeken en faalt op elke overlap — die meting, niet het oog,
+bepaalde de uiteindelijke posities.
 
 ### T179/T180
 

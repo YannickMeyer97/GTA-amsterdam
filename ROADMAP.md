@@ -7019,8 +7019,8 @@ achteraan — dat was in de eerste opzet van deze ronde verkeerd om.
 T180-meting (NU al mogelijk, geen code)  ← de-riskt de hele ronde
    │
 T176 (besturingsgate)  ← fundament, alles hangt hieraan
-   ├─ T177 (touch: lopen/kijken/vuren)
-   │     └─ T178 (contextknop + actieknoppen + kloppende besturingsuitleg)
+   ├─ T177 (touch: lopen/kijken/vuren) ✅
+   │     └─ T178 (contextknop + actieknoppen + kloppende besturingsuitleg) ✅
    ├─ T179 (liggend + lay-out + fullscreen)   ← nodig om te kunnen speeltesten
    └─ T180-bijstelling                         ← pas ná de meting
 T181 (publiceren + speeltest)                  ← doorlopend, eigenaarswerk
@@ -7242,10 +7242,65 @@ Alle vier gemeten, geen van alle aanwezig:
 
 ---
 
-## Ticket 178 — De contextknop en de vaste actieknoppen
+## Ticket 178 — De contextknop en de vaste actieknoppen ✅
 
 - **Type:** feature (UI)
 - **Afhankelijk van:** T177.
+- **Status:** ✅ uitgevoerd (v0.34). Nieuw `tests/test-contextknop.mjs`:
+  41 checks.
+
+  **De conventie die er al was.** Alle achttien prompt-teksten beginnen met
+  `Druk T: ` als er iets te dóén is, en met gewone tekst als het een
+  mededeling is ("Canal Jug is al gedronken"). Die afspraak werd tot nu toe
+  alleen geschreven, nooit gelezen — de contextknop is de eerste code die
+  hem leest. Daarom staat er nu ook een check op: elk interactiepunt moet
+  de conventie volgen, zodat een toekomstig punt hem niet stilletjes kan
+  breken en de knop dan een lege of verkeerde tekst krijgt.
+
+  **Eén functie voor tonen én uitvoeren.** `bepaalTouchContext()` levert
+  `{ label, actief, actie }` op, en zowel het renderen als de tik lezen díé.
+  De ergste variant van deze bug is een knop die iets anders koopt dan er op
+  staat; dat kan alleen als tekst en actie uit verschillende bronnen komen.
+  De test forceert de deur echt door op de knop te tikken en vergelijkt het
+  geld met de prijs.
+
+  **Twee afgeleide voorwaarden zijn uit hun functie getrokken.**
+  `herladenMogelijk()` en `wisselWapenMogelijk()` bevatten nu de gates die
+  eerst binnen in `herladen()` en `wisselWapen()` stonden; die functies
+  roepen ze aan. Zonder die stap zou de knop moeten RADEN of hij mag
+  uitgrijzen, en dat raden loopt uiteindelijk uit de pas met de echte gate.
+
+- **Afwijking van de ticket-tekst, bewust.** Het ticket zei: "is er geen punt
+  in bereik en is het magazijn niet vol, dan wordt het herladen". Dat laat
+  het geval open waarin er wél een punt in bereik is maar dat punt alleen
+  een MEDEDELING geeft (een al gekochte winkel). Letterlijk uitgevoerd zou
+  de knop daar dood staan en kun je naast een leeggekochte winkel niet
+  herladen. De knop valt daarom terug op herladen zodra het punt niets
+  uitvoerbaars biedt.
+- **Wat er buiten de ticket-tekst nog aan tekst mee moest.** Twee dingen die
+  pas op het scherm zichtbaar werden: de interactieprompt zelf zei "Druk T"
+  (nu op touch "Tik ⚡"), en de enige melding in het spel die een toets
+  noemt ("Canal Ripper is gekocht! Druk Q") wijst op touch naar de
+  wisselknop. In de muismodus zijn beide teksten byte voor byte ongewijzigd.
+- **De hint-balk wordt uit de HTML gelezen, niet overgetypt.** Bij het
+  overtypen ging het meteen mis: de opmaak gebruikt `" &nbsp;·&nbsp; "` —
+  een gewone spatie, een harde spatie, het puntje, een harde spatie, een
+  gewone spatie — en de nagetypte versie had alleen de harde spaties. Nu
+  leest `HULP_TEKST.muis` bij het laden gewoon `hulpUI.textContent`, zodat
+  "op desktop verandert er niets" geen belofte is maar een eigenschap. Een
+  check zet dat vast: na een rondje touch staat er byte voor byte weer wat
+  er stond.
+- **De lay-out was niet gekozen maar gemeten.** De eerste plaatsing van de
+  knoppen zag er in code prima uit en lag op een liggend telefoonformaat
+  (740×360) pontificaal over de HUD en de munitieteller heen. Dat is op een
+  screenshot meteen te zien en in code niet, dus meet de test nu alle
+  zichtbare vaste UI-rechthoeken en faalt op elke overlap of alles wat
+  buiten beeld valt. Daarvoor moesten drie bestaande HUD-onderdelen gericht
+  verhuizen in de touch-modus (hint-balk naar linksboven, munitieteller naar
+  links van de knoppenboog, interactieprompt omhoog). **Dat is nadrukkelijk
+  geen lay-out-pass:** de HUD en de minimap vreten op dat formaat samen nog
+  altijd ruim een kwart van het scherm, en dát is T179. De overlap-check is
+  meteen de ondergrens waar T179 niet onder mag zakken.
 - **Werk.**
   - **Eén contextknop** die toont wat er nú kan. Het spel weet dat al: de
     interactiepunten hebben een `prompt()` die precies de juiste tekst
@@ -7265,6 +7320,11 @@ Alle vier gemeten, geen van alle aanwezig:
 - **Acceptatie:** de contextknop toont in elke situatie dezelfde actie als de
   T-toets zou uitvoeren; pauzeren werkt zonder toetsenbord; geen enkele actie
   is op mobiel onbereikbaar.
+- **Testplan:** nieuw `tests/test-contextknop.mjs` — de prompt-conventie over
+  alle interactiepunten, het ontleden/inkorten, de knop bij een echt punt,
+  de terugval op herladen, uitgrijzen (zelfde plek én maat, geen actie), de
+  drie vaste knoppen, pauzeren zonder toetsenbord, geen kijk-drag vanaf een
+  knop, de overlap-meting op 740×360, en de tekst in beide modi.
 
 ---
 
@@ -7287,7 +7347,15 @@ Alle vier gemeten, geen van alle aanwezig:
   - **Safe-area-insets** (`env(safe-area-inset-*)`) voor notches en de
     home-indicator. Zonder dit belanden knoppen onder de systeembalk — dit
     wordt standaard vergeten.
-  - HUD, minimap en richtkruis schalen naar ~700×360 CSS-px.
+  - HUD, minimap en richtkruis schalen naar ~700×360 CSS-px. **Gemeten in
+    T178, op 740×360:** de HUD beslaat x 410-724 / y 16-197 en de minimap
+    x 16-176 / y 184-344 — samen ruim een kwart van het scherm, en de HUD
+    duwt de hele knoppenboog in de onderste 160 px. Dit is dus geen
+    cosmetische wens maar de reden dat de rest krap zit.
+  - **Let op de overlap-check in `test-contextknop.mjs`.** Die meet alle
+    zichtbare vaste UI-rechthoeken op 740×360 en faalt op elke overlap. Dat
+    is de ondergrens: T179 mag daar niet onder zakken, en kan 'm uitbreiden
+    naar de maten die dit ticket toevoegt.
   - Startscherm, instellingenhoek en archiefpaneel nalopen op die maat.
 - **Acceptatie:** niets valt buiten beeld of onder een systeembalk op de
   gangbare toestelmaten; de winkel is met een duim te bedienen.

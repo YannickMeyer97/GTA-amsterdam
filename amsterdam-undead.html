@@ -501,10 +501,12 @@
   }
   #touchVuur {
     position: absolute;
-    right: 28px;
-    bottom: 28px;
-    width: 96px;
-    height: 96px;
+    /* Ticket 178: iets kleiner en lager dan in T177 — de knoppenboog ernaast
+       moet er ook nog bij, en de munitieteller lag er anders onder. */
+    right: 20px;
+    bottom: 18px;
+    width: 88px;
+    height: 88px;
     border-radius: 50%;
     background: rgba(200, 70, 60, 0.30);
     border: 2px solid rgba(255, 140, 130, 0.55);
@@ -519,8 +521,112 @@
     user-select: none;
   }
   #touchVuur.ingedrukt { background: rgba(220, 90, 75, 0.55); }
+
+  /* --- Ticket 178: de actieknoppen ---------------------------------------
+     Eén contextknop (die toont wat er nú kan) plus drie vaste knoppen:
+     wapenwissel, mes en pauze. Ze liggen in een boog om de vuurknop, dus
+     binnen bereik van dezelfde duim, en raken elkaar niet.
+
+     Belangrijk: een knop die niets te doen heeft GRIJST UIT, hij verdwijnt
+     niet. Een knop die onder je duim van plek of aanwezigheid wisselt is
+     erger dan een inactieve — dan tik je de verkeerde. `.uit` verandert
+     daarom alleen kleur en dekking, nooit de maat of de positie. */
+  .touchActie {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(18, 28, 40, 0.45);
+    border: 2px solid rgba(190, 215, 230, 0.45);
+    color: #eaf2f6;
+    font-size: 26px;
+    line-height: 1;
+    pointer-events: auto;
+    user-select: none;
+  }
+  .touchActie.ingedrukt { background: rgba(90, 130, 160, 0.55); }
+  /* Uitgegrijsd: zelfde maat, zelfde plek, alleen zichtbaar dood. */
+  .touchActie.uit {
+    opacity: 0.35;
+    border-color: rgba(190, 215, 230, 0.22);
+  }
+  /* De maten en afstanden hieronder zijn niet gekozen maar GEMETEN, op een
+     liggend telefoonformaat (740×360 CSS-px). Bij de eerste opzet lag de
+     contextknop pontificaal over de HUD heen en de vuurknop over de
+     munitieteller — de knoppenboog en de bestaande chrome vechten om
+     dezelfde hoek. De rechterkolom onder de HUD (y 200-360) is de enige
+     echt vrije ruimte, en daar past dit precies in.
+     `test-contextknop.mjs` meet alle rechthoeken en faalt op elke
+     overlap, zodat dit niet terug kan sluipen. */
+  #touchWissel, #touchMes {
+    width: 58px;
+    height: 58px;
+    font-size: 24px;
+  }
+  #touchMes    { right: 120px; bottom: 24px; }
+  #touchWissel { right: 188px; bottom: 24px; }
+  /* De contextknop is een pil met tekst: hij moet leesbaar zijn, want hij
+     is het enige dat vertelt wát je koopt of opent. */
+  #touchContext {
+    right: 20px;
+    bottom: 108px;
+    min-width: 150px;
+    max-width: 44vw;
+    height: 48px;
+    padding: 0 16px;
+    border-radius: 24px;
+    background: rgba(40, 62, 40, 0.55);
+    border-color: rgba(255, 215, 94, 0.6);
+    color: #ffd75e;
+    font-size: 15px;
+    font-weight: 700;
+    gap: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  #touchContext.uit {
+    background: rgba(18, 28, 40, 0.45);
+    border-color: rgba(190, 215, 230, 0.22);
+    color: #eaf2f6;
+  }
+  #touchContextLabel { overflow: hidden; text-overflow: ellipsis; }
+  /* Pauze staat linksboven, onder de menulink — weg van de vuurduim, zodat
+     je 'm niet per ongeluk raakt midden in een golf. Esc bestaat niet op
+     een telefoon, dus zonder deze knop is pauzeren onbereikbaar. */
+  #touchPauze {
+    left: 16px;
+    top: 62px;
+    width: 46px;
+    height: 46px;
+    font-size: 18px;
+  }
+
   /* Zonder dit scrollt en zoomt de pagina onder je duim weg zodra je veegt. */
   html.touchModus, html.touchModus body { touch-action: none; overscroll-behavior: none; }
+
+  /* Ticket 178: drie bestaande HUD-onderdelen lagen precies in de nieuwe
+     duimzone. Dit is een GERICHTE verhuizing van die drie, geen lay-out-pass:
+     de HUD en de minimap vreten op 740×360 samen nog altijd een kwart van
+     het scherm en dát is Ticket 179. Wat hier staat is het minimum om de
+     knoppen bruikbaar te maken.
+       - de hint-balk: van onderin-midden (bovenop de knoppen) naar de lege
+         strook linksboven, tussen de menulink en de HUD;
+       - de munitieteller: van rechtsonder (onder de vuurknop) naar links
+         van de knoppenboog;
+       - de interactieprompt: omhoog, boven de knoppen uit. */
+  html.touchModus #hulpUI {
+    left: 106px;
+    top: 12px;
+    bottom: auto;
+    transform: none;
+    max-width: 296px;
+    font-size: 10px;
+    line-height: 1.5;
+    padding: 4px 8px;
+  }
+  html.touchModus #ammoUI { right: 260px; bottom: 14px; font-size: 16px; padding: 6px 12px; }
+  html.touchModus #interactiePrompt { bottom: 118px; }
 
   #geluidKnop {
     width: 42px;
@@ -859,6 +965,13 @@
 <div id="touchBediening" hidden>
   <div id="touchStick"><div id="touchStickKnop"></div></div>
   <div id="touchVuur">VUUR</div>
+  <!-- Ticket 178: de contextknop toont wat er nú kan (kopen, deur openen,
+       plank timmeren) en valt terug op herladen; de drie ronde knoppen zijn
+       vast. Alle vier grijzen uit als er niets te doen is. -->
+  <div id="touchContext" class="touchActie"><span aria-hidden="true">⚡</span><span id="touchContextLabel">Herladen</span></div>
+  <div id="touchWissel" class="touchActie" title="Wissel van wapen">🔄</div>
+  <div id="touchMes" class="touchActie" title="Steken">🔪</div>
+  <div id="touchPauze" class="touchActie" title="Pauze">⏸</div>
 </div>
 <div id="hitmarker"><span></span><span></span><span></span><span></span></div>
 <div id="interactiePrompt"></div>
@@ -920,16 +1033,29 @@
       </div>
     </div>
     <div class="instelRij">
-      <label class="instelKop" for="gevoeligheidSlider"><span class="instelIcoon">🖱️</span>Muisgevoeligheid</label>
+      <!-- Ticket 178: icoon en kopje volgen de besturingsmodus; de slider
+           zelf is dezelfde (T75) en werkt in beide modi. -->
+      <label class="instelKop" for="gevoeligheidSlider"><span class="instelIcoon" id="gevoeligheidIcoon">🖱️</span><span id="gevoeligheidKop">Muisgevoeligheid</span></label>
       <input type="range" id="gevoeligheidSlider" min="0.25" max="3" step="0.05" style="width:150px;">
     </div>
   </div>
   <h1>AMSTERDAM UNDEAD</h1>
   <div id="pandAdresStart" class="pandAdres"></div>
   <h2>Een verlaten grachtenpand — overleef de golven ondoden</h2>
-  <div class="uitleg">
+  <!-- Ticket 178: twee uitlegblokken, één per besturingsmodus. Op een
+       telefoon stond hier letterlijk een leugen ("WASD", "muis"), en dat
+       soort tekst blijft staan omdat geen enkele test ernaar kijkt — vandaar
+       dat het hier een acceptatiecriterium is. Twee statische blokken in
+       plaats van innerHTML-schrijven: geen opbouw in JS, geen kans dat de
+       opmaak per modus uit elkaar loopt. -->
+  <div class="uitleg" id="uitlegMuis">
     🚶 <b>WASD</b> lopen &nbsp;·&nbsp; 🖱️ <b>muis</b> kijken &nbsp;·&nbsp; <b>klik</b> schieten &nbsp;·&nbsp; 🔪 <b>V</b> steken<br>
     🔫 <b>R</b> herladen &nbsp;·&nbsp; 🛒 <b>T</b> kopen/gebruiken &nbsp;·&nbsp; 🔄 <b>Q</b> wissel wapen &nbsp;·&nbsp; ⏸️ <b>Esc</b> pauze<br>
+    <span style="opacity:0.85">🎒 Vind de 3 vluchtroute-onderdelen om te ontsnappen</span>
+  </div>
+  <div class="uitleg" id="uitlegTouch" hidden>
+    🚶 <b>links duim</b> lopen &nbsp;·&nbsp; 👆 <b>rechts slepen</b> kijken &nbsp;·&nbsp; <b>VUUR</b> schieten &nbsp;·&nbsp; 🔪 steken<br>
+    ⚡ <b>actieknop</b> kopen/gebruiken &amp; herladen &nbsp;·&nbsp; 🔄 wissel wapen &nbsp;·&nbsp; ⏸ pauze<br>
     <span style="opacity:0.85">🎒 Vind de 3 vluchtroute-onderdelen om te ontsnappen</span>
   </div>
   <div id="startschermRecord" style="opacity:0.85; margin-bottom:14px; font-size:14px;"></div>
@@ -7164,6 +7290,9 @@ function zetBesturingModus(modus) {
   laatTouchStickLos();
   schietKnopIngedrukt = false;
   toonTouchBediening(modus === 'touch' && besturingActief());
+  // Ticket 178: de besturingsuitleg (hint-balk + startscherm + het kopje bij
+  // de gevoeligheidsslider) hoort bij de modus die nú actief is.
+  werkBesturingsuitlegBij();
 }
 
 // DE gate. Alles wat vroeger rechtstreeks naar pointer lock keek, gaat nu
@@ -7595,6 +7724,154 @@ const laatVuurknopLos = (e) => {
 };
 touchVuurKnop?.addEventListener('touchend', laatVuurknopLos);
 touchVuurKnop?.addEventListener('touchcancel', laatVuurknopLos);
+
+/* --- Ticket 178: de contextknop en de vaste actieknoppen ------------------
+   Zonder dit ticket is de helft van het spel op een telefoon onbereikbaar:
+   kopen, deuren openen, herladen, wisselen en pauzeren hangen allemaal aan
+   een toets. De contextknop lost het grootste deel in één knop op, want het
+   spel WEET al wat er kan — elk interactiepunt heeft een `prompt()` die
+   precies de juiste tekst oplevert.
+
+   De teksten volgen daarbij één conventie: een prompt die met "Druk T: "
+   begint is een UITVOERBARE actie, en een prompt zonder die aanhef is een
+   mededeling ("Canal Jug is al gedronken"). Die conventie stond er al in
+   alle achttien prompts; hier wordt hij voor het eerst gelezen in plaats van
+   alleen geschreven — en `test-contextknop.mjs` bewaakt 'm, zodat een
+   toekomstig interactiepunt hem niet stilletjes kan breken. */
+const INTERACTIE_AANHEF = 'Druk T: ';
+
+function ontleedInteractiePrompt(tekst) {
+  if (typeof tekst === 'string' && tekst.startsWith(INTERACTIE_AANHEF)) {
+    return { uitvoerbaar: true, label: tekst.slice(INTERACTIE_AANHEF.length) };
+  }
+  return { uitvoerbaar: false, label: typeof tekst === 'string' ? tekst : '' };
+}
+
+// De prompt onderin het scherm, maar dan zonder de toets die op een telefoon
+// niet bestaat. Mededelingen blijven woord voor woord staan.
+function touchPromptTekst(tekst) {
+  const ontleed = ontleedInteractiePrompt(tekst);
+  return ontleed.uitvoerbaar ? `Tik ⚡ : ${ontleed.label}` : ontleed.label;
+}
+
+// Op de knop past geen volledige prompt ("plank timmeren (+€25, houdt een
+// ondode tegen) — 2/6"). De volledige tekst staat al in #interactiePrompt
+// vlak erboven; de knop krijgt alleen de kern, tot de eerste bijzin.
+function kortInteractieLabel(label) {
+  let knip = label.length;
+  for (const scheiding of [' (', ' — ']) {
+    const i = label.indexOf(scheiding);
+    if (i !== -1 && i < knip) knip = i;
+  }
+  return label.slice(0, knip).trim();
+}
+
+// Wat doet de contextknop op dit moment, en mag hij aan? Eén functie voor
+// zowel het TONEN als het UITVOEREN — een knop die iets anders doet dan er
+// op staat is de ergste variant van deze bug, dus er is maar één bron.
+function bepaalTouchContext() {
+  if (huidigeInteractie) {
+    const ontleed = ontleedInteractiePrompt(huidigeInteractiePromptRuw);
+    // Uitvoerbaar punt in bereik: exact wat de T-toets zou doen.
+    if (ontleed.uitvoerbaar) {
+      return { label: kortInteractieLabel(ontleed.label), actief: true, actie: activeerHuidigeInteractie };
+    }
+    // Een MEDEDELING in bereik (al gekocht, geen vuurwapen): T doet hier
+    // niets zinnigs, dus de knop valt terug op herladen in plaats van dood
+    // te gaan. Anders kun je naast een leeggekochte winkel niet herladen.
+  }
+  return { label: 'Herladen', actief: herladenMogelijk(), actie: herladen };
+}
+
+/* Elke actieknop volgt hetzelfde patroon als de vuurknop uit T177:
+   - stopPropagation, anders start dezelfde duim ook een kijk-drag;
+   - preventDefault, anders stuurt de browser er een muisklik achteraan en
+     vuurt de actie twee keer;
+   - zetBesturingModus('touch'), want dit kán de allereerste aanraking zijn.
+   Een uitgegrijsde knop licht bewust wél kort op maar voert niets uit: dan
+   weet je dat je hem geraakt hebt en dat er niets te doen is, in plaats van
+   te denken dat je gemist hebt. */
+function koppelActieknop(id, actie) {
+  const knop = document.getElementById(id);
+  if (!knop) return null;
+  knop.addEventListener('touchstart', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    zetBesturingModus('touch');
+    if (!besturingActief()) return;
+    knop.classList.add('ingedrukt');
+    if (knop.classList.contains('uit')) return;
+    actie();
+  }, { passive: false });
+  const los = (e) => { e.stopPropagation(); knop.classList.remove('ingedrukt'); };
+  knop.addEventListener('touchend', los);
+  knop.addEventListener('touchcancel', los);
+  return knop;
+}
+
+const touchContextKnop = koppelActieknop('touchContext', () => bepaalTouchContext().actie());
+const touchWisselKnop = koppelActieknop('touchWissel', wisselWapen);
+const touchMesKnop = koppelActieknop('touchMes', steekMes);
+// Pauze mag NIET door de `uit`-controle heen vallen: hij is altijd actief.
+// Pauze staat bewust NIET in werkTouchActieknoppenBij(): hij krijgt dus nooit
+// de `uit`-klasse en is altijd bruikbaar. Vandaar ook geen const-binding — er
+// is niets aan bij te werken.
+koppelActieknop('touchPauze', verlaatBesturing);
+const touchContextLabelUI = document.getElementById('touchContextLabel');
+
+// Zelfde zuinigheidspatroon als toonInteractiePrompt(): alleen schrijven als
+// er iets veranderd is. Dit draait elke frame.
+let touchContextLabelLaatst = null;
+function zetActieknopActief(knop, actief) {
+  if (!knop) return;
+  if (knop.classList.contains('uit') !== actief) return;   // stond al goed
+  knop.classList.toggle('uit', !actief);
+}
+function werkTouchActieknoppenBij() {
+  // In de muismodus kost dit ticket precies één vergelijking per frame.
+  if (besturingModus !== 'touch') return;
+  const context = bepaalTouchContext();
+  if (context.label !== touchContextLabelLaatst) {
+    touchContextLabelLaatst = context.label;
+    if (touchContextLabelUI) touchContextLabelUI.textContent = context.label;
+  }
+  zetActieknopActief(touchContextKnop, context.actief);
+  zetActieknopActief(touchWisselKnop, wisselWapenMogelijk());
+  // Het mes kent geen bezitsvoorwaarde, alleen zijn eigen cooldown.
+  zetActieknopActief(touchMesKnop, mesStaat.cooldownTimer <= 0);
+}
+
+/* De besturingsuitleg moet meeveranderen met de modus. Twee plekken noemden
+   letterlijk WASD en de muis: de hint-balk onderin tijdens het spelen en het
+   uitlegblok op het startscherm. Op een telefoon stond daar dus een leugen,
+   en precies dat soort tekst blijft jaren staan omdat geen enkele test naar
+   tekst kijkt. Daarom is het hier een acceptatiecriterium met een assertie. */
+const HULP_TEKST = {
+  // De muisvariant wordt bij het laden uit de HTML zélf gelezen, niet
+  // overgetypt. Bij het overtypen ging het meteen mis: de opmaak gebruikt
+  // " &nbsp;·&nbsp; " (een gewone spatie, een harde spatie, het puntje, een
+  // harde spatie, een gewone spatie) en de nagetypte versie had alleen de
+  // harde spaties. Zo is "op desktop verandert er niets" geen belofte maar
+  // een eigenschap: terugschakelen naar de muismodus schrijft letterlijk
+  // terug wat er stond.
+  muis: hulpUI.textContent,
+  touch: 'links = lopen  ·  rechts slepen = kijken  ·  VUUR = schieten  ·  🔪 = steken  ·  ⚡ = kopen/herladen  ·  🔄 = wisselen  ·  ⏸ = pauze',
+};
+function werkBesturingsuitlegBij() {
+  const touch = besturingModus === 'touch';
+  hulpUI.textContent = HULP_TEKST[touch ? 'touch' : 'muis'];
+  const uitlegMuis = document.getElementById('uitlegMuis');
+  const uitlegTouch = document.getElementById('uitlegTouch');
+  if (uitlegMuis) uitlegMuis.hidden = touch;
+  if (uitlegTouch) uitlegTouch.hidden = !touch;
+  const icoon = document.getElementById('gevoeligheidIcoon');
+  const kop = document.getElementById('gevoeligheidKop');
+  if (icoon) icoon.textContent = touch ? '👆' : '🖱️';
+  if (kop) kop.textContent = touch ? 'Kijkgevoeligheid' : 'Muisgevoeligheid';
+}
+// Meteen één keer draaien, zodat de zichtbare staat gegarandeerd bij de
+// actieve modus hoort — ook als de opmaak ooit anders zou beginnen.
+werkBesturingsuitlegBij();
 
 // --- Botsingen: duw een punt (met straal) uit alle obstakels ----
 // magKelderBinnen (Ticket 62, v0.19, §7.5.1; §7.5.7 herziening): zowel de
@@ -8727,11 +9004,20 @@ function updateAmmoUI() {
 }
 updateAmmoUI();
 
+// Ticket 178: de vier voorwaarden van herladen() staan hier apart, zodat de
+// contextknop op touch kan LATEN ZIEN of herladen nu iets doet (uitgegrijsd
+// of niet) zonder dat die voorwaarden op twee plekken staan en uit elkaar
+// kunnen lopen. herladen() zelf is er geen millimeter door veranderd.
+function herladenMogelijk() {
+  if (!wapenStaat) return false;                                  // Ticket 132: geen vuurwapen = niets te herladen
+  if (wapenStaat.herladen) return false;                          // al bezig
+  if (wapenStaat.magazijn >= wapenStaat.magazijnMax) return false; // al vol
+  if (wapenStaat.reserve <= 0) return false;                       // niets om over te hevelen
+  return true;
+}
+
 function herladen() {
-  if (!wapenStaat) return;                                  // Ticket 132: geen vuurwapen = niets te herladen
-  if (wapenStaat.herladen) return;                          // al bezig
-  if (wapenStaat.magazijn >= wapenStaat.magazijnMax) return; // al vol
-  if (wapenStaat.reserve <= 0) return;                       // niets om over te hevelen
+  if (!herladenMogelijk()) return;
   wapenStaat.herladen = true;
   wapenStaat.herlaadTimer = wapenStaat.herlaadDuur;
   speelHerlaad();
@@ -8774,11 +9060,19 @@ function activeerVuurwapen(naam) {
 // Wisselen tussen Drukspuit en Ratelaar (Q). Alleen mogelijk als BEIDE
 // vuurwapens bezeten zijn; geblokkeerd tijdens herladen (eenvoudiger en
 // voorspelbaarder dan het herladen te onderbreken).
-function wisselWapen() {
+// Ticket 178: idem als herladenMogelijk() — de wisselknop op touch grijst uit
+// wanneer Q ook niets zou doen, en leest die voorwaarde hier in plaats van
+// 'm na te bouwen. De `!!wapenStaat`-tussenstap is er omdat deze functie ook
+// buiten wisselWapen() wordt aangeroepen; daar beschermt de short-circuit
+// van `bezitTweeVuurwapens()` niet vanzelf tegen een null-wapenStaat.
+function wisselWapenMogelijk() {
   // Ticket 132: expliciete bezitsgate op het ARSENAAL i.p.v. de losse
   // `ratelaarGekocht`-vlag.
-  if (!bezitTweeVuurwapens()) return;
-  if (wapenStaat.herladen) return;
+  return bezitTweeVuurwapens() && !!wapenStaat && !wapenStaat.herladen;
+}
+
+function wisselWapen() {
+  if (!wisselWapenMogelijk()) return;
   // Een eventuele nog zichtbare mondingsflits van het uitgaande wapen meteen
   // doven, anders blijft die (zeldzaam, bij wisselen vlak na een schot) hangen.
   vlamTimer = 0;
@@ -16446,7 +16740,11 @@ function koopRatelaar() {
   wapenStaten.ratelaar = nieuweWapenStaat(WAPEN_RATELAAR);
   speelKoop();
   flitsMarkering(ratelaarMarkering);
-  toonMelding('Canal Ripper is gekocht! Druk Q om te wisselen');
+  // Ticket 178: de enige melding in het spel die een toets noemt. Op een
+  // telefoon bestaat Q niet, dus verwijst hij daar naar de wisselknop.
+  toonMelding(besturingModus === 'touch'
+    ? 'Canal Ripper is gekocht! Tik 🔄 om te wisselen'
+    : 'Canal Ripper is gekocht! Druk Q om te wisselen');
   doofMarkering(ratelaarMarkering);
   // Ticket 134: was `if (actiefWapenNaam === 'drukspuit')` — vóór T134 het
   // enige mogelijke geval (de Drukspuit-staat bestond altijd, dus dit was
@@ -17512,6 +17810,10 @@ function toonVluchtOnderdelenIndienDrempel() {
 const interactiePunten = [deurPunt, ammoPunt, werkbankPunt, pantserdrankPunt, deur2Punt, watertapPunt, ratelaarPunt, amstel9Punt, smederijPunt, deur3Punt, deur4Punt, deur5Punt, deur6Punt, autoHerladerPunt];
 
 let huidigeInteractie = null;
+// Ticket 178: de RUWE prompt-tekst van dit frame (of null). De contextknop
+// leest deze in plaats van `prompt()` nog een keer aan te roepen — die
+// functies bouwen prijsteksten op en worden elke frame al aangeroepen.
+let huidigeInteractiePromptRuw = null;
 
 // Ticket 62 (v0.19, Y-aanname-audit): zie KELDER_Y_MARGE hierboven.
 function updateInteracties() {
@@ -17527,8 +17829,13 @@ function updateInteracties() {
   huidigeInteractie = dichtst;
   if (huidigeInteractie) {
     const tekst = typeof huidigeInteractie.prompt === 'function' ? huidigeInteractie.prompt() : huidigeInteractie.prompt;
-    toonInteractiePrompt(tekst);
+    huidigeInteractiePromptRuw = tekst;
+    // Ticket 178: in de muismodus is dit letterlijk dezelfde string als
+    // voorheen; alleen op touch wordt "Druk T" vervangen, want die toets
+    // bestaat daar niet.
+    toonInteractiePrompt(besturingModus === 'touch' ? touchPromptTekst(tekst) : tekst);
   } else {
+    huidigeInteractiePromptRuw = null;
     verbergInteractiePrompt();
   }
 }
@@ -17574,6 +17881,7 @@ function gameLoop(nu) {
     updateKleurgrading(dt);   // Ticket 98
     updateSpelerRegen(dt);
     updateInteracties();
+    werkTouchActieknoppenBij();   // Ticket 178: leest huidigeInteractie, dus NA updateInteracties()
     updateFinaleInstap(dt);   // Ticket 146: leest huidigeInteractie, dus NA updateInteracties()
     updateFinaleEscalatie(dt);   // Ticket 147: NA updateFinaleInstap() — leest instapActief pas ná een eventuele voltooiing deze frame
     updateWinkelMarkeringen(dt);   // Ticket 37: status-animatie + winkelLicht
@@ -18700,6 +19008,12 @@ window.AmsterdamUndeadDebug = {
   get schietKnopIngedrukt() { return schietKnopIngedrukt; },
   get besturingModus() { return besturingModus; },
   get touchSessieActief() { return touchSessieActief; },
+  // Ticket 178
+  INTERACTIE_AANHEF, ontleedInteractiePrompt, touchPromptTekst, kortInteractieLabel,
+  bepaalTouchContext, werkTouchActieknoppenBij, werkBesturingsuitlegBij,
+  herladenMogelijk, wisselWapenMogelijk, HULP_TEKST, herladen,
+  get wapenStaat() { return wapenStaat; },
+  get huidigeInteractiePromptRuw() { return huidigeInteractiePromptRuw; },
   MUZIEK_STEMMINGEN, WAPEN_KLANKSETS, actieveMuziekStemming, actieveWapenklank,
   pasGeluidsetToe,
   get muziekOscillatoren() { return muziekOscillatoren; },

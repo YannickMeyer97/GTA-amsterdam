@@ -82,15 +82,25 @@ te gaan naar het hoofdmenu.
 
 ### Besturing
 
-| Actie | Toets |
-| --- | --- |
-| Lopen | `W` `A` `S` `D` |
-| Rondkijken | Muis (klik eerst in het spel) |
-| Schieten | Linkermuisknop |
-| Herladen | `R` |
-| Kopen / gebruiken | `T` (bij de deur, ammo-kist, upgradepunt of wandkooppunt) |
-| Wissel van wapen | `Q` (pas nadat De Ratelaar gekocht is) |
-| Pauze | `Esc` |
+Het spel merkt zelf of je met een muis of met je vingers speelt — dat gebeurt
+op de eerste aanraking, niet op basis van wat voor apparaat je hebt. De uitleg
+op het startscherm en de hintbalk onderin passen zich daar meteen op aan, dus
+je hoeft niets in te stellen.
+
+| Actie | Toetsenbord + muis | Aanraakscherm |
+| --- | --- | --- |
+| Lopen | `W` `A` `S` `D` | Duim op de linkerhelft — de stick verschijnt waar je hem neerzet, en half duwen is half zo snel |
+| Rondkijken | Muis (klik eerst in het spel) | Slepen op de rechterhelft |
+| Schieten | Linkermuisknop | De ronde **VUUR**-knop rechtsonder |
+| Herladen | `R` | De ⚡-knop, als er niets anders te doen is |
+| Kopen / gebruiken | `T` (bij de deur, ammo-kist, upgradepunt of wandkooppunt) | Dezelfde ⚡-knop: hij toont wat er op die plek te doen is |
+| Steken | `V` | 🔪 |
+| Wissel van wapen | `Q` (pas nadat De Ratelaar gekocht is) | 🔄 |
+| Pauze | `Esc` | ⏸ linksboven |
+
+Een knop die op dat moment niets kan doen — geen twee wapens om tussen te
+wisselen, een vol magazijn — grijst uit en blijft op zijn plek staan, zodat je
+nooit misgrijpt omdat er een knop verschoven is.
 
 ### Gameplay
 
