@@ -2,7 +2,25 @@
 <html lang="nl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Feedback-fix (zoom): `maximum-scale=1, user-scalable=no` is de eerste laag
+     tegen knijpzoomen. Safari op iOS negeert die bewust, dus de échte
+     afweer staat in de CSS (`touch-action: none`) en in de
+     gesture*-handlers verderop; dit dekt de rest.
+     `viewport-fit=cover` laat de pagina tot in de hoeken lopen. Dat is nodig
+     zodra het spel als beginscherm-app draait, en het brengt de notch en de
+     home-indicator ÓVER de pagina heen — vandaar dat de touch-knoppen
+     hieronder met `env(safe-area-inset-*)` rekenen. Zonder `cover` hield iOS
+     de pagina zelf binnen het veilige gebied en was dat niet nodig. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- Feedback-fix (fullscreen): op een iPhone is de Fullscreen API geen
+     betrouwbare route (Safari noteert 'm als gedeeltelijk en heeft er lang
+     een aparte instelling voor gevraagd). "Zet op beginscherm" is daar wél
+     betrouwbaar, en draait volledig op deze drie meta-tags — geen los
+     manifestbestand, dus binnen de één-bestand-regel uit CLAUDE.md.
+     Android en iPad worden gedekt door de Fullscreen API bij het starten. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Amsterdam Undead">
 <title>Amsterdam Undead</title>
 <style>
   * { box-sizing: border-box; }
@@ -602,8 +620,86 @@
     font-size: 18px;
   }
 
-  /* Zonder dit scrollt en zoomt de pagina onder je duim weg zodra je veegt. */
+  /* Zonder dit scrollt en zoomt de pagina onder je duim weg zodra je veegt.
+     Sinds de zoom-fix hangt deze regel aan de MODUS, dus hij geldt ook op
+     het startscherm — daar ontstond de zoom namelijk. */
   html.touchModus, html.touchModus body { touch-action: none; overscroll-behavior: none; }
+
+  /* De knoppen houden afstand van de notch en de home-indicator. Dit is pas
+     nodig sinds `viewport-fit=cover`: daarvóór hield iOS de pagina zelf
+     binnen het veilige gebied. `max()` zodat een toestel zónder notch
+     gewoon de oorspronkelijke marge houdt. */
+  html.touchModus #touchVuur   { right: max(20px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom)); }
+  html.touchModus #touchMes    { right: max(120px, calc(env(safe-area-inset-right) + 100px)); bottom: max(24px, env(safe-area-inset-bottom)); }
+  html.touchModus #touchWissel { right: max(188px, calc(env(safe-area-inset-right) + 168px)); bottom: max(24px, env(safe-area-inset-bottom)); }
+  html.touchModus #touchContext { right: max(20px, env(safe-area-inset-right)); bottom: max(108px, calc(env(safe-area-inset-bottom) + 90px)); }
+  html.touchModus #touchPauze  { left: max(16px, env(safe-area-inset-left)); top: max(62px, calc(env(safe-area-inset-top) + 46px)); }
+  html.touchModus #menuLink    { left: max(16px, env(safe-area-inset-left)); top: max(16px, env(safe-area-inset-top)); }
+
+  /* Feedback-fix: staand pauzeert het spel en vraagt dit scherm om te
+     draaien. z-index boven het startscherm (10) en het archiefpaneel (12),
+     zodat je staand niets kunt starten. */
+  #draaiScherm[hidden] { display: none; }
+  #draaiScherm {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: #0b1018;
+    color: #eaf2f6;
+    text-align: center;
+    padding: 24px;
+    touch-action: none;
+  }
+  #draaiSchermIcoon {
+    font-size: 54px;
+    line-height: 1;
+    animation: draaiWenk 1.8s ease-in-out infinite;
+  }
+  @keyframes draaiWenk {
+    0%, 45%, 100% { transform: rotate(0deg); }
+    65%, 85%      { transform: rotate(-90deg); }
+  }
+  #draaiSchermKop { font-size: 22px; font-weight: 700; letter-spacing: 1px; }
+  #draaiSchermTekst { font-size: 14px; opacity: 0.8; }
+
+  /* Feedback-fix: op een laag scherm vielen de knoppen van het game-over- en
+     winscherm buiten beeld, en scrollen kon niet.
+     TWEE oorzaken, allebei nodig om op te lossen:
+       1. `overflow` stond niet aan, dus er viel niets te scrollen;
+       2. `justify-content: center` maakt bij overloop ook de BOVENkant
+          onbereikbaar — een gecentreerde flexbox schuift zijn inhoud aan
+          twee kanten naar buiten, en die bovenkant kun je niet terugscrollen.
+     Vandaar `flex-start` met een automatische marge: dat centreert nog
+     steeds zolang het past, maar laat de inhoud netjes van boven beginnen
+     zodra het niet past. Plus `touch-action: pan-y`, want de touch-modus zet
+     `touch-action: none` op de hele pagina en dat blokkeert ook dit scrollen.
+
+     De drempel is de SCHERMHOOGTE, niet het invoerapparaat: een laag
+     browservenster op een laptop heeft exact hetzelfde probleem. */
+  @media (max-height: 520px) {
+    #gameOverScherm, #winScherm {
+      justify-content: flex-start;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      touch-action: pan-y;
+      -webkit-overflow-scrolling: touch;
+      padding: max(10px, env(safe-area-inset-top)) 16px max(14px, env(safe-area-inset-bottom));
+    }
+    #gameOverScherm > *:first-child, #winScherm > *:first-child { margin-top: auto; }
+    #gameOverScherm > *:last-child,  #winScherm > *:last-child  { margin-bottom: auto; }
+    #gameOverScherm h1, #winScherm h1 { font-size: 26px; margin: 0 0 4px; }
+    #gameOverScherm .statsBlok, #winScherm .statsBlok { font-size: 12px; line-height: 1.45; margin-top: 6px; }
+    #gameOverScherm .scoreRegel, #winScherm .scoreRegel { font-size: 18px; margin-top: 5px; }
+    #gameOverScherm .recordRegel, #winScherm .recordRegel { font-size: 12px; }
+    #gameOverScherm .knop, #winScherm .knop { font-size: 15px; padding: 9px 22px; margin-top: 10px; }
+    #winScherm .knoppenRij { margin-top: 10px; }
+    .archiefWinstRegel { font-size: 12px; }
+  }
 
   /* Ticket 178: drie bestaande HUD-onderdelen lagen precies in de nieuwe
      duimzone. Dit is een GERICHTE verhuizing van die drie, geen lay-out-pass:
@@ -987,6 +1083,14 @@
   <div id="touchWissel" class="touchActie" title="Wissel van wapen">🔄</div>
   <div id="touchMes" class="touchActie" title="Steken">🔪</div>
   <div id="touchPauze" class="touchActie" title="Pauze">⏸</div>
+</div>
+<!-- Feedback-fix: staand is dit spel onspeelbaar — de knoppen staan op
+     posities die uitgaan van een liggend scherm. In plaats van een halve
+     lay-out te tonen pauzeert het spel en vraagt het je te draaien. -->
+<div id="draaiScherm" hidden>
+  <div id="draaiSchermIcoon">📱</div>
+  <div id="draaiSchermKop">Draai je toestel</div>
+  <div id="draaiSchermTekst">Amsterdam Undead speel je liggend.</div>
 </div>
 <div id="hitmarker"><span></span><span></span><span></span><span></span></div>
 <div id="interactiePrompt"></div>
@@ -7306,10 +7410,12 @@ function zetBesturingModus(modus) {
   // blijven staan — anders loopt de speler door zonder dat er iets aanraakt.
   laatTouchStickLos();
   schietKnopIngedrukt = false;
+  werkTouchModusKlasseBij();   // vóór de rest: hij bepaalt de hele touch-lay-out
   toonTouchBediening(modus === 'touch' && besturingActief());
   // Ticket 178: de besturingsuitleg (hint-balk + startscherm + het kopje bij
   // de gevoeligheidsslider) hoort bij de modus die nú actief is.
   werkBesturingsuitlegBij();
+  werkOrientatieBij();         // een telefoon kan staand in de hand liggen
 }
 
 // DE gate. Alles wat vroeger rechtstreeks naar pointer lock keek, gaat nu
@@ -7377,8 +7483,74 @@ function draaiKijkrichting(dx, dy, schaal) {
 function toonTouchBediening(aan) {
   const laag = document.getElementById('touchBediening');
   if (laag) laag.hidden = !aan;
-  document.documentElement.classList.toggle('touchModus', !!aan);
   if (!aan) laatTouchStickLos();
+}
+
+/* Feedback-fix (zoom): de klasse `touchModus` hing hierboven aan de
+   ZICHTBAARHEID van de knoppen, en die staan alleen tijdens het spelen aan.
+   Op het startscherm gold `touch-action: none` dus niet en kon je vrij
+   knijpzoomen; zodra het spel begon gold hij wél, en zat je vast in die
+   zoom zonder de helft van je knoppen te zien.
+
+   De klasse hoort bij de MODUS, niet bij de knoppen: ben je op touch, dan
+   mag er nergens gezoomd worden — startscherm, spel, eindscherm. */
+function werkTouchModusKlasseBij() {
+  document.documentElement.classList.toggle('touchModus', besturingModus === 'touch');
+}
+
+/* Feedback-fix: staand is dit spel onspeelbaar — alle knopposities gaan uit
+   van een liggend scherm. Dan liever eerlijk pauzeren en erom vragen dan een
+   halve lay-out tonen.
+
+   Alleen op touch: een laptopvenster kan ook "staand" zijn (smal en hoog) en
+   daar is niets mis mee, want daar bedien je met toetsen en muis. */
+const staandeOrientatie = window.matchMedia
+  ? window.matchMedia('(orientation: portrait)') : null;
+function staatToestelStaand() {
+  return besturingModus === 'touch' && !!staandeOrientatie?.matches;
+}
+function werkOrientatieBij() {
+  const staand = staatToestelStaand();
+  const scherm = document.getElementById('draaiScherm');
+  if (scherm) scherm.hidden = !staand;
+  // Pauzeren, niet alleen bedekken: anders lopen de golven door achter het
+  // draaischerm en sta je bij het terugdraaien tussen de ondoden.
+  if (staand && besturingActief()) verlaatBesturing();
+}
+staandeOrientatie?.addEventListener?.('change', werkOrientatieBij);
+// Niet elk toestel stuurt een matchMedia-change bij een draai; het
+// orientationchange/resize-paar vangt de rest op.
+addEventListener('orientationchange', werkOrientatieBij);
+addEventListener('resize', werkOrientatieBij);
+
+/* Feedback-fix (zoom): Safari op iOS negeert `user-scalable=no` bewust, dus
+   knijpzoomen moet daar via de gesture-events geblokkeerd worden. Alleen in
+   de touch-modus, zodat zoomen op een desktop gewoon blijft werken — ook
+   een trackpad-knijp op macOS stuurt deze events. */
+for (const soort of ['gesturestart', 'gesturechange', 'gestureend']) {
+  addEventListener(soort, (e) => {
+    if (besturingModus === 'touch') e.preventDefault();
+  }, { passive: false });
+}
+
+/* Feedback-fix (fullscreen): Android en iPad kunnen de adresbalk echt
+   wegnemen met de Fullscreen API. Op een iPhone lukt dat niet betrouwbaar —
+   daar is "Zet op beginscherm" de route, en die draait op de apple-*
+   meta-tags bovenin dit bestand.
+
+   Dit MOET vanuit een gebruikersgebaar komen, dus het hangt aan dezelfde tik
+   als het starten. Een weigering is geen fout: het spel is zonder fullscreen
+   net zo goed speelbaar, dus de belofte wordt stil opgevangen. */
+function probeerFullscreen() {
+  if (besturingModus !== 'touch') return;
+  if (document.fullscreenElement) return;
+  const el = document.documentElement;
+  const vraag = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!vraag) return;
+  try {
+    const uitkomst = vraag.call(el, { navigationUI: 'hide' });
+    if (uitkomst && typeof uitkomst.catch === 'function') uitkomst.catch(() => {});
+  } catch { /* geweigerd of niet ondersteund — prima, gewoon doorspelen */ }
 }
 function laatTouchStickLos() {
   touchStick.vinger = null;
@@ -7664,6 +7836,7 @@ startscherm.addEventListener('click', () => {
   // bleef false, besturingActief() bleef false, en het spel startte nooit.
   // Drie tickets lang onzichtbaar omdat alle touch-tests startBesturing()
   // rechtstreeks aanriepen en dus juist deze flow oversloegen.
+  probeerFullscreen();   // moet uit ditzelfde gebruikersgebaar komen
   startBesturing();
 });
 
@@ -7929,6 +8102,8 @@ function werkBesturingsuitlegBij() {
 // Meteen één keer draaien, zodat de zichtbare staat gegarandeerd bij de
 // actieve modus hoort — ook als de opmaak ooit anders zou beginnen.
 werkBesturingsuitlegBij();
+werkTouchModusKlasseBij();
+werkOrientatieBij();
 
 // --- Botsingen: duw een punt (met straal) uit alle obstakels ----
 // magKelderBinnen (Ticket 62, v0.19, §7.5.1; §7.5.7 herziening): zowel de
@@ -19070,6 +19245,8 @@ window.AmsterdamUndeadDebug = {
   bepaalTouchContext, werkTouchActieknoppenBij, werkBesturingsuitlegBij,
   herladenMogelijk, wisselWapenMogelijk, HULP_TEKST, herladen,
   get wapenStaat() { return wapenStaat; },
+  // Feedback-fixes ronde 20: oriëntatie, zoom-afweer, fullscreen
+  werkOrientatieBij, staatToestelStaand, werkTouchModusKlasseBij, probeerFullscreen,
   get huidigeInteractiePromptRuw() { return huidigeInteractiePromptRuw; },
   MUZIEK_STEMMINGEN, WAPEN_KLANKSETS, actieveMuziekStemming, actieveWapenklank,
   pasGeluidsetToe,
