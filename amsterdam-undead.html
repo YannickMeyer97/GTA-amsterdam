@@ -615,18 +615,33 @@
        - de munitieteller: van rechtsonder (onder de vuurknop) naar links
          van de knoppenboog;
        - de interactieprompt: omhoog, boven de knoppen uit. */
-  html.touchModus #hulpUI {
-    left: 106px;
-    top: 12px;
-    bottom: auto;
-    transform: none;
-    max-width: 296px;
-    font-size: 10px;
-    line-height: 1.5;
-    padding: 4px 8px;
+  /* Feedback-fix: de hintbalk is op een telefoon helemaal weg. Hij besloeg
+     drie regels bovenin en vertelde iets wat de knoppen zelf al zeggen — een
+     knop met VUUR erop en een 🔪 hebben geen bijschrift nodig. Op desktop
+     blijft hij ongewijzigd staan, want daar zijn de toetsen niet zichtbaar. */
+  html.touchModus #hulpUI { display: none !important; }
+  html.touchModus #ammoUI { right: 254px; bottom: 12px; font-size: 13px; padding: 4px 9px; }
+  html.touchModus #interactiePrompt { bottom: 118px; font-size: 13px; padding: 6px 14px; }
+
+  /* Feedback-fix: HUD en minimap aten samen ruim een kwart van een liggend
+     telefoonscherm (gemeten op 740×360: HUD 314×181, minimap 160×160). Ze
+     zijn hier puur kleiner gezet; de minimap tekent nog steeds op zijn eigen
+     160×160 canvas en wordt alleen door de browser geschaald, zodat geen
+     enkele tekenregel of test eraan hoeft te veranderen. */
+  html.touchModus #minimapUI { width: 104px; height: 104px; bottom: 12px; left: 12px; }
+  /* De HUD wordt GESCHAALD, niet per regel verkleind. Zijn rijen dragen
+     inline `font-size:12px` in de opmaak, en een inline stijl wint van elke
+     selector — een `font-size` hier raakte dus alleen de HP-regel, waardoor
+     het blok wel lager maar nauwelijks smaller werd (314 -> 302 px). Eén
+     transform pakt alles in één keer, inclusief die inline regels, en
+     scheelt vijf !important-regels die bij elke toekomstige HUD-rij opnieuw
+     bijgehouden zouden moeten worden. */
+  html.touchModus #hudUI {
+    top: 10px;
+    right: 10px;
+    transform: scale(0.72);
+    transform-origin: top right;
   }
-  html.touchModus #ammoUI { right: 260px; bottom: 14px; font-size: 16px; padding: 6px 12px; }
-  html.touchModus #interactiePrompt { bottom: 118px; }
 
   #geluidKnop {
     width: 42px;
@@ -1053,10 +1068,12 @@
     🔫 <b>R</b> herladen &nbsp;·&nbsp; 🛒 <b>T</b> kopen/gebruiken &nbsp;·&nbsp; 🔄 <b>Q</b> wissel wapen &nbsp;·&nbsp; ⏸️ <b>Esc</b> pauze<br>
     <span style="opacity:0.85">🎒 Vind de 3 vluchtroute-onderdelen om te ontsnappen</span>
   </div>
+  <!-- Feedback-fix: op een telefoon stonden hier drie regels bedieningsuitleg
+       die het startscherm onleesbaar maakten. Weg op verzoek — de knoppen
+       dragen hun eigen label (VUUR) of icoon (🔪 🔄 ⏸ ⚡) en leggen zichzelf
+       uit. Wat blijft is het SPELDOEL, want dat staat nergens anders. -->
   <div class="uitleg" id="uitlegTouch" hidden>
-    🚶 <b>links duim</b> lopen &nbsp;·&nbsp; 👆 <b>rechts slepen</b> kijken &nbsp;·&nbsp; <b>VUUR</b> schieten &nbsp;·&nbsp; 🔪 steken<br>
-    ⚡ <b>actieknop</b> kopen/gebruiken &amp; herladen &nbsp;·&nbsp; 🔄 wissel wapen &nbsp;·&nbsp; ⏸ pauze<br>
-    <span style="opacity:0.85">🎒 Vind de 3 vluchtroute-onderdelen om te ontsnappen</span>
+    🎒 Vind de 3 vluchtroute-onderdelen om te ontsnappen
   </div>
   <div id="startschermRecord" style="opacity:0.85; margin-bottom:14px; font-size:14px;"></div>
   <div id="moeilijkheidLabel" style="font-size:19px; font-weight:700; margin-bottom:12px;">Kies je moeilijkheidsgraad</div>
@@ -7716,10 +7733,24 @@ addEventListener('mouseup', e => {
   if (e.button === 0) schietKnopIngedrukt = false;
 });
 
-// Ticket 177: de vuurknop zet exact dezelfde vlag als de linkermuisknop —
-// ingedrukt houden blijft vuren, de cooldown in probeerTeSchieten() regelt
-// het tempo. stopPropagation zodat een duim op deze knop geen kijk-drag
-// start op de rechterhelft van het scherm.
+/* Ticket 177: de vuurknop zet exact dezelfde vlag als de linkermuisknop —
+   ingedrukt houden blijft vuren, de cooldown in probeerTeSchieten() regelt
+   het tempo.
+
+   FEEDBACK-FIX: de duim op deze knop RICHT OOK.
+   T177 deed bewust het tegenovergestelde ("stopPropagation zodat een duim op
+   deze knop geen kijk-drag start"), en dat was fout. Op een telefoon heb je
+   twee duimen: links staat op de loopstick, rechts op deze knop. Er is dus
+   geen derde vinger over om mee te slepen, en schieten sloot rondkijken
+   volledig uit. Vasthouden én richten met dezelfde duim is bovendien hoe
+   vrijwel elke mobiele shooter werkt.
+
+   De knop claimt daarom de kijkvinger als die nog vrij is. Dat blijft veilig
+   binnen het identifier-model uit T177: is er al iemand aan het kijken, dan
+   pakt de knop 'm niet af, en bij het loslaten geeft hij alleen zijn eigen
+   vinger terug. De propagatie wordt nog steeds gestopt — anders zou de
+   globale handler deze aanraking een TWEEDE keer als kijkvinger registreren
+   en meteen weer overschrijven. */
 const touchVuurKnop = document.getElementById('touchVuur');
 touchVuurKnop?.addEventListener('touchstart', (e) => {
   e.stopPropagation();
@@ -7728,12 +7759,25 @@ touchVuurKnop?.addEventListener('touchstart', (e) => {
   if (!besturingActief()) return;
   schietKnopIngedrukt = true;
   touchVuurKnop.classList.add('ingedrukt');
+  const aanraking = e.changedTouches[0];
+  if (aanraking && touchKijkVinger === null) {
+    touchKijkVinger = aanraking.identifier;
+    touchKijkX = aanraking.clientX;
+    touchKijkY = aanraking.clientY;
+  }
   probeerTeSchieten();
 }, { passive: false });
+// Slepen vanaf de knop moet blijven richten, ook als de duim ondertussen van
+// de knop af schuift. De globale touchmove-handler doet dat al op
+// `touchKijkVinger`; hier hoeft dus niets bij, zolang deze listener de
+// beweging maar niet tegenhoudt.
 const laatVuurknopLos = (e) => {
   e.stopPropagation();
   schietKnopIngedrukt = false;
   touchVuurKnop.classList.remove('ingedrukt');
+  for (const aanraking of e.changedTouches) {
+    if (aanraking.identifier === touchKijkVinger) touchKijkVinger = null;
+  }
 };
 touchVuurKnop?.addEventListener('touchend', laatVuurknopLos);
 touchVuurKnop?.addEventListener('touchcancel', laatVuurknopLos);

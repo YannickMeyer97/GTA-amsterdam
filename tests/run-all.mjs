@@ -85,8 +85,18 @@ globalThis.__AMSTERDAM_UNDEAD_SHARED_BROWSER__ = browser;
 // verkleint het risico al fors, maar onder aanhoudende zware belasting kan
 // die compile nog steeds net over de twee vergeleken screenshots heen
 // lopen — zelfde contentie-patroon als de rest van deze set.
+// test-golf-variatielimiter.mjs stond hier ook, met hetzelfde label
+// "wall-clock-timing-gevoelig". Dat was onjuist: dat script had geen enkele
+// tijdsafhankelijkheid, het was KANSGEBASEERD. Zijn eerste check eiste dat
+// 300 lotingen nooit drie identieke profielen op rij opleveren, terwijl de
+// implementatie dat nergens belooft — gemeten gebeurde het in 22% van de
+// sequenties (7,7% vóór Ticket 182 de profielenpool van 7 naar 6 bracht).
+// Met één herkansing kwam de suite daarmee op ~5% rood, net laag genoeg om
+// het voor omgevingsruis te blijven aanzien. Die check toetst nu de
+// eigenschap die de limiter wél levert, met een gezaaide generator, en is
+// daarmee deterministisch — dus hoort hij hier niet meer thuis.
 const HERKANSING = new Set([
-  'test-ontsnapping-vensters.mjs', 'test-golf-variatielimiter.mjs',
+  'test-ontsnapping-vensters.mjs',
   'test-omgeving-sfeer.mjs', 'test-texturenset.mjs',
   'test-achtergrondmuziek.mjs', 'test-hitmarker-audio.mjs',
   'test-levend-water.mjs',

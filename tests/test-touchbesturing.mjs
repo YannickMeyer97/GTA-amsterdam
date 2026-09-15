@@ -293,6 +293,112 @@ check('De muisbesturing geeft nog exact dezelfde draaiing als vóór dit ticket'
   Math.abs(muisIntact.yawNa - muisIntact.verwacht) < 1e-12, muisIntact);
 check('In de muismodus is de touch-bediening onzichtbaar', muisIntact.touchLaagUit === true, muisIntact);
 
+/* --- De duim op VUUR richt óók -------------------------------------------
+   GEVONDEN DOOR TE SPELEN, NIET DOOR TE TESTEN. T177 zette hier bewust
+   `stopPropagation` neer "zodat een duim op deze knop geen kijk-drag start".
+   Dat klinkt netjes en is fout: op een telefoon heb je twee duimen, links op
+   de loopstick en rechts op VUUR. Er is dan geen derde vinger over, dus
+   schieten sloot rondkijken volledig uit.
+
+   Waarom geen enkele test dit ving: ze gebruikten allemaal LOSSE vingers,
+   één per functie. Met drie identifiers werkt alles prima — alleen heeft een
+   mens er twee. De opzet hieronder gebruikt daarom precies twee vingers, in
+   de houding waarin je het toestel echt vasthoudt. */
+await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.zetBesturingModus('touch');
+  Object.defineProperty(document, 'pointerLockElement', {
+    configurable: true, get() { return null; },
+  });
+  d.startBesturing();
+  d.speler.yaw = 0; d.speler.pitch = 0;
+  d.laatTouchStickLos();
+});
+
+const vuurKnopMidden = await page.evaluate(() => {
+  const r = document.getElementById('touchVuur').getBoundingClientRect();
+  return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+});
+
+// Duim 1: links op de stick, en meteen vooruit geduwd — een duim die stil op
+// de stick LIGT heeft terecht kracht 0, je loopt pas als je hem verschuift.
+await raak('touchstart', [{ id: 40, x: LINKS, y: 300 }]);
+await raak('touchmove', [{ id: 40, x: LINKS, y: 260 }]);
+await page.evaluate(({ x, y }) => {
+  const el = document.getElementById('touchVuur');
+  const maak = () => new Touch({ identifier: 41, target: el, clientX: x, clientY: y, pageX: x, pageY: y });
+  el.dispatchEvent(new TouchEvent('touchstart', {
+    cancelable: true, bubbles: true,
+    touches: [maak()], targetTouches: [maak()], changedTouches: [maak()],
+  }));
+}, vuurKnopMidden);
+
+const tweeDuimen = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  return {
+    schiet: d.schietKnopIngedrukt,
+    stickVinger: d.touchStick.vinger,
+    kijkVinger: d.touchKijkVinger,
+    yawVoor: d.speler.yaw,
+  };
+});
+check('Met twee duimen (stick + VUUR) loopt, schiet én richt de speler: de vuurduim claimt de kijkvinger',
+  tweeDuimen.schiet === true && tweeDuimen.stickVinger === 40 && tweeDuimen.kijkVinger === 41,
+  tweeDuimen);
+
+// Sleep de vuurduim opzij — dat hoort het beeld te draaien terwijl hij vuurt.
+await page.evaluate(({ x, y }) => {
+  const el = document.getElementById('touchVuur');
+  const maak = () => new Touch({ identifier: 41, target: el, clientX: x - 70, clientY: y, pageX: x - 70, pageY: y });
+  el.dispatchEvent(new TouchEvent('touchmove', {
+    cancelable: true, bubbles: true,
+    touches: [maak()], targetTouches: [maak()], changedTouches: [maak()],
+  }));
+}, vuurKnopMidden);
+
+const naSleep = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  return { yaw: d.speler.yaw, schiet: d.schietKnopIngedrukt, kracht: d.touchStick.kracht };
+});
+check('Slepen vanaf de vuurknop draait het beeld — dit was de bug',
+  naSleep.yaw !== tweeDuimen.yawVoor, { tweeDuimen, naSleep });
+check('En tijdens dat richten blijft hij gewoon vuren en lopen',
+  naSleep.schiet === true && naSleep.kracht > 0, naSleep);
+
+// Vuurduim loslaten: schieten stopt, kijken stopt, de stick blijft staan.
+await page.evaluate(({ x, y }) => {
+  const el = document.getElementById('touchVuur');
+  const maak = () => new Touch({ identifier: 41, target: el, clientX: x - 70, clientY: y, pageX: x - 70, pageY: y });
+  el.dispatchEvent(new TouchEvent('touchend', {
+    cancelable: true, bubbles: true, touches: [], targetTouches: [], changedTouches: [maak()],
+  }));
+}, vuurKnopMidden);
+
+const naLos = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  return { schiet: d.schietKnopIngedrukt, kijkVinger: d.touchKijkVinger, stickVinger: d.touchStick.vinger };
+});
+check('De vuurduim loslaten stopt schieten én kijken, maar laat de loopduim met rust',
+  naLos.schiet === false && naLos.kijkVinger === null && naLos.stickVinger === 40, naLos);
+
+// En een kijkvinger die er al ligt, mag de vuurknop niet afpakken.
+await page.evaluate(() => { window.AmsterdamUndeadDebug.laatTouchStickLos(); });
+await raak('touchstart', [{ id: 50, x: RECHTS, y: 150 }]);
+await page.evaluate(({ x, y }) => {
+  const el = document.getElementById('touchVuur');
+  const maak = () => new Touch({ identifier: 51, target: el, clientX: x, clientY: y, pageX: x, pageY: y });
+  el.dispatchEvent(new TouchEvent('touchstart', {
+    cancelable: true, bubbles: true,
+    touches: [maak()], targetTouches: [maak()], changedTouches: [maak()],
+  }));
+}, vuurKnopMidden);
+const nietStelen = await page.evaluate(() => ({
+  kijkVinger: window.AmsterdamUndeadDebug.touchKijkVinger,
+  schiet: window.AmsterdamUndeadDebug.schietKnopIngedrukt,
+}));
+check('Ligt er al een kijkvinger, dan pakt de vuurknop die niet af (hij vuurt wel)',
+  nietStelen.kijkVinger === 50 && nietStelen.schiet === true, nietStelen);
+
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);

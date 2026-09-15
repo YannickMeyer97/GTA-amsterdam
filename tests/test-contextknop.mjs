@@ -381,6 +381,35 @@ check('Geen enkel vast UI-element overlapt een ander op 740×360',
   indeling.botsingen.length === 0, indeling.botsingen);
 check('Niets valt buiten beeld op 740×360', indeling.buiten.length === 0, indeling.buiten);
 
+/* HUD en minimap blijven klein. Na speeltest bleek dit het echte probleem op
+   een telefoon: samen aten ze ruim een kwart van het scherm (HUD 314×181,
+   minimap 160×160 op 740×360). Nu 226×130 en 104×104 — bijna 60% minder.
+
+   De HUD wordt GESCHAALD in plaats van per regel verkleind, omdat zijn rijen
+   inline `font-size:12px` dragen en een inline stijl van elke selector wint;
+   een font-size-regel maakte het blok wel lager maar nauwelijks smaller
+   (314 -> 302). Deze check meet daarom de RECHTHOEK, niet de CSS — dan
+   maakt het niet uit hoe iemand het later oplost, zolang het maar klein
+   blijft. */
+const maten = await page.evaluate(() => {
+  const meet = (id) => {
+    const r = document.getElementById(id).getBoundingClientRect();
+    return { b: Math.round(r.width), h: Math.round(r.height) };
+  };
+  return { hud: meet('hudUI'), minimap: meet('minimapUI'),
+    scherm: { b: window.innerWidth, h: window.innerHeight } };
+});
+const vlak = (m) => m.b * m.h;
+const schermVlak = maten.scherm.b * maten.scherm.h;
+check('De HUD beslaat op een telefoonformaat minder dan 12% van het scherm',
+  vlak(maten.hud) / schermVlak < 0.12, { ...maten, hudFractie: vlak(maten.hud) / schermVlak });
+check('De minimap beslaat minder dan 5% van het scherm en is hoogstens 120 px breed',
+  vlak(maten.minimap) / schermVlak < 0.05 && maten.minimap.b <= 120,
+  { ...maten, mapFractie: vlak(maten.minimap) / schermVlak });
+check('HUD en minimap samen blijven onder 16% van het scherm',
+  (vlak(maten.hud) + vlak(maten.minimap)) / schermVlak < 0.16,
+  { ...maten, samen: (vlak(maten.hud) + vlak(maten.minimap)) / schermVlak });
+
 /* --- 9b. De muistekst overleeft een heen-en-weer -------------------------
    De muisvariant wordt bij het laden uit de HTML gelezen in plaats van
    overgetypt — bij het overtypen ging het meteen mis met de spaties rond de
@@ -398,31 +427,45 @@ const rondje = await page.evaluate(() => {
 check('De muis-hinttekst komt na een rondje touch byte voor byte terug',
   rondje.na === rondje.voor && rondje.tussen !== rondje.voor, rondje);
 
-/* --- 10. De besturingsuitleg volgt de modus ------------------------------
-   Het acceptatiecriterium uit het ticket: op touch mag er nergens meer WASD
-   of "muis" staan, want die bestaan daar niet. */
+/* --- 10. Op touch staat er NERGENS bedieningsuitleg -----------------------
+   DIT IS HERZIEN NA SPEELTEST. T178 liet op een telefoon een eigen
+   uitlegtekst zien in plaats van de muistekst — technisch juist, in de
+   praktijk onleesbaar: drie regels bovenin tijdens het spelen en drie op
+   het startscherm, op een scherm van 360 px hoog. De eigenaar wilde het
+   allemaal weg, en terecht: een knop met VUUR erop en een 🔪 leggen zichzelf
+   uit, terwijl `R` en `Q` dat op een toetsenbord niet doen.
+
+   De check die hier stond ("de hintbalk beschrijft op touch wél de echte
+   bediening") beweerde dus precies het tegenovergestelde van wat er nu moet
+   gebeuren, en is vervangen door de regel die nu geldt: op touch is er geen
+   ZICHTBARE bedieningsinstructie, waar dan ook. */
 const uitlegTouch = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.zetBesturingModus('touch');
+  const zichtbaar = (el) => {
+    if (!el || el.hidden) return false;
+    const s = getComputedStyle(el);
+    return s.display !== 'none' && s.visibility !== 'hidden';
+  };
+  const hulp = document.getElementById('hulpUI');
+  const touchBlok = document.getElementById('uitlegTouch');
   return {
-    hulp: document.getElementById('hulpUI').textContent,
+    hulpZichtbaar: zichtbaar(hulp),
     muisBlokVerborgen: document.getElementById('uitlegMuis').hidden,
-    touchBlokZichtbaar: !document.getElementById('uitlegTouch').hidden,
-    touchBlokTekst: document.getElementById('uitlegTouch').textContent,
+    touchBlokZichtbaar: zichtbaar(touchBlok),
+    touchBlokTekst: touchBlok.textContent.trim(),
     gevoeligheidKop: document.getElementById('gevoeligheidKop').textContent,
   };
 });
-check('De hint-balk noemt op touch geen WASD, muis, of toetsen meer',
-  !/WASD/i.test(uitlegTouch.hulp) && !/\bmuis\b/i.test(uitlegTouch.hulp)
-  && !/\bEsc\b/.test(uitlegTouch.hulp), uitlegTouch);
-check('De hint-balk beschrijft op touch wél de echte bediening (slepen, vuur, knoppen)',
-  /slepen/i.test(uitlegTouch.hulp) && /vuur/i.test(uitlegTouch.hulp)
-  && /pauze/i.test(uitlegTouch.hulp), uitlegTouch);
+check('De hintbalk onderin is op touch helemaal weg — hij vertelde wat de knoppen zelf al zeggen',
+  uitlegTouch.hulpZichtbaar === false, uitlegTouch);
 check('Het startscherm wisselt van uitlegblok in plaats van er twee te tonen',
   uitlegTouch.muisBlokVerborgen === true && uitlegTouch.touchBlokZichtbaar === true, uitlegTouch);
-check('Het touch-uitlegblok noemt geen WASD of losse toetsen',
-  !/WASD/i.test(uitlegTouch.touchBlokTekst) && !/\bEsc\b/.test(uitlegTouch.touchBlokTekst)
-  && !/\bmuis\b/i.test(uitlegTouch.touchBlokTekst), uitlegTouch);
+check('Het touch-uitlegblok bevat geen bedieningsinstructies meer — geen toetsen, geen knoppen, geen veegjes',
+  !/WASD|\bEsc\b|\bmuis\b|slepen|klik|\btik\b|knop|\bvuur\b/i.test(uitlegTouch.touchBlokTekst),
+  uitlegTouch);
+check('Wat er wél blijft staan is het speldoel — dat staat nergens anders',
+  /vluchtroute-onderdelen/i.test(uitlegTouch.touchBlokTekst), uitlegTouch);
 check('Het kopje bij de gevoeligheidsslider heet op touch geen "Muisgevoeligheid" meer',
   /gevoeligheid/i.test(uitlegTouch.gevoeligheidKop) && !/muis/i.test(uitlegTouch.gevoeligheidKop),
   uitlegTouch);
