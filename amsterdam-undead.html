@@ -7616,7 +7616,11 @@ function kiesMoeilijkheid(naam) {
   // pauze (Esc), ook nadat de keuze al gemaakt was — dit gebeurt maar 1x
   // (moeilijkheidGekozen-guard hieronder), dus de nieuwe tekst blijft
   // daarna permanent staan voor de rest van de run.
-  document.getElementById('moeilijkheidLabel').textContent = 'Klik op het scherm om door te gaan';
+  // Ticket 178-fix: ook deze twee teksten zeggen "klik", wat op een telefoon
+  // niet klopt. Zelfde patroon als de besturingsuitleg.
+  document.getElementById('moeilijkheidLabel').textContent = besturingModus === 'touch'
+    ? 'Tik op het scherm om door te gaan'
+    : 'Klik op het scherm om door te gaan';
   updateHUD();
 }
 document.getElementById('moeilijkheidKnoppen').addEventListener('click', (e) => {
@@ -7636,7 +7640,14 @@ startscherm.addEventListener('click', () => {
   // bij elke latere pauze-hervatting) werkt de hele overlay weer als vanouds.
   if (!moeilijkheidGekozen) return;
   initGeluid();   // geluid mag pas starten na een klik (browserregel)
-  renderer.domElement.requestPointerLock();
+  // Ticket 178-fix: dit was de ENIGE plek die na Ticket 176 nog rechtstreeks
+  // requestPointerLock() aanriep — en uitgerekend de belangrijkste, want dit
+  // is hoe je het spel start en hoe je na elke pauze hervat. Op een telefoon
+  // bestaat pointer lock niet, dus die aanroep deed niets: touchSessieActief
+  // bleef false, besturingActief() bleef false, en het spel startte nooit.
+  // Drie tickets lang onzichtbaar omdat alle touch-tests startBesturing()
+  // rechtstreeks aanriepen en dus juist deze flow oversloegen.
+  startBesturing();
 });
 
 // Ticket 176: de body van de oude `pointerlockchange`-handler, nu een functie
@@ -7666,7 +7677,9 @@ function zetBesturingActief(actief) {
   if (actief) {
     startscherm.querySelector('h2').textContent = 'Een verlaten grachtenpand — Amsterdam';
   } else {
-    startscherm.querySelector('h2').textContent = 'Gepauzeerd, klik om verder te spelen';
+    startscherm.querySelector('h2').textContent = besturingModus === 'touch'
+      ? 'Gepauzeerd, tik om verder te spelen'
+      : 'Gepauzeerd, klik om verder te spelen';
     for (const k in ingedrukt) ingedrukt[k] = false;
     schietKnopIngedrukt = false;   // muisknop kan "hangen" als focus verloren ging tijdens het vasthouden
     laatTouchStickLos();           // Ticket 177: idem voor een duim die bij het pauzeren op de stick stond
