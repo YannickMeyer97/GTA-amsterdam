@@ -127,8 +127,11 @@ check(`(a) Material.dispose() wordt aantoonbaar aangeroepen ná de valanimatie (
    (b) Explosie- en powerup-scenario's (T70)
    ================================================================ */
 // N=30 i.p.v. de 200 uit T70's acceptatiecriterium: elke explosie voegt een
-// écht PointLight toe, en met 200 gelijktijdig actieve PointLights (vóór
-// T70's opruiming die pas ~220ms later via een setTimeout vuurt) wordt élke
+// écht PointLight toe (sinds de mobiele lichtenlimiet: de eerste
+// EXPLOSIE_LICHT_MAX_ACTIEF ervan — de rest krijgt bewust geen licht, zie
+// maakExplosieLicht(), maar wél gewoon zijn eigen flits-geometrie, en dát is
+// wat deze test meet). Met 200 gelijktijdig actieve PointLights (vóór T70's
+// opruiming die pas ~220ms later via een setTimeout vuurt) wordt élke
 // volgende frame in deze SwiftShader-headless-omgeving zo traag dat het hele
 // script vastloopt (empirisch gemeten: >30s vertraging per batch). Een
 // lineair lek per aanroep is bij N=30 exact zo goed aantoonbaar als bij

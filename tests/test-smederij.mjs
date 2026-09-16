@@ -845,6 +845,13 @@ check('Zonder niveau 2 raakt de Canal Ripper alleen doel A, B blijft ongemoeid (
 const explosieHoogte = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const meet = (x, y, z) => {
+    // Feedback-fix (T180-vervolg): explosies delen sindsdien een lichtenbudget
+    // van EXPLOSIE_LICHT_MAX_ACTIEF (zie maakExplosieLicht) — boven die grens
+    // is `licht` bewust null. Deze check gaat over de hoogte van ÉÉN losse
+    // explosie, niet over gelijktijdigheid; het budget hier expliciet
+    // vrijmaken voorkomt dat eerdere explosies in dit bestand (of de vorige
+    // meet()-aanroep) het bezet houden en `nieuw.licht` hieronder null maken.
+    d.updateExplosies(1.0);
     const voor = d.explosies.length;
     d.schotExplosie(x, y, z, null);
     const nieuw = d.explosies[d.explosies.length - 1];

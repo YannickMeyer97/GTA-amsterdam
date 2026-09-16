@@ -7394,6 +7394,51 @@ Alle vier gemeten, geen van alle aanwezig:
 - **Acceptatie:** een speelbare framerate op het toestel van de eigenaar, met
   de meting erbij. Zonder die meting is dit ticket niet af.
 
+- **Bevinding uit deel A ✅ verholpen: hapering bij meerdere gelijktijdige
+  Brander-explosies.** De eigenaar meldde: "hij doet het super goed, alleen
+  als er meerdere branders ontploffen tegelijk kan hij nog wat vastlopen in
+  alle beeldkwaliteiten." Op alle drie de presets, dus geen pixelratio- of
+  schaduwprobleem — iets structureels.
+
+  **Mechanisme, gevonden in three.module.js.** Elke `PointLight` telt mee in
+  `numPointLights`, dat onderdeel is van de shader-programma-cachesleutel
+  (`WebGLPrograms.getProgramCacheKey`). Zodra het totale lichtaantal in de
+  scene een waarde bereikt die nog nooit eerder voorkwam, moet elk materiaal
+  dat licht ontvangt (~40 stuks: vloeren, muren, wapens, ondode-huid) zijn
+  shader opnieuw compileren bij het eerstvolgende frame — op een mobiele GPU
+  een kostbare, blokkerende operatie. `ontploiBrander()` en `schotExplosie()`
+  voegden allebei bij ELKE explosie een nieuw `PointLight` toe. Eén losse
+  explosie is na de eerste keer in de sessie al "warm"; een kettingreactie
+  van meerdere Branders (ze staan vaak dicht bij elkaar en `ontploiBrander()`
+  beschadigt andere Branders binnen bereik, dus dat triggert zichzelf) duwt
+  het totaal in één klap naar een hoogte die nog nooit voorkwam.
+
+  **Gekozen optie (van de vier voorgelegde):** een lichtenbudget,
+  `EXPLOSIE_LICHT_MAX_ACTIEF = 2`. De flits (bol + geluid + schade) blijft
+  bij ELKE explosie verschijnen; alleen het EXTRA puntlicht boven die grens
+  wordt overgeslagen (`maakExplosieLicht()`). Zo blijft het lichtaantal
+  binnen een bereik dat na de eerste dubbele explosie in de sessie al
+  gecompileerd is, zonder dat een losse explosie er anders uitziet.
+  Afgewezen alternatieven: licht volledig weg (zekerder, maar merkbaar
+  minder dramatisch in het donker), shaders vooraf opwarmen bij het laden
+  (behoudt het uiterlijk 100%, maar aanzienlijk meer werk en nog ongemeten
+  op een echt toestel), en alleen de geometrie/materialen poolen (lost de
+  eigenlijke kostenpost — de hercompilatie — niet op).
+
+  **Gedeeld budget.** `schotExplosie()` (AMSTEL-9-niveau 2) put uit hetzelfde
+  budget als `ontploiBrander()` — snel vurende schoten kunnen het net zo goed
+  vullen, dus een gescheiden budget per bron zou de hapering maar half
+  oplossen.
+
+  **Tests:** nieuw `tests/test-explosielichten-limiet.mjs` (19 checks),
+  inclusief een echte kettingreactie van 4 Branders (zelfde opzet als
+  `test-hitmarker-audio.mjs`) die bevestigt dat het aantal actieve lichten
+  op de grens blijft staan terwijl alle 4 wél hun eigen flits/schade krijgen.
+  Eén bestaande check (`test-smederij.mjs`, de explosie-hoogte-toets) las
+  `.licht.position` en veronderstelde dat élke explosie een licht heeft; nu
+  expliciet `updateExplosies()` ervoor om het budget vrij te maken, zonder
+  de eigenlijke toets (hoogte volgt het raakpunt) te wijzigen.
+
 ---
 
 ## Ticket 181 — Publiceren en speeltesten

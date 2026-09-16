@@ -15081,6 +15081,43 @@ function updateStervenden(dt) {
 const explosies = [];
 const EXPLOSIE_FLITS_DUUR = 0.22;   // s, zelfde duur als de oude setTimeout(...,220)
 
+// Feedback (T180-vervolg, mobiele speeltest): hapering bij meerdere
+// gelijktijdige Brander-explosies (een kettingreactie kan er zo drie of
+// vier tegelijk laten afgaan).
+//
+// MECHANISME (three.module.js, WebGLPrograms): elke actieve PointLight telt
+// mee in `numPointLights`, dat onderdeel is van de shader-programma-
+// cachesleutel (getProgramCacheKey()). Zodra het totale lichtaantal in de
+// scene een waarde bereikt die nog NOOIT eerder voorkwam, moet elk materiaal
+// dat licht ontvangt (~40 stuks: vloeren, muren, wapens, ondode-huid) zijn
+// shader opnieuw compileren bij het eerstvolgende frame — op mobiele GPU's
+// een kostbare operatie. Eén enkele explosie voegt één licht toe; dat
+// aantal is na de allereerste explosie in de sessie al "warm". Een
+// kettingreactie van meerdere Branders duwt het totaal in één klap naar een
+// hoogte die nog nooit voorkwam, en dát geeft de merkbare hapering.
+//
+// FIX: de flits (bol + geluid) blijft bij ELKE explosie gewoon verschijnen;
+// alleen het EXTRA puntlicht wordt boven deze grens overgeslagen. Zo blijft
+// het totale lichtaantal binnen een bereik dat na de eerste dubbele
+// explosie in de sessie al gecompileerd is, zonder dat een losse explosie
+// er anders uitziet.
+const EXPLOSIE_LICHT_MAX_ACTIEF = 2;
+function actieveExplosieLichten() {
+  let n = 0;
+  for (const e of explosies) if (e.licht) n++;
+  return n;
+}
+// Maakt het puntlicht van een explosie aan, of niet — zie hierboven. `null`
+// is een geldige, verwachte uitkomst; updateExplosies() en de opruimcode
+// slaan een ontbrekend licht gewoon over.
+function maakExplosieLicht(kleur, intensiteit, bereik, positie) {
+  if (actieveExplosieLichten() >= EXPLOSIE_LICHT_MAX_ACTIEF) return null;
+  const licht = new THREE.PointLight(kleur, intensiteit, bereik, 2);
+  licht.position.copy(positie);
+  scene.add(licht);
+  return licht;
+}
+
 // v0.7: explosie van een Brander bij overlijden — raakt de speler en andere
 // ondoden binnen BRANDER_EXPLOSIE_RADIUS. Kan een kettingreactie geven als
 // er nog een Brander in bereik staat; dat is bedoeld gedrag.
@@ -15090,9 +15127,7 @@ function ontploiBrander(ondode) {
     new THREE.MeshBasicMaterial({ color: 0xff8a3d, transparent: true, opacity: 0.55 }));
   flits.position.set(pos.x, 0.9, pos.z);
   scene.add(flits);
-  const licht = new THREE.PointLight(0xff8a3d, 12, BRANDER_EXPLOSIE_RADIUS * 2, 2);
-  licht.position.copy(flits.position);
-  scene.add(licht);
+  const licht = maakExplosieLicht(0xff8a3d, 12, BRANDER_EXPLOSIE_RADIUS * 2, flits.position);
   explosies.push({ flits, licht, timer: EXPLOSIE_FLITS_DUUR });
   speelExplosie();
 
@@ -15137,9 +15172,9 @@ function schotExplosie(x, y, z, uitgesloten) {
     new THREE.MeshBasicMaterial({ color: 0x9fffb8, transparent: true, opacity: 0.5 }));
   flits.position.set(x, y, z);
   scene.add(flits);
-  const licht = new THREE.PointLight(0x9fffb8, 8, AMSTEL9_EXPLOSIE_RADIUS * 2, 2);
-  licht.position.copy(flits.position);
-  scene.add(licht);
+  // Zelfde lichtenlimiet als ontploiBrander() hierboven, en gedeeld met die
+  // functie: snel vurende AMSTEL-9-schoten tellen mee voor hetzelfde budget.
+  const licht = maakExplosieLicht(0x9fffb8, 8, AMSTEL9_EXPLOSIE_RADIUS * 2, flits.position);
   explosies.push({ flits, licht, timer: EXPLOSIE_FLITS_DUUR });
   speelExplosie();
 
@@ -15165,7 +15200,10 @@ function updateExplosies(dt) {
     e.timer -= dt;
     if (e.timer <= 0) {
       scene.remove(e.flits);
-      scene.remove(e.licht);
+      // e.licht is null als deze explosie boven EXPLOSIE_LICHT_MAX_ACTIEF
+      // uitkwam (zie maakExplosieLicht) — expliciet overslaan i.p.v. op
+      // scene.remove()'s eigen indexOf-no-op te leunen.
+      if (e.licht) scene.remove(e.licht);
       ruimGroepOp(e.flits);
       explosies.splice(i, 1);
     }
@@ -16487,17 +16525,19 @@ function startGolf() {
   spelStaat.golfActief = true;
   toonVluchtOnderdelenIndienDrempel();   // Ticket 44: onthult onderdelen op hun drempelgolf
   updateOntsnappingsVenster();           // Ticket 54: opent het periodieke ontsnappingsvenster indien van toepassing
-  const taai = ondodeStartHP() > 1 ? 'de ondoden zijn nu taaier' : 'mik op het hoofd';   // Ticket 14: volgt de HP-trap
-  const zones = aantalOntgrendeldeZones();
-  const drukte = zones > 1 ? ` · ${zones} zones actief` : '';
+  // Feedback: de golfbanner riep vroeger ook de HP-trap ("mik op het hoofd"
+  // / "de ondoden zijn nu taaier") en het aantal actieve zones erbij op —
+  // op verzoek ingekort tot alleen het golfnummer en het dreigingsniveau.
+  // Mist/stroomuitval blijven hun eigen sfeertekst houden: die communiceren
+  // een actief gevaar, geen routinegetal.
   if (actieveEventGolf === 'mist') {
     toonGolfBanner('MISTGOLF', 'de mist trekt op…');
   } else if (actieveEventGolf === 'stroomuitval') {
     toonGolfBanner('STROOMUITVAL', 'het licht valt uit…');
   } else if (actieveEventGolf) {
-    toonGolfBanner(`GOLF ${spelStaat.golf} — EVENTGOLF`, `dreiging ${Math.round(spelStaat.budget)} · er is iets anders${drukte}`);
+    toonGolfBanner(`GOLF ${spelStaat.golf} — EVENTGOLF`, `dreigingsniveau ${Math.round(spelStaat.budget)}`);
   } else {
-    toonGolfBanner(`GOLF ${spelStaat.golf}`, `dreiging ${Math.round(spelStaat.budget)} · ${taai}${drukte}`);
+    toonGolfBanner(`GOLF ${spelStaat.golf}`, `dreigingsniveau ${Math.round(spelStaat.budget)}`);
   }
   speelGolfStart();
   updateHUD();
@@ -16719,20 +16759,12 @@ function bouwBarricade(venster) {
 // Een ondode "beukt" tegen een gebarricadeerd venster: geen directe spawn,
 // wel één plank minder. Wordt pas repareerbaar (in interactiePunten) zodra
 // de barricade voor het eerst schade heeft.
-// Ticket 166: het barricadesysteem is een vangnet dat vrijwel niemand kent —
-// terugtimmeren is een herhaalbare inkomstenbron (gemeten €160-540 per ronde)
-// én elke intacte plank kost de golf een spawn-stap. Die les landt het best
-// op het moment dat je een plank ziet sneuvelen, en golf 1 is rustig genoeg
-// om 'm te lezen. Eén keer per sessie, zelfde patroon als de golf-10-uitleg.
-let barricadeUitgelegd = false;
-let barricadeUitlegTeller = 0;   // debug/test: telt elke daadwerkelijk getoonde hint
+// Ticket 166 introduceerde hier een eenmalige uitlegmelding bij de eerste
+// gebroken plank ("Ze slopen je barricades! ..."); die is op verzoek weer
+// verwijderd. De reparatieprompt bij het venster zelf (verderop, "Druk T:
+// plank timmeren...") noemt effect én opbrengst en blijft ongewijzigd staan.
 function beukBarricade(venster) {
   if (venster.planken <= 0) return;   // al helemaal kapot; niets meer te beuken
-  if (!barricadeUitgelegd) {
-    barricadeUitgelegd = true;
-    barricadeUitlegTeller++;
-    toonMelding('Ze slopen je barricades! Elke plank die je terugtimmert houdt een ondode tegen — en levert geld op.');
-  }
   const wasVol = venster.planken >= venster.maxPlanken;
   venster.planken--;
   const mesh = venster.plankMeshes[venster.planken];
@@ -19044,11 +19076,8 @@ window.AmsterdamUndeadDebug = {
   BRANDER_EXPLOSIE_RADIUS, BRANDER_EXPLOSIE_SCHADE_SPELER, BRANDER_EXPLOSIE_SCHADE_ONDODE, ontploiBrander,
   // Ticket 70: dispose-contract voor wegwerp-objecten (voor tests: cache-skip + explosie-opruimtimer)
   ruimGroepOp, explosies, updateExplosies, EXPLOSIE_FLITS_DUUR,
+  EXPLOSIE_LICHT_MAX_ACTIEF, actieveExplosieLichten, maakExplosieLicht,
   BARRICADE_MAX_PLANKEN, BARRICADE_REPARATIE_GELD, bouwBarricade,
-  // Ticket 166
-  get barricadeUitgelegd() { return barricadeUitgelegd; },
-  set barricadeUitgelegd(v) { barricadeUitgelegd = v; },
-  get barricadeUitlegTeller() { return barricadeUitlegTeller; },
   beukBarricade, repareerBarricade, golfSpawnStap,
   kozijnSteeg, glasSteeg,   // Ticket 57: nieuw kozijn voor de steegdeur
   // v0.4: atelier (kamer 2) vergroot tot een L-vorm met een voorraadnis:

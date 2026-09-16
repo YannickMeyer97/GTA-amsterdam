@@ -12,8 +12,10 @@
 //
 // T166: het barricadesysteem is een vangnet (terugtimmeren levert €20 per
 // plank op én houdt een ondode tegen), maar niemand gebruikt het omdat de
-// prompt alleen de opbrengst noemde. Nu een eenmalige hint bij de eerste
-// gebroken plank, plus een prompt die het effect vertelt.
+// prompt alleen de opbrengst noemde. De prompt vertelt sindsdien ook het
+// effect. (De eenmalige hint bij de eerste gebroken plank die dit ticket
+// oorspronkelijk toevoegde is later op verzoek weer verwijderd — zie de
+// git-historie voor die sectie.)
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
@@ -84,29 +86,10 @@ check('De regel beweegt mee zodra het geld verandert (via updateHUD, niet via ee
 check('Zonder geldwijziging schrijft de regel zichzelf niet per frame opnieuw',
   meebewegen.schrijfTeller === 0, meebewegen);
 
-// --- T166.1 De hint vuurt precies één keer per sessie -------------------
-const hint = await page.evaluate(() => {
-  const d = window.AmsterdamUndeadDebug;
-  d.barricadeUitgelegd = false;
-  const venster = d.VENSTERS[0];
-  venster.planken = d.BARRICADE_MAX_PLANKEN;
-  const voor = d.barricadeUitlegTeller;
-  d.beukBarricade(venster);
-  const naEerste = { teller: d.barricadeUitlegTeller, melding: document.getElementById('meldingUI').textContent };
-  // Nog vier keer beuken (ook op een ander raam) mag niets meer opleveren.
-  d.beukBarricade(venster);
-  const tweede = d.VENSTERS[1] ?? venster;
-  tweede.planken = d.BARRICADE_MAX_PLANKEN;
-  d.beukBarricade(tweede);
-  d.beukBarricade(tweede);
-  return { voor, naEerste, tellerEind: d.barricadeUitlegTeller };
-});
-check('De barricade-hint verschijnt bij de eerste gebroken plank',
-  hint.naEerste.teller === hint.voor + 1, hint);
-check('...en vertelt zowel het effect (houdt een ondode tegen) als de opbrengst (geld)',
-  /tegen/i.test(hint.naEerste.melding) && /geld/i.test(hint.naEerste.melding), hint);
-check('Verder beuken levert geen tweede hint op — precies één keer per sessie',
-  hint.tellerEind === hint.voor + 1, hint);
+// T166.1 (de eenmalige "Ze slopen je barricades!"-hint bij de eerste
+// gebroken plank) is op verzoek verwijderd — beukBarricade() toont sindsdien
+// nooit meer een melding, alleen nog de plank-breekanimatie/-geluid en de
+// reparatieprompt hieronder.
 
 // --- T166.2 De reparatieprompt noemt effect én opbrengst ---------------
 const prompt = await page.evaluate(() => {
@@ -122,6 +105,27 @@ const prompt = await page.evaluate(() => {
 check('De reparatieprompt noemt de opbrengst én wat een plank doet',
   prompt.tekst.includes(`€${prompt.beloning}`) && /tegen/i.test(prompt.tekst), prompt);
 check('...en blijft de plankenstand tonen', prompt.tekst.includes(`1/${prompt.max}`), prompt);
+
+// --- De verwijderde hint blijft ook echt weg ----------------------------
+// Regressiebewaking voor het verwijderen van T166.1: een plank breken mag
+// geen enkele melding meer tonen, en geen enkele plek in het bestand mag
+// de oude tekst nog aanroepen.
+const geenHintMeer = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  document.getElementById('meldingUI').textContent = '';
+  const venster = d.VENSTERS[0];
+  venster.planken = d.BARRICADE_MAX_PLANKEN;
+  d.beukBarricade(venster);
+  return { meldingNa: document.getElementById('meldingUI').textContent };
+});
+check('Een gebroken plank toont geen melding meer', geenHintMeer.meldingNa === '', geenHintMeer);
+// Toetst de FUNCTIE zelf, niet de hele pagina — een documenterende comment
+// die uitlegt wat hier vroeger stond en waarom het weg is (zoals dit bestand
+// dat hierboven ook doet) is prima; alleen een actieve toonMelding()-aanroep
+// met die tekst zou een regressie zijn.
+const functieBron = await page.evaluate(() => window.AmsterdamUndeadDebug.beukBarricade.toString());
+check('beukBarricade() zelf roept de oude hinttekst nergens meer aan',
+  !/Ze slopen je barricades/.test(functieBron), { functieBron });
 
 // --- Bron-assertie: allebei zijn COMMUNICATIETICKETS -------------------
 // Geen enkel balansgetal is aangeraakt. Dit is de belangrijkste check van

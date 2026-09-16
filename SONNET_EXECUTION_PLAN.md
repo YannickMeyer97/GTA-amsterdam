@@ -5996,6 +5996,28 @@ systeembalk, en dat wordt standaard over het hoofd gezien.
 hier zegt niets over een mobiele GPU. Wie dit ticket "klaar" meldt op basis
 van een schatting, levert niets.
 
+**En de meting leverde meteen iets op.** De eigenaar meldde hapering bij
+meerdere gelijktijdige Brander-explosies, op alle drie de kwaliteitspresets —
+dus geen pixelratio-probleem maar iets structureels. Het mechanisme zat niet
+in dit spel se, maar in Three.js zelf: `numPointLights` is onderdeel van de
+shader-programma-cachesleutel, dus elke `PointLight` die de scene nog nooit
+tegelijk met de rest gezien heeft, dwingt een hercompilatie af van elk lit
+materiaal (~40 stuks) — op mobiel een echte hap tijd. Een kettingreactie van
+Branders duwt het lichtaantal in één klap naar een nooit eerder bereikte
+hoogte. Fix: een gedeeld lichtenbudget (`EXPLOSIE_LICHT_MAX_ACTIEF = 2`) dat
+alleen het EXTRA puntlicht overslaat — de flits, het geluid en de schade
+blijven bij elke explosie hetzelfde. Vier opties zijn voorgelegd (dit budget,
+licht helemaal weg, shaders vooraf opwarmen, alleen geometrie poolen); de
+eigenaar koos het budget als beste verhouding tussen zekerheid en behouden
+uiterlijk. Volledig ticket + de drie afgewezen opties in `ROADMAP.md`.
+
+**Les: "is dat erg?" verdient een antwoord uit de motor, niet uit de mist.**
+Het was verleidelijk om te zeggen "een beetje hapering, valt wel mee" — maar
+`three.module.js` zelf opzoeken (`getProgramCacheKey`, `numPointLights`) gaf
+een precies, verifieerbaar mechanisme, en dat mechanisme bepaalde meteen
+welke fix wél en welke niet zou werken (alleen geometrie poolen bijvoorbeeld
+niet, want dat raakt de eigenlijke kostenpost niet).
+
 ---
 
 ### Ticket 182 — Het 'eenarmige' profiel verwijderd ✅ uitgevoerd

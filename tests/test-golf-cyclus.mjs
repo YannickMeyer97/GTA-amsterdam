@@ -87,8 +87,8 @@ const start = await page.evaluate(() => {
 });
 check('startGolf() op golf 3 zet het budget op 8 (round(5 + 1.7x2))',
   start.budget === 8 && start.golfActief === true, start);
-check('startGolf() toont de "GOLF 3"-banner met dreiging i.p.v. aantal',
-  start.banner.includes('GOLF 3') && start.banner.includes('dreiging 8'), start);
+check('startGolf() toont de "GOLF 3"-banner met dreigingsniveau i.p.v. aantal',
+  start.banner.includes('GOLF 3') && start.banner.includes('dreigingsniveau 8'), start);
 
 // --- 6. Ticket 13: volledige golf-cyclus onder budget-semantiek -----------
 // Simuleert golf 1 en golf 9 volledig (spawn-ticks -> uitroeien -> golf++):
