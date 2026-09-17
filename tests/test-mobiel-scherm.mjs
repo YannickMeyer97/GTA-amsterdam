@@ -35,6 +35,43 @@ const voorAanraking = await page.evaluate(() => ({
 check('In de muismodus staat de touch-klasse uit — zoomen blijft op desktop gewoon werken',
   voorAanraking.klasse === false && voorAanraking.modus === 'muis', voorAanraking);
 
+/* --- 1b. Het draaischerm werkt al VÓÓR de eerste aanraking ---------------
+   Feedback: "op verticale stand moet je eerst tikken voordat je het draaien
+   ziet." DE BUG: staatToestelStaand() eiste besturingModus === 'touch', en
+   die modus wordt bewust pas gezet bij de EERSTE ECHTE aanraking (zie
+   zetBesturingModus — "detecteer invoer, niet apparaat"). Bij het laden,
+   staand, zag een speler dus zijn normale layout tot hij per ongeluk ergens
+   op tikte.
+
+   Dit toetst het nieuwe, VROEGERE signaal: (pointer: coarse) and
+   (hover: none), dat op een telefoon al bij het laden waar is — geverifieerd
+   dat Playwrights `hasTouch`-optie dit ook daadwerkelijk meestuurt (anders
+   zou deze check per ongeluk altijd slagen, ongeacht de fix). */
+await page.setViewportSize({ width: 360, height: 740 });   // staand, vóór enige tik
+const voorTikStaand = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.werkOrientatieBij();
+  return {
+    modus: d.besturingModus,
+    coarseNoHover: window.matchMedia('(pointer: coarse) and (hover: none)').matches,
+    isVermoedelijkTelefoon: d.isVermoedelijkTelefoon(),
+    staand: d.staatToestelStaand(),
+    draaischermZichtbaar: !document.getElementById('draaiScherm').hidden,
+  };
+});
+check('Vóór enige aanraking is de modus nog "muis" — de detectie leunt dus NIET op besturingModus',
+  voorTikStaand.modus === 'muis', voorTikStaand);
+check('Het coarse/no-hover-signaal staat al aan zonder dat er getikt is (zoals op een echte telefoon)',
+  voorTikStaand.coarseNoHover === true, voorTikStaand);
+check('isVermoedelijkTelefoon() herkent dit al vóór de eerste tik',
+  voorTikStaand.isVermoedelijkTelefoon === true, voorTikStaand);
+check('Het draaischerm verschijnt dus al VOORDAT de speler ergens op tikt — dit was de klacht',
+  voorTikStaand.staand === true && voorTikStaand.draaischermZichtbaar === true, voorTikStaand);
+
+// Terug naar liggend, en verder met de rest van dit bestand zoals gepland.
+await page.setViewportSize({ width: 640, height: 400 });
+await page.evaluate(() => window.AmsterdamUndeadDebug.werkOrientatieBij());
+
 await naarTouch();
 const opStartscherm = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
@@ -131,18 +168,28 @@ const terugGedraaid = await page.evaluate(() => ({
 check('Terugdraaien haalt het draaischerm weg en laat het spel gepauzeerd staan',
   terugGedraaid.draaischermZichtbaar === false && terugGedraaid.spelActief === false, terugGedraaid);
 
-// Op een muis-apparaat mag een smal venster NOOIT dit scherm oproepen.
-await page.evaluate(() => window.AmsterdamUndeadDebug.zetBesturingModus('muis'));
-await page.setViewportSize({ width: 360, height: 740 });
-const smalleDesktop = await page.evaluate(() => {
+// Op een ECHTE desktop mag een smal venster NOOIT dit scherm oproepen.
+// Dit toetst dat in een APARTE, niet-touch browsercontext: binnen de
+// touch-context van de rest van dit bestand staat (pointer: coarse) vast
+// door Playwrights `hasTouch`, dus zetBesturingModus('muis') alleen (de
+// oude opzet van deze check) verandert dat signaal niet — die oude opzet
+// zou met de nieuwe detectie altijd zijn blijven slagen, ook zonder de
+// desktopcase echt te dekken.
+const { browser: bMuis, page: pMuis } = await openAmsterdamUndead();
+await pMuis.setViewportSize({ width: 360, height: 740 });
+const smalleDesktop = await pMuis.evaluate(() => {
   window.AmsterdamUndeadDebug.werkOrientatieBij();
   return {
+    coarseNoHover: window.matchMedia('(pointer: coarse) and (hover: none)').matches,
     draaischermZichtbaar: !document.getElementById('draaiScherm').hidden,
     staand: window.AmsterdamUndeadDebug.staatToestelStaand(),
   };
 });
-check('Een smal browservenster op een laptop krijgt geen draaischerm — daar bedien je met toetsen',
+check('Een echte (niet-touch) desktopbrowser heeft het coarse/no-hover-signaal niet',
+  smalleDesktop.coarseNoHover === false, smalleDesktop);
+check('Een smal browservenster op een échte desktop krijgt geen draaischerm — daar bedien je met toetsen',
   smalleDesktop.draaischermZichtbaar === false && smalleDesktop.staand === false, smalleDesktop);
+await bMuis.close();
 
 /* --- 3. Het eindscherm past, of is te scrollen --------------------------
    DE BUG: de knoppen vielen buiten beeld en scrollen kon niet. Twee

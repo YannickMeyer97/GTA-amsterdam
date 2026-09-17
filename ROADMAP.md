@@ -7441,8 +7441,14 @@ Alle vier gemeten, geen van alle aanwezig:
 
 ---
 
-## Ticket 181 — Publiceren en speeltesten
+## Ticket 181 — Publiceren en speeltesten ✅
 
+- **Status:** ✅ uitgevoerd. Fast-forward van de branch naar `main`
+  (11 commits, T176 t/m de speeltest-fixes) — geen merge-commit nodig, main
+  had zelf niets eigens sinds de branch afsplitste. Pages-build: success in
+  24s. Live op https://yannickmeyer97.github.io/GTA-amsterdam/.
+- **Speeltest van de eigenaar:** "het speelt goed." Eén bevinding, meteen
+  verholpen (zie hieronder).
 - **Type:** proces
 - **Werk.** Controleren of de Pages-URL live is, en zo niet: Pages aanzetten
   op `main` / root. Daarna een korte speeltestronde per ticket, op het echte
@@ -7456,6 +7462,42 @@ Alle vier gemeten, geen van alle aanwezig:
   eigenaar kan geven. Elke geautomatiseerde test hier toetst *mechaniek*, niet
   *of het lekker speelt met twee duimen* — en dat laatste is precies waar een
   touch-besturing op staat of valt.
+
+- **Bevinding uit de speeltest ✅ verholpen: het draaischerm verscheen pas ná
+  de eerste tik.** Gemeld: "die pas het mobile toestel herkent als je 1x
+  klikt, als je de website opent op verticale stand dan moet je eerst tikken
+  voordat je het draaien ziet."
+
+  **Oorzaak.** `staatToestelStaand()` (T179) eiste `besturingModus ===
+  'touch'`, en die modus wordt met opzet pas gezet bij de EERSTE ECHTE
+  aanraking (het architectuurprincipe uit T176: "detecteer invoer, niet
+  apparaat" — UA-sniffing en `maxTouchPoints` liegen). Bij het laden, staand,
+  vóór er getikt is, bleef het draaischerm daardoor weg.
+
+  **Waarom dit anders lag dan de besturingsmodus zelf.** Voor de BESTURING is
+  "wacht op een echte aanraking" de juiste keuze — verkeerd raden breekt daar
+  de controls, en dat principe blijft onaangeroerd. Het draaischerm is puur
+  informatief: verkeerd raden kost hoogstens een overbodige melding, nooit
+  een kapotte knop. Daarvoor is een signaal bruikbaar dat wél al bij het
+  laden klaarstaat: `(pointer: coarse) and (hover: none)` beschrijft het
+  PRIMAIRE aanwijsapparaat. Een laptop met touchscreen én muis blijft daarmee
+  gewoon `fine`/`hover` (geen vals alarm daar), en een telefoon is dat al
+  vóór de eerste tik.
+
+  **Fix.** `isVermoedelijkTelefoon()` = `besturingModus === 'touch'` OF dat
+  media-query-signaal. Alleen `staatToestelStaand()` gebruikt dit — de
+  besturingsmodus zelf (welke knoppen getoond worden, welk invoerpad actief
+  is) blijft strikt op de bestaande, aanraking-gedreven detectie staan.
+
+  **Getest, empirisch geverifieerd i.p.v. aangenomen:** eerst gecontroleerd
+  dat Playwrights `hasTouch`-contextoptie dit media-query-signaal ook
+  daadwerkelijk meestuurt (dat is zo) — anders zou een test hierop altijd
+  slagen, fix of geen fix. `test-mobiel-scherm.mjs` kreeg er een nieuwe
+  sectie bij (het draaischerm vóór de eerste tik) en de bestaande
+  "smal browservenster op een laptop"-check is herzien: die leunde op
+  `zetBesturingModus('muis')` binnen dezelfde `hasTouch`-pagina, en dat
+  signaal verandert niet mee met die JS-vlag — echt getest wordt dit nu in
+  een aparte, niet-touch browsercontext.
 
 ---
 
@@ -7544,6 +7586,202 @@ de schootslinie staat. Buiten scope van dit ticket om te repareren (dat
 verdient een eigen, kleine hardening-ticket als de eigenaar dat wil); hier
 alleen vastgelegd zodat een volgende sessie niet opnieuw drie keer moet
 herhalen om tot dezelfde conclusie te komen.
+
+---
+
+# RONDE 21 — Sneller ontsnappen, en een finale die klopt
+
+Alle vijf de tickets komen uit één feedbackronde van de eigenaar, ná het live
+gaan van de mobiele versie. Ze gelden voor **beide** varianten (web en
+mobiel) — dit is geen mobiel-ronde.
+
+De rode draad: **ontsnappen duurt te lang en het einde landt niet.** T183 en
+T184 halen drempels weg, T185 herschrijft de finale zelf, en T186 geeft die
+finale een slot dat je ziet in plaats van alleen leest.
+
+> **Let op de regel uit CLAUDE.md §9.2.** Die verbiedt dat de
+> META-PROGRESSIE (het Stadsarchief) aan balansgetallen komt — `*_PRIJS`,
+> `golfBudget()`, `GELD_PER_*` en zo meer. T184 verandert twee van die
+> prijzen, en dat mag: dit is een RECHTSTREEKSE ontwerpbeslissing van de
+> eigenaar op de basisbalans, niet iets wat een archief-upgrade doet. De
+> regel blijft onverkort gelden voor het archief zelf.
+
+---
+
+## Ticket 183 — De kelderdeur naar kelderoost vervalt
+
+- **Type:** map / pacing
+- **Aanleiding.** Eigenaar: "ik vind het soms nog wel lang duren voordat ik
+  kan ontsnappen." Eén van de drie vluchtroute-onderdelen (de
+  **Scheepslantaarn**) ligt in kelderoost, achter `deur6` (€700). Je betaalt
+  dus €700 puur om bij een verplicht onderdeel te kunnen — een drempel die
+  niets toevoegt behalve wachttijd.
+- **Werk.**
+  - `deur6` vervalt volledig: de deur-mesh, het obstakel, het interactiepunt,
+    `koopDeur6()`, `deur6Gekocht`, `DEUR6_PRIJS` en de bijbehorende
+    winkelmarkering. Je loopt kelderoost voortaan gewoon in.
+  - **De ruimte zelf blijft exact zoals hij is** — zelfde afmetingen, zelfde
+    inrichting, zelfde lantaarnpositie. Alleen de deur ertussen verdwijnt.
+  - Het gat in de muur waar de deur zat moet een echte doorgang worden (het
+    kozijn mag blijven staan als lijst), niet een dichte muur met een
+    verdwenen deur ervoor.
+- **Let op deze twee.**
+  - `toonVluchtOnderdelenIndienDrempel()` wacht expliciet tot deur6 gekocht
+    is voordat de Scheepslantaarn bereikbaar wordt (zie de toelichting bij
+    `VLUCHT_ONDERDELEN`). Die koppeling moet mee vervallen, anders blijft het
+    onderdeel onbereikbaar terwijl de deur er niet meer is.
+  - `aantalOntgrendeldeZones()` telt `deur3Gekocht` mee, niet deur6 — dus de
+    spawndruk verandert hier niet. Controleren, niet aannemen.
+- **Acceptatie:** de Scheepslantaarn is vanaf het begin te bereiken zonder
+  ook maar iets te kopen; kelderoost heeft dezelfde vorm en inhoud als
+  daarvoor; geen enkele verwijzing naar deur6 blijft achter.
+
+---
+
+## Ticket 184 — Twee prijzen omlaag
+
+- **Type:** balans (rechtstreekse eigenaarsbeslissing)
+- **Werk.** Twee constanten:
+  - `AMMO_PRIJS`: **300 → 200**
+  - `ONTSNAPPING_PRIJS`: **2500 → 1000**
+- **Waarom dit meer is dan twee getallen.** De bootprijs is het hart van de
+  hele lus: `updateVluchtrouteHUD()` rekent er het tekort mee uit, de
+  interactieprompt toont 'm, en `probeerOntsnapping()` schrijft 'm af bij de
+  START van de finale. T165 mat destijds dat wie élke upgrade koopt pas rond
+  golf 26 aan €2.500 komt, tegen golf 10 voor wie spaart. Met €1.000 schuift
+  dat allebei fors naar voren — dat is precies de bedoeling, maar het raakt
+  de pacing van de hele tweede helft.
+- **Ook nalopen:** `test-archief-winkel.mjs` en `test-uitleg-boot-en-
+  barricades.mjs` leggen `ONTSNAPPING_PRIJS === 2500` vast als expliciete
+  bron-assertie ("geen balansgetal aangeraakt"). Die assertie was bedoeld om
+  een SLUIPENDE wijziging te vangen; nu er een bewuste wijziging is, moet de
+  verwachte waarde mee en moet de toelichting vertellen dat het een
+  eigenaarsbesluit was, niet een lek uit de meta-progressie.
+- **Acceptatie:** beide prijzen staan op de nieuwe waarde, de HUD-tekortregel
+  en de prompts rekenen er correct mee, en geen enkele test legt de oude
+  waarde nog vast.
+
+---
+
+## Ticket 185 — De finale: overleef 30 seconden, dán naar de boot
+
+- **Type:** gameplay (herschrijving van de finale)
+- **Aanleiding.** Eigenaar: "ik vind momenteel het einde niet super goed
+  werken."
+- **Hoe het NU werkt.** `probeerOntsnapping()` (T bij de boot) start de
+  instapfase: 30 seconden, maar `updateFinaleInstap()` telt de timer
+  **alleen af zolang `huidigeInteractie === ontsnappingsPunt`** — je moet dus
+  letterlijk bij de boot blijven staan. Wegstappen pauzeert de klok. Dat
+  maakt het een statische stilstand-fase op één plek.
+- **Hoe het MOET worden.**
+  1. De fase start zoals nu (bij de boot, tegen betaling).
+  2. Er komen **veel ondoden**. De bestaande surge (`FINALE_SURGE_BUDGET`) is
+     daarvoor het aangewezen kanaal.
+  3. Je moet **30 seconden overleven, waar je ook bent op de kaart** — de
+     positie-eis vervalt volledig. De klok loopt altijd door.
+  4. **Pas daarna** ga je naar de boot om te vertrekken. Het interactiepunt
+     bij de boot wordt na afloop van de 30 seconden actief als "vertrekken".
+- **Hernoemen.** Alles wat nu "instappen" heet richting de speler wordt
+  **"overleef 30 seconden"**. Concreet minstens: de banner-subtekst in
+  `probeerOntsnapping()` ("Blijf dichtbij de boot — overleef N seconden!")
+  en de prompt van het ontsnappingspunt tijdens de fase.
+- **Wat hier stuk kan.**
+  - `updateFinaleEscalatie()` hangt aan `instapActief` en aan de fractie
+    `1 - instapTimer / FINALE_INSTAP_DUUR`. Die blijft werken, maar de
+    toelichting erboven zegt nu expliciet dat de escalatie "bevriest zolang
+    beslissing 3 de timer pauzeert (weglopen)" — dat klopt straks niet meer
+    en moet mee.
+  - Er is een tweede fase nodig ná de timer (wachten-op-de-boot) die
+    `instapActief` niet meer is. Denk aan een aparte vlag, want van álles
+    hangt aan `instapActief`: de boothoorn-interval, het dreigingsvolume-
+    plafond, de fog-krimp, de prompt-tekst en `gameOver()`'s opruiming.
+  - `gameOver()` zet `instapActief = false` en `herstelFinaleEscalatie()`
+    herstelt de fog. Een nieuwe tweede fase heeft dezelfde opruimdiscipline
+    nodig, anders blijft er state hangen na een dood tijdens de finale.
+- **Acceptatie:** de 30 seconden lopen door ongeacht waar je staat; er is
+  merkbaar meer druk dan bij een normale golf; na afloop kun je bij de boot
+  vertrekken en niet eerder; sterven tijdens de fase laat geen enkele
+  finale-state achter.
+
+---
+
+## Ticket 186 — Het wegvaren, in eerste persoon
+
+- **Type:** presentatie
+- **Afhankelijk van:** T185.
+- **Aanleiding.** Eigenaar: "het liefst is er dan voor het eindscherm nog een
+  visual." Uit vier voorgelegde opties gekozen: **wegvaren in eerste
+  persoon.**
+- **Werk.** Nadat je bij de boot vertrekt, vóór `toonWinScherm()`:
+  - De camera blijft van de speler (geen derde-persoons standpunt, geen
+    zichtbaar spelermodel — die bestaan hier nergens anders en zouden speciaal
+    gebouwd moeten worden).
+  - Je stapt aan boord: het beeld zakt licht (instaphoogte), de besturing
+    gaat uit de handen van de speler.
+  - De motor start, en de kade schuift weg terwijl de boot de gracht uit
+    vaart. De ondoden blijven achter op de kant en worden kleiner.
+  - Duur ongeveer 6 seconden, daarna het eindscherm.
+- **Bouw het op wat er al is.** De boot, de kade, de mist en de boothoorn
+  bestaan allemaal. Dit hoort een camera-animatie te zijn plus het bewegen
+  van de bestaande boot, niet een nieuw decorstuk.
+- **Let op.** De besturing moet hier hard uit (ook de touch-knoppen), anders
+  loopt of schiet de speler tijdens zijn eigen ontsnapping. En de fase moet
+  net als de rest van de finale netjes opruimen als er iets tussenkomt.
+- **Acceptatie:** na het vertrekken zie je de boot daadwerkelijk wegvaren
+  vanuit je eigen ogen, je kunt in die tijd niets meer besturen, en het
+  eindscherm volgt automatisch.
+
+---
+
+## Ticket 187 — Kwaliteitstrappen één stap opgeschoven ✅
+
+- **Type:** performance / instellingen
+- **Status:** ✅ uitgevoerd, zie de toelichting bij `KWALITEIT_PRESETS` in de
+  bron en de herschreven `test-kwaliteitsinstelling.mjs`.
+- **Aanleiding.** Eigenaar zag geen verschil tussen `normaal` en `hoog`.
+- **De meting gaf hem gelijk.** Over de acht vaste visuele standpunten week
+  gemiddeld **1,78%** van de pixels af op devicePixelRatio 2 (wat elke
+  telefoon en retina-laptop gebruikt), met een gemiddelde afwijking van
+  2,9-15,5 op een schaal van 765 — zichtbaar alleen bij 6-7x uitvergroten.
+  Op DPR 1 was het 5,28%, maar dat is niet wat een echt toestel rendert.
+  Oorzaak: deze wereld bestaat vrijwel volledig uit asgerichte vlakken, en
+  juist daar heeft MSAA het minst te doen.
+- **Uitgevoerd.**
+  - MSAA (`samples: 4`) is vervallen; geen enkele trap zet 'm nog aan.
+  - `hoog` = wat `normaal` was (de stand van vóór T159, waarop de
+    helderheidsbalans van T88 is afgestemd — de referentie).
+  - `normaal` = wat `laag` was.
+  - `laag` = nieuw en lager dan er ooit was: **75% renderresolutie**
+    (fragmentwerk daalt kwadratisch, dus ~44% minder) plus de
+    **nabewerkingslaag uit** (kleurgrading + vignet), via de nieuwe
+    `naverwerking`-vlag op de preset.
+  - **Niet gemigreerd**, bewuste keuze van de eigenaar: een opgeslagen
+    sleutel blijft letterlijk staan en betekent voortaan de nieuwe inhoud.
+- **Bugfix die hierbij bovenkwam.** `bloomPass.enabled` werd UITSLUITEND in
+  `pasKwaliteitToe()` gezet, en die functie draait alleen bij een knopdruk.
+  Bij het laden bleef de vlag dus op zijn constructor-standaard (`true`)
+  staan, ongeacht de opgeslagen voorkeur — een terugkerende speler met `laag`
+  kreeg bloom die zijn preset verbood. Onzichtbaar zolang de standaardtrap
+  toevallig bloom aan had; sinds de omzetting heeft de standaard bloom UIT,
+  dus dan valt het meteen op. Beide passvlaggen worden nu bij het opstarten
+  uit de preset gelezen, net als pixelratio, schaduwen en samples al deden.
+- **Gemeten resultaat van de nieuwe ladder** (standpunt gracht, waar bloom
+  het meest doet): `laag` → `normaal` 27,9% afwijkende pixels, `normaal` →
+  `hoog` 72,5%. De trappen liggen nu dus duidelijk uit elkaar.
+- **Bijvangst uit de meting, het bewaren waard.** De drie kanalen werken
+  sterk plaatsgebonden: **bloom** doet binnenshuis letterlijk 0,0% en op de
+  gracht 72,5%; **schaduwen** raken alleen de startkamer (0,8%) omdat er maar
+  één schaduwwerpende lamp in het spel is (zie PERFORMANCE_AUDIT A4); de
+  **nabewerking** raakt overal ~33% van de pixels maar met een kleine
+  amplitude. Wie ooit verder wil snijden: bloom is buiten de duurste en
+  binnen gratis.
+- **Testgevolgen.** `openVoorVisueleMeting()` zet de kwaliteit nu expliciet
+  op `hoog`, want alle visuele basislijnen zijn tegen die stand gemeten.
+  `test-visuele-basislijn.mjs` had daar al een vangrail voor, en die
+  **bewees zichzelf**: hij meldde de verschuiving met één duidelijke check in
+  plaats van 25 mysterieuze luminantie-afwijkingen. `test-inslagsporen.mjs`
+  meet nu op `hoog` (sporen bestaan alleen daar nog) en zijn gate-check
+  verwacht sporen op `normaal` voortaan UIT.
 
 ---
 

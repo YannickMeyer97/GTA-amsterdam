@@ -65,9 +65,31 @@ async function verkrijgBrowserEnContext({ touch = false } = {}) {
 // Opent amsterdam-undead.html headless en geeft { browser, page, errs } terug.
 // errs verzamelt console errors + pageerrors zodat elk testscript aan het
 // eind kan controleren dat het spel zonder JS-fouten laadt.
-export async function openAmsterdamUndead({ simuleerPointerLock = false, touch = false } = {}) {
+// `kwaliteit` zet de kwaliteitstrap VÓÓR het laden, via localStorage — niet
+// achteraf met pasKwaliteitToe().
+//
+// Waarom dat verschil ertoe doet, empirisch gevonden: sinds de trappen één
+// stap opgeschoven zijn, boot de pagina op een standaard zónder schaduwen.
+// Een runtime-wissel naar de referentiestand zet die weer aan, en dat dwingt
+// een hercompilatie van ~40 materialen plus een herbouw van de
+// schaduw-cubemap af. De eerste frames daarna zijn dan nog niet stabiel —
+// onder de CPU-druk van een volle suite viel `test-brander-leesbaarheid.mjs`
+// daardoor om en werd `test-levend-water.mjs` (bit-voor-bit screenshot-
+// determinisme) zelfs bij zijn herkansing rood, terwijl allebei los prima
+// slaagden. Vooraf zetten laat de pagina vanaf frame nul op de juiste stand
+// draaien, precies zoals vóór de omzetting.
+export async function openAmsterdamUndead({ simuleerPointerLock = false, touch = false, kwaliteit = null } = {}) {
   const { browser, context } = await verkrijgBrowserEnContext({ touch });
   const page = await context.newPage();
+  if (kwaliteit) {
+    // De sleutel staat hier als letterlijke string omdat hij nodig is vóórdat
+    // de pagina (en dus KWALITEIT_KEY) bestaat. openVoorVisueleMeting()
+    // controleert na het laden dat de trap ook echt actief is, zodat een
+    // hernoemde sleutel meteen opvalt in plaats van stil terug te vallen.
+    await page.addInitScript((k) => {
+      try { localStorage.setItem('amsterdamUndeadKwaliteit', k); } catch { /* privacymodus: dan valt hij terug op de standaard */ }
+    }, kwaliteit);
+  }
   const errs = [];
   page.on('pageerror', e => errs.push(String(e)));
   page.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
@@ -131,8 +153,32 @@ export async function frames(page, n) {
 // het laden permanent stil. `updateSpeler()` en de flikkerloop +
 // `composer.render()` blijven wél elke frame draaien (die staan BUITEN die
 // if-tak), dus de camera en het beeld zelf werken gewoon.
+// De kwaliteitstrappen zijn na de speeltest één stap opgeschoven (MSAA
+// vervallen, een nieuwe laagste stand erbij). Alle visuele basislijnen in deze
+// suite — helderheid, draw calls, driehoeken — zijn gemeten op de stand waarop
+// de helderheidsbalans van T88 is afgestemd, en dat is sinds de omzetting
+// `hoog`. Zonder deze vastzetting zouden ze allemaal de NIEUWE standaardtrap
+// meten (zonder bloom en schaduwen) en massaal verschuiven, zonder dat er iets
+// aan het beeld zelf veranderd is. Eén plek, zodat elk visueel testbestand
+// automatisch tegen dezelfde referentie meet.
+const VISUELE_REFERENTIETRAP = 'hoog';
+
 export async function openVoorVisueleMeting() {
-  const { browser, page, errs } = await openAmsterdamUndead();
+  const { browser, page, errs } = await openAmsterdamUndead({ kwaliteit: VISUELE_REFERENTIETRAP });
+  // Controleren dat de trap ook echt actief is. De localStorage-sleutel staat
+  // in openAmsterdamUndead() als letterlijke string (hij is nodig vóórdat de
+  // pagina bestaat); zonder deze check zou hernoemen in het spel de hele
+  // visuele suite stil op de standaardtrap laten meten.
+  const trap = await page.evaluate(() => {
+    const d = window.AmsterdamUndeadDebug;
+    return { nu: d.kwaliteitNu, sleutel: d.KWALITEIT_KEY };
+  });
+  if (trap.sleutel !== 'amsterdamUndeadKwaliteit') {
+    throw new Error(`KWALITEIT_KEY is hernoemd naar '${trap.sleutel}' — pas de letterlijke sleutel in openAmsterdamUndead() aan`);
+  }
+  if (trap.nu !== VISUELE_REFERENTIETRAP) {
+    throw new Error(`visuele referentietrap niet actief: '${trap.nu}' i.p.v. '${VISUELE_REFERENTIETRAP}'`);
+  }
   await page.evaluate(() => {
     const d = window.AmsterdamUndeadDebug;
     for (const id of ['hulpUI', 'richtkruis', 'ammoUI', 'hudUI', 'minimapUI']) {

@@ -1446,14 +1446,33 @@ const WERELD_DECOR_LAYER = 3;
    het antwoord hangt van de machine af. Deze presets maken daar een
    spelerkeuze van in plaats van een ontwikkelaarsgok.
 
-   DE KERNREGEL VAN DIT TICKET: **`normaal` is exact de stand van vóór
-   T159.** Wie niets aanraakt, merkt niets — geen enkele pixel verandert.
-   Alle drie de auditbevindingen leven daarom uitsluitend onder `laag`,
-   de enige preset waar snelheid expliciet boven sfeer gaat en de zwaar
-   getunede helderheidsbalans (T88) dus niet leidend is. `hoog` voegt
-   juist iets toe: A2 optie B, échte antialiasing op de composer-
-   rendertarget — in de audit afgewezen als default omdat het geld kost,
-   maar precies de reden dat `hoog` bestaat.
+   HERZIEN NA SPEELTEST — de trappen zijn één stap opgeschoven.
+   Oorspronkelijk gold: "`normaal` is exact de stand van vóór T159", en
+   `hoog` voegde daar MSAA aan toe (A2 optie B). De eigenaar zag tussen
+   `normaal` en `hoog` echter geen verschil, en de meting gaf hem gelijk:
+   over de acht vaste visuele standpunten wijkt gemiddeld 1,78% van de
+   pixels af op devicePixelRatio 2 (wat elke telefoon en retina-laptop
+   gebruikt), met een gemiddelde afwijking van 2,9-15,5 op een schaal van
+   765. Zichtbaar alleen bij 6-7x uitvergroten. De reden is de vorm van
+   deze wereld: die bestaat vrijwel volledig uit asgerichte vlakken, en
+   juist daar heeft MSAA het minst te doen.
+
+   MSAA is daarom vervallen. De drie trappen dragen nu:
+     - `hoog`    = wat hiervóór `normaal` was, oftewel de stand van vóór
+                   T159: de zwaar getunede helderheidsbalans (T88) is
+                   hierop afgestemd, dus dit is de referentie.
+     - `normaal` = wat hiervóór `laag` was.
+     - `laag`    = NIEUW en lager dan er ooit was: rendert op 75% van de
+                   schermresolutie (fragmentwerk daalt kwadratisch, dus
+                   ~44% minder) én laat de nabewerkingslaag vallen
+                   (kleurgrading + vignet). Merkbaar zachter en platter,
+                   en dat is de bedoeling — dit is de stand voor een
+                   toestel dat het anders niet trekt.
+
+   BEWUSTE KEUZE VAN DE EIGENAAR: er wordt NIET gemigreerd. De opgeslagen
+   sleutel blijft letterlijk staan en betekent voortaan de nieuwe inhoud,
+   dus wie `normaal` had gekozen verliest bloom en schaduwen. Dat is
+   afgewogen en geaccepteerd boven de extra machinerie van een migratie.
 
    `lichtculling` is nu nog een NO-OP-vlag: T159 levert de plek waar A3
    mag bestaan, niet A3 zelf (die raakt de belichting en verdient een
@@ -1469,9 +1488,9 @@ const WERELD_DECOR_LAYER = 3;
 const KWALITEIT_KEY = 'amsterdamUndeadKwaliteit';
 const KWALITEIT_STANDAARD = 'normaal';
 const KWALITEIT_PRESETS = {
-  laag:    { label: 'Laag',    pixelRatioMax: 1, bloom: false, schaduwen: false, lichtculling: true,  samples: 0, inslagsporen: false },
-  normaal: { label: 'Normaal', pixelRatioMax: 2, bloom: true,  schaduwen: true,  lichtculling: false, samples: 0, inslagsporen: true },
-  hoog:    { label: 'Hoog',    pixelRatioMax: 2, bloom: true,  schaduwen: true,  lichtculling: false, samples: 4, inslagsporen: true },
+  laag:    { label: 'Laag',    pixelRatioMax: 0.75, bloom: false, schaduwen: false, lichtculling: true,  samples: 0, inslagsporen: false, naverwerking: false },
+  normaal: { label: 'Normaal', pixelRatioMax: 1,    bloom: false, schaduwen: false, lichtculling: true,  samples: 0, inslagsporen: false, naverwerking: true },
+  hoog:    { label: 'Hoog',    pixelRatioMax: 2,    bloom: true,  schaduwen: true,  lichtculling: false, samples: 0, inslagsporen: true,  naverwerking: true },
 };
 // Vormvalidatie met veilige terugval, zelfde patroon als leesGevoeligheid()
 // (T75) en leesHighscore() (T74): een onbekende of corrupte sleutel mag het
@@ -1700,6 +1719,18 @@ const naverwerkingsPass = new ShaderPass(NAVERWERKING_SHADER);
 composer.addPass(naverwerkingsPass);
 composer.addPass(new OutputPass());
 
+// BUGFIX, gevonden bij het omzetten van de kwaliteitstrappen: de pass-vlaggen
+// werden UITSLUITEND in pasKwaliteitToe() gezet, en die functie draait alleen
+// als je op een knop drukt. Bij het laden bleven ze dus op hun constructor-
+// standaard (beide `true`) staan, ongeacht de opgeslagen voorkeur — een
+// terugkerende speler met `laag` kreeg bloom die zijn preset verbiedt.
+// Onzichtbaar zolang de standaardtrap toevallig bloom aan had; sinds de
+// omzetting heeft de standaard bloom UIT, dus dan valt het meteen op.
+// De andere drie kanalen (pixelratio, schaduwen, MSAA-samples) werden bij
+// het opstarten al wél uit de preset gelezen; deze twee sluiten dat gat.
+bloomPass.enabled = kwaliteitPreset().bloom;
+naverwerkingsPass.enabled = kwaliteitPreset().naverwerking;
+
 // Ticket 159: een presetwissel tijdens het spelen. Alles wat hier gebeurt is
 // een no-op zolang de preset niet wijzigt, en op `normaal` zet het exact de
 // waarden terug die er vóór T159 al stonden.
@@ -1714,6 +1745,13 @@ function pasKwaliteitToe(naam) {
   composer.setPixelRatio(kwaliteitPixelRatio());
   composer.setSize(innerWidth, innerHeight);
   bloomPass.enabled = preset.bloom;
+  // Nieuw op de laagste trap: de kleurgrading/vignet-laag helemaal overslaan.
+  // Een ShaderPass met `enabled = false` wordt door EffectComposer volledig
+  // overgeslagen — scheelt één schermvullende shader per frame. Het beeld
+  // wordt daarmee platter en kouder (de hele wereld is op die grading
+  // afgestemd), en juist dat maakt het een geldige LAAGSTE trap in plaats
+  // van nog een tussenstand.
+  naverwerkingsPass.enabled = preset.naverwerking;
 
   // shadowMap.enabled wisselen vraagt om hercompilatie van de materialen:
   // Three.js bakt de schaduw-branches in het shaderprogramma en ziet een
@@ -7566,11 +7604,32 @@ function werkTouchModusKlasseBij() {
    halve lay-out tonen.
 
    Alleen op touch: een laptopvenster kan ook "staand" zijn (smal en hoog) en
-   daar is niets mis mee, want daar bedien je met toetsen en muis. */
+   daar is niets mis mee, want daar bedien je met toetsen en muis.
+
+   Speeltoets-fix: `besturingModus === 'touch'` alleen was te laat. Die modus
+   wordt bewust pas gezet bij de EERSTE echte aanraking (zie zetBesturingModus
+   hierboven — "detecteer invoer, niet apparaat", want maxTouchPoints en
+   UA-sniffing liegen). Bij het laden, staand, vóór er getikt is, bleef het
+   draai-scherm daardoor weg totdat de speler per ongeluk al ergens op tikte.
+
+   Voor de BESTURING blijft dat principe hard overeind — verkeerd raden breekt
+   daar de controls, dus die beslissing verandert hier niets aan. Het
+   draai-scherm is alleen INFORMATIEF: verkeerd raden kost hoogstens een
+   overbodige melding, nooit een kapotte knop. Daarvoor is een grover, maar
+   voor dit doel prima signaal beschikbaar dat al bij het laden klaarstaat:
+   `(pointer: coarse) and (hover: none)` beschrijft het PRIMAIRE aanwijs-
+   apparaat — een laptop met touchscreen én muis blijft daarmee gewoon
+   fine/hover (geen vals alarm), en een telefoon is dat al vóór de eerste
+   tik. */
 const staandeOrientatie = window.matchMedia
   ? window.matchMedia('(orientation: portrait)') : null;
+const grofPointerGeenHover = window.matchMedia
+  ? window.matchMedia('(pointer: coarse) and (hover: none)') : null;
+function isVermoedelijkTelefoon() {
+  return besturingModus === 'touch' || !!grofPointerGeenHover?.matches;
+}
 function staatToestelStaand() {
-  return besturingModus === 'touch' && !!staandeOrientatie?.matches;
+  return isVermoedelijkTelefoon() && !!staandeOrientatie?.matches;
 }
 function werkOrientatieBij() {
   const staand = staatToestelStaand();
@@ -7581,6 +7640,10 @@ function werkOrientatieBij() {
   if (staand && besturingActief()) verlaatBesturing();
 }
 staandeOrientatie?.addEventListener?.('change', werkOrientatieBij);
+// Zelfde reden als hierboven: een muis die tijdens het spelen wordt
+// aan-/losgekoppeld kan dit signaal laten omslaan (zeldzaam, maar goedkoop
+// om mee te nemen nu de listener er toch al is).
+grofPointerGeenHover?.addEventListener?.('change', werkOrientatieBij);
 // Niet elk toestel stuurt een matchMedia-change bij een draai; het
 // orientationchange/resize-paar vangt de rest op.
 addEventListener('orientationchange', werkOrientatieBij);
@@ -19336,6 +19399,7 @@ window.AmsterdamUndeadDebug = {
   get wapenStaat() { return wapenStaat; },
   // Feedback-fixes ronde 20: oriëntatie, zoom-afweer, fullscreen
   werkOrientatieBij, staatToestelStaand, werkTouchModusKlasseBij, probeerFullscreen,
+  isVermoedelijkTelefoon,
   get huidigeInteractiePromptRuw() { return huidigeInteractiePromptRuw; },
   MUZIEK_STEMMINGEN, WAPEN_KLANKSETS, actieveMuziekStemming, actieveWapenklank,
   pasGeluidsetToe,

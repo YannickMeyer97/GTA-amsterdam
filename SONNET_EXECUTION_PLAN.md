@@ -6067,3 +6067,64 @@ instabiliteit is aantoonbaar weg, niet alleen "zou nu moeten".
 | R10 | Effect-pools raken verzadigd tijdens de finale-piek | Laag | Middel | `KILL_BURST_SAMENVAL_VENSTER` blijft actief; F3-meting verplicht in T147 |
 | R11 | T155 scope creep | Middel | Laag | "Suite groen zonder één aangepaste assertie" als enige slaagvoorwaarde |
 | R12 | De roadmap wordt te lang vóór er zichtbare waarde is | Laag | Middel | Fase 1 is meteen spelerswaarde; T140/T141 zijn samen de enige twee opeenvolgende niet-zichtbare tickets in het hele plan |
+
+---
+
+## Ronde 21 — Sneller ontsnappen, en een finale die klopt (T183-T187)
+
+Uit één feedbackronde van de eigenaar ná het live gaan van de mobiele versie.
+Geldt voor **beide** varianten; dit is geen mobiel-ronde. Volledige tickets in
+`ROADMAP.md`.
+
+### T187 — kwaliteitstrappen ✅ uitgevoerd
+
+**De les: "ik zie het verschil niet" is een meetbare uitspraak.** In plaats
+van te discussiëren over smaak zijn Normaal en Hoog over de acht vaste
+visuele standpunten pixelmatig vergeleken. Uitkomst: 1,78% afwijkende pixels
+op devicePixelRatio 2 (wat elk echt toestel gebruikt), met een gemiddelde
+afwijking van 2,9-15,5 op 765. De eigenaar had gelijk, en MSAA is vervallen.
+
+**Meet op de DPR die de speler heeft.** Op DPR 1 leek het verschil bijna drie
+keer zo groot (5,28%) als op DPR 2. Een hoge pixeldichtheid antialiast zelf
+al, dus MSAA erbovenop levert steeds minder op. Een meting op de
+standaard-headless DPR van 1 zou hier het verkeerde antwoord hebben gegeven.
+
+**Meet op meer dan één standpunt.** De eerste meting stond in de woonkamer en
+gaf voor Normaal→Hoog 0,8% — verdacht weinig voor een wissel die bloom,
+schaduwen én inslagsporen aanzet. Per kanaal apart meten legde uit waarom:
+bloom doet binnenshuis **0,0%** en op de gracht **72,5%**; schaduwen raken
+alleen de startkamer omdat er maar één schaduwwerpende lamp bestaat. Eén
+standpunt had hier een volledig verkeerde conclusie opgeleverd.
+
+**De bugfix die erbij bovenkwam.** `bloomPass.enabled` werd alleen in
+`pasKwaliteitToe()` gezet — een functie die uitsluitend bij een knopdruk
+draait. Bij het laden bleef de vlag op zijn constructor-standaard staan,
+ongeacht de opgeslagen voorkeur. Dat was onzichtbaar zolang de standaardtrap
+toevallig bloom aan had; de omzetting maakte het meteen zichtbaar. Patroon om
+te onthouden: **een instelling die alleen in een event-handler wordt
+toegepast, geldt niet bij het opstarten.**
+
+**Een vangrail die zichzelf bewees.** `test-visuele-basislijn.mjs` had een
+losse check "de basislijn meet op preset X". Toen de trappen opschoven,
+meldde die check dat met één regel — in plaats van de 25 mysterieuze
+luminantie-afwijkingen die er zonder hem waren gekomen. Dit is het argument
+voor dat soort expliciete omgevings-asserties naast de inhoudelijke.
+
+### T183-T186 — nog te bouwen
+
+**T185 is de lastigste van de vier.** De huidige finale telt zijn timer
+alleen af zolang je bij de boot staat (`huidigeInteractie === ontsnappingsPunt`
+in `updateFinaleInstap()`). Die eis vervalt, maar er komt een tweede fase
+achter (wachten-op-de-boot) die `instapActief` niet meer is — en aan die ene
+vlag hangt álles: boothoorn-interval, dreigingsvolume-plafond, fog-krimp,
+prompt-tekst en de opruiming in `gameOver()`. Wie hier een tweede vlag
+introduceert moet dezelfde opruimdiscipline meenemen, anders blijft er state
+hangen na een dood tijdens de finale.
+
+**T184 raakt een bron-assertie, niet alleen een getal.** Twee testbestanden
+leggen `ONTSNAPPING_PRIJS === 2500` vast met als expliciete motivering "geen
+balansgetal aangeraakt". Die assertie was gebouwd om een SLUIPENDE wijziging
+te vangen. Nu er een bewuste is, moet niet alleen de waarde mee maar ook de
+toelichting — anders leest de volgende lezer 'm als een lek uit de
+meta-progressie. De regel uit CLAUDE.md §9.2 blijft voor het archief zelf
+onverkort gelden.

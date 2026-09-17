@@ -44,16 +44,22 @@ import { PNG } from 'pngjs';
 const { browser, page, errs } = await openVoorVisueleMeting();
 const { check, report } = makeChecker();
 
-// Ticket 159: deze hele basislijn is gemeten op de renderconfiguratie die
-// sinds T159 `normaal` heet. Dat is ook de standaardpreset, dus een verse
-// browsercontext komt daar vanzelf op uit — maar dat expliciet vastleggen
-// scheelt een mysterieuze drift als de standaard ooit verandert: dan faalt
-// hier één duidelijke check in plaats van tientallen luminantiebanden.
-// `laag` (bloom en schaduwen uit) hoort er per definitie anders uit te zien
-// en valt daarom buiten deze basislijn.
+// Ticket 159: deze hele basislijn is gemeten op de renderconfiguratie van
+// vóór T159 (bloom en schaduwen aan) — de stand waarop de helderheidsbalans
+// van T88 is afgestemd.
+//
+// DEZE CHECK HEEFT ZICHZELF AL BEWEZEN. Toen de kwaliteitstrappen na de
+// speeltest één stap opschoven (MSAA vervallen, nieuwe laagste stand), heette
+// die referentiestand ineens `hoog` in plaats van `normaal` — en deze ene
+// check meldde dat glashelder, in plaats van de 25 mysterieuze
+// luminantie-afwijkingen die er zonder hem waren gekomen. Precies waarvoor
+// hij bedoeld was.
+//
+// `openVoorVisueleMeting()` zet die stand sindsdien expliciet vast; deze
+// check blijft de vangrail voor het geval dat ooit wegvalt.
 const actievePreset = await page.evaluate(() => window.AmsterdamUndeadDebug.kwaliteitNu);
-check('De visuele basislijn meet op kwaliteitspreset `normaal` (de stand van vóór T159)',
-  actievePreset === 'normaal', { actievePreset });
+check('De visuele basislijn meet op de referentiestand (sinds de omzetting: `hoog`)',
+  actievePreset === 'hoog', { actievePreset });
 
 // Middenblok van het 640x400-scherm (15%-85% op beide assen) — vermijdt de
 // uiterste randen zonder de HUD-chrome bewust weg te snijden: die is nu

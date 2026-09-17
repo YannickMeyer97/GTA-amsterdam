@@ -14,6 +14,12 @@ import { writeFileSync } from 'fs';
 const { browser, page, errs } = await openAmsterdamUndead();
 const { check, report } = makeChecker();
 
+// Inslagsporen zitten sinds de omzetting van de kwaliteitstrappen ALLEEN nog
+// op `hoog` — op de standaardtrap spawnt er dus niets, en dan meet de rest
+// van dit bestand een lege pool in plaats van de architectuur die het wil
+// toetsen. Expliciet vastzetten; de gate zelf wordt verderop apart getoetst.
+await page.evaluate(() => window.AmsterdamUndeadDebug.pasKwaliteitToe('hoog'));
+
 // --- 1. Basisarchitectuur: gedeelde geometrie/textuur, vaste poolgrootte -
 const architectuur = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
@@ -119,7 +125,10 @@ const aliasingTest = await page.evaluate(() => {
 check('Het geplaatste spoor verandert NIET als de aanroeper de doorgegeven normaal-vector achteraf hergebruikt (geen aliasing)',
   aliasingTest.ongewijzigd, aliasingTest);
 
-// --- 5. Kwaliteitspreset-gate (T159): geen spawns op 'laag' ---------------
+// --- 5. Kwaliteitspreset-gate: sporen bestaan alleen nog op 'hoog' -------
+// Was: alleen 'laag' hield ze tegen. Sinds de trappen één stap opgeschoven
+// zijn (zie test-kwaliteitsinstelling.mjs) is `normaal` wat `laag` was, dus
+// houdt die ze nu ook tegen.
 const presetGate = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const THREE = d.THREE;
@@ -130,11 +139,12 @@ const presetGate = await page.evaluate(() => {
     d.spawnInslagspoor(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 1, 0), 0x444444, 0.1);
     uitkomsten[preset] = d.inslagspoorVolgende !== voorIndex;
   }
-  d.pasKwaliteitToe('normaal');   // opruimen: terug naar de standaard voor eventuele volgende checks
+  d.pasKwaliteitToe('hoog');   // opruimen: terug naar de trap waarop dit bestand meet
   return uitkomsten;
 });
-check("Op 'laag' spawnt er GEEN inslagspoor (fill-rate-gate uit T159)", presetGate.laag === false, presetGate);
-check("Op 'normaal' spawnt een inslagspoor gewoon", presetGate.normaal === true, presetGate);
+check("Op 'laag' spawnt er GEEN inslagspoor (fill-rate-gate)", presetGate.laag === false, presetGate);
+check("Op 'normaal' spawnt er ook GEEN inslagspoor meer — die trap is nu wat 'laag' was",
+  presetGate.normaal === false, presetGate);
 check("Op 'hoog' spawnt een inslagspoor gewoon", presetGate.hoog === true, presetGate);
 
 // --- 6. Geen collision, geen extra meshes in de scene-graaf ---------------
