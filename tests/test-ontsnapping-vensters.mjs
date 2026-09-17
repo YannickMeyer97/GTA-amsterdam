@@ -80,6 +80,7 @@ async function opruimOntsnapping() {
     d.ontsnappingAankondigingTimer = 0;
     d.instapActief = false;   // Ticket 146
     d.instapTimer = 0;
+    d.vertrekKlaar = false;   // Ticket 185
   });
 }
 
@@ -414,10 +415,58 @@ check('instapActief/instapTimer blijven ongemoeid door de golf-transitie (die tw
   instapBlokkeertSluitenTest.instapNogSteedsActief && instapBlokkeertSluitenTest.instapTimerOngemoeid,
   instapBlokkeertSluitenTest);
 
-// --- 7e. Regressie-tegenhanger van 7d: ZODRA instapActief weer false is
-// (fase is afgerond/nooit gestart), sluit dezelfde transitie het venster
-// weer gewoon — de uitzondering in updateGolf() is dus precies zo smal als
-// bedoeld, niet per ongeluk permanent. -------------------------------------
+// --- 7f. Ticket 185: dezelfde bescherming geldt voor de NIEUWE tweede fase
+// (overleefd, nog niet bij de boot teruggekeerd — `vertrekKlaar`). Zonder
+// deze uitbreiding zou de boot alsnog kunnen wegvaren terwijl de speler op
+// weg is ernaartoe na de 30 seconden te hebben overleefd — precies dezelfde
+// willekeurige faalstaat als 7d, nu één fase later. Zelfde opzet als 7d,
+// instapActief blijft false en vertrekKlaar staat aan.
+//
+// Moet vóór 7e draaien: 7e laat de transitie daadwerkelijk sluiten, wat
+// bootUitvarenActief op true zet — dat is geen state die opruimOntsnapping()
+// terugzet, dus een latere sectie zou een vals-positieve "geen uitvaren
+// gestart" tegenkomen die in werkelijkheid leftover state van 7e meet. -----
+await opruimOntsnapping();
+const vertrekKlaarBlokkeertSluitenTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.vluchtOnderdelenOpgepakt = 3;
+  d.spelStaat.golf = 10;
+  d.toonOntsnappingspuntIndienKlaar();
+  d.updateBootPositie();
+  d.instapActief = false;
+  d.vertrekKlaar = true;
+  const puntVoor = d.ontsnappingsPunt;
+  const vertrekVoor = d.bootVertrekTeller;
+  for (const o of [...d.ondoden]) d.doodOndode(o);
+  d.spelStaat.golfActief = true;
+  d.spelStaat.budget = 0;
+  d.spelStaat.spawnTimer = 999;
+  d.updateGolf(0.016);
+  return {
+    golfNa: d.spelStaat.golf,
+    puntBlijftBestaan: d.ontsnappingsPunt === puntVoor,
+    interactiePuntenBevatNog: d.interactiePunten.includes(puntVoor),
+    geenVertrekGespeeld: d.bootVertrekTeller === vertrekVoor,
+    geenUitvarenGestart: d.bootUitvarenActief === false,
+    vertrekKlaarOngemoeid: d.vertrekKlaar === true,
+  };
+});
+check('De golf loopt gewoon door naar 11, ook tijdens vertrekKlaar',
+  vertrekKlaarBlokkeertSluitenTest.golfNa === 11, vertrekKlaarBlokkeertSluitenTest);
+check('Maar het ontsnappingspunt blijft bestaan — de boot vaart NIET weg terwijl de speler terugloopt om te vertrekken',
+  vertrekKlaarBlokkeertSluitenTest.puntBlijftBestaan && vertrekKlaarBlokkeertSluitenTest.interactiePuntenBevatNog,
+  vertrekKlaarBlokkeertSluitenTest);
+check('Geen vertrek-geluid en geen uitvaren-animatie tijdens vertrekKlaar',
+  vertrekKlaarBlokkeertSluitenTest.geenVertrekGespeeld && vertrekKlaarBlokkeertSluitenTest.geenUitvarenGestart,
+  vertrekKlaarBlokkeertSluitenTest);
+check('vertrekKlaar blijft ongemoeid door de golf-transitie (sluit alleen via voltooiOntsnapping()/gameOver())',
+  vertrekKlaarBlokkeertSluitenTest.vertrekKlaarOngemoeid, vertrekKlaarBlokkeertSluitenTest);
+
+// --- 7e. Regressie-tegenhanger van 7d/7f: ZODRA instapActief/vertrekKlaar
+// weer false zijn (fase is afgerond/nooit gestart), sluit dezelfde transitie
+// het venster weer gewoon — de uitzondering in updateGolf() is dus precies
+// zo smal als bedoeld, niet per ongeluk permanent. Draait bewust ALS
+// LAATSTE van dit drietal (zie de toelichting bij 7f). ---------------------
 await opruimOntsnapping();
 const geenInstapSluitWelTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;

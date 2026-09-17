@@ -16294,6 +16294,10 @@ function gameOver() {
   // die bij een volgende blik in de debugger verwarring zou geven.
   instapActief = false;
   instapTimer = 0;
+  // Ticket 185: idem voor de tweede fase (overleefd, nog op weg naar de
+  // boot) — sterven ná de 30 seconden maar vóór het vertrek is nog steeds
+  // gewoon deze functie, en mag geen vertrekKlaar=true laten rondslingeren.
+  vertrekKlaar = false;
   herstelFinaleEscalatie();   // Ticket 147: fog terug, ook als de speler tijdens de instap sterft
   verlaatBesturing();   // Ticket 176
 }
@@ -16644,8 +16648,13 @@ function updateGolf(dt) {
     // seconden overleven en de boot alsnog zien wegvaren omdat de golf
     // toevallig eindigde — geen spannende faalstaat, een willekeurige. Zodra
     // instapActief waar is, wacht de boot; de fase sluit zelf af via
-    // voltooiOntsnapping() of game over.
-    if (ontsnappingsPunt && !isOntsnappingsGolf(spelStaat.golf) && !instapActief) {
+    // overleefdKlaarVoorVertrek() of game over.
+    // Ticket 185: dezelfde reden geldt voor `vertrekKlaar` — de tweede fase
+    // (overleefd, nog niet bij de boot teruggekeerd). Zonder deze toevoeging
+    // zou de boot alsnog kunnen wegvaren terwijl de speler onderweg is
+    // ernaartoe, precies de willekeurige faalstaat die T146 al uitsloot voor
+    // fase 1.
+    if (ontsnappingsPunt && !isOntsnappingsGolf(spelStaat.golf) && !instapActief && !vertrekKlaar) {
       const pi = interactiePunten.indexOf(ontsnappingsPunt);
       if (pi !== -1) interactiePunten.splice(pi, 1);
       ontsnappingsPunt = null;
@@ -17791,9 +17800,14 @@ function updateBootHoornHerhaling(dt) {
 // Ticket 146 (FINALE.md §2 beslissing 5): twee nieuwe regels voor de
 // instapfase, VÓÓR de bestaande "Boot ligt aan!"-tak (zolang instapActief
 // waar is, bestaat ontsnappingsPunt ook nog, dus die tak zou anders winnen).
-// De pauze-tekst is bewust een OPDRACHT ("Blijf bij de boot!"), geen
-// statusmelding — hij verschijnt precies op het moment dat de speler iets
-// moet doen.
+//
+// Ticket 185 (herschrijving): de positie-eis is vervallen — de speler
+// overleeft de 30 seconden waar hij ook staat, dus de vroegere "Blijf bij de
+// boot!"-pauzetekst (voor als je wegliep) bestaat niet meer, er is nu maar
+// één tekst tijdens het overleven. Er komt een DERDE regel bij, voor de
+// nieuwe fase ná de 30 seconden: overleefd, maar nog niet bij de boot terug
+// (`vertrekKlaar`) — die tak moet vóór de bestaande "Boot ligt aan!"-tak
+// staan, om dezelfde reden als instapActief hierboven.
 //
 // Deze functie kan nu ELK FRAME aangeroepen worden zolang de instapfase
 // loopt (vanuit updateFinaleInstap()) — vandaar de diff-guard op el.textContent
@@ -17815,12 +17829,15 @@ function updateOntsnappingVensterHUD() {
   if (vluchtOnderdelenOpgepakt < VLUCHT_ONDERDELEN.length) {
     tekst = '';
   } else if (instapActief) {
-    // Speeltest-fix: was "Losgooien… Ns" — dat beschrijft wat de BOOT doet,
-    // niet wat de speler moet doen (standhouden terwijl T147's escalatie
-    // oploopt). "Hou stand" is de opdracht, niet de statusmelding.
-    tekst = (huidigeInteractie === ontsnappingsPunt)
-      ? `Hou stand… ${Math.ceil(instapTimer)}s`
-      : 'Blijf bij de boot!';
+    // Ticket 185: was "Hou stand… Ns" mét een aparte pauzetak voor "weg van
+    // de boot" — de positie-eis is weg, dus er is nog maar één statusregel
+    // tijdens het overleven, ongeacht waar de speler staat.
+    tekst = `Overleef nog ${Math.ceil(instapTimer)}s`;
+  } else if (vertrekKlaar) {
+    // Ticket 185: fase 2 — overleefd, de boot wacht, ga ernaartoe om te
+    // vertrekken. Blijft staan tot de speler daadwerkelijk bij de boot T
+    // indrukt (voltooiOntsnapping()).
+    tekst = 'Overleefd! Ga naar de boot om te vertrekken';
   } else if (ontsnappingsPunt) {
     tekst = 'Boot ligt aan!';
   } else if (ontsnappingAankondigingActief) {
@@ -17948,16 +17965,29 @@ function toonOntsnappingspuntIndienKlaar() {
     // pauzeert. Afgeleid van de bestaande zone-constanten i.p.v. een losse
     // magic number, zodat een latere wijziging aan de bijkeuken-afmetingen
     // dit automatisch meeschaalt.
+    // Ticket 185: de reden hierboven ("kiten tijdens de 30s holdout") is
+    // niet langer de reden dat deze radius groot moet zijn — de instapfase
+    // heeft geen positie-eis meer, dus de timer pauzeert sowieso nergens
+    // meer voor. De ruime radius blijft gewoon zo staan (hij dekt nu de
+    // aanloopafstand om het punt te kunnen ACTIVEREN, vóór én ná het
+    // overleven), maar de oorspronkelijke motivatie is vervallen.
     radius: Math.hypot((BOOT_DOK_X - 1.5) - BIJKEUKEN_X_WEST, BIJKEUKEN_CZ - BIJKEUKEN_Z_NOORD) + 0.5,
     // Ticket 146: tijdens de instapfase doet T niets meer (probeerOntsnapping()
     // negeert 'm dan) — de prompt toont hier de live aftelling in plaats van
     // een "Druk T"-instructie die niet meer klopt.
-    prompt: () => instapActief
-      ? `Hou stand… ${Math.ceil(instapTimer)}s`
-      : (spelStaat.geld < ONTSNAPPING_PRIJS
-        ? `Nog €${ONTSNAPPING_PRIJS - spelStaat.geld} nodig om te ontsnappen`
-        : `Druk T: ontsnap over het water (€${ONTSNAPPING_PRIJS})`),
-    actie: probeerOntsnapping,
+    // Ticket 185: erbij, vóór instapActief: `vertrekKlaar` — de fase NA het
+    // overleven, waarin T wél weer iets doet (vertrekken).
+    prompt: () => vertrekKlaar
+      ? `Druk T: vertrek met de boot`
+      : instapActief
+        ? `Overleef nog ${Math.ceil(instapTimer)}s`
+        : (spelStaat.geld < ONTSNAPPING_PRIJS
+          ? `Nog €${ONTSNAPPING_PRIJS - spelStaat.geld} nodig om te ontsnappen`
+          : `Druk T: ontsnap over het water (€${ONTSNAPPING_PRIJS})`),
+    // Ticket 185: routeert naar de juiste fase — tijdens/vóór het overleven
+    // gewoon probeerOntsnapping() (die zelf al no-opt tijdens instapActief),
+    // NA het overleven voltooit T bij de boot de ontsnapping zelf.
+    actie: () => { if (vertrekKlaar) voltooiOntsnapping(); else probeerOntsnapping(); },
   };
   interactiePunten.push(ontsnappingsPunt);
   toonMelding('De vluchtroute is compleet — zoek de boot bij de vlonder op!');
@@ -17975,6 +18005,14 @@ function toonOntsnappingspuntIndienKlaar() {
 const FINALE_INSTAP_DUUR = 30;   // s — FINALE.md §2 beslissing 2
 let instapActief = false;
 let instapTimer = 0;
+// Ticket 185: de tweede fase, NA het overleven. `instapActief` is dan alweer
+// false (de escalatie is voorbij — zie overleefdKlaarVoorVertrek()), maar de
+// speler moet nog terug naar de boot om daadwerkelijk te vertrekken. Een
+// aparte vlag omdat er zoveel aan `instapActief` hangt (boothoorn-interval,
+// dreigingsvolume-plafond, fog-krimp, de prompt-tekst) dat losse waardes
+// daarvan tijdens deze rustigere fase juist NIET gewenst zijn — de escalatie
+// hoort hier gewoon uit te staan, zoals buiten elke finale-fase.
+let vertrekKlaar = false;
 
 // Ticket 147 (FINALE.md §2 beslissing 4): vier escalatiekanalen, ALLEMAAL
 // bestaand — geen nieuw spawnsysteem, geen nieuwe effect-pools, geen nieuwe
@@ -18006,7 +18044,7 @@ let finaleLaatsteSecondenGetoond = false;
 let finaleLosgooienTeller = 0;   // debug/test: het eenmalige "laatste seconden"-signaal
 
 function probeerOntsnapping() {
-  if (instapActief) return;   // T nogmaals indrukken tijdens de instap doet niets
+  if (instapActief || vertrekKlaar) return;   // T doet niets tijdens het overleven, of ná het overleven (dan vertrekt T i.p.v. te starten)
   if (spelStaat.geld < ONTSNAPPING_PRIJS) { toonMelding(`Nog €${ONTSNAPPING_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
   spelStaat.geld -= ONTSNAPPING_PRIJS;
   updateHUD();
@@ -18018,28 +18056,52 @@ function probeerOntsnapping() {
   finaleFogVan = { near: scene.fog.near, far: scene.fog.far };
   finalePulsTimer = FINALE_PULS_INTERVAL_START;
   finaleLaatsteSecondenGetoond = false;
-  // Speeltest-fix: de subtekst was "Blijf bij de boot tot ze losgooien…" —
-  // legde de wachttijd uit, maar niet dat het intussen zwaarder wordt
-  // (T147's escalatie). Nieuwe spelers lazen dat als een neutrale wachttijd
-  // i.p.v. een oplopende horde-fase. FINALE_INSTAP_DUUR i.p.v. een losse "30"
+  // Ticket 185: was "Blijf dichtbij de boot — overleef N seconden!" — dat
+  // beschreef een positie-eis die niet meer bestaat. De speler overleeft nu
+  // waar hij ook staat op de kaart. FINALE_INSTAP_DUUR i.p.v. een losse "30"
   // zodat de tekst niet uit de pas kan lopen met de werkelijke duur.
-  toonGolfBanner('Aan boord!', `Blijf dichtbij de boot — overleef ${FINALE_INSTAP_DUUR} seconden!`);
+  toonGolfBanner('Overleven!', `Overleef ${FINALE_INSTAP_DUUR} seconden, waar je ook bent — daarna wacht de boot`);
   updateOntsnappingVensterHUD();
 }
 
-// Aangeroepen zodra de instapfase afloopt (updateFinaleInstap() hieronder).
-// toonWinScherm() blijft het ongewijzigde eindpunt — dat is precies waarom
-// hier gesplitst is: alles wat NA de fase komt was al af.
+// Ticket 185: aangeroepen zodra de 30 overleefde seconden voorbij zijn
+// (updateFinaleInstap() hieronder) — sluit fase 1 (overleven) af zonder al
+// te winnen. instapActief valt hiermee weg, dus alle vier de
+// escalatiekanalen vallen automatisch terug naar rust (zie de toelichting
+// bij FINALE_SURGE_BUDGET): geen surge meer, fog terug, boothoorn-interval
+// en dreigingsvolume terug naar normaal. `vertrekKlaar` opent fase 2: de
+// speler moet nu terug naar de boot om daadwerkelijk te vertrekken.
+function overleefdKlaarVoorVertrek() {
+  instapActief = false;
+  instapTimer = 0;
+  herstelFinaleEscalatie();   // Ticket 147: fog terug — de escalatie is voorbij, niet pas bij het vertrek zelf
+  vertrekKlaar = true;
+  updateOntsnappingVensterHUD();
+  toonGolfBanner('Overleefd!', 'Ga naar de boot om te vertrekken');
+}
+
+// Aangeroepen zodra de speler bij de boot T indrukt terwijl vertrekKlaar
+// waar is (het echte, definitieve vertrek). toonWinScherm() blijft het
+// ongewijzigde eindpunt (T140-discipline: dat scherm is al af).
+//
+// Ticket 185: ruimt BEIDE fase-vlaggen defensief op, ongeacht welk pad
+// hiernaartoe leidde — zo blijft deze functie ook bruikbaar om rechtstreeks
+// (zonder de echte 30s + terugloop) naar het winscherm te forceren, precies
+// zoals test-ontsnapping.mjs dat doet om de INHOUD van dat scherm te
+// bewaken los van de timing. herstelFinaleEscalatie() is een no-op als fase
+// 1 al is afgesloten (finaleFogVan is dan al null), dus dubbel aanroepen is
+// veilig.
 function voltooiOntsnapping() {
   instapActief = false;
   instapTimer = 0;
+  vertrekKlaar = false;
   herstelFinaleEscalatie();   // Ticket 147: fog terug — zie de toelichting daar
   // Zonder deze regel bleef de statusregel op de laatst geschreven
-  // instapfase-tekst ("Blijf bij de boot!"/"Losgooien… Ns") staan totdat er
-  // toevallig een andere trigger langskwam — ontsnappingsPunt bestaat hierna
-  // nog gewoon (tot "Speel door"), dus hoort meteen weer "Boot ligt aan!" te
-  // tonen. toonWinScherm() zelf blijft bewust ongewijzigd (T140-discipline:
-  // dat scherm is al af), dus deze write staat er los naast.
+  // fase-tekst staan totdat er toevallig een andere trigger langskwam —
+  // ontsnappingsPunt bestaat hierna nog gewoon (tot "Speel door"), dus hoort
+  // meteen weer "Boot ligt aan!" te tonen. toonWinScherm() zelf blijft
+  // bewust ongewijzigd (T140-discipline: dat scherm is al af), dus deze
+  // write staat er los naast.
   updateOntsnappingVensterHUD();
   toonWinScherm();
 }
@@ -18057,12 +18119,13 @@ function herstelFinaleEscalatie() {
   finaleFogVan = null;
 }
 
-// Ticket 146 (FINALE.md §2 beslissing 3): de timer loopt ALLEEN terwijl de
-// speler daadwerkelijk bij de boot staat — weglopen pauzeert 'm, terugkomen
-// hervat 'm. "Bij de boot staan" is `huidigeInteractie === ontsnappingsPunt`:
-// updateInteracties() berekent dat elke frame toch al (afstand tot alle
-// interactiepunten), dus dit hergebruikt die uitkomst i.p.v. zelf opnieuw te
-// meten. Moet daarom NA updateInteracties() draaien in de gameLoop.
+// Ticket 146 oorspronkelijk (FINALE.md §2 beslissing 3): de timer liep alleen
+// terwijl de speler daadwerkelijk bij de boot stond. Ticket 185 (eigenaar:
+// "ik vind het einde niet super goed werken") liet die eis vallen — de
+// speler overleeft nu waar hij ook staat op de kaart, de timer loopt altijd
+// door zolang instapActief waar is. Moet nog steeds NA updateInteracties()
+// draaien in de gameLoop (huidigeInteractie wordt elders gebruikt, voor de
+// prompt/context-knop), maar leest 'm hier niet meer.
 //
 // Geen aparte faalstaat (FINALE.md §2 beslissing 3): doodgaan tijdens de fase
 // is gewoon game over via het bestaande pad. Dat werkt vanzelf, want
@@ -18070,16 +18133,19 @@ function herstelFinaleEscalatie() {
 // spelStaat.gameOver waar wordt — er is geen aparte guard nodig.
 function updateFinaleInstap(dt) {
   if (!instapActief) return;
-  if (huidigeInteractie === ontsnappingsPunt) {
-    instapTimer = Math.max(0, instapTimer - dt);
-  }
+  instapTimer = Math.max(0, instapTimer - dt);
   updateOntsnappingVensterHUD();
-  if (instapTimer <= 0) voltooiOntsnapping();
+  if (instapTimer <= 0) overleefdKlaarVoorVertrek();
 }
 
-// Ticket 147: het "nu of nooit"-signaal, origineel — geen bestaand geluid
-// hergebruikt (speelBootHoorn() betekent al specifiek "de boot IS
-// aangekomen"; dit hier is het tegenovergestelde moment).
+// Ticket 147: origineel geluid, geen bestaande hergebruikt (speelBootHoorn()
+// betekent al specifiek "de boot IS aangekomen"; dit hier is het
+// tegenovergestelde moment). Naam en functie-identiteit zijn ongewijzigd
+// gebleven sinds Ticket 185 (geen hernoem-noodzaak voor interne namen), maar
+// de BETEKENIS is verschoven: vóór T185 was dit "laatste kans om nog aan
+// boord te komen voordat ze losgooien"; ná T185 bestaat die deadline niet
+// meer (de boot wacht sowieso) — dit is nu simpelweg het "bijna overleefd"-
+// signaal, vlak vóór het einde van de 30 seconden.
 function speelFinaleLosgooien() {
   finaleLosgooienTeller++;
   speelGeluid('finaleLosgooien');   // oplopend, urgent — het omgekeerde van de dalende boothoorn
@@ -18087,9 +18153,12 @@ function speelFinaleLosgooien() {
 
 // Ticket 147 (FINALE.md §2 beslissing 4): de vier escalatiekanalen, als
 // functie van instapTimer — geen eigen voortgangsstate nodig (zie de
-// toelichting bij FINALE_SURGE_BUDGET). Draait ALLEEN terwijl instapActief,
-// dus bevriest vanzelf zolang beslissing 3 de timer pauzeert (weglopen): de
-// fractie hieronder verandert dan niet, dus ook de escalatie niet.
+// toelichting bij FINALE_SURGE_BUDGET). Draait ALLEEN terwijl instapActief.
+// Ticket 185: de oorspronkelijke reden hier ("bevriest zolang de speler
+// wegloopt van de boot") is vervallen — die positie-eis bestaat niet meer.
+// De functie draait nog steeds alleen tijdens instapActief, simpelweg omdat
+// de escalatie uitsluitend bij fase 1 (overleven) hoort; fase 2 (vertrekKlaar,
+// terug naar de boot) is bewust weer rustig.
 function updateFinaleEscalatie(dt) {
   if (!instapActief) return;
   const fractie = 1 - instapTimer / FINALE_INSTAP_DUUR;   // 0 bij start, 1 vlak vóór vertrek
@@ -18114,10 +18183,14 @@ function updateFinaleEscalatie(dt) {
       - (FINALE_PULS_INTERVAL_START - FINALE_PULS_INTERVAL_EIND) * fractie;
   }
 
-  // Laatste seconden: één eenmalig, duidelijk herkenbaar "nu of nooit"-moment.
+  // Laatste seconden: één eenmalig, duidelijk herkenbaar signaal. Ticket 185:
+  // was "LOSGOOIEN! / nu of nooit…" (het varen-metafoor paste toen de boot
+  // zonder de speler kon vertrekken) — dat kan sindsdien niet meer, dus de
+  // tekst is aangepast naar wat er nu daadwerkelijk gebeurt: het overleven
+  // is bijna voorbij.
   if (!finaleLaatsteSecondenGetoond && instapTimer <= FINALE_LAATSTE_SECONDEN) {
     finaleLaatsteSecondenGetoond = true;
-    toonGolfBanner('LOSGOOIEN!', 'nu of nooit…');
+    toonGolfBanner('BIJNA!', 'nog heel even volhouden…');
     speelFinaleLosgooien();
   }
 }
@@ -18844,12 +18917,16 @@ window.AmsterdamUndeadDebug = {
   ONTSNAPPING_PRIJS, toonOntsnappingspuntIndienKlaar, probeerOntsnapping, toonWinScherm, winScherm,
   get ontsnappingsPunt() { return ontsnappingsPunt; },
   set ontsnappingsPunt(v) { ontsnappingsPunt = v; },
-  // Ticket 146: de instapfase
+  // Ticket 146: de instapfase (fase 1: overleven)
   FINALE_INSTAP_DUUR, voltooiOntsnapping, updateFinaleInstap,
   get instapActief() { return instapActief; },
   set instapActief(v) { instapActief = v; },
   get instapTimer() { return instapTimer; },
   set instapTimer(v) { instapTimer = v; },
+  // Ticket 185: fase 2 (overleefd, terug naar de boot om te vertrekken)
+  overleefdKlaarVoorVertrek,
+  get vertrekKlaar() { return vertrekKlaar; },
+  set vertrekKlaar(v) { vertrekKlaar = v; },
   // Ticket 147: de escalatie
   FINALE_SURGE_BUDGET, FINALE_FOG_KRIMP, FINALE_HOORN_INTERVAL_MIN,
   FINALE_DREIGINGS_VOLUME_PLAFOND, FINALE_PULS_INTERVAL_START, FINALE_PULS_INTERVAL_EIND,

@@ -1,5 +1,20 @@
 # FINALE.md — ontwerp van de instapfase
 
+> **Herzien door Ticket 185.** Beslissing 3 hieronder ("weglopen pauzeert de
+> timer, terugkomen hervat 'm") is volledig geschrapt: de eigenaar vond het
+> einde niet goed werken, en de positie-eis is de kern van die klacht. De
+> speler overleeft de 30 seconden nu waar hij ook staat op de kaart; er komt
+> een TWEEDE fase bij (`vertrekKlaar`) ná het overleven, waarin de speler
+> terug naar de boot moet om daadwerkelijk te vertrekken —
+> `overleefdKlaarVoorVertrek()` sluit fase 1 af (alle escalatie valt terug
+> naar rust, precies zoals beslissing 4 hieronder al voor de andere exitpaden
+> beschreef) en `voltooiOntsnapping()` is voortaan uitsluitend het echte
+> vertrek. Beslissing 6 (de golfgrens-uitzondering) is uitgebreid met
+> dezelfde bescherming voor `vertrekKlaar`. De rest van dit document
+> (beslissing 1, 2, 4, 5 en de begroting) blijft ongewijzigd van toepassing;
+> lees "instapfase" waar het over de 30 seconden zelf gaat, en zie
+> ROADMAP.md Ticket 185 voor de volledige uitvoering en testdekking.
+
 Ticket 145 (Ronde 11, fase 4). Dit document legt vast hoe de aankomende boot
 een climax van ~30 seconden wordt, **als uitbreiding van de bestaande
 ontsnappingsmachine** — niet als nieuw encounter-systeem (ontwerpbeslissing

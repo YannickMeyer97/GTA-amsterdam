@@ -1,29 +1,42 @@
 // Ticket 146: de instapfase-machine (FINALE.md §2/§3). Vóór dit ticket was
 // T bij de boot instant winst; nu start T een holdout van
-// FINALE_INSTAP_DUUR seconden, en pas voltooiOntsnapping() toont het
-// winscherm (dat scherm zelf, met score/stats/record, blijft ONGEWIJZIGD en
-// is al gedekt door test-ontsnapping.mjs sectie 5).
+// FINALE_INSTAP_DUUR seconden. Oorspronkelijk telde de timer alleen af
+// zolang de speler bij de boot bleef staan (positie-eis) — Ticket 185 heeft
+// die eis volledig geschrapt (eigenaar: "ik vind het einde niet super goed
+// werken") en er een TWEEDE fase aan toegevoegd. Zie de toelichting bij
+// Ticket 185 hieronder voor de huidige twee-fasen-opzet; de secties in dit
+// bestand zijn dienovereenkomstig herschreven.
 //
-// Bewaakt hier: T start de fase via het ECHTE interactiesysteem (positie +
-// updateInteracties() + een echte KeyT); de timer loopt alleen terwijl de
-// speler bij de boot staat (huidigeInteractie === ontsnappingsPunt) en
-// pauzeert zodra hij wegloopt; T nogmaals indrukken tijdens de fase doet
-// niets; de twee nieuwe HUD-teksten; doodgaan tijdens de fase is gewoon
-// game over, met opgeruimde instap-state; interactiePunten blijft ongewijzigd
-// (13 sinds Ticket 183, was 14 vóór dat ticket — dit bestand toetst de
-// invariant zelf via een delta-check, niet via een hardgecodeerd getal).
+// Bewaakt hier (fase 1, overleven): T start de fase via het ECHTE
+// interactiesysteem (positie + updateInteracties() + een echte KeyT); de
+// timer loopt ALTIJD door, ongeacht waar de speler staat (T185); T nogmaals
+// indrukken tijdens de fase doet niets; de HUD-tekst; doodgaan tijdens de
+// fase is gewoon game over, met opgeruimde state; interactiePunten blijft
+// ongewijzigd (13 sinds Ticket 183, was 14 vóór dat ticket — dit bestand
+// toetst de invariant zelf via een delta-check, niet via een hardgecodeerd
+// getal).
 //
-// Ticket 147 (secties 8+): de vier escalatiekanalen uit FINALE.md §2
+// Ticket 185 (secties 5+): de fase ná het overleven. Zodra de 30 seconden om
+// zijn, valt instapActief weg (en daarmee alle escalatie — zie T147
+// hieronder) en gaat `vertrekKlaar` aan: de speler moet terug naar de boot
+// en daar T indrukken om daadwerkelijk te vertrekken (voltooiOntsnapping()).
+// Bewaakt: de HUD-tekst in deze fase, de prompt bij de boot, dat T alleen
+// hier weer iets doet, en dat doodgaan in DEZE fase ook gewoon game over is
+// met opgeruimde vertrekKlaar-state.
+//
+// Ticket 147 (secties 9+): de vier escalatiekanalen uit FINALE.md §2
 // beslissing 4 — budget-injectie, beeld (fog/lampdip/vignet), geluid
 // (dreigingsvloer/boothoorn), en het eenmalige "laatste seconden"-moment.
 // Bewaakt vooral het HERSTEL op elke exitpad: voltooiing, game over, en
-// (via de bestaande pauzelogica uit T146) dat de escalatie zelf bevriest
-// zolang de speler weg is van de boot — geen apart mechanisme daarvoor
-// nodig, want alles is een pure functie van instapTimer.
+// (sinds T185) dat de escalatie zelf stopt zodra fase 1 overgaat in fase 2
+// — geen apart mechanisme daarvoor nodig, want alles is een pure functie
+// van instapActief/instapTimer, en overleefdKlaarVoorVertrek() zet
+// instapActief hard op false zodra de 30s om zijn.
 //
-// Wat hier NIET staat: de golfgrens-uitzondering (FINALE.md §2 beslissing 6)
-// — die staat in test-ontsnapping-vensters.mjs (sectie 7d/7e), dat bestand
-// bewaakt de wave-complete-tak al voor de rest van de ontsnappingsmachine.
+// Wat hier NIET staat: de golfgrens-uitzondering (FINALE.md §2 beslissing 6,
+// nu voor BEIDE fasen) — die staat in test-ontsnapping-vensters.mjs (sectie
+// 7d/7f/7e), dat bestand bewaakt de wave-complete-tak al voor de rest van de
+// ontsnappingsmachine.
 import { openAmsterdamUndead, makeChecker, frames } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
@@ -77,8 +90,8 @@ check('Het geld gaat DIRECT af bij het starten, niet pas bij voltooiing (Ticket 
   startTest.geldAfgetrokken === 1000, startTest);
 check('Er verschijnt nog GEEN winscherm — de fase moet eerst lopen',
   startTest.winSchermDisplay !== 'flex', startTest);
-check('De HUD toont de live aftelling zolang de speler bij de boot staat',
-  startTest.hudTekst === `Hou stand… ${startTest.verwachtTimer}s`, startTest);
+check('De HUD toont de live aftelling (Ticket 185: geen positie-eis meer, dus geen "zolang bij de boot"-voorwaarde)',
+  startTest.hudTekst === `Overleef nog ${startTest.verwachtTimer}s`, startTest);
 
 // --- 2. T nogmaals indrukken tijdens de instapfase doet niets (geen dubbele
 // aftrek, timer springt niet terug naar de volle duur) ---------------------
@@ -94,67 +107,89 @@ check('Een tweede KeyT-druk tijdens de instapfase trekt geen geld nogmaals af',
 check('...en zet de timer niet terug naar de volle duur (probeerOntsnapping() deed letterlijk niets)',
   dubbeleTTest.timerNa === 17, dubbeleTTest);
 
-// --- 3. De timer telt af via de ECHTE gameLoop, zolang de speler bij de
-// boot blijft staan ---------------------------------------------------------
+// --- 3. Ticket 185: de timer telt af via de ECHTE gameLoop, ONGEACHT waar de
+// speler staat — de vroegere positie-eis (FINALE.md §2 beslissing 3) is
+// volledig geschrapt. Getoetst op de boot ÉN ver weg ervan, om zeker te
+// weten dat dit geen toevallige nabijheid is maar een echte, bewuste
+// verandering. ---------------------------------------------------------
+await zetSpelerBijBoot(true);
 await page.evaluate(() => { window.AmsterdamUndeadDebug.instapTimer = 25; });
-const tikTest = await page.evaluate(async () => {
+const tikBijBootTest = await page.evaluate(async () => {
   const d = window.AmsterdamUndeadDebug;
   const voor = d.instapTimer;
   await new Promise(res => setTimeout(res, 400));   // wall-clock, de echte gameLoop draait door
   return { voor, na: d.instapTimer };
 });
-check('De instapTimer loopt daadwerkelijk af terwijl de speler bij de boot staat (echte gameLoop)',
-  tikTest.na < tikTest.voor, tikTest);
+check('De instapTimer loopt af terwijl de speler bij de boot staat (echte gameLoop)',
+  tikBijBootTest.na < tikBijBootTest.voor, tikBijBootTest);
 
-// --- 4. Weglopen PAUZEERT de timer; terugkomen HERVAT 'm (FINALE.md §2
-// beslissing 3) --------------------------------------------------------
 await zetSpelerBijBoot(false);
-const pauzeTest = await page.evaluate(async () => {
-  const d = window.AmsterdamUndeadDebug;
-  const voor = d.instapTimer;
-  await new Promise(res => setTimeout(res, 400));
-  return { voor, na: d.instapTimer, hudTekst: document.getElementById('ontsnappingVensterUI').textContent };
-});
-check('Weg van de boot verandert de timer NIET, ook al draait de gameLoop door',
-  pauzeTest.na === pauzeTest.voor, pauzeTest);
-check('De HUD toont de opdracht "Blijf bij de boot!" terwijl de fase gepauzeerd staat',
-  pauzeTest.hudTekst === 'Blijf bij de boot!', pauzeTest);
-
-await zetSpelerBijBoot(true);
-const hervatTest = await page.evaluate(async () => {
+const tikVerWegTest = await page.evaluate(async () => {
   const d = window.AmsterdamUndeadDebug;
   const voor = d.instapTimer;
   await new Promise(res => setTimeout(res, 400));
   return { voor, na: d.instapTimer };
 });
-check('Terug bij de boot hervat de timer het aftellen',
-  hervatTest.na < hervatTest.voor, hervatTest);
+check('...en loopt EVENGOED af terwijl de speler ver van de boot staat (geen pauze meer, Ticket 185)',
+  tikVerWegTest.na < tikVerWegTest.voor, tikVerWegTest);
 
-// --- 5. Zodra de timer afloopt (nog steeds bij de boot), volgt
-// voltooiOntsnapping() automatisch — het winscherm verschijnt vanzelf,
-// zonder dat iets anders dan tijd hoeft te verstrijken ----------------------
-await page.evaluate(() => { window.AmsterdamUndeadDebug.instapTimer = 0.05; });
-await frames(page, 10);
-const voltooiingTest = await page.evaluate(() => {
+// --- 4. Zodra de timer afloopt (ongeacht positie), sluit dat fase 1 af:
+// instapActief valt weg, maar het winscherm verschijnt NOG NIET —
+// `vertrekKlaar` gaat aan, en de speler moet eerst terug naar de boot
+// (Ticket 185, het hart van de herschrijving). --------------------------
+const voltooiingTest = await page.evaluate(async () => {
   const d = window.AmsterdamUndeadDebug;
+  d.instapTimer = 0.05;
+  await new Promise(res => setTimeout(res, 200));   // echte gameLoop, ver van de boot
   return {
     instapActief: d.instapActief,
+    vertrekKlaar: d.vertrekKlaar,
     winSchermDisplay: document.getElementById('winScherm').style.display,
+    hudTekst: document.getElementById('ontsnappingVensterUI').textContent,
   };
 });
-check('Zodra de timer nul bereikt (bij de boot) volgt de fase vanzelf op: instapActief false, winscherm zichtbaar',
-  voltooiingTest.instapActief === false && voltooiingTest.winSchermDisplay === 'flex', voltooiingTest);
+check('Zodra de timer nul bereikt (ver van de boot) valt instapActief weg en gaat vertrekKlaar aan',
+  voltooiingTest.instapActief === false && voltooiingTest.vertrekKlaar === true, voltooiingTest);
+check('Er verschijnt nog GEEN winscherm — de speler moet eerst terug naar de boot',
+  voltooiingTest.winSchermDisplay !== 'flex', voltooiingTest);
+check('De HUD wijst de speler naar de boot',
+  voltooiingTest.hudTekst === 'Overleefd! Ga naar de boot om te vertrekken', voltooiingTest);
+
+// --- 5. Fase 2 (vertrekKlaar): T doet NIETS op afstand, maar voltooit de
+// ontsnapping zodra de speler bij de boot staat — pas dan verschijnt het
+// winscherm. ------------------------------------------------------------
+const tOpAfstandTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyT', bubbles: true }));
+  return { vertrekKlaar: d.vertrekKlaar, winSchermDisplay: document.getElementById('winScherm').style.display };
+});
+check('T op afstand doet niets tijdens vertrekKlaar (geen interactiepunt binnen bereik)',
+  tOpAfstandTest.vertrekKlaar === true && tOpAfstandTest.winSchermDisplay !== 'flex', tOpAfstandTest);
+
+await zetSpelerBijBoot(true);
+const promptBijBootTest = await page.evaluate(() => window.AmsterdamUndeadDebug.ontsnappingsPunt.prompt());
+check('De prompt bij de boot zegt "vertrek met de boot" tijdens vertrekKlaar',
+  promptBijBootTest === 'Druk T: vertrek met de boot', { promptBijBootTest });
+
+const echtVertrekTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyT', bubbles: true }));
+  return { vertrekKlaar: d.vertrekKlaar, winSchermDisplay: document.getElementById('winScherm').style.display };
+});
+check('T bij de boot voltooit de ontsnapping: vertrekKlaar false, winscherm zichtbaar',
+  echtVertrekTest.vertrekKlaar === false && echtVertrekTest.winSchermDisplay === 'flex', echtVertrekTest);
 
 // "Speel door" sluit het winscherm weer, zodat de volgende secties met een
 // schone lei verder kunnen (zelfde knop als test-ontsnapping.mjs sectie 7).
 await page.evaluate(() => { document.getElementById('speelDoorKnop').click(); });
 
-// --- 6. Doodgaan TIJDENS de instapfase is gewoon game over — geen aparte
-// faalstaat (FINALE.md §2 beslissing 3), en de instap-state wordt opgeruimd
-// (checklist T146). Meteen ook FINALE.md §1.3's interactiePunten-invariant:
-// de instapfase zelf hergebruikt het bestaande ontsnappingspunt en voegt er
-// GEEN nieuwe aan toe — dus de lengte vóór het starten van de instap (met
-// het escape-punt er al bij) moet exact gelijk blijven aan de lengte erna. -
+// --- 6. Doodgaan TIJDENS de instapfase (fase 1) is gewoon game over — geen
+// aparte faalstaat (FINALE.md §2 beslissing 3), en de instap-state wordt
+// opgeruimd (checklist T146). Meteen ook FINALE.md §1.3's
+// interactiePunten-invariant: de instapfase zelf hergebruikt het bestaande
+// ontsnappingspunt en voegt er GEEN nieuwe aan toe — dus de lengte vóór het
+// starten van de instap (met het escape-punt er al bij) moet exact gelijk
+// blijven aan de lengte erna. -----------------------------------------------
 await bereidVluchtrouteVoor();
 await zetSpelerBijBoot(true);
 const gameOverTijdensInstapTest = await page.evaluate(() => {
@@ -187,9 +222,31 @@ check('...en ook niet door game over midden in de fase',
   gameOverTijdensInstapTest.lengteNaGameOver === gameOverTijdensInstapTest.lengteVoorInstap,
   gameOverTijdensInstapTest);
 
+// --- 7. Ticket 185: doodgaan TIJDENS fase 2 (vertrekKlaar, overleefd maar
+// nog niet bij de boot) is EVENEENS gewoon game over, en ruimt vertrekKlaar
+// mee op — dezelfde discipline als sectie 6, nu voor de nieuwe fase. -------
+await bereidVluchtrouteVoor();
+const gameOverTijdensVertrekKlaarTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.spelStaat.gameOver = false;
+  d.instapActief = false;
+  d.vertrekKlaar = true;   // simuleer: net overleefd, nog onderweg naar de boot
+  d.gameOver();
+  return {
+    gameOverSchermDisplay: document.getElementById('gameOverScherm').style.display,
+    vertrekKlaarNa: d.vertrekKlaar,
+    instapActiefNa: d.instapActief,
+  };
+});
+check('gameOver() tijdens vertrekKlaar toont gewoon het bestaande gameOver-scherm',
+  gameOverTijdensVertrekKlaarTest.gameOverSchermDisplay === 'flex', gameOverTijdensVertrekKlaarTest);
+check('...en ruimt vertrekKlaar op (false), instapActief blijft ook false',
+  gameOverTijdensVertrekKlaarTest.vertrekKlaarNa === false && gameOverTijdensVertrekKlaarTest.instapActiefNa === false,
+  gameOverTijdensVertrekKlaarTest);
+
 // =====================================================================
 // Ticket 147: de vier escalatiekanalen. Nieuwe browser/page (de vorige
-// eindigde in sectie 6 met spelStaat.gameOver === true), zelfde patroon als
+// eindigde in sectie 7 met spelStaat.gameOver === true), zelfde patroon als
 // test-ontsnapping-vensters.mjs's wall-clock-sectie (b2/p2).
 // =====================================================================
 const { browser: browser2, page: page2, errs: errs2 } = await openAmsterdamUndead({ simuleerPointerLock: true });
@@ -205,6 +262,17 @@ async function startNieuweInstap() {
     // "een nieuwe instap" soms helemaal niet opnieuw.
     d.instapActief = false;
     d.instapTimer = 0;
+    // Ticket 185: idem voor vertrekKlaar, en het winscherm zelf — sectie 9
+    // (surgeEnFogTest) roept d.voltooiOntsnapping() rechtstreeks aan, wat
+    // winScherm hierna gewoon op 'flex' laat staan (geen "Speel door"-klik
+    // ertussen). Zonder deze reset zou sectie 15's "nog geen winscherm"-check
+    // altijd stiekem slagen, ongeacht of de echte logica dat zelf
+    // bewerkstelligt — precies het soort zelfvervullende test dat niets
+    // bewijst. Rechtstreeks de stijl resetten i.p.v. de knop te klikken:
+    // die doet ook startBesturing()/initGeluid() opnieuw, wat hier niets
+    // toevoegt en alleen de foutoppervlakte van deze helper vergroot.
+    d.vertrekKlaar = false;
+    document.getElementById('winScherm').style.display = 'none';
     // Ruim ook eventuele ondoden en het spawnbudget op: eerdere secties
     // injecteren FINALE_SURGE_BUDGET (65) via probeerOntsnapping(), en dat
     // budget teert pas over veel wall-clock-seconden af. Zonder reset hoopt
@@ -417,9 +485,13 @@ check('...en niet nogmaals, ook al blijft de timer daarna binnen het venster',
   laatsteSecondenTest.nogSteeds1x === laatsteSecondenTest.welGevuurd, laatsteSecondenTest);
 
 // --- 15. Eind-tot-eind via de ECHTE gameLoop: escalatie zichtbaar tijdens de
-// fase, en volledig hersteld zodra de fase via de ECHTE timer afloopt (geen
+// fase, en volledig hersteld zodra fase 1 via de ECHTE timer afloopt (geen
 // handmatige voltooiOntsnapping()-aanroep) — de doorslaggevende proef dat de
-// gameLoop-bedrading (updateFinaleEscalatie NA updateFinaleInstap) klopt. --
+// gameLoop-bedrading (updateFinaleEscalatie NA updateFinaleInstap) klopt.
+// Ticket 185: het natuurlijke aflopen van de timer voltooit de ontsnapping
+// NIET meer direct — het opent alleen vertrekKlaar. Deze sectie bewaakt dus
+// tot dat punt (fog hersteld, vertrekKlaar aan, nog GEEN winscherm), en
+// sectie 15b hierna maakt de reis af via een echte T-druk bij de boot. -----
 await startNieuweInstap();
 // Fog EXACT herstellen geldt alleen op het instant van herstelFinaleEscalatie()
 // zelf — updateZoneFog() blijft daarna gewoon elk frame onafhankelijk richting
@@ -446,6 +518,7 @@ const eindTotEind = await page2.evaluate(() => new Promise((resolve) => {
       resolve({
         fogVoor,
         instapActiefNa: d.instapActief,
+        vertrekKlaarNa: d.vertrekKlaar,
         winSchermDisplay: document.getElementById('winScherm').style.display,
         fogNa: { near: d.scene.fog.near, far: d.scene.fog.far },
         finaleFogVanNa: d.finaleFogVan,
@@ -458,13 +531,30 @@ const eindTotEind = await page2.evaluate(() => new Promise((resolve) => {
 }));
 const eindTotEindVoor = { fogVoor: eindTotEind.fogVoor };
 const eindTotEindNa = eindTotEind;
-check('Via de ECHTE gameLoop loopt de timer af en voltooit de fase vanzelf (winscherm verschijnt)',
-  eindTotEindNa.instapActiefNa === false && eindTotEindNa.winSchermDisplay === 'flex', eindTotEindNa);
-check('...en de fog staat na afloop EXACT terug op de waarde van vóór de fase',
+check('Via de ECHTE gameLoop loopt de timer af en gaat vertrekKlaar aan — instapActief false, NOG geen winscherm',
+  eindTotEindNa.instapActiefNa === false && eindTotEindNa.vertrekKlaarNa === true
+  && eindTotEindNa.winSchermDisplay !== 'flex', eindTotEindNa);
+check('...en de fog staat al terug op de waarde van vóór de fase (escalatie stopt bij fase 1, niet pas bij vertrek)',
   eindTotEindNa.fogNa.near === eindTotEindVoor.fogVoor.near && eindTotEindNa.fogNa.far === eindTotEindVoor.fogVoor.far,
   { eindTotEindVoor, eindTotEindNa });
-check('finaleFogVan is opgeruimd na de echte, natuurlijke voltooiing',
+check('finaleFogVan is opgeruimd zodra fase 1 natuurlijk afloopt',
   eindTotEindNa.finaleFogVanNa === null, eindTotEindNa);
+
+// --- 15b. Vervolg op 15: de speler loopt (in de test: teleporteert) naar de
+// boot en drukt T — dat maakt de reis daadwerkelijk af tot het winscherm.
+// Bewaakt dat vertrekKlaar/voltooiOntsnapping() ook na een ECHTE, via de
+// gameLoop bereikte fase-2-start nog gewoon werkt (niet alleen na de
+// handmatige page.evaluate()-opzet van sectie 5). --------------------------
+const vertrekNaEchteFaseTest = await page2.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.speler.positie.set(d.ontsnappingsPunt.positie.x, 0, d.ontsnappingsPunt.positie.z);
+  d.updateInteracties();
+  window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyT', bubbles: true }));
+  return { vertrekKlaar: d.vertrekKlaar, winSchermDisplay: document.getElementById('winScherm').style.display };
+});
+check('T bij de boot maakt de na een ECHTE fase-1-afloop bereikte vertrekKlaar-fase alsnog af',
+  vertrekNaEchteFaseTest.vertrekKlaar === false && vertrekNaEchteFaseTest.winSchermDisplay === 'flex',
+  vertrekNaEchteFaseTest);
 
 const fails = report([...errs, ...errs2]);
 await browser.close();

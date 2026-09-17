@@ -7760,8 +7760,9 @@ Volledige regressie na afloop: zie hieronder.
 
 ---
 
-## Ticket 185 — De finale: overleef 30 seconden, dán naar de boot
+## Ticket 185 — De finale: overleef 30 seconden, dán naar de boot ✅
 
+- **Status:** ✅ uitgevoerd.
 - **Type:** gameplay (herschrijving van de finale)
 - **Aanleiding.** Eigenaar: "ik vind momenteel het einde niet super goed
   werken."
@@ -7799,6 +7800,95 @@ Volledige regressie na afloop: zie hieronder.
   merkbaar meer druk dan bij een normale golf; na afloop kun je bij de boot
   vertrekken en niet eerder; sterven tijdens de fase laat geen enkele
   finale-state achter.
+
+### Uitvoering
+
+**Nieuwe vlag `vertrekKlaar`**, naast het bestaande `instapActief`/
+`instapTimer`-paar. `instapActief` blijft precies wat het was (fase 1,
+overleven — vier bestaande escalatiekanalen, ongewijzigd van T147);
+`vertrekKlaar` is de nieuwe fase 2, waarin alle escalatie weer op rust staat.
+Interne namen (`instapActief`, `FINALE_INSTAP_DUUR`, `speelFinaleLosgooien`,
+...) zijn NIET hernoemd — de ticket-tekst vraagt om het spelersgerichte
+hernoemen ("richting de speler"), niet om interne identifiers, en een
+volledige rename had onnodig veel testbestanden geraakt zonder functioneel
+voordeel.
+
+**De state-machine:**
+- `probeerOntsnapping()` (ongewijzigd trigger: bij de boot, tegen betaling)
+  start fase 1 zoals voorheen, alleen de banner-tekst is aangepast (geen
+  "blijf dichtbij de boot" meer).
+- `updateFinaleInstap()` telt de timer nu ONVOORWAARDELIJK af (was: alleen
+  zolang `huidigeInteractie === ontsnappingsPunt`) en roept bij nul de
+  NIEUWE `overleefdKlaarVoorVertrek()` aan in plaats van rechtstreeks
+  `voltooiOntsnapping()`.
+- `overleefdKlaarVoorVertrek()` sluit fase 1 af: `instapActief = false`,
+  `herstelFinaleEscalatie()` (fog etc. terug — dus AL bij het overleven,
+  niet pas bij het vertrek zelf), `vertrekKlaar = true`.
+- `voltooiOntsnapping()` is nu uitsluitend het ECHTE vertrek: geroepen vanuit
+  `ontsnappingsPunt.actie` zodra de speler bij de boot T indrukt terwijl
+  `vertrekKlaar` waar is. Ruimt beide vlaggen defensief op (werkt dus ook
+  als losse, directe aanroep — zie hieronder bij de tests).
+- De golf-complete-uitzondering in `updateGolf()` (T146 beslissing 6, "de
+  boot vaart niet weg tijdens de instap") is uitgebreid met `&& !vertrekKlaar`
+  — zonder die uitbreiding zou de boot alsnog kunnen wegvaren terwijl de
+  speler op weg terug is na het overleven, exact dezelfde willekeurige
+  faalstaat die T146 al voor fase 1 uitsloot.
+- `gameOver()` ruimt nu ook `vertrekKlaar` op (naast `instapActief`), voor
+  het geval de speler sterft ná het overleven maar vóór het vertrek.
+
+**Hernoemd (speler-gericht):** de banner bij de start ("Overleven!" i.p.v.
+"Aan boord!", geen positie-eis meer in de tekst), de HUD-regel tijdens fase 1
+("Overleef nog Ns" — de aparte "Blijf bij de boot!"-pauzetak is vervallen),
+de HUD-regel voor fase 2 ("Overleefd! Ga naar de boot om te vertrekken"), de
+prompt bij de boot tijdens fase 1 en fase 2, en het "laatste seconden"-signaal
+("BIJNA! / nog heel even volhouden…" i.p.v. "LOSGOOIEN! / nu of nooit…" — dat
+laatste beschreef een boot-vertrekt-zonder-je-dreiging die niet meer bestaat).
+De prompt vóór het starten van fase 1 ("Druk T: ontsnap over het water") is
+NIET aangepast — de ticket-tekst vroeg alleen om de prompt "tijdens de fase".
+
+**FINALE.md** kreeg een herzienings-blok bovenaan dat beslissing 3
+(positie-eis) markeert als vervallen, met een korte samenvatting van de
+nieuwe opzet — de rest van het document (begroting, beslissing 1/2/4/5)
+blijft geldig en is niet herschreven.
+
+### Testsuite
+
+`test-finale.mjs` had de meeste structurele wijzigingen (positie-gated
+mechaniek zat in bijna elke sectie): sectie 3 test nu expliciet dat de timer
+ZOWEL bij de boot ALS ver ervan afloopt (was: aparte pauzeer-/hervat-secties
+die niet meer kunnen bestaan); sectie 4 bewaakt de overgang naar
+`vertrekKlaar` (nog geen winscherm); een nieuwe sectie 5 bewaakt dat T op
+afstand niets doet maar bij de boot de ontsnapping voltooit; sectie 7 is
+nieuw en bewaakt game over tijdens `vertrekKlaar`; sectie 15 is herzien
+(natuurlijk aflopen van de timer opent nu `vertrekKlaar`, geen winscherm) en
+kreeg een vervolg-sectie 15b die de reis via een echte T-druk bij de boot
+afmaakt.
+
+**Een echte testbug gevonden tijdens het herschrijven van sectie 15, niet in
+het ontwerp:** de oude assertie `winSchermDisplay === 'flex'` bleek altijd te
+slagen, ook toen de nieuwe logica hem juist NIET meer zou moeten zetten — een
+eerdere sectie in diezelfde browser-sessie (`surgeEnFogTest`, sectie 9) had
+`voltooiOntsnapping()` al rechtstreeks aangeroepen en daarmee het winscherm
+op `flex` laten staan, zonder dat er ooit een "Speel door" tussenin zat. De
+test mat dus stale state uit een vorige sectie, niet het gedrag dat hij
+beweerde te toetsen. Gefixt door `startNieuweInstap()` het winscherm expliciet
+te laten sluiten naast zijn bestaande resets.
+
+`test-ontsnapping-vensters.mjs` kreeg een nieuwe sectie 7f (symmetrisch met
+7d, nu voor `vertrekKlaar`) — moest bewust VÓÓR de bestaande sectie 7e
+geplaatst worden: 7e laat de golf-transitie daadwerkelijk sluiten, wat
+`bootUitvarenActief` op `true` zet en niet door `opruimOntsnapping()` wordt
+teruggezet; 7f ná 7e had dus een vals-positieve "geen uitvaren gestart"
+gemeten die in werkelijkheid leftover state van 7e was.
+
+`test-ontsnapping.mjs`, `test-vluchtroute.mjs`, `test-visuele-basislijn.mjs`,
+`test-boot-aankondiging.mjs` en `t147-perf-meting.mjs` bleken bij uitvoering
+GEEN wijziging nodig te hebben — met name `test-ontsnapping.mjs` roept
+`voltooiOntsnapping()` al rechtstreeks aan om de INHOUD van het winscherm te
+toetsen los van de timing, en dat blijft werken dankzij het defensieve
+opruimgedrag van die functie.
+
+Volledige regressie na afloop: zie hieronder.
 
 ---
 
