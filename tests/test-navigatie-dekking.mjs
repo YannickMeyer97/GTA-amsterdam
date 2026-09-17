@@ -23,7 +23,9 @@ const AANKOMST_AFSTAND = 1.6;      // binnen slagafstand geldt als "bereikt"
 const matrix = await page.evaluate(({ limietS, aankomst }) => {
   const d = window.AmsterdamUndeadDebug;
   d.spelStaat.geld = 10 ** 7;
-  for (const fn of ['koopDeur', 'koopDeur2', 'koopDeur3', 'koopDeur4', 'koopDeur5', 'koopDeur6']) {
+  // Ticket 183: koopDeur6 stond hier ook in. Die deur bestaat niet meer —
+  // kelderoost is nu altijd open, dus er valt niets te kopen.
+  for (const fn of ['koopDeur', 'koopDeur2', 'koopDeur3', 'koopDeur4', 'koopDeur5']) {
     if (d[fn]) d[fn]();
   }
 

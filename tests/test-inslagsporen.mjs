@@ -161,8 +161,8 @@ const neveneffecten = await page.evaluate(() => {
   d.scene.traverse(o => { if (o.isMesh) meshNa++; });
   return { obstakelsVoor, obstakelsNa: d.obstakels.length, meshVoor, meshNa };
 });
-check('obstakels.length blijft 58 — decals hebben nooit collision',
-  neveneffecten.obstakelsVoor === 58 && neveneffecten.obstakelsNa === 58, neveneffecten);
+check('obstakels.length blijft 57 — decals hebben nooit collision',
+  neveneffecten.obstakelsVoor === 57 && neveneffecten.obstakelsNa === 57, neveneffecten);
 check('60 extra spoorplaatsingen (ruim boven de poolgrootte) voegen NUL nieuwe meshes toe aan de scene',
   neveneffecten.meshNa === neveneffecten.meshVoor, neveneffecten);
 await browser.close();

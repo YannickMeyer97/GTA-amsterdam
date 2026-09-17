@@ -279,7 +279,7 @@ const balans = await page.evaluate(() => {
 check('De kwaliteitspreset raakt spawn-plafond, spawn-interval, obstakels en interactiepunten niet — op geen enkele trap',
   JSON.stringify(balans.opHoog) === JSON.stringify(balans.opNormaal)
   && JSON.stringify(balans.opNormaal) === JSON.stringify(balans.opLaag), balans);
-check('obstakels.length blijft 58', balans.opHoog.obstakels === 58, balans);
+check('obstakels.length blijft 57', balans.opHoog.obstakels === 57, balans);
 
 const fails = report(errs);
 await browser.close();

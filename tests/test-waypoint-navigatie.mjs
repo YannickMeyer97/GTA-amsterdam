@@ -295,7 +295,7 @@ check('hoofdkelder -> kelderoost: mikt op de kelderoost-deur (niet op de trapvoe
 // stap de KELDER in, niet rechtstreeks naar deur6. Dat is geen versoepeling
 // maar een correctie — de rechte lijn van de kokermond naar deur6 gaat dwars
 // door de massieve muur ertussen, en dat was precies de gemeten vastloper.
-check('trapvoet (net de trap af) -> kelderoost: eerste stap gaat de kelder in (de muur tussen kokermond en deur6 wordt niet geclipt), niet naar zichzelf',
+check('trapvoet (net de trap af) -> kelderoost: eerste stap gaat de kelder in (de muur tussen kokermond en de doorgang wordt niet geclipt), niet naar zichzelf',
   kelderoostLookup.trapvoetNaarKelderoost.z === kelderoostLookup.onder.z &&
   kelderoostLookup.trapvoetNaarKelderoost.x < kelderoostLookup.onder.x, kelderoostLookup);
 check('kelderoost -> nis: eerste tussenpunt hoort bij de kelderoost-deur (op weg naar buiten)',
@@ -314,12 +314,12 @@ check('hoofdkelder -> nis (niets met kelderoost te maken): mikt gewoon op de tra
 // muur te omzeilen — vandaar een ruimere tijdslimiet (30s) dan de kelder-
 // trap-eigen 3s-eis in sectie 7 hierboven (die IS met een eigen waypoint
 // opgelost). "terug" (vanaf de kelderoost-deur, moet naar de nis) bewaakt de
-// eerste mislukte ontwerpversie (KELDEROOST_DEUR_PUNT op DEUR6_X i.p.v. de
+// eerste mislukte ontwerpversie (KELDEROOST_DEUR_PUNT op het muurcentrum i.p.v. de
 // isKelderoost-drempel), die daar voor altijd bleef hangen. -----------------
 const kelderoostTrajectHeen = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.spelStaat.geld = 5000;
-  d.koopDeur5(); d.koopDeur6();
+  d.koopDeur5();   // Ticket 183: koopDeur6() bestond hier ook; kelderoost is nu altijd open
   const koCX = (d.KELDEROOST_X_WEST + d.KELDEROOST_X_OOST) / 2;
   d.speler.positie.set(koCX, -d.KELDER_DIEPTE, d.KELDEROOST_CZ);
   d.ondoden.length = 0;

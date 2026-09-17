@@ -2811,6 +2811,13 @@ via speeltest-feedback aan het licht kwam, niet via de bestaande suite.
 
 #### 7.6.5 Kelderoost-chokepoint (feedback, na de kelderoost-uitbreiding)
 
+> **Ticket 183 (later):** deur6 zelf bestaat niet meer — de doorgang naar
+> kelderoost is nu altijd open. Deze sectie beschrijft het chokepoint, en
+> dát is ongewijzigd: de opening, zijn maten en de hele routering
+> eromheen hangen aan `KELDEROOST_CZ`/`_HALF_BREEDTE`, niet aan het
+> deurblad. Waar hieronder "deur6" staat, lees "de doorgang naar
+> kelderoost"; `DEUR6_X` was het muurcentrum van diezelfde opening.
+
 **Feedback:** "de waypoint routes in de kelder, de zombies lopen nog niet
 goed" — nadat kelderoost (een tweede kelderruimte achter deur6, zie de
 kelderoost-sectie hieronder) een DERDE chokepoint aan zone 2 toevoegde,
@@ -4207,11 +4214,12 @@ ondiepste die je doel wel bevat.* Nog steeds één lus zonder graaf-traversal.
    de afstand tot het punt aan de OVERKANT — die is monotoon; een eerdere
    versie mat de afstand tot het eigen punt en liet de ondode precies op die
    cirkel omkeren.
-3. **Gaten in de deelruimte-definities.** De deur6-opening viel tussen
+3. **Gaten in de deelruimte-definities.** De kelderoost-opening viel tussen
    kelderoost (begint strikt oostelijker) en de kelderruimte (eindigt precies
    daar) in: een ondode dáár hoorde bij geen enkele deelruimte en mikte dwars
    door de massieve muur. Opgelost met `isKelderoostGebied()`, dat de
-   deuropening expliciet meeneemt.
+   deuropening expliciet meeneemt. (Ticket 183 haalde het deurblad weg maar
+   liet de opening en deze definitie ongemoeid.)
 
 **Twee geometrische bijstellingen.** De trapopening van de vliering ging van
 1,2 m naar 1,8 m (bij de trapmond komen twee muren onder een rechte hoek

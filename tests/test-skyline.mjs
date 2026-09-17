@@ -128,8 +128,8 @@ const invarianten = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   return { obstakels: d.obstakels.length, interactiePunten: d.interactiePunten.length };
 });
-check('obstakels.length blijft 58 (T131-baseline; de skyline heeft geen collision)', invarianten.obstakels === 58, invarianten);
-check('interactiePunten.length blijft 14 (Ticket 134: AMSTEL-9)', invarianten.interactiePunten === 14, invarianten);
+check('obstakels.length blijft 57 (T131-baseline; de skyline heeft geen collision)', invarianten.obstakels === 57, invarianten);
+check('interactiePunten.length blijft 13 (Ticket 134: AMSTEL-9 erbij, Ticket 183: deur6Punt eraf)', invarianten.interactiePunten === 13, invarianten);
 
 // --- 6. Geen enkel silhouetgebouw is een licht: puur geometrie (T113
 // voegt de emissieve raampjes pas later toe, dit ticket levert alleen de

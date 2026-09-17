@@ -167,8 +167,8 @@ const invarianten = await page.evaluate(() => {
   return { lichten, obstakels: d.obstakels.length, interactiePunten: d.interactiePunten.length };
 });
 check('Lichttelling blijft op 28', invarianten.lichten === 28, invarianten);
-check('obstakels.length blijft 58 (T131-baseline)', invarianten.obstakels === 58, invarianten);
-check('interactiePunten.length blijft 14 (Ticket 134: AMSTEL-9)', invarianten.interactiePunten === 14, invarianten);
+check('obstakels.length blijft 57 (T131-baseline)', invarianten.obstakels === 57, invarianten);
+check('interactiePunten.length blijft 13 (Ticket 134: AMSTEL-9 erbij, Ticket 183: deur6Punt eraf)', invarianten.interactiePunten === 13, invarianten);
 
 const fails = report(errs);
 await browser.close();

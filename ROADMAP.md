@@ -7608,8 +7608,9 @@ finale een slot dat je ziet in plaats van alleen leest.
 
 ---
 
-## Ticket 183 — De kelderdeur naar kelderoost vervalt
+## Ticket 183 — De kelderdeur naar kelderoost vervalt ✅
 
+- **Status:** ✅ uitgevoerd.
 - **Type:** map / pacing
 - **Aanleiding.** Eigenaar: "ik vind het soms nog wel lang duren voordat ik
   kan ontsnappen." Eén van de drie vluchtroute-onderdelen (de
@@ -7632,9 +7633,68 @@ finale een slot dat je ziet in plaats van alleen leest.
     onderdeel onbereikbaar terwijl de deur er niet meer is.
   - `aantalOntgrendeldeZones()` telt `deur3Gekocht` mee, niet deur6 — dus de
     spawndruk verandert hier niet. Controleren, niet aannemen.
-- **Acceptatie:** de Scheepslantaarn is vanaf het begin te bereiken zonder
-  ook maar iets te kopen; kelderoost heeft dezelfde vorm en inhoud als
-  daarvoor; geen enkele verwijzing naar deur6 blijft achter.
+
+### Wat er bij de uitvoering anders bleek dan hierboven staat
+
+Twee dingen in dit ticket klopten niet. Ze staan hier expliciet, want ze
+waren allebei aannames die ik zelf had opgeschreven zonder ze na te lezen.
+
+1. **De koppeling in `toonVluchtOnderdelenIndienDrempel()` bestond niet.**
+   Die functie kijkt uitsluitend naar `drempelGolf` — nergens naar
+   `deur6Gekocht`. De bewering kwam uit een commentaarregel bij
+   `VLUCHT_ONDERDELEN` die het spel te rooskleurig beschreef. Er viel dus
+   geen koppeling te verwijderen, alleen een onjuiste bewering. De
+   Scheepslantaarn was altijd al zichtbaar én oppakbaar vanaf golf 1; wat je
+   tegenhield was puur het deurblad.
+2. **De acceptatie-eis "zonder ook maar iets te kopen" was te sterk
+   geformuleerd.** Kelderoost ligt achter de hoofdkelder, en die is alleen
+   bereikbaar via deur5 (€900), die op zijn beurt in het atelier staat
+   (deur1, €500). Dit ticket haalt €700 van die keten af — van €2.100 naar
+   €1.400 — maar maakt de lantaarn niet gratis bereikbaar. Dat is precies
+   wat de eigenaar vroeg ("de deur in de kelder die naar de ruimte gaat van
+   één van de vluchtroute-onderdelen"); alleen mijn eigen samenvatting
+   ervan was te ruim.
+
+- **Acceptatie (bijgesteld):** de Scheepslantaarn is bereikbaar zodra je in
+  de hoofdkelder staat, zonder verdere aankoop; kelderoost heeft dezelfde
+  vorm en inhoud als daarvoor; geen enkele verwijzing naar deur6 blijft
+  achter.
+
+### Uitvoering
+
+- **Verwijderd:** `deur6Mesh`, `deur6Klink`, `deur6Obstakel`, `deur6Punt`,
+  `deur6Markering`, `koopDeur6()`, `deur6Gekocht`, `DEUR6_PRIJS`, `DEUR6_X`,
+  de `deur6`-entry in `WINKEL_STIJLEN` en alle debug-exports ervan.
+- **Niet aangeraakt:** de oostmuur wordt al in drie segmenten gebouwd mét
+  dit gat erin, dus zonder deurblad is het meteen een echte doorgang. De
+  ruimte, de lantaarnpositie en de hele waypoint-routering
+  (`isKelderoost`, `isKelderoostGebied`, `KELDEROOST_DEUR_*`) bleven
+  ongewijzigd — die hangen aan `KELDEROOST_CZ`/`_HALF_BREEDTE`, niet aan de
+  deur.
+- **Gecontroleerd, niet aangenomen:** `aantalOntgrendeldeZones()` telt
+  inderdaad `deur3Gekocht`, niet deur6 — de spawndruk verandert niet.
+
+### Gevolgen voor de testsuite (kaartbrede tellers)
+
+Drie basislijnen schuiven één op, verspreid over 20 testbestanden:
+`interactiePunten` 14 → 13, `winkelMarkeringen` 14 → 13 (en 17 → 16 met de
+vluchtroute-markeringen erbij), `WINKEL_STIJLEN` 15 → 14, en `obstakels`
+58 → 57.
+
+`test-kelder-trap.mjs` sectie 13 toetste de koopmechaniek en toetst nu dat
+de doorgang bij het laden open is. Drie dingen daarbij bewust anders:
+- Het deurgat-centrum wordt lokaal herleid uit `KELDEROOST_X_WEST` +
+  `KELDER_MUUR_DIKTE / 2` in plaats van uit een geëxporteerde constante —
+  de test toetst waar het gat zit volgens de muuropbouw, niet volgens een
+  constante die er speciaal voor bestond.
+- Er staat een tegencheck naast: de muur direct naast het gat moet nog
+  steeds massief zijn. "Doorloopbaar" zou anders ook waar zijn als de hele
+  oostmuur per ongeluk verdwenen was.
+- Het pad naar de lantaarn loopt in twee rechte stukken. De eerste versie
+  nam één schuine lijn en viel om op (-15,78 / -15,33) — geen blokkade maar
+  meetkunde: de opening is 1,2 m breed en de speler heeft straal 0,35, dus
+  wie er schuin doorheen snijdt raakt de muurrand terwijl zijn middelpunt
+  nog binnen de opening ligt.
 
 ---
 

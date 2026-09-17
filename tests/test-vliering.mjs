@@ -29,7 +29,8 @@ const obstakelsBijStart = await page.evaluate(() => window.AmsterdamUndeadDebug.
 const floodfill = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   d.spelStaat.geld = 10 ** 7;
-  for (const fn of ['koopDeur1', 'koopDeur2', 'koopDeur3', 'koopDeur4', 'koopDeur5', 'koopDeur6']) {
+  // Ticket 183: koopDeur6 stond hier ook in; kelderoost is nu altijd open.
+  for (const fn of ['koopDeur1', 'koopDeur2', 'koopDeur3', 'koopDeur4', 'koopDeur5']) {
     if (d[fn]) d[fn]();
   }
   d.spelStaat.geld = 0;
@@ -256,8 +257,8 @@ check('De helling zelf is ook begaanbaar (de route ernaartoe bestaat echt)',
 // nodig (+1) — zijn westkant IS de bestaande vlieringwestmuur. De
 // vloerpanelen en de puur visuele vulmuur tellen niet mee: alleen echte
 // collision-primitieven.
-check('obstakels.length is exact 58 (56 na T87 + 2: gesplitste nis-afsluitmuur, één kokerwand bij de noordtrap)',
-  obstakelsBijStart === 58, { obstakelsBijStart });
+check('obstakels.length is exact 57 (56 na T87 + 2 - 1: gesplitste nis-afsluitmuur, één kokerwand bij de noordtrap)',
+  obstakelsBijStart === 57, { obstakelsBijStart });
 
 // --- 9. Geen extra PointLight (performancevoorwaarde: budget blijft 26) ---
 const lichtTest = await page.evaluate(() => {

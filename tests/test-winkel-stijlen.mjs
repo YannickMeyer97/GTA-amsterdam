@@ -24,8 +24,9 @@ const opbouw = await page.evaluate(() => {
     })),
   };
 });
-check('Er zijn precies 14 winkelmarkeringen gebouwd (één per interactiepunt, incl. deur5, deur6/kelderoost, De Zelflader en — Ticket 134 — de AMSTEL-9)',
-  opbouw.aantal === 14, opbouw);
+// Ticket 183: 14 -> 13, de deur6-markering is met de deur meeverdwenen.
+check('Er zijn precies 13 winkelmarkeringen gebouwd (één per interactiepunt, incl. deur5, De Zelflader en — Ticket 134 — de AMSTEL-9)',
+  opbouw.aantal === 13, opbouw);
 check('Elke markering heeft 2 of 3 kinderen: 1 ring + 1-2 icoon-meshes (budget <= 3 meshes)',
   opbouw.perGroep.every(g => g.totaalKinderen === 2 || g.totaalKinderen === 3), opbouw);
 check('Bij elke markering is het eerste kind de vloerring',
@@ -56,8 +57,8 @@ const stijlInventaris = await page.evaluate(() => {
   return uit;
 });
 const stijlNamen = Object.keys(stijlInventaris);
-check('Er staan 15 stijlen in WINKEL_STIJLEN (14 statische interactiepunten, incl. deur5, deur6, De Zelflader en — Ticket 134 — de AMSTEL-9, + de gedeelde Ticket-44-vluchtroutestijl)',
-  stijlNamen.length === 15, stijlInventaris);
+check('Er staan 14 stijlen in WINKEL_STIJLEN (13 statische interactiepunten, incl. deur5, De Zelflader en — Ticket 134 — de AMSTEL-9, + de gedeelde Ticket-44-vluchtroutestijl)',
+  stijlNamen.length === 14, stijlInventaris);
 check('Voor elke stijl is de icoon-geometrie hergebruikt tussen twee bouwIcoon()-aanroepen (gedeelde cache)',
   stijlNamen.every(n => stijlInventaris[n].geometrieHergebruikt), stijlInventaris);
 check('Voor elke stijl krijgt elke bouwIcoon()-aanroep verse materials (geen materiaal-cache, blijft doofbaar)',
@@ -67,7 +68,7 @@ check('Voor elke stijl krijgt elke bouwIcoon()-aanroep verse materials (geen mat
 // hetzelfde silhouet als dezelfde kleur (ontwerpbeslissing 29) -------------
 // Feedback: de munitieGroep (ammo + provisiekast) is vervallen — ammo is nu
 // een gewone singleton-categorie, net als werkbank/pantserdrank/etc.
-const deurGroep = ['deur1', 'deur2', 'deur3', 'deur4', 'deur5', 'deur6'];   // deur5/deur6 hergebruiken bewust hetzelfde sleutel-silhouet
+const deurGroep = ['deur1', 'deur2', 'deur3', 'deur4', 'deur5'];   // deur5 hergebruikt bewust hetzelfde sleutel-silhouet (Ticket 183: deur6 vervallen)
 const verwachteGedeeldeSets = [deurGroep];
 const signatuurGroepen = {};
 for (const naam of stijlNamen) {

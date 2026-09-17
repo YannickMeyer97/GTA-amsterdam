@@ -174,8 +174,8 @@ check('AMSTEL9_X staat tegen de westmuur (-HALF_BREEDTE + 0.6)',
   Math.abs(kooppunt.x - (-kooppunt.halfBreedte + 0.6)) < 1e-9, kooppunt);
 check('amstel9Punt staat in interactiePunten', kooppunt.puntAanwezig, kooppunt);
 check('amstel9Punt volgt AMSTEL9_X/Z', kooppunt.puntPositie.x === kooppunt.x && kooppunt.puntPositie.z === kooppunt.z, kooppunt);
-check('obstakels.length blijft 58 (het AMSTEL-9-rek heeft geen collision, net als het Ratelaar-rek)',
-  kooppunt.obstakelsRaaktRek === 58, kooppunt);
+check('obstakels.length blijft 57 (het AMSTEL-9-rek heeft geen collision, net als het Ratelaar-rek)',
+  kooppunt.obstakelsRaaktRek === 57, kooppunt);
 
 const fails = report(errs);
 await browser.close();

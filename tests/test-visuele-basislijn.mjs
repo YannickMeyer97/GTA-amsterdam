@@ -8,7 +8,7 @@
 //   1. De pixelhelderheid op acht vaste standpunten blijft binnen een SMALLE
 //      band (orde 1-2%) van de vastgelegde waarde.
 //   2. De zes ronde-brede invarianten uit §10.2 blijven intact: 28 lichten,
-//      1 schaduwwerper, 58 obstakels (T131-baseline), 13 interactiepunten, 4 composer-
+//      1 schaduwwerper, 57 obstakels (T131-baseline, -1 door Ticket 183), 13 interactiepunten, 4 composer-
 //      passes (3 t/m T95, sinds T96 de eigen naverwerkingspass erbij; T97/
 //      T98 breiden diezelfde pass uit, dus blijft 4 voor de rest van de ronde).
 //
@@ -622,8 +622,8 @@ const invarianten = await page.evaluate(() => {
 });
 check('Invariant 2: precies 28 lichten (1 hemisfeer + 27 point)', invarianten.lichten === 28, invarianten);
 check('Invariant 2: precies 1 schaduwwerpend licht', invarianten.schaduwwerpers === 1, invarianten);
-check('Invariant 5: obstakels.length blijft 58 (T131-baseline)', invarianten.obstakels === 58, invarianten);
-check('interactiePunten.length blijft 14 (Ticket 134: AMSTEL-9 als kooppunt)', invarianten.interactiePunten === 14, invarianten);
+check('Invariant 5: obstakels.length blijft 57 (T131-baseline)', invarianten.obstakels === 57, invarianten);
+check('interactiePunten.length blijft 13 (Ticket 134: AMSTEL-9 erbij, Ticket 183: deur6Punt eraf)', invarianten.interactiePunten === 13, invarianten);
 check('Post-processing: 4 passes (RenderPass/Bloom/naverwerking/Output, sinds T96 — blijft 4 voor de rest van de ronde, T97/T98 breiden de bestaande naverwerkingspass uit)', invarianten.composerPasses === 4, invarianten);
 
 // --- 4. Bronvorm van de assertie: een band, geen exact getal --------------

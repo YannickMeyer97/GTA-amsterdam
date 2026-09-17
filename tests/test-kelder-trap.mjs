@@ -328,7 +328,7 @@ check('Ondode die al dichtbij de deur stond, loopt de kelder in en daalt af (y <
 check('Ondode die ver weg stond, loopt NU OOK gewoon de kelder in en daalt af (y < 0) — geen restrictie meer',
   kelderVrijeToegang.verWegOnder && kelderVrijeToegang.verWegVoorbijDeur, kelderVrijeToegang);
 
-// --- 12. Kelderoost (feedback: nieuwe ruimte + deur6 + verplaatste
+// --- 12. Kelderoost (feedback: nieuwe ruimte + verplaatste
 // Scheepslantaarn). Kelderoost deelt zijn x-bereik met de trapkoker maar
 // ligt op een eigen, zuidelijkere z-band — berekenKelderY() moet die
 // bounding-box-check VÓÓR de trapkoker-fallback afhandelen (zie het
@@ -362,7 +362,7 @@ const trapkokerRegressie = await page.evaluate(() => {
 check('De trapkoker-fractionele-daalformule is ongewijzigd (halverwege de trap: halverwege -KELDER_DIEPTE)',
   Math.abs(trapkokerRegressie.y - trapkokerRegressie.verwacht) < 1e-9, trapkokerRegressie);
 
-// Realistische wandeling: vanaf diep in de hoofdkelder, dwars door deur6,
+// Realistische wandeling: vanaf diep in de hoofdkelder, dwars door de doorgang,
 // tot in kelderoost — Y mag nooit tussentijds terugspringen naar 0.
 const kelderoostWandeling = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
@@ -378,56 +378,105 @@ const kelderoostWandeling = await page.evaluate(() => {
   const terugSprongen = pad.filter(p => p.y === 0 && p.x < d.KELDERTRAP_X_BOVEN);
   return { terugSprongenAantal: terugSprongen.length, eersteTerugsprong: terugSprongen[0] ?? null, laatstePunt: pad[pad.length - 1] };
 });
-check('Een rechte wandeling van hoofdkelder door deur6 naar kelderoost springt NOOIT terug naar Y=0',
+check('Een rechte wandeling van hoofdkelder door de doorgang naar kelderoost springt NOOIT terug naar Y=0',
   kelderoostWandeling.terugSprongenAantal === 0, kelderoostWandeling);
 check('Aan het einde van die wandeling staat de speler op -KELDER_DIEPTE in kelderoost',
   Math.abs(kelderoostWandeling.laatstePunt.y - (-3.3)) < 1e-9, kelderoostWandeling);
 
-// --- 13. Deur 6: koopmechaniek (zelfde patroon als deur 5 in sectie 4).
+// --- 13. Ticket 183: de doorgang naar kelderoost is OPEN vanaf het laden.
+// Deze sectie toetste hiervóór de koopmechaniek van deur6 (€700, zelfde
+// patroon als deur 5 in sectie 4). Die deur is vervallen omdat er een
+// VERPLICHT vluchtroute-onderdeel achter ligt.
+//
 // isVrijePlek() is hier NIET bruikbaar (zoals bij deur5): de kelder ligt
-// volledig buiten GRENS, dus isVrijePlek geeft daar altijd false terug,
-// los van obstakels — vandaar dat "geblokkeerd/doorloopbaar" hier via de
-// obstakel-registratie zelf getoetst wordt, plus een collision-gebaseerde
-// doorloop-check (zelfde aanpak als de afdaling-simulatie in sectie 5). ---
-const deur6VoorKoop = await page.evaluate(() => {
+// volledig buiten GRENS, dus isVrijePlek geeft daar altijd false terug, los
+// van obstakels — vandaar dat "doorloopbaar" hier collision-gebaseerd wordt
+// getoetst (zelfde aanpak als de afdaling-simulatie in sectie 5).
+//
+// Het deurgat-centrum wordt hier LOKAAL herleid uit KELDEROOST_X_WEST en
+// KELDER_MUUR_DIKTE in plaats van uit een geëxporteerde constante: DEUR6_X
+// bestond alleen nog om de deur-mesh te plaatsen en is met de deur
+// meeverdwenen. Zo blijft de test toetsen waar het gat zit volgens de
+// muuropbouw, niet volgens een constante die er speciaal voor bestaat.
+const doorgangOpen = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  const testPos = { x: d.DEUR6_X, z: d.KELDEROOST_CZ };
+  const gatX = d.KELDEROOST_X_WEST + d.KELDER_MUUR_DIKTE / 2;
+  const testPos = { x: gatX, z: d.KELDEROOST_CZ };
   d.losBotsingenOp(testPos, 0.35, true);
   return {
-    geblokkeerd: Math.abs(testPos.x - d.DEUR6_X) > 0.05,   // botsing duwt 'm weg van het deurgat
-    obstakelAanwezig: d.obstakels.includes(d.deur6Obstakel),
-    gekocht: d.deur6Gekocht,
-    prijs: d.DEUR6_PRIJS,
+    gatX,
+    verplaatsing: Math.abs(testPos.x - gatX),
+    // Niets gekocht, niets aangeraakt: dit is de staat bij het laden.
+    geld: d.spelStaat.geld,
+    deur6Weg: d.koopDeur6 === undefined && d.deur6Punt === undefined &&
+      d.deur6Mesh === undefined && d.DEUR6_PRIJS === undefined && d.deur6Gekocht === undefined,
   };
 });
-check('Vóór koop: deur6-opening is geblokkeerd (collision duwt terug), deur6Obstakel geregistreerd, deur6Gekocht false',
-  deur6VoorKoop.geblokkeerd && deur6VoorKoop.obstakelAanwezig && deur6VoorKoop.gekocht === false, deur6VoorKoop);
+check('Zonder ook maar iets te kopen is het deurgat naar kelderoost doorloopbaar (collision duwt niet terug)',
+  doorgangOpen.verplaatsing < 1e-9, doorgangOpen);
+check('Er staat geen deur6-machinerie meer in het debug-object (koopDeur6/deur6Punt/deur6Mesh/DEUR6_PRIJS/deur6Gekocht)',
+  doorgangOpen.deur6Weg, doorgangOpen);
 
-const deur6NaKoop = await page.evaluate(() => {
+// De muur ERNAAST moet wél massief blijven: anders zou "doorloopbaar" ook
+// waar zijn als de hele oostmuur per ongeluk verdwenen was. Een gat testen
+// zonder de rand ernaast te testen bewijst niets.
+const muurNaastGat = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
-  d.spelStaat.geld = 2000;
-  document.getElementById('golfBanner').style.opacity = '0';
-  document.getElementById('golfBanner').innerHTML = '';
-  const geldVoor = d.spelStaat.geld;
-  d.koopDeur6();
-  const testPos = { x: d.DEUR6_X, z: d.KELDEROOST_CZ };
+  const gatX = d.KELDEROOST_X_WEST + d.KELDER_MUUR_DIKTE / 2;
+  // Net buiten de deurgat-band, aan de noordkant ervan.
+  const z = d.KELDEROOST_CZ - d.KELDEROOST_HALF_BREEDTE - 0.5;
+  const testPos = { x: gatX, z };
   d.losBotsingenOp(testPos, 0.35, true);
+  return { z, verplaatsing: Math.abs(testPos.x - gatX) };
+});
+check('Direct naast het deurgat is de oostmuur nog steeds massief (collision duwt daar wél terug)',
+  muurNaastGat.verplaatsing > 0.05, muurNaastGat);
+
+// De Scheepslantaarn is het punt van dit ticket: bereikbaar zonder de deur.
+//
+// Het pad loopt bewust in TWEE rechte stukken, niet in één schuine lijn.
+// Eerste versie van deze test deed dat wel en viel om op (-15,78 / -15,33):
+// dat is GEEN blokkade maar meetkunde. De opening is 1,2 m breed en de
+// speler heeft straal 0,35, dus wie er schuin doorheen snijdt raakt de
+// muurrand terwijl zijn middelpunt nog netjes binnen de opening ligt. Een
+// speler loopt er recht doorheen en draait daarna pas — dat is wat hier
+// gesimuleerd wordt. Het zegt niets minder over de bereikbaarheid; een
+// onmogelijke lijn eisen zou de test alleen maar onterecht rood maken.
+const lantaarnBereikbaar = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const onderdeel = d.VLUCHT_ONDERDELEN.find(o => o.naam === 'Scheepslantaarn');
+  const punten = [];
+  // (1) recht door de opening, op de hartlijn ervan.
+  const startX = d.KELDEROOST_X_WEST - 0.7;
+  const binnenX = d.KELDEROOST_X_WEST + 0.7;
+  for (let i = 0; i <= 60; i++) {
+    punten.push({ x: startX + (binnenX - startX) * (i / 60), z: d.KELDEROOST_CZ });
+  }
+  // (2) binnen kelderoost pas naar de lantaarn toe.
+  for (let i = 1; i <= 60; i++) {
+    const t = i / 60;
+    punten.push({
+      x: binnenX + (onderdeel.x - binnenX) * t,
+      z: d.KELDEROOST_CZ + (onderdeel.z - d.KELDEROOST_CZ) * t,
+    });
+  }
+  const geblokkeerd = [];
+  for (const p of punten) {
+    const testPos = { x: p.x, z: p.z };
+    d.losBotsingenOp(testPos, 0.35, true);
+    if (Math.abs(testPos.x - p.x) > 1e-9 || Math.abs(testPos.z - p.z) > 1e-9) {
+      if (geblokkeerd.length < 5) geblokkeerd.push({ x: +p.x.toFixed(2), z: +p.z.toFixed(2) });
+    }
+  }
   return {
-    gekocht: d.deur6Gekocht,
-    geldAfgeschreven: geldVoor - d.spelStaat.geld,
-    obstakelWeg: !d.obstakels.includes(d.deur6Obstakel),
-    meshWeg: d.deur6Mesh.parent === null,
-    puntUitLijst: !d.interactiePunten.includes(d.deur6Punt),
-    doorloopbaar: Math.abs(testPos.x - d.DEUR6_X) < 1e-9,   // nu GEEN botsing meer op exact dezelfde plek
-    bannerTekst: document.getElementById('golfBanner').innerHTML,
+    gecontroleerd: punten.length,
+    geblokkeerdAantal: geblokkeerd.length,
+    eersteBlokkade: geblokkeerd[0] ?? null,
+    lantaarn: { x: onderdeel.x, y: onderdeel.y, z: onderdeel.z },
   };
 });
-check(`Na koop: deur6Gekocht = true, exact €${deur6NaKoop.geldAfgeschreven} afgeschreven (= DEUR6_PRIJS)`,
-  deur6NaKoop.gekocht === true && deur6NaKoop.geldAfgeschreven === 700, deur6NaKoop);
-check('Na koop: deur6Obstakel weg uit obstakels[], deur6Mesh weg uit de scene, deurgat nu doorloopbaar',
-  deur6NaKoop.obstakelWeg && deur6NaKoop.meshWeg && deur6NaKoop.doorloopbaar, deur6NaKoop);
-check('Na koop: deur6Punt weg uit interactiePunten', deur6NaKoop.puntUitLijst, deur6NaKoop);
-check('Na koop: de "KELDEROOST"-banner verschijnt', deur6NaKoop.bannerTekst.includes('KELDEROOST'), deur6NaKoop);
+check('Het pad van de hoofdkelder door de opening naar de Scheepslantaarn is over de hele lijn vrij van obstakels',
+  lantaarnBereikbaar.geblokkeerdAantal === 0, lantaarnBereikbaar);
 
 // --- 14. Scheepslantaarn: verhuisd naar kelderoost, reageert op de juiste Y
 // (Y-aanname-audit — zie de VLUCHT_ONDERDELEN.y-toevoeging) -----------------

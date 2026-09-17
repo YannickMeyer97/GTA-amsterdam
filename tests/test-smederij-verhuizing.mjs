@@ -96,18 +96,20 @@ check('De route terugdeur -> kelderhals blijft volledig vrij beloopbaar (geen ni
 check('De Smederij zelf heeft geen collision (net als voorheen) — de plek is vrij beloopbaar',
   route.bijDeSmederijZelf, route);
 
-// --- 6. Interactiepunten-telling blijft 14 (geen nieuwe/verdwenen punten
+// --- 6. Interactiepunten-telling blijft 13 (geen nieuwe/verdwenen punten
 // t.o.v. de verhuizing zelf — was 12, maar Feedback verwijderde sindsdien
 // het Provisiekast-punt (naar 11), Ticket 62 voegde daarna deur5Punt toe
-// (terug naar 12), en de kelderoost-feedback voegde deur6Punt toe (naar 13),
+// (terug naar 12), de kelderoost-feedback voegde deur6Punt toe (naar 13) en
+// Ticket 183 haalde dat punt weer weg,
 // zie test-map-lus-zone-e-inhoud.mjs) ----------------------------------------
 const telling = await page.evaluate(() => window.AmsterdamUndeadDebug.interactiePunten.length);
 // +1 sinds De Zelflader op de vliering (op verzoek na T87): 13 -> 14, -1
-// sinds het schade-upgradepunt verwijderd is: 14 -> 13, en +1 sinds Ticket
-// 134 de AMSTEL-9 toevoegde: 13 -> 14. De strekking blijft: dit ticket
-// verplaatst de Smederij, het voegt er zelf geen toe.
-check('Er staan precies 14 interactiepunten geregistreerd (12 + De Zelflader op de vliering + Ticket 134 AMSTEL-9)',
-  telling === 14, { telling });
+// sinds het schade-upgradepunt verwijderd is: 14 -> 13, +1 sinds Ticket 134
+// de AMSTEL-9 toevoegde: 13 -> 14, en -1 sinds Ticket 183 deur6Punt
+// verwijderde: 14 -> 13. De strekking blijft: dit ticket verplaatst de
+// Smederij, het voegt er zelf geen toe.
+check('Er staan precies 13 interactiepunten geregistreerd (12 + De Zelflader op de vliering + Ticket 134 AMSTEL-9 - Ticket 183 deur6Punt)',
+  telling === 13, { telling });
 
 // --- 7. Precies één Smederij(-punt) — nooit een tweede --------------------
 const uniciteit = await page.evaluate(() => {
