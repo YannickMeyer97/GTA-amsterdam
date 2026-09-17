@@ -16681,7 +16681,7 @@ function updateGolf(dt) {
 
 // --- Prijzen en munitie-opwaardering ------------------------------
 const DEUR_PRIJS       = 500;   // opent gang + atelier (zone C)
-const AMMO_PRIJS       = 300;   // vult reserve-munitie bij
+const AMMO_PRIJS       = 200;   // vult reserve-munitie bij — Ticket 184: 300 -> 200, rechtstreekse eigenaarsbeslissing
 const AMMO_KIST_KOGELS = 48;    // reserve-kogels per aankoop
 const RATELAAR_PRIJS   = 750;   // eenmalig: tweede wapen, op de binnenplaats
 // Ticket 134 (Fix 6, §12.5): eerste vuurwapen — bewust goedkoper dan de
@@ -17665,7 +17665,12 @@ function raapVluchtOnderdeelOp(onderdeel) {
 // zodra alle drie de vluchtroute-onderdelen binnen zijn (§6.4-beslissing
 // 35, zelfde dynamische interactiePunten-patroon als hierboven), bij het
 // kelderluik (de fysieke "uitgang" van het pand naar het water).
-const ONTSNAPPING_PRIJS = 2500;
+// Ticket 184: 2500 -> 1000, rechtstreekse eigenaarsbeslissing. T165 mat dat
+// wie élke upgrade koopt pas rond golf 26 aan €2.500 komt, tegen golf 10 voor
+// wie spaart; met €1.000 schuift dat allebei fors naar voren — dat is de
+// bedoeling van deze verlaging, niet een sluipende meta-progressie-lek (zie
+// CLAUDE.md §9.2: dit is een directe balansbeslissing van de eigenaar).
+const ONTSNAPPING_PRIJS = 1000;
 let ontsnappingsPunt = null;
 
 // Ticket 54 (Doel D7): de boot ligt niet permanent klaar zodra 3/3 compleet

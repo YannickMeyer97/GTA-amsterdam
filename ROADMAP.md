@@ -7698,8 +7698,9 @@ de doorgang bij het laden open is. Drie dingen daarbij bewust anders:
 
 ---
 
-## Ticket 184 — Twee prijzen omlaag
+## Ticket 184 — Twee prijzen omlaag ✅
 
+- **Status:** ✅ uitgevoerd.
 - **Type:** balans (rechtstreekse eigenaarsbeslissing)
 - **Werk.** Twee constanten:
   - `AMMO_PRIJS`: **300 → 200**
@@ -7720,6 +7721,42 @@ de doorgang bij het laden open is. Drie dingen daarbij bewust anders:
 - **Acceptatie:** beide prijzen staan op de nieuwe waarde, de HUD-tekortregel
   en de prompts rekenen er correct mee, en geen enkele test legt de oude
   waarde nog vast.
+
+### Uitvoering
+
+Beide constanten aangepast. `AMMO_PRIJS` en `ONTSNAPPING_PRIJS` worden overal
+elders symbolisch gebruikt (HUD, prompts, `koopAmmo()`/`probeerOntsnapping()`,
+debug-exports) — nergens stond de oude waarde nogmaals hardgecodeerd in de
+game zelf.
+
+**`test-archief-winkel.mjs` bleek, gecontroleerd i.p.v. aangenomen, geen van
+beide constanten te raken** — de `geld: 300`-waarden daar zijn onafhankelijke
+testdata voor het Stadsarchief, geen ammo-prijs-assertie. De ticket-tekst
+noemde dit bestand ten onrechte, net als de twee onjuiste aannames in T183;
+er stond dus niets om aan te passen.
+
+**Zes testbestanden refereren wél aan de constanten, allemaal nagelopen:**
+- `test-uitleg-boot-en-barricades.mjs`: de bron-assertie zelf bijgewerkt naar
+  €1000 mét uitleg waaróm (een bewuste eigenaarsbeslissing, geen sluipende
+  wijziging vanuit dít ticket). Twee losse waarden die op de HELFT van de
+  oude €2500 waren gekalibreerd (1250, en het paar 500/2000) zaten na de
+  verlaging óver de nieuwe €1000-prijs — die tekortregel toonde dus per
+  ongeluk "betaalbaar" in plaats van een tekort. Vervangen door 500, en
+  200/700 (hernoemd naar `na200`/`na700`, de oude namen `na500`/`na2000`
+  waren na de nieuwe waarden misleidend).
+- `test-ontsnapping.mjs`: `€2500 DIRECT af` → `€1000`; `geldNa === 5000-2500`
+  → `5000-1000`; `"Nog €2400 nodig"` (bij geld=100) → `"Nog €900 nodig"`.
+- `test-finale.mjs`: `geldAfgetrokken === 2500` → `1000`. De inleidende
+  commentaarregel noemde ook nog "interactiePunten blijft op 14" — een
+  restant van vóór T183 (nu 13) — rechtgezet; de test zelf toetste al een
+  delta, geen hardgecodeerd getal.
+- `test-lategame-pacing.mjs` en `meet-finale-budget.mjs`: lezen de prijs
+  symbolisch (`> ontsnappingPrijs * 2`, resp. puur meten) — geen wijziging
+  nodig, alleen twee verouderde "€2500" in de toelichtende commentaren
+  gecorrigeerd naar de generieke naam.
+- `test-winkel-status.mjs`: gebruikt al `d.AMMO_PRIJS` symbolisch, ongewijzigd.
+
+Volledige regressie na afloop: zie hieronder.
 
 ---
 

@@ -35,7 +35,10 @@ const hud = await page.evaluate(() => {
     prijs: d.ONTSNAPPING_PRIJS,
     geenOnderdelen: lees(0, 0),
     geenOnderdelenRijk: lees(0, 99999),
-    tekort: lees(2, 1250),
+    // Ticket 184: 1250 was op de helft van de oude €2500-prijs gekalibreerd
+    // en zou nu ÓVER de nieuwe €1000-prijs zitten (dus "betaalbaar" tonen
+    // i.p.v. tekort) — 500 is opnieuw ruim onder de helft.
+    tekort: lees(2, 500),
     netTekort: lees(2, d.ONTSNAPPING_PRIJS - 1),
     precies: lees(2, d.ONTSNAPPING_PRIJS),
     ruim: lees(3, 99999),
@@ -44,7 +47,7 @@ const hud = await page.evaluate(() => {
 check('Vóór het eerste onderdeel blijft de regel kaal — het bedrag is dan nog niet relevant (T76-ritme)',
   hud.geenOnderdelen === 'Vluchtroute: 0/3' && hud.geenOnderdelenRijk === 'Vluchtroute: 0/3', hud);
 check('Met een onderdeel en te weinig geld staat er hoeveel je nog tekortkomt',
-  hud.tekort.includes('nog €1250') && hud.tekort.includes('2/3'), hud);
+  hud.tekort.includes('nog €500') && hud.tekort.includes('2/3'), hud);
 check('Eén euro tekort telt nog als tekort — de grens klopt precies',
   hud.netTekort.includes('nog €1'), hud);
 check('Bij precies genoeg geld slaat de regel om naar "boot betaalbaar"',
@@ -61,13 +64,17 @@ check('De regel bevat geen oordeel of advies over je koopgedrag',
 const meebewegen = await page.evaluate(async () => {
   const d = window.AmsterdamUndeadDebug;
   const el = document.getElementById('vluchtrouteUI');
+  // Ticket 184: 500/2000 waren op de oude €2500-prijs gekalibreerd (2000 zat
+  // toen nog ruim onder de prijs); met de nieuwe €1000-prijs zou 2000 al
+  // "betaalbaar" tonen in plaats van een tekort. 200/700 blijven allebei
+  // eronder.
   d.vluchtOnderdelenOpgepakt = 1;
-  d.spelStaat.geld = 500;
+  d.spelStaat.geld = 200;
   d.updateHUD();
-  const na500 = el.textContent;
-  d.spelStaat.geld = 2000;
+  const na200 = el.textContent;
+  d.spelStaat.geld = 700;
   d.updateHUD();               // updateHUD draait bij elke geldwijziging
-  const na2000 = el.textContent;
+  const na700 = el.textContent;
 
   // Per-frame-telling: schrijft de regel zichzelf niet elke frame opnieuw?
   let schrijfTeller = 0;
@@ -79,10 +86,10 @@ const meebewegen = await page.evaluate(async () => {
   });
   await new Promise(r => setTimeout(r, 400));   // echte frames, zonder geldwijziging
   delete el.textContent;
-  return { na500, na2000, schrijfTeller };
+  return { na200, na700, schrijfTeller };
 });
 check('De regel beweegt mee zodra het geld verandert (via updateHUD, niet via een eigen timer)',
-  meebewegen.na500.includes('nog €2000') && meebewegen.na2000.includes('nog €500'), meebewegen);
+  meebewegen.na200.includes('nog €800') && meebewegen.na700.includes('nog €300'), meebewegen);
 check('Zonder geldwijziging schrijft de regel zichzelf niet per frame opnieuw',
   meebewegen.schrijfTeller === 0, meebewegen);
 
@@ -128,9 +135,13 @@ check('beukBarricade() zelf roept de oude hinttekst nergens meer aan',
   !/Ze slopen je barricades/.test(functieBron), { functieBron });
 
 // --- Bron-assertie: allebei zijn COMMUNICATIETICKETS -------------------
-// Geen enkel balansgetal is aangeraakt. Dit is de belangrijkste check van
-// dit bestand: bij allebei lag de verleiding voor de hand om alsnog aan de
-// getallen te gaan zitten, en dat zou het verkeerde probleem oplossen.
+// Geen enkel balansgetal is een SLUIPENDE wijziging vanuit deze twee
+// communicatietickets. Ticket 184 (later, een rechtstreekse
+// eigenaarsbeslissing, expliciet toegestaan door CLAUDE.md §9.2) verlaagde
+// de bootprijs bewust van €2500 naar €1000 — die verandering hoort hier dus
+// wél in vastgelegd te worden, met de vermelding waarom. De barricade-
+// getallen zijn door geen van beide tickets aangeraakt en blijven de
+// bron-assertie tegen een sluipende wijziging.
 const balans = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   return {
@@ -141,7 +152,8 @@ const balans = await page.evaluate(() => {
     geldPerHit: d.GELD_PER_HIT,
   };
 });
-check('De bootprijs is onveranderd €2500', balans.bootprijs === 2500, balans);
+check('De bootprijs staat op €1000 (Ticket 184: bewust omlaag van €2500, een eigenaarsbeslissing, geen lek uit deze twee tickets)',
+  balans.bootprijs === 1000, balans);
 check('Barricadegetallen zijn onveranderd (€20 per plank, 3 planken per raam)',
   balans.plankGeld === 20 && balans.maxPlanken === 3, balans);
 check('Het inkomen is onveranderd (€20 per kill, €5 per treffer)',

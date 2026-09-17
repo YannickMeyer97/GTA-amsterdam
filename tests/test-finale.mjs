@@ -9,7 +9,9 @@
 // speler bij de boot staat (huidigeInteractie === ontsnappingsPunt) en
 // pauzeert zodra hij wegloopt; T nogmaals indrukken tijdens de fase doet
 // niets; de twee nieuwe HUD-teksten; doodgaan tijdens de fase is gewoon
-// game over, met opgeruimde instap-state; interactiePunten blijft op 14.
+// game over, met opgeruimde instap-state; interactiePunten blijft ongewijzigd
+// (13 sinds Ticket 183, was 14 vóór dat ticket — dit bestand toetst de
+// invariant zelf via een delta-check, niet via een hardgecodeerd getal).
 //
 // Ticket 147 (secties 8+): de vier escalatiekanalen uit FINALE.md §2
 // beslissing 4 — budget-injectie, beeld (fog/lampdip/vignet), geluid
@@ -71,8 +73,8 @@ const startTest = await page.evaluate(() => {
 });
 check('Een echte KeyT-druk bij de boot start de instapfase (instapActief true, timer op volle duur)',
   startTest.instapActief === true && startTest.instapTimer === startTest.verwachtTimer, startTest);
-check('Het geld gaat DIRECT af bij het starten, niet pas bij voltooiing',
-  startTest.geldAfgetrokken === 2500, startTest);
+check('Het geld gaat DIRECT af bij het starten, niet pas bij voltooiing (Ticket 184: ONTSNAPPING_PRIJS nu €1000)',
+  startTest.geldAfgetrokken === 1000, startTest);
 check('Er verschijnt nog GEEN winscherm — de fase moet eerst lopen',
   startTest.winSchermDisplay !== 'flex', startTest);
 check('De HUD toont de live aftelling zolang de speler bij de boot staat',

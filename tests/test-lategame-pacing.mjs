@@ -2,7 +2,8 @@
 // headless simulatie van golf 12-24 (ruim voorbij de HP-trap-plafond op
 // golf 16) die het threat-budget-verloop, het HP-trap-verloop, de naleving
 // van GOLF_MAX_ACTIEF (het perf-plafond) en de geldstroom afgezet tegen een
-// bestaande late-game sink (De Ontsnapping, €2500) meet. Bewust GEEN check
+// bestaande late-game sink (De Ontsnapping, ONTSNAPPING_PRIJS — €1000 sinds
+// Ticket 184, was €2500) meet. Bewust GEEN check
 // van isOntsnappingsGolf()/de gang-naar-de-gracht — die horen bij T52-57,
 // die in deze ronde niet zijn uitgevoerd (zie ROADMAP.md Ticket 51).
 // Zie ARCHITECTURE_NOTES.md §6 en ROADMAP.md Ticket 51.
@@ -101,8 +102,10 @@ check('Golf 15 is (nog steeds) een Mistgolf tijdens de late-game-simulatie', gol
 check('Golf 20 is (nog steeds) een Stroomuitval tijdens de late-game-simulatie', golf20.eventType === 'stroomuitval', golf20);
 
 // --- 4. Geldstroom vs. een bestaande late-game sink (De Ontsnapping,
-// €2500): na golf 12-24 met een redelijk kill-tempo is dat ruimschoots op
-// te brengen — puur een gezondheidscheck, geen exacte economie-tuning -----
+// ONTSNAPPING_PRIJS): na golf 12-24 met een redelijk kill-tempo is dat
+// ruimschoots op te brengen — puur een gezondheidscheck, geen exacte
+// economie-tuning. Leest de prijs zelf uit het spel, dus deze check blijft
+// kloppen ongeacht toekomstige balanswijzigingen zoals Ticket 184. -----
 check(`Na de golf 12-24-simulatie is er ruim voldoende geld voor De Ontsnapping (€${simulatie.ontsnappingPrijs}): €${simulatie.geldNa}`,
   simulatie.geldNa > simulatie.ontsnappingPrijs * 2, simulatie);
 

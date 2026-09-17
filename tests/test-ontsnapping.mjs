@@ -96,7 +96,7 @@ const teWeinigGeldTest = await page.evaluate(() => {
   };
 });
 check('Met te weinig geld toont de prompt "nog €X nodig"',
-  teWeinigGeldTest.promptTekst.includes('Nog €2400 nodig'), teWeinigGeldTest);
+  teWeinigGeldTest.promptTekst.includes('Nog €900 nodig'), teWeinigGeldTest);
 check('probeerOntsnapping() met te weinig geld trekt niets af, toont geen winscherm en start geen instapfase',
   teWeinigGeldTest.geldNa === 100 && teWeinigGeldTest.winSchermDisplay !== 'flex'
   && teWeinigGeldTest.instapActief === false, teWeinigGeldTest);
@@ -140,8 +140,8 @@ const ontsnapTest = await page.evaluate(() => {
 });
 check('Met genoeg geld toont de prompt "ontsnap over het water"',
   ontsnapTest.promptTekst.includes('ontsnap over het water'), ontsnapTest);
-check('probeerOntsnapping() trekt ONTSNAPPING_PRIJS (€2500) DIRECT af — niet pas bij voltooiing',
-  ontsnapTest.geldNa === 5000 - 2500, ontsnapTest);
+check('probeerOntsnapping() trekt ONTSNAPPING_PRIJS (€1000, Ticket 184: was €2500) DIRECT af — niet pas bij voltooiing',
+  ontsnapTest.geldNa === 5000 - 1000, ontsnapTest);
 check('probeerOntsnapping() start de instapfase i.p.v. meteen te winnen (instapActief true, timer op volle duur, nog geen winscherm)',
   ontsnapTest.instapActiefNaStart === true && ontsnapTest.instapTimerNaStart === ontsnapTest.verwachtInstapTimer
   && ontsnapTest.winSchermVoorVoltooiing !== 'flex', ontsnapTest);
