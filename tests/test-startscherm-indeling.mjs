@@ -225,6 +225,53 @@ check('Klikken/schuiven in de instellingenhoek vraagt geen pointer lock aan',
 // --- 8. Opruimen -------------------------------------------------------
 await page.evaluate(() => localStorage.removeItem(window.AmsterdamUndeadDebug.STADSARCHIEF_KEY));
 
-const fails = report(errs);
+// --- 9. Ticket 179: het archiefpaneel op een liggend telefoonformaat ------
+// T179 noemde expliciet "startscherm, instellingenhoek en archiefpaneel
+// nalopen op die maat" — de eerste twee zijn elders al gemeten
+// (test-contextknop.mjs sectie 9c, hierboven sectie 7), het archiefpaneel
+// zelf nooit. Eigen touch-context + 740×360, zelfde opzet als
+// test-contextknop.mjs sectie 9c. Het paneel is bewust NIET met
+// transform: scale() verkleind (het staat expliciet UITGESLOTEN van de
+// generieke startscherm-verkleining) — #archiefWinkelLijst scrollt in
+// plaats daarvan binnen zichzelf (`overflow-y: auto`, Ticket 162), dus dit
+// bewaakt dat die aanpak op de kleinste maat ook echt standhoudt in plaats
+// van aan te nemen dat "het wel zal passen".
+const { browser: browser2, page: page2, errs: errs2 } = await openAmsterdamUndead({ touch: true });
+await page2.setViewportSize({ width: 740, height: 360 });
+const archiefNauw = await page2.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.zetArchiefPaneel(true);
+  const binnen = document.getElementById('archiefPaneelBinnen').getBoundingClientRect();
+  const sluit = document.getElementById('archiefSluitKnop').getBoundingClientRect();
+  const kop = document.getElementById('archiefPaneelKop').getBoundingClientRect();
+  const lijst = document.getElementById('archiefWinkelLijst');
+  const lijstStijl = getComputedStyle(lijst);
+  return {
+    binnen: [Math.round(binnen.left), Math.round(binnen.top), Math.round(binnen.right), Math.round(binnen.bottom)],
+    sluit: [Math.round(sluit.left), Math.round(sluit.top), Math.round(sluit.right), Math.round(sluit.bottom)],
+    kop: [Math.round(kop.left), Math.round(kop.top), Math.round(kop.right), Math.round(kop.bottom)],
+    lijstOverflowY: lijstStijl.overflowY,
+    lijstHoogteKleinerDanScroll: lijst.scrollHeight > lijst.clientHeight,   // bewijst dat er ÜBERHAUPT iets te scrollen valt op dit formaat
+    innerWidth: window.innerWidth, innerHeight: window.innerHeight,
+  };
+});
+check('#archiefPaneelBinnen valt volledig binnen het scherm op 740×360 (geen horizontale/verticale overflow van de MODAL zelf)',
+  archiefNauw.binnen[0] >= 0 && archiefNauw.binnen[1] >= 0
+  && archiefNauw.binnen[2] <= archiefNauw.innerWidth && archiefNauw.binnen[3] <= archiefNauw.innerHeight,
+  archiefNauw);
+check('De sluitknop is volledig zichtbaar en dus aan te tikken op dit formaat',
+  archiefNauw.sluit[0] >= 0 && archiefNauw.sluit[1] >= 0
+  && archiefNauw.sluit[2] <= archiefNauw.innerWidth && archiefNauw.sluit[3] <= archiefNauw.innerHeight,
+  archiefNauw);
+check('De koptitel is volledig zichtbaar (niet boven de modal uitgeschoven)',
+  archiefNauw.kop[1] >= archiefNauw.binnen[1] && archiefNauw.kop[3] <= archiefNauw.binnen[3], archiefNauw);
+check('De itemlijst scrollt binnen zichzelf (overflow-y: auto) i.p.v. de modal te laten groeien',
+  archiefNauw.lijstOverflowY === 'auto', archiefNauw);
+check('Op 360px hoogte is er daadwerkelijk meer inhoud dan zichtbaar past (de scroll-aanpak wordt hier ook echt gebruikt, niet toevallig ongebruikt)',
+  archiefNauw.lijstHoogteKleinerDanScroll, archiefNauw);
+
+await browser2.close();
+
+const fails = report([...errs, ...errs2]);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);

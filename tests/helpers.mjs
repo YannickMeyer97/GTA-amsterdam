@@ -78,7 +78,7 @@ async function verkrijgBrowserEnContext({ touch = false } = {}) {
 // determinisme) zelfs bij zijn herkansing rood, terwijl allebei los prima
 // slaagden. Vooraf zetten laat de pagina vanaf frame nul op de juiste stand
 // draaien, precies zoals vóór de omzetting.
-export async function openAmsterdamUndead({ simuleerPointerLock = false, touch = false, kwaliteit = null } = {}) {
+export async function openAmsterdamUndead({ simuleerPointerLock = false, touch = false, kwaliteit = null, query = null } = {}) {
   const { browser, context } = await verkrijgBrowserEnContext({ touch });
   const page = await context.newPage();
   if (kwaliteit) {
@@ -107,7 +107,12 @@ export async function openAmsterdamUndead({ simuleerPointerLock = false, touch =
     }
     return r.fulfill({ status: 200, contentType: 'application/javascript', body: THREE_SRC });
   });
-  await page.goto('file://' + GAME_PATH);
+  // Ticket 180 (deel B): de F3-perf-overlay heeft op een telefoon geen
+  // fysiek toetsenbord, dus komt ook via een querystring binnen (`?perf`) —
+  // `query` stuurt hier de rauwe querystring mee (zonder `?`) zodat dat pad
+  // getest kan worden zonder de `file://`-URL-opbouw in elk testbestand te
+  // herhalen.
+  await page.goto('file://' + GAME_PATH + (query ? '?' + query : ''));
   await page.waitForTimeout(800);
   if (simuleerPointerLock) {
     await page.evaluate(() => {

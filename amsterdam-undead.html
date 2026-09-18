@@ -1495,13 +1495,29 @@ const KWALITEIT_PRESETS = {
 // Vormvalidatie met veilige terugval, zelfde patroon als leesGevoeligheid()
 // (T75) en leesHighscore() (T74): een onbekende of corrupte sleutel mag het
 // spel nooit breken, en valt stil terug op de standaard.
+//
+// Ticket 180 (deel B): "op een toestel-apparaat standaard `laag` kiezen,
+// tenzij de speler zelf al iets gekozen heeft". Dat laatste is hierboven al
+// gedekt (een geldige opgeslagen sleutel wint altijd) — dit raakt alleen de
+// TERUGVAL: zonder eigen keuze is `laag` op een grof primair aanwijs-
+// apparaat (telefoon/tablet) een veiliger eerste indruk dan `normaal`.
+// Rechtstreeks `window.matchMedia()` i.p.v. de latere `grofPointerGeenHover`/
+// `isVermoedelijkTelefoon()`-helpers verderop in dit bestand: die bestaan nog
+// niet op het moment dat `kwaliteitNu` hieronder bij module-load wordt
+// gezet (TDZ), terwijl matchMedia() zelf nergens van afhangt.
+function isGrofPointerApparaat() {
+  return !!(window.matchMedia && window.matchMedia('(pointer: coarse) and (hover: none)').matches);
+}
 function leesKwaliteit() {
+  let raw = null;
   try {
-    const raw = localStorage.getItem(KWALITEIT_KEY);
-    return KWALITEIT_PRESETS[raw] ? raw : KWALITEIT_STANDAARD;
+    raw = localStorage.getItem(KWALITEIT_KEY);
   } catch {
-    return KWALITEIT_STANDAARD;
+    // Geweigerd of niet beschikbaar — val net als hieronder terug op de
+    // apparaat-afhankelijke standaard, geen crash.
   }
+  if (KWALITEIT_PRESETS[raw]) return raw;
+  return isGrofPointerApparaat() ? 'laag' : KWALITEIT_STANDAARD;
 }
 function schrijfKwaliteit(naam) {
   try {
@@ -7961,11 +7977,56 @@ startscherm.addEventListener('click', () => {
   startBesturing();
 });
 
+// Ticket 179 (deel B): Wake Lock — voorkomt dat het scherm uitgaat tussen
+// twee golven, wanneer de speler het toestel even niet aanraakt. Niet
+// overal beschikbaar (o.a. buiten een secure context) en de aanvraag kan
+// altijd geweigerd worden — beide gevallen vallen hier stil terug, precies
+// zoals het ticket vraagt. Bewust GEEN los touch/muis-onderscheid: een
+// laptop die lang open blijft staan heeft evengoed baat bij een scherm dat
+// aanblijft tijdens actief spel.
+let wakeLock = null;
+async function vraagWakeLockAan() {
+  if (!('wakeLock' in navigator) || wakeLock) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    // De browser kan 'm ZELF ook loslaten (bv. een systeem-dialoog of een
+    // ander proces claimt 'm) — zonder deze listener zou wakeLock dan een
+    // dode referentie blijven en denkt vraagWakeLockAan() hierboven ten
+    // onrechte dat er al eentje actief is.
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch {
+    // Geweigerd, niet ondersteund, of geen secure context — stil verder,
+    // het scherm kan dan gewoon uitgaan zoals vóór dit ticket.
+    wakeLock = null;
+  }
+}
+function laatWakeLockLos() {
+  if (!wakeLock) return;
+  wakeLock.release().catch(() => {});
+  wakeLock = null;
+}
+// De Wake Lock API laat de sentinel ALTIJD los zodra het document verborgen
+// wordt (tabwissel, toestel vergrendeld) — dat is spec-gedrag, geen bug.
+// In de muismodus merkt de speler daar niets van: pointer lock verdwijnt
+// dan doorgaans ook, en zetBesturingActief(false) hieronder ruimt dan al
+// op. In de touch-modus bestaat dat gekoppelde signaal niet
+// (touchSessieActief blijft gewoon `true` op de achtergrond), dus zonder
+// deze listener zou de wake lock na een tabwissel-en-terug stilletjes weg
+// blijven terwijl de speler gewoon doorspeelt.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && besturingActief()) vraagWakeLockAan();
+});
+
 // Ticket 176: de body van de oude `pointerlockchange`-handler, nu een functie
 // die BEIDE modi aanroepen. De muismodus doet dat via het browser-event
 // hieronder (ongewijzigd gedrag); de touch-modus roept hem rechtstreeks aan,
 // want daar is geen event.
 function zetBesturingActief(actief) {
+  // Ticket 179: gekoppeld aan dezelfde `actief`-vlag als de rest van deze
+  // functie — elke reden waarom besturing NIET actief is (pauze, game over,
+  // winscherm, de vertrek-cinematiek) hoort ook de wake lock los te laten,
+  // dus dit staat bewust VÓÓR de early-returns hieronder, niet erna.
+  if (actief) vraagWakeLockAan(); else laatWakeLockLos();
   // Ticket 177: de touch-bediening hoort bij de HUD-chrome — zichtbaar
   // tijdens het spelen, weg zodra je pauzeert, en alleen in de touch-modus.
   toonTouchBediening(actief && besturingModus === 'touch');
@@ -18920,6 +18981,7 @@ window.AmsterdamUndeadDebug = {
   KWALITEIT_PRESETS, KWALITEIT_KEY, KWALITEIT_STANDAARD,
   get kwaliteitNu() { return kwaliteitNu; },
   pasKwaliteitToe, leesKwaliteit, schrijfKwaliteit, kwaliteitPixelRatio,
+  isGrofPointerApparaat,   // Ticket 180 (deel B)
   scene, camera, speler, obstakels, isVrijePlek, GRENS, losBotsingenOp,
   duwSpelerWegVanOndoden, SPELER_ONDODE_BOTSING_STRAAL, SPELER_ONDODE_ZACHTE_FACTOR,   // Fix 3: speler-ondode-botsing
   // Ticket 60: post-processing-pipeline (voor tests: composer/bloomPass bestaan
@@ -19594,6 +19656,10 @@ window.AmsterdamUndeadDebug = {
   actiefGeluid, archiefSleutelVan, ARCHIEF_KANAAL_PREFIX, speelSchot,
   // Ticket 176
   besturingActief, zetBesturingModus, zetBesturingActief, startBesturing, verlaatBesturing,
+  // Ticket 179 (deel B): Wake Lock
+  vraagWakeLockAan, laatWakeLockLos,
+  get wakeLock() { return wakeLock; },
+  set wakeLock(v) { wakeLock = v; },
   // Ticket 177
   touchStick, draaiKijkrichting, laatTouchStickLos, toonTouchBediening,
   TOUCH_STICK_STRAAL, TOUCH_STICK_DODE_ZONE, TOUCH_KIJK_FACTOR,
@@ -19651,6 +19717,20 @@ window.AmsterdamUndeadDebug = {
   set vorigeSpelerZ(v) { vorigeSpelerZ = v; },
 };
 clearTimeout(window.__cdnFoutTimer);   // Ticket 74: laden is gelukt, de faalmodus-timer is niet meer nodig
+
+// Ticket 180 (deel B): F3 bestaat niet op een telefoon (geen fysiek
+// toetsenbord), dus de perf-overlay heeft daar een andere ingang nodig —
+// hier gekozen voor een querystring i.p.v. een extra HUD-knop, want een
+// nieuwe vaste knop zou het toch al krappe overlap-budget uit T178/T179
+// (getoetst op 740×360) verder onder druk zetten voor een puur
+// ontwikkelaarshulpmiddel. Moet helemaal aan het EINDE van de module staan:
+// zetPerfOverlayActief(true) roept via schrijfPerfOverlay() een hele keten
+// aan (o.a. berekenPerfLichten()/telZichtbarePerfOndoden()) die `ondoden`
+// en andere pas veel later gedeclareerde module-bindingen leest — eerder in
+// het bestand geeft dat een TDZ-ReferenceError. Eén keer bij het laden
+// gecontroleerd; F3 blijft daarna gewoon werken (ook op een toestel met een
+// aangesloten toetsenbord).
+if (new URLSearchParams(location.search).has('perf')) zetPerfOverlayActief(true);
 </script>
 </body>
 </html>

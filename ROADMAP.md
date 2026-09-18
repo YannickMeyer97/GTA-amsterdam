@@ -7328,8 +7328,13 @@ Alle vier gemeten, geen van alle aanwezig:
 
 ---
 
-## Ticket 179 — Liggend, en de lay-out voor een smal scherm
+## Ticket 179 — Liggend, en de lay-out voor een smal scherm ✅
 
+- **Status:** ✅ uitgevoerd. Was al grotendeels af sinds de mobiele
+  publicatieronde (draaischerm, fullscreen, safe-area, HUD/minimap-schaling,
+  startscherm/instellingenhoek), maar nooit als ticket afgevinkt. Een
+  verificatiepas (zie hieronder) vond twee genuine gaten en één onbewezen
+  aanname; alle drie zijn nu gedicht.
 - **Type:** feature (UI)
 - **Afhankelijk van:** T176. Kan parallel aan T177/T178 — en is nodig om
   überhaupt te kunnen speeltesten.
@@ -7360,10 +7365,64 @@ Alle vier gemeten, geen van alle aanwezig:
 - **Acceptatie:** niets valt buiten beeld of onder een systeembalk op de
   gangbare toestelmaten; de winkel is met een duim te bedienen.
 
+### Verificatiepas (later, op verzoek)
+
+Nooit expliciet afgevinkt, dus nagelopen bullet voor bullet tegen de
+broncode in plaats van aangenomen. Uitkomst:
+
+| Bullet | Bevinding |
+|---|---|
+| Draaischerm + pauzeren | ✅ al aanwezig |
+| Fullscreen bij het starten | ✅ al aanwezig (`probeerFullscreen()`) |
+| **Wake Lock** | ❌ **nul treffers** — nu gebouwd, zie hieronder |
+| Safe-area-insets | ✅ al aanwezig, uitgebreid |
+| HUD/minimap/richtkruis schalen | ✅ al aanwezig, gemeten |
+| Overlap-check blijft groen | ✅ herbevestigd |
+| Startscherm + instellingenhoek nagelopen | ✅ al aanwezig |
+| Archiefpaneel nagelopen | ⚠️ **nooit gemeten** — wel aanwezig (fluid CSS), nu ook getest |
+
+**Wake Lock, alsnog gebouwd.** `vraagWakeLockAan()`/`laatWakeLockLos()`,
+gekoppeld aan `zetBesturingActief()` — niet aan losse start/stop-plekken,
+want die functie is al de ENE plek waar beide modi (touch synchroon, muis
+via `pointerlockchange`) samenkomen. Bewust géén touch/muis-onderscheid:
+een laptop die lang open blijft staan heeft evengoed baat bij een scherm dat
+aanblijft. Twee lagen stille terugval: geen wakeLock-API → no-op; API
+aanwezig maar de aanvraag geweigerd/kapot → gevangen in try/catch, `wakeLock`
+blijft `null`. Aparte `visibilitychange`-listener: de Wake Lock API laat de
+sentinel ZELF los zodra het document verborgen wordt (spec-gedrag, geen
+bug) — in de muismodus merkt de speler daar niets van (pointer lock
+verdwijnt dan meestal ook, en `zetBesturingActief(false)` ruimt al op), maar
+in de touch-modus bestaat dat gekoppelde signaal niet (`touchSessieActief`
+blijft gewoon `true` op de achtergrond), dus zonder deze listener zou de
+wake lock na een tabwissel-en-terug stilletjes weg blijven terwijl de
+speler gewoon doorspeelt.
+
+**Archiefpaneel, alsnog gemeten.** Nieuwe sectie in
+`test-startscherm-indeling.mjs`: eigen touch-context op 740×360, paneel
+geopend, en gecontroleerd dat `#archiefPaneelBinnen` niet buiten het scherm
+valt, de sluitknop en koptitel volledig zichtbaar blijven, en dat
+`#archiefWinkelLijst` daadwerkelijk `overflow-y: auto` gebruikt — inclusief
+een check dat er op dit formaat ook echt meer inhoud is dan zichtbaar past
+(scrollHeight > clientHeight), zodat de test niet toevallig groen is omdat
+er niets te scrollen viel. Uitkomst: het paneel was al goed gebouwd (het
+staat bewust BUITEN de generieke startscherm-verkleining en scrolt in
+plaats daarvan binnen zichzelf, Ticket 162) — de aanname klopte, maar was
+tot nu toe nooit bewezen.
+
+Nieuw testbestand `test-mobiel-verbeteringen.mjs` dekt de Wake Lock-kant
+(14 checks: aanvragen/loslaten, twee stille-terugval-paden, de echte
+`zetBesturingActief()`-koppeling, opruimen via `gameOver()`,
+`visibilitychange`-hervraag) plus de twee T180-punten hieronder.
+
 ---
 
-## Ticket 180 — Prestaties op een telefoon
+## Ticket 180 — Prestaties op een telefoon ⚠️
 
+- **Status:** ⚠️ deel A blijft principieel onmeetbaar vanuit deze omgeving
+  (geen telefoon, zie hieronder) — dat is geen gat, dat is de aard van het
+  ticket. De ene concrete bevinding die WEL uit een echte speelsessie kwam
+  (Brander-hapering) is ✅ verholpen. Deel B's twee concrete acties waren tot
+  een latere verificatiepas nooit gebouwd; zie die sectie onderaan.
 - **Type:** performance
 - **Afhankelijk van:** NIETS voor het meetdeel — zie hieronder. Alleen het
   bijstellen wacht op T177/T179.
@@ -7438,6 +7497,44 @@ Alle vier gemeten, geen van alle aanwezig:
   `.licht.position` en veronderstelde dat élke explosie een licht heeft; nu
   expliciet `updateExplosies()` ervoor om het budget vrij te maken, zonder
   de eigenlijke toets (hoogte volgt het raakpunt) te wijzigen.
+
+### Deel B, alsnog gebouwd (verificatiepas, op verzoek)
+
+Beide concrete acties uit deel B stonden nog open — geen van beide had ooit
+code:
+
+- **Kwaliteitstandaard op een grof-pointer-apparaat.** `leesKwaliteit()`
+  viel bij een ontbrekende/ongeldige opgeslagen keuze altijd terug op
+  `KWALITEIT_STANDAARD` (`normaal`), ongeacht apparaat. Nieuwe helper
+  `isGrofPointerApparaat()` (rechtstreeks `window.matchMedia('(pointer:
+  coarse) and (hover: none)')`, niet de latere `grofPointerGeenHover`/
+  `isVermoedelijkTelefoon()` uit de T176/T179-code — die bestaan nog niet op
+  het moment dat `kwaliteitNu` bij module-load wordt gezet, TDZ) — zonder
+  geldige opgeslagen keuze valt een grof-pointer-apparaat nu terug op `laag`
+  i.p.v. `normaal`. Een bestaande, geldige keuze wint nog altijd
+  onvoorwaardelijk, zoals het ticket met zoveel woorden vraagt ("tenzij de
+  speler zelf al iets gekozen heeft").
+- **F3 bereikbaar zonder toetsenbord.** Gekozen voor een querystring
+  (`?perf`) i.p.v. een extra HUD-knop — een nieuwe vaste knop zou het toch
+  al krappe overlap-budget uit T178/T179 (getoetst op 740×360) verder onder
+  druk zetten voor een puur ontwikkelaarshulpmiddel. Moest helemaal aan het
+  EINDE van de module staan: `zetPerfOverlayActief(true)` roept via
+  `schrijfPerfOverlay()` een keten aan die `ondoden` en andere pas veel
+  later gedeclareerde module-bindingen leest — een eerdere plek (direct bij
+  de F3-toetsenbordhandler, of direct na `perfOverlayUI`'s eigen
+  declaratie) gaf allebei een TDZ-`ReferenceError`, in die volgorde
+  gevonden tijdens het bouwen. `tests/helpers.mjs` kreeg er een `query`-optie
+  bij (`openAmsterdamUndead({ query: 'perf' })`) om dit pad te kunnen
+  testen zonder de `file://`-URL-opbouw in elk testbestand te herhalen.
+
+Beide gedekt in het nieuwe `test-mobiel-verbeteringen.mjs` (samen 9 checks),
+naast de bestaande touch-mode tests die zijn herbevestigd (geen van alle
+veronderstelde een specifieke standaardtrap in touch-context).
+
+**Wat hier NIET bij hoort en ook niet kán:** deel A's eigenlijke meting
+(framerate/warmte op een echt toestel) blijft principieel buiten bereik van
+deze omgeving — dat is geen openstaand werk, dat is precies wat het ticket
+zelf al zegt ("dit is niet vanuit de ontwikkelomgeving te meten").
 
 ---
 
