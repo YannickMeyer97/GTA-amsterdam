@@ -69,7 +69,12 @@ check('speelRuis() hergebruikt de gedeelde buffer (maakt er geen nieuwe per afsp
 // --- 3. Dekking: precies de geluiden uit AUDIO.md §3.2 hebben een ruislaag -
 const RUIS_VERWACHT = ['schot', 'droogKlik', 'herlaad', 'herlaadKlaar', 'mesSteek',
   'raakTik', 'kopTik', 'killKnak', 'plankBreek', 'slagRaak', 'slagMis', 'explosie',
-  'gangKraak', 'bijkeukenKraak', 'windvlaag'];
+  'gangKraak', 'bijkeukenKraak', 'windvlaag',
+  // Ticket 186: bootMotor krijgt hetzelfde T154-recept, hier ingezet als
+  // motorgeronk (gefilterde ruis) i.p.v. een transiënt — de dertiende van
+  // AUDIO.md §3.2 groeide hier dus voor het eerst voorbij zijn oorspronkelijke
+  // dekking, maar blijft precies hetzelfde patroon.
+  'bootMotor'];
 
 const dekking = await page.evaluate((verwacht) => {
   const G = window.AmsterdamUndeadDebug.GELUIDEN;

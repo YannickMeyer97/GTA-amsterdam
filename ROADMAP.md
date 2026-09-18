@@ -7892,8 +7892,9 @@ Volledige regressie na afloop: zie hieronder.
 
 ---
 
-## Ticket 186 — Het wegvaren, in eerste persoon
+## Ticket 186 — Het wegvaren, in eerste persoon ✅
 
+- **Status:** ✅ uitgevoerd.
 - **Type:** presentatie
 - **Afhankelijk van:** T185.
 - **Aanleiding.** Eigenaar: "het liefst is er dan voor het eindscherm nog een
@@ -7917,6 +7918,120 @@ Volledige regressie na afloop: zie hieronder.
 - **Acceptatie:** na het vertrekken zie je de boot daadwerkelijk wegvaren
   vanuit je eigen ogen, je kunt in die tijd niets meer besturen, en het
   eindscherm volgt automatisch.
+
+### Uitvoering
+
+**Nieuwe fase 3**, na T185's `instapActief`/`vertrekKlaar`: `vertrekCinematiekActief`
++ `vertrekCinematiekTimer` (0-`VERTREK_CINEMATIEK_DUUR`, 6s). T bij de boot
+tijdens `vertrekKlaar` roept nu `startVertrekCinematiek()` aan i.p.v.
+rechtstreeks `voltooiOntsnapping()` — die laatste blijft ongewijzigd het
+echte eindpunt (en blijft dus ook bruikbaar als directe test-shortcut, zie
+T185) en wordt nu pas aangeroepen wanneer de cinematiek zelf afloopt.
+
+**Hergebruikt, geen nieuwe bootbeweging:** `startVertrekCinematiek()` zet
+`bootUitvarenActief = true` / `bootUitvarenTimer = ONTSNAPPING_AANKONDIGING_DUUR`
+— exact dezelfde vlaggen/timer die al bestonden voor "de boot vaart weg
+zonder de speler" (wanneer het venster ongebruikt sluit). `updateBootPositie()`
+(de bestaande, altijd-lopende cosmetische sectie) beweegt de boot dus zelf,
+ongewijzigd.
+
+**Camera volledig ontkoppeld van de speler.** `updateSpeler()` vertakt bij
+`vertrekCinematiekActief` meteen naar `updateVertrekCinematiek(dt)` en slaat
+daarna WASD/collision/de normale camera-koppeling helemaal over — de speler
+staat niet meer op de vloer, hij is aan boord. Elke frame:
+- **Positie:** `camera.position` = `bootGroep.position` + een oogHoogte
+  boven de boot. De eerste `VERTREK_INSTAP_DUUR` (0,8s) interpoleert die
+  hoogte van `speler.hoogte` (1,7) naar `VERTREK_OOGHOOGTE_BOOT` (1,1,
+  lager, een lage open boot) — "je stapt aan boord: het beeld zakt licht".
+- **Richting:** `camera.rotation.y` staat vast op `VERTREK_KIJK_YAW`, TERUG
+  naar de kade — berekend uit de bestaande `BOOT_DOK_X`/`BOOT_VERTREK_*`-
+  constanten (niet hardgecodeerd) via dezelfde yaw-conventie als
+  `berekenRelatieveHoek()`. Zonder dit zou de speler van zijn eigen
+  ontsnapping AF kijken in plaats van de kade en de ondoden te zien
+  wegzakken — het hele punt van het shot.
+- Pitch en roll staan vlak op 0 (geen losse aim tijdens een cinematiek).
+
+**Bug gevonden tijdens het bouwen zelf (niet in het ontwerp voorzien):** de
+boot snapte terug naar de kade zodra `bootUitvarenTimer` zijn EIGEN 5
+seconden had afgelegd, terwijl de cinematiek zelf nog een seconde langer
+liep (6s, bewust ruimer dan de 5s bootreis, zodat de laatste seconde rustig
+uitvaart) — `updateBootPositie()`'s `else if (ontsnappingsPunt)`-tak (de
+"aangemeerd"-stand) won dan, want `ontsnappingsPunt` bestaat op dat moment
+nog gewoon (blijft tot "Speel door"). Gefixt met een expliciete
+`&& !vertrekCinematiekActief`-uitzondering op die tak.
+
+**Tweede bug, ook tijdens het bouwen gevonden:** de camera liep permanent
+één frame achter op de boot. `updateVertrekCinematiek()` draait vanuit
+`updateSpeler()` (top van gameLoop), maar `updateBootPositie()` draait pas
+in de altijd-lopende cosmetische sectie, VEEL later in dezelfde gameLoop —
+de camera las dus elke frame de bootpositie van het VORIGE frame. Gefixt
+door `updateBootPositie()` ook expliciet vooraan in
+`updateVertrekCinematiek()` aan te roepen (puur en idempotent, dus een
+tweede aanroep later in dezelfde frame is een veilige herberekening van
+exact dezelfde waarde).
+
+**Hard uit, ook de touch-knoppen:** `startVertrekCinematiek()` roept
+`zetBesturingActief(false)` SYNCHROON aan, in plaats van te vertrouwen op
+`verlaatBesturing()` alleen — die laatste is in muismodus enkel een
+`exitPointerLock()`-AANVRAAG die pas asynchroon terugkomt via het
+`pointerlockchange`-event (in een test-omgeving soms zelfs nooit). Zonder de
+directe aanroep zou de HUD/touch-besturing dus een frame of langer kunnen
+blijven hangen. Bijkomende vondst: `interactiePrompt` is een sibling-element
+van `hulpUI`, geen kind — een net zichtbare "Druk T: vertrek met de
+boot"-prompt werd niet automatisch mee verborgen door `hulpUI`'s
+display:none, dus `verbergInteractiePrompt()` wordt nu ook expliciet
+aangeroepen. `zetBesturingActief()` kreeg dezelfde soort guard tegen de
+pauze-overlay als bij gameOver()/winScherm, nu voor `vertrekCinematiekActief`.
+
+**Combat bevriest expliciet, niet impliciet:** `gameLoop()`'s `spelActief`
+kreeg `&& !vertrekCinematiekActief` erbij, in plaats van alleen te
+vertrouwen op `besturingActief()` (die in muismodus dezelfde async-timing-
+afhankelijkheid heeft als hierboven). Zonder deze expliciete term zouden
+ondoden tijdens het wegvaren kunnen blijven aanvallen/updaten in een testomgeving
+waar pointer lock niet meteen omlaag gaat — precies de valkuil die het
+ticket noemt ("anders loopt of schiet de speler tijdens zijn eigen
+ontsnapping"). `probeerOntsnapping()` kreeg dezelfde vlag in zijn guard: een
+herhaalde T-druk tijdens de cinematiek (huidigeInteractie staat bevroren op
+ontsnappingsPunt, want updateInteracties() draait niet meer) zou anders de
+hele overleef-fase kunnen herstarten middenin het vertrek, met een tweede
+afschrijving van `ONTSNAPPING_PRIJS`.
+
+**Nieuw geluid:** `bootMotor` in `GELUIDEN` — een sawtooth-ondertoon
+(oplopend, 55→75 Hz, "het opvoeren van het toerental") plus een gefilterde
+ruislaag (T154-primitief, hergebruikt zoals `gangKraak`/`windvlaag`, hier
+ingezet als motorgeronk in plaats van een transiënt). `speelBootVertrek()`
+(bestaand) speelt ernaast, ongewijzigd.
+
+**Opruimen bij onderbreking:** `gameOver()` zet `vertrekCinematiekActief`
+nu ook op false. In de praktijk kan de speler tijdens de cinematiek niet
+meer sterven (combat is bevroren, zie hierboven), maar de opruimdiscipline
+staat er voor de volledigheid, symmetrisch met `instapActief`/`vertrekKlaar`.
+
+### Testsuite
+
+Nieuw bestand `test-vertrek-cinematiek.mjs` (27 checks): start van de
+cinematiek (geen dubbele afschrijving, geen winscherm, boot-animatie
+gestart), de HUD/besturing hard uit, combat/beweging bevroren (ondode
+verplaatst niet, speler.positie verandert niet ondanks "ingedrukte" toetsen,
+er wordt niet geschoten), een herhaalde T-druk tijdens de cinematiek doet
+niets, de camera volgt de boot exact en kijkt terug naar de kade (met een
+losse meetkundige sanity-check op de kijkrichting zelf, niet alleen op de
+constante), de instap-dip, de twee tijdens-het-bouwen-gevonden bugs als
+losse regressietests, de natuurlijke afsluiting naar het winscherm via de
+ECHTE gameLoop, opruimen bij een (kunstmatige) game-over-onderbreking, en
+het nieuwe geluid.
+
+`test-finale.mjs` sectie 5 en 15b (T185) zijn bijgewerkt: "T bij de boot"
+toont nu niet meer meteen het winscherm maar start de cinematiek, die
+vervolgens versneld wordt afgerond (de cinematiek zelf heeft zijn eigen,
+uitgebreide dekking hierboven) zodat de rest van dat bestand met een schone
+lei verder kan.
+
+`test-ruislaag.mjs` (T154's dekkingscheck) en `AUDIO.md` §3.2 kregen
+`bootMotor` toegevoegd aan hun lijst van geluiden-met-ruislaag — die lijst
+was al van 13 naar 15 gegroeid vóór dit ticket, nu 16.
+
+Volledige regressie na afloop: zie hieronder.
 
 ---
 

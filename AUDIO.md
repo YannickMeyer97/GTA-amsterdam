@@ -259,6 +259,14 @@ per-wapen `killToon` — is precies dit patroon, alleen dan met een toon in
 plaats van ruis. Het werkte, en de speeltoets bevestigde het. Dat is het
 sterkste bewijs in dit project dat lagen stapelen wérkt.
 
+> **Ticket 186** voegde hier een zestiende toe: `speelGeluid('bootMotor')`
+> (het motorgeronk bij het wegvaren), zelfde recept — een sawtooth-ondertoon
+> plus een gefilterde ruislaag, hier ingezet als motorbrom in plaats van een
+> transiënt. De titel hierboven ("de dertien") is bewust niet bijgewerkt —
+> die was al ingehaald door eerdere tickets (§3.2's lijst zelf, in
+> `test-ruislaag.mjs`, staat inmiddels op 16) — dit is puur een aantekening
+> voor de laatste toevoeging.
+
 ### 3.3 De twee eerlijke SAMPLE-kandidaten
 
 Twee geluiden zijn menselijke stem, en daar loopt procedurele synthese

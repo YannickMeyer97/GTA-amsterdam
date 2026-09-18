@@ -14,6 +14,14 @@
 > (beslissing 1, 2, 4, 5 en de begroting) blijft ongewijzigd van toepassing;
 > lees "instapfase" waar het over de 30 seconden zelf gaat, en zie
 > ROADMAP.md Ticket 185 voor de volledige uitvoering en testdekking.
+>
+> **Uitgebreid door Ticket 186.** `voltooiOntsnapping()` is niet meer het
+> allerlaatste stap — T bij de boot tijdens `vertrekKlaar` start nu eerst
+> `startVertrekCinematiek()`, een derde fase (`vertrekCinematiekActief`, ~6s)
+> waarin de camera loskomt van de speler en meevaart met de boot, terugkijkend
+> naar de kade. `voltooiOntsnapping()` zelf blijft ongewijzigd het echte
+> eindpunt (winscherm), alleen het MOMENT waarop hij wordt aangeroepen
+> verschuift naar het einde van die cinematiek. Zie ROADMAP.md Ticket 186.
 
 Ticket 145 (Ronde 11, fase 4). Dit document legt vast hoe de aankomende boot
 een climax van ~30 seconden wordt, **als uitbreiding van de bestaande

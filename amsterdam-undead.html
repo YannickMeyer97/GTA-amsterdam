@@ -7984,6 +7984,10 @@ function zetBesturingActief(actief) {
   // het scherm AL vóórdat requestPointerLock() opnieuw wordt aangevraagd,
   // dus deze guard staat dan al weer open.
   if (winScherm.style.display === 'flex') return;
+  // Ticket 186: idem voor de vertrek-cinematiek — startVertrekCinematiek()
+  // roept deze functie zelf al met `false` aan (zie daar), en die aanroep
+  // mag niet alsnog de pauze-overlay over het wegvaren heen laten poppen.
+  if (vertrekCinematiekActief) return;
   startscherm.style.display = actief ? 'none' : 'flex';
   if (actief) {
     startscherm.querySelector('h2').textContent = 'Een verlaten grachtenpand — Amsterdam';
@@ -8281,6 +8285,16 @@ function isVrijePlek(x, z, marge = 0.5) {
 }
 
 function updateSpeler(dt) {
+  // Ticket 186: tijdens de vertrek-cinematiek is de camera VOLLEDIG
+  // ontkoppeld van speler.positie — de speler staat niet meer op de vloer,
+  // hij vaart weg. Vroege return: geen WASD, geen losBotsingenOp(), geen
+  // speler.positie-schrijven, geen normale camera-koppeling. Expliciet
+  // gecontroleerd (niet via besturingActief()) omdat die laatste in
+  // muismodus pas ASYNCHROON omlaag gaat (het exitPointerLock()-event) —
+  // dit moet synchroon en gegarandeerd zijn, precies de valkuil die het
+  // ticket noemt ("anders loopt of schiet de speler tijdens zijn eigen
+  // ontsnapping").
+  if (vertrekCinematiekActief) { updateVertrekCinematiek(dt); return; }
   // Ticket 176: draait ook in de touch-modus. `ingedrukt` blijft de bron voor
   // de looprichting; T177 vult die straks vanuit de virtuele stick, zodat
   // hieronder niets hoeft te veranderen.
@@ -11082,6 +11096,15 @@ const GELUIDEN = {
   // --- boot ---------------------------------------------------------------
   bootHoorn:     { categorie: 'boot', type: 'sine', start: 200, eind: 140, duur: 1.1, volume: 0.1 },
   bootVertrek:   { categorie: 'boot', type: 'sine', start: 150, eind: 100, duur: 0.8, volume: 0.08 },
+  // Ticket 186: de motor bij het wegvaren. Een lage sawtooth-ondertoon (het
+  // "brom"-karakter van een tweetaktmotor) plus een ruislaag — zelfde
+  // T154-primitief als gangKraak/windvlaag hierboven, hier ingezet als
+  // motorgeronk in plaats van een transiënt. Licht oplopende toonhoogte
+  // (55->75 Hz) leest als het opvoeren van het toerental bij het wegvaren;
+  // duur (4,5s) dekt het grootste deel van VERTREK_CINEMATIEK_DUUR (6s)
+  // zonder de laatste, rustige seconden nog te laten doorbromen.
+  bootMotor:     { categorie: 'boot', type: 'sawtooth', start: 55, eind: 75, duur: 4.5, volume: 0.05,
+                   ruis: { filterStart: 300, filterEind: 700, Q: 0.6, duur: 4.5, volume: 0.12, aanzet: 0.3 } },
 };
 
 // ---------------------------------------------------------------------------
@@ -16298,6 +16321,13 @@ function gameOver() {
   // boot) — sterven ná de 30 seconden maar vóór het vertrek is nog steeds
   // gewoon deze functie, en mag geen vertrekKlaar=true laten rondslingeren.
   vertrekKlaar = false;
+  // Ticket 186: idem voor de vertrek-cinematiek zelf. In de praktijk kan de
+  // speler hier niet meer sterven (spelActief valt weg zodra de cinematiek
+  // start, dus ondoden updaten niet meer) — puur voor het geval iets anders
+  // gameOver() toch aanroept terwijl de cinematiek loopt, zodat de camera
+  // de volgende frame weer normaal vanuit speler.positie tekent i.p.v.
+  // permanent aan de boot gekoppeld te blijven.
+  vertrekCinematiekActief = false;
   herstelFinaleEscalatie();   // Ticket 147: fog terug, ook als de speler tijdens de instap sterft
   verlaatBesturing();   // Ticket 176
 }
@@ -17905,7 +17935,15 @@ function updateBootPositie() {
     bootGroep.position.x = BOOT_DOK_X + (BOOT_VERTREK_X - BOOT_DOK_X) * fractie;
     bootGroep.position.z = BIJKEUKEN_CZ + (BOOT_VERTREK_Z - BIJKEUKEN_CZ) * fractie;
     if (bootRompGroep) bootRompGroep.rotation.y = naarDok(1 - fractie);
-  } else if (ontsnappingsPunt) {
+  // Ticket 186: `&& !vertrekCinematiekActief` erbij. Zonder deze uitzondering
+  // snapt de boot terug naar de kade zodra bootUitvarenTimer zijn EIGEN 5s
+  // (ONTSNAPPING_AANKONDIGING_DUUR) heeft afgelegd, ook al loopt de
+  // cinematiek zelf nog door (VERTREK_CINEMATIEK_DUUR = 6s > 5s, bewust
+  // ruimer zodat de laatste seconde rustig kan uitvaren) — ontsnappingsPunt
+  // bestaat op dat moment nog gewoon (blijft tot "Speel door", zie
+  // voltooiOntsnapping()), dus zonder deze uitzondering zou de speler de
+  // kade zien terugkomen terwijl de camera nog op de boot staat.
+  } else if (ontsnappingsPunt && !vertrekCinematiekActief) {
     bootGroep.position.x = BOOT_DOK_X;
     bootGroep.position.z = BIJKEUKEN_CZ;
     if (bootRompGroep) bootRompGroep.rotation.y = BOOT_HOEK_DOK;
@@ -17984,10 +18022,12 @@ function toonOntsnappingspuntIndienKlaar() {
         : (spelStaat.geld < ONTSNAPPING_PRIJS
           ? `Nog €${ONTSNAPPING_PRIJS - spelStaat.geld} nodig om te ontsnappen`
           : `Druk T: ontsnap over het water (€${ONTSNAPPING_PRIJS})`),
-    // Ticket 185: routeert naar de juiste fase — tijdens/vóór het overleven
-    // gewoon probeerOntsnapping() (die zelf al no-opt tijdens instapActief),
-    // NA het overleven voltooit T bij de boot de ontsnapping zelf.
-    actie: () => { if (vertrekKlaar) voltooiOntsnapping(); else probeerOntsnapping(); },
+    // Ticket 185/186: routeert naar de juiste fase — tijdens/vóór het
+    // overleven gewoon probeerOntsnapping() (die zelf al no-opt tijdens
+    // instapActief/vertrekCinematiekActief), NA het overleven start T bij de
+    // boot de vertrek-cinematiek (die zelf, ná zijn eigen duur,
+    // voltooiOntsnapping() aanroept — zie startVertrekCinematiek()).
+    actie: () => { if (vertrekKlaar) startVertrekCinematiek(); else probeerOntsnapping(); },
   };
   interactiePunten.push(ontsnappingsPunt);
   toonMelding('De vluchtroute is compleet — zoek de boot bij de vlonder op!');
@@ -18044,7 +18084,12 @@ let finaleLaatsteSecondenGetoond = false;
 let finaleLosgooienTeller = 0;   // debug/test: het eenmalige "laatste seconden"-signaal
 
 function probeerOntsnapping() {
-  if (instapActief || vertrekKlaar) return;   // T doet niets tijdens het overleven, of ná het overleven (dan vertrekt T i.p.v. te starten)
+  // Ticket 186: vertrekCinematiekActief erbij — zonder deze guard zou een
+  // herhaalde T-druk tijdens het wegvaren (huidigeInteractie staat dan
+  // bevroren op ontsnappingsPunt, want updateInteracties() draait niet meer
+  // terwijl spelActief false is) een TWEEDE keer ONTSNAPPING_PRIJS
+  // afschrijven en de hele overleef-fase herstarten, middenin het vertrek.
+  if (instapActief || vertrekKlaar || vertrekCinematiekActief) return;   // T doet niets tijdens het overleven, ná het overleven, of tijdens het vertrek zelf
   if (spelStaat.geld < ONTSNAPPING_PRIJS) { toonMelding(`Nog €${ONTSNAPPING_PRIJS - spelStaat.geld} nodig`); speelGeenGeld(); return; }
   spelStaat.geld -= ONTSNAPPING_PRIJS;
   updateHUD();
@@ -18104,6 +18149,102 @@ function voltooiOntsnapping() {
   // write staat er los naast.
   updateOntsnappingVensterHUD();
   toonWinScherm();
+}
+
+// Ticket 186: het wegvaren, in eerste persoon. Aangeroepen vanuit
+// ontsnappingsPunt.actie() zodra de speler bij de boot T indrukt tijdens
+// vertrekKlaar — VERVANGT daar de rechtstreekse voltooiOntsnapping()-aanroep
+// uit T185. voltooiOntsnapping() zelf blijft ongewijzigd het echte eindpunt
+// (en blijft dus ook bruikbaar als directe test-shortcut, zie de toelichting
+// daarboven) — deze cinematiek is een fase ERVOOR, geen vervanging.
+//
+// Bouwt bewust op wat er al staat: de boot, de kade en de mist bestaan al.
+// De boot-wegvaar-animatie zelf is dezelfde die al draaide wanneer het
+// ontsnappingsvenster ongebruikt sloot (bootUitvarenActief/-Timer,
+// updateBootPositie() hieronder) — er komt geen nieuwe bootbeweging bij,
+// alleen een camera die 'm volgt.
+const VERTREK_CINEMATIEK_DUUR = 6;      // s — FINALE.md/Ticket 186: "ongeveer 6 seconden"
+const VERTREK_INSTAP_DUUR = 0.8;        // s — hoe lang het "instappen"-zakken duurt
+const VERTREK_OOGHOOGTE_BOOT = 1.1;     // m boven bootGroep — lager dan speler.hoogte (1.7), een lage open boot
+// De camera kijkt TERUG naar de kade (dezelfde as als de vaarroute, exact
+// tegenovergesteld): "de kade schuift weg ... de ondoden worden kleiner" is
+// alleen een geloofwaardig shot als je ze ZIET wegzakken, niet als je van ze
+// wegkijkt. Berekend uit de bestaande BOOT_*-constanten (niet hardgecodeerd)
+// zodat een latere wijziging aan de vaarroute dit automatisch meeschaalt.
+// Afleiding: updateSpeler() drukt een yaw uit als voorwaartse richting
+// (-sin(yaw), -cos(yaw)) — zelfde conventie als berekenRelatieveHoek()
+// hierboven — dus de yaw die naar richting (fx,fz) kijkt is atan2(-fx,-fz).
+const VERTREK_KIJK_YAW = Math.atan2(
+  -(BOOT_DOK_X - BOOT_VERTREK_X), -(BIJKEUKEN_CZ - BOOT_VERTREK_Z));
+let vertrekCinematiekActief = false;
+let vertrekCinematiekTimer = 0;
+
+// Start de cinematiek. Ontkoppelt de camera van speler.positie (zie de
+// vertrekCinematiekActief-tak in updateSpeler() hieronder) tot voltooiing.
+function startVertrekCinematiek() {
+  if (vertrekCinematiekActief) return;   // defensief, zelfde soort guard als probeerOntsnapping()'s T-nogmaals-check
+  vertrekKlaar = false;
+  vertrekCinematiekActief = true;
+  vertrekCinematiekTimer = VERTREK_CINEMATIEK_DUUR;
+  // HARD uit, synchroon — in muismodus is verlaatBesturing() hieronder
+  // alleen een exitPointerLock()-AANVRAAG, die pas asynchroon terugkomt via
+  // het pointerlockchange-event (in een test-omgeving soms zelfs nooit,
+  // zonder een handmatig gedispatchte event). Zonder deze directe,
+  // synchrone aanroep zou de HUD/touch-besturing dus een frame of langer
+  // zichtbaar kunnen blijven — precies de valkuil uit het ticket ("de
+  // besturing moet hier hard uit, ook de touch-knoppen").
+  zetBesturingActief(false);
+  // Ticket 186, gevonden tijdens het bouwen: mijn eigen guard hierboven in
+  // zetBesturingActief() (`if (vertrekCinematiekActief) return;`) staat VÓÓR
+  // de pauze-tak die verbergInteractiePrompt() aanroept — en die vlag is op
+  // dit punt al waar. `interactiePrompt` is bovendien een sibling-element,
+  // GEEN kind van hulpUI (dat hierboven al wél op display:none gaat), dus
+  // een "Druk T: vertrek met de boot"-prompt die net zichtbaar was zou
+  // anders de hele 6 seconden op het scherm blijven hangen. Expliciet hier.
+  verbergInteractiePrompt();
+  verlaatBesturing();
+  bootUitvarenActief = true;
+  bootUitvarenTimer = ONTSNAPPING_AANKONDIGING_DUUR;
+  speelBootVertrek();     // bestaand vertrekgeluid, hergebruikt
+  speelGeluid('bootMotor');   // nieuw: de motor start
+}
+
+// Aangeroepen 1x per frame vanuit updateSpeler() zolang vertrekCinematiekActief
+// waar is — VERVANGT dan de normale speler-besturing/camera-koppeling
+// volledig voor die frame (geen WASD, geen losBotsingenOp, geen
+// speler.positie-schrijven; de speler staat letterlijk niet meer op de
+// vloer, hij is aan boord).
+function updateVertrekCinematiek(dt) {
+  vertrekCinematiekTimer = Math.max(0, vertrekCinematiekTimer - dt);
+  // Hergebruikt de bestaande timer-functie i.p.v. het aftellen te
+  // dupliceren — updateBootUitvaren() zet alleen de TIMER; updateBootPositie()
+  // hieronder leest die en zet de bootpositie zelf.
+  updateBootUitvaren(dt);
+  // updateVertrekCinematiek() draait vanuit updateSpeler(), dus VÓÓR de
+  // altijd-lopende cosmetische sectie verderop in gameLoop waar
+  // updateBootPositie() normaal pas draait. Zonder deze expliciete,
+  // vervroegde aanroep zou de camera hieronder de bootpositie van VORIG
+  // frame gebruiken (bootGroep.position is dan nog niet bijgewerkt voor
+  // bootUitvarenTimer van DIT frame) — een permanente één-frame-vertraging
+  // tussen boot en camera. updateBootPositie() is puur en idempotent (leest
+  // alleen bootUitvarenActief/-Timer en de andere boot-fasevariabelen), dus
+  // een tweede aanroep later in dezelfde frame (de normale plek) is een
+  // veilige, goedkope herberekening van exact dezelfde waarde.
+  updateBootPositie();
+  // Instap-dip: het beeld zakt van de normale stahoogte naar de lagere
+  // boothoogte in de eerste VERTREK_INSTAP_DUUR seconden — "je stapt aan
+  // boord" — en blijft daarna op de boothoogte staan voor de rest van de
+  // vaart.
+  const instapFractie = Math.min(1, (VERTREK_CINEMATIEK_DUUR - vertrekCinematiekTimer) / VERTREK_INSTAP_DUUR);
+  const oogHoogte = speler.hoogte + (VERTREK_OOGHOOGTE_BOOT - speler.hoogte) * instapFractie;
+  camera.position.set(bootGroep.position.x, bootGroep.position.y + oogHoogte, bootGroep.position.z);
+  camera.rotation.y = VERTREK_KIJK_YAW;
+  camera.rotation.x = 0;   // vlak vooruit (achteruit) kijken — geen losse aim tijdens een cinematiek
+  camera.rotation.z = 0;
+  if (vertrekCinematiekTimer <= 0) {
+    vertrekCinematiekActief = false;
+    voltooiOntsnapping();   // nu pas het echte eindpunt: winscherm
+  }
 }
 
 // Ticket 147: het enige escalatiekanaal dat NIET vanzelf herstelt (zie de
@@ -18299,9 +18440,12 @@ function gameLoop(nu) {
   updateSpeler(dt);
 
   // Alles wat de wereld laat "leven" staat stil zolang het spel gepauzeerd is
-  // (pointer lock inactief) of voorbij is (game over), zelfde patroon als
-  // defend-national-monument.html.
-  const spelActief = besturingActief() && !spelStaat.gameOver;
+  // (pointer lock inactief), voorbij is (game over), of de vertrek-
+  // cinematiek loopt (Ticket 186) — defend-national-monument.html-patroon,
+  // nu met een derde bevriezingsreden. Zonder die derde term zouden ondoden
+  // tijdens het wegvaren blijven aanvallen/updaten, ook al kan de speler
+  // zelf al niet meer schieten of lopen.
+  const spelActief = besturingActief() && !spelStaat.gameOver && !vertrekCinematiekActief;
   if (spelActief) {
     // klok telt ALLEEN tijdens actief spel op: zo is de spel-tijd (o.a. de
     // regen-vertraging en schot-cooldown) niet via pauze te omzeilen (fix #1).
@@ -18927,6 +19071,13 @@ window.AmsterdamUndeadDebug = {
   overleefdKlaarVoorVertrek,
   get vertrekKlaar() { return vertrekKlaar; },
   set vertrekKlaar(v) { vertrekKlaar = v; },
+  // Ticket 186: fase 3 (de vertrek-cinematiek, eerste persoon)
+  VERTREK_CINEMATIEK_DUUR, VERTREK_INSTAP_DUUR, VERTREK_OOGHOOGTE_BOOT, VERTREK_KIJK_YAW,
+  startVertrekCinematiek, updateVertrekCinematiek,
+  get vertrekCinematiekActief() { return vertrekCinematiekActief; },
+  set vertrekCinematiekActief(v) { vertrekCinematiekActief = v; },
+  get vertrekCinematiekTimer() { return vertrekCinematiekTimer; },
+  set vertrekCinematiekTimer(v) { vertrekCinematiekTimer = v; },
   // Ticket 147: de escalatie
   FINALE_SURGE_BUDGET, FINALE_FOG_KRIMP, FINALE_HOORN_INTERVAL_MIN,
   FINALE_DREIGINGS_VOLUME_PLAFOND, FINALE_PULS_INTERVAL_START, FINALE_PULS_INTERVAL_EIND,
@@ -18956,7 +19107,7 @@ window.AmsterdamUndeadDebug = {
   get bootVertrekTeller() { return bootVertrekTeller; },
   // Feedback: fysieke boot-aankomst/-vertrek (was tot nu toe puur een
   // stilstaand decor-object + geluid/banner/lantaarnpuls-tell)
-  BOOT_DOK_X, BOOT_VERTREK_X, updateBootPositie, updateBootUitvaren,
+  BOOT_DOK_X, BOOT_VERTREK_X, BOOT_VERTREK_Z, updateBootPositie, updateBootUitvaren,
   get bootUitvarenActief() { return bootUitvarenActief; },
   set bootUitvarenActief(v) { bootUitvarenActief = v; },
   get bootUitvarenTimer() { return bootUitvarenTimer; },

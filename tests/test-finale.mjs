@@ -155,9 +155,12 @@ check('Er verschijnt nog GEEN winscherm — de speler moet eerst terug naar de b
 check('De HUD wijst de speler naar de boot',
   voltooiingTest.hudTekst === 'Overleefd! Ga naar de boot om te vertrekken', voltooiingTest);
 
-// --- 5. Fase 2 (vertrekKlaar): T doet NIETS op afstand, maar voltooit de
-// ontsnapping zodra de speler bij de boot staat — pas dan verschijnt het
-// winscherm. ------------------------------------------------------------
+// --- 5. Fase 2 (vertrekKlaar): T doet NIETS op afstand, maar start de
+// vertrek-cinematiek (Ticket 186) zodra de speler bij de boot staat. De
+// cinematiek zelf (camera, duur, geblokkeerde besturing, boot-animatie,
+// geluid) heeft zijn eigen dekking in test-vertrek-cinematiek.mjs; hier
+// wordt alleen de OVERGANG tussen de drie fasen bewaakt: vertrekKlaar ->
+// cinematiek -> (uiteindelijk) winscherm. --------------------------------
 const tOpAfstandTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyT', bubbles: true }));
@@ -174,10 +177,31 @@ check('De prompt bij de boot zegt "vertrek met de boot" tijdens vertrekKlaar',
 const echtVertrekTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyT', bubbles: true }));
-  return { vertrekKlaar: d.vertrekKlaar, winSchermDisplay: document.getElementById('winScherm').style.display };
+  return {
+    vertrekKlaar: d.vertrekKlaar,
+    vertrekCinematiekActief: d.vertrekCinematiekActief,
+    winSchermDisplay: document.getElementById('winScherm').style.display,
+  };
 });
-check('T bij de boot voltooit de ontsnapping: vertrekKlaar false, winscherm zichtbaar',
-  echtVertrekTest.vertrekKlaar === false && echtVertrekTest.winSchermDisplay === 'flex', echtVertrekTest);
+check('T bij de boot start de vertrek-cinematiek: vertrekKlaar false, cinematiek actief, NOG geen winscherm',
+  echtVertrekTest.vertrekKlaar === false && echtVertrekTest.vertrekCinematiekActief === true
+  && echtVertrekTest.winSchermDisplay !== 'flex', echtVertrekTest);
+
+// Cinematiek versneld afgerond (de duur/inhoud zelf heeft zijn eigen
+// dekking) — puur om met een schone lei (winscherm zichtbaar) aan sectie 6
+// te beginnen.
+const cinematiekAfgerondTest = await page.evaluate(async () => {
+  const d = window.AmsterdamUndeadDebug;
+  d.vertrekCinematiekTimer = 0.01;
+  await new Promise(res => setTimeout(res, 100));
+  return {
+    vertrekCinematiekActief: d.vertrekCinematiekActief,
+    winSchermDisplay: document.getElementById('winScherm').style.display,
+  };
+});
+check('...en ná afloop van de cinematiek verschijnt alsnog het winscherm',
+  cinematiekAfgerondTest.vertrekCinematiekActief === false && cinematiekAfgerondTest.winSchermDisplay === 'flex',
+  cinematiekAfgerondTest);
 
 // "Speel door" sluit het winscherm weer, zodat de volgende secties met een
 // schone lei verder kunnen (zelfde knop als test-ontsnapping.mjs sectie 7).
@@ -541,20 +565,26 @@ check('finaleFogVan is opgeruimd zodra fase 1 natuurlijk afloopt',
   eindTotEindNa.finaleFogVanNa === null, eindTotEindNa);
 
 // --- 15b. Vervolg op 15: de speler loopt (in de test: teleporteert) naar de
-// boot en drukt T — dat maakt de reis daadwerkelijk af tot het winscherm.
-// Bewaakt dat vertrekKlaar/voltooiOntsnapping() ook na een ECHTE, via de
-// gameLoop bereikte fase-2-start nog gewoon werkt (niet alleen na de
-// handmatige page.evaluate()-opzet van sectie 5). --------------------------
-const vertrekNaEchteFaseTest = await page2.evaluate(() => {
+// boot en drukt T — dat start (Ticket 186) de vertrek-cinematiek, die na
+// zijn eigen duur alsnog het winscherm toont. Bewaakt dat vertrekKlaar/
+// startVertrekCinematiek() ook na een ECHTE, via de gameLoop bereikte
+// fase-2-start nog gewoon werkt (niet alleen na de handmatige
+// page.evaluate()-opzet van sectie 5). --------------------------------------
+const vertrekNaEchteFaseTest = await page2.evaluate(async () => {
   const d = window.AmsterdamUndeadDebug;
   d.speler.positie.set(d.ontsnappingsPunt.positie.x, 0, d.ontsnappingsPunt.positie.z);
   d.updateInteracties();
   window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyT', bubbles: true }));
-  return { vertrekKlaar: d.vertrekKlaar, winSchermDisplay: document.getElementById('winScherm').style.display };
+  const naStart = { vertrekKlaar: d.vertrekKlaar, vertrekCinematiekActief: d.vertrekCinematiekActief };
+  d.vertrekCinematiekTimer = 0.01;
+  await new Promise(res => setTimeout(res, 100));
+  return { ...naStart, winSchermDisplay: document.getElementById('winScherm').style.display };
 });
-check('T bij de boot maakt de na een ECHTE fase-1-afloop bereikte vertrekKlaar-fase alsnog af',
-  vertrekNaEchteFaseTest.vertrekKlaar === false && vertrekNaEchteFaseTest.winSchermDisplay === 'flex',
+check('T bij de boot start, ná een ECHTE fase-1-afloop, de vertrek-cinematiek',
+  vertrekNaEchteFaseTest.vertrekKlaar === false && vertrekNaEchteFaseTest.vertrekCinematiekActief === true,
   vertrekNaEchteFaseTest);
+check('...en die maakt de reis alsnog af tot het winscherm',
+  vertrekNaEchteFaseTest.winSchermDisplay === 'flex', vertrekNaEchteFaseTest);
 
 const fails = report([...errs, ...errs2]);
 await browser.close();
