@@ -8130,6 +8130,41 @@ was al van 13 naar 15 gegroeid vóór dit ticket, nu 16.
 
 Volledige regressie na afloop: zie hieronder.
 
+### Speeltest-fix (op een echt toestel, na publicatie): het interactiepunt
+### was hemelsbreed bereikbaar, dwars door muren en ongekochte deuren
+
+**Melding van de eigenaar:** "Ik moet wel bij de boot pas kunnen zeggen dat
+ik wil vertrekken en moet na de 30 seconden ook bij de boot terugkomen om
+echt weg te kunnen. Nu kan ik overal in de map opeens vertrekken en de 30
+seconden timer starten en vervolgens ook vertrekken. Zelfs terwijl ik de
+deur niet eens heb gekocht richting de boot."
+
+**Oorzaak.** `ontsnappingsPunt.radius` stond op `Math.hypot((BOOT_DOK_X -
+1.5) - BIJKEUKEN_X_WEST, BIJKEUKEN_CZ - BIJKEUKEN_Z_NOORD) + 0.5` — uitgerekend
+bijna **16 meter**. Die maat komt uit T147, toen de 30s-timer nog pauzeerde
+als je van de boot wegliep en de speler dus ruimte nodig had om te bewegen
+tijdens het gevecht. T185 schrapte die positie-eis volledig (de timer loopt
+nu altijd door, overal), maar de straal zelf bleef staan — mijn eigen
+T185-toelichting zei destijds zelfs expliciet "de ruime radius blijft
+gewoon zo staan", en dat bleek de fout. `updateInteracties()` rekent puur
+in Euclidische afstand, zonder line-of-sight-check, dus die 16 meter ging
+dwars door elke muur en elke ongekochte deur (incl. deur3, die de
+bijkeuken/vlonder ontgrendelt) heen. Het gevolg was tweeledig: (1)
+`probeerOntsnapping()` zelf (de start, tegen betaling) was vanaf bijna elke
+kamer in huis te triggeren, en (2) T186's hele punt — terug naar de boot
+lopen om te vertrekken — betekende niets, want die "terugkeer" was al
+overal voldaan.
+
+**Fix.** Straal terug naar `1.4` (de oorspronkelijke, pre-T147-waarde) — nu
+moet de speler zowel om te starten als om te vertrekken écht bij de boot
+staan.
+
+**Test.** Nieuwe sectie 3b in `test-ontsnapping.mjs`: bewaakt dat de straal
+klein blijft (≤ 3m, een ruime marge boven 1.4 die toekomstige groei alsnog
+zou vangen), en dat het punt vanuit de bijkeuken én vanuit de woonkamer
+(twee posities die de oude ~16m-straal ruim haalden) niet meer reageert,
+terwijl het exact op de boot zelf gewoon nog werkt.
+
 ---
 
 ## Ticket 187 — Kwaliteitstrappen één stap opgeschoven ✅

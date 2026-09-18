@@ -18055,22 +18055,27 @@ function toonOntsnappingspuntIndienKlaar() {
     // aanlegplek). Het ontsnappingspunt hoort bij de AANGEMEERDE plek, dus
     // expliciet BIJKEUKEN_CZ i.p.v. een momentopname van de vaarbeweging.
     positie: new THREE.Vector3(BOOT_DOK_X - 1.5, 0, BIJKEUKEN_CZ),
-    // Speeltest-fix: was 1.4 (net de vlonder) — te krap zodra de instapfase
-    // (T147) de zombie-toevoer laat oplopen: geen ruimte om te bewegen of te
-    // kiten tijdens de 30s holdout. Vergroot tot de afstand vanaf dit punt
-    // tot de verste hoek van de bijkeuken (+ kleine marge) — dekt daarmee in
-    // een rechte lijn ook de grachtgang en de vlonder ertussen, dus de
-    // speler kan vrij tussen boot en bijkeuken bewegen zonder dat de timer
-    // pauzeert. Afgeleid van de bestaande zone-constanten i.p.v. een losse
-    // magic number, zodat een latere wijziging aan de bijkeuken-afmetingen
-    // dit automatisch meeschaalt.
-    // Ticket 185: de reden hierboven ("kiten tijdens de 30s holdout") is
-    // niet langer de reden dat deze radius groot moet zijn — de instapfase
-    // heeft geen positie-eis meer, dus de timer pauzeert sowieso nergens
-    // meer voor. De ruime radius blijft gewoon zo staan (hij dekt nu de
-    // aanloopafstand om het punt te kunnen ACTIVEREN, vóór én ná het
-    // overleven), maar de oorspronkelijke motivatie is vervallen.
-    radius: Math.hypot((BOOT_DOK_X - 1.5) - BIJKEUKEN_X_WEST, BIJKEUKEN_CZ - BIJKEUKEN_Z_NOORD) + 0.5,
+    // Speeltest-fix (T147, destijds): was 1.4 (net de vlonder) — te krap
+    // zodra de instapfase de zombie-toevoer liet oplopen: geen ruimte om te
+    // bewegen of te kiten tijdens de 30s holdout. Vergroot tot de afstand
+    // vanaf dit punt tot de verste hoek van de bijkeuken (+ kleine marge),
+    // zodat de speler vrij tussen boot en bijkeuken kon bewegen zonder dat
+    // de timer pauzeerde.
+    //
+    // Speeltest-fix (T185/T186, gevonden op een echt toestel): DIE
+    // motivatie is met T185 vervallen (geen positie-eis meer tijdens het
+    // overleven), maar de radius bleef staan — en `updateInteracties()`
+    // rekent in EUCLIDISCHE afstand, dwars door elke muur en ongekochte
+    // deur heen. Het gevolg was tweeledig: (1) probeerOntsnapping() zelf
+    // (de start, tegen betaling) kon vanaf bijna elke kamer in huis
+    // getriggerd worden, zelfs zonder deur3 (de deur naar de
+    // kelderhals/bijkeuken/vlonder) ooit gekocht te hebben; (2) T186's hele
+    // punt — terug naar de boot lopen om te vertrekken — betekende in de
+    // praktijk niets, want die terugkeer werd al "voldaan" zodra de timer
+    // afliep, ongeacht waar de speler ook stond. Terug naar de oorspronkelijke,
+    // krappe maat: nu moet je ECHT bij de boot staan, zowel om te starten als
+    // om te vertrekken.
+    radius: 1.4,
     // Ticket 146: tijdens de instapfase doet T niets meer (probeerOntsnapping()
     // negeert 'm dan) — de prompt toont hier de live aftelling in plaats van
     // een "Druk T"-instructie die niet meer klopt.

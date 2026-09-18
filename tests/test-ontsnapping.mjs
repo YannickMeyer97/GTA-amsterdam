@@ -82,6 +82,46 @@ const idempotentTest = await page.evaluate(() => {
 check('Herhaald aanroepen na verschijnen voegt het punt niet nogmaals toe',
   idempotentTest.lengteNa === idempotentTest.lengteVoor, idempotentTest);
 
+// --- 3b. Regressie, gevonden door de eigenaar op een echt toestel: het
+// interactiepunt was hemelsbreed te bereiken vanaf bijna elke kamer in
+// huis, dwars door muren EN ongekochte deuren heen (updateInteracties()
+// rekent alleen in Euclidische afstand, geen line-of-sight). De straal
+// stond op ~16 meter (T147: "ruimte om te bewegen tijdens de 30s holdout"),
+// een reden die met T185 (geen positie-eis meer tijdens het overleven)
+// volledig is vervallen — maar de straal zelf bleef staan. Twee dingen
+// bewaakt: de straal is weer krap, EN vanaf een positie die onder de oude
+// straal wél, maar onder een normale interactieafstand niet zou reageren,
+// gebeurt er nu niets. -------------------------------------------------
+const stralTest = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  const straal = d.ontsnappingsPunt.radius;
+  // Een positie die de OUDE ~16m-straal ruim zou hebben gehaald (in de
+  // bijkeuken, vóór de vlonder — precies het scenario uit de melding: hier
+  // sta je zonder deur3 (bijkeuken) ooit gekocht te hebben), maar een
+  // gewone deur-/vluchtroute-radius (1.2-1.6) niet.
+  d.speler.positie.set(d.BIJKEUKEN_CX, 0, d.BIJKEUKEN_CZ);
+  d.updateInteracties();
+  const reageertVanuitBijkeuken = d.huidigeInteractie === d.ontsnappingsPunt;
+  // En de oorspronkelijke, expliciete regressiepositie: de woonkamer, aan
+  // de andere kant van het hele huis.
+  d.speler.positie.set(0, 0, 0);
+  d.updateInteracties();
+  const reageertVanuitWoonkamer = d.huidigeInteractie === d.ontsnappingsPunt;
+  // Terug op het punt zelf werkt het gewoon nog.
+  d.speler.positie.set(d.ontsnappingsPunt.positie.x, 0, d.ontsnappingsPunt.positie.z);
+  d.updateInteracties();
+  const reageertOpDePlekZelf = d.huidigeInteractie === d.ontsnappingsPunt;
+  return { straal, reageertVanuitBijkeuken, reageertVanuitWoonkamer, reageertOpDePlekZelf };
+});
+check('De interactiestraal van de boot is weer krap (<= 3m, niet meer de ~16m van de T147-erfenis)',
+  stralTest.straal <= 3, stralTest);
+check('Vanuit de bijkeuken (zonder er echt te staan, zoals vóór deur3) reageert het punt NIET meer',
+  stralTest.reageertVanuitBijkeuken === false, stralTest);
+check('Vanuit de woonkamer, aan de andere kant van het huis, reageert het punt NIET',
+  stralTest.reageertVanuitWoonkamer === false, stralTest);
+check('Precies op de boot zelf werkt de interactie nog gewoon',
+  stralTest.reageertOpDePlekZelf === true, stralTest);
+
 // --- 4. Te weinig geld: prompt + geen aftrek, geen winscherm, geen instap -
 const teWeinigGeldTest = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
