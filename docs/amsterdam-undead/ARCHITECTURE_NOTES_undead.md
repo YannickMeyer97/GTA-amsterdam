@@ -1,8 +1,8 @@
-# ARCHITECTURE_NOTES.md — Amsterdam Undead
+# ARCHITECTURE_NOTES_undead.md — Amsterdam Undead
 
 Geschreven door Claude Fable (architectuurronde, geen code gewijzigd).
 Doel: alles wat een uitvoerende sessie (Claude Sonnet) moet weten over de
-huidige code voordat de tickets in `ROADMAP.md` (sectie "v0.14+") worden
+huidige code voordat de tickets in `ROADMAP_undead.md` (sectie "v0.14+") worden
 uitgevoerd. Regelnummers zijn een momentopname en verschuiven bij elke edit —
 zoek altijd op symboolnaam, niet op regelnummer.
 
@@ -300,7 +300,7 @@ Three.js via CDN-importmap, geen build-stap). Dat blijft zo.
     van half-bijgewerkte exports.
 
 *(Beslissingen 14–20 horen bij de Fable-architectuurronde 2, zie §4 en
-ROADMAP.md sectie v0.15+.)*
+ROADMAP_undead.md sectie v0.15+.)*
 
 14. **Eén power-up-drop per golf (vervangt het cooldown-trio).** De drie
     cooldowns uit v0.14 (sterk 2 golven, Kerninslag 4, Munitievoorraad 2 uit
@@ -1312,7 +1312,7 @@ Gekozen scope (designer-pitch, selectie door de gebruiker): score/stats/
 highscore, moeilijkheidsgraden, de Vluchtroute als win-conditie, de
 Stroomuitval-eventgolf, De Hagelketel als derde wapen, dreigingsaudio,
 zone-naambanners en een golf-16+ pacing-audit. Tickets 42–51 in
-ROADMAP.md; ontwerpbeslissingen 33–42 hieronder.
+ROADMAP_undead.md; ontwerpbeslissingen 33–42 hieronder.
 
 **Feedbackronde ná speeltest (§6.12-6.17, ontwerpbeslissingen 43-48):**
 nadat T42-45 waren geïmplementeerd en gespeeld kwam concrete feedback
@@ -1684,7 +1684,7 @@ alleen zorgvuldig per-venster narekenen wat de binnenplaats-ticket
 Op verzoek van de gebruiker staat de Hagelketel (T47/T48,
 ontwerpbeslissingen 38-39, §6.6) NIET meer in de actieve ronde. §6.6
 blijft ongewijzigd staan als ontwerpreferentie (mocht dit ooit
-terugkomen — zie ROADMAP.md's Backlog-sectie); de
+terugkomen — zie ROADMAP_undead.md's Backlog-sectie); de
 performance-/risicobudgetten hierboven (§6.9-6.11) zijn bijgewerkt om
 de Hagelketel NIET meer mee te rekenen — de lichttelling 23→24 komt nu
 van T52's lantaarn, niet van een wapenvlam.
@@ -1698,8 +1698,8 @@ verbeterpunten uit 5 categorieën (Graphics, Ruimtes & leveldesign,
 Vijanden & AI, Audio & sfeer, UI/UX & feedback). Dit is een
 **architectuur-/ticketronde, GEEN implementatieronde**: er wordt in
 deze stap geen regel code in `amsterdam-undead.html` aangeraakt. De
-tickets (58-68, ROADMAP.md) en Sonnet-prompts (ronde 5,
-SONNET_EXECUTION_PLAN.md) staan klaar om — één voor één, op
+tickets (58-68, ROADMAP_undead.md) en Sonnet-prompts (ronde 5,
+SONNET_EXECUTION_PLAN_undead.md) staan klaar om — één voor één, op
 toekomstige expliciete opdracht — uitgevoerd te worden.
 
 De 9 punten zijn vertaald naar 5 "Verbetergebieden" voor deze ronde
@@ -1715,8 +1715,8 @@ De 9 punten zijn vertaald naar 5 "Verbetergebieden" voor deze ronde
 5. **Spelerfeedback & oriëntatie** — minimap + richtingsfeedback bij
    schade (T67-T68).
 
-Ticketrange: **T58-T68** (ROADMAP.md). Beslissingrange: **49-60**
-(deze sectie). Sonnet-promptrange: SONNET_EXECUTION_PLAN.md,
+Ticketrange: **T58-T68** (ROADMAP_undead.md). Beslissingrange: **49-60**
+(deze sectie). Sonnet-promptrange: SONNET_EXECUTION_PLAN_undead.md,
 "ronde 5 (v0.19)", waarschuwingen **32 e.v.**
 
 ### 7.2 Codekaart — nieuw relevante gebieden voor deze ronde
@@ -1762,7 +1762,7 @@ Ticketrange: **T58-T68** (ROADMAP.md). Beslissingrange: **49-60**
 
 ### 7.3 Verhouding tot de "geen frameworks/assets/textures"-regel (beslissing 49)
 
-CLAUDE.md en SONNET_EXECUTION_PLAN.md's architectuurregels verbieden
+CLAUDE.md en SONNET_EXECUTION_PLAN_undead.md's architectuurregels verbieden
 letterlijk "textures/modellen" en "nieuwe dependencies, textures,
 modellen of audio-bestanden". Twee van de gevraagde punten
 (materiaaldiepte, post-processing) lijken daarmee op gespannen voet
@@ -1860,7 +1860,7 @@ architectuurpunt: de composer moet **resize-bewust** zijn (huidige
 verandert niet. CDN-risico: de postprocessing-submodules moeten via
 dezelfde CDN-host als de kern-Three.js-versie geladen worden;
 bestaat die combinatie niet, dan is dit ticket geblokkeerd tot een
-werkende importmap-entry gevonden is (zie SONNET_EXECUTION_PLAN.md-
+werkende importmap-entry gevonden is (zie SONNET_EXECUTION_PLAN_undead.md-
 waarschuwing 32).
 
 **Uitvoeringsnotitie:** de live CDN was vanuit de ontwikkelomgeving niet
@@ -1953,7 +1953,7 @@ nis-westmuur toch al de smalste afstand tot een GRENS-rand heeft —
 een korte, natuurlijke oversteek naar disjuncte kaartruimte.
 **Herziening tijdens implementatie:** de eerste versie deelde de
 footprint bewust met de binnenplaats-vloer (zie het rollback-relaas
-in ROADMAP.md Ticket 62) — dat bleek een directe schending van de
+in ROADMAP_undead.md Ticket 62) — dat bleek een directe schending van de
 "buiten GRENS"-eis hierboven én de reden dat de nieuwe geometrie
 onzichtbaar bleef (verscholen onder/tussen bestaande binnenplaats-
 vloer en -decor). Na verplaatsing naar de echt disjuncte nis-westkant
@@ -2698,7 +2698,7 @@ oude `GRACHTGANG_DREMPEL`/`eigenInGracht`/`spelerInGracht`/
 `inZoneVier`-special-case **verwijderen** (niet ernaast laten staan)
 — exact het "verwijder de oude code in hetzelfde ticket als het
 nieuwe systeem"-principe dat dit project al op andere plekken
-hanteert (zie ROADMAP.md's Regels-sectie). De volledige
+hanteert (zie ROADMAP_undead.md's Regels-sectie). De volledige
 regressiesuite (met name `test-gracht-dock.mjs`, dat de twee bugs van
 deze sessie afdekt) moet na T65 nog steeds slagen — dat is het
 belangrijkste acceptatiecriterium van dit ticket.
@@ -3154,7 +3154,7 @@ width` en een `0px` `border-top-width` heeft. Regressie:
   importmap-entry op een bestaande host. Dit MOET eerst geverifieerd
   worden (bestaat de module op die CDN, in de juiste Three.js-
   versie?) vóór er code tegenaan geschreven wordt — zie
-  SONNET_EXECUTION_PLAN.md-waarschuwing 32.
+  SONNET_EXECUTION_PLAN_undead.md-waarschuwing 32.
 - **2D-collision-risico (T62)**: de kelder-Y-ramp is de EERSTE plek
   in het hele project waar `positie.y` structureel gebruikt wordt.
   Elke andere plek die met `speler.positie` rekent
@@ -7415,7 +7415,7 @@ pas betekenisvol.
 waar het ticket over gaat, van dichtbij genoeg om het te zien. Voor
 hoekocclusie is dat een kamerhoek, niet een overzichtsbeeld. Voor de
 mondingsvlam is het één frame tijdens een schot in de donkerste hoek van
-de startkamer. Elk ticket in SONNET_EXECUTION_PLAN.md benoemt daarom
+de startkamer. Elk ticket in SONNET_EXECUTION_PLAN_undead.md benoemt daarom
 zijn eigen standpunt.
 
 **Drie tickets tonen bewust géén verschil.** T89 (emissieve hiërarchie),
@@ -8096,7 +8096,7 @@ westrand op `VLONDER_X_WEST`, de oostrand ongewijzigd op
 ### 11.1 Scope en aanleiding
 
 Waar ronde 8 de wereld herzag, herziet deze ronde de ondode zelf.
-`SONNET_EXECUTION_PLAN.md` opende ronde 9 met een diagnose die niet uit
+`SONNET_EXECUTION_PLAN_undead.md` opende ronde 9 met een diagnose die niet uit
 een bugmelding kwam maar uit de structuur zelf: `maakOndodeModel()` (nu
 `maakOndodeModelV1()`) bouwde elke ondode op uit tot 13 losse
 `THREE.Mesh`-objecten, elk met een eigen materiaalinstantie en een eigen

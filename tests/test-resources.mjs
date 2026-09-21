@@ -1,10 +1,10 @@
 // Ticket 77: resource- en levensduur-regressietests — de testcategorie die
 // in de audit ontbrak en die het bevestigde GPU-geheugenlek uit T69 had
-// moeten vangen (zie ARCHITECTURE_NOTES.md §8.3/§8.11 en ROADMAP.md
+// moeten vangen (zie ARCHITECTURE_NOTES_undead.md §8.3/§8.11 en ROADMAP_undead.md
 // Ticket 77/69/70/71/72). Bewust geschreven VÓÓR T69/T70/T71/T72: dit
 // script moet nu AANTOONBAAR ROOD staan op de geometrie-assertie (a), de
 // dispose-assertie (a/b) en de DOM-schrijffrequentie-asserties (d) — pas
-// na die tickets mag het groen worden (SONNET_EXECUTION_PLAN.md
+// na die tickets mag het groen worden (SONNET_EXECUTION_PLAN_undead.md
 // waarschuwing 42/50).
 //
 // Twee meetvalkuilen uit de audit (zie ook helpers.mjs' frames()):

@@ -3,7 +3,7 @@
 
 Beantwoordt de vraag uit T152-werkpunt 3: *wat kost een sample nou werkelijk
 als base64 in het HTML-bestand?* Meet echte encoder-output, geen schatting —
-ontwerpbeslissing 105 in ARCHITECTURE_NOTES.md noemde ~11 KB/s en zette daar
+ontwerpbeslissing 105 in ARCHITECTURE_NOTES_undead.md noemde ~11 KB/s en zette daar
 zelf bij dat dat gemeten hoort te worden.
 
 Gemeten wordt op vijf synthetische maar qua spectrum representatieve

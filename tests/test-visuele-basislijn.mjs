@@ -136,7 +136,7 @@ check('Zelf-check: 10 metingen op hetzelfde standpunt blijven binnen 2% spreidin
 // Vastgelegde waarden, gemeten op commit a54a2f4 (ná de reviewcorrecties,
 // vóór enig v0.22-bouwticket). BAND is bewust smal (2%, "orde 1-2%" uit
 // §10.4.1) — een ticket dat 'm overschrijdt moet de nieuwe waarde HIER
-// expliciet bijwerken, mét onderbouwing in ARCHITECTURE_NOTES.md §10 (zelfde
+// expliciet bijwerken, mét onderbouwing in ARCHITECTURE_NOTES_undead.md §10 (zelfde
 // mechanisme als test-resources.mjs voor geheugenlekken: niet "voorkom de
 // wijziging", maar "maak de wijziging zichtbaar en bewust").
 const BAND = 0.02;
@@ -636,7 +636,7 @@ check('BAND-logica: 5% afwijking op een niet-nul basiswaarde faalt de 2%-toets',
 // De drie niveaus bestaan, en de gameplay-kritieke elementen zitten waar ze
 // horen: ondode-ogen bereiken Signaal zodra het ertoe doet (aanval/mist/
 // stroomuitval), nooit in rust. "Actieve koopmarkering" staat NIET in
-// Signaal — zie de correctie in ARCHITECTURE_NOTES.md §10.5: dat zou een
+// Signaal — zie de correctie in ARCHITECTURE_NOTES_undead.md §10.5: dat zou een
 // nieuw, zichtbaar gedrag toevoegen dat vandaag niet bestaat (de
 // "beschikbaar"-status wordt gedragen door de ring + het gedeelde
 // winkelLicht, geen materiaal). icoonMesh() blijft daarom bewust ONDER

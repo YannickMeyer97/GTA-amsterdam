@@ -34,7 +34,7 @@ let scripts = readdirSync(__dirname)
   .sort();
 
 // Sharding, uitsluitend via env vars — geen CLI-args, zodat een kale
-// `node run-all.mjs` (bestaande gewoonte, ROADMAP.md/SONNET_EXECUTION_
+// `node run-all.mjs` (bestaande gewoonte, ROADMAP_undead.md/SONNET_EXECUTION_
 // PLAN.md/CLAUDE.md verwijzen er allemaal naar) exact ongewijzigd blijft.
 // AMSTERDAM_UNDEAD_SHARD = "index/aantal", bijv. "0/4" = elk vierde script
 // vanaf index 0. Ontbreekt de env var, dan is dit een volledige run.
@@ -55,7 +55,7 @@ const executablePathOptie = existsSync(LOKAAL_CHROMIUM_PAD) ? { executablePath: 
 const browser = await chromium.launch(executablePathOptie);
 globalThis.__AMSTERDAM_UNDEAD_SHARED_BROWSER__ = browser;
 
-// Bekende wall-clock-timing-gevoelige scripts (zie ROADMAP.md Ticket 78
+// Bekende wall-clock-timing-gevoelige scripts (zie ROADMAP_undead.md Ticket 78
 // en Ticket 77's waarschuwing over onbetrouwbare frametime in deze headless-
 // omgeving) krijgen precies 1 herkansing i.p.v. de suite permanent rood te
 // laten kleuren op omgevingsruis — een ECHTE regressie faalt nog steeds
@@ -128,7 +128,7 @@ for (const script of scripts) {
   console.log(`\n========== ${script} ==========`);
   let code = await draaiScript(script);
   if (code !== 0 && HERKANSING.has(script)) {
-    console.log(`\n(herkansing: ${script} staat bekend als wall-clock-timing-gevoelig in deze omgeving — zie ROADMAP.md Ticket 78)`);
+    console.log(`\n(herkansing: ${script} staat bekend als wall-clock-timing-gevoelig in deze omgeving — zie ROADMAP_undead.md Ticket 78)`);
     code = await draaiScript(script);
   }
   if (code !== 0) fails++;

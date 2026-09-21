@@ -1,5 +1,5 @@
 // Ondode-varianten: Sjouwer/Brander/Sluiper (Ticket v0.7 + balanspatch
-// Ticket 5). Zie ARCHITECTURE_NOTES.md §1 "Zombie-typedefinities".
+// Ticket 5). Zie ARCHITECTURE_NOTES_undead.md §1 "Zombie-typedefinities".
 // (De Loper is later op speelverzoek uit het spel verwijderd — leek qua
 // kleur/gedrag te veel op de Brander en voegde te weinig eigen identiteit toe.)
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';

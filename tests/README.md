@@ -3,7 +3,7 @@
 Headless Playwright-tests tegen `../amsterdam-undead.html`, rechtstreeks via
 `window.AmsterdamUndeadDebug` (zie CLAUDE.md voor de debug-hook-conventie).
 Deze map bestaat sinds Ticket 10 van de v0.14+ architectuurronde
-(zie `../ROADMAP.md` en `../SONNET_EXECUTION_PLAN.md`) — daarvoor stonden
+(zie `../docs/amsterdam-undead/ROADMAP_undead.md` en `../docs/amsterdam-undead/SONNET_EXECUTION_PLAN_undead.md`) — daarvoor stonden
 deze tests alleen in een sessie-scratchpad en overleefden ze geen nieuwe
 sessie.
 
@@ -116,7 +116,7 @@ maak een nieuw `test-<naam>.mjs` volgens het patroon hierboven.
 
 ## Bekende beperking van dit ticket (Ticket 10)
 
-Ticket 10 noemt in `ROADMAP.md` ook exports voor `isEventGolf`,
+Ticket 10 noemt in `ROADMAP_undead.md` ook exports voor `isEventGolf`,
 `kiesEventType` en `actieveEventGolf` — die horen bij Ticket 6
 (eventgolf-framework, Fase 3) en bestaan dus nog niet in de code op het
 moment dat dit ticket is uitgevoerd. Ticket 6 voegt die exports zelf toe

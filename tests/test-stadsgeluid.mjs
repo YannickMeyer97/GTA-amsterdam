@@ -5,8 +5,8 @@
 // zeldzame, willekeurig getimede
 // gebeurtenissen (verre scheepshoorn, verre stadsklok) die BUITEN de
 // gromband (120-340 Hz) blijven en via stadGainNode -> masterGainNode lopen
-// (nooit rechtstreeks audio.destination). Zie ROADMAP.md Ticket 82 en
-// ARCHITECTURE_NOTES.md §9.4.2.
+// (nooit rechtstreeks audio.destination). Zie ROADMAP_undead.md Ticket 82 en
+// ARCHITECTURE_NOTES_undead.md §9.4.2.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });

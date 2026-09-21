@@ -1,8 +1,8 @@
-# SONNET_EXECUTION_PLAN.md — Amsterdam Undead
+# SONNET_EXECUTION_PLAN_undead.md — Amsterdam Undead
 
 Handoff van Claude Fable (architect) naar Claude Sonnet (uitvoerder).
-Je hoeft alleen dit bestand, `ROADMAP.md` (secties "v0.14+", "v0.15+" en
-"v0.16"), `ARCHITECTURE_NOTES.md` en de code te lezen.
+Je hoeft alleen dit bestand, `ROADMAP_undead.md` (secties "v0.14+", "v0.15+" en
+"v0.16"), `ARCHITECTURE_NOTES_undead.md` en de code te lezen.
 
 ## Projectsamenvatting
 Amsterdam Undead is een first-person undead wave-survival in één bestand:
@@ -13,7 +13,7 @@ wissel met Q), barricades op alle ramen, ondode-varianten
 (Loper/Sjouwer/Brander), power-ups (Munitievoorraad/Dubbele
 Beloning/Eliminatiemodus/Kerninslag), upgrades (schade, Snelheidselixer,
 Pantserdrank), HUD, wave-banners en een game-over/reload-loop.
-De codekaart met symboolnamen per systeem staat in `ARCHITECTURE_NOTES.md` §1.
+De codekaart met symboolnamen per systeem staat in `ARCHITECTURE_NOTES_undead.md` §1.
 
 Stand na ronde 1 (v0.14, fases 1–5 UITGEVOERD): eventgolven met de
 Mistgolf + Sluiper, threat-budget (`spelStaat.budget`), HP-trap
@@ -21,7 +21,7 @@ Mistgolf + Sluiper, threat-budget (`spelStaat.budget`), HP-trap
 (sterk 2 golven / Kerninslag 4 / Munitievoorraad 2) en De Smederij
 (€3000 per wapen, `wapenStaat.gesmeed`, `smederijConfig`). De
 codekaart-aanvullingen voor de huidige staat staan in
-`ARCHITECTURE_NOTES.md` §4.
+`ARCHITECTURE_NOTES_undead.md` §4.
 
 ## Architectuurregels (hard)
 1. Alles blijft in `amsterdam-undead.html` — single-file, geen frameworks,
@@ -105,8 +105,8 @@ ontwerpbeslissingen 14–20); alle tickets hieronder zijn implementatie.
 
 ### Ronde 3 (v0.16 — combat-leesbaarheid, schietfeedback, winkel-identiteit, sfeer)
 
-Tickets 30–41 staan in `ROADMAP.md` sectie **v0.16**; de architectuur in
-`ARCHITECTURE_NOTES.md` **§5** + **ontwerpbeslissingen 21–32**. Alles is
+Tickets 30–41 staan in `ROADMAP_undead.md` sectie **v0.16**; de architectuur in
+`ARCHITECTURE_NOTES_undead.md` **§5** + **ontwerpbeslissingen 21–32**. Alles is
 ontworpen — jij implementeert; neem GEEN nieuwe architectuurbeslissingen.
 De standaard ticket-prompt verwijst voor deze ronde dus naar "sectie
 v0.16" i.p.v. "v0.14+".
@@ -138,8 +138,8 @@ dezelfde commit als de pool; T36 vervangt ALLE
 
 ### Ronde 5 (v0.19 — visuele/ruimtelijke diepte, AI en oriëntatie)
 
-Tickets 58–68 staan in `ROADMAP.md` sectie **v0.19**; de architectuur in
-`ARCHITECTURE_NOTES.md` **§7** + **ontwerpbeslissingen 49–61**. Alles is
+Tickets 58–68 staan in `ROADMAP_undead.md` sectie **v0.19**; de architectuur in
+`ARCHITECTURE_NOTES_undead.md` **§7** + **ontwerpbeslissingen 49–61**. Alles is
 ontworpen — jij implementeert; neem GEEN nieuwe architectuurbeslissingen.
 Deze hele ronde is **gepland, nog niet uitgevoerd**: elk ticket wacht op
 een aparte, expliciete opdracht.
@@ -174,8 +174,8 @@ Gebruik per ticket letterlijk deze opdrachtstijl. Vervang alleen het
 ticketnummer. Algemene kop voor elke prompt:
 
 > Je bent Claude Sonnet. Voer alleen Ticket X uit. Lees eerst
-> `SONNET_EXECUTION_PLAN.md`, het ticket in `ROADMAP.md` (sectie v0.14+)
-> en de relevante secties van `ARCHITECTURE_NOTES.md`. Pas alleen de
+> `SONNET_EXECUTION_PLAN_undead.md`, het ticket in `ROADMAP_undead.md` (sectie v0.14+)
+> en de relevante secties van `ARCHITECTURE_NOTES_undead.md`. Pas alleen de
 > minimale code aan die nodig is. Voer geen andere tickets uit. Draai na
 > afloop de load-check en het testplan van het ticket. Commit niet zonder
 > expliciete opdracht.
@@ -188,7 +188,7 @@ ticketnummer. Algemene kop voor elke prompt:
   startscherm voor verouderde teksten; testscript: golf uitroeien met
   hp=40 → verwacht 60, met hp=90 → verwacht 90.
 - **Niet veranderen:** bonusformule, rustTimer, banner.
-- **Acceptatie/test:** zie Ticket 1 in ROADMAP.md.
+- **Acceptatie/test:** zie Ticket 1 in ROADMAP_undead.md.
 
 ### Ticket 2 —2 sterke power-up-cooldown (2 golven)
 - **Context:** `kiesPowerupType()` is nu een uniforme loting; drops
@@ -271,7 +271,7 @@ ticketnummer. Algemene kop voor elke prompt:
 ### Ticket 13 —13 threat budget (VOORZICHTIG)
 - **Context:** riskantste ticket; `spelStaat.teSpawnen` verandert van
   betekenis. Lees eerst de hele golf-cyclus (`startGolf`, `updateGolf`,
-  `golfSpawnStap`) en het ticket in ROADMAP.md volledig.
+  `golfSpawnStap`) en het ticket in ROADMAP_undead.md volledig.
 - **Werkwijze verplicht in deze volgorde:** (1) schrijf eerst een
   headless test die de HUIDIGE volledige golf-cyclus vastlegt (golf start
   → spawns → uitroeien → golf++), (2) refactor naar
@@ -352,7 +352,7 @@ ticketnummer. Algemene kop voor elke prompt:
 ## Sonnet-prompts per ticket — ronde 2 (v0.15+)
 
 Zelfde kop als hierboven; vervang alleen het ticketnummer. Lees per ticket
-óók `ARCHITECTURE_NOTES.md` §4 (codekaart-aanvullingen na v0.14, huidige
+óók `ARCHITECTURE_NOTES_undead.md` §4 (codekaart-aanvullingen na v0.14, huidige
 plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
 
 ### Ticket 16 —16 power-ups: één drop-slot per golf
@@ -805,8 +805,8 @@ plattegrond + lus-voorstel) en de ontwerpbeslissingen 14–20.
 ## Sonnet-prompts per ticket — ronde 4 (v0.17)
 
 Zelfde werkwijze als ronde 1-3: één ticket per keer, eerst dit plan +
-het ticket in ROADMAP.md + de relevante §6-secties van
-ARCHITECTURE_NOTES.md lezen, minimale wijziging, load-check + het
+het ticket in ROADMAP_undead.md + de relevante §6-secties van
+ARCHITECTURE_NOTES_undead.md lezen, minimale wijziging, load-check + het
 testplan van het ticket, nooit committen zonder expliciete opdracht.
 
 ### Ticket 42 —42 score, runStats en highscore
@@ -879,7 +879,7 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
 
 ### Tickets 47/48 — BACKLOG (niet uitvoeren zonder expliciete opdracht)
 Op verzoek van de gebruiker uit de scope gehaald. Volledige tickets
-staan (met Status: backlog) in ROADMAP.md onderaan de v0.17-sectie;
+staan (met Status: backlog) in ROADMAP_undead.md onderaan de v0.17-sectie;
 ontwerp staat nog in §6.6 (beslissingen 38-39). Pas oppakken als de
 gebruiker dit expliciet weer vraagt.
 
@@ -1092,8 +1092,8 @@ gebruiker dit expliciet weer vraagt.
 ## Sonnet-prompts per ticket — ronde 5 (v0.19)
 
 Zelfde werkwijze als ronde 1-4: één ticket per keer, eerst dit plan +
-het ticket in ROADMAP.md (sectie v0.19) + de relevante §7-secties van
-ARCHITECTURE_NOTES.md lezen, minimale wijziging, load-check + het
+het ticket in ROADMAP_undead.md (sectie v0.19) + de relevante §7-secties van
+ARCHITECTURE_NOTES_undead.md lezen, minimale wijziging, load-check + het
 testplan van het ticket, nooit committen zonder expliciete opdracht.
 
 ### Ticket 58 —58 PALET-systeem voor consistente art direction
@@ -1277,7 +1277,7 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
     blootlegt) moet EXPLICIET nagelopen worden op een impliciete "Y is
     altijd 0"-aanname vóór T62 als afgerond geldt — dit is geen
     optionele opmerking maar een verplicht onderdeel van het ticket
-    (zie ROADMAP.md T62, Randgevallen).
+    (zie ROADMAP_undead.md T62, Randgevallen).
 34. **De kelder (T62/T63) blijft BUITEN `ZONE_GRAAF` en krijgt GEEN
     spawn-vensters.** Dit is een architecturale keuze, geen gat dat
     "later" nog moet worden dichtgemaakt — een toekomstig ticket dat de
@@ -1323,8 +1323,8 @@ testplan van het ticket, nooit committen zonder expliciete opdracht.
 ## Sonnet-prompts per ticket — ronde 6 (v0.20)
 
 Zelfde werkwijze als ronde 1-5: één ticket per keer, eerst dit plan +
-het ticket in ROADMAP.md (sectie v0.20) + de relevante §8-secties van
-ARCHITECTURE_NOTES.md lezen, minimale wijziging, load-check + het
+het ticket in ROADMAP_undead.md (sectie v0.20) + de relevante §8-secties van
+ARCHITECTURE_NOTES_undead.md lezen, minimale wijziging, load-check + het
 testplan van het ticket, nooit committen zonder expliciete opdracht.
 
 **Afwijkend aan deze ronde:** v0.20 komt uit een code-audit, niet uit een
@@ -1584,8 +1584,8 @@ staan op de huidige code.
 ## Sonnet-prompts per ticket — ronde 7 (v0.21)
 
 Zelfde werkwijze als ronde 1-6: één ticket per keer, eerst dit plan +
-het ticket in ROADMAP.md (sectie v0.21) + de relevante §9-secties van
-ARCHITECTURE_NOTES.md lezen, minimale wijziging, load-check + het
+het ticket in ROADMAP_undead.md (sectie v0.21) + de relevante §9-secties van
+ARCHITECTURE_NOTES_undead.md lezen, minimale wijziging, load-check + het
 testplan van het ticket, nooit committen zonder expliciete opdracht.
 
 **Afwijkend aan deze ronde:** v0.21 komt uit `IDEEEN.md` (een
@@ -1775,12 +1775,12 @@ raken respectievelijk de resource-discipline uit v0.20 en de Y-invariant.
 ## Sonnet-prompts per ticket — ronde 8 (v0.22, visuele architectuur)
 
 Zelfde werkwijze als ronde 1-7: één ticket per keer, eerst dit plan +
-de relevante §10-secties van ARCHITECTURE_NOTES.md + `VISUEEL.md` lezen,
+de relevante §10-secties van ARCHITECTURE_NOTES_undead.md + `VISUEEL.md` lezen,
 minimale wijziging, load-check + het testplan van het ticket, nooit
 committen zonder expliciete opdracht.
 
 **Afwijkend aan deze ronde:** de tickets staan hier compleet (inclusief
-acceptatiecriteria en testplan) in plaats van in ROADMAP.md. Deze ronde
+acceptatiecriteria en testplan) in plaats van in ROADMAP_undead.md. Deze ronde
 komt uit `VISUEEL.md`, een technical-artist-analyse, en de eigenaar
 heeft daaruit 23 richtingen goedgekeurd; daar komen 4
 infrastructuurstappen, een toegankelijkheidsticket en een eindmeting
@@ -2752,7 +2752,7 @@ onderbouwing uit deel 1 en 2**, niet uit de oorspronkelijke schatting:
 Waarschuwingen 74-79 komen niet uit het ontwerp maar uit een review
 achteraf, waarbij vier aannames uit dit plan zijn gemeten in plaats van
 beredeneerd. Drie bleken onjuist. Volledige verantwoording:
-ARCHITECTURE_NOTES.md §10.18.
+ARCHITECTURE_NOTES_undead.md §10.18.
 
 74. **`vertexColors: true` zonder color-attribuut rendert ZWART, niet
     wit.** Gemeten in r160: `false` ⇒ 244, `true` zonder attribuut ⇒ 0.
@@ -3463,7 +3463,7 @@ minimaal V1 vs V2 vanaf hetzelfde standpunt, met dezelfde bevriezing als
   V1-only codepad verwijderen; V2 wordt de enige renderarchitectuur.
 - **Stappen:** verwijder in één commit (zelfde discipline als ronde 3's
   "nooit oud+nieuw tegelijk"): geen dode V1-functie laten hangen "voor de
-  zekerheid". Werk `ARCHITECTURE_NOTES.md`/`ROADMAP.md` bij met de
+  zekerheid". Werk `ARCHITECTURE_NOTES_undead.md`/`ROADMAP_undead.md` bij met de
   nieuwe zombie-architectuur (nieuwe sectie, zelfde patroon als §10 voor
   ronde 8).
 - **Acceptatie:** `run-all.mjs` volledig groen; geen enkele referentie
@@ -3535,7 +3535,7 @@ minimaal V1 vs V2 vanaf hetzelfde standpunt, met dezelfde bevriezing als
 
 # Ronde 10 (v0.24) — Arsenaal-herstructurering
 
-Architectuur: `ARCHITECTURE_NOTES.md` §12. Ontwerpbeslissingen 95-99.
+Architectuur: `ARCHITECTURE_NOTES_undead.md` §12. Ontwerpbeslissingen 95-99.
 
 **Volgorde is bindend.** T132 t/m T136 (Fix 6) volledig af vóór T137 begint
 (Fix 7) — de tier-visuals uit Fix 7 bouwen op modellen die Fix 6 introduceert.
@@ -3545,7 +3545,7 @@ Architectuur: `ARCHITECTURE_NOTES.md` §12. Ontwerpbeslissingen 95-99.
 > **UITGEBREID IN RONDE 11 — lees dat eerst.** Alles hieronder blijft gelden,
 > maar er komen vier gedragsneutrale toevoegingen bij, waarvan één
 > **verplicht**: zonder de `inHandGroep`-indirectie (ontwerpbeslissing 100)
-> crasht T134 op frame 1. Zie `ARCHITECTURE_NOTES.md` §13.3 en het
+> crasht T134 op frame 1. Zie `ARCHITECTURE_NOTES_undead.md` §13.3 en het
 > T132-amendement in de Ronde 11-sectie hieronder.
 
 **Doel.** De drie invarianten uit §12.2 opheffen zonder één gram
@@ -3692,7 +3692,7 @@ met de meting.
 > tier, en of de recoil-amplitude per tier meeschaalt. **Nieuwe positie: ná
 > T144** (de gunfeel-implementatie), zodat de animatie-eisen niet alleen
 > gespecificeerd maar bewezen zijn — zie ontwerpbeslissing 102 en
-> `ARCHITECTURE_NOTES.md` §13.5. De bindende Fix 6-vóór-Fix 7-volgorde uit
+> `ARCHITECTURE_NOTES_undead.md` §13.5. De bindende Fix 6-vóór-Fix 7-volgorde uit
 > §12.9 blijft daarbij gerespecteerd.
 
 **Doel.** Vóór er één model gebouwd wordt: vastleggen hoe basis / 1x gesmeed
@@ -3742,12 +3742,12 @@ tiers naast elkaar, in de stijl van de eerdere fase-beeldverslagen.
 
 # Ronde 11 (v0.25) — Gunfeel, de finale, vijandanimatie en audio
 
-Architectuur: `ARCHITECTURE_NOTES.md` §13. Ontwerpbeslissingen 100-106.
+Architectuur: `ARCHITECTURE_NOTES_undead.md` §13. Ontwerpbeslissingen 100-106.
 
 Deze ronde is geschreven vóórdat T132 was uitgevoerd. Ze bevat naast de
 nieuwe tickets T140-T155 ook **amendementen op vier Ronde 10-tickets**
 (T132, T137, T138, T139). Geen enkele Ronde 10-requirement vervalt of
-verhuist naar een ander nummer — zie `ARCHITECTURE_NOTES.md` §13.12.
+verhuist naar een ander nummer — zie `ARCHITECTURE_NOTES_undead.md` §13.12.
 
 **Uitvoeringsvolgorde.**
 
@@ -4697,7 +4697,7 @@ achterlaten.
 
 Herkomst: de ontwerpsessie ná de performance-audit van Ronde 11 (zie
 `PERFORMANCE_AUDIT.md`). Volledige ticketbeschrijvingen staan in
-`ROADMAP.md` onder "v0.26 — Ronde 12"; hieronder staat alleen wat een
+`ROADMAP_undead.md` onder "v0.26 — Ronde 12"; hieronder staat alleen wat een
 uitvoerder nodig heeft.
 
 Deze ronde is **niet** de voortzetting van een architectuurlijn. Het zijn
@@ -4853,7 +4853,7 @@ toelichting bovenaan `test-brander-leesbaarheid.mjs` voor de volledige
 diagnose (inclusief een vergelijkbare valkuil met `stroomFactor`'s eigen
 recovery-logica). Verder gevonden: de schrijfplek moest van ná naar vóór
 de windup-tak verhuizen (die tak `continue`t, wat de rustpuls tijdens een
-aanval liet bevriezen) — zie ROADMAP.md voor de volledige toelichting.
+aanval liet bevriezen) — zie ROADMAP_undead.md voor de volledige toelichting.
 
 ---
 
@@ -5126,7 +5126,7 @@ poortwachters.
 
 # Ronde 13 (v0.27) — Het Stadsarchief als winkel
 
-Volledige tickets staan in `ROADMAP.md` onder "v0.27 — Ronde 13"; hieronder
+Volledige tickets staan in `ROADMAP_undead.md` onder "v0.27 — Ronde 13"; hieronder
 staat alleen wat een uitvoerder nodig heeft.
 
 Anders dan ronde 12 is de volgorde hier **verplicht**: elk ticket levert het
@@ -5384,7 +5384,7 @@ gespeeld is.
 
 # Ronde 14 (v0.28) — Een rustig startscherm en twee losse eindjes
 
-Volledige tickets in `ROADMAP.md` onder "v0.28 — Ronde 14".
+Volledige tickets in `ROADMAP_undead.md` onder "v0.28 — Ronde 14".
 
 ```
 T164 (startscherm)  — herindeling + archiefpaneel + opruimen   | + screenshot
@@ -5585,7 +5585,7 @@ Vertrouwen: hoog.
 
 # Ronde 15 (v0.29) — Het archiefpaneel leesbaar en af
 
-Volledig ticket in `ROADMAP.md` onder "v0.29 — Ronde 15". Eén ticket,
+Volledig ticket in `ROADMAP_undead.md` onder "v0.29 — Ronde 15". Eén ticket,
 ontstaan uit speelfeedback met screenshot.
 
 ### Ticket 168 — Het archiefpaneel leesbaar en af ✅ uitgevoerd (v0.29)
@@ -5650,7 +5650,7 @@ misging. Vertrouwen: hoog.
 
 # Ronde 16 (v0.30) — De meta-progressie strakker
 
-Volledige tickets in `ROADMAP.md` onder "v0.30 — Ronde 16".
+Volledige tickets in `ROADMAP_undead.md` onder "v0.30 — Ronde 16".
 
 ### Ticket 169 — Punten tellen op per gespeelde run ✅ uitgevoerd (v0.30)
 
@@ -5722,7 +5722,7 @@ pas — precies zoals het kleurstaal in T168 dat niet mocht.
 
 # Ronde 17 (v0.31) — Het archiefmenu op orde en hoorbaar
 
-Volledige tickets in `ROADMAP.md` onder "v0.31 — Ronde 17".
+Volledige tickets in `ROADMAP_undead.md` onder "v0.31 — Ronde 17".
 
 ### Ticket 172 — Gelijke kleurladders, eigen volgorde, betere namen ✅
 
@@ -5830,7 +5830,7 @@ niets; dat is het signaal om de meter te wantrouwen, niet de data.
 
 Ticket 175 (de chirurgische assetuitzondering) is op verzoek van de eigenaar
 naar de backlog verplaatst voordat er iets van gebouwd was. De volledige
-uitwerking staat bewaard in `ROADMAP.md` onder "Backlog — bevroren tickets".
+uitwerking staat bewaard in `ROADMAP_undead.md` onder "Backlog — bevroren tickets".
 
 **Eén ding om te weten als je hier langskomt:** het REGELBESLUIT is wél
 genomen en staat in `CLAUDE.md` — ingesloten audiofragmenten voor menselijke
@@ -5844,7 +5844,7 @@ haalt de twee regels uit `CLAUDE.md` onder "Werkwijze".
 
 # Ronde 20 (v0.34) — Amsterdam Undead op mobiel
 
-Volledige tickets in `ROADMAP.md` onder "v0.34 — Ronde 20".
+Volledige tickets in `ROADMAP_undead.md` onder "v0.34 — Ronde 20".
 
 ```
 T176 (besturingsgate)  ← fundament
@@ -6009,7 +6009,7 @@ alleen het EXTRA puntlicht overslaat — de flits, het geluid en de schade
 blijven bij elke explosie hetzelfde. Vier opties zijn voorgelegd (dit budget,
 licht helemaal weg, shaders vooraf opwarmen, alleen geometrie poolen); de
 eigenaar koos het budget als beste verhouding tussen zekerheid en behouden
-uiterlijk. Volledig ticket + de drie afgewezen opties in `ROADMAP.md`.
+uiterlijk. Volledig ticket + de drie afgewezen opties in `ROADMAP_undead.md`.
 
 **Les: "is dat erg?" verdient een antwoord uit de motor, niet uit de mist.**
 Het was verleidelijk om te zeggen "een beetje hapering, valt wel mee" — maar
@@ -6023,7 +6023,7 @@ niet, want dat raakt de eigenlijke kostenpost niet).
 ### Ticket 182 — Het 'eenarmige' profiel verwijderd ✅ uitgevoerd
 
 **Buiten de mobiele ronde om**, op verzoek van de eigenaar. Volledig ticket
-in `ROADMAP.md`.
+in `ROADMAP_undead.md`.
 
 **Meer dan een tabelregel.** Zeven `if (delen.armL)`-guards in de
 animatiecode bestonden uitsluitend om deze variant op te vangen. Die zijn
@@ -6041,7 +6041,7 @@ globale substitutie.
 **Historische documentatie blijft historisch.** Tickets 19/31/126
 beschrijven wat er destijds gebouwd is; waar dat door de verwijdering
 feitelijk onjuist werd, staat er een korte, gedateerde vervolgnoot bij
-(zowel hier als in `ARCHITECTURE_NOTES.md`) in plaats van een stille
+(zowel hier als in `ARCHITECTURE_NOTES_undead.md`) in plaats van een stille
 herschrijving.
 
 **Geverifieerd, niet aangenomen.** De testbug die dit profiel veroorzaakte
@@ -6074,7 +6074,7 @@ instabiliteit is aantoonbaar weg, niet alleen "zou nu moeten".
 
 Uit één feedbackronde van de eigenaar ná het live gaan van de mobiele versie.
 Geldt voor **beide** varianten; dit is geen mobiel-ronde. Volledige tickets in
-`ROADMAP.md`.
+`ROADMAP_undead.md`.
 
 ### T187 — kwaliteitstrappen ✅ uitgevoerd
 

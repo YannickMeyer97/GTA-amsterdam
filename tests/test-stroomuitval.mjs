@@ -4,7 +4,7 @@
 // winkelLicht (gedimd tijdens, lineair hersteld erna), oogboost (ook voor
 // nieuwe spawns), eigen spawngewichten, audio, en dat de Mistgolf
 // byte-voor-byte blijft werken (regressie t.o.v. Ticket 6-9).
-// Zie ARCHITECTURE_NOTES.md §6.5 en ROADMAP.md Ticket 46.
+// Zie ARCHITECTURE_NOTES_undead.md §6.5 en ROADMAP_undead.md Ticket 46.
 import { openAmsterdamUndead, makeChecker, frames } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
@@ -115,7 +115,7 @@ check('Alle vier de ateliers-dakramen volgen exact stroomFactor * DAKRAAM_STROOM
 // óók tijdens een Stroomuitval — pixelmeting liet zien dat de generieke
 // 12%-vloer (net als de startkamer-lampen) de kelder véél te donker liet
 // worden t.o.v. het atelier/de startkamer (materiaalverschil, zie
-// ARCHITECTURE_NOTES.md §7.5.1-addendum). De kelder-kamerlampen kregen
+// ARCHITECTURE_NOTES_undead.md §7.5.1-addendum). De kelder-kamerlampen kregen
 // daarom een eigen `stroomVloer` (0,36) — zelfde formulepatroon als
 // HEMISFEER_STROOM_VLOER, dus NEUTRAAL (fractie 1) bij stroomFactor=1, en
 // een hogere fractie dan de generieke 12% zodra een Stroomuitval actief is.

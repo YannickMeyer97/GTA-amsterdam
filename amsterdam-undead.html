@@ -261,7 +261,7 @@
   /* Ticket 117 (v0.23, ronde 9 — Zombie V2 fundament): tijdelijk
      performance-debug-overlay, F3-toggle. Standaard uit en onzichtbaar
      voor gewone spelers — dit is een meetinstrument voor de Zombie
-     V2-ronde, geen permanente UI-feature (zie SONNET_EXECUTION_PLAN.md,
+     V2-ronde, geen permanente UI-feature (zie SONNET_EXECUTION_PLAN_undead.md,
      ronde 9, Ticket 117). */
   #perfOverlayUI {
     position: fixed;
@@ -2294,7 +2294,7 @@ function bouwContactschaduw(x, z, straalX, straalZ = straalX, rotY = 0) {
 // (bestaande hexwaarden, dus geen visuele sprong) onder benoemde,
 // semantische groepen, zodat toekomstige content dezelfde "stem" hergebruikt
 // i.p.v. een nieuwe losse hex te verzinnen. Bewust beperkt tot de
-// gevel-/straatdecor-call-sites van dit ticket (zie ROADMAP.md T58) — geen
+// gevel-/straatdecor-call-sites van dit ticket (zie ROADMAP_undead.md T58) — geen
 // volledige omzetting van elke kleur in het bestand. De drie bijna-
 // identieke warme raamtinten van vóór deze ronde (0xffc06a/0xffd18a/
 // 0xffb86b) zijn samengevoegd tot twee duidelijk onderscheidbare tinten.
@@ -2328,7 +2328,7 @@ const PALET = {
 // families krijgen nu ook een gedeelde, procedureel getekende
 // `roughnessMap` (steen-ruis/houtnerf/geborsteld-metaal) voor
 // materiaaldiepte. Dit HERZIET de aanname hierboven (Ticket 38: "CLAUDE.md
-// verbiedt ook canvas-gegenereerde textures") — zie ARCHITECTURE_NOTES.md
+// verbiedt ook canvas-gegenereerde textures") — zie ARCHITECTURE_NOTES_undead.md
 // §7.3 voor de volledige redenering: "geen textures/modellen" leest deze
 // ronde als "geen extern geladen bestanden, geen derde-partij-frameworks",
 // niet als "geen enkele texture-map". De texture is 100% runtime getekend
@@ -3961,7 +3961,7 @@ const KELDER_Y_MARGE = 1;
 // Feedback: de kelder is GEEN veilige zone meer, ook niet gedeeltelijk —
 // elke ondode mag er gewoon in lopen, precies als de speler, zonder enige
 // afstandsdrempel of "boven blijven wachten"-gedrag. Zie updateOndoden()
-// en ARCHITECTURE_NOTES.md §7.5.7 (herziening — eerdere gedeeltelijke
+// en ARCHITECTURE_NOTES_undead.md §7.5.7 (herziening — eerdere gedeeltelijke
 // toegang uit §7.5.2/§7.5.4/§7.5.6 volledig teruggedraaid).
 
 // Weer volledig puur (geen state, zoals §7.5.1 oorspronkelijk vroeg): de
@@ -5985,7 +5985,7 @@ let kozijnSteeg, glasSteeg;
 // stroomFactorVoorLamp hieronder in de gameLoop), per lamp een eigen
 // willekeurige timer (zie de flikkerloop). Uitgesloten: de schaduwwerpende
 // lamp (l.licht.castShadow) en de drie kelder-kamerlampen (l.stroomVloer
-// !== undefined) — zie ARCHITECTURE_NOTES.md §9.4.1.
+// !== undefined) — zie ARCHITECTURE_NOTES_undead.md §9.4.1.
 const LAMP_BLACKOUT_MIN_INTERVAL = 45;   // s
 const LAMP_BLACKOUT_MAX_INTERVAL = 90;   // s
 // Feedback: één harde 0.3-0.5s "uit" las als een renderglitch i.p.v. sfeer.
@@ -6091,10 +6091,10 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   // -> 0x70675a) bleek bij pixelmeting 27% donkerder (overshoot, de
   // lichtbijdrage van de kamerlampen zelf is niet-lineair t.o.v. de
   // albedo-factor); teruggerekend naar factor ~0,851, dat empirisch op
-  // ~20% uitkomt (zie ARCHITECTURE_NOTES.md §7.5.7).
+  // ~20% uitkomt (zie ARCHITECTURE_NOTES_undead.md §7.5.7).
   // Feedbackronde 4: nog eens 15-20% donkerder bovenop het bovenstaande.
   // Iteratief getuned met dezelfde pixelmeting (2 tussenstappen, zie
-  // ARCHITECTURE_NOTES.md §7.5.8): eindwaarde meet ~18,1% donkerder dan de
+  // ARCHITECTURE_NOTES_undead.md §7.5.8): eindwaarde meet ~18,1% donkerder dan de
   // Feedbackronde-3-kleuren.
   // Fix 3 (feedback: "de kelder mag 20% donkerder in normale stand, in
   // stroomuitval is de huidige helderheid goed"): ANDERS dan Feedbackronden
@@ -6113,7 +6113,7 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   // ongewijzigd" puur via de bestaande `stroomVloer`-mechaniek (§7.5.5) —
   // geen aparte stroomVloer-ophoging nodig, in tegenstelling tot wat
   // Feedbackronden 3/4 nog aannamen ("proportioneel donkerder in beide
-  // standen"). Zie ARCHITECTURE_NOTES.md §7.5.9.
+  // standen"). Zie ARCHITECTURE_NOTES_undead.md §7.5.9.
   const KELDER_TINT = 0x4a443c;
   const kelderMuurDikte = KELDER_MUUR_DIKTE;
   const kokerLengte = KELDERTRAP_X_BOVEN - KELDERTRAP_X_ONDER;
@@ -6319,7 +6319,7 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   // Fix 3 (feedback: "het licht van de kelder lijkt door de muur in het
   // atelier te schijnen"): bereik 9 -> 3.5. Puntlichten in deze scene
   // casten geen schaduw (op de ene shadow-invariant-lamp na, zie
-  // ARCHITECTURE_NOTES.md §7.9) — geometrie zoals deur5Mesh of de nis-
+  // ARCHITECTURE_NOTES_undead.md §7.9) — geometrie zoals deur5Mesh of de nis-
   // westmuur blokkeert dus NIETS van dit licht, alleen de afstandscutoff
   // (`bereik`) zelf voorkomt dat het door de deur heen de nis in "schijnt".
   // Fix 3 v3 (feedback: "ik zie nog steeds het [gele] licht"): 3.5m bleek
@@ -6346,7 +6346,7 @@ let kelderLampMateriaal;   // debug/screenshot-gemak: los bewaard net als de and
   // tijdens een Stroomuitval een hogere ondergrens hebben dan de generieke
   // 12%-vloer (stroomFactor) — zelfde formulepatroon als HEMISFEER_STROOM_
   // VLOER/BUITEN_STROOM_VLOER, dus NEUTRAAL (geen effect) in de normale
-  // stand. Empirisch getuned met pixelmetingen, zie ARCHITECTURE_NOTES.md.
+  // stand. Empirisch getuned met pixelmetingen, zie ARCHITECTURE_NOTES_undead.md.
   // Posities herschaald toen de kamer smaller werd (7,5m i.p.v. 15m breed):
   // de oude "-3.5"/"+4" offsets vielen nu (bijna) samen, dus 2m vanaf elke
   // muur i.p.v. een vaste afstand die op de oude breedte gecalibreerd was.
@@ -8424,7 +8424,7 @@ function updateSpeler(dt) {
   // geen camerabeweging (geen nieuwe term, geen interpolatie) — het is
   // precies dezelfde "camera is elk frame vers vanuit speler-state"-discipline
   // die x/y/rotation.x/rotation.y hierboven al hebben, nu compleet voor alle
-  // assen. Zie ARCHITECTURE_NOTES.md §10.9 voor de volledige redenering.
+  // assen. Zie ARCHITECTURE_NOTES_undead.md §10.9 voor de volledige redenering.
   camera.rotation.z = 0;
 }
 
@@ -10081,7 +10081,7 @@ const INSLAGSPOOR_VLOER_STRAAL = 0.55;
 // Kleine offset langs de wereld-normaal, tegen z-fighting met het geraakte
 // vlak zelf — samen met polygonOffset hieronder (twee onafhankelijke
 // maatregelen tegen hetzelfde probleem, zie de toelichting bij Randgeval
-// "Z-fighting" in ROADMAP.md).
+// "Z-fighting" in ROADMAP_undead.md).
 const INSLAGSPOOR_NORMAAL_OFFSET = 0.004;
 function bouwInslagspoorTextuur() {
   const n = 32;
@@ -13658,7 +13658,7 @@ let zoneLabelSchrijfTeller = 0;   // debug/test: telt elke echte zoneLabelUI-wri
 zoneLabelUI.textContent = ZONE_NAMEN[0];
 
 // Ticket 67 (Spelerfeedback & oriëntatie): minimap — geen scroll/zoom (zie
-// ROADMAP.md "buiten scope"), maar WEL "heading-up" (feedback: "laat de
+// ROADMAP_undead.md "buiten scope"), maar WEL "heading-up" (feedback: "laat de
 // minimap meedraaien met waar ik naartoe kijk"): de speler staat altijd
 // gecentreerd en met yaw=0 ("boven" op het canvas); de kaart zelf (zones,
 // ondoden, boot) draait eromheen mee met de kijkrichting via minimapLokaal()
@@ -13818,7 +13818,7 @@ function tekenMinimap() {
   // minimapLokaal()-coördinaten (-sin(yaw)*s, -cos(yaw)*s); roteer je dat
   // met ctx.rotate(yaw) (canvas roteert rechtsom-positief), dan kom je
   // exact op (0, -s) uit — recht "boven" het canvasmidden, ongeacht yaw.
-  // Zie ARCHITECTURE_NOTES.md §7.8.1 voor de volledige afleiding.
+  // Zie ARCHITECTURE_NOTES_undead.md §7.8.1 voor de volledige afleiding.
   ctx.rotate(speler.yaw);
 
   // Fix 5 (feedback: "ik zie soms muren staan terwijl die er niet zijn,
@@ -13951,7 +13951,7 @@ function herbouwNavTabel() {
 }
 
 // Ticket 64 — Waypoint-navigatiegraaf: architectuur en dataset (zie
-// ARCHITECTURE_NOTES.md §7.6.1). Generieke, data-gedreven INTRA-zone-laag,
+// ARCHITECTURE_NOTES_undead.md §7.6.1). Generieke, data-gedreven INTRA-zone-laag,
 // naast de bestaande cross-zone NAV_VOLGENDE hierboven: per zone een kleine,
 // hand-geplaatste lijst waypoints, alleen voor zones waar de lokale
 // reactieve ontwijk-logica (ondode.ontwijkTimer, verderop in updateOndoden)
@@ -14006,7 +14006,7 @@ const KELDERTRAP_ONDER_BINNEN = new THREE.Vector3(KELDERTRAP_X_ONDER - 0.7, 0, K
 // deden.
 //
 // Dit ontwerp is de derde, uiteindelijk werkende versie na twee mislukte
-// tussenstappen (zie ARCHITECTURE_NOTES.md §7.6.5 voor de volledige,
+// tussenstappen (zie ARCHITECTURE_NOTES_undead.md §7.6.5 voor de volledige,
 // empirisch-onderbouwde geschiedenis): (1) KELDEROOST_DEUR_PUNT op het
 // muurcentrum i.p.v. de isKelderoost-drempel liet "terug"-verkeer daar
 // voor altijd hangen (aankomen betekende nooit écht isKelderoost worden);
@@ -15556,7 +15556,7 @@ function berekenScore(bonus = 0) {
 
 // Ticket 158 (v0.26, deel A): restsaldo converteert naar score, zodat
 // `spelStaat.geld` aan het eind van de run niet langer dode waarde is (zie
-// PERFORMANCE_AUDIT.md/ROADMAP.md T158 — vóór dit ticket kwam geld nergens
+// PERFORMANCE_AUDIT.md/ROADMAP_undead.md T158 — vóór dit ticket kwam geld nergens
 // in berekenScore() voor). Loopt door DEZELFDE `bonus`-parameter als de
 // bestaande +1000-ontsnappingsbonus hierboven (Ticket 45) — geen nieuw
 // mechanisme, gewoon een tweede term die er vóór de scoreFactor-vermenig-
@@ -18669,7 +18669,7 @@ function gameLoop(nu) {
     // Ticket 81: vierde, onafhankelijke factor — zeldzame lampuitval. Nooit
     // op de schaduwwerpende lamp (herstructureert alle schaduwen in beeld)
     // of de drie kelder-kamerlampen (0.4s volledige blindheid in een ruimte
-    // die juist veilig hoort te zijn) — zie ARCHITECTURE_NOTES.md §9.4.1.
+    // die juist veilig hoort te zijn) — zie ARCHITECTURE_NOTES_undead.md §9.4.1.
     // Raakt stroomFactor zelf nergens aan, dus een blackout tijdens een
     // actieve Stroomuitval laat die met rust (randgeval uit het ticket).
     // Feedback: één ononderbroken "uit" las als een renderglitch — nu een
@@ -19464,7 +19464,7 @@ window.AmsterdamUndeadDebug = {
   zoneVan, ZONE_GRAAF, herbouwNavTabel,
   get NAV_VOLGENDE() { return NAV_VOLGENDE; },
   // Ticket 64/65: intra-zone waypointgraaf (vervangt de oude ad-hoc
-  // gracht-chokepoint-special-case, zie ARCHITECTURE_NOTES.md §7.6)
+  // gracht-chokepoint-special-case, zie ARCHITECTURE_NOTES_undead.md §7.6)
   ZONE_WAYPOINTS, zoekWaypoint, isKelderoost, isKelderoostGebied,
   NIS_DOORGANG_BUITEN, NIS_DOORGANG_BINNEN,
   KELDERTRAP_BOVEN_BUITEN, KELDERTRAP_BOVEN_BINNEN,

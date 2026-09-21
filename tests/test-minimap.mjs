@@ -6,7 +6,7 @@
 // ondoden als stippen. De kelder ligt structureel buiten GRENS (zie
 // GRENS-commentaar in het hoofdbestand), dus toont de minimap daar een
 // simpel "KELDER"-label i.p.v. een sublaag.
-// Zie ROADMAP.md Ticket 67 en ARCHITECTURE_NOTES.md §7.8.1.
+// Zie ROADMAP_undead.md Ticket 67 en ARCHITECTURE_NOTES_undead.md §7.8.1.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });

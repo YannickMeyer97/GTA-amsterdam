@@ -1,5 +1,5 @@
 // De Smederij (Tickets 11-12): per-wapen schadeformule, gesmeed-status.
-// Zie ROADMAP.md Ticket 11/12 en ARCHITECTURE_NOTES.md §1 "Wapenschade" /
+// Zie ROADMAP_undead.md Ticket 11/12 en ARCHITECTURE_NOTES_undead.md §1 "Wapenschade" /
 // §2 punt 7-8.
 //
 // Let op: wisselWapen() neemt GEEN argument — het is een pure toggle. Elke
@@ -467,7 +467,7 @@ const budgetEnFlikker = await page.evaluate(() => {
 });
 // Performance-audit (feedback): het ember-lichtje (bereik 0,9m) is uit beide
 // sets verwijderd — pixelmeting liet zien dat het niets waarneembaars
-// toevoegde bovenop het emissive ringmateriaal (zie ARCHITECTURE_NOTES.md
+// toevoegde bovenop het emissive ringmateriaal (zie ARCHITECTURE_NOTES_undead.md
 // §7.9). Budget dus 0 lichten, niet 1.
 check('Budget: Drukspuit-visuals ≤ 5 meshes + 0 lichten (ember-licht verwijderd, alleen emissive materiaal)',
   budgetEnFlikker.budgetDrukspuit.meshes <= 5 && budgetEnFlikker.budgetDrukspuit.lichten === 0, budgetEnFlikker.budgetDrukspuit);

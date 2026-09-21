@@ -1,9 +1,9 @@
 // Ticket 52 (Doel D5): Gang naar de Gracht — een nieuwe, korte gang vanuit
 // de bijkeuken-oostmuur naar een vlonder-plateau met water, boot en
-// lantaarnpaal. Testplan uit ROADMAP.md: bereikbaarheid, isVrijePlek-
+// lantaarnpaal. Testplan uit ROADMAP_undead.md: bereikbaarheid, isVrijePlek-
 // probes, geen overlap met bestaande geometrie, en de lichttelling die
 // bewust van 23 naar 24 gaat (zie ook de bijgewerkte
-// test-v016-integratie.mjs). Zie ARCHITECTURE_NOTES.md §6 / ROADMAP.md
+// test-v016-integratie.mjs). Zie ARCHITECTURE_NOTES_undead.md §6 / ROADMAP_undead.md
 // Ticket 52.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
@@ -136,7 +136,7 @@ const lichten = await page.evaluate(() => {
 });
 // Performance-audit (feedback): de 28 hierboven was correct tot de twee
 // Smederij-ember-lichtjes (bereik 0,9m, visueel niet te onderscheiden van
-// alleen het emissive materiaal — zie ARCHITECTURE_NOTES.md §7.9) zijn
+// alleen het emissive materiaal — zie ARCHITECTURE_NOTES_undead.md §7.9) zijn
 // verwijderd: 28 -> 26. Kelderoost (feedback) voegt daarna zijn eigen
 // kamerlamp toe: 26 -> 27 (de Scheepslantaarn zelf is puur emissive
 // materiaal, geen echte PointLight, dus die verhuizing telt niet mee).

@@ -1,10 +1,10 @@
-# SONNET_EXECUTION_PLAN_national-monument.md — Defend National Monument
+# SONNET_EXECUTION_PLAN_monument.md — Defend National Monument
 
 Handoff van architect naar uitvoerder, voor `defend-national-monument.html`.
-Dit document staat volledig los van `SONNET_EXECUTION_PLAN.md` (dat gaat over
+Dit document staat volledig los van `SONNET_EXECUTION_PLAN_undead.md` (dat gaat over
 Amsterdam Undead). **Ticketnummers in dit bestand dragen een `D`-prefix**
 (D1, D2, …) zodat ze nooit te verwarren zijn met de Undead-tickets in
-`ROADMAP.md`.
+`ROADMAP_undead.md`.
 
 ---
 
@@ -17,10 +17,10 @@ CDN-importmap, geen build-stap, geen assets — dezelfde technische regels als
 Undead.
 
 **De game is sinds de splitsing niet meer aangeraakt.** Undead groeide in die
-tijd van 0 naar 19.741 regels en 116 testbestanden; deze game staat nog op
+tijd van 0 naar 19.741 regels en 117 testbestanden; deze game staat nog op
 3.518 regels en **nul tests**. De opmerking in `CLAUDE.md` over "de bestaande
 regressiesuite voor Defend National Monument" klopt niet meer: die suite
-bestaat niet, alle 116 testbestanden richten zich op Undead.
+bestaat niet, alle 117 testbestanden richten zich op Undead.
 
 ### Wat er nu in zit (gemeten, niet geschat)
 
@@ -47,21 +47,31 @@ Alles hieronder is gemeten in de code, niet aangevoeld.
 
 ### 2.1 De kaart is te groot — en dat is een gameplayprobleem, geen smaakkwestie
 
-| Poort | Afstand tot monument | Robot-looptijd (1,5–3,2 m/s) |
-|---|---|---|
-| Damstraat | 81 m | 25–54 s |
-| Damrak | 110 m | 34–74 s |
-| Rokin | 108 m | 34–72 s |
-| Kalverstraat | 136 m | 43–91 s |
-| Nieuwendijk | 139 m | 43–**92 s** |
+Alle afstanden hieronder zijn tot de **rand** van `MONUMENT_BOX`, want dat is
+wat `afstandTotMonument()` meet (regel 2419). Tot het middelpunt is het steeds
+~10 m meer; beide kolommen staan in `ARCHITECTURE_NOTES_monument.md` §2.1.
 
-Een trage robot uit Kalverstraat loopt **anderhalve minuut** voordat hij iets
-doet. Dat is geen opbouw van spanning, dat is wachttijd.
+Robots lopen `1,4 + Math.random()` m/s (regel 2993) — dus 1,4–2,4 — maal de
+`snelheidMultiplier` van hun type.
 
-Erger: van de drie steunpunten liggen er twee op 112–114 m van het monument.
-Eén reparatie kost **32 seconden heen-en-terug** — in die tijd lopen er bij
-`maxActieveRobots` 5 tot 13 robots binnen. Die twee punten zijn tijdens een
-wave dus feitelijk onbruikbaar; ze bestaan alleen op papier.
+| Poort | Afstand | `normal` (1,4–2,4 m/s) | `tank` (0,77–1,32 m/s) |
+|---|---:|---|---|
+| Damstraat | 70 m | 29–50 s | 53–91 s |
+| Rokin | 94 m | 39–67 s | 71–122 s |
+| Damrak | 97 m | 40–69 s | 73–125 s |
+| Kalverstraat | 121 m | 51–87 s | 92–158 s |
+| Nieuwendijk | 124 m | 52–88 s | 94–**161 s** |
+
+Een trage tank uit Nieuwendijk is **bijna drie minuten** onderweg voordat hij
+iets doet. Zelfs een doorsnee robot uit diezelfde poort doet er ruim een
+minuut over. Dat is geen opbouw van spanning, dat is wachttijd.
+
+Erger: van de drie steunpunten liggen er twee op ~101 m van de monumentrand —
+de Kerkklok op (−67, −38) en de Koninklijke Reparatie op (−70, 5). Eén
+reparatie kost **~29 seconden heen-en-terug** bij de basisloopsnelheid van
+7 m/s. In die tijd lopen er bij `maxActieveRobots` 5 tot 13 robots binnen. Die
+twee punten zijn tijdens een wave dus feitelijk onbruikbaar; ze bestaan alleen
+op papier. Alleen de Bijenkorf-winkel ligt bruikbaar dichtbij (~8 m).
 
 De lange as van de kaart doorkruisen kost de speler 40 s. Je kunt de vijf
 poorten dus niet dekken, en je kunt er ook niet zinnig tussen kiezen — je
@@ -94,7 +104,7 @@ een Opnieuw-knop.
 
 ### 2.6 Nul testdekking
 
-116 testbestanden, allemaal voor Undead. Elke wijziging in deze game is nu
+117 testbestanden, allemaal voor Undead. Elke wijziging in deze game is nu
 gokwerk, en dit plan bevat een herschaling die letterlijk elke coördinaat
 raakt. Dit moet als eerste opgelost, niet als laatste.
 
@@ -147,8 +157,9 @@ Acht beslissingen, allemaal expliciet door de eigenaar gemaakt:
 3. IP-regels uit `CLAUDE.md` gelden onverkort: geen bestaande gamenamen,
    geen nazi-symboliek, alles origineel. De bestaande namen (Kerkklok Boost,
    Koninklijke Reparatie, Bijenkorf Upgrades) blijven.
-4. Debug-hook: alles testbaars exporteren op **`window.DefendDebug`**
-   (getters/setters voor `let`-variabelen). Eén global, geen tweede.
+4. Debug-hook: alles testbaars exporteren op de **al bestaande
+   `window.DamChaosDebug`** (getters/setters voor `let`-variabelen). Eén
+   global, geen tweede, en niet hernoemen.
 5. Balansconstanten bovenaan hun blok met een comment dat uitlegt *waarom*
    die waarde. Geen magic numbers diep in functies.
 6. Elke wijziging: eerst headless load-check (geen console errors), dan de
@@ -179,7 +190,9 @@ Acht beslissingen, allemaal expliciet door de eigenaar gemaakt:
 
 De bestaande `tests/`-map werkt uitsluitend met Undead: `helpers.mjs` heeft
 één hardgecodeerde `GAME_PATH` naar `amsterdam-undead.html`, en `run-all.mjs`
-pakt alles op wat `test-*.mjs` heet.
+pakt alles op wat `test-*.mjs` heet — 117 scripts, plat in één map, plus 22
+meetscripts. **D0 splitst die map eerst op per game**, zodat de nieuwe tests
+meteen op hun definitieve plek landen.
 
 **Aanpak (D1):** naast `helpers.mjs` komt `helpers-defend.mjs`, met dezelfde
 opzet (lokale Chromium op `/opt/pw-browsers/chromium` met CI-terugval, de
@@ -199,20 +212,24 @@ elke push en hoeft dus niet te veranderen.
 verschuift. Zonder deze fase is de herschaling in fase 1 blind werk.*
 
 ### Ticket D1 — Testinfrastructuur en debug-hooks
-- **Context:** er is geen enkele test en geen enkele debug-export. Niets in
-  deze game is van buitenaf inspecteerbaar.
-- **Doel:** `window.DefendDebug` met alles wat de latere tickets nodig hebben,
-  plus `tests/helpers-defend.mjs` en een eerste rooktest.
+- **Context:** er is geen enkele test. Er is wél al een debug-export:
+  **`window.DamChaosDebug` bestaat al** (regel 3516) en exporteert onder meer
+  `scene`, `camera`, `speler`, `robots`, `munten`, `obstakels`,
+  `interactiePunten`, `spel`, `upgrades`, `ROBOT_TYPES`, `kerkklokBoost`,
+  `spawnRobot`, `spawnRobotVanafPoort`, `vernietigRobot`, `raakRobot`,
+  `schiet`, `startWave`, `updateWaveSysteem`, `robotRaaktMonument`,
+  `isVrijePlek`, `geldStand()`/`geldZet(n)` en de vier multiplier-functies.
+  Dit ticket **breidt uit**, het maakt niets nieuws aan — en de naam blijft
+  `DamChaosDebug`, hernoemen levert alleen ruis op.
+- **Doel:** de ontbrekende exports erbij, plus `tests/helpers-defend.mjs` en
+  een eerste rooktest.
 - **Stappen:**
-  - Debug-object aan het eind van de module, met minimaal: `scene`, `camera`,
-    `speler`, `spel`, `upgrades`, `robots`, `obstakels`, `munten`,
-    `interactiePunten`, `GRENS`, `MONUMENT_POSITIE`, `MONUMENT_BOX`,
-    `SPAWN_POORTEN`, `ROBOT_TYPES`, `afstandTotMonument`, `isVrijePlek`,
-    `losBotsingenOp`, `spawnRobot`, `spawnRobotVanafPoort`, `startWave`,
-    `updateWaveSysteem`, `updateRobots`, `schiet`, `raakRobot`,
-    `vernietigRobot`, `robotRaaktMonument`, `koopUpgrade`, `upgradeKosten`,
-    `legMuntNeer`, `updateInteracties`, `activeerHuidigeInteractie`, `geld`
-    (getter+setter), `klok` (getter).
+  - `window.DamChaosDebug` aanvullen met wat de latere tickets nodig hebben en
+    er nu níet in zit: `GRENS`, `MONUMENT_POSITIE`, `MONUMENT_BOX`,
+    `SPAWN_POORTEN`, `afstandTotMonument`, `upgradeKosten`, `losBotsingenOp`,
+    `updateRobots`, `koopUpgrade`, `legMuntNeer`, `updateInteracties`,
+    `activeerHuidigeInteractie`, `klok` (getter). Controleer per naam of hij
+    al bestaat vóór je hem toevoegt.
   - `tests/helpers-defend.mjs`: kopie van `helpers.mjs` met `GAME_PATH` naar
     `defend-national-monument.html`, `openDefend({ simuleerPointerLock })` en
     dezelfde `makeChecker()`/`frames()`-helpers. Hergebruik de bestaande
@@ -246,20 +263,63 @@ verschuift. Zonder deze fase is de herschaling in fase 1 blind werk.*
 - **Acceptatie:** alle checks groen op de HUIDIGE schaal. Deze test is de
   referentie waartegen D4 straks wordt afgezet.
 
-### Ticket D3 — Documenten sorteren
-- **Context:** tien markdown-documenten staan door elkaar op de root, en
-  vrijwel alle inhoud gaat over Undead. Alleen dit plan gaat over deze game.
+### Ticket D0 — Testmap opsplitsen per game
+- **Context:** `tests/` bevat 117 testscripts en 22 hulp- en meetscripts, plat in één
+  map, allemaal voor Undead. Daar komen straks `test-dnm-*`-bestanden bij. Nu
+  splitsen is één keer werk; later splitsen betekent de nieuwe tests
+  verhuizen die je er net in hebt gezet.
+- **Doel:** per game een eigen submap, met gedeelde infrastructuur op
+  `tests/`-niveau.
+- **Voorgestelde indeling:**
+  - `tests/` houdt `node_modules`, `run-all.mjs`, `helpers.mjs`,
+    `helpers-defend.mjs` en `README.md`.
+  - `tests/amsterdam-undead/` krijgt de 117 bestaande tests en de meetscripts.
+  - `tests/defend-national-monument/` krijgt de nieuwe `test-dnm-*`-tests.
+- **Let op — dit is de hele moeilijkheid van dit ticket:**
+  - `run-all.mjs` doet nu `readdirSync(__dirname)` op één vlakke map (regel
+    32) en moet recursief worden, mét behoud van de uitsluitingslijst voor
+    de tests die niet parallel mogen.
+  - `helpers.mjs` resolvet `node_modules` én `../amsterdam-undead.html`
+    relatief aan `__dirname` (regels 10-11, 18). Eén niveau dieper klopt
+    `..` niet meer.
+  - Elke `import` van `./helpers.mjs` in 117 bestanden wordt `../helpers.mjs`.
+- **Acceptatie:** `node run-all.mjs` vindt exact evenveel scripts als nu en is
+  groen. Dit ticket verandert geen enkele assertie — alleen paden.
+- **Volgorde:** vóór D1, zodat `helpers-defend.mjs` en de eerste
+  `test-dnm-*`-tests meteen op hun definitieve plek landen.
+
+### Ticket D3 — Documenten sorteren ☑ AFGEROND
+- **Context:** elf markdown-documenten stonden door elkaar op de root, en
+  vrijwel alle inhoud ging over Undead. Alleen dit plan ging over deze game.
 - **Doel:** scheiding zonder de live-URL's te breken.
-- **Stappen:**
-  - `docs/amsterdam-undead/`: `ROADMAP.md`, `SONNET_EXECUTION_PLAN.md`,
-    `ARCHITECTURE_NOTES.md`, `AUDIO.md`, `FINALE.md`, `GUNFEEL.md`,
+- **Wat er daadwerkelijk is gebeurd:**
+  - Mappen `docs/amsterdam-undead/` en `docs/defend-national-monument/`
+    aangemaakt, alles met `git mv` verplaatst.
+  - Documenten die per game bestaan kregen een achtervoegsel:
+    `ARCHITECTURE_NOTES_undead.md`, `ROADMAP_undead.md`,
+    `SONNET_EXECUTION_PLAN_undead.md` en, aan de andere kant,
+    `SONNET_EXECUTION_PLAN_monument.md`. Losse rapporten (`AUDIO.md`,
+    `VISUEEL.md`, `ZOMBIE_V2_BASELINE.md`, …) hielden hun kale naam: de map
+    zegt al bij welke game ze horen.
+  - Nieuw aangemaakt: `ARCHITECTURE_NOTES_monument.md` en
+    `ROADMAP_monument.md`.
+  - 19 verwijzingen in `amsterdam-undead.html` en tientallen in de tests en
+    documenten herschreven; `git grep` op de oude namen geeft niets meer.
+  - `CLAUDE.md` bijgewerkt: nieuwe bestandsstructuur, naamgevingsregel, en de
+    onjuiste zin over "de bestaande regressiesuite voor Defend National
+    Monument" gecorrigeerd — die suite bestond niet.
+- **Bevinding onderweg:** `window.DamChaosDebug` bleek al te bestaan. D1 is
+  daarop bijgesteld (uitbreiden i.p.v. aanmaken).
+- **Oorspronkelijke stappen (ter referentie):**
+  - `docs/amsterdam-undead/`: `ROADMAP_undead.md`, `SONNET_EXECUTION_PLAN_undead.md`,
+    `ARCHITECTURE_NOTES_undead.md`, `AUDIO.md`, `FINALE.md`, `GUNFEEL.md`,
     `TIERVISUALS.md`, `VISUEEL.md`, `ZOMBIE_V2_BASELINE.md`,
     `PERFORMANCE_AUDIT.md`, `IDEEEN.md`.
   - `docs/defend-national-monument/`: dit plan.
   - `CLAUDE.md` en `README.md` blijven op de root (projectbreed).
   - **De twee HTML-bestanden en `index.html` blijven staan** — de live-URL's
     veranderen niet.
-  - Verwijzingen bijwerken: `git grep -n "ROADMAP.md\|ARCHITECTURE_NOTES.md"`
+  - Verwijzingen bijwerken: `git grep -n "ROADMAP_undead.md\|ARCHITECTURE_NOTES_undead.md"`
     over alle `.md`-bestanden én de HTML-comments.
   - `CLAUDE.md`: de bestandsstructuur-sectie bijwerken, en de onjuiste zin
     over "de bestaande regressiesuite voor Defend National Monument"

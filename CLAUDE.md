@@ -13,29 +13,51 @@ Klein browsergame-portaal met twee losse single-file Three.js games:
 - Alles origineel: eigen namen (NL/Amsterdams thema), eigen vormen, eigen geluiden via Web Audio.
 
 ## Bestandsstructuur
+De drie HTML-bestanden blijven bewust in de root: dat zijn de live URL's van
+GitHub Pages. Alle documentatie staat per game in een eigen map onder `docs/`.
+
 ```
 index.html                      → hoofdmenu (alleen HTML/CSS + 2 links, geen game-code)
-defend-national-monument.html   → bestaande game, byte-voor-byte verplaatst
-amsterdam-undead.html           → nieuwe game, single-file, zelfde technische regels
-CLAUDE.md                       → dit bestand
-ROADMAP.md                      → roadmap + tickets
-README.md                       → speler-gerichte uitleg
+defend-national-monument.html   → game 1
+amsterdam-undead.html           → game 2, single-file, zelfde technische regels
+CLAUDE.md                       → dit bestand (portaalbreed)
+README.md                       → speler-gerichte uitleg (portaalbreed)
+
+docs/amsterdam-undead/
+  ARCHITECTURE_NOTES_undead.md      → invarianten, contracten, valkuilen
+  ROADMAP_undead.md                 → roadmap + tickets
+  SONNET_EXECUTION_PLAN_undead.md   → uitvoeringsplan
+  AUDIO.md · FINALE.md · GUNFEEL.md · IDEEEN.md · PERFORMANCE_AUDIT.md
+  TIERVISUALS.md · VISUEEL.md · ZOMBIE_V2_BASELINE.md   → losse rapporten
+
+docs/defend-national-monument/
+  ARCHITECTURE_NOTES_monument.md    → invarianten, contracten, valkuilen
+  ROADMAP_monument.md               → roadmap + tickets
+  SONNET_EXECUTION_PLAN_monument.md → uitvoeringsplan (D1-D26)
 ```
 
+**Naamgevingsregel:** documenten die per game bestaan krijgen een achtervoegsel
+(`_undead` / `_monument`), zodat ze in een editor-tab of zoekresultaat zonder
+pad uit elkaar te houden zijn. Losse rapporten die maar voor één game bestaan
+houden hun kale naam; de map zegt al bij welke game ze horen.
+
 ## Werkwijze
-- **Wijzig `defend-national-monument.html` NIET, tenzij de gebruiker er expliciet om vraagt.**
+- **Werk aan één game tegelijk, en schrijf in de documenten van díe game.** Een
+  wijziging aan `amsterdam-undead.html` wordt vastgelegd in
+  `docs/amsterdam-undead/`, een wijziging aan `defend-national-monument.html` in
+  `docs/defend-national-monument/`. Nooit kruislings.
 - Elke game blijft één zelfstandig HTML-bestand: geen frameworks, geen externe assets, geen textures/modellen, alleen Three.js via de bestaande importmap-CDN en simpele geometrieën.
   - **Eén uitzondering, vastgelegd in T175:** ingesloten audiofragmenten (base64 data-URI, nooit een los bestand) voor menselijke stem, mits elk fragment een regel heeft in `ASSETS.md` met bron, auteur, licentie (CC0 of gelijkwaardig), datum en SHA-256. Alle overige audio blijft procedureel. Deze uitzondering geldt niet voor beeld.
   - De IP-regels hierboven blijven onverkort gelden: ook onder deze uitzondering is audio uit bestaande games uitgesloten.
 - Hergebruik uit de bestaande game gaat via **kopiëren en aanpassen** in `amsterdam-undead.html`, nooit via gedeelde JS/CSS-bestanden of het aanpassen van de bestaande game.
-- Kleine stappen: één ticket per keer (zie ROADMAP.md), na elke stap syntax-/laadcheck en de relevante tests.
+- Kleine stappen: één ticket per keer (zie de ROADMAP van de game waaraan je werkt), na elke stap syntax-/laadcheck en de relevante tests.
 - Commit/push alleen op expliciet verzoek van de gebruiker.
 - Debug-hook patroon: exporteer testbare functies op `window.<GameNaam>Debug` (zoals `DamChaosDebug`), zodat headless Playwright-tests state kunnen inspecteren.
 
 ## Testinstructies
 - Headless: Playwright + lokale Chromium (`executablePath: '/opt/pw-browsers/chromium'`), CDN-intercept die `three.module.js` lokaal serveert (zie bestaande testscripts in de scratchpad); pointer lock simuleren via `Object.defineProperty(document, 'pointerLockElement', ...)`.
 - Handmatig (macOS): `python3 -m http.server 8000` in de repo-root, dan `http://localhost:8000/` in Chrome of Safari. Dubbelklikken op het bestand werkt meestal ook (CDN vereist internet).
-- Bestaande regressiesuite voor Defend National Monument moet groen blijven; testscripts wijzen na Ticket 1 naar `defend-national-monument.html`.
+- De regressiesuite in `tests/` (117 testscripts, `node run-all.mjs`) dekt **alleen Amsterdam Undead** en moet groen blijven. Voor Defend National Monument bestaat nog geen enkele test; die wordt opgebouwd vanaf ticket D1 met het voorvoegsel `test-dnm-`.
 
 ## Bekende valkuilen
 - De pauze-gate (`document.pointerLockElement === renderer.domElement`) bepaalt of de game-loop simuleert; tests moeten pointer lock simuleren.

@@ -1,5 +1,5 @@
 // Golf-cyclus: start/spawn/einde, wave-rewards en auto-heal.
-// Zie ARCHITECTURE_NOTES.md §1 ("Waves: starten, spawnen, eindigen") voor
+// Zie ARCHITECTURE_NOTES_undead.md §1 ("Waves: starten, spawnen, eindigen") voor
 // de exacte symbolen (startGolf/updateGolf/spelStaat).
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 

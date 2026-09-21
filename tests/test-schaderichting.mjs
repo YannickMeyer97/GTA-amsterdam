@@ -5,8 +5,8 @@
 // boot-hoorn-pan en de kelder-waypointgraaf elders) reken kundig linksom-
 // georiënteerd (atan2), maar CSS rotate() is rechtsom-positief — dus
 // toonSchadeRichting() negeert relatieveHoek bewust vóór het in de
-// rotate()-transform te zetten. Zie ROADMAP.md Ticket 68 en
-// ARCHITECTURE_NOTES.md §7.8.2.
+// rotate()-transform te zetten. Zie ROADMAP_undead.md Ticket 68 en
+// ARCHITECTURE_NOTES_undead.md §7.8.2.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });

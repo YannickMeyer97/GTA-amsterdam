@@ -1,6 +1,6 @@
 // Ticket 41 — integratie: eindregressie + performance-audit voor de hele
 // v0.16-ronde (T30-T40 samen). Bewaakt de vier expliciete audits uit
-// ROADMAP.md/SONNET_EXECUTION_PLAN.md: lichttelling <= bestaand (22,
+// ROADMAP_undead.md/SONNET_EXECUTION_PLAN_undead.md: lichttelling <= bestaand (22,
 // geverifieerd tegen commit b59c794, direct vóór Ticket 30) + 1 nieuwe
 // permanente lamp (winkelLicht), precies 1 schaduwwerpende lamp, effect-
 // plafonds na een stress-golf van ECHTE schiet()-aanroepen (een aanvulling

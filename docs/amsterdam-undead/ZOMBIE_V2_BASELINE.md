@@ -1,7 +1,7 @@
 # Zombie V2 — meetbasis (Ticket 117)
 
 Nederlands, zoals de rest van de projectdocumentatie. Dit document is het
-opleverproduct van Ticket 117 (SONNET_EXECUTION_PLAN.md, ronde 9): een exacte
+opleverproduct van Ticket 117 (SONNET_EXECUTION_PLAN_undead.md, ronde 9): een exacte
 meting van Zombie V1 en de renderer eromheen, vóór er ook maar één regel aan
 Zombie V2 gebouwd wordt. De sectie "Zombie V2" hieronder blijft leeg tot
 Ticket 129 (het eindrapport) 'm invult — de structuur is nu al identiek aan
@@ -27,7 +27,7 @@ Twee instrumenten, precies zoals het ticket vraagt ("meten, niet aannemen"):
    instrument, maar dan voor de LEVENDE game in een echte browser. Dit is
    waar FPS/gemiddelde frametijd/p95 vandaan moeten komen: die zijn in de
    headless SwiftShader-omgeving van dit project **niet betrouwbaar
-   meetbaar** (§10.3/§8.11 van `ARCHITECTURE_NOTES.md`/`SONNET_EXECUTION_
+   meetbaar** (§10.3/§8.11 van `ARCHITECTURE_NOTES_undead.md`/`SONNET_EXECUTION_
    PLAN.md` — softwarerendering geeft geen zinnige GPU-tijd). Elke
    frametijd-waarde hieronder die ontbreekt, ontbreekt daarom EXPLICIET om
    die reden, niet omdat hij vergeten is.
@@ -71,7 +71,7 @@ getallen.
 De meshtelling varieert in werkelijkheid per ondode (11-13, afhankelijk van
 het gelote variatieprofiel — `gebocheld` voegt een bochel-mesh toe, wat het
 maximum verklaart), maar de STRUCTUUR bevestigt de aanname uit
-`SONNET_EXECUTION_PLAN.md`'s ronde-9-intro exact: tot 13 zichtbare meshes,
+`SONNET_EXECUTION_PLAN_undead.md`'s ronde-9-intro exact: tot 13 zichtbare meshes,
 tot 11 eigen materiaalinstanties (nooit gedeeld tussen onderdelen — elke
 `maakOndodeMateriaal()`-aanroep is een verse `MeshStandardMaterial`), en
 elk van die 13 meshes is een eigen raycast-target (geen aparte hitbox-laag

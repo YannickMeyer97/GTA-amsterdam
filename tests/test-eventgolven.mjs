@@ -1,6 +1,6 @@
 // Eventgolven: basisframework (Ticket 6) + Mistgolf-fog (Ticket 7) +
 // Sluiper (Ticket 8) + Mistgolf-spawngewichten (Ticket 9).
-// Zie ARCHITECTURE_NOTES.md §1 "Waves" en ROADMAP.md Tickets 6-9.
+// Zie ARCHITECTURE_NOTES_undead.md §1 "Waves" en ROADMAP_undead.md Tickets 6-9.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();

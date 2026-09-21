@@ -2,7 +2,7 @@
 // (los van de VENSTERS-barricadesystemen) die op golfmijlpalen 5/10/15
 // dichtgetimmerd raken (materiaal-wissel, geen nieuwe mesh), plus een
 // ereplank bij de Smederij die per gesmeed wapen een medaillon oplicht.
-// Zie ROADMAP.md Ticket 85 en ARCHITECTURE_NOTES.md §9.6. De groei-vrije
+// Zie ROADMAP_undead.md Ticket 85 en ARCHITECTURE_NOTES_undead.md §9.6. De groei-vrije
 // mesh-/materiaal-/obstakeltelling over 25 golven zit in test-resources.mjs
 // (sectie f) — dit bestand bewaakt de FUNCTIONELE correctheid.
 import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';

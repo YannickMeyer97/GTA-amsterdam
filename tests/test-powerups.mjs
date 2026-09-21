@@ -1,6 +1,6 @@
 // Power-ups: drop/pickup/verval, de vier effecten, en het drop-slot per
 // golf (Ticket 16, vervangt de Ticket 2/feedbackronde-cooldowns) plus de
-// aparte, langere Kerninslag-cooldown (Ticket 3). Zie ARCHITECTURE_NOTES.md
+// aparte, langere Kerninslag-cooldown (Ticket 3). Zie ARCHITECTURE_NOTES_undead.md
 // §1 "Power-up drops" / "Power-up effecten" en §4.1.
 import { openAmsterdamUndead, makeChecker, geefSpelerVuurwapen } from './helpers.mjs';
 

@@ -5,8 +5,8 @@
 // bestaande late-game sink (De Ontsnapping, ONTSNAPPING_PRIJS — €1000 sinds
 // Ticket 184, was €2500) meet. Bewust GEEN check
 // van isOntsnappingsGolf()/de gang-naar-de-gracht — die horen bij T52-57,
-// die in deze ronde niet zijn uitgevoerd (zie ROADMAP.md Ticket 51).
-// Zie ARCHITECTURE_NOTES.md §6 en ROADMAP.md Ticket 51.
+// die in deze ronde niet zijn uitgevoerd (zie ROADMAP_undead.md Ticket 51).
+// Zie ARCHITECTURE_NOTES_undead.md §6 en ROADMAP_undead.md Ticket 51.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();

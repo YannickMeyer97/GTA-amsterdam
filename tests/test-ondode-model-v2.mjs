@@ -1,7 +1,7 @@
 // Ticket 118 (v0.23, ronde 9 — Zombie V2 fundament): structuurchecks voor de
 // SkinnedMesh-/botskelet-architectuur. Uitsluitend structuur — GEEN
 // gameplay-asserts (schade/hitdetectie komen in T120, zie de ticket-spec in
-// SONNET_EXECUTION_PLAN.md).
+// SONNET_EXECUTION_PLAN_undead.md).
 // Ticket 119 voegde 'pelvis'/'chest' toe aan het skelet (9 botten i.p.v. 7)
 // — de bonecount-checks hieronder zijn bijgewerkt naar die nieuwe telling;
 // de animatiechecks zelf (pelvis-sway/chest-lag) staan in
@@ -63,7 +63,7 @@ const spawnStructuur = await page.evaluate(() => {
     // `delen.armL` is sindsdien altijd een Bone, zonder uitzondering. Vóór
     // T182 was dat 81% van de tijd waar (het profiel kwam 19% van de spawns
     // voor), en die 19% liet deze test af en toe crashen — zie het nawoord
-    // bij T176 in ROADMAP.md voor de volledige geschiedenis.
+    // bij T176 in ROADMAP_undead.md voor de volledige geschiedenis.
     armLIsBone: delen.armL.isBone === true,
     armRIsBone: delen.armR.isBone === true,
     beenLIsBone: delen.beenL.isBone === true,

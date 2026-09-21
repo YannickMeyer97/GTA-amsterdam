@@ -4,7 +4,7 @@
 > zijn inmiddels uitgewerkt tot tickets: E1 → **T87** (met een
 > architectuurwijziging, zie hieronder), E6 → **T85**, I1 → **T80**,
 > I4 → **T81**, I5 → **T82**, J3 → **T86**, K1 → **T83**, K2 → **T84**.
-> Zie ROADMAP.md sectie v0.21 en ARCHITECTURE_NOTES.md §9.
+> Zie ROADMAP_undead.md sectie v0.21 en ARCHITECTURE_NOTES_undead.md §9.
 >
 > **Eén idee is bij die uitwerking gewijzigd.** E1 beschreef een zolder
 > bóven het Atelier. Dat blijkt een load-bearing invariant te breken:
@@ -18,7 +18,7 @@
 Dit document beschrijft geen taken en verandert geen code. Het is een verkenning: waar zit
 ruimte in dit spel, en wat zou ik daar zelf in bouwen. Alle verwijzingen naar functies,
 constanten en regelbereiken zijn gecontroleerd tegen `amsterdam-undead.html` (8197 regels,
-v0.20, na Architectuurronde 6) en tegen `ARCHITECTURE_NOTES.md`/`ROADMAP.md`.
+v0.20, na Architectuurronde 6) en tegen `ARCHITECTURE_NOTES_undead.md`/`ROADMAP_undead.md`.
 
 ---
 

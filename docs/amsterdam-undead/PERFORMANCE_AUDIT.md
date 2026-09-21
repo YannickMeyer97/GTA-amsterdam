@@ -652,7 +652,7 @@ laten zien wat er gebeurt als een test nominale getallen vergelijkt in
 plaats van het echte effect te meten (de T154-ruiskalibratie zat er 5–23
 dB naast met een groene test). Dit rapport heeft dezelfde vorm gevonden
 aan de renderkant: de headless suite kan de GPU-kant niet zien en zal
-daarover ook nooit alarm slaan. **Advies: leg in `ARCHITECTURE_NOTES.md`
+daarover ook nooit alarm slaan. **Advies: leg in `ARCHITECTURE_NOTES_undead.md`
 vast dat renderkosten uitsluitend via de F3-overlay op echte hardware
 beoordeeld worden, en dat een groene headless suite daar expliciet geen
 uitspraak over doet.** Dat is de conclusie die deze audit het langst

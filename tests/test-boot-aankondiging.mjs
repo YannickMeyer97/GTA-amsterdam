@@ -5,7 +5,7 @@
 // conventie als toonSchadeRichting()/de minimap-speler-driehoek (reken kundig
 // linksom-georiënteerd, dus de pan-berekening negeert bewust -sin() —
 // front/behind alleen kunnen die sign-mirror-bugklasse niet vangen, vandaar
-// expliciete links/rechts-checks hieronder). Zie ARCHITECTURE_NOTES.md
+// expliciete links/rechts-checks hieronder). Zie ARCHITECTURE_NOTES_undead.md
 // §7.8.2/§7.6.5 voor de conventie-uitleg elders in de codebase.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 

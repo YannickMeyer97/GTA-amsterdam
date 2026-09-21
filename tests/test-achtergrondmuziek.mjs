@@ -4,7 +4,7 @@
 // met een eigen volumeplafond (Fix 2: opgehoogd naar 0.08) en een aparte,
 // langzamere glijtijd. De gain-doelwaarde volgt de spelfase: zachter tijdens
 // een golf-aankondiging, voller zodra er ondoden actief zijn, anders een
-// rustig basisniveau. Zie ROADMAP.md Ticket 66 en ARCHITECTURE_NOTES.md §7.7.
+// rustig basisniveau. Zie ROADMAP_undead.md Ticket 66 en ARCHITECTURE_NOTES_undead.md §7.7.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });

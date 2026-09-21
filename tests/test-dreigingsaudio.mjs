@@ -5,7 +5,7 @@
 // vast volume 0.07, anders stil) — minder subtiel aan/uit-geruis bij elk
 // klein beetje dreiging. Getest via de pure helper + debug-getters/tellers,
 // niet via echte geluidsmeting (headless Chromium heeft geen audio-output).
-// Zie ARCHITECTURE_NOTES.md §6.7 en ROADMAP.md Ticket 49.
+// Zie ARCHITECTURE_NOTES_undead.md §6.7 en ROADMAP_undead.md Ticket 49.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });

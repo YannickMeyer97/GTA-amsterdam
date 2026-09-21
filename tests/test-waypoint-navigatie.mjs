@@ -1,6 +1,6 @@
 // Ticket 64 — Waypoint-navigatiegraaf: architectuur en dataset, en
 // Ticket 65 — Waypoint-integratie: ad-hoc chokepoint-code vervangen. Zie
-// ARCHITECTURE_NOTES.md §7.6 voor het ontwerp. Dit bestand dekt:
+// ARCHITECTURE_NOTES_undead.md §7.6 voor het ontwerp. Dit bestand dekt:
 // (1) de ZONE_WAYPOINTS-dataset + zoekWaypoint()-lookup als losstaande
 // unit-achtige checks (T64), (2) dat de oude eigenInGracht/spelerInGracht/
 // inZoneVier-special-case niet meer bestaat (T65), (3) trajectory-trace-
@@ -15,7 +15,7 @@
 // dus het eerste generieke voorbeeld dat de "dichtstbijzijnde waypoint"-
 // regel in zoekWaypoint() (i.p.v. gewoon de eerste match) daadwerkelijk
 // nodig heeft. test-gracht-dock.mjs blijft het primaire chokepoint-bewijs
-// voor zone 4 (ongewijzigd gebleven, zie ROADMAP.md Ticket 65);
+// voor zone 4 (ongewijzigd gebleven, zie ROADMAP_undead.md Ticket 65);
 // test-kelder-trap.mjs blijft het primaire kelder-bewijs (Y-beweging,
 // deur 5, toegang) — dit bestand dekt alleen de nieuwe waypoint-laag zelf.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
@@ -264,7 +264,7 @@ check('...en komt de speler in de kelderruimte dicht genoeg te staan (binnen 1m)
 // PUNT ervan weerhouden zich met kelderoost-verkeer te bemoeien (anders
 // leest elke kelderoost-positie als "andere kant" dan de hoofdkelder,
 // met een magneet-effect bij de trapvoet tot gevolg — zie de uitgebreide
-// geschiedenis in amsterdam-undead.html / ARCHITECTURE_NOTES.md §7.6.5) ----
+// geschiedenis in amsterdam-undead.html / ARCHITECTURE_NOTES_undead.md §7.6.5) ----
 const kelderoostLookup = await page.evaluate(() => {
   const d = window.AmsterdamUndeadDebug;
   const hoofdkelder = { x: d.KELDER_X_WEST + 3, z: (d.KELDER_Z_NOORD + d.KELDER_Z_ZUID) / 2 };

@@ -5,7 +5,7 @@
 // Feedback: De Gang (zone 1) is een bewuste uitzondering — daar blijft het
 // HUD-label wel meewisselen, maar de grote aankondigingsbanner verschijnt
 // nooit (ook niet bij het allereerste bezoek).
-// Zie ARCHITECTURE_NOTES.md §6.8 en ROADMAP.md Ticket 50.
+// Zie ARCHITECTURE_NOTES_undead.md §6.8 en ROADMAP_undead.md Ticket 50.
 import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });

@@ -158,8 +158,8 @@ op GitHub `main`) naar originele namen — zie IP-regels in CLAUDE.md.
 # v0.14+ — Architectuurronde
 
 Ontworpen door Claude Fable; uitvoering later door Claude Sonnet, één ticket
-per keer. Lees eerst `ARCHITECTURE_NOTES.md` (codekaart + ontwerpbeslissingen)
-en `SONNET_EXECUTION_PLAN.md` (volgorde + kant-en-klare prompts).
+per keer. Lees eerst `ARCHITECTURE_NOTES_undead.md` (codekaart + ontwerpbeslissingen)
+en `SONNET_EXECUTION_PLAN_undead.md` (volgorde + kant-en-klare prompts).
 Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 4 = wave-redesign (T13–T15), 5 = Pack-a-Punch (T11–T12, bewust ná fase 4).
 
@@ -625,9 +625,9 @@ Fasen: 1 = balans (T1–T5), 2 = debug (T10), 3 = eventgolven (T6–T9),
 
 Ontworpen door Claude Fable ná de uitvoering van v0.14 (fases 1–5 zijn
 geïmplementeerd); uitvoering later door Claude Sonnet, één ticket per keer.
-Lees eerst `ARCHITECTURE_NOTES.md` §4 (codekaart-aanvullingen, huidige
+Lees eerst `ARCHITECTURE_NOTES_undead.md` §4 (codekaart-aanvullingen, huidige
 plattegrond + lus-voorstel, ontwerpbeslissingen 14–20) en
-`SONNET_EXECUTION_PLAN.md` (fases 6–9 + prompts).
+`SONNET_EXECUTION_PLAN_undead.md` (fases 6–9 + prompts).
 Fasen: 6 = power-up-droplimieten (T16), 7 = Smederij-visuals (T17),
 8 = zombie-herwerking (T18–T23), 9 = map-lus (T24–T29). Fase 8 komt vóór
 fase 9: beide herschrijven een andere helft van `updateOndoden()`.
@@ -1080,7 +1080,7 @@ Vijf verbetergebieden in één samenhangende ronde: (1) leesbare en
 ontwijkbare aanvallen, (2) sterkere schietfeedback, (3) de Smederij naar
 de bijkeuken, (4) uniek silhouet + eigen lichtkleur per winkel, (5)
 sfeer, materiaalgevoel en vijandleesbaarheid. Architectuur staat vast in
-`ARCHITECTURE_NOTES.md` §5 + ontwerpbeslissingen 21–32; de tickets
+`ARCHITECTURE_NOTES_undead.md` §5 + ontwerpbeslissingen 21–32; de tickets
 hieronder zijn implementatie, geen ontwerp. Volgorde: 30 → 41, fases:
 
 - **Fase 10 — aanvalsleesbaarheid**: T30, T31 (verbetergebied 1)
@@ -1683,14 +1683,14 @@ win-conditie en moeilijkheidsgraden; (2) **golfvariatie** — de
 Stroomuitval-eventgolf naast de Mist; (3) **wapenarsenaal** — De Hagelketel
 als derde wapen; (4) **presentatie** — een dreigingsaudio-laag en
 zone-naambanners; (5) **late-game balans** — een pacing-audit voor golf
-16+. Architectuur staat vast in `ARCHITECTURE_NOTES.md` §6 +
+16+. Architectuur staat vast in `ARCHITECTURE_NOTES_undead.md` §6 +
 ontwerpbeslissingen 33–42; de tickets hieronder zijn implementatie, geen
 ontwerp.
 
 **Update ná speeltest (Tickets 42-45 zijn intussen geïmplementeerd en
 gespeeld):** de gebruiker gaf vier stukken feedback, verwerkt als een
 feedbackronde binnen verbetergebied 1 — Tickets 52-56, zie
-`ARCHITECTURE_NOTES.md` §6.12-§6.15 (ontwerpbeslissingen 43-47). De
+`ARCHITECTURE_NOTES_undead.md` §6.12-§6.15 (ontwerpbeslissingen 43-47). De
 Hagelketel (Tickets 47-48, verbetergebied 3) is op verzoek van de
 gebruiker naar de Backlog verplaatst (zie onderaan dit bestand) —
 verbetergebied 3 vervalt daarmee voorlopig uit deze ronde.
@@ -2444,8 +2444,8 @@ Volgorde nu: 42 → 46, dan 52 → 57, dan 49 → 51, fases:
 
 ## v0.19 — Fable-architectuurronde 5: Visuele/ruimtelijke diepte, AI en oriëntatie (T58-60 ✅ geïmplementeerd, T61-68 gepland)
 
-Architectuur: zie ARCHITECTURE_NOTES.md §7 (beslissingen 49-61).
-Sonnet-prompts: zie SONNET_EXECUTION_PLAN.md, "ronde 5 (v0.19)".
+Architectuur: zie ARCHITECTURE_NOTES_undead.md §7 (beslissingen 49-61).
+Sonnet-prompts: zie SONNET_EXECUTION_PLAN_undead.md, "ronde 5 (v0.19)".
 **Tickets 58-60 (PALET, procedurele texturen, post-processing) zijn
 geïmplementeerd, getest (41/41 regressiescripts groen) en met
 voor/na-screenshots opgeleverd** — zie de Status-velden hieronder voor
@@ -2537,13 +2537,13 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
   — alle drie debug-geëxporteerd.
   **Regel-interpretatie (belangrijk):** dit ticket herziet expliciet de
   aanname uit Ticket 38 ("CLAUDE.md verbiedt ook canvas-gegenereerde
-  textures") — zie ARCHITECTURE_NOTES.md §7.3 voor de volledige
+  textures") — zie ARCHITECTURE_NOTES_undead.md §7.3 voor de volledige
   redenering. Dit was een bewuste, aan de gebruiker voorgelegde keuze
   (niet stilzwijgend overschreven).
 - **Afhankelijk van:** T58 (voor consistente kleurbasis; niet strikt
   blokkerend maar wel logisch eerst)
 - **Doel:** materialen visuele diepte geven zonder externe
-  afbeeldingsbestanden te gebruiken (zie ARCHITECTURE_NOTES.md §7.3
+  afbeeldingsbestanden te gebruiken (zie ARCHITECTURE_NOTES_undead.md §7.3
   voor de regel-interpretatie).
 - **Huidige situatie:** `matFamilie()` levert vlakke,
   kleur-plus-ruwheid `MeshStandardMaterial`s zonder enige
@@ -2625,7 +2625,7 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
   één extra subtiele pass, resize-bewust (`onresize` roept ook
   `composer.setSize()` aan), geladen via Three.js' eigen
   `examples/jsm/postprocessing/*`-submodules op dezelfde bestaande
-  CDN-host als de kern-`three.module.js` (zie ARCHITECTURE_NOTES.md
+  CDN-host als de kern-`three.module.js` (zie ARCHITECTURE_NOTES_undead.md
   §7.3/§7.4.3).
 - **Codegebieden:** importmap (`<script type="importmap">`),
   render-loop, `onresize`-handler.
@@ -2634,7 +2634,7 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
 - **Randgevallen:** de CDN moet daadwerkelijk de
   postprocessing-submodules voor de gebruikte Three.js-versie serveren
   — dit MOET eerst geverifieerd worden vóór er code tegenaan
-  geschreven wordt (zie SONNET_EXECUTION_PLAN.md-waarschuwing 32); als
+  geschreven wordt (zie SONNET_EXECUTION_PLAN_undead.md-waarschuwing 32); als
   dat niet lukt, ticket blokkeren en terugmelden, niet improviseren met
   een ander CDN of een losse copy-paste van de module-broncode.
 - **Performancevoorwaarden:** exact 1 shadow-castende light blijft
@@ -2917,7 +2917,7 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
   bestaande `GRENS`-rechthoek, bereikbaar via een vaste
   trap-corridor waarin `speler.positie.y` lineair interpoleert tussen 0
   en een vaste kelderdiepte puur als functie van positie langs de
-  trap-as (zie ARCHITECTURE_NOTES.md §7.5.1). Buiten die band blijft
+  trap-as (zie ARCHITECTURE_NOTES_undead.md §7.5.1). Buiten die band blijft
   `positie.y` exact zoals nu.
 - **Codegebieden:** nieuwe kelder-/trapconstantes, `speler.positie`
   (Y-veld toevoegen/gebruiken), render-/camera-hoogtecode
@@ -2928,7 +2928,7 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
 - **Randgevallen:** elke bestaande plek die met `speler.positie` rekent
   (schietrichting, botsingen, zone-lookup) moet expliciet
   gecontroleerd worden op impliciete "Y is altijd 0"-aannames vóór dit
-  ticket als afgerond geldt (zie ARCHITECTURE_NOTES.md §7.9).
+  ticket als afgerond geldt (zie ARCHITECTURE_NOTES_undead.md §7.9).
 - **Performancevoorwaarden:** trap-Y-interpolatie is een simpele
   per-frame lineaire berekening binnen een smalle band — geen
   allocaties, geen zware per-frame lookup.
@@ -3006,7 +3006,7 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
 
   **Feedbackronde 2 (gameplay): kelder niet langer permanent veilig.** Op
   verzoek herroepen: zombies mogen nu wél de kelder in, maar niet
-  allemaal tegelijk. Zie ARCHITECTURE_NOTES.md §7.5.4 voor de volledige
+  allemaal tegelijk. Zie ARCHITECTURE_NOTES_undead.md §7.5.4 voor de volledige
   onderbouwing en code; samengevat: (1) alleen een ondode die al
   dichtbij het deurgat stond op het moment dat de speler afdaalt, krijgt
   (permanent) toestemming om de trap te gebruiken (`ondode.magKelderBinnen`,
@@ -3037,7 +3037,7 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
   runs; volledige regressie: 42/42 groen.
 
   **Feedbackronde 3b (verlichting): kelder-helderheid t.o.v. de
-  woonkamer, ook tijdens Stroomuitval.** Zie ARCHITECTURE_NOTES.md
+  woonkamer, ook tijdens Stroomuitval.** Zie ARCHITECTURE_NOTES_undead.md
   §7.5.5 voor de volledige onderbouwing. Samengevat: de kelder was in
   beide standen merkbaar donkerder dan de woonkamer (beginruimte); op
   verzoek ("allebei, met kleinere stappen in elk") zowel de
@@ -3061,7 +3061,7 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
   oostmuur van de nu kleinere kamer aan te staan; de twee kamerlampen kregen om
   dezelfde reden nieuwe, kleinere offsets (anders vielen ze exact samen).
   `KELDER_NABIJ_AFSTAND` nogmaals verhoogd, 6 -> 12 m. Zie
-  ARCHITECTURE_NOTES.md §7.5.6 voor de volledige onderbouwing, inclusief
+  ARCHITECTURE_NOTES_undead.md §7.5.6 voor de volledige onderbouwing, inclusief
   waarom de "ver weg"-test in `test-kelder-trap.mjs` sectie 11 een kortere
   simulatieduur (30 i.p.v. 100 ticks) nodig had om deterministisch te
   blijven bij de kleinere veiligheidsmarge van de grotere straal.
@@ -3079,7 +3079,7 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
   altijd dezelfde `magKelderBinnen=true`-doorgifte als de speler, zonder
   afstandsdrempel. (2) De kelderkleuren (`KELDER_TINT` en de vloerkleur)
   zijn verdonkerd tot ~20% lagere gemeten pixelhelderheid. Zie
-  ARCHITECTURE_NOTES.md §7.5.7 voor de volledige onderbouwing, inclusief
+  ARCHITECTURE_NOTES_undead.md §7.5.7 voor de volledige onderbouwing, inclusief
   waarom sectie 11 van `test-kelder-trap.mjs` is herschreven (test nu het
   NIEUWE onbeperkte gedrag i.p.v. de oude afstandsgating) en waarom
   `test-stroomuitval.mjs` ongewijzigd groen blijft (test alleen
@@ -3092,7 +3092,7 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
   verzoek ("nog 15-20% donkerder") bovenop de kleuren uit Feedbackronde
   3d: `KELDER_TINT`/vloerkleur nogmaals verlaagd, iteratief getuned met
   dezelfde pixelmeting (3 metingen om de niet-lineaire albedo/helderheid-
-  relatie te compenseren, zie ARCHITECTURE_NOTES.md §7.5.8), uitkomend op
+  relatie te compenseren, zie ARCHITECTURE_NOTES_undead.md §7.5.8), uitkomend op
   ~18,1% donkerder dan de vorige ronde — binnen de gevraagde 15-20%.
   Volledige regressie: `test-kelder-trap.mjs` 37/37, `test-stroomuitval.mjs`
   36/36, volledige suite 42/42 groen.
@@ -3105,7 +3105,7 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
   geen spawn-vensters (geen ondode kan er ooit spawnen of binnenkomen),
   en bevat een klein setje passend decor (wijnrek, kratten) plus
   optioneel één bestaand interactiepunt-type herplaatst in de nieuwe
-  ruimte (zie ARCHITECTURE_NOTES.md §7.5.2-7.5.3).
+  ruimte (zie ARCHITECTURE_NOTES_undead.md §7.5.2-7.5.3).
 - **Codegebieden:** `ZONE_GRAAF`, spawn-vensterdefinities,
   `zoneVan()` (mag kelder herkennen voor HUD/label, niet voor
   AI-routing), nieuwe kelder-decorfuncties.
@@ -3140,7 +3140,7 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
 - **Afhankelijk van:** —
 - **Doel:** een generieke, data-gedreven intra-zone waypointgraaf
   opzetten als fundament voor slimmere pathfinding (zie
-  ARCHITECTURE_NOTES.md §7.6.1).
+  ARCHITECTURE_NOTES_undead.md §7.6.1).
 - **Huidige situatie:** binnen een zone loopt een ondode altijd in een
   kaarsrechte lijn naar de speler (`updateOndoden()`, regel
   ~4204-4228); cross-zone routing gebruikt wél al een BFS-graaf
@@ -3187,7 +3187,7 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
 - **Afhankelijk van:** T64
 - **Doel:** `updateOndoden()` laten routeren via de nieuwe
   waypointgraaf, én de oude ad-hoc chokepoint-special-case
-  verwijderen (zie ARCHITECTURE_NOTES.md §7.6.2).
+  verwijderen (zie ARCHITECTURE_NOTES_undead.md §7.6.2).
 - **Huidige situatie:** `updateOndoden()` gebruikt
   `GRACHTGANG_DREMPEL`/`eigenInGracht`/`spelerInGracht`/`inZoneVier`
   (regel ~4204-4228) als eenmalige, zone-4-specifieke lap voor het
@@ -3226,7 +3226,7 @@ Tickets 61-68 wachten nog op een aparte, expliciete opdracht.
 - **Sonnet solo:** ja, met verplichte volledige `test-gracht-dock.mjs`-
   regressie vóór het ticket als afgerond geldt.
 
-**Uitvoering (T64+T65 in één diff):** zie ARCHITECTURE_NOTES.md §7.6.3
+**Uitvoering (T64+T65 in één diff):** zie ARCHITECTURE_NOTES_undead.md §7.6.3
 voor het volledige verslag. Samengevat: `ZONE_WAYPOINTS`/`zoekWaypoint()`
 (nieuw, module-scope bij `ZONE_GRAAF`) vervangen de oude
 `eigenInGracht`/`spelerInGracht`/`inZoneVier`-lokale variabelen in
@@ -3251,7 +3251,7 @@ zie hieronder.
 - **Afhankelijk van:** —
 - **Doel:** een permanente, originele achtergrondmuziek-laag toevoegen
   zonder de bestaande dreigingsaudio-drone te verstoren (zie
-  ARCHITECTURE_NOTES.md §7.7.1).
+  ARCHITECTURE_NOTES_undead.md §7.7.1).
 - **Huidige situatie:** enige continue audio-laag is de
   dreigingsaudio-drone (regel 3135-3172,
   `dreigingsGainNode`/`zetDreigingsGain()`), plafond 0.07 gain; verder
@@ -3308,7 +3308,7 @@ zie hieronder.
   bovenop de bestaande HUD, elke frame (of licht doorbelast) opnieuw
   getekend: speler-positie/-richting, statische zone-omtreklijnen
   (afgeleid van bestaande zone-/muurconstantes) en nabije ondoden als
-  stippen (zie ARCHITECTURE_NOTES.md §7.8.1).
+  stippen (zie ARCHITECTURE_NOTES_undead.md §7.8.1).
 - **Codegebieden:** nieuw `<canvas id="minimapUI">`-element (HTML,
   zelfde patroon als andere HUD-`<div>`'s), nieuwe
   `tekenMinimap()`-functie aangeroepen vanuit de render-/update-loop.
@@ -3352,7 +3352,7 @@ zie hieronder.
   kijkrichting en schaderichting, dat kort oplicht en uitfaded; een
   vast, klein aantal vooraf aangemaakte wedge-elementen wordt
   hergebruikt (zelfde effects-pool-patroon als `tracerPool`/
-  `impactPool`, regel 2957-2959) — zie ARCHITECTURE_NOTES.md §7.8.2.
+  `impactPool`, regel 2957-2959) — zie ARCHITECTURE_NOTES_undead.md §7.8.2.
 - **Codegebieden:** nieuwe DOM-wedge-pool (HTML/CSS + JS-pool,
   vergelijkbaar met bestaande effect-pools), schade-afhandeling
   (`raakOndode()`/speler-schadepad) roept de pool aan.
@@ -3384,8 +3384,8 @@ zie hieronder.
 
 ## v0.20 — Architectuurronde 6: resourcebeheer, frame-budget en betrouwbaarheid (gepland, nog NIET geïmplementeerd)
 
-Architectuur: zie ARCHITECTURE_NOTES.md §8 (beslissingen 63-69).
-Sonnet-prompts: zie SONNET_EXECUTION_PLAN.md, "ronde 6 (v0.20)".
+Architectuur: zie ARCHITECTURE_NOTES_undead.md §8 (beslissingen 63-69).
+Sonnet-prompts: zie SONNET_EXECUTION_PLAN_undead.md, "ronde 6 (v0.20)".
 
 **Aanleiding.** Deze ronde komt NIET uit een feature-wens maar uit een
 volledige code-audit (senior engineer / performance engineer / game
@@ -4043,8 +4043,8 @@ rest.
 
 ## v0.21 — Ronde 7: sfeer, wereld en verhaal (gepland, nog NIET geïmplementeerd)
 
-Architectuur: zie ARCHITECTURE_NOTES.md §9 (beslissingen 70-77).
-Sonnet-prompts: zie SONNET_EXECUTION_PLAN.md, "ronde 7 (v0.21)".
+Architectuur: zie ARCHITECTURE_NOTES_undead.md §9 (beslissingen 70-77).
+Sonnet-prompts: zie SONNET_EXECUTION_PLAN_undead.md, "ronde 7 (v0.21)".
 Herkomst van de ideeën: `IDEEEN.md` (E1, E6, I1, I4, I5, J3, K1, K2).
 
 **Aanleiding.** Anders dan v0.20 (die uit een code-audit kwam) komt deze
@@ -4457,7 +4457,7 @@ Y-invariant, en zijn het minst vergevingsgezind.
   `losBotsingenOp()` hoefde NIET aangepast: de footprint ligt al binnen
   GRENS, dus er is geen bypass nodig zoals bij de kelder. Obstakels
   52 → 56, lichtbudget onveranderd 26. Zie tests/test-vliering.mjs (30
-  checks) en ARCHITECTURE_NOTES.md §9.8.1.
+  checks) en ARCHITECTURE_NOTES_undead.md §9.8.1.
 - **Afhankelijk van:** — (doe 'm als laatste van de ronde)
 - **Doel:** verticaliteit toevoegen zonder de Y-invariant te breken waar
   vijf systemen tegelijk op rusten.
@@ -5436,7 +5436,7 @@ als idee genoteerd op verzoek van de gebruiker — geen ontwerp, geen
 architectuur, geen ticket-uitwerking. Oppakken pas na expliciete opdracht.~~
 **Bijgewerkt in v0.19 (Fable-architectuurronde 5):** dit idee is nu volledig
 uitgewerkt als **Ticket 66** (zie hierboven, sectie "v0.19"), met
-architectuur in ARCHITECTURE_NOTES.md §7.7.1 (beslissing 59, volgt het
+architectuur in ARCHITECTURE_NOTES_undead.md §7.7.1 (beslissing 59, volgt het
 bestaande dreigingsaudio-drone-patroon). Nog steeds NIET geïmplementeerd —
 oppakken pas na expliciete opdracht.
 
@@ -5457,7 +5457,7 @@ gevonden optimalisaties doorgevoerd:
    haperen (garbage-collector-pauzes bij ~5.900 allocaties/s met 14
    ondoden op 60fps), zonder enig gameplay- of visueel verschil.
 
-Zie ARCHITECTURE_NOTES.md §7.9.1 voor de volledige onderbouwing
+Zie ARCHITECTURE_NOTES_undead.md §7.9.1 voor de volledige onderbouwing
 (inclusief de pixelmetingen per punt) en waarom castShadow NIET van
 decor-meshes is afgehaald (bewust buiten scope — raakt gedeelde
 helperfuncties door de hele kaart heen voor een onzekere aanvullende
@@ -5472,7 +5472,7 @@ voor de volledige ticketbeschrijving). `ZONE_WAYPOINTS`/`zoekWaypoint()`
 vervangen de oude `eigenInGracht`/`spelerInGracht`/`inZoneVier`-special-
 case voor de bijkeuken/gracht-gang-opening (zone 4). `test-gracht-dock.mjs`
 bleef ongewijzigd groen; nieuw testbestand `tests/test-waypoint-navigatie.mjs`
-dekt de dataset/lookup plus trajectory-traces. Zie ARCHITECTURE_NOTES.md
+dekt de dataset/lookup plus trajectory-traces. Zie ARCHITECTURE_NOTES_undead.md
 §7.6.3 voor het volledige verslag. Volledige regressie: 43/43 groen.
 
 ## Feedbackronde — Kelder-trap chokepoint (na T64/T65)
@@ -5492,26 +5492,31 @@ waypoint, verandert niet van gedrag). Resultaat: de oversteek duurt nu
 ~2,5s i.p.v. ~9s, en de totale reistijd naar een speler diep in de
 kelder daalt van ~20s naar ~12s.
 
-Zie ARCHITECTURE_NOTES.md §7.6.4 voor het volledige verslag.
+Zie ARCHITECTURE_NOTES_undead.md §7.6.4 voor het volledige verslag.
 `tests/test-waypoint-navigatie.mjs` uitgebreid met dataset-checks voor
 zone 2, richtingsafhankelijke lookup-checks en een trajectory-trace die
 het 3s-plafond bewaakt. `test-kelder-trap.mjs` bleef ongewijzigd groen.
 Volledige regressie: 43/43 groen.
 
 Daarnaast een bijgewerkte plattegrond van de volledige huidige kaart
-(topologie-diagram + coördinatentabel) toegevoegd als ARCHITECTURE_NOTES.md
+(topologie-diagram + coördinatentabel) toegevoegd als ARCHITECTURE_NOTES_undead.md
 §7.11 — vervangt het verouderde §4.6 (dat dateert van vóór de
 map-lus/kelder/gracht-ronde en blijft staan als historisch document).
 
 ---
 
-## Openstaande verbeteringen Defend National Monument (bevroren tot expliciet gevraagd)
-- Performance verbeteren
-- Wave balancing testen
-- Game over en restart flow verbeteren
+## Defend National Monument
+
+Die game heeft sinds de documentensortering een eigen roadmap:
+`docs/defend-national-monument/ROADMAP_monument.md`. De drie punten die hier
+tijdens de bevroren periode genoteerd stonden (performance, wave balancing,
+game over/restart-flow) zijn daarheen verhuisd en gedekt door de tickets
+D2/D6/D7/D8/D9/D16/D21.
+
+Niets in dit bestand gaat nog over die game.
 
 ## Regels
-- main blijft stabiel; Defend National Monument niet aanraken tenzij expliciet gevraagd
+- main blijft stabiel
 - geen grote rewrite, geen gedeelde engine in v1
 - geen externe assets; elke game blijft single-file
 - elke stap eerst testen (headless + handmatig) voordat die naar main gaat
@@ -7638,7 +7643,7 @@ zelf al zegt ("dit is niet vanuit de ontwikkelomgeving te meten").
     exact regelnummer vervangen en elk apart geverifieerd, niet met een
     brede `replace` over het hele bestand.
   - **De historische documentatie is niet herschreven.** Tickets 19/31/126
-    in dit bestand en in `ARCHITECTURE_NOTES.md` beschrijven wat er destijds
+    in dit bestand en in `ARCHITECTURE_NOTES_undead.md` beschrijven wat er destijds
     gebouwd is en blijven dat doen; waar een historische passage door de
     verwijdering feitelijk onjuist zou worden (bijvoorbeeld "arm-pivots
     kunnen ontbreken"), staat er een korte, gedateerde vervolgnoot bij in

@@ -10,6 +10,9 @@ op de achtergrond in Amsterdam.
 | `index.html` | Hoofdmenu met de twee games |
 | `defend-national-monument.html` | **Defend National Monument** — verdedig het Nationaal Monument tegen golven robots (voorheen `index.html`) |
 | `amsterdam-undead.html` | **Amsterdam Undead** — first-person undead wave-survival in een Amsterdams grachtenpand |
+| `docs/amsterdam-undead/` | Alle documentatie van Amsterdam Undead (roadmap, architectuur, uitvoeringsplan, rapporten) |
+| `docs/defend-national-monument/` | Alle documentatie van Defend National Monument |
+| `tests/` | Headless Playwright-regressiesuite |
 
 ## Spelen
 
