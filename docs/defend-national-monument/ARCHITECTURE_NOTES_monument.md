@@ -538,6 +538,18 @@ De Bijenkorf-winkel sluit zichzelf zodra hij niet meer het dichtstbijzijnde
 punt is (regel 2859), zodat de 1/2/3-hotkeys niet actief blijven als je
 wegloopt.
 
+**Twee van de drie punten liggen zelf NIET op een vrije plek** — gevonden bij
+D2. De Kerkklok- en Reparatie-markering staan op hun eigen, kleine
+geregistreerde rechthoek (regel 1168/1278: de markering zelf is een
+obstakel, zodat je er niet doorheen loopt). `isVrijePlek(x, z)` op het
+exacte punt-coördinaat geeft voor beide dus `false`, ook al zijn ze
+overduidelijk speelbaar — de speler nadert van opzij, niet via het
+middelpunt. **De juiste vraag is niet "is het punt zelf vrij", maar "kan de
+speler ergens binnen de interactieradius gaan staan"** — dat is wat
+`test-dnm-kern.mjs` bemonstert (24 hoeken op 75% van de radius). Bij D10
+(tien nieuwe bouwplekken) geldt dezelfde valkuil: een bouwplek-markering zal
+zelf ook een obstakel zijn.
+
 ---
 
 ## 8. Wapen en schot
@@ -709,13 +721,22 @@ bestand.
 
 ## 13. Testdekking
 
-**Nul.** De 117 testscripts in `tests/` gaan allemaal over
-`amsterdam-undead.html`. Voor deze game bestaat er geen enkele test, geen
-helper en geen meetscript.
+Ná D0/D1/D2: twee bestanden, 90 checks in totaal.
 
-Dat is de reden dat `SONNET_EXECUTION_PLAN_monument.md` bij D1 begint en niet
-bij de herschaling: een arena 1:3 verkleinen zonder testvangnet is een
-wijziging waarvan je de schade pas ziet als je er zelf tegenaan loopt.
+- `tests/defend-national-monument/test-dnm-laadt.mjs` (D1, 20 checks): de
+  game laadt, de wereld is gebouwd, wave 1 staat klaar, en alle 53
+  debug-sleutels zijn aanwezig.
+- `tests/defend-national-monument/test-dnm-kern.mjs` (D2, 70 checks):
+  gedragstests in verhoudingen — poorten en interactiepunten binnen `GRENS`
+  en bereikbaar, een route-simulatie per poort die ook na D4's herschaling
+  nog betekenis heeft, de wave-/upgrade-/cooldown-formules, en
+  `robotRaaktMonument()`.
+
+Vóór D0/D1 was dit **nul**: alle 117 (nu 118) testscripts in `tests/` gingen
+uitsluitend over `amsterdam-undead.html`. Dat was de reden om met
+testinfrastructuur te beginnen in plaats van met de herschaling: een arena
+1:3 verkleinen zonder testvangnet is een wijziging waarvan je de schade pas
+ziet als je er zelf tegenaan loopt.
 
 Nieuwe tests krijgen het voorvoegsel **`test-dnm-`**, zodat `run-all.mjs` ze
 vanzelf oppikt zonder dat de undead-suite verandert.

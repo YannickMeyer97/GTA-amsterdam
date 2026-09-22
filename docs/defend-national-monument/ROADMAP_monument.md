@@ -40,7 +40,7 @@ Legenda: ☐ open · ◐ bezig · ☑ af
 | --- | --- | --- |
 | ☑ | **D0** | Testmap opsplitsen per game |
 | ☑ | **D1** | Testinfrastructuur en debug-hooks uitbreiden |
-| ☐ | **D2** | Gedragstests die een herschaling overleven |
+| ☑ | **D2** | Gedragstests die een herschaling overleven |
 | ☑ | **D3** | Documenten sorteren |
 
 D0 komt vóór D1: de testmap moet gesplitst zijn voordat `helpers-defend.mjs`
@@ -171,6 +171,56 @@ alleen door de sleutelcheck heen glipt.
 screenshot-determinismetoets) draaide 3× schoon in isolatie — een
 bestaande load-gevoelige flake, geen regressie. De nieuwe D1-test zelf:
 20/20. `amsterdam-undead.html` en `index.html` zijn niet aangeraakt.
+
+### D2 — Gedragstests die een herschaling overleven
+
+Nieuw: `tests/defend-national-monument/test-dnm-kern.mjs`, 70 checks in acht
+secties — spawnpoorten binnen `GRENS`, interactiepunten binnen `GRENS` en
+bereikbaar, geen twee interactiepunten binnen elkaars radius, een
+route-simulatie per poort (normale én tank-botsstraal), de wave-formules
+voor n = 1/5/10/13/20, `kiesRobotTypeVoorWave` per wave, `upgradeKosten` voor
+alle niveaus, `huidigeSchotCooldown` en `robotRaaktMonument`. Alles in
+verhoudingen, geen absolute coördinaten — dit bestand is de referentie
+waartegen D4's herschaling wordt afgezet.
+
+Geen enkele gameplay-constante aangeraakt; alleen het nieuwe testbestand.
+
+**Twee aannames uit het plan bleken bij het bouwen onjuist, allebei vóór het
+eerste testrun gecorrigeerd:**
+
+1. **"Elk interactiepunt ligt op een vrije plek" klopt niet.** De Kerkklok-
+   en Reparatie-markering staan zelf op hun eigen, kleine geregistreerde
+   rechthoek (dat is de bedoeling — je loopt niet doorheen de markering).
+   `isVrijePlek()` op het exacte coördinaat gaf dus `false` voor allebei,
+   ook al zijn ze overduidelijk speelbaar. Vervangen door een
+   "bereikbaar"-check: 24 hoeken bemonsteren op 75% van de interactieradius
+   en eisen dat minstens één richting vrij is. Dat bewaakt wat er echt toe
+   doet — kan de speler er binnen bereik van komen — in plaats van een
+   toevallige eigenschap van de markering zelf.
+2. **De tank-botsstraal (0,45 × 1,4 = 0,63) kan de echte aankomstdrempel
+   (0,6) NOOIT halen** — dat is meetkunde, geen routeprobleem: een lichaam
+   met straal 0,63 kan nooit dichter dan 0,63 bij de monumentdoos komen,
+   dus de vaste 0,6 zou de test altijd laten falen, ook op een verder
+   probleemloze route. De drempel is nu straal-relatief (`straal + 0,15`,
+   dezelfde marge die de echte 0,6 t.o.v. de echte botsstraal 0,45 al
+   had). Met die correctie bereikten alle 5 poorten × 2 botsstraal-
+   varianten het monument in 280–621 stappen — geen enkele vastloper op de
+   huidige schaal.
+3. **`huidigeSchotCooldown()` haalt het plafond van 0,07s niet op
+   vuurtempo-niveau 5 alleen.** De formule is
+   `max(0.07, (0.26 - niveau·0,035) × getComboVuurtempoMultiplier())`; op
+   niveau 5 zonder combo geeft dat 0,085s. Het plafond vereist niveau 5 ÉN
+   combo ≥ 10 (multiplier 0,7×). Beide gevallen worden nu apart getest.
+
+**Verificatie:** 70/70 groen, 3× schoon in isolatie gedraaid (de
+route-simulatie en de 1000-trekkingen-per-wave typecheck zijn de
+RNG-gevoelige onderdelen). Volledige suite (`node run-all.mjs`, 119
+scripts): **118/119 groen** — de ene uitvaller is opnieuw
+`test-nachthemel.mjs`, dezelfde bestaande flake als bij D1, niet door dit
+ticket aangeraakt. Zowel `test-dnm-kern.mjs` (70/70) als `test-dnm-laadt.mjs`
+(20/20) draaiden binnen de volledige suite schoon. Geen enkele
+gameplay-constante in `defend-national-monument.html` aangeraakt — alleen
+het nieuwe testbestand en de twee documenten.
 
 ### D3 — Documenten sorteren
 
