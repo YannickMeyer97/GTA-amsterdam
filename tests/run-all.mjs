@@ -29,9 +29,27 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { chromium } from 'playwright';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-let scripts = readdirSync(__dirname)
-  .filter(f => (f.startsWith('check-') || f.startsWith('test-')) && f.endsWith('.mjs'))
-  .sort();
+
+// Ticket D0 (SONNET_EXECUTION_PLAN_monument.md): tests/ is opgesplitst per
+// game — tests/amsterdam-undead/ en tests/defend-national-monument/, elk met
+// hun eigen check-*.mjs/test-*.mjs. We doorzoeken daarom elke eerste-niveau
+// submap i.p.v. alleen __dirname zelf, zodat beide games in dezelfde run
+// meelopen zonder een tweede runner nodig te hebben. Scripts worden als pad
+// relatief aan __dirname bewaard (bv. "amsterdam-undead/test-foo.mjs"), zodat
+// draaiScript() ze zo weer met path.join(__dirname, script) kan openen.
+function vindScripts(basisMap) {
+  const gevonden = [];
+  for (const entry of readdirSync(basisMap, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    for (const bestand of readdirSync(path.join(basisMap, entry.name))) {
+      if ((bestand.startsWith('check-') || bestand.startsWith('test-')) && bestand.endsWith('.mjs')) {
+        gevonden.push(path.join(entry.name, bestand));
+      }
+    }
+  }
+  return gevonden.sort();
+}
+let scripts = vindScripts(__dirname);
 
 // Sharding, uitsluitend via env vars — geen CLI-args, zodat een kale
 // `node run-all.mjs` (bestaande gewoonte, ROADMAP_undead.md/SONNET_EXECUTION_
@@ -127,7 +145,7 @@ let fails = 0;
 for (const script of scripts) {
   console.log(`\n========== ${script} ==========`);
   let code = await draaiScript(script);
-  if (code !== 0 && HERKANSING.has(script)) {
+  if (code !== 0 && HERKANSING.has(path.basename(script))) {
     console.log(`\n(herkansing: ${script} staat bekend als wall-clock-timing-gevoelig in deze omgeving — zie ROADMAP_undead.md Ticket 78)`);
     code = await draaiScript(script);
   }

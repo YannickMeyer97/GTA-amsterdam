@@ -1,11 +1,18 @@
 # Amsterdam Undead — headless testsuite
 
-Headless Playwright-tests tegen `../amsterdam-undead.html`, rechtstreeks via
-`window.AmsterdamUndeadDebug` (zie CLAUDE.md voor de debug-hook-conventie).
+Headless Playwright-tests tegen `../../amsterdam-undead.html`, rechtstreeks
+via `window.AmsterdamUndeadDebug` (zie CLAUDE.md voor de debug-hook-conventie).
 Deze map bestaat sinds Ticket 10 van de v0.14+ architectuurronde
-(zie `../docs/amsterdam-undead/ROADMAP_undead.md` en `../docs/amsterdam-undead/SONNET_EXECUTION_PLAN_undead.md`) — daarvoor stonden
+(zie `../../docs/amsterdam-undead/ROADMAP_undead.md` en `../../docs/amsterdam-undead/SONNET_EXECUTION_PLAN_undead.md`) — daarvoor stonden
 deze tests alleen in een sessie-scratchpad en overleefden ze geen nieuwe
 sessie.
+
+**Ticket D0** (`docs/defend-national-monument/SONNET_EXECUTION_PLAN_monument.md`)
+splitste `tests/` op per game, zodat de nieuwe Defend National Monument-tests
+er niet doorheen gaan lopen. Deze bestanden staan sindsdien in
+`tests/amsterdam-undead/`, niet meer los in `tests/`. `node_modules`,
+`run-all.mjs`, `run-all-parallel.mjs`, `helpers.mjs` en dit README-bestand
+blijven gedeeld op `tests/`-niveau.
 
 ## Installeren
 
@@ -22,12 +29,19 @@ in plaats daarvan `npx playwright install chromium` nodig zijn — pas dan
 
 ## Draaien
 
+Een los script draai je vanuit `tests/amsterdam-undead/`:
+
 ```bash
+cd amsterdam-undead
 node check-load.mjs        # snelle load-check (geen console errors)
 node test-golf-cyclus.mjs  # golf start/spawn/einde, wave-rewards, heal
 node test-varianten.mjs    # ondode-varianten (Loper/Sjouwer/Brander)
 node test-powerups.mjs     # power-up drop/pickup/effecten + cooldowns
+```
 
+De volledige suite (beide games, zie D0) draai je vanuit `tests/` zelf:
+
+```bash
 node run-all.mjs           # alle scripts na elkaar + samenvatting
 node run-all-parallel.mjs  # dezelfde suite, verdeeld over N kind-processen — sneller
 ```
@@ -81,10 +95,10 @@ voor snelle iteratie tijdens het ontwikkelen, niet als vervanging daarvan.
 
 ## Patroon (voor nieuwe testscripts)
 
-Gebruik `helpers.mjs`:
+Gebruik `helpers.mjs` — sinds D0 een niveau hoger dan de testscripts zelf:
 
 ```js
-import { openAmsterdamUndead, makeChecker } from './helpers.mjs';
+import { openAmsterdamUndead, makeChecker } from '../helpers.mjs';
 
 const { browser, page, errs } = await openAmsterdamUndead();
 const { check, report } = makeChecker();

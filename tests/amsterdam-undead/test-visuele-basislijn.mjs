@@ -1,0 +1,780 @@
+// Ticket 88 (v0.22, §10.4-beslissing 79, §10.4.1, nulmeting §10.17): de
+// visuele basislijn en helderheidsvangrail voor ronde 8 (v0.22). Vóór alle
+// andere v0.22-tickets, want ná drie tickets weet je niet meer welk ticket
+// welke verschuiving veroorzaakte (zelfde patroon als T77 vóór T69, en de
+// rastertest vóór de vliering-geometrie in T87).
+//
+// Bewaakt twee dingen:
+//   1. De pixelhelderheid op acht vaste standpunten blijft binnen een SMALLE
+//      band (orde 1-2%) van de vastgelegde waarde.
+//   2. De zes ronde-brede invarianten uit §10.2 blijven intact: 28 lichten,
+//      1 schaduwwerper, 57 obstakels (T131-baseline, -1 door Ticket 183), 13 interactiepunten, 4 composer-
+//      passes (3 t/m T95, sinds T96 de eigen naverwerkingspass erbij; T97/
+//      T98 breiden diezelfde pass uit, dus blijft 4 voor de rest van de ronde).
+//
+// Twee meetvallen zijn hier de reden dat dit ticket bestaat en niet triviaal
+// is (zie §10.4.1 + het reviewverslag §10.18):
+//   - De lampflikker geeft 11,2% spreiding over 90 frames als je 'm niet
+//     bevriest. `visueleBevriesTijd` (amsterdam-undead.html) lost dat op.
+//   - `gl.readPixels()`/`canvas.toDataURL()` leveren zwart/leeg op
+//     (preserveDrawingBuffer: false) — alleen `page.screenshot()` werkt.
+// Twee EXTRA vallen, tijdens het bouwen van dit ticket zelf gevonden en dus
+// niet in het architectuurdocument vastgelegd toen dat geschreven werd:
+//   - Met pointer lock gesimuleerd (het gebruikelijke testpatroon) staat
+//     spelActief permanent aan, en dan blijven de kelderhals-druppel, de
+//     winkelmarkering-puls en de stofwolken (allemaal dt-gedreven, niet
+//     gedekt door visueleBevriesTijd/lampDipFactor/mistUitfaseTimer) gewoon
+//     doorlopen tijdens de meting. `openVoorVisueleMeting()` (helpers.mjs)
+//     verbergt het DOM-startscherm ZONDER pointer lock te mocken, zodat
+//     spelActief nooit aan gaat — gemeten: 0,000% spreiding over 10
+//     metingen op hetzelfde standpunt, BINNEN één testrun.
+//   - TUSSEN losse testruns bleef daarna nog tot 6% spreiding over
+//     (zichtbaar in kamers met `lampLichten`, afwezig waar het licht van
+//     stabiele `buitenLichten` komt) — `hangLamp()` geeft elke lamp een
+//     willekeurige flikkerfase bij het bouwen van de wereld
+//     (`Math.random()`, dus anders bij elke page-load), en die fase blijft
+//     ONgemoeid door visueleBevriesTijd (dat bevriest alleen de tijd-term,
+//     `Math.sin(t*7+fase)` is op t=0 nog steeds `Math.sin(fase)`, een
+//     andere constante per run). `openVoorVisueleMeting()` pint nu ook
+//     `lampLichten[].fase = 0` — geverifieerd: <0,05% restspreiding over
+//     4 losse browserruns.
+import { openVoorVisueleMeting, berekenVisueleStandpunten, zetVisueelStandpunt, makeChecker } from '../helpers.mjs';
+import { PNG } from 'pngjs';
+
+const { browser, page, errs } = await openVoorVisueleMeting();
+const { check, report } = makeChecker();
+
+// Ticket 159: deze hele basislijn is gemeten op de renderconfiguratie van
+// vóór T159 (bloom en schaduwen aan) — de stand waarop de helderheidsbalans
+// van T88 is afgestemd.
+//
+// DEZE CHECK HEEFT ZICHZELF AL BEWEZEN. Toen de kwaliteitstrappen na de
+// speeltest één stap opschoven (MSAA vervallen, nieuwe laagste stand), heette
+// die referentiestand ineens `hoog` in plaats van `normaal` — en deze ene
+// check meldde dat glashelder, in plaats van de 25 mysterieuze
+// luminantie-afwijkingen die er zonder hem waren gekomen. Precies waarvoor
+// hij bedoeld was.
+//
+// `openVoorVisueleMeting()` zet die stand sindsdien expliciet vast; deze
+// check blijft de vangrail voor het geval dat ooit wegvalt.
+const actievePreset = await page.evaluate(() => window.AmsterdamUndeadDebug.kwaliteitNu);
+check('De visuele basislijn meet op de referentiestand (sinds de omzetting: `hoog`)',
+  actievePreset === 'hoog', { actievePreset });
+
+// Middenblok van het 640x400-scherm (15%-85% op beide assen) — vermijdt de
+// uiterste randen zonder de HUD-chrome bewust weg te snijden: die is nu
+// volledig deterministisch (spelActief staat nooit aan) en hoort dus gewoon
+// mee te tellen in "hoe ziet het spel eruit", net als de rest van het beeld.
+function pixelstats(buf) {
+  const png = PNG.sync.read(buf);
+  const vals = [];
+  let som = 0;
+  const x0 = Math.floor(png.width * 0.15), x1 = Math.floor(png.width * 0.85);
+  const y0 = Math.floor(png.height * 0.15), y1 = Math.floor(png.height * 0.85);
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = (png.width * y + x) << 2;
+      const l = 0.2126 * png.data[i] + 0.7152 * png.data[i + 1] + 0.0722 * png.data[i + 2];
+      som += l;
+      vals.push(l);
+    }
+  }
+  vals.sort((a, b) => a - b);
+  return { gemiddelde: som / vals.length, mediaan: vals[Math.floor(vals.length / 2)] };
+}
+
+// Ticket 98: zelfde middenblok als pixelstats(), maar dan de gemiddelde
+// R/G/B afzonderlijk — een kleurindicator los van helderheid, voor de
+// per-zone-kleurgrading-meting hieronder.
+function pixelkleur(buf) {
+  const png = PNG.sync.read(buf);
+  let r = 0, g = 0, b = 0, n = 0;
+  const x0 = Math.floor(png.width * 0.15), x1 = Math.floor(png.width * 0.85);
+  const y0 = Math.floor(png.height * 0.15), y1 = Math.floor(png.height * 0.85);
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = (png.width * y + x) << 2;
+      r += png.data[i]; g += png.data[i + 1]; b += png.data[i + 2];
+      n++;
+    }
+  }
+  return { r: r / n, g: g / n, b: b / n };
+}
+
+async function meetRenderInfo(page) {
+  return page.evaluate(() => {
+    const d = window.AmsterdamUndeadDebug;
+    d.renderer.info.autoReset = false;
+    d.renderer.info.reset();
+    return new Promise(res => requestAnimationFrame(() =>
+      res(JSON.parse(JSON.stringify(d.renderer.info.render)))));
+  });
+}
+
+const punten = await berekenVisueleStandpunten(page);
+check('Acht visuele standpunten berekend (vijf zoneVan()-zones + kelder/vliering/gracht)',
+  punten.length === 8, punten.map(p => p.naam));
+
+// --- 1. Zelf-check: bewijs dat de bevriezing werkt vóórdat we 'm gebruiken.
+// Tien opeenvolgende metingen op hetzelfde standpunt — twee is niet genoeg
+// om de flikkercyclus te vangen (§10.4.1: 11,2% spreiding gemeten over 90
+// frames zónder bevriezing).
+const zelfCheckPunt = punten.find(p => p.naam === 'woonkamer');
+const zelfCheckReeks = [];
+for (let i = 0; i < 10; i++) {
+  await zetVisueelStandpunt(page, zelfCheckPunt);
+  const buf = await page.screenshot({ type: 'png' });
+  zelfCheckReeks.push(pixelstats(buf).gemiddelde);
+}
+const zcMin = Math.min(...zelfCheckReeks), zcMax = Math.max(...zelfCheckReeks);
+const zcGem = zelfCheckReeks.reduce((a, b) => a + b, 0) / zelfCheckReeks.length;
+const zcSpreidingPct = ((zcMax - zcMin) / zcGem) * 100;
+check('Zelf-check: 10 metingen op hetzelfde standpunt blijven binnen 2% spreiding (was 11,2% zonder bevriezing)',
+  zcSpreidingPct <= 2, { reeks: zelfCheckReeks.map(v => +v.toFixed(3)), spreidingPct: +zcSpreidingPct.toFixed(3) });
+
+// --- 2. Per-zone helderheidsbasislijn -------------------------------------
+// Vastgelegde waarden, gemeten op commit a54a2f4 (ná de reviewcorrecties,
+// vóór enig v0.22-bouwticket). BAND is bewust smal (2%, "orde 1-2%" uit
+// §10.4.1) — een ticket dat 'm overschrijdt moet de nieuwe waarde HIER
+// expliciet bijwerken, mét onderbouwing in ARCHITECTURE_NOTES_undead.md §10 (zelfde
+// mechanisme als test-resources.mjs voor geheugenlekken: niet "voorkom de
+// wijziging", maar "maak de wijziging zichtbaar en bewust").
+const BAND = 0.02;
+// RENDER_BAND is ruimer: draw calls/driehoeken zijn een informatieve
+// rendermetric (§10.3), geen getunede helderheid — een ticket mag hier
+// legitiem overheen gaan (T99 telt bijvoorbeeld extra ondode-meshes), maar
+// een sprong van >25% hoort een bewuste keuze te zijn, geen toevalstreffer.
+const RENDER_BAND = 0.25;
+// Ticket 102 (v0.22, §10.7-beslissing 82): subdivisie-helper voor de grote
+// vlakken (muren/vloeren/plafonds, 1 segment -> 8x8) is precies zo'n
+// bewuste, gedocumenteerde RENDER_BAND-overschrijding — het driehoekstal
+// tilt van ~5,4k naar ~15,6k in de lichtste zone (gracht) tot ~35,4k in de
+// zwaarste (woonkamer), ruim binnen het in §10.7 vooraf ingeschatte budget
+// ("van ~18k naar mogelijk 40-60k per frame"). Geen enkele helderheids- of
+// draw-call-check verschoof (BoxGeometry/PlaneGeometry zetten per FACE een
+// uniforme analytische normal, ongeacht segmentaantal — subdivisie alleen
+// is onzichtbaar totdat T103 er per-vertex data op legt), dus alleen de
+// triangles-waarden hieronder zijn bijgewerkt.
+//
+// Ticket 103 (v0.22, §10.7-beslissing 82): ingebakken hoekocclusie (per-
+// vertex grijswaarde-gradient, muren donkerder bij vloer/plafond, vloeren/
+// plafonds donkerder bij hun randen — nooit de zijkanten van muren, om
+// deurgaten niet dicht te smeren, zie de code-toelichting bij
+// bakMuurOcclusie()). Dit RAAKT de helderheid wél echt, en op drie
+// standpunten net over de strikte 2%-BAND heen: atelier (camera dicht bij
+// de nis-hoek), binnenplaats (klinkers-mediaan, dicht bij de muurrand) en
+// vliering (bijna-zwarte baseline, dus een kleine absolute verschuiving is
+// hier al een relatief grote procentuele). Bijgewerkt met de nieuw gemeten
+// waarden; de overige vijf standpunten bleven ruim binnen de band.
+//
+// Ticket 105 (v0.22, §10.12-beslissing 87): afgeschuinde randen
+// (RoundedBoxGeometry i.p.v. BoxGeometry op meubelBox()/tafel/werkbank) —
+// een afgeschuinde rand kost per box tientallen extra driehoeken t.o.v.
+// een platte BoxGeometry (elke rand wordt een aparte facetstrook i.p.v. één
+// scherpe lijn). Alleen zones met meubelBox()-gebouwd meubilair (kratten,
+// vaten-nabijheid, kelderluik, boekenkast, werkbank e.d.) overschreden de
+// 25%-RENDER_BAND: atelier (werkbank), binnenplaats (kratten/vat), kelder
+// (kelderluik in de kelderhals-zone), vliering (De Zelflader-meubilair) en
+// gracht (kratten bij de vlonder). Geen enkele helderheidscheck verschoof —
+// consistent met T102's bevinding dat extra geometrie zonder eigen
+// lichtbron de gemeten helderheid niet raakt. Alleen triangles bijgewerkt.
+//
+// Ticket 106/107 (v0.22, §10.11-beslissing 86): wereldschaal-UV's (T106,
+// geen zichtbaar effect op zichzelf — zelfde reden als T102: de UV-waarden
+// veranderen, maar er is nog geen `map` om ze te lezen) en de echte
+// texturenset (T107: baksteenverband/planken/klinkers als ECHTE albedo
+// `map`, niet meer alleen `roughnessMap`). Dit RAAKT de helderheid wél
+// echt — een albedo-map met voeg-/naadlijnen die duidelijk donkerder zijn
+// dan het steen-/plank-/klinkeroppervlak zelf (T107_ALBEDO_BASIS=232 met
+// -65 tot -95 voor voegen) trekt het gemiddelde omlaag t.o.v. de vorige
+// situatie (geen `map`, dus effectief altijd factor 1). Zones met veel
+// beeldvullend getextureerd oppervlak: binnenplaats (klinkers vullen de
+// hele klinkersvloer in beeld, -12%), kelder (steen-muren/vloer/plafond
+// rondom, -10%), woonkamer (kleine spillover via de deuropening naar de
+// getextureerde gang, -2,2%), bijkeuken (kleine spillover, -2,3% mediaan).
+// Bijgewerkt met de nieuw gemeten waarden.
+//
+// Ticket 107-vervolg (klinkerformaat op verzoek): de natSteen-tekenaar
+// ging van 10cm naar 20x10cm klinkers (straatsteenLengte n/10 -> n/5, zie
+// CANVAS_TEXTUUR_TEKENAARS.natSteen) om de binnenplaatsvloer minder druk
+// te maken. Bij dezelfde absolute voegbreedte verschuift de verhouding
+// steen/voeg per cel licht, en de grotere klinkervlakken geven een net
+// iets andere speculaire respons (natSteen heeft lage ruwheid = glans) —
+// samen een kleine, verwachte mediaan-verschuiving in de enige zone met
+// beeldvullende klinkers (binnenplaats, 23.00 -> 22.45, -2,4%). Geen
+// andere zone raakt de klinkersvloer beeldvullend, dus alleen deze regel
+// bijgewerkt.
+//
+// Ticket 107-vervolg (klinkerrealisme): vier samenhangende wijzigingen, met
+// twee zones die daardoor terecht verschoven.
+//
+//  * BINNENPLAATS, duidelijk LICHTER (gemiddelde 31,23 -> 33,81, mediaan
+//    22,45 -> 27,23). De hoofdoorzaak is metalness 0,12 -> 0 op natSteen. In
+//    de metallic workflow geldt diffuus = albedo x (1 - metalness): die 0,12
+//    haalde dus 12% van de DIFFUSE respons weg en stopte 'm in een getinte
+//    speculaire lob die alleen onder scherpe hoeken oplichtte. Metalness op
+//    0 geeft dat diffuse deel overal terug — precies de bedoeling (steen is
+//    geen metaal), en meteen de reden dat de vloer niet langer als
+//    plaatwerk leest. De grootschalige slijtagelaag in de nieuwe tekenaar
+//    werkt dezelfde kant op (uitgebleekte plekken naast vuile).
+//  * KELDER, licht DONKERDER (gemiddelde 16,93 -> 16,38, mediaan 13,40 ->
+//    12,26). Die zone draait op 'steen', en daar keerde de roughnessMap om:
+//    voegen zijn nu doffer dan het steenvlak i.p.v. glanzender. In een
+//    donkere ruimte met zwakke puntlichten droegen juist die speculaire
+//    voeglijnen meetbaar bij aan de helderheid.
+//
+// De inversiesterkte (T107_RUWHEID_INVERSIE) is op 0,12 afgesteld, en dat
+// getal is dóór deze test bepaald: bij hogere waarden zakt de kelder ver
+// genoeg weg dat zijn eigen kleurgrading niet langer luminantie-neutraal
+// meet. De grading heeft daar een ADDITIEVE groen-lift, en hoe donkerder de
+// zone wordt, hoe zwaarder die relatief doortelt — bij inversie 0,25 liep
+// het gat gegradeerd/ongegradeerd op tot 0,79 (voorbij de
+// MEDIAAN_KWANTISATIE_VLOER van 0,5), bij 0,12 blijft het op 0,29. De
+// vangrail deed hier dus precies zijn werk: niet de grading is stuk, de
+// zone werd te donker. De fysieke correctie (voegen dof, steen glad) blijft
+// bij 0,12 volledig overeind — die was nodig omdat de richting eerst
+// OMGEKEERD was, niet omdat het contrast groot moest zijn.
+//
+// De overige zes zones bleven binnen de 2%-band: 'hout' (basisruwheid 0,75)
+// en 'steen' op grotere afstand verschuiven te weinig om de band te raken.
+//
+// Atelier-pleisterwerk: kortstondig geprobeerd (BAKSTEEN -> 'pleister' via
+// blok()/bouwMuur()'s `familie`-parameter, atelier/gang-waarden tijdelijk
+// bijgewerkt), maar op verzoek weer teruggedraaid — de gebruiker vond het
+// resultaat niet mooi. Terug naar BAKSTEEN, dus ook deze basislijn terug
+// naar de waarden van vóór die poging.
+//
+// Ticket 111 (v0.22, §10.13-beslissing 88): nachthemel. Twee afzonderlijke
+// effecten, hier uit elkaar getrokken:
+//
+//  * BINNENPLAATS en GRACHT, duidelijk LICHTER (binnenplaats 33,81 -> 39,26,
+//    gracht 19,01 -> 40,24 gemiddeld — gracht bijna verdubbeld). Dit is de
+//    bedoelde werking van de ticket, geen bug: de dome vervangt een vlakke
+//    `scene.background` (0x05080b, bijna zwart) door een echte verticale
+//    gradient met een lichtere horizonband (`kleurHorizon = 0x2a3a52`,
+//    donker staalblauw — een reëel nachtelijk hemellicht-effect, geen
+//    fout). Beide standpunten kijken vlak op de horizon: gracht heeft
+//    `pitch: 0` recht over het water (geen dak/gevel die de hemel
+//    afschermt, zie berekenVisueleStandpunten() in helpers.mjs), en de
+//    binnenplaats is de enige overdekte... nee, ONoverdekte kamerzone
+//    (buitenlucht, geen dekking — zie ZONE_FLAVOUR[3]) met veel hemel in
+//    beeld. De overige zes standpunten kijken allemaal een kamer/gang/kelder
+//    in en zien de dome niet of nauwelijks — vandaar dat alléén deze twee
+//    zones verschoven.
+//  * ALLE ACHT zones: driehoeken +704 tot +812 (de 720-driehoeks
+//    `SphereGeometry(46, 24, 16)` van de dome, altijd in beeld want de dome
+//    volgt de camera en omsluit 'm). Op zichzelf ruim binnen de
+//    25%-RENDER_BAND. Bij twee zones (gang, bijkeuken) kwam die kleine
+//    toevoeging bovenop AL bestaande, nooit expliciet bijgewerkte drift uit
+//    eerdere tickets (T106-T110 voegden geen/nauwelijks geometrie toe, maar
+//    de driehoekstelling was al ~20% hoger dan de laatst vastgelegde
+//    waarde, tot nu toe onopgemerkt omdat 20% < 25%) — samen net over de
+//    band. Bij deze gelegenheid de triangles/calls van alle acht zones
+//    ververst naar de daadwerkelijk gemeten waarden (geen enkele
+//    helderheidsimpact van de subdivisie/UV/textuurtickets zelf, zie hun
+//    eigen paragrafen hierboven).
+//
+// Ticket 112 (v0.22, §10.13-beslissing 88): skyline-silhouet. Alleen
+// BINNENPLAATS en GRACHT verschuiven — dezelfde twee zones als T111, en om
+// dezelfde reden (het zijn de enige twee standpunten met de hemel
+// beeldvullend in het frame). Ditmaal juist WEER iets DONKERDER (T111
+// bracht ze omhoog, T112 haalt er een deel van terug af): binnenplaats
+// 39,26 -> 35,21, gracht 40,24 -> 34,37. Verklaring: de skyline bestaat uit
+// vlakke, opzettelijk zeer donkere silhouetgebouwen (§ hierboven, kleuren
+// 0x03050a/0x070b13/0x0b101b) die een deel van de lichtere horizonband van
+// T111's dome aan het gezichtsveld onttrekken — precies de bedoelde
+// werking ("silhouet tegen de lichtere hemel"), geen bug. (De uiteindelijke
+// plaatsing — zie de code-toelichting bij bouwSkylineLaag() — is na twee
+// afgekeurde iteraties bijgesteld: te ver weg gaf camera.far-clipping vanaf
+// de ongunstigste speelbare hoek, te dichtbij liet de binnenplaats juist
+// kleiner aanvoelen i.p.v. groter, precies het risico dat §10.13 al
+// benoemde. Deze waarden horen bij de uiteindelijke, geteste plaatsing.)
+// De overige zes standpunten kijken een kamer/gang/kelder in en zien de
+// skyline niet — ongewijzigd. Driehoeken/calls: kleine, verwachte toename
+// op exact deze twee zones (de skylinegebouwen zijn zelf goedkope
+// BoxGeometry/ShapeGeometry-vormen, geen andere zone ziet ze), ruim binnen
+// de 25%-RENDER_BAND — alleen deze twee regels bijgewerkt.
+//
+// Ticket 113 (v0.22, §10.13-beslissing 88): verlichte raampjes in de verte.
+// Verrassing tijdens het bouwen, hier vastgelegd omdat de oorzaak niet
+// voor de hand ligt: een eerste versie (dicht rooster, gemiddeld ~4-5
+// raampjes per skylinegebouw, 125 totaal) verhoogde de draw calls in
+// VRIJWEL ALLE acht zones met ~120-150, niet alleen binnenplaats/gracht.
+// Oorzaak: Three.js doet geen occlusion-culling, alleen frustum-culling —
+// een raampje ver naar het noorden valt binnen de camera-KEGEL van élk
+// standpunt met yaw=0 (dat zijn er zeven van de acht; alleen de gracht
+// kijkt met yaw=-PI/2 een andere kant op), ook al verbergt een muur het
+// object volledig. Opgelost door een HARD budget van hoogstens 2 raampjes
+// per gebouw i.p.v. een dicht rooster (125 -> 28 raampjes totaal, zie de
+// code-toelichting bij bouwSkylineGebouw()) — daarmee bleven alle
+// driehoeken/calls-checks binnen de band, op één randgeval na: GRACHT met
+// kleurgrading actief kwam net (2,5%) over de 2%-band voor de gemiddelde
+// helderheid, puur door de kleine extra warme-raampjes-bijdrage
+// (33,72 gemeten vs. 34,37 basislijn), niet door een echte fout — bijgewerkt
+// naar 33,72. De overige zeven standpunten (en de ONgegradeerde
+// gracht-meting, die met 1,9% nog net binnen de band viel) bleven
+// ongewijzigd; alleen deze regel is aangepast.
+//
+// Ticket 114 (v0.22, §10.14-beslissing 89): levend water. Weer alleen
+// GRACHT (het enige standpunt met het water in beeld), ditmaal duidelijk
+// DONKERDER (gemiddelde 33,72 -> 31,62, -6,2%; mediaan 25,89 -> 25,60,
+// -1,1%, net binnen de band). Twee samenhangende oorzaken: (1) de
+// gebroken-specular-laag (de procedurele normal-verstoring uit
+// bouwWaterMateriaal()) verstrooit het licht van grachtLantaarnLicht over
+// een breder, minder fel gebied i.p.v. één scherpe speculaire highlight —
+// gemiddeld genomen minder pixels die vol wit oplichten; (2) de
+// vertex-deining kantelt een deel van het watervlak weg van de camera,
+// wat de MeshStandardMaterial-belichting op die vertices verzwakt. Beide
+// zijn precies de bedoelde werking van dit ticket (een levend, onrustig
+// wateroppervlak i.p.v. een vlakke, gelijkmatig verlichte plaat) — geen
+// bug. Calls/triangles bleven ruim binnen de band (kleine, verwachte
+// toename door de watersubdivisie (24x12 i.p.v. 1x1) en de nieuwe
+// reflectiestreep-mesh) en zijn niet bijgewerkt.
+//
+// T111/T114-vervolg (twee feedback-fixes van de gebruiker, samen één
+// verschuiving op GRACHT: gemiddelde 31,62 -> 22,07, mediaan 25,60 ->
+// 15,66). Beide fixes werken dezelfde kant op — donkerder — en beide zijn
+// correcties van een echte fout, geen smaakwijziging:
+//
+//  1. "Ik zie soms de blauwe lucht op de vloer; vanaf de horizon beneden
+//     moet de vloer altijd donker zijn." De nachthemel-koepel gebruikte
+//     clamp(r.y, 0, 1), waardoor de HELE onderste helft van de bol op de
+//     volle horizonkleur (0x2a3a52) stond. De koepel omsluit de camera, dus
+//     die lichte onderhelft scheen door elke kier in de wereldgeometrie —
+//     en, belangrijker voor deze meting, vulde bij een standpunt met
+//     pitch 0 de complete onderste beeldhelft zodra daar geen geometrie
+//     stond. Nu zakt alles onder de horizon weg naar kleurGrond (0x020406).
+//  2. "Bij de boot is maar een rechthoekig stuk water." Het watervlak was
+//     8x4 m en eindigde in het niets; het is nu 28x36 m en loopt door tot
+//     aan de T112-skyline. Waar vroeger (lichte) hemel onder de horizon
+//     stond, staat nu donker water.
+//
+// De gracht is het enige standpunt dat beide raakt: het kijkt met pitch 0
+// recht over het water naar de horizon, dus zijn onderste beeldhelft is
+// precies het gebied dat door allebei de fixes van "lichte hemel" naar
+// "donker water/grond" ging. De overige zeven standpunten kijken een
+// kamer in en zagen die onderhelft toch al niet.
+//
+// Bij dezelfde feedback-ronde zijn ook twee ECHTE gaten in de geometrie
+// dichtgemetseld (bouwVulMuur(): een bovendorpel boven de gangopening,
+// waar het atelier 3,6 m hoog is en de gang 3,2 m; en een vulling onder de
+// zuidmuur van de vliering, die pas op VLIERING_Y begon). Die gaten waren
+// er altijd al — vóór T111 keek je er tegen zwart aan, dus zag niemand ze.
+// Ze raken de gemeten helderheid niet meetbaar (beide zitten buiten het
+// beeld van de acht standpunten of vullen een gebied dat toch al donker
+// was), maar ze tellen wel mee in de render-metrics hieronder.
+//
+// Feedback-vervolg (verre oever + gevels op de binnenplaats). Twee zones
+// schoven opnieuw, allebei klein en allebei door toegevoegde geometrie:
+//  * BINNENPLAATS (mediaan 29,03 -> 29,82): de achtergevel van het eigen
+//    pand kreeg daklijst, goot, plint en acht kozijnen waarvan er vijf
+//    verlicht zijn, en alle binnenplaatsmuren kregen een muurafdekking.
+//    Meer verlicht oppervlak in beeld, dus een iets hogere mediaan.
+//  * GRACHT (gemiddelde 22,07 -> 23,23): het watervlak is 2 m ingekort
+//    (28 -> 26) om ruimte te maken voor de verre oever waar de skyline op
+//    staat, en die oever vult nu het gebied dat daarvoor koepel-onder-de-
+//    horizon was. Beide zijn dezelfde bijna-zwarte kleur (0x020406), dus
+//    het verschil is klein; een poging om het toe te schrijven aan tone
+//    mapping (MeshBasicMaterial gaat er wel doorheen, de koepel-shader
+//    niet) is met een meting WEERLEGD — `toneMapped:false` op de oever gaf
+//    exact dezelfde getallen. De precieze oorzaak is niet verder
+//    uitgezocht: het gaat om 1,2 helderheidspunt op een donkere zone, het
+//    beeld is visueel naadloos, en er is geen aanwijzing voor een fout.
+//
+// Driehoeken/calls van ALLE ACHT zones zijn hier ververst. Ze stonden nog
+// op de T112-waarden en waren sindsdien opgelopen door T113 (de
+// skyline-raampjes, die vanwege frustum-zonder-occlusion in bijna elke
+// zone meetellen — zie de T113-paragraaf hierboven) en T114 (het veel
+// grotere, fijner gesubdivideerde watervlak). Twee zones stonden daardoor
+// nét over de 25%-RENDER_BAND (atelier op calls, gracht op driehoeken);
+// de rest zat er onder maar wel al ver naast. Eén keer goed bijwerken is
+// zuiverder dan per ticket de ene regel bijstellen die toevallig omslaat.
+// Feedback-ronde (binnenplaats dimmen, gevels, nieuwe boot). Dit is de
+// grootste verschuiving van de hele ronde, en op één na zijn ze allemaal
+// terug te voeren op ÉÉN wijziging: de vier binnenplaatslantaarns, beide
+// maanlichten en de vulgloed zijn ~22% omlaag gezet op verzoek ("ik zou de
+// binnenplaats iets donkerder willen hebben, zeg rond de 10-30%").
+//
+//  * BINNENPLAATS zelf: 35,75 -> 30,05 (-16%), mediaan -12%. Precies in de
+//    gevraagde band. Netto, want tegelijk zijn de vloer-lichtvlekken
+//    STERKER in de kern gemaakt (opacity 0,12 -> 0,20) met een radiale
+//    alpha-uitloop i.p.v. een harde rand — de gebruiker vroeg expliciet om
+//    een donkerdere plaats waarin het lichtPUNT juist beter uitspringt.
+//  * GANG (-8%), ATELIER (-7%), BIJKEUKEN (-5,5%), WOONKAMER (-1,8%):
+//    NIET apart getuned. Deze zones krijgen licht dat door deuropeningen
+//    naar binnen lekt van de binnenplaatslampen (maanlicht heeft een bereik
+//    van 28 m, de vulgloed 24 m). Minder licht op de plaats = minder spill
+//    naar binnen. Fysisch correct gevolg, geen aparte ingreep — hoe dichter
+//    bij de binnenplaats, hoe groter het effect, en dat is precies de
+//    volgorde die hierboven staat.
+//  * KELDER: exact 0,00 verschil. De enige zone zonder zichtlijn naar
+//    buiten — een prettige bevestiging dat de spill-verklaring klopt.
+//  * GRACHT: 23,23 -> 26,49 (+14%), de enige die de ANDERE kant op ging.
+//    Dat is de nieuwe boot: die was een cilinder van 2,4 x 0,7 m en is nu
+//    een motorboot van 3,4 x 1,45 m met een lichte romp, vlak naast de
+//    grachtlantaarn. Een eerste, lichtere romptint (0xcfcabf) tilde de zone
+//    zelfs +21%; getemperd naar 0xa39f96 zodat de boot nog steeds uit het
+//    donker springt zonder de hele zone op te blazen. Daarna nog een keer
+//    omhoog naar 29,34 toen de boot LANGSZIJ kwam te liggen i.p.v. met de
+//    kop van de kade af: dat was een herkenbaarheids-fix (je keek eerst
+//    recht op de spiegel, het minst leesbare aanzicht), maar het draait
+//    daarmee wel de volle lichte flank naar de camera i.p.v. alleen de
+//    achterkant. Bewust geaccepteerd — de boot is het doel van de hele run
+//    en mag opvallen.
+//
+// Driehoeken/calls stijgen overal licht door de gevelgeleding (daklijst,
+// goot, plint, kozijnen, muurafdekkingen) en de nieuwe boot; alles ruim
+// binnen de RENDER_BAND, hier meteen meegenomen.
+// Derde feedback-ronde (binnenplaats nog donkerder, muurlek gedicht,
+// jetski als ontsnappingsvaartuig). ALLE ACHT zones schuiven, en er zijn
+// precies drie oorzaken — geen daarvan is een fout:
+//
+//  1. BINNENPLAATS -16% (30,05 -> 25,34). Op verzoek: de lampen daar nog
+//     eens ~25% omlaag, met BUITEN_STROOM_VLOER evenredig omhoog zodat de
+//     Stroomuitval-stand gelijk blijft (zie de code-toelichting daar).
+//  2. SPILL-GEVOLG, niet apart getuned: minder licht op de binnenplaats
+//     betekent minder licht dat door de deuropeningen naar binnen valt.
+//     Vandaar ATELIER -8%, GANG -8,7%, WOONKAMER -2,5%, VLIERING -0,7%.
+//     KELDER blijft exact gelijk (16,37) — de enige zone zonder zichtlijn
+//     naar buiten, en daarmee de beste bevestiging dat deze verklaring
+//     klopt en niet een toevallige samenloop is.
+//  3. LICHTBEREIK ingekort om het muurlek te stoppen (de gebruiker zag
+//     lichtplassen op de klinkers van lampen áchter een muur; een
+//     PointLight wordt in Three.js niet door geometrie tegengehouden).
+//     Dat drukte BIJKEUKEN en GRACHT eerst 21% resp. 18% omlaag, want een
+//     kortere `distance` maakt de lichtval over de eigen kamer veel
+//     steiler. Deels gecompenseerd met meer intensiteit binnen diezelfde
+//     kortere straal (bijkeukenlamp 10 -> 15, grachtlantaarn 34 -> 44);
+//     BIJKEUKEN blijft daarna -8,9%.
+//
+// GRACHT -16% (29,34 -> 24,68) is grotendeels iets anders: het
+// ontsnappingsvaartuig is vervangen. De vorige motorboot was 3,4 x 1,45 m
+// met een lichte romp; de jetski is 3,0 x 1,15 m, dieper rood, en ligt in
+// de WACHTstand (die de meting ziet, want ontsnappingsPunt is dan null)
+// 3,5 m naar links i.p.v. recht voor de vlonder. Minder en donkerder
+// oppervlak dichtbij de camera. Het opkrikken van de lantaarn van 34 naar
+// 44 bewoog deze zone dan ook nauwelijks (24,13 -> 24,68), wat bevestigt
+// dat het vaartuig de dominante factor is, niet het lantaarnbereik.
+//
+// B6 (vuil, aanslag en slijtage) — de verschuiving hieronder. Twee dingen
+// tegelijk, en het is de moeite waard ze uit elkaar te houden.
+//
+// 1. HELDERHEID omlaag, overal een beetje: -0,6% tot -3,4% op het gemiddelde.
+//    Dat is precies de bedoeling van het ticket (een aanslagband bij de
+//    vloer, een naadschaduw bij het plafond, vuilvlekken) en het is bewust
+//    KLEIN gehouden: het contrastvenster op de vlekruis
+//    (VUIL_VLEK_DREMPEL_VAN/TOT) laat ruim een kwart van de wereld volledig
+//    schoon. De eerste versie had dat venster niet en drukte álles met een
+//    halve dosis — een uniforme dimming die de basislijn zou verschuiven
+//    zonder dat je één vlek zou zien.
+//    De KELDER daalt het meest (-3,4% gemiddeld, -8,2% mediaan) en dat is
+//    geen vuil maar een gerepareerd gat: de keldermuren waren de enige muren
+//    in het pand zonder subdivisie, dus T103's randocclusie is daar nooit
+//    geland. Ze krijgen nu voor het eerst dezelfde donkere vloer-/
+//    plafondaanzet als elke andere muur, en dát is het grootste deel van de
+//    daling. GRACHT en VLIERING bewegen niet (24,68 resp. 11,36 ongewijzigd):
+//    daar staat geen enkel vuil-gemarkeerd vlak in beeld — een nette
+//    bevestiging dat de pass alleen raakt wat hij hoort te raken.
+//
+// 2. DRAW CALLS: in ALLE ACHT de zones exact ongewijzigd (627/458/273/273/
+//    586/187/264/197). Dat is de kernclaim van dit ticket en hij houdt: het
+//    vuil is puur een modulatie van het color-attribuut dat T103 hier al
+//    aanmaakte, dus nul extra objecten, nul extra texturen, nul rendertijd.
+//    DRIEHOEKEN stijgen wél, met 2,4k-3,7k per standpunt, en dat komt
+//    volledig van de negen nu gesubdivideerde keldermuren uit punt 1 — niet
+//    van het vuil. Dat ze ook meetellen in de woonkamer (+3.696) is hetzelfde
+//    frustum-zonder-occlusion-effect dat T113 al blootlegde: de kelder valt
+//    binnen de camerakegel, ook al kijk je door een vloer heen.
+// T131 (tweede vlieringtrap verplaatst naar de noordkant): het
+// vliering-standpunt (-10, -12,95) kijkt met yaw 0 recht naar het NOORDEN —
+// en daar staat sindsdien de nieuwe trap. Waar de camera eerst tegen een
+// vlakke, vrijwel onverlichte vlieringvloer aankeek, kijkt hij nu de
+// trapkoker in en door het gat in de nis-afsluitmuur heen de VERLICHTE nis
+// in. Vandaar de sprong in de mediaan (1,57 -> 7,69): een veel groter deel
+// van het beeld is nu niet-zwart. Het gemiddelde schuift veel minder
+// (11,35 -> 11,82), want de totale lichtinhoud verandert nauwelijks — er is
+// geen lichtbron bij gekomen (het budget staat nog steeds op 28). Bewust
+// bijgewerkt: dit is exact de bedoelde geometriewijziging, niet een
+// ongemerkt lichter geworden scene.
+//
+// Naamswijzigingen (AMSTEL-9/Canal Ripper/etc.): openVoorVisueleMeting()
+// toont de HUD (nodig voor andere metingen in dit bestand) en roept éénmalig
+// updateHUD() aan, die het wapenlabel ("Wapen: <naam>") schrijft op basis
+// van het ACTIEVE wapen — bij het laden altijd de Drukspuit/AMSTEL-9. Bij
+// de bijna-zwarte vliering-baseline (mediaan 7,69) valt dat lichte HUD-
+// tekstlabel binnen het gesampelde middenblok (15-85% van breedte/hoogte,
+// zie pixelstats()) zwaar genoeg op om de mediaan merkbaar te verschuiven
+// zodra de tekst zelf verandert: "AMSTEL-9" i.p.v. "Drukspuit" tilt 'm naar
+// 9,06. Geverifieerd met een directe A/B-vergelijking (alleen de naam
+// teruggezet, verder identieke build): calls/triangles blijven exact gelijk
+// (273/32280 — de kleine, onschuldige +1 call/+112 driehoeken t.o.v. de
+// vorige 272/32168 is een net zo onschuldige nevenwaarde van dezelfde HUD-
+// tekst-run, ruim binnen de 25%-RENDER_BAND), alleen de mediaan verschuift.
+// Geen geometrie- of lichtwijziging — puur de HUD-tekstinhoud. Bewust
+// bijgewerkt, geen ongemerkte scene-wijziging.
+// Ticket 134 (Fix 6, §12.5 + §12.7-vangrail 4): de speler start nu met het
+// mes in de hand i.p.v. de AMSTEL-9 — en het wapenmodel hangt aan de CAMERA
+// (0.26, -0.22, -0.5), dus het staat op ALLE ACHT standpunten in beeld,
+// ongeacht waar de camera in de wereld staat. Precies zoals dit ticket
+// vooraf aangekondigde ("het wapenmodel in beeld" naast het HUD-label,
+// zie de precedent hierboven bij T90/Fix 6): dat verschuift de hele
+// BASISLIJN-tabel, niet één zone. Twee oorzaken tegelijk:
+//   1. Het mesmodel (3 meshes: kegel + doos + capsule, staal/leer) verving
+//      de AMSTEL-9 (4 meshes: 2 cilinders + capsule + emissieve bol,
+//      groen/donkergroen) als permanent zichtbaar wapen-in-beeld.
+//   2. Het nieuwe AMSTEL-9-wandrek (6 meshes, westmuur startruimte) is aan
+//      de WERELD toegevoegd — alleen zichtbaar vanuit de woonkamer (calls
+//      627 -> 634, +7 — ruim binnen de 25%-RENDER_BAND, dus geen verdere
+//      uitsplitsing nodig dan "het rek staat erbij, het wapenmodel is
+//      1 mesh kleiner").
+// Gemeten met `node test-visuele-basislijn.mjs` ná de T134-wijzigingen
+// (leesbare JSON die het script zelf print bij een FAIL). Alle acht
+// standpunten herijkt; geen enkele buiten de RENDER_BAND (25%) — de
+// mesh-/driehoektelling verschuift met hooguit een paar procent.
+const BASISLIJN = {
+  woonkamer:    { gemiddelde: 28.03, mediaan: 16.51, calls: 634, triangles: 51145 },
+  gang:         { gemiddelde: 29.39, mediaan: 15.59, calls: 468, triangles: 38755 },
+  atelier:      { gemiddelde: 31.69, mediaan: 16.66, calls: 274, triangles: 26357 },
+  // Ticket 151: de binnenplaatsmuren gingen van vlakke GANG_PLEISTER-kleur
+  // naar de 'pleister'-materiaalfamilie MET een materiaalfamilie-bonus op
+  // VUIL_FAMILIE_FACTOR (pleisterwerk toont vocht/schade zichtbaarder dan
+  // baksteen) — een kleine, verwachte verduistering. Was 23,07/21,03; de
+  // gemiddelde-toets bleef ruim binnen de 2%-BAND (23,07 -> 22,95), maar de
+  // mediaan-toets in de kleurgrading-sectie hieronder (§6) vergelijkt tegen
+  // deze tabel en zakte net onder de kwantisatievloer (21,03 -> 20,37,
+  // -3,1%). Calls/triangles ongewijzigd: matFamilie() vervangt alleen het
+  // materiaal-object, geen extra geometrie/mesh.
+  binnenplaats: { gemiddelde: 22.95, mediaan: 20.65, calls: 274, triangles: 26733 },
+  bijkeuken:    { gemiddelde: 27.39, mediaan: 16.80, calls: 597, triangles: 47041 },
+  kelder:       { gemiddelde: 13.39, mediaan: 10.12, calls: 188, triangles: 25808 },
+  // Vliering is de bijna-zwarte baseline (net als bij het T90-HUD-tekst-
+  // precedent) — dus het gevoeligste standpunt. Het mesmodel is kleiner en
+  // donkerder (staal 0xaab0b8/leer 0x2a2018) dan de AMSTEL-9's felgroene
+  // meterDrukspuit-lampje (emissive 0x4fdc7a, expliciet BOVEN Bron-niveau
+  // getild, zie T89) — dat lampje was op deze bijna-zwarte achtergrond een
+  // disproportioneel deel van de heldere pixels in het 15-85%-venster. Zonder
+  // dat lampje daalt de mediaan van 9,06 naar 2,92 (-68%), ruim buiten de
+  // 2%-BAND maar exact verklaard: geen ander element in deze scène veranderde.
+  vliering:     { gemiddelde: 10.73, mediaan: 2.92,  calls: 274, triangles: 31948 },
+  // Feedback-fix 1 (gebruiker: "tijdens de mistgolf zie ik duidelijk dat er
+  // geen water om de vlonder heen ligt"): het watervlak begon eerst pas bij
+  // VLONDER_X_OOST (recht voor de steiger); naast het smalle dek (|z|>1
+  // binnen hetzelfde x-bereik) lag niets. Het watervlak is verbreed tot
+  // VLONDER_X_WEST, zodat de steiger — net als in het echt — water rondom en
+  // eronder heeft. GRACHT daalde daardoor 18,4% (24,68 -> 20,13).
+  // Feedback-fix 2 (gebruiker: "ik zie af en toe water door de binnenplaats
+  // lopen"): die verbreding liep te ver noordwaarts door en overlapte de
+  // binnenplaatsvloer. Opgelost door de steiger-omringing in een APARTE,
+  // smalle dokwaterMesh te zetten (eigen materiaal-instantie, dus eigen
+  // lokale golf-/rimpelcoördinaten — zie DOKWATER_LENGTE in amsterdam-
+  // undead.html) die pas bij z=-5 begint, 2m voor de binnenplaats-zuidmuur.
+  // GRACHT stijgt daardoor 29,8% (20,13 -> 26,13): het standpunt staat vrijwel
+  // boven het midden van deze nieuwe dokwaterMesh, en de rimpel-/
+  // reflectieberekening (die lokale plaatscoördinaten gebruikt, geen
+  // wereldcoördinaten) valt op déze positie helderder uit dan de oude,
+  // doorlopende plaat dat gaf. Draw calls stijgen met 1 (197 -> 198, de
+  // nieuwe dokwaterMesh is een extra draw call); driehoeken dalen licht
+  // (28859 -> 26981, het watervlak is per saldo iets kleiner na de
+  // noordwaartse clip). Geen enkele andere zone beweegt: alleen de gracht
+  // kijkt naar dit vlak.
+  // Ticket 134: zelfde oorzaak als de andere zeven — het wapenmodel in
+  // beeld wisselde van AMSTEL-9 naar mes (zie de toelichting hierboven).
+  gracht:       { gemiddelde: 22.15, mediaan: 15.66, calls: 199, triangles: 26957 },
+};
+
+const gemeten = {};
+for (const sp of punten) {
+  await zetVisueelStandpunt(page, sp);
+  const render = await meetRenderInfo(page);
+  const buf = await page.screenshot({ type: 'png' });
+  const px = pixelstats(buf);
+  gemeten[sp.naam] = { ...px, calls: render.calls, triangles: render.triangles };
+
+  const basis = BASISLIJN[sp.naam];
+  const binnenBand = (waarde, verwacht, band) =>
+    verwacht === 0 ? waarde === 0 : Math.abs(waarde - verwacht) / verwacht <= band;
+
+  check(`${sp.naam}: gemiddelde helderheid binnen ${BAND * 100}% van de basislijn`,
+    binnenBand(px.gemiddelde, basis.gemiddelde, BAND),
+    { gemeten: +px.gemiddelde.toFixed(2), verwacht: basis.gemiddelde });
+  check(`${sp.naam}: mediane helderheid binnen ${BAND * 100}% van de basislijn`,
+    binnenBand(px.mediaan, basis.mediaan, BAND),
+    { gemeten: +px.mediaan.toFixed(2), verwacht: basis.mediaan });
+  check(`${sp.naam}: draw calls binnen ${RENDER_BAND * 100}% van de basislijn`,
+    binnenBand(render.calls, basis.calls, RENDER_BAND),
+    { gemeten: render.calls, verwacht: basis.calls });
+  check(`${sp.naam}: driehoeken binnen ${RENDER_BAND * 100}% van de basislijn`,
+    binnenBand(render.triangles, basis.triangles, RENDER_BAND),
+    { gemeten: render.triangles, verwacht: basis.triangles });
+}
+
+// --- 3. De zes ronde-brede invarianten uit §10.2 --------------------------
+const invarianten = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  let lichten = 0, schaduwwerpers = 0;
+  d.scene.traverse(o => { if (o.isLight) { lichten++; if (o.castShadow) schaduwwerpers++; } });
+  return {
+    lichten, schaduwwerpers,
+    obstakels: d.obstakels.length,
+    interactiePunten: d.interactiePunten.length,
+    composerPasses: d.composer.passes.length,
+  };
+});
+check('Invariant 2: precies 28 lichten (1 hemisfeer + 27 point)', invarianten.lichten === 28, invarianten);
+check('Invariant 2: precies 1 schaduwwerpend licht', invarianten.schaduwwerpers === 1, invarianten);
+check('Invariant 5: obstakels.length blijft 57 (T131-baseline)', invarianten.obstakels === 57, invarianten);
+check('interactiePunten.length blijft 13 (Ticket 134: AMSTEL-9 erbij, Ticket 183: deur6Punt eraf)', invarianten.interactiePunten === 13, invarianten);
+check('Post-processing: 4 passes (RenderPass/Bloom/naverwerking/Output, sinds T96 — blijft 4 voor de rest van de ronde, T97/T98 breiden de bestaande naverwerkingspass uit)', invarianten.composerPasses === 4, invarianten);
+
+// --- 4. Bronvorm van de assertie: een band, geen exact getal --------------
+// Bewijst dat BAND daadwerkelijk als relatieve afwijking werkt en niet per
+// ongeluk altijd waar is (bv. door een == 0-bug in binnenBand hierboven).
+check('BAND-logica: 5% afwijking op een niet-nul basiswaarde faalt de 2%-toets',
+  Math.abs(105 - 100) / 100 > BAND, { afwijkingPct: 5, band: BAND * 100 });
+
+// --- 5. T89: de emissieve hiërarchie zelf ---------------------------------
+// De drie niveaus bestaan, en de gameplay-kritieke elementen zitten waar ze
+// horen: ondode-ogen bereiken Signaal zodra het ertoe doet (aanval/mist/
+// stroomuitval), nooit in rust. "Actieve koopmarkering" staat NIET in
+// Signaal — zie de correctie in ARCHITECTURE_NOTES_undead.md §10.5: dat zou een
+// nieuw, zichtbaar gedrag toevoegen dat vandaag niet bestaat (de
+// "beschikbaar"-status wordt gedragen door de ring + het gedeelde
+// winkelLicht, geen materiaal). icoonMesh() blijft daarom bewust ONDER
+// Bron; dat is de vastgelegde uitzondering, niet een bug.
+const hierarchie = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  // icoonMesh() aanroepen vereist een echte THREE.BufferGeometry (niet op
+  // het debug-hook geëxporteerd) — de bronvorm zelf volstaat hier, zelfde
+  // patroon als elders in deze suite (bv. test-pand-adres.mjs's
+  // bouwNaambordje()-bron-check).
+  const icoonBron = d.icoonMesh.toString();
+  const icoonMatch = icoonBron.match(/emissiveIntensity:\s*([\d.]+)/);
+  return {
+    EMISSIE_ACCENT: d.EMISSIE_ACCENT,
+    EMISSIE_BRON_MIN: d.EMISSIE_BRON_MIN,
+    EMISSIE_BRON_MAX: d.EMISSIE_BRON_MAX,
+    EMISSIE_SIGNAAL_MIN: d.EMISSIE_SIGNAAL_MIN,
+    EMISSIE_SIGNAAL_MAX: d.EMISSIE_SIGNAAL_MAX,
+    oogBasis: d.OOG_INTENSITEIT_BASIS,
+    oogAanval: d.OOG_INTENSITEIT_AANVAL,
+    oogMist: d.OOG_INTENSITEIT_MIST,
+    oogStroomuitval: d.OOG_INTENSITEIT_STROOMUITVAL,
+    kernMateriaal: d.kernMateriaal.emissiveIntensity,
+    glasMateriaal: d.glasMateriaal.emissiveIntensity,
+    icoonMeshIntensiteit: icoonMatch ? +icoonMatch[1] : null,
+  };
+});
+check('De drie niveaus zijn correct geordend: Accent < Bron-min < Bron-max < Signaal-min < Signaal-max',
+  hierarchie.EMISSIE_ACCENT < hierarchie.EMISSIE_BRON_MIN &&
+  hierarchie.EMISSIE_BRON_MIN < hierarchie.EMISSIE_BRON_MAX &&
+  hierarchie.EMISSIE_BRON_MAX < hierarchie.EMISSIE_SIGNAAL_MIN &&
+  hierarchie.EMISSIE_SIGNAAL_MIN <= hierarchie.EMISSIE_SIGNAAL_MAX,
+  hierarchie);
+check('Ondode-ogen: basis (rust) zit binnen Bron (1,2-1,6)',
+  hierarchie.oogBasis >= hierarchie.EMISSIE_BRON_MIN && hierarchie.oogBasis <= hierarchie.EMISSIE_BRON_MAX,
+  hierarchie);
+check('Ondode-ogen: aanval/mist/stroomuitval bereiken Signaal (>= 2,6)',
+  hierarchie.oogAanval >= hierarchie.EMISSIE_SIGNAAL_MIN &&
+  hierarchie.oogMist >= hierarchie.EMISSIE_SIGNAAL_MIN &&
+  hierarchie.oogStroomuitval >= hierarchie.EMISSIE_SIGNAAL_MIN,
+  hierarchie);
+check('Ondode-ogen: stroomuitval is het felst (>= mist/aanval), nooit omlaag bijgesteld',
+  hierarchie.oogStroomuitval >= hierarchie.oogMist && hierarchie.oogStroomuitval >= hierarchie.oogAanval,
+  hierarchie);
+check('kernMateriaal (Brander) en glasMateriaal zitten op Bron-max (1,6)',
+  hierarchie.kernMateriaal === hierarchie.EMISSIE_BRON_MAX && hierarchie.glasMateriaal === hierarchie.EMISSIE_BRON_MAX,
+  hierarchie);
+check('icoonMesh() (winkelmarkeringen) blijft BEWUST onder Bron — vastgelegde uitzondering, geen Signaal-tier (§10.5-correctie)',
+  hierarchie.icoonMeshIntensiteit !== null && hierarchie.icoonMeshIntensiteit < hierarchie.EMISSIE_BRON_MIN,
+  hierarchie);
+
+// --- 6. Ticket 98: per-zone kleurgrading — luminantie-neutraal, en
+// meetbaar verschillende kleur tussen kelder/atelier/binnenplaats --------
+// spelActief staat in deze meetflow nooit aan (openVoorVisueleMeting()),
+// dus de echte runtime-trigger (kleurgradingZoneVan() in gameLoop) loopt
+// hier nooit door zichzelf — de uniforms worden hier per standpunt
+// rechtstreeks gezet (KLEUR_GRADING_ZONES[i], zelfde volgorde als
+// berekenVisueleStandpunten()) zodat toch elk zone-profiel gemeten kan
+// worden. Het triggermechanisme zelf (een echte zone-wissel via lopen)
+// staat apart getest in test-naverwerking.mjs.
+const kleurgradingResultaten = {};
+for (let i = 0; i < punten.length; i++) {
+  const sp = punten[i];
+  await page.evaluate((i) => {
+    const d = window.AmsterdamUndeadDebug;
+    const p = d.KLEUR_GRADING_ZONES[i];
+    d.naverwerkingsPass.uniforms.uGradeLift.value.copy(p.lift);
+    d.naverwerkingsPass.uniforms.uGradeGamma.value.copy(p.gamma);
+    d.naverwerkingsPass.uniforms.uGradeGain.value.copy(p.gain);
+  }, i);
+  await zetVisueelStandpunt(page, sp);   // wacht zelf al 3 frames — genoeg voor de nieuwe uniform
+  const buf = await page.screenshot({ type: 'png' });
+  const px = pixelstats(buf);
+  const kleur = pixelkleur(buf);
+  kleurgradingResultaten[sp.naam] = { px, kleur };
+
+  const basis = BASISLIJN[sp.naam];
+  const binnenBand = (waarde, verwacht, band) =>
+    verwacht === 0 ? waarde === 0 : Math.abs(waarde - verwacht) / verwacht <= band;
+  check(`${sp.naam}: MET kleurgrading actief blijft de gemiddelde helderheid binnen ${BAND * 100}% van de (ongegradeerde) basislijn — luminantie-neutraliteit`,
+    binnenBand(px.gemiddelde, basis.gemiddelde, BAND), { gemeten: +px.gemiddelde.toFixed(2), verwacht: basis.gemiddelde, zone: i });
+  // De mediaan is ÉÉN 8-bit pixelwaarde (0-255), geen gemiddelde over
+  // duizenden pixels — bij een bijna-zwarte baseline (vliering: 1,65) is
+  // zelfs 1 kwantisatiestap al een schijnbaar grote procentuele afwijking,
+  // veroorzaakt door de pow()/clamp()-afronding in de gradeerstap zelf, niet
+  // door een echte luminantielek (de gemiddelde-check hierboven, die WEL
+  // over het hele middenblok middelt, blijft voor diezelfde zones ruim
+  // binnen de band). MEDIAAN_KWANTISATIE_VLOER geeft de mediaan-toets een
+  // absolute ondergrens zodat dit specifieke, begrepen randgeval geen
+  // vals-positief geeft — de gemiddelde-toets hierboven blijft de zuivere
+  // relatieve band houden.
+  const MEDIAAN_KWANTISATIE_VLOER = 0.5;
+  check(`${sp.naam}: MET kleurgrading actief blijft de mediane helderheid binnen ${BAND * 100}% (of ±${MEDIAAN_KWANTISATIE_VLOER} kwantisatiestap) van de (ongegradeerde) basislijn`,
+    Math.abs(px.mediaan - basis.mediaan) <= Math.max(basis.mediaan * BAND, MEDIAAN_KWANTISATIE_VLOER),
+    { gemeten: +px.mediaan.toFixed(2), verwacht: basis.mediaan, zone: i });
+}
+// Terug naar identiteit — netjes, mocht dit bestand ooit verder groeien.
+await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  d.naverwerkingsPass.uniforms.uGradeLift.value.set(0, 0, 0);
+  d.naverwerkingsPass.uniforms.uGradeGamma.value.set(1, 1, 1);
+  d.naverwerkingsPass.uniforms.uGradeGain.value.set(1, 1, 1);
+});
+
+// Kleurindicator los van helderheid: G/R (groenheid) en B/R (koelheid).
+function verhouding(k) { return { groen: k.g / Math.max(1, k.r), blauw: k.b / Math.max(1, k.r) }; }
+const vKelder = verhouding(kleurgradingResultaten.kelder.kleur);
+const vAtelier = verhouding(kleurgradingResultaten.atelier.kleur);
+const vBinnenplaats = verhouding(kleurgradingResultaten.binnenplaats.kleur);
+check('Kelder, atelier en binnenplaats hebben alle drie een onderling verschillende kleurverhouding (geen twee identiek)',
+  !(vKelder.groen === vAtelier.groen && vKelder.blauw === vAtelier.blauw) &&
+  !(vAtelier.groen === vBinnenplaats.groen && vAtelier.blauw === vBinnenplaats.blauw) &&
+  !(vKelder.groen === vBinnenplaats.groen && vKelder.blauw === vBinnenplaats.blauw),
+  { vKelder, vAtelier, vBinnenplaats });
+
+// Richting van de tint (§10.8: "kelder groeniger, atelier koeler") als
+// STRUCTURELE check op het profiel zelf (de gain-vector), niet als
+// gerenderde-pixel-vergelijking tussen twee onafhankelijk tunebare zones.
+// Die laatste vorm brak twee keer op rij zodra alleen de STERKTE van een
+// van beide zones werd getuned (de kelder werd zo zacht dat 'ie in
+// gerenderde pixels niet meer "groener dan het atelier" oogde, ook al
+// bleef de eigen richting van het profiel — groen omhoog, rood/blauw
+// omlaag — onveranderd). Deze vorm blijft correct ongeacht hoe ver de
+// sterkte ooit nog getuned wordt, zolang de richting zelf niet omdraait.
+const profielen = await page.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  return { kelder: { ...d.KLEUR_GRADING_ZONES[5].gain }, atelier: { ...d.KLEUR_GRADING_ZONES[2].gain } };
+});
+check('Kelder-profiel: groen (y) is de dominante, opgehoogde kanaal in de gain-vector — §10.8: "kelder groeniger"',
+  profielen.kelder.y > 1 && profielen.kelder.y > profielen.kelder.x && profielen.kelder.y > profielen.kelder.z,
+  profielen);
+check('Atelier-profiel: blauw (z) is het dominante, opgehoogde kanaal in de gain-vector — §10.8: "atelier koeler"',
+  profielen.atelier.z > 1 && profielen.atelier.z > profielen.atelier.x && profielen.atelier.z > profielen.atelier.y,
+  profielen);
+
+console.log('\nGemeten waarden (voor eventuele bijwerking van BASISLIJN):');
+console.log(JSON.stringify(gemeten, null, 2));
+
+const fails = report(errs);
+await browser.close();
+process.exit(fails > 0 ? 1 : 0);

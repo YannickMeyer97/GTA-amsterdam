@@ -25,8 +25,19 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const scriptAantal = readdirSync(__dirname)
-  .filter(f => (f.startsWith('check-') || f.startsWith('test-')) && f.endsWith('.mjs')).length;
+// Ticket D0: zelfde submap-indeling als run-all.mjs (tests/<game>/test-*.mjs),
+// dus ook hier één niveau diep tellen i.p.v. alleen __dirname zelf.
+function telScripts(basisMap) {
+  let totaal = 0;
+  for (const entry of readdirSync(basisMap, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    for (const bestand of readdirSync(path.join(basisMap, entry.name))) {
+      if ((bestand.startsWith('check-') || bestand.startsWith('test-')) && bestand.endsWith('.mjs')) totaal++;
+    }
+  }
+  return totaal;
+}
+const scriptAantal = telScripts(__dirname);
 
 // Niet meer shards dan scripts (lege shards zijn zinloos), en een
 // redelijke bovengrens zodat dit ook op een kleine machine niet meer

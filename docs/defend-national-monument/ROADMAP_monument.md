@@ -38,7 +38,7 @@ Legenda: ☐ open · ◐ bezig · ☑ af
 
 | | Ticket | Kern |
 | --- | --- | --- |
-| ☐ | **D0** | Testmap opsplitsen per game |
+| ☑ | **D0** | Testmap opsplitsen per game |
 | ☐ | **D1** | Testinfrastructuur en debug-hooks uitbreiden |
 | ☐ | **D2** | Gedragstests die een herschaling overleven |
 | ☑ | **D3** | Documenten sorteren |
@@ -103,6 +103,37 @@ alsnog.
 ---
 
 ## Afgerond
+
+### D0 — Testmap opsplitsen per game
+
+`tests/` was één vlakke map met 117 test-/check-scripts en 22 hulp-/
+meetscripts, allemaal voor Amsterdam Undead. Alles daarvan is verhuisd naar
+`tests/amsterdam-undead/`; `node_modules`, `run-all.mjs`,
+`run-all-parallel.mjs`, `helpers.mjs`, `README.md` en de package-bestanden
+blijven gedeeld op `tests/`-niveau. `tests/defend-national-monument/` volgt
+in D1, met de eerste `test-dnm-*`-tests.
+
+**Wat er is aangepast:**
+- `run-all.mjs` en `run-all-parallel.mjs`: de vlakke `readdirSync(__dirname)`
+  is vervangen door een functie die één niveau diep in elke submap zoekt.
+  Vond exact dezelfde 117 scripts als vóór de verhuizing.
+- De `HERKANSING`-set matcht nu op de bestandsnaam (`path.basename`), niet op
+  het volledige pad — anders zou geen enkel bekend timing-gevoelig script
+  meer herkend worden.
+- 136 `import … from './helpers.mjs'` herschreven naar `'../helpers.mjs'`.
+
+**Negen scripts bleken hun eigen paden onafhankelijk van `helpers.mjs` te
+resolven** (een eigen CDN-intercept, of een losse broncode-inspectie van
+`amsterdam-undead.html`), en waren dus stuk na de verhuizing totdat ze
+gecontroleerd zijn: `maak-geluidsverslag.mjs`, `meet-audio-budget.mjs`,
+`meet-eindtoestand.mjs`, `meet-ruislaag.mjs`, `test-faalmodi.mjs`,
+`test-audioregistry.mjs` en `test-arsenaal.mjs`. Elk teruggevonden door een
+gerichte grep op `__dirname`/`node_modules`/`amsterdam-undead.html` over de
+hele verplaatste map, niet door aan te nemen dat de importfix voldoende was.
+
+**Verificatie:** de volledige suite (`node run-all.mjs`) draaide **117/117
+groen** — geen enkele FAIL, ook niet de bekende flake uit een eerdere run.
+Dit ticket veranderde geen enkele assertie, alleen paden.
 
 ### D3 — Documenten sorteren
 
