@@ -2303,7 +2303,9 @@ function updateDuiven(dt) {
    ================================================================ */
 
 const speler = {
-  positie: new THREE.Vector3(16, 0, 30),   // startplek op de Dam, tussen Paleis en Monument
+  // Ticket D5: ×ARENA_SCHAAL — dit is een gameplay-wereldcoördinaat, geen
+  // kind van `wereld`, dus schaalt niet automatisch mee (zie D4, §4.2).
+  positie: new THREE.Vector3(16 * ARENA_SCHAAL, 0, 30 * ARENA_SCHAAL),   // startplek op de Dam, tussen Paleis en Monument
   yaw: 2.35,       // draaiing (kijkt richting Paleis en Nieuwe Kerk)
   pitch: 0,        // op/neer kijken
   hoogte: 1.7,     // ooghoogte in meters
@@ -2505,10 +2507,14 @@ function updateSpeler(dt) {
 
 
 // Arcade structuur v4: verdedig het Nationaal Monument.
-const MONUMENT_POSITIE = new THREE.Vector3(42, 0, -4);
+// Ticket D5: ×ARENA_SCHAAL — gameplay-wereldcoördinaat, geen kind van
+// `wereld` (zie D4, §4.2).
+const MONUMENT_POSITIE = new THREE.Vector3(42 * ARENA_SCHAAL, 0, -4 * ARENA_SCHAAL);
 // Zelfde rechthoek als het geregistreerde monument-obstakel (zie registreerRechthoek
-// hierboven). Robots moeten dit vlak raken, niet alleen dicht bij het middelpunt komen.
-const MONUMENT_BOX = { minX: 42 - 10.7, maxX: 42 + 10.7, minZ: -4 - 10.7, maxZ: -4 + 10.7 };
+// hierboven — ook die kreeg in D4 dezelfde ×ARENA_SCHAAL, dus deze twee blijven
+// gelijk, zie ARCHITECTURE_NOTES_monument.md §4.3). Robots moeten dit vlak
+// raken, niet alleen dicht bij het middelpunt komen.
+const MONUMENT_BOX = { minX: (42 - 10.7) * ARENA_SCHAAL, maxX: (42 + 10.7) * ARENA_SCHAAL, minZ: (-4 - 10.7) * ARENA_SCHAAL, maxZ: (-4 + 10.7) * ARENA_SCHAAL };
 function afstandTotMonument(positie) {
   const dichtstX = Math.max(MONUMENT_BOX.minX, Math.min(positie.x, MONUMENT_BOX.maxX));
   const dichtstZ = Math.max(MONUMENT_BOX.minZ, Math.min(positie.z, MONUMENT_BOX.maxZ));
@@ -2519,12 +2525,14 @@ function afstandTotMonument(positie) {
 // stuurde en daarna dezelfde oostelijke corridor in als de Rokin-robots —
 // alsof ze van poort wisselden. Het tussenpunt houdt ze eerst duidelijk aan
 // de westkant van Tussauds voordat ze rechtstreeks op het monument afgaan.
+// Ticket D5: elke positie, spreidingX/Z en het tussenpunt ×ARENA_SCHAAL —
+// gameplay-wereldcoördinaten, geen kind van `wereld` (zie D4, §4.2).
 const SPAWN_POORTEN = [
-  { naam: 'Damrak', positie: new THREE.Vector3(0, 0, -106), spreidingX: 8, spreidingZ: 3 },
-  { naam: 'Rokin', positie: new THREE.Vector3(2, 0, 96), spreidingX: 8, spreidingZ: 3 },
-  { naam: 'Damstraat', positie: new THREE.Vector3(123, 0, 4), spreidingX: 2, spreidingZ: 8 },
-  { naam: 'Kalverstraat', positie: new THREE.Vector3(-55, 0, 92), spreidingX: 6, spreidingZ: 4, tussenpunt: new THREE.Vector3(-45, 0, 45) },
-  { naam: 'Nieuwendijk', positie: new THREE.Vector3(-52, 0, -106), spreidingX: 6, spreidingZ: 4 }
+  { naam: 'Damrak', positie: new THREE.Vector3(0 * ARENA_SCHAAL, 0, -106 * ARENA_SCHAAL), spreidingX: 8 * ARENA_SCHAAL, spreidingZ: 3 * ARENA_SCHAAL },
+  { naam: 'Rokin', positie: new THREE.Vector3(2 * ARENA_SCHAAL, 0, 96 * ARENA_SCHAAL), spreidingX: 8 * ARENA_SCHAAL, spreidingZ: 3 * ARENA_SCHAAL },
+  { naam: 'Damstraat', positie: new THREE.Vector3(123 * ARENA_SCHAAL, 0, 4 * ARENA_SCHAAL), spreidingX: 2 * ARENA_SCHAAL, spreidingZ: 8 * ARENA_SCHAAL },
+  { naam: 'Kalverstraat', positie: new THREE.Vector3(-55 * ARENA_SCHAAL, 0, 92 * ARENA_SCHAAL), spreidingX: 6 * ARENA_SCHAAL, spreidingZ: 4 * ARENA_SCHAAL, tussenpunt: new THREE.Vector3(-45 * ARENA_SCHAAL, 0, 45 * ARENA_SCHAAL) },
+  { naam: 'Nieuwendijk', positie: new THREE.Vector3(-52 * ARENA_SCHAAL, 0, -106 * ARENA_SCHAAL), spreidingX: 6 * ARENA_SCHAAL, spreidingZ: 4 * ARENA_SCHAAL }
 ];
 
 const spel = {
@@ -2892,11 +2900,15 @@ function activeerBijenkorfUpgradeShop() {
 
 // --- Het centrale interactiesysteem ---------------------------------
 
+// Ticket D5: elke positie ×ARENA_SCHAAL — gameplay-wereldcoördinaten, geen
+// kind van `wereld` (zie D4, §4.2). `radius` blijft bewust ONgeschaald: dat
+// is een interactieafstand op mensenmaat, geen wereldafstand (D2's
+// overlap-check bewaakt dat de drie punten elkaar dan niet gaan overlappen).
 const interactiePunten = [
   {
     naam: 'Kerkklok Boost',
     type: 'kerkklok',
-    positie: new THREE.Vector3(-67, 0, -38),
+    positie: new THREE.Vector3(-67 * ARENA_SCHAAL, 0, -38 * ARENA_SCHAAL),
     radius: 4,
     prompt: () => kerkklokBoost.active
       ? '🔔 Kerkklok Boost is al actief'
@@ -2908,7 +2920,7 @@ const interactiePunten = [
   {
     naam: 'Koninklijke Reparatie',
     type: 'reparatie',
-    positie: new THREE.Vector3(-70, 0, 5),
+    positie: new THREE.Vector3(-70 * ARENA_SCHAAL, 0, 5 * ARENA_SCHAAL),
     radius: 4,
     prompt: 'Druk T voor Koninklijke Reparatie (€100, +25 HP)',
     actie: koopMonumentReparatie,
@@ -2916,7 +2928,7 @@ const interactiePunten = [
   {
     naam: 'Bijenkorf Upgrades',
     type: 'upgradeShop',
-    positie: new THREE.Vector3(60, 0, -17),
+    positie: new THREE.Vector3(60 * ARENA_SCHAAL, 0, -17 * ARENA_SCHAAL),
     radius: 4,
     prompt: () => bijenkorfShopOpen ? 'Druk T om de winkel te sluiten' : 'Druk T voor Bijenkorf Upgrades',
     actie: activeerBijenkorfUpgradeShop,
@@ -3309,7 +3321,12 @@ function updateBrokstukken(dt) {
 // --- Het schot zelf ----------------------------------------------
 
 const raycaster = new THREE.Raycaster();
-raycaster.far = 150;   // verder dan dit reikt het schot niet
+// Ticket D5: ×ARENA_SCHAAL houdt de verhouding wapenbereik/kaartdiagonaal
+// gelijk aan vóór de herschaling (de diagonaal van GRENS schaalt door de
+// uniforme x/z-schaling ook exact met ARENA_SCHAAL mee, dus dit is
+// wiskundig hetzelfde als 150 herafleiden uit de nieuwe kaartdiagonaal —
+// zie SONNET_EXECUTION_PLAN_monument.md, Ticket D5).
+raycaster.far = 150 * ARENA_SCHAAL;   // verder dan dit reikt het schot niet
 
 
 let laatsteSchotTijd = -999;

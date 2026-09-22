@@ -52,7 +52,7 @@ alsnog.
 | | Ticket | Kern |
 | --- | --- | --- |
 | ☑ | **D4** | Schaalfundament (voorzichtig, nooit combineren) |
-| ☐ | **D5** | Spelsystemen herijken op de nieuwe schaal |
+| ☑ | **D5** | Spelsystemen herijken op de nieuwe schaal |
 | ☐ | **D6** | Meten en bijstellen |
 
 ### Fase 2 — De run krijgt een kop en een staart
@@ -335,6 +335,51 @@ andere. `test-dnm-laadt.mjs` blijft 20/20 (gebruikt geen `GRENS`-vergelijking,
 dus geen last van het venster) en **alle 117 Amsterdam Undead-scripts blijven
 ongewijzigd groen** — deze ticket raakte dat bestand op geen enkele manier.
 Geen console-errors, geen syntaxfouten, geen onverwachte regressies.
+
+### D5 — Spelsystemen herijken op de nieuwe schaal
+
+Het D4/D5-venster is dicht. Elke gameplay-wereldcoördinaat die GEEN kind van
+`wereld` is — en dus niet automatisch meeschaalde via `wereld.scale.set(...)`
+(zie D4) — kreeg een handmatige `× ARENA_SCHAAL`, op de declaratieplek zelf
+(dus als `42 * ARENA_SCHAAL`, niet als vooraf uitgerekende decimalen 14,00):
+`MONUMENT_POSITIE`, `MONUMENT_BOX`, alle vijf `SPAWN_POORTEN` (positie +
+spreidingX/Z + Kalverstraat's tussenpunt), de drie `interactiePunten`-posities,
+`speler.positie` en `raycaster.far` (150 → 50, dezelfde verhouding
+wapenbereik/kaartdiagonaal als vóór de herschaling, omdat de diagonaal van
+`GRENS` door de uniforme x/z-schaling ook exact met `ARENA_SCHAAL` meeschaalt).
+
+Alle uitkomsten kwamen exact overeen met de doelwaarden uit het plan —
+narekenbaar, niet toevallig: MONUMENT_POSITIE (14,00, 0, −1,33),
+MONUMENT_BOX halve maat ±3,57, speler-startplek (5,33, 0, 10,00), allemaal
+geverifieerd rechtstreeks tegen de levende pagina, niet alleen berekend.
+
+**Bewust NIET geschaald**, zoals het plan voorschreef: `interactiePunten[].
+radius` (4 m, mensenmaat), de aankomstdrempel `0,6`, de robot-botsstraal
+`0,45`/`speler.straal 0,4` (lichaamsmaten), `isVrijePlek`'s marge en de 2 m-
+rand op `GRENS`, en (buiten D5's scope, D6 straks) muntwaarden, HP, schade,
+wave-formules en robotsnelheid.
+
+**Eén vondst tijdens het implementeren, niet in het plan genoemd:** de
+"dichtbij genoeg"-afstand voor Kalverstraat's tussenpunt (`< 6` in
+`updateRobots`) is met opzet ONgeschaald gelaten — geen stuk-risico (een
+relatief grotere tolerantiezone maakt de aankomstcheck juist makkelijker),
+maar wel iets voor D6 om op het gevoel te beoordelen. Zie
+`ARCHITECTURE_NOTES_monument.md` §6.3.
+
+**Verificatie:**
+- `test-dnm-kern.mjs`: **70/70 groen** — inclusief alle vijf routechecks (nu
+  voor het eerst op consistente, geschaalde coördinaten, dus voor het eerst
+  ook echt betekenisvol) en de drie interactiepunt-bereikbaarheid/overlap-
+  checks.
+- Handmatige controle van de speler-startplek: `isVrijePlek(5,33, 10,00,
+  0,4)` → `true`, binnen `GRENS` → `true` — het tweede deel van D5's eigen
+  acceptatiecriterium, dat D2 niet apart test.
+- `node run-all.mjs` (119 scripts, beide games): **118/119 groen**. De ene
+  fail (`test-golf1-economie.mjs`, Amsterdam Undead) is een al eerder
+  vastgestelde RNG-flake (1 van 5 camp-and-melee-trials stierf) — 3× schoon
+  in isolatie herbevestigd, geen regressie en geen relatie met dit ticket.
+
+Geen enkele gameplay-constante buiten de expliciet genoemde lijst aangeraakt.
 
 ---
 

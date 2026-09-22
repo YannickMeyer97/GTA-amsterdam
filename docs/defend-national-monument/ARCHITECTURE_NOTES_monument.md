@@ -5,14 +5,15 @@ Tegenhanger van `docs/amsterdam-undead/ARCHITECTURE_NOTES_undead.md`; de twee
 games delen géén code, dus de twee documenten delen geen inhoud.
 
 **Status:** dit document beschrijft de game zoals die er vandaag uit ziet, ná
-D0–D4 (testinfrastructuur + het schaalfundament; D5/D6 volgen nog). Alles
-hieronder is uit de code gelezen en narekenbaar. **Regelnummers zijn sinds D4
-op sommige plekken bewust niet meer exact** (het bestand groeide met ~120
-regels door de D4-toelichtingen) — behandel ze als een globale vingerwijzing,
-niet als een contract; de secties die D4 rechtstreeks raakte (§2, §3.1, §3.5,
-§4.2, §4.3, §12) zijn wel bijgewerkt. Zodra fase 1 volledig landt (D4+D5+D6)
-wijzigen de meetwaarden in §3 (wereld) en §6 (robots) definitief en verdient
-het document een volledige regelnummer-pas.
+D0–D5 (testinfrastructuur + het schaalfundament + de spelsystemen op de
+nieuwe schaal; D6 — meten en bijstellen — volgt nog). Alles hieronder is uit
+de code gelezen en narekenbaar. **Regelnummers zijn sinds D4/D5 op sommige
+plekken bewust niet meer exact** (het bestand groeide met de toelichtingen)
+— behandel ze als een globale vingerwijzing, niet als een contract; de
+secties die D4/D5 rechtstreeks raakten (§2, §3.1, §3.5, §4.2, §4.3, §5, §6.3,
+§7.7, §8, §12) zijn wel bijgewerkt. D6 stelt de robotsnelheid/wave-formules
+mogelijk nog bij op basis van de meting in §6.3 — dan wijzigen de reistijden
+in §6 nog eenmaal.
 
 **Leeswijzer voor wie een ticket uitvoert:** §10 (valkuilen) en §11 (dode code)
 zijn de twee secties die je fout kunt ingaan zonder het te merken. Lees die
@@ -113,29 +114,28 @@ DPR blijft de oude ratio staan.
 
 ### 3.1 Maten en vaste punten
 
-**Sinds D4 zijn deze twee kolommen NIET meer consistent met elkaar** — met
-opzet, tijdelijk. `GRENS` is geschaald (D4 is klaar), maar
-`MONUMENT_POSITIE`/`MONUMENT_BOX`/de speler-startplek staan nog op hun oude,
-ongeschaalde waarde (dat is D5). Dit is precies het venster dat D2's
-`test-dnm-kern.mjs` tussen D4 en D5 rood laat zien op de poort-/
-interactiepunt-GRENS-checks — geen regressie, wel iets om nooit per ongeluk
-als "klaar" te lezen vóór D5 er is.
+**Ná D5 zijn deze weer volledig consistent.** Tussen D4 en D5 was `GRENS` al
+geschaald terwijl `MONUMENT_POSITIE`/`MONUMENT_BOX`/de speler-startplek nog
+op hun oude waarde stonden — dat venster is nu dicht. Alle gameplay-
+wereldcoördinaten die GEEN kind van `wereld` zijn (dus niet automatisch mee
+schalen via `wereld.scale`, zie §4.2) zijn met de hand × `ARENA_SCHAAL`
+gezet, op de declaratieplek zelf (niet als vooraf uitgerekende decimalen) —
+narekenbaar en correct als `ARENA_SCHAAL` ooit verandert.
 
-| Wat | Waarde | Status | Regel |
-| --- | --- | --- | --- |
-| `GRENS` | x ∈ [−39,33, 55], z ∈ [−39,33, 35,33] | ✅ D4 | 465 e.v. |
-| Arena-afmeting | 94,3 m breed × 74,7 m diep | ✅ D4 | afgeleid |
-| Grondvlak (gerenderd) | 207 × 207 | ✅ D4 (via `wereld.scale`, geen brongetal gewijzigd) | STAP 2 |
-| `MONUMENT_POSITIE` | (42, 0, −4) | ⏳ nog oud, D5 | 2415 |
-| `MONUMENT_BOX` | x ∈ [31,3, 52,7], z ∈ [−14,7, 6,7] | ⏳ nog oud, D5 | 2418 |
-| `MONUMENT_MAX_HP` | 100 | — (geen ruimtelijke maat) | 2651 |
-| Speler-startplek | (16, 0, 30) | ⏳ nog oud, D5 | 2213 |
+| Wat | Waarde | Regel |
+| --- | --- | --- |
+| `GRENS` | x ∈ [−39,33, 55], z ∈ [−39,33, 35,33] | 465 e.v. |
+| Arena-afmeting | 94,3 m breed × 74,7 m diep | afgeleid |
+| Grondvlak (gerenderd) | 207 × 207 | STAP 2 |
+| `MONUMENT_POSITIE` | (14, 0, −1,33) | 2510 e.v. |
+| `MONUMENT_BOX` | x ∈ [10,43, 17,57], z ∈ [−4,90, 2,23] (halve maat ±3,57) | 2513 e.v. |
+| `MONUMENT_MAX_HP` | 100 (geen ruimtelijke maat, ongewijzigd) | 2651 e.v. |
+| Speler-startplek | (5,33, 0, 10,00) | 2306 e.v. |
 
-De ECHTE wereldpositie van het monument ná D4 is `(42, −4) × ARENA_SCHAAL` =
-(14, −1,33) — dat is waar de zichtbare pyloon nu staat. `MONUMENT_POSITIE`
-zelf blijft (42, −4) tot D5 hem bijwerkt; gebruik tot dan de vermenigvuldiging
-met de hand als je iets ten opzichte van het echte monument moet positioneren
-(zoals de D4-verificatieschermafbeeldingen deden).
+`MONUMENT_POSITIE` en `MONUMENT_BOX` zijn geschreven als `42 * ARENA_SCHAAL`
+resp. `(42 ± 10,7) * ARENA_SCHAAL` — exact dezelfde vorm als de
+`registreerRechthoek()`-registratie van het monument-obstakel (D4, regel
+1410), dus de twee blijven per constructie gelijk (zie §4.3).
 
 Assenstelsel: **x = west-oost, z = noord-zuid, noord is negatieve z**, en één
 game-unit is ongeveer één meter (comment op regel 450) — dat geldt nog steeds
@@ -319,24 +319,25 @@ zou de voetafdruk van het monument onbedoeld méé opgeblazen worden.
 
 ### 4.3 `MONUMENT_BOX` is een handmatige kopie
 
-De monument-registratie (regel 1410, hierboven) registreert
+De monument-registratie (regel 1410, §4.2) registreert
 `(42 ± 10,5, −4 ± 10,5) × ARENA_SCHAAL` met marge `0,2 × ARENA_SCHAAL`.
-`MONUMENT_BOX` (regel 2418, nog **niet** geschaald — dat is D5) herhaalt dat
-met de hand. **Twee plekken, één waarheid, en ze staan sinds D4 tijdelijk
-NIET meer gelijk** — precies de bekende valkuil, nu zichtbaar geworden door de
-ticketsplitsing zelf. D5 moet dit weer gelijktrekken.
+`MONUMENT_BOX` (regel 2513, §3.1) herhaalt dat met de hand, sinds D5 in
+dezelfde geschreven vorm (`(42 ± 10,7) * ARENA_SCHAAL`). **Twee plekken, één
+waarheid** — D4 en D5 hielden ze allebei bewust in exact dezelfde vorm, dus
+ze staan weer gelijk, maar er is nog steeds niets dat dat AFDWINGT: wijzigt
+een toekomstig ticket de een, dan moet de ander met de hand mee.
 
 ---
 
-## 5. De speler (regel 2212)
+## 5. De speler (regel 2305)
 
 | Veld | Waarde |
 |---|---|
-| `positie` | (16, 0, 30) |
+| `positie` | (5,33, 0, 10,00) (was (16, 0, 30), Ticket D5: `× ARENA_SCHAAL`) |
 | `yaw` / `pitch` | 2,35 / 0, pitch geklemd op ±1,45 |
-| `hoogte` | 1,7 m |
-| `straal` | 0,4 m |
-| `snelheid` | 7 m/s, **+0,65 per snelheid-upgrade** (regel 2634) |
+| `hoogte` | 1,7 m (ongewijzigd — lichaamsmaat, geen wereldafstand) |
+| `straal` | 0,4 m (ongewijzigd — lichaamsmaat) |
+| `snelheid` | 7 m/s (ongewijzigd, D6-scope), **+0,65 per snelheid-upgrade** |
 
 Muisgevoeligheid: `0,0022` rad per pixel, niet instelbaar.
 
@@ -418,44 +419,60 @@ Het plafond wordt bij `Math.random() = 1` al rond wave 17 geraakt en bij
 
 ### 6.3 Spawnen
 
-**Alle waarden hieronder zijn nog ongewijzigd sinds vóór D4** — `SPAWN_POORTEN`
-is D5-scope. Ze liggen dus nu, tijdelijk, buiten het door D4 al verkleinde
-`GRENS` (zie §3.1); de poorttabel hieronder toont de OUDE, nog geldige
-afstanden op de OUDE schaal. D6 herrekent deze tabel op de nieuwe schaal.
+**Ná D5 zijn positie/spreiding geschaald; de robotsnelheid zelf NIET** (dat is
+bewust D6-scope, zie hieronder). De reistijden zijn dus 3× korter geworden
+door de kortere afstand, niet door snellere robots.
 
-`SPAWN_POORTEN` (regel 2429), vijf stuks. `kiesSpawnPoort()` (2580) loot
-**volledig uniform** — geen weging, geen geheugen, geen spreiding over de
-kaart. `spawnPlekVoorPoort` (2584) probeert 30× een vrije plek binnen de
-spreiding van de poort en valt anders terug op de poortpositie zelf.
+`SPAWN_POORTEN` (regel 2529), vijf stuks. `kiesSpawnPoort()` loot **volledig
+uniform** — geen weging, geen geheugen, geen spreiding over de kaart.
+`spawnPlekVoorPoort` probeert 30× een vrije plek binnen de spreiding van de
+poort en valt anders terug op de poortpositie zelf.
 
 Afstand tot het monument is hieronder tweemaal gegeven, omdat het verschil
 ertoe doet: **de game rekent met de doos**, niet met het middelpunt.
-`afstandTotMonument()` (regel 2419) klemt de positie op `MONUMENT_BOX`.
+`afstandTotMonument()` klemt de positie op `MONUMENT_BOX`.
 
 | Poort | Positie | Spreiding | → doos | → middelpunt |
 | --- | --- | --- | ---: | ---: |
-| Damstraat | (123, 0, 4) | 2 × 8 | 70,3 m | 81,4 m |
-| Rokin | (2, 0, 96) | 8 × 3 | 94,0 m | 107,7 m |
-| Damrak | (0, 0, −106) | 8 × 3 | 96,5 m | 110,3 m |
-| Kalverstraat | (−55, 0, 92) | 6 × 4 | 121,3 m | 136,5 m |
-| Nieuwendijk | (−52, 0, −106) | 6 × 4 | 123,6 m | 138,7 m |
+| Damstraat | (41,00, 0, 1,33) | 0,67 × 2,67 | 23,4 m | 27,1 m |
+| Rokin | (0,67, 0, 32,00) | 2,67 × 1,00 | 31,3 m | 35,9 m |
+| Damrak | (0, 0, −35,33) | 2,67 × 1,00 | 32,2 m | 36,8 m |
+| Kalverstraat | (−18,33, 0, 30,67) | 2,00 × 1,33 | 40,4 m | 45,5 m |
+| Nieuwendijk | (−17,33, 0, −35,33) | 2,00 × 1,33 | 41,2 m | 46,2 m |
 
-**Reistijden**, met de échte snelheden uit §6.2:
+**Reistijden**, met de échte snelheden uit §6.2 (**ongewijzigd, D6-scope**) —
+zie `SONNET_EXECUTION_PLAN_monument.md` D6 voor de volledige tabel en de
+oplossingsrichtingen voor het probleem dat hieronder al zichtbaar is:
 
 | Poort | `normal`, wave 1 | `tank`, wave 1 | `normal`, plafond |
 | --- | --- | --- | --- |
-| Damstraat | 30 – 45 s | 55 – 82 s | 20 s |
-| Nieuwendijk | 53 – 79 s | 96 – **144 s** | 35 s |
+| Damstraat | 10 – 15 s | 18 – 27 s | **6,7 s** ✗ |
+| Rokin | 13 – 20 s | 25 – 36 s | **8,9 s** ✗ |
+| Damrak | 14 – 21 s | 25 – 37 s | **9,1 s** ✗ |
+| Kalverstraat | 17 – 26 s | 32 – 47 s | 11,5 s ✓ |
+| Nieuwendijk | 18 – 26 s | 32 – 48 s | 11,7 s ✓ |
 
-Een tank uit Nieuwendijk in wave 1 is dus bijna twee en een halve minuut
-onderweg voordat hij iets doet. Dat is de kern van de schaaldiagnose in
-`SONNET_EXECUTION_PLAN_monument.md` §2.1.
+Drie van de vijf poorten zakken bij het robot-snelheidsplafond (3,52 m/s,
+bereikt rond wave 17–27, zie §6.2) onder de reactiedrempel van 10 s. Dat is
+geen D4/D5-fout maar een eigenschap van de nu kortere afstanden gecombineerd
+met een ongewijzigde snelheidsformule — precies waarom D6 bestaat vóór er
+verder gebouwd wordt.
 
-**Kalverstraat heeft een `tussenpunt`** (−45, 0, 45). Geen navigatiesysteem
+**Kalverstraat heeft een `tussenpunt`** (−15, 0, 15). Geen navigatiesysteem
 maar één hardgecodeerde pleister: zonder dat punt liepen Kalverstraat-robots
 rakelings langs het Madame Tussauds-blok en kwamen ze in dezelfde oostelijke
 corridor uit als de Rokin-robots, waardoor het leek alsof ze van poort
 wisselden (comment op regel 2424).
+
+**De "dichtbij genoeg"-afstand voor dat tussenpunt (`< 6` in `updateRobots`)
+is met opzet NIET meegeschaald in D5.** Dat getal staat niet in D5's
+"concrete lijst", en het is een navigatietolerantie, geen zuivere
+wereldafstand — vergelijkbaar met de interactiepunt-`radius` die D5 ook
+bewust ongeschaald liet. Gevolg: die tolerantiezone is nu relatief groter dan
+vóór de herschaling (was ~12,5% van de poort-tussenpunt-afstand, nu ~37,5%),
+wat de route eerder laat "afsnijden". Geen stuk-risico — een grotere relatieve
+tolerantie maakt de aankomstcheck juist makkelijker te halen, niet moeilijker
+— maar wel een navigatiegevoel-vraag voor D6.
 
 ### 6.4 De AI (`updateRobots`, regel 3027)
 
@@ -610,23 +627,27 @@ zodat een gratis special nooit een gratis loop wordt.
 > Het is een risico-knop, geen power-up. Dat is een goed ontwerp en het is het
 > enige echte spanningsmoment dat de game nu heeft.
 
-### 7.7 Interactiepunten (regel 2802)
+### 7.7 Interactiepunten (regel 2903)
 
 | Naam | Type | Positie | Radius | → monumentrand |
 |---|---|---|---:|---:|
-| Kerkklok Boost | `kerkklok` | (−67, 0, −38) | 4 | ~101 m |
-| Koninklijke Reparatie | `reparatie` | (−70, 0, 5) | 4 | ~101 m |
-| Bijenkorf Upgrades | `upgradeShop` | (60, 0, −17) | 4 | ~8 m |
+| Kerkklok Boost | `kerkklok` | (−22,33, 0, −12,67) | 4 | ~33,7 m |
+| Koninklijke Reparatie | `reparatie` | (−23,33, 0, 1,67) | 4 | ~33,8 m |
+| Bijenkorf Upgrades | `upgradeShop` | (20,00, 0, −5,67) | 4 | ~2,6 m |
 
-`updateInteracties` (2835) kiest het dichtstbijzijnde punt binnen zijn radius.
-De check is **puur euclidisch, zonder zichtlijn of muurcontrole**. Dat is hier
+`updateInteracties` kiest het dichtstbijzijnde punt binnen zijn radius. De
+check is **puur euclidisch, zonder zichtlijn of muurcontrole**. Dat is hier
 onschadelijk omdat 4 m klein is ten opzichte van de gebouwen.
 
-> **Bij de herschaling:** 4 m is een absolute waarde in een wereld die 1/3 zo
-> klein wordt — ongewijzigd laten betekent relatief 3× zo groot. In Amsterdam
-> Undead heeft exact deze constructie een bug opgeleverd toen de radius naar
-> ~16 m groeide: je kon door muren en ongekochte deuren heen interacteren. Mee
-> schalen, of een zichtlijncontrole erbij.
+**Sinds D5** blijft `radius` bewust ongeschaald (4 m — een interactieafstand op
+mensenmaat, geen wereldafstand), maar de POSITIES zijn wel × `ARENA_SCHAAL`
+verplaatst. D5 controleerde expliciet dat dat geen overlap veroorzaakt:
+Kerkklok en Reparatie liggen nu 14,4 m uit elkaar (som van de radii is 8 m) —
+ruim genoeg, bevestigd door `test-dnm-kern.mjs`'s overlap-check. In Amsterdam
+Undead heeft exact deze constructie ooit wél een bug opgeleverd, toen een
+radius daar naar ~16 m groeide: je kon door muren en ongekochte deuren heen
+interacteren. Hier is dat risico dus bewust vermeden door de radius NIET mee
+te schalen.
 
 De Bijenkorf-winkel sluit zichzelf zodra hij niet meer het dichtstbijzijnde
 punt is (regel 2859), zodat de 1/2/3-hotkeys niet actief blijven als je
@@ -662,9 +683,11 @@ huidigeSchotCooldown() = max(0.07, (0.26 - upgrades.vuurtempo * 0.035) * getComb
 | 3 | 0,155 s | 0,109 s |
 | 5 | 0,085 s | **0,070 s** (plafond) |
 
-Het schot (`schiet`, 3232) is een hitscan-raycast vanuit het schermmidden,
-`raycaster.far = 150`, tegen `robots.map(r => r.groep).concat([wereld])`. Bij
-een treffer loopt de code omhoog door `parent` tot hij `userData.robot` vindt.
+Het schot (`schiet`) is een hitscan-raycast vanuit het schermmidden,
+`raycaster.far = 50` (was 150, Ticket D5: `× ARENA_SCHAAL` — de verhouding
+wapenbereik/kaartdiagonaal blijft zo gelijk aan vóór de herschaling), tegen
+`robots.map(r => r.groep).concat([wereld])`. Bij een treffer loopt de code
+omhoog door `parent` tot hij `userData.robot` vindt.
 
 Een actief shieldbot-schild blokkeert het schot **volledig en vóór** de
 hitmarker, camera shake en `raakRobot` — anders krijgt de speler misleidende
