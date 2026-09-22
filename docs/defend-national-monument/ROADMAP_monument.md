@@ -51,7 +51,7 @@ alsnog.
 
 | | Ticket | Kern |
 | --- | --- | --- |
-| ☐ | **D4** | Schaalfundament (voorzichtig, nooit combineren) |
+| ☑ | **D4** | Schaalfundament (voorzichtig, nooit combineren) |
 | ☐ | **D5** | Spelsystemen herijken op de nieuwe schaal |
 | ☐ | **D6** | Meten en bijstellen |
 
@@ -258,6 +258,83 @@ Daarnaast vijf stukken dode code gevonden en gedocumenteerd (`ROBOT_AANTAL`,
 `respawnLijst`, `vindDichtstbijzijndeInteractie`, `robot.pauze`, en de
 overschreven `robot.snelheid`), plus een nieuw ticket **D0** voor het
 opsplitsen van de testmap.
+
+### D4 — Schaalfundament
+
+De arena is 3× verkleind (`ARENA_SCHAAL = 1/3` op afstanden/voetafdrukken,
+`GEBOUW_HOOGTE_SCHAAL = 0,6` op hoogtes, `MONUMENT_HOOGTE_SCHAAL = 0,8` op het
+monument specifiek). `GRENS` gaat van 283×224 m naar 94,3×74,7 m.
+
+**Belangrijkste bevinding, vóór er één regel code werd geschreven:** het
+oorspronkelijke plan noemde als to-do-lijst "grondvlak, damPleinPunten, alle
+bouwfuncties, plaatsGevelrij, straatmeubilair, railpad, zebrapaden" — dat bleek
+overbodig. `wereld` (de gedeelde ouder-Group van letterlijk alle ~40
+bouwfuncties, geverifieerd door alle 11 `scene.add()`-aanroepen in het bestand
+na te lopen) hoeft maar **één regel** te krijgen —
+`wereld.scale.set(ARENA_SCHAAL, GEBOUW_HOOGTE_SCHAAL, ARENA_SCHAAL)`, gezet
+vóórdat er iets gebouwd wordt — en de hele zichtbare stad (positie, voetafdruk
+én hoogte) schaalt in één keer mee, zonder dat er ook maar één hardgecodeerde
+coördinaat in een bouwfunctie hoefde te veranderen. De volledige uitleg,
+inclusief waarom dat werkt, staat in `ARCHITECTURE_NOTES_monument.md` §4.2.
+
+**Wat wél met de hand moest, in drie categorieën:**
+1. De negen `registreerRechthoek()`-aanroepen (kale getallen, geen
+   wereldmatrix) — alle vijf argumenten (vier coördinaten + marge)
+   × `ARENA_SCHAAL`.
+2. De marge-parameter van alle acht `registreerObstakel()`-aanroepen (een
+   vast bufferzone-getal dat niet door de wereldmatrix loopt).
+3. De rijdende tram — de enige plek in het bestand die een `obstakels`-
+   rechthoek rechtstreeks uit `g.position.x/z` (lokale coördinaten) bouwt,
+   in plaats van via een van de twee registratiefuncties. `TRAM_HALF_X`/
+   `TRAM_HALF_Z` schalen mee; `snelheid` en `zMin`/`zMax` blijven bewust
+   ongewijzigd (lokale grootheden die tegen elkaar vergeleken worden, dus de
+   rittijd in seconden blijft gelijk).
+
+Het monument kreeg een **eigen, extra `g.scale.y`** bovenop `wereld`'s
+hoogteschaal (`MONUMENT_HOOGTE_SCHAAL / GEBOUW_HOOGTE_SCHAAL`), zodat het
+relatief hoger blijft dan de rest — precies zoals gepland, en narekenbaar:
+22 m × 0,6 × (0,8/0,6) = 17,6 m, exact de doelwaarde uit het plan.
+
+De schaduwcamera-frustum (±110 → ±36,7) schaalt mee voor een scherpere
+schaduw op de kleinere kaart.
+
+**Bijvangst: een latente bug uit D1 gevonden en gefixt.**
+`window.DamChaosDebug` exporteerde nooit `renderer`, terwijl
+`helpers-defend.mjs`'s `simuleerPointerLock`-optie die sinds D1 al aanriep —
+een `TypeError` die nooit afging omdat geen enkele D1/D2-test die optie
+gebruikte. Toegevoegd, nodig voor de verificatieschermafbeeldingen hieronder
+en voor elke latere ticket die wél pointer lock nodig heeft.
+
+**De verwachte, tijdelijke rode uitslag van D2 — met bewijs dat het geen
+regressie is.** `test-dnm-kern.mjs` geeft na D4 13 FAILs: de vijf
+spawnpoort-binnen-GRENS-checks, de zes interactiepunt-checks, en de
+Kalverstraat-route (beide botsstraal-varianten). Oorzaak: `SPAWN_POORTEN` en
+`interactiePunten` zijn D5-scope en staan dus nog op hun oude, ongeschaalde
+coördinaten, terwijl `GRENS` nu al geschaald is — precies het venster dat
+"nooit combineren" bewust openlaat tussen twee losse commits. Geverifieerd,
+niet aangenomen: met de Kalverstraat-poort en zijn tussenpunt HANDMATIG
+vooruitlopend geschaald (dus zoals D5 ze zal opleveren) bereikt de route het
+monument gewoon in 263–265 stappen, exact in lijn met de andere vier poorten.
+De vier andere "geslaagde" routechecks zijn op dit moment overigens ZELF ook
+niet betrouwbaar — Damstraat "slaagt" nu in 9 stappen, een artefact van
+toevallige overlap tussen de oude, nog ongeschaalde `MONUMENT_BOX` en de
+nieuwe `GRENS`, niet een bewijs dat die route klopt. D5 lost dit in zijn
+geheel op door `SPAWN_POORTEN`/`interactiePunten`/`MONUMENT_POSITIE`/
+`MONUMENT_BOX`/de speler-startplek consistent te schalen.
+
+**Visuele verificatie:** vier schermafbeeldingen genomen vanaf een punt bij
+het (nieuwe, echte) monument, richting noord/oost/zuid/west. Geen
+console-errors, geen z-fighting, geen gaten in de geometrie. De gebouwen
+torenen nog duidelijk boven straatmeubilair (lantaarns, bankjes, de tram) —
+geen "poppenhuis"-effect, precies het ontwerpdoel uit §3 van het plan.
+
+**Verificatie:** `node run-all.mjs` (119 scripts, beide games): **118/119
+groen**. De 13 fails zijn precies en uitsluitend de hierboven gediagnosticeerde,
+verwachte D4/D5-venster-fails in `test-dnm-kern.mjs` (57/70) — geen enkele
+andere. `test-dnm-laadt.mjs` blijft 20/20 (gebruikt geen `GRENS`-vergelijking,
+dus geen last van het venster) en **alle 117 Amsterdam Undead-scripts blijven
+ongewijzigd groen** — deze ticket raakte dat bestand op geen enkele manier.
+Geen console-errors, geen syntaxfouten, geen onverwachte regressies.
 
 ---
 

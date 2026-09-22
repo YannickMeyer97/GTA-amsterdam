@@ -419,10 +419,10 @@ const zon = new THREE.DirectionalLight(0xfff2d0, 2.6);
 zon.position.set(70, 100, 45);
 zon.castShadow = true;
 zon.shadow.mapSize.set(2048, 2048);
-zon.shadow.camera.left   = -110;
-zon.shadow.camera.right  =  110;
-zon.shadow.camera.top    =  110;
-zon.shadow.camera.bottom = -110;
+// zon.shadow.camera.left/right/top/bottom: zie STAP 2, vlak na
+// wereld.scale.set(...) — die vier grenzen schalen mee met ARENA_SCHAAL
+// (Ticket D4) en die constante bestaat pas daar. near/far (diepte langs de
+// lichtrichting, geen kaartbreedte) blijven hier ongewijzigd.
 zon.shadow.camera.near   = 10;
 zon.shadow.camera.far    = 300;
 scene.add(zon);
@@ -455,6 +455,44 @@ const wereld = new THREE.Group();
 wereld.name = 'Dam Amsterdam polished world';
 scene.add(wereld);
 
+// Ticket D4 (SONNET_EXECUTION_PLAN_monument.md, Fase 1) — drie aparte
+// schaalfactoren i.p.v. één. Bij één factor over alles zou het Paleis
+// (22 m) en de monumentpyloon (ook 22 m) allebei naar 7,3 m krimpen, terwijl
+// robots 1,9 m blijven — een poppenhuis met het monument als tuinornament.
+// Met een mildere hoogtefactor blijft de arena omsloten en het monument
+// torenen, terwijl de looproutes wél echt 3× korter worden (dat is het hele
+// punt van deze ronde, zie SONNET_EXECUTION_PLAN_monument.md §2.1).
+const ARENA_SCHAAL = 1 / 3;            // alle x/z-posities en voetafdrukken
+const GEBOUW_HOOGTE_SCHAAL = 0.6;      // alleen hoogtes
+const MONUMENT_HOOGTE_SCHAAL = 0.8;    // het monument krimpt minder (zie bouwNationaalMonument)
+
+// Elke bouwfunctie hieronder voegt zijn geometrie toe aan `wereld` (rechtstreeks
+// of via een eigen sub-groep) en gebruikt nergens scene.add() rechtstreeks voor
+// statisch decor — geverifieerd: de enige scene.add()-aanroepen in dit bestand
+// zijn licht, camera, wereld zelf, en dynamische gameplay-objecten (wolken,
+// duiven, robots, munten, brokstukken) die bewust BUITEN wereld blijven, want
+// die hebben hun eigen, los bijgewerkte wereldcoördinaten (zie SPAWN_POORTEN
+// e.a. in D5). Daardoor is deze ene regel genoeg om de HELE statische stad
+// (positie, voetafdruk én hoogte) te herschalen — geen enkele hardgecodeerde
+// coördinaat in de ~40 bouwfuncties hoeft aangepast. Moet vóór elke bouwfunctie
+// staan: registreerObstakel() leest de wereldmatrix op het moment van
+// registreren (updateWorldMatrix + Box3.setFromObject), niet achteraf.
+wereld.scale.set(ARENA_SCHAAL, GEBOUW_HOOGTE_SCHAAL, ARENA_SCHAAL);
+
+// Ticket D4: de schaduwcamera-frustum (zie STAP 1, was ±110) was afgestemd op
+// de oude, 3× grotere arena. Mee schalen naar ±36,7 geeft bij dezelfde
+// 2048²-shadowmap een veel scherpere schaduw op de nu kleinere kaart — met
+// de oude, te ruime frustum zou de map grotendeels lucht boven een lege
+// vlakte dekken.
+zon.shadow.camera.left   = -110 * ARENA_SCHAAL;
+zon.shadow.camera.right  =  110 * ARENA_SCHAAL;
+zon.shadow.camera.top    =  110 * ARENA_SCHAAL;
+zon.shadow.camera.bottom = -110 * ARENA_SCHAAL;
+// De shadow camera moet zijn projectiematrix herberekenen na deze wijziging
+// (Three.js doet dat niet automatisch bij het zetten van left/right/top/
+// bottom na de eerste render-init).
+zon.shadow.camera.updateProjectionMatrix();
+
 const obstakels = [];
 
 // Groter speelgebied zodat het plein, Damrak, Rokin en zijstraten kloppen.
@@ -462,7 +500,10 @@ const obstakels = [];
 // nu met de lange gevel (61m) oost van De Bijenkorf en sluit zo die kant
 // van de kaart af (zie bouwKrasnapolsky hieronder), en dat past niet meer
 // binnen de oorspronkelijke kaartrand.
-const GRENS = { minX: -118, maxX: 165, minZ: -118, maxZ: 106 };
+// Ticket D4: ×ARENA_SCHAAL. GRENS is een pure gameplay-grens (clamping in
+// losBotsingenOp/isVrijePlek), geen Three.js-object — die volgt de
+// wereld-schaal niet automatisch en moet hier met de hand mee.
+const GRENS = { minX: -118 * ARENA_SCHAAL, maxX: 165 * ARENA_SCHAAL, minZ: -118 * ARENA_SCHAAL, maxZ: 106 * ARENA_SCHAAL };
 
 // Palet met iets warmere, minder platte kleuren dan de eerste versie.
 const PAL = {
@@ -1131,7 +1172,9 @@ function bouwKoninklijkPaleis() {
   // collision niet stilletjes mee met de nieuwe uitstekende zuilen/risalieten.
   // Wereldmaten: x = -93 + [-15.75(dakrand/west), 19.75(zuil-oostrand)],
   // z = [-42.3, 42.3] (plint/dakrand-diepte).
-  registreerRechthoek(-108.75, -73.0, -42.3, 42.3, 0.3);
+  // Ticket D4: raw getallen ×ARENA_SCHAAL (zie bouwNationaalMonument hierboven
+  // voor de volledige uitleg van waarom dit met de hand moet).
+  registreerRechthoek(-108.75 * ARENA_SCHAAL, -73.0 * ARENA_SCHAAL, -42.3 * ARENA_SCHAAL, 42.3 * ARENA_SCHAAL, 0.3 * ARENA_SCHAAL);
 }
 bouwKoninklijkPaleis();
 
@@ -1165,7 +1208,10 @@ function bouwReparatiepost(x, z) {
   g.position.set(x, 0, z);
   wereld.add(g);
   schaduwAan(g);
-  registreerRechthoek(x - 1.1, x + 1.1, z - 0.9, z + 0.9, 0.3);
+  // Ticket D4: x/z zijn de rauwe, lokale coördinaten waarop g.position hierboven
+  // ook staat — registreerRechthoek() leest geen wereldmatrix, dus dit moet met
+  // de hand ×ARENA_SCHAAL, anders staat de botsbox los van de verkleinde markering.
+  registreerRechthoek((x - 1.1) * ARENA_SCHAAL, (x + 1.1) * ARENA_SCHAAL, (z - 0.9) * ARENA_SCHAAL, (z + 0.9) * ARENA_SCHAAL, 0.3 * ARENA_SCHAAL);
 
   interactieMarkering(x, z, '👑', 0xe0b84a);
 }
@@ -1245,7 +1291,8 @@ function bouwNieuweKerk() {
   // Expliciete rechthoek i.p.v. Box3, zodat de steunberen de collision niet
   // ongemerkt oprekken. Wereldmaten: x = -67 + [-34(toren-west), 27.3(oostbeer)],
   // z = -67 + [-19(transept-noord), 23(transept-zuid)].
-  registreerRechthoek(-101.3, -39.5, -86.3, -43.7, 0.3);
+  // Ticket D4: raw getallen ×ARENA_SCHAAL.
+  registreerRechthoek(-101.3 * ARENA_SCHAAL, -39.5 * ARENA_SCHAAL, -86.3 * ARENA_SCHAAL, -43.7 * ARENA_SCHAAL, 0.3 * ARENA_SCHAAL);
 }
 bouwNieuweKerk();
 
@@ -1275,7 +1322,8 @@ function bouwKerkklok(x, z) {
   g.position.set(x, 0, z);
   wereld.add(g);
   schaduwAan(g);
-  registreerRechthoek(x - 1.0, x + 1.0, z - 1.0, z + 1.0, 0.3);
+  // Ticket D4: zelfde reden als bouwReparatiepost hierboven.
+  registreerRechthoek((x - 1.0) * ARENA_SCHAAL, (x + 1.0) * ARENA_SCHAAL, (z - 1.0) * ARENA_SCHAAL, (z + 1.0) * ARENA_SCHAAL, 0.3 * ARENA_SCHAAL);
 
   interactieMarkering(x, z, '🔔', 0xffd75e);
 }
@@ -1360,9 +1408,20 @@ function bouwNationaalMonument() {
 
   g.position.set(42, 0, -4);
   wereld.add(g);
+  // Ticket D4: het monument krijgt een EIGEN, extra hoogteschaal bovenop de
+  // hoogteschaal die `wereld` al aan alle gebouwen geeft. Alleen y, nooit
+  // x/z — de voetafdruk (paaltjes op straal 15,5, keermuur op 13,8, …)
+  // moet gewoon meeschalen met de rest van de arena (wereld.scale.x/z), dit
+  // corrigeert alleen de HOOGTE naar MONUMENT_HOOGTE_SCHAAL i.p.v.
+  // GEBOUW_HOOGTE_SCHAAL: wereld.scale.y (0,6) × deze factor moet netto
+  // MONUMENT_HOOGTE_SCHAAL (0,8) opleveren, dus 0,8 / 0,6.
+  g.scale.y = MONUMENT_HOOGTE_SCHAAL / GEBOUW_HOOGTE_SCHAAL;
   schaduwAan(g);
   // Alleen de trappen en zuil blokkeren. De ring eromheen blijft beloopbaar genoeg.
-  registreerRechthoek(42 - 10.5, 42 + 10.5, -4 - 10.5, -4 + 10.5, 0.2);
+  // Ticket D4: raw getallen, geen Three.js-object — registreerRechthoek() leest
+  // geen wereldmatrix, dus dit moet met de hand ×ARENA_SCHAAL (net als de marge:
+  // ook de bufferzone rond het monument hoort proportioneel te krimpen).
+  registreerRechthoek((42 - 10.5) * ARENA_SCHAAL, (42 + 10.5) * ARENA_SCHAAL, (-4 - 10.5) * ARENA_SCHAAL, (-4 + 10.5) * ARENA_SCHAAL, 0.2 * ARENA_SCHAAL);
 }
 bouwNationaalMonument();
 
@@ -1410,7 +1469,8 @@ function bouwBijenkorf() {
   g.position.set(75, 0, -53);
   wereld.add(g);
   schaduwAan(g);
-  registreerObstakel(g, 0.5);
+  registreerObstakel(g, 0.5 * ARENA_SCHAAL);   // Ticket D4: marge x ARENA_SCHAAL, proportioneel met de kleinere gebouwen
+
 }
 bouwBijenkorf();
 
@@ -1451,7 +1511,8 @@ function bouwKrasnapolsky() {
   g.rotation.y = Math.PI / 2;
   wereld.add(g);
   schaduwAan(g);
-  registreerObstakel(g, 0.5);
+  registreerObstakel(g, 0.5 * ARENA_SCHAAL);   // Ticket D4: idem
+
 }
 bouwKrasnapolsky();
 
@@ -1490,7 +1551,8 @@ function bouwGassanHotel27() {
   g.position.set(72, 0, 58);
   wereld.add(g);
   schaduwAan(g);
-  registreerObstakel(g, 0.5);
+  registreerObstakel(g, 0.5 * ARENA_SCHAAL);   // Ticket D4: idem
+
 }
 bouwGassanHotel27();
 
@@ -1598,7 +1660,8 @@ function plaatsGevelrij({ aantal, x, z, richting = 'x', rotY = 0, tussen = 6.35,
     else pand.position.set(x, 0, z + afstand);
     pand.rotation.y = rotY;
     wereld.add(pand);
-    registreerObstakel(pand, 0.25);
+    registreerObstakel(pand, 0.25 * ARENA_SCHAAL);   // Ticket D4: idem
+
   }
 }
 
@@ -1646,7 +1709,8 @@ function bouwMadameTussaudsBlok() {
   g.position.set(-13, 0, 60);
   wereld.add(g);
   schaduwAan(g);
-  registreerObstakel(g, 0.3);
+  registreerObstakel(g, 0.3 * ARENA_SCHAAL);   // Ticket D4: idem
+
 }
 bouwMadameTussaudsBlok();
 
@@ -1677,7 +1741,8 @@ function lantaarn(x, z, schaal = 1) {
   g.position.set(x, 0, z);
   wereld.add(g);
   schaduwAan(g);
-  registreerRechthoek(x - 0.25, x + 0.25, z - 0.25, z + 0.25, 0.1);
+  // Ticket D4: zelfde reden als bouwReparatiepost hierboven.
+  registreerRechthoek((x - 0.25) * ARENA_SCHAAL, (x + 0.25) * ARENA_SCHAAL, (z - 0.25) * ARENA_SCHAAL, (z + 0.25) * ARENA_SCHAAL, 0.1 * ARENA_SCHAAL);
 }
 [
   [-37, -29], [-35, 23], [18, 28], [25, -20], [0, -8],
@@ -1701,7 +1766,8 @@ function bankje(x, z, rotY = 0) {
   g.position.set(x, 0, z);
   g.rotation.y = rotY;
   wereld.add(g);
-  registreerObstakel(g, 0.1);
+  registreerObstakel(g, 0.1 * ARENA_SCHAAL);   // Ticket D4: idem
+
 }
 bankje(17, 14, Math.PI / 8);
 bankje(-40, -31, -0.4);   // verschoven i.v.m. het verplaatste Krasnapolsky-gebouw hiernaast
@@ -1731,7 +1797,8 @@ function terras(x, z, rotY = 0) {
   g.rotation.y = rotY;
   wereld.add(g);
   schaduwAan(g);
-  registreerRechthoek(x - 2.0, x + 2.0, z - 2.0, z + 2.0, 0.15);
+  // Ticket D4: zelfde reden als bouwReparatiepost hierboven.
+  registreerRechthoek((x - 2.0) * ARENA_SCHAAL, (x + 2.0) * ARENA_SCHAAL, (z - 2.0) * ARENA_SCHAAL, (z + 2.0) * ARENA_SCHAAL, 0.15 * ARENA_SCHAAL);
 }
 terras(-39, 27); terras(-34, 31); terras(30, 35); terras(35, 31); terras(88, 26);
 
@@ -1766,7 +1833,8 @@ function fietsenrek(x, z, rotY = 0) {
   g.rotation.y = rotY;
   wereld.add(g);
   schaduwAan(g);
-  registreerObstakel(g, 0.2);
+  registreerObstakel(g, 0.2 * ARENA_SCHAAL);   // Ticket D4: idem
+
 }
 fietsenrek(-21, 43, 0);
 fietsenrek(43, 15, Math.PI / 2);
@@ -1844,7 +1912,8 @@ function upgradeKiosk(x, z, rotY = 0) {
   g.rotation.y = rotY;
   wereld.add(g);
   schaduwAan(g);
-  registreerRechthoek(x - 1.5, x + 1.5, z - 0.8, z + 0.8, 0.3);
+  // Ticket D4: zelfde reden als bouwReparatiepost hierboven.
+  registreerRechthoek((x - 1.5) * ARENA_SCHAAL, (x + 1.5) * ARENA_SCHAAL, (z - 0.8) * ARENA_SCHAAL, (z + 0.8) * ARENA_SCHAAL, 0.3 * ARENA_SCHAAL);
 }
 upgradeKiosk(60, -22);
 interactieMarkering(60, -17, '🛒', 0xffd75e);
@@ -1862,7 +1931,9 @@ function boom(x, z, schaal = 1) {
   g.position.set(x, 0, z);
   wereld.add(g);
   schaduwAan(g);
-  registreerRechthoek(x - 0.55 * schaal, x + 0.55 * schaal, z - 0.55 * schaal, z + 0.55 * schaal);
+  // Ticket D4: zelfde reden als bouwReparatiepost hierboven (geen marge-argument
+  // hier, dus alleen de vier coördinaten × ARENA_SCHAAL).
+  registreerRechthoek((x - 0.55 * schaal) * ARENA_SCHAAL, (x + 0.55 * schaal) * ARENA_SCHAAL, (z - 0.55 * schaal) * ARENA_SCHAAL, (z + 0.55 * schaal) * ARENA_SCHAAL);
 }
 boom(-43, 18, 1.0); boom(-47, 30, 1.05); boom(25, 39, 0.95); boom(53, 23, 1.1); boom(57, -28, 1.0); boom(-38, -35, 0.9);   // laatste boom verschoven i.v.m. Krasnapolsky hiernaast
 
@@ -1890,7 +1961,8 @@ function tram(x, z, rotY = 0) {
   g.rotation.y = rotY;
   wereld.add(g);
   schaduwAan(g);
-  registreerObstakel(g, 0.25);
+  registreerObstakel(g, 0.25 * ARENA_SCHAAL);   // Ticket D4: idem
+
 }
 tram(5, -74, 0.03);
 
@@ -2043,8 +2115,25 @@ levendStandbeeld(36, 17, -0.35);
 // Bewegende decortram langs Damrak en Rokin. De tram krijgt een eigen
 // obstakel-rechthoek die elke frame meebeweegt met de tram zelf, zodat de
 // speler (en robots) er niet meer doorheen kunnen lopen.
-const TRAM_HALF_X = 2.4;
-const TRAM_HALF_Z = 8.1;
+//
+// Ticket D4 — dit is de ENIGE plek in het bestand waar de wereld-schaal WEL
+// met de hand toegepast moet worden op iets dat een kind van `wereld` is.
+// Reden: de tram is de enige plek die `g.position.x/z` (LOKALE coördinaten,
+// relatief aan `wereld`) rechtstreeks in een `obstakels`-rechthoek zet — en
+// die array wordt overal elders vergeleken tegen WERELD-coördinaten. Zolang
+// `wereld.scale` (1,1,1) was, was lokaal toevallig gelijk aan wereld; nu niet
+// meer. Vandaar de expliciete ×ARENA_SCHAAL hieronder, op twee plekken: hier
+// bij het aanmaken en in updateBewegendeTrams() bij elke stap.
+//
+// TRAM_HALF_X/Z schalen mee zodat de botsbox proportioneel blijft met de nu
+// visueel kleinere tram (body is 4,25 × 15,5, ook een kind van `wereld`).
+// `snelheid` (verderop, 5,5) blijft bewust ONGEWIJZIGD: dat is een LOKALE
+// snelheid over dezelfde LOKALE afstand (zMin/zMax hieronder blijven ook
+// ongewijzigd) — de rittijd in seconden blijft dus precies gelijk, alleen de
+// wereld die de tram doorkruist is nu kleiner. Dat is precies wat je wilt
+// voor decoratieve achtergrondanimatie.
+const TRAM_HALF_X = 2.4 * ARENA_SCHAAL;
+const TRAM_HALF_Z = 8.1 * ARENA_SCHAAL;
 const bewegendeTrams = [];
 function maakRijdendeTram() {
   const g = new THREE.Group();
@@ -2072,7 +2161,9 @@ function plaatsRijdendeTram() {
   wereld.add(g);
   // Eigen obstakel-object dat we straks elke frame bijwerken (minX/maxX
   // staan vast, alleen minZ/maxZ schuiven mee met de tram).
-  const obstakel = { minX: g.position.x - TRAM_HALF_X, maxX: g.position.x + TRAM_HALF_X, minZ: g.position.z - TRAM_HALF_Z, maxZ: g.position.z + TRAM_HALF_Z };
+  // Ticket D4: g.position.x/z is LOKAAL (relatief aan wereld) — ×ARENA_SCHAAL
+  // om de WERELD-positie te krijgen die de obstakels-array verwacht.
+  const obstakel = { minX: g.position.x * ARENA_SCHAAL - TRAM_HALF_X, maxX: g.position.x * ARENA_SCHAAL + TRAM_HALF_X, minZ: g.position.z * ARENA_SCHAAL - TRAM_HALF_Z, maxZ: g.position.z * ARENA_SCHAAL + TRAM_HALF_Z };
   obstakels.push(obstakel);
   bewegendeTrams.push({ groep: g, obstakel, zMin: -112, zMax: 106, richting: 1, snelheid: 5.5, belTimer: 5 });
 }
@@ -2083,8 +2174,10 @@ function updateBewegendeTrams(dt) {
     if (t.groep.position.z > t.zMax) { t.groep.position.z = t.zMax; t.richting = -1; }
     if (t.groep.position.z < t.zMin) { t.groep.position.z = t.zMin; t.richting = 1; }
     t.groep.rotation.y = t.richting > 0 ? 0 : Math.PI;
-    t.obstakel.minZ = t.groep.position.z - TRAM_HALF_Z;
-    t.obstakel.maxZ = t.groep.position.z + TRAM_HALF_Z;
+    // Ticket D4: t.groep.position.z is LOKAAL — zelfde ×ARENA_SCHAAL als bij
+    // het aanmaken hierboven, anders loopt de botsbox los van de tram.
+    t.obstakel.minZ = t.groep.position.z * ARENA_SCHAAL - TRAM_HALF_Z;
+    t.obstakel.maxZ = t.groep.position.z * ARENA_SCHAAL + TRAM_HALF_Z;
     t.belTimer -= dt;
     if (t.belTimer <= 0) {
       if (typeof speelTramBel === 'function') speelTramBel();
@@ -3520,7 +3613,7 @@ requestAnimationFrame(gameLoop);
 // (…Stand, zelfde patroon als het bestaande `geldStand`) i.p.v. de kale
 // waarde: anders bevriest de export de waarde van het moment dat deze regel
 // voor het eerst uitgevoerd wordt, in plaats van live mee te lezen.
-window.DamChaosDebug = { scene, camera, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => bijenkorfShopOpen, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, activeerKerkklokBoost, updateKerkklokBoost,
+window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => bijenkorfShopOpen, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, activeerKerkklokBoost, updateKerkklokBoost,
   GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerBijenkorfUpgradeShop, updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie };
 </script>
 </body>

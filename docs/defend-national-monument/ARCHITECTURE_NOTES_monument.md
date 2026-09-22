@@ -5,11 +5,14 @@ Tegenhanger van `docs/amsterdam-undead/ARCHITECTURE_NOTES_undead.md`; de twee
 games delen géén code, dus de twee documenten delen geen inhoud.
 
 **Status:** dit document beschrijft de game zoals die er vandaag uit ziet, ná
-D0/D1 (testinfrastructuur) maar vóór de herschaling in fase 1. Alles
-hieronder is uit de code gelezen en narekenbaar — regelnummers verwijzen naar
-`defend-national-monument.html` (3.518 regels, 132 KB). Zodra fase 1 (de
-herschaling) landt wijzigen de meetwaarden in §3 (wereld) en §6 (robots) en
-moet dit document mee.
+D0–D4 (testinfrastructuur + het schaalfundament; D5/D6 volgen nog). Alles
+hieronder is uit de code gelezen en narekenbaar. **Regelnummers zijn sinds D4
+op sommige plekken bewust niet meer exact** (het bestand groeide met ~120
+regels door de D4-toelichtingen) — behandel ze als een globale vingerwijzing,
+niet als een contract; de secties die D4 rechtstreeks raakte (§2, §3.1, §3.5,
+§4.2, §4.3, §12) zijn wel bijgewerkt. Zodra fase 1 volledig landt (D4+D5+D6)
+wijzigen de meetwaarden in §3 (wereld) en §6 (robots) definitief en verdient
+het document een volledige regelnummer-pas.
 
 **Leeswijzer voor wie een ticket uitvoert:** §10 (valkuilen) en §11 (dode code)
 zijn de twee secties die je fout kunt ingaan zonder het te merken. Lees die
@@ -85,18 +88,20 @@ Zestien vaste elementen, allemaal `position: fixed` bovenop het canvas:
 | Schaduwen | `shadowMap.enabled = true`, `PCFSoftShadowMap` |
 | Kleur / tonemapping | `SRGBColorSpace`, `ACESFilmicToneMapping`, exposure 1.08 |
 | Zon | `DirectionalLight(0xfff2d0, 2.6)` op (70, 100, 45), shadow map 2048² |
-| Schaduwcamera | ±110 in x en y, near 10, far 300 |
+| Schaduwcamera | ±36,7 in x en y (was ±110, Ticket D4), near 10, far 300 |
 | Vulling | `HemisphereLight(0xbfe3ff, 0x9b8f7a, 1.15)` |
 
 **Alles staat hard aan.** Geen kwaliteitsniveaus, geen `pixelRatio`-plafond
 dat je kunt verlagen, geen schakelaar voor schaduwen. Dat is het hele
 onderwerp van D21.
 
-> **Bij de herschaling (D4):** de schaduwcamera is ±110 groot, afgestemd op de
-> huidige arena. Wordt de arena 1/3, dan dekt die frustum straks de hele kaart
-> ruim — dat is gratis schaduwkwaliteit die je moet meenemen: `left/right/
-> top/bottom` mee schalen geeft een veel scherpere schaduw bij dezelfde
-> 2048² map. Doe dat bewust, niet per ongeluk.
+**Sinds D4** staat `left/right/top/bottom` op ±36,7 (`110 × ARENA_SCHAAL`),
+gezet direct ná `wereld.scale.set(...)` in STAP 2 (niet meer bij `zon`'s
+eigen creatie in STAP 1 — `ARENA_SCHAAL` bestaat daar nog niet, TDZ). Dezelfde
+2048²-shadowmap dekt nu een 3× kleiner gebied: merkbaar scherpere
+schaduwranden, zonder extra rendercost. `updateProjectionMatrix()` erna is
+nodig, want Three.js herberekent de projectie niet vanzelf na het zetten van
+deze vier velden ná de eerste render-init.
 
 De resize-handler (regel 434) werkt `camera.aspect` en `renderer.setSize` bij,
 maar **niet** `setPixelRatio`. Bij het slepen tussen schermen met een andere
@@ -108,18 +113,34 @@ DPR blijft de oude ratio staan.
 
 ### 3.1 Maten en vaste punten
 
-| Wat | Waarde | Regel |
-| --- | --- | --- |
-| `GRENS` | x ∈ [−118, 165], z ∈ [−118, 106] | 465 |
-| Arena-afmeting | 283 m breed × 224 m diep | afgeleid |
-| Grondvlak | 620 × 620 | STAP 2 |
-| `MONUMENT_POSITIE` | (42, 0, −4) | 2415 |
-| `MONUMENT_BOX` | x ∈ [31,3, 52,7], z ∈ [−14,7, 6,7] | 2418 |
-| `MONUMENT_MAX_HP` | 100 | 2651 |
-| Speler-startplek | (16, 0, 30) | 2213 |
+**Sinds D4 zijn deze twee kolommen NIET meer consistent met elkaar** — met
+opzet, tijdelijk. `GRENS` is geschaald (D4 is klaar), maar
+`MONUMENT_POSITIE`/`MONUMENT_BOX`/de speler-startplek staan nog op hun oude,
+ongeschaalde waarde (dat is D5). Dit is precies het venster dat D2's
+`test-dnm-kern.mjs` tussen D4 en D5 rood laat zien op de poort-/
+interactiepunt-GRENS-checks — geen regressie, wel iets om nooit per ongeluk
+als "klaar" te lezen vóór D5 er is.
+
+| Wat | Waarde | Status | Regel |
+| --- | --- | --- | --- |
+| `GRENS` | x ∈ [−39,33, 55], z ∈ [−39,33, 35,33] | ✅ D4 | 465 e.v. |
+| Arena-afmeting | 94,3 m breed × 74,7 m diep | ✅ D4 | afgeleid |
+| Grondvlak (gerenderd) | 207 × 207 | ✅ D4 (via `wereld.scale`, geen brongetal gewijzigd) | STAP 2 |
+| `MONUMENT_POSITIE` | (42, 0, −4) | ⏳ nog oud, D5 | 2415 |
+| `MONUMENT_BOX` | x ∈ [31,3, 52,7], z ∈ [−14,7, 6,7] | ⏳ nog oud, D5 | 2418 |
+| `MONUMENT_MAX_HP` | 100 | — (geen ruimtelijke maat) | 2651 |
+| Speler-startplek | (16, 0, 30) | ⏳ nog oud, D5 | 2213 |
+
+De ECHTE wereldpositie van het monument ná D4 is `(42, −4) × ARENA_SCHAAL` =
+(14, −1,33) — dat is waar de zichtbare pyloon nu staat. `MONUMENT_POSITIE`
+zelf blijft (42, −4) tot D5 hem bijwerkt; gebruik tot dan de vermenigvuldiging
+met de hand als je iets ten opzichte van het echte monument moet positioneren
+(zoals de D4-verificatieschermafbeeldingen deden).
 
 Assenstelsel: **x = west-oost, z = noord-zuid, noord is negatieve z**, en één
-game-unit is ongeveer één meter (comment op regel 450).
+game-unit is ongeveer één meter (comment op regel 450) — dat geldt nog steeds
+voor LOKALE coördinaten binnen `wereld`; wereldcoördinaten zijn sinds D4
+lokaal × `ARENA_SCHAAL`/`GEBOUW_HOOGTE_SCHAAL`, zie §4.2.
 
 ### 3.2 Het palet (regel 468)
 
@@ -163,11 +184,26 @@ En decor: `lantaarn`, `bankje`, `terras`, `fietsenrek`, `upgradeKiosk`, `boom`,
 
 ### 3.5 Bewegend decor
 
-- **Rijdende tram** (`maakRijdendeTram` 2049, `updateBewegendeTrams` 2080):
-  één tram, snelheid 5,5 m/s, pendelt tussen z = −112 en z = 106, belt elke
-  5 s. Heeft een meebewegend obstakel.
-- **Duiven** (`maakDuif` 2138, `plaatsDuif` 2155, `updateDuiven` 2168):
-  18 stuks, geplaatst bij het opstarten (regel 3457).
+- **Rijdende tram** (`maakRijdendeTram`, `updateBewegendeTrams`): één tram,
+  snelheid 5,5 (lokale eenheden/s), pendelt tussen lokale z = −112 en z = 106,
+  belt elke 5 s. Heeft een meebewegend obstakel. **De tram is de ENIGE plek in
+  het hele bestand die een eigen `obstakels`-rechthoek bouwt uit
+  `g.position.x/z` rechtstreeks** (bevestigd: er zijn maar drie
+  `obstakels.push(`-aanroepen in het hele bestand — de twee
+  registratiefuncties en deze) — en dat is precies waarom hij sinds D4 een
+  eigen fix nodig had, zie §4.2. `TRAM_HALF_X`/`TRAM_HALF_Z` (2,4/8,1 vóór D4)
+  schalen mee met `ARENA_SCHAAL` zodat de botsbox proportioneel blijft met de
+  visueel kleinere tram. `snelheid` (5,5) en `zMin`/`zMax` (−112/106) blijven
+  bewust **ongewijzigd**: dat zijn lokale grootheden die tegen elkaar
+  vergeleken worden (`t.groep.position.z` is lokaal), dus de rittijd in
+  seconden blijft precies gelijk — alleen de wereld die de tram doorkruist is
+  nu kleiner.
+- **Duiven** (`maakDuif`, `plaatsDuif`, `updateDuiven`): 18 stuks. Anders dan
+  de tram zijn duiven GEEN kind van `wereld` (`scene.add(duif)`, niet
+  `wereld.add`) — hun spawnpositie komt uit `willekeurigePlek()`, die leest
+  van het al-geschaalde `GRENS`, dus ze spawnen na D4 vanzelf binnen de
+  nieuwe, kleinere arena zonder dat er iets aan duiven-code hoeft te
+  veranderen.
 
 ### 3.6 Determinisme
 
@@ -203,39 +239,92 @@ obstakels zijn dat 14·N doostoetsen per frame.
 `isVrijePlek(x, z, marge = 1)` (regel 2342) is de goedkope variant zonder
 duwen, gebruikt bij het spawnen.
 
-### 4.2 De twee registratiefuncties — de belangrijkste valkuil van D4
+### 4.2 De twee registratiefuncties, en hoe D4 ze daadwerkelijk raakte
 
-- `registreerObstakel(object, marge)` (regel 546) doet
-  `updateWorldMatrix(true, true)` + `Box3.setFromObject`. De doos **volgt de
-  wereldmatrix**, dus een schaal op een ouder-Group werkt automatisch door.
-- `registreerRechthoek(minX, maxX, minZ, maxZ, marge)` (regel 557) neemt kale
-  getallen aan en doet dat **niet**.
+- `registreerObstakel(object, marge)` doet `updateWorldMatrix(true, true)` +
+  `Box3.setFromObject`. De doos **volgt de wereldmatrix**, dus een schaal op
+  een ouder-Group werkt automatisch door.
+- `registreerRechthoek(minX, maxX, minZ, maxZ, marge)` neemt kale getallen aan
+  en doet dat **niet**.
 
-**Negen aanroepen van elk.** De negen `registreerRechthoek`-aanroepen:
+**Wat D4 hier daadwerkelijk deed, geverifieerd vóór het schrijven — dit is
+substantieel eenvoudiger dan het oorspronkelijke plan veronderstelde:**
 
-| Regel | Wat |
-|---:|---|
-| 1134 | Koninklijk Paleis |
-| 1168 | Reparatiepost-markering |
-| 1248 | Nieuwe Kerk |
-| 1278 | Kerkklok |
-| 1365 | **Nationaal Monument** |
-| 1680 | Lantaarnpaal |
-| 1734 | Terras |
-| 1847 | Upgradekiosk |
-| 1865 | Boom |
+`wereld = new THREE.Group()` is de gedeelde ouder van **letterlijk alle
+statische stadsgeometrie** — geverifieerd door alle 11 `scene.add()`-aanroepen
+in het bestand na te lopen: licht (2×), `wereld` zelf, wolken, duiven, robots,
+camera, brokstukken, twee soorten vonken en munten. Geen daarvan is een
+bouwfunctie; alle ~40 bouwfuncties gaan via `wereld.add()`, rechtstreeks of
+via de gedeelde primitieven (`blok`, `vloerRechthoek`, `vloerPoly`,
+`lijnOpGrond`, …), die zelf ook allemaal `wereld.add()` doen.
 
-> **D4-regel:** elke `registreerRechthoek`-aanroep moet handmatig door de
-> schaalfactor, de `registreerObstakel`-aanroepen niet. Door elkaar halen
-> levert onzichtbare muren of doorloopbare gebouwen op — en dat merk je pas
-> als je er tegenaan loopt, want er is geen enkele test.
+**Dat betekent: `wereld.scale.set(ARENA_SCHAAL, GEBOUW_HOOGTE_SCHAAL,
+ARENA_SCHAAL)` — één regel, gezet vóór alle bouwfuncties draaien — schaalt de
+HELE stad in één keer: positie, voetafdruk én hoogte, voor alle ~40
+bouwfuncties, zonder dat er ook maar één hardgecodeerde coördinaat in hun
+lichaam hoefde te veranderen.** Reden: een kind-object op lokale positie
+`(x, z)` rendert op wereldpositie `(x, z) × wereld.scale` zodra de ouder een
+schaal heeft — Three.js doet dat al voor je bij elke `updateWorldMatrix`.
+`registreerObstakel()` leest die wereldmatrix, dus die 8 aanroepen (zie
+onder) kregen hun juiste, geschaalde botsbox helemaal gratis.
+
+**Wat WEL met de hand moest, en waarom — drie categorieën:**
+
+1. **De negen `registreerRechthoek()`-aanroepen.** Ze rekenen met kale
+   getallen, buiten elke wereldmatrix om, dus D4 vermenigvuldigde alle vijf
+   argumenten (de vier coördinaten én de marge) met `ARENA_SCHAAL`, op de
+   plek waar de functie ZELF de rechthoek opbouwt — niet op de call-site.
+   Reden voor dat onderscheid: bij de zes parameterversies (bv.
+   `bouwReparatiepost(x, z)`) wordt `x`/`z` OOK gebruikt om `g.position.set(x,
+   0, z)` te zetten — dat moet ONGEWIJZIGD blijven (dat is al een lokale
+   coördinaat die via `wereld.scale` vanzelf goed komt); alleen de
+   `registreerRechthoek(x ± …, z ± …)`-berekening daaronder moest zelf
+   `× ARENA_SCHAAL`. De call-site aanpassen zou dubbel schalen.
+
+   | Regel | Wat |
+   |---:|---|
+   | 1163 | Koninklijk Paleis |
+   | 1200 | Reparatiepost-markering |
+   | 1281 | Nieuwe Kerk |
+   | 1312 | Kerkklok |
+   | 1410 | **Nationaal Monument** |
+   | 1726 | Lantaarnpaal |
+   | 1781 | Terras |
+   | 1895 | Upgradekiosk |
+   | 1915 | Boom |
+
+2. **De marge van alle 8 `registreerObstakel()`-aanroepen.** De doos zelf
+   komt automatisch goed (zie boven), maar de marge (0,1–0,5, een vaste
+   bufferzone in meters rond de doos) is een los getal dat NIET door de
+   wereldmatrix loopt — zonder correctie zou die marge na D4 relatief 3× zo
+   groot zijn t.o.v. het nu kleinere gebouw. Elke marge kreeg daarom een
+   call-site `× ARENA_SCHAAL`.
+3. **De tram** (§3.5) — het enige geval waar KIND-positie handmatig als
+   wereldpositie werd (her)gebruikt buiten de twee registratiefuncties om.
+
+**GRENS, de schaduwcamera en de monument-hoogte** zijn de drie dingen die
+GEEN kind van `wereld` zijn en dus ook met de hand moesten: `GRENS` is een
+losse gameplay-grens (§3.1), de schaduwcamera hoort bij `zon` (§2), en het
+monument kreeg een EIGEN, extra `g.scale.y` bovenop `wereld`'s hoogteschaal
+om op `MONUMENT_HOOGTE_SCHAAL` (0,8) uit te komen i.p.v. de generieke
+`GEBOUW_HOOGTE_SCHAAL` (0,6) — x/z van die extra schaal blijven op 1, anders
+zou de voetafdruk van het monument onbedoeld méé opgeblazen worden.
+
+> **Correctie op het oorspronkelijke plan:** de tickettekst noemde als
+> to-do-lijst "grondvlak, damPleinPunten, alle bouwfuncties, plaatsGevelrij,
+> straatmeubilair, railpad, zebrapaden" — geen van die hoefde aangeraakt te
+> worden. Dat was een onvolledig begrip van de group-scale-truc ten tijde
+> van het schrijven van het plan: de "technische meevaller" gold niet alleen
+> voor `registreerObstakel()`'s botsboxen, maar voor de HELE zichtbare stad.
 
 ### 4.3 `MONUMENT_BOX` is een handmatige kopie
 
-Regel 1365 registreert `(42 ± 10,5, −4 ± 10,5)` met marge 0,2 → effectief
-±10,7. Regel 2418 herhaalt dat met de hand als `MONUMENT_BOX`. **Twee plekken,
-één waarheid.** Wijzigt de één, dan moet de ander mee, en er is niets dat dat
-bewaakt.
+De monument-registratie (regel 1410, hierboven) registreert
+`(42 ± 10,5, −4 ± 10,5) × ARENA_SCHAAL` met marge `0,2 × ARENA_SCHAAL`.
+`MONUMENT_BOX` (regel 2418, nog **niet** geschaald — dat is D5) herhaalt dat
+met de hand. **Twee plekken, één waarheid, en ze staan sinds D4 tijdelijk
+NIET meer gelijk** — precies de bekende valkuil, nu zichtbaar geworden door de
+ticketsplitsing zelf. D5 moet dit weer gelijktrekken.
 
 ---
 
@@ -328,6 +417,11 @@ Het plafond wordt bij `Math.random() = 1` al rond wave 17 geraakt en bij
 > oorzaak.
 
 ### 6.3 Spawnen
+
+**Alle waarden hieronder zijn nog ongewijzigd sinds vóór D4** — `SPAWN_POORTEN`
+is D5-scope. Ze liggen dus nu, tijdelijk, buiten het door D4 al verkleinde
+`GRENS` (zie §3.1); de poorttabel hieronder toont de OUDE, nog geldige
+afstanden op de OUDE schaal. D6 herrekent deze tabel op de nieuwe schaal.
 
 `SPAWN_POORTEN` (regel 2429), vijf stuks. `kiesSpawnPoort()` (2580) loot
 **volledig uniform** — geen weging, geen geheugen, geen spreiding over de
@@ -707,15 +801,31 @@ updateMunten · updateSpeler · probeerTeSchieten
 klokStand() · huidigeInteractieStand()
 ```
 
+Door D4 toegevoegd (1 stuk — een bugfix, geen D4-scope-uitbreiding):
+
+```
+renderer
+```
+
+**`renderer` ontbrak, en dat was een latent, tot dan toe onopgemerkt gat.**
+`tests/helpers-defend.mjs`'s `openDefend({ simuleerPointerLock: true })` las
+sinds D1 al `window.DamChaosDebug.renderer.domElement` (gekopieerd van
+Undead's `helpers.mjs`-patroon), maar `renderer` stond niet in D1's
+exportlijst — een `TypeError` die nooit afging omdat geen enkele D1/D2-test
+`simuleerPointerLock: true` gebruikte. Gevonden en gefixt tijdens D4 (nodig
+voor de verificatieschermafbeeldingen), vóórdat een latere ticket die wél
+pointer lock nodig heeft erop zou stuklopen.
+
 Patroon voor `let`-variabelen: een getter, niet de waarde zelf — anders
 bevriest de export de waarde op moduleniveau. `klokStand`/`huidigeInteractieStand`
 volgen hier het bestaande `geldStand`-patroon (een `…Stand`-functie, geen
 kale eigenschapsnaam die de waarde van het moment van export zou bevriezen).
 
-`tests/helpers-defend.mjs` (ook D1) opent de game via `openDefend()` en
-gebruikt dit object voor alles: `test-dnm-laadt.mjs` controleert de
-aanwezigheid van alle 53 sleutels hierboven bij elke wijziging aan dit
-bestand.
+`tests/helpers-defend.mjs` opent de game via `openDefend()` en gebruikt dit
+object voor alles: `test-dnm-laadt.mjs` controleert de aanwezigheid van de
+D1-sleutels hierboven bij elke wijziging aan dit bestand (nog niet
+uitgebreid met een check op `renderer` — dat mag een kleine aanvulling zijn
+bij de eerste gelegenheid die dit bestand tóch alweer aanraakt).
 
 ---
 
