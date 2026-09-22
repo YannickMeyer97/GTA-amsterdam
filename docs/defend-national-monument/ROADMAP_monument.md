@@ -38,9 +38,14 @@ Legenda: ☐ open · ◐ bezig · ☑ af
 
 | | Ticket | Kern |
 | --- | --- | --- |
-| ☐ | **D1** | Testinfrastructuur en debug-hooks |
+| ☐ | **D0** | Testmap opsplitsen per game |
+| ☐ | **D1** | Testinfrastructuur en debug-hooks uitbreiden |
 | ☐ | **D2** | Gedragstests die een herschaling overleven |
 | ☑ | **D3** | Documenten sorteren |
+
+D0 komt vóór D1: de testmap moet gesplitst zijn voordat `helpers-defend.mjs`
+en de eerste `test-dnm-*`-tests erin landen, anders verhuis je ze later
+alsnog.
 
 ### Fase 1 — De arena op maat
 
@@ -110,10 +115,31 @@ rapporten die maar voor één game bestaan hielden hun kale naam.
 Nieuw aangemaakt: `ARCHITECTURE_NOTES_monument.md` (uit de code gelezen, met
 narekenbare maten en de bestaande invarianten) en dit bestand.
 
-Onderweg bleek bij het uitlezen van de code dat **`window.DamChaosDebug` al
-bestaat** en een brede export heeft — het plan ging er bij D1 van uit dat er
-nog niets was en wilde een nieuwe `window.DefendDebug` maken. D1 is daarop
-bijgesteld: uitbreiden in plaats van aanmaken, en de bestaande naam blijft.
+Daarna zijn beide monument-documenten volledig uitgewerkt tegen de code, zodat
+de tickets uitvoerbaar zijn zonder dat er nog ontwerpwerk nodig is. Dat leverde
+vijf correcties op het oorspronkelijke plan op:
+
+1. **`window.DamChaosDebug` bestaat al** met ~30 exports. Het plan wilde bij D1
+   een nieuwe `window.DefendDebug` maken. Nu: uitbreiden, naam blijft.
+2. **De robotsnelheid was fout berekend.** `maakRobot` zet
+   `snelheid: 1.4 + Math.random()`, maar `spawnRobot` overschrijft die
+   onmiddellijk met `min(1,35 + rnd·0,7 + wave·0,07, 3,2) × 1,1 × typefactor` —
+   een formule die **meeschaalt met de wave** en afvlakt op 3,52 m/s. Alle
+   looptijdtabellen zijn hierop herrekend.
+3. **De afstandstabel mat naar het middelpunt** van het monument, terwijl
+   `afstandTotMonument()` naar de rand van `MONUMENT_BOX` meet — ~10 m
+   verschil. Beide conventies staan nu naast elkaar.
+4. **Negen `registreerRechthoek`-aanroepen, niet tien** (en negen
+   `registreerObstakel`). De lijst met regelnummers staat in de
+   architectuurnotities.
+5. **`spelActief` in de gameloop checkt `spel.gameOver` niet.** Na game over
+   blijft de loop draaien: je kunt schieten, munten oprapen en rondlopen. D7 en
+   D9 zijn hierop aangescherpt.
+
+Daarnaast vijf stukken dode code gevonden en gedocumenteerd (`ROBOT_AANTAL`,
+`respawnLijst`, `vindDichtstbijzijndeInteractie`, `robot.pauze`, en de
+overschreven `robot.snelheid`), plus een nieuw ticket **D0** voor het
+opsplitsen van de testmap.
 
 ---
 
