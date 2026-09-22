@@ -4,11 +4,12 @@ Invarianten, contracten en valkuilen van `defend-national-monument.html`.
 Tegenhanger van `docs/amsterdam-undead/ARCHITECTURE_NOTES_undead.md`; de twee
 games delen géén code, dus de twee documenten delen geen inhoud.
 
-**Status:** dit document beschrijft de game zoals die er vandaag uit ziet, vóór
-ticket D1. Alles hieronder is uit de code gelezen en narekenbaar —
-regelnummers verwijzen naar `defend-national-monument.html` (3.518 regels,
-132 KB). Zodra fase 1 (de herschaling) landt wijzigen de meetwaarden in §3
-(wereld) en §6 (robots) en moet dit document mee.
+**Status:** dit document beschrijft de game zoals die er vandaag uit ziet, ná
+D0/D1 (testinfrastructuur) maar vóór de herschaling in fase 1. Alles
+hieronder is uit de code gelezen en narekenbaar — regelnummers verwijzen naar
+`defend-national-monument.html` (3.518 regels, 132 KB). Zodra fase 1 (de
+herschaling) landt wijzigen de meetwaarden in §3 (wereld) en §6 (robots) en
+moet dit document mee.
 
 **Leeswijzer voor wie een ticket uitvoert:** §10 (valkuilen) en §11 (dode code)
 zijn de twee secties die je fout kunt ingaan zonder het te merken. Lees die
@@ -665,11 +666,11 @@ komt, maar niet als losse "opruimcommit" tussendoor.**
 
 ## 12. Debug-hook (regel 3516)
 
-**`window.DamChaosDebug` bestaat al** en is breed. Hij hoeft niet gemaakt te
-worden, alleen uitgebreid. De naam blijft — hernoemen breekt niets
+**`window.DamChaosDebug` bestaat al** en is breed — Ticket D1 heeft 'm
+uitgebreid, niet aangemaakt. De naam blijft — hernoemen breekt niets
 functioneels maar levert alleen ruis op.
 
-Nu geëxporteerd:
+Sinds D1 geëxporteerd (33 stuks, van vóór D1):
 
 ```
 scene · camera · speler · robots · munten · obstakels · interactiePunten
@@ -683,7 +684,7 @@ getComboGeldMultiplier · getComboVuurtempoMultiplier
 gebruikSpecial · activeerKerkklokBoost · updateKerkklokBoost
 ```
 
-Wat D1 moet toevoegen:
+Door D1 toegevoegd (20 stuks):
 
 ```
 GRENS · MONUMENT_POSITIE · MONUMENT_BOX · MONUMENT_MAX_HP · SPAWN_POORTEN
@@ -691,12 +692,18 @@ afstandTotMonument · upgradeKosten · losBotsingenOp · updateRobots
 koopUpgrade · koopMonumentReparatie · legMuntNeer · updateInteracties
 activeerHuidigeInteractie · activeerBijenkorfUpgradeShop
 updateMunten · updateSpeler · probeerTeSchieten
-klok (getter) · huidigeInteractie (getter)
+klokStand() · huidigeInteractieStand()
 ```
 
 Patroon voor `let`-variabelen: een getter, niet de waarde zelf — anders
-bevriest de export de waarde op moduleniveau. `geldStand`/`geldZet` zijn het
-bestaande voorbeeld.
+bevriest de export de waarde op moduleniveau. `klokStand`/`huidigeInteractieStand`
+volgen hier het bestaande `geldStand`-patroon (een `…Stand`-functie, geen
+kale eigenschapsnaam die de waarde van het moment van export zou bevriezen).
+
+`tests/helpers-defend.mjs` (ook D1) opent de game via `openDefend()` en
+gebruikt dit object voor alles: `test-dnm-laadt.mjs` controleert de
+aanwezigheid van alle 53 sleutels hierboven bij elke wijziging aan dit
+bestand.
 
 ---
 

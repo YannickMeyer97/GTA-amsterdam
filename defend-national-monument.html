@@ -3513,7 +3513,15 @@ requestAnimationFrame(gameLoop);
 
 // Handig om te experimenteren in de browserconsole (F12 → Console):
 // bijvoorbeeld `DamChaosDebug.spawnRobot()` voor een extra robot.
-window.DamChaosDebug = { scene, camera, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => bijenkorfShopOpen, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, activeerKerkklokBoost, updateKerkklokBoost };
+//
+// Ticket D1 (SONNET_EXECUTION_PLAN_monument.md, Fase 0): de tweede regel
+// hieronder is nieuw en bestond nog niet — dit object zelf wél. `klok` en
+// `huidigeInteractie` zijn `let`-variabelen, dus die staan hier als getter
+// (…Stand, zelfde patroon als het bestaande `geldStand`) i.p.v. de kale
+// waarde: anders bevriest de export de waarde van het moment dat deze regel
+// voor het eerst uitgevoerd wordt, in plaats van live mee te lezen.
+window.DamChaosDebug = { scene, camera, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => bijenkorfShopOpen, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, activeerKerkklokBoost, updateKerkklokBoost,
+  GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerBijenkorfUpgradeShop, updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie };
 </script>
 </body>
 </html>

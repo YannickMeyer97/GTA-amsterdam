@@ -39,7 +39,7 @@ Legenda: ☐ open · ◐ bezig · ☑ af
 | | Ticket | Kern |
 | --- | --- | --- |
 | ☑ | **D0** | Testmap opsplitsen per game |
-| ☐ | **D1** | Testinfrastructuur en debug-hooks uitbreiden |
+| ☑ | **D1** | Testinfrastructuur en debug-hooks uitbreiden |
 | ☐ | **D2** | Gedragstests die een herschaling overleven |
 | ☑ | **D3** | Documenten sorteren |
 
@@ -134,6 +134,43 @@ hele verplaatste map, niet door aan te nemen dat de importfix voldoende was.
 **Verificatie:** de volledige suite (`node run-all.mjs`) draaide **117/117
 groen** — geen enkele FAIL, ook niet de bekende flake uit een eerdere run.
 Dit ticket veranderde geen enkele assertie, alleen paden.
+
+### D1 — Testinfrastructuur en debug-hooks uitbreiden
+
+`window.DamChaosDebug` bestond al (zie D3's bevinding); dit ticket heeft 'm
+uitgebreid, niets opnieuw aangemaakt. Twintig nieuwe exports:
+`GRENS`, `MONUMENT_POSITIE`, `MONUMENT_BOX`, `MONUMENT_MAX_HP`,
+`SPAWN_POORTEN`, `afstandTotMonument`, `upgradeKosten`, `losBotsingenOp`,
+`updateRobots`, `koopUpgrade`, `koopMonumentReparatie`, `legMuntNeer`,
+`updateInteracties`, `activeerHuidigeInteractie`,
+`activeerBijenkorfUpgradeShop`, `updateMunten`, `updateSpeler`,
+`probeerTeSchieten`, en twee getters voor `let`-variabelen —
+`klokStand: () => klok` en `huidigeInteractieStand: () => huidigeInteractie`
+— naar het bestaande patroon van `geldStand`. Elke naam eerst gecontroleerd
+op aanwezigheid vóór toevoeging: geen enkele overlapte met wat er al stond.
+
+Nieuw: `tests/helpers-defend.mjs`, een bewust zelfstandige kopie van
+`helpers.mjs` (geen gedeelde imports tussen de twee testinfra's, zelfde
+regel als tussen de twee games zelf) met `openDefend()`,
+`executablePathOptie`, `frames()` en `makeChecker()`. Hergebruikt de
+bestaande gedeelde-browser-global uit `run-all.mjs`
+(`__AMSTERDAM_UNDEAD_SHARED_BROWSER__`) zodat de suite niet trager wordt
+door een tweede browserlaunch — de naam is historisch en dekt inmiddels
+beide games, maar hernoemen is bewust buiten scope gehouden.
+
+Eerste test: `tests/defend-national-monument/test-dnm-laadt.mjs` (20
+checks) — de game laadt zonder console-errors, de wereld heeft obstakels,
+wave 1 staat klaar volgens de bestaande formules, het monument staat op
+100 HP, en alle 33 bestaande plus 20 nieuwe debug-sleutels zijn aanwezig
+(sleutel-aanwezigheid, geen gedrag — dat is D2). Een korte steekproef
+roept de nieuwe exports ook echt aan, zodat een `ReferenceError` niet
+alleen door de sleutelcheck heen glipt.
+
+**Verificatie:** `node run-all.mjs` (118 scripts, beide games) draaide
+**117/118 groen**; de ene uitvaller (`test-nachthemel.mjs`, een
+screenshot-determinismetoets) draaide 3× schoon in isolatie — een
+bestaande load-gevoelige flake, geen regressie. De nieuwe D1-test zelf:
+20/20. `amsterdam-undead.html` en `index.html` zijn niet aangeraakt.
 
 ### D3 — Documenten sorteren
 
