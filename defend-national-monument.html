@@ -2527,10 +2527,20 @@ function afstandTotMonument(positie) {
 // de westkant van Tussauds voordat ze rechtstreeks op het monument afgaan.
 // Ticket D5: elke positie, spreidingX/Z en het tussenpunt ×ARENA_SCHAAL —
 // gameplay-wereldcoördinaten, geen kind van `wereld` (zie D4, §4.2).
+// Ticket D6 (meten en bijstellen): meet-dnm-afstanden.mjs bevestigde dat
+// Damrak/Rokin/Damstraat bij het robot-snelheidsplafond onder de 10s-
+// reactiedrempel zakten (6,7-9,1s). Optie 1 uit het plan: deze drie poorten
+// naar buiten verplaatst tot minstens ~35 m van de monumentrand — met een
+// bewuste, gecontroleerde laterale verschuiving (niet puur radiaal: op de
+// oorspronkelijke bearing liep Damrak binnen 2 m tegen GRENS aan, ver onder
+// de 35 m). Elke nieuwe positie is geverifieerd: isVrijePlek() === true,
+// binnen de GRENS-marge, en de route-simulatie (test-dnm-kern.mjs) bereikt
+// het monument. Gecombineerd met een milde plafondverlaging (zie spawnRobot)
+// voor een echte marge i.p.v. een millimeterwerk-uitkomst rond de drempel.
 const SPAWN_POORTEN = [
-  { naam: 'Damrak', positie: new THREE.Vector3(0 * ARENA_SCHAAL, 0, -106 * ARENA_SCHAAL), spreidingX: 8 * ARENA_SCHAAL, spreidingZ: 3 * ARENA_SCHAAL },
-  { naam: 'Rokin', positie: new THREE.Vector3(2 * ARENA_SCHAAL, 0, 96 * ARENA_SCHAAL), spreidingX: 8 * ARENA_SCHAAL, spreidingZ: 3 * ARENA_SCHAAL },
-  { naam: 'Damstraat', positie: new THREE.Vector3(123 * ARENA_SCHAAL, 0, 4 * ARENA_SCHAAL), spreidingX: 2 * ARENA_SCHAAL, spreidingZ: 8 * ARENA_SCHAAL },
+  { naam: 'Damrak', positie: new THREE.Vector3(-4, 0, -37.2), spreidingX: 8 * ARENA_SCHAAL, spreidingZ: 3 * ARENA_SCHAAL },
+  { naam: 'Rokin', positie: new THREE.Vector3(-6, 0, 33.3), spreidingX: 8 * ARENA_SCHAAL, spreidingZ: 3 * ARENA_SCHAAL },
+  { naam: 'Damstraat', positie: new THREE.Vector3(53, 0, 2), spreidingX: 2 * ARENA_SCHAAL, spreidingZ: 8 * ARENA_SCHAAL },
   { naam: 'Kalverstraat', positie: new THREE.Vector3(-55 * ARENA_SCHAAL, 0, 92 * ARENA_SCHAAL), spreidingX: 6 * ARENA_SCHAAL, spreidingZ: 4 * ARENA_SCHAAL, tussenpunt: new THREE.Vector3(-45 * ARENA_SCHAAL, 0, 45 * ARENA_SCHAAL) },
   { naam: 'Nieuwendijk', positie: new THREE.Vector3(-52 * ARENA_SCHAAL, 0, -106 * ARENA_SCHAAL), spreidingX: 6 * ARENA_SCHAAL, spreidingZ: 4 * ARENA_SCHAAL }
 ];
@@ -3122,7 +3132,13 @@ function spawnRobot(poort = null, type = 'normal') {
   }
   robot.doel = MONUMENT_POSITIE.clone();
   const config = ROBOT_TYPES[type] ?? ROBOT_TYPES.normal;
-  const basisSnelheid = Math.min(1.35 + Math.random() * 0.7 + spel.wave * 0.07, 3.2) * 1.1;   // standaard 10% sneller
+  // Ticket D6: plafond 3,2 -> 3,0 (was 3,52 m/s effectief, nu 3,3). Mild —
+  // gecombineerd met de verplaatste poorten (hierboven) geeft dit alle drie
+  // de kortste poorten ~0,6-0,7s marge boven de 10s-reactiedrempel i.p.v.
+  // de ~0,0-0,1s marge die alleen verplaatsen opleverde. Zie
+  // ARCHITECTURE_NOTES_monument.md §6.2/§6.3 en SONNET_EXECUTION_PLAN_monument.md
+  // Ticket D6 voor de volledige afweging tussen de drie opties.
+  const basisSnelheid = Math.min(1.35 + Math.random() * 0.7 + spel.wave * 0.07, 3.0) * 1.1;   // standaard 10% sneller
   robot.snelheid = basisSnelheid * config.snelheidMultiplier;
   scene.add(robot.groep);
   robots.push(robot);

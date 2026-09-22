@@ -5,15 +5,13 @@ Tegenhanger van `docs/amsterdam-undead/ARCHITECTURE_NOTES_undead.md`; de twee
 games delen géén code, dus de twee documenten delen geen inhoud.
 
 **Status:** dit document beschrijft de game zoals die er vandaag uit ziet, ná
-D0–D5 (testinfrastructuur + het schaalfundament + de spelsystemen op de
-nieuwe schaal; D6 — meten en bijstellen — volgt nog). Alles hieronder is uit
-de code gelezen en narekenbaar. **Regelnummers zijn sinds D4/D5 op sommige
-plekken bewust niet meer exact** (het bestand groeide met de toelichtingen)
-— behandel ze als een globale vingerwijzing, niet als een contract; de
-secties die D4/D5 rechtstreeks raakten (§2, §3.1, §3.5, §4.2, §4.3, §5, §6.3,
-§7.7, §8, §12) zijn wel bijgewerkt. D6 stelt de robotsnelheid/wave-formules
-mogelijk nog bij op basis van de meting in §6.3 — dan wijzigen de reistijden
-in §6 nog eenmaal.
+D0–D6 — Fase 1 (de herschaling) is hiermee volledig afgerond en gemeten, niet
+alleen berekend. Alles hieronder is uit de code gelezen en narekenbaar.
+**Regelnummers zijn sinds D4/D5/D6 op sommige plekken bewust niet meer
+exact** (het bestand groeide met de toelichtingen) — behandel ze als een
+globale vingerwijzing, niet als een contract; de secties die D4/D5/D6
+rechtstreeks raakten (§2, §3.1, §3.5, §4.2, §4.3, §5, §6.2, §6.3, §7.7, §8,
+§12) zijn wel bijgewerkt.
 
 **Leeswijzer voor wie een ticket uitvoert:** §10 (valkuilen) en §11 (dode code)
 zijn de twee secties die je fout kunt ingaan zonder het te merken. Lees die
@@ -393,10 +391,11 @@ gloeiend borstpaneel, twee armen, kop met twee ogen en een antenne met bolletje.
 ### 6.2 Snelheid — let op, hier zit een valkuil
 
 `maakRobot` zet `snelheid: 1.4 + Math.random()` (regel 2993). **Die waarde
-wordt nooit gebruikt.** `spawnRobot` overschrijft hem onmiddellijk (regel 3020):
+wordt nooit gebruikt.** `spawnRobot` overschrijft hem onmiddellijk:
 
 ```js
-const basisSnelheid = Math.min(1.35 + Math.random() * 0.7 + spel.wave * 0.07, 3.2) * 1.1;
+// Ticket D6: plafond 3,2 -> 3,0 (was 3,52 m/s effectief, nu 3,3).
+const basisSnelheid = Math.min(1.35 + Math.random() * 0.7 + spel.wave * 0.07, 3.0) * 1.1;
 robot.snelheid = basisSnelheid * config.snelheidMultiplier;
 ```
 
@@ -407,72 +406,75 @@ De **echte** basissnelheid loopt dus op met de wave en is geplafonneerd:
 | 1 | 1,56 – 2,33 |
 | 5 | 1,87 – 2,64 |
 | 10 | 2,26 – 3,03 |
-| ≥ 26 | 3,52 (plafond, `3.2 × 1.1`) |
+| ≥ 24 | 3,30 (plafond, `3.0 × 1.1`, was 3,52 vóór D6) |
 
-Het plafond wordt bij `Math.random() = 1` al rond wave 17 geraakt en bij
-`Math.random() = 0` pas rond wave 27.
+Het plafond wordt bij `Math.random() = 1` al rond wave 14 geraakt en bij
+`Math.random() = 0` pas rond wave 24 (was 17/27 vóór D6 — de lagere
+plafondwaarde wordt logischerwijs iets eerder bereikt).
 
 > Dit is een **onbedoelde wave-moeilijkheidsknop** die nergens gedocumenteerd
-> staat en niet in de HUD zichtbaar is. Bij D16 (economie herijken) en D6
-> (meten) moet je hem kennen, anders schrijf je effecten toe aan de verkeerde
-> oorzaak.
+> staat en niet in de HUD zichtbaar is. D6 heeft 'm bewust met 6,25%
+> verlaagd (§6.3) om drie poorten boven de reactiedrempel te tillen — een
+> mild ingrijpen, geen herontwerp. Bij D16 (economie herijken) moet je hem
+> blijven kennen, anders schrijf je effecten toe aan de verkeerde oorzaak.
 
 ### 6.3 Spawnen
 
-**Ná D5 zijn positie/spreiding geschaald; de robotsnelheid zelf NIET** (dat is
-bewust D6-scope, zie hieronder). De reistijden zijn dus 3× korter geworden
-door de kortere afstand, niet door snellere robots.
+**Ná D6 zijn zowel de posities als het robot-snelheidsplafond bijgesteld op
+basis van een meting**, niet alleen op berekening. `SPAWN_POORTEN` (regel
+2540), vijf stuks. `kiesSpawnPoort()` loot **volledig uniform** — geen
+weging, geen geheugen, geen spreiding over de kaart. `spawnPlekVoorPoort`
+probeert 30× een vrije plek binnen de spreiding van de poort en valt anders
+terug op de poortpositie zelf.
 
-`SPAWN_POORTEN` (regel 2529), vijf stuks. `kiesSpawnPoort()` loot **volledig
-uniform** — geen weging, geen geheugen, geen spreiding over de kaart.
-`spawnPlekVoorPoort` probeert 30× een vrije plek binnen de spreiding van de
-poort en valt anders terug op de poortpositie zelf.
+Afstand tot het monument is hieronder gegeven tot de doos — **de game rekent
+met de doos**, niet met het middelpunt. `afstandTotMonument()` klemt de
+positie op `MONUMENT_BOX`.
 
-Afstand tot het monument is hieronder tweemaal gegeven, omdat het verschil
-ertoe doet: **de game rekent met de doos**, niet met het middelpunt.
-`afstandTotMonument()` klemt de positie op `MONUMENT_BOX`.
+| Poort | Positie | → doos | Status |
+| --- | --- | ---: | --- |
+| Damstraat | (53, 0, 2) | 35,4 m | ⚙️ D6: verplaatst (was 23,4 m) |
+| Rokin | (−6, 0, 33,3) | 35,1 m | ⚙️ D6: verplaatst (was 31,3 m) |
+| Damrak | (−4, 0, −37,2) | 35,4 m | ⚙️ D6: verplaatst (was 32,2 m) |
+| Kalverstraat | (−18,33, 0, 30,67) | 40,4 m | ongewijzigd sinds D5 |
+| Nieuwendijk | (−17,33, 0, −35,33) | 41,2 m | ongewijzigd sinds D5 |
 
-| Poort | Positie | Spreiding | → doos | → middelpunt |
-| --- | --- | --- | ---: | ---: |
-| Damstraat | (41,00, 0, 1,33) | 0,67 × 2,67 | 23,4 m | 27,1 m |
-| Rokin | (0,67, 0, 32,00) | 2,67 × 1,00 | 31,3 m | 35,9 m |
-| Damrak | (0, 0, −35,33) | 2,67 × 1,00 | 32,2 m | 36,8 m |
-| Kalverstraat | (−18,33, 0, 30,67) | 2,00 × 1,33 | 40,4 m | 45,5 m |
-| Nieuwendijk | (−17,33, 0, −35,33) | 2,00 × 1,33 | 41,2 m | 46,2 m |
+**Waarom een laterale verschuiving, niet pure radiale verplaatsing.** De
+voor de hand liggende aanpak — een poort verder naar buiten schuiven op
+dezelfde bearing vanaf de oorsprong — bleek voor Damrak niet genoeg: die zat
+al binnen 2 m van `GRENS` op zijn oorspronkelijke lijn, en de verst haalbare
+plek daarop was zelf geen `isVrijePlek()`. Elke nieuwe positie is in plaats
+daarvan gevonden door te zoeken binnen de `GRENS`-marge naar de verste
+`isVrijePlek()`-plek in de buurt van de oorspronkelijke straat, en pas
+geaccepteerd na een geslaagde route-simulatie ernaartoe.
 
-**Reistijden**, met de échte snelheden uit §6.2 (**ongewijzigd, D6-scope**) —
-zie `SONNET_EXECUTION_PLAN_monument.md` D6 voor de volledige tabel en de
-oplossingsrichtingen voor het probleem dat hieronder al zichtbaar is:
+**Reistijden**, ná D6's gecombineerde fix (verplaatste poorten + plafond
+3,2 → 3,0, zie §6.2):
 
-| Poort | `normal`, wave 1 | `tank`, wave 1 | `normal`, plafond |
+| Poort | `normal`, wave 1 | `normal`, wave 10 | `normal`, plafond |
 | --- | --- | --- | --- |
-| Damstraat | 10 – 15 s | 18 – 27 s | **6,7 s** ✗ |
-| Rokin | 13 – 20 s | 25 – 36 s | **8,9 s** ✗ |
-| Damrak | 14 – 21 s | 25 – 37 s | **9,1 s** ✗ |
-| Kalverstraat | 17 – 26 s | 32 – 47 s | 11,5 s ✓ |
-| Nieuwendijk | 18 – 26 s | 32 – 48 s | 11,7 s ✓ |
+| Damstraat | 15,2 – 22,7 s | 11,7 – 15,7 s | 10,7 s ✓ (was 6,7 s ✗) |
+| Rokin | 15,1 – 22,5 s | 11,6 – 15,6 s | 10,7 s ✓ (was 8,9 s ✗) |
+| Damrak | 15,2 – 22,6 s | 11,7 – 15,7 s | 10,7 s ✓ (was 9,1 s ✗) |
+| Kalverstraat | 17,3 – 25,9 s | 13,4 – 17,9 s | 12,3 s ✓ (was 11,5 s) |
+| Nieuwendijk | 17,7 – 26,4 s | 13,6 – 18,3 s | 12,5 s ✓ (was 11,7 s) |
 
-Drie van de vijf poorten zakken bij het robot-snelheidsplafond (3,52 m/s,
-bereikt rond wave 17–27, zie §6.2) onder de reactiedrempel van 10 s. Dat is
-geen D4/D5-fout maar een eigenschap van de nu kortere afstanden gecombineerd
-met een ongewijzigde snelheidsformule — precies waarom D6 bestaat vóór er
-verder gebouwd wordt.
+Alle vijf nu boven de 10s-reactiedrempel, met 0,6–2,5s marge — geen
+millimeterwerk rond de grens. Wave 1 valt voor de dichtstbijzijnde poorten
+binnen het ontwerpdoel van 15–25s. Gemeten met
+`tests/defend-national-monument/meet-dnm-afstanden.mjs`, niet alleen
+berekend.
 
-**Kalverstraat heeft een `tussenpunt`** (−15, 0, 15). Geen navigatiesysteem
-maar één hardgecodeerde pleister: zonder dat punt liepen Kalverstraat-robots
-rakelings langs het Madame Tussauds-blok en kwamen ze in dezelfde oostelijke
-corridor uit als de Rokin-robots, waardoor het leek alsof ze van poort
-wisselden (comment op regel 2424).
+**Kalverstraat heeft een `tussenpunt`** (−15, 0, 15), ongewijzigd sinds D5.
+Geen navigatiesysteem maar één hardgecodeerde pleister: zonder dat punt
+liepen Kalverstraat-robots rakelings langs het Madame Tussauds-blok en
+kwamen ze in dezelfde oostelijke corridor uit als de Rokin-robots, waardoor
+het leek alsof ze van poort wisselden.
 
 **De "dichtbij genoeg"-afstand voor dat tussenpunt (`< 6` in `updateRobots`)
-is met opzet NIET meegeschaald in D5.** Dat getal staat niet in D5's
-"concrete lijst", en het is een navigatietolerantie, geen zuivere
-wereldafstand — vergelijkbaar met de interactiepunt-`radius` die D5 ook
-bewust ongeschaald liet. Gevolg: die tolerantiezone is nu relatief groter dan
-vóór de herschaling (was ~12,5% van de poort-tussenpunt-afstand, nu ~37,5%),
-wat de route eerder laat "afsnijden". Geen stuk-risico — een grotere relatieve
-tolerantie maakt de aankomstcheck juist makkelijker te halen, niet moeilijker
-— maar wel een navigatiegevoel-vraag voor D6.
+bleef ook in D6 ongewijzigd** — geen stuk-risico, wel nog steeds een
+navigatiegevoel-vraag voor een latere polijstronde als het bij het spelen
+opvalt.
 
 ### 6.4 De AI (`updateRobots`, regel 3027)
 

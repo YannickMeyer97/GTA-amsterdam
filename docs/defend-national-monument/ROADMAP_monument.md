@@ -53,7 +53,7 @@ alsnog.
 | --- | --- | --- |
 | ☑ | **D4** | Schaalfundament (voorzichtig, nooit combineren) |
 | ☑ | **D5** | Spelsystemen herijken op de nieuwe schaal |
-| ☐ | **D6** | Meten en bijstellen |
+| ◐ | **D6** | Meten en bijstellen (code+tests klaar, wacht op speeltest) |
 
 ### Fase 2 — De run krijgt een kop en een staart
 
@@ -380,6 +380,64 @@ maar wel iets voor D6 om op het gevoel te beoordelen. Zie
   in isolatie herbevestigd, geen regressie en geen relatie met dit ticket.
 
 Geen enkele gameplay-constante buiten de expliciet genoemde lijst aangeraakt.
+
+### D6 — Meten en bijstellen
+
+**Bevestigd, niet alleen berekend.** `tests/defend-national-monument/
+meet-dnm-afstanden.mjs` (nieuw meetscript, geen `test-`-prefix, draait niet
+in `run-all.mjs`) meet de looptijden rechtstreeks tegen de levende pagina.
+Uitkomst: exact het probleem dat D4/D5 al voorspelden — Damrak (9,1s),
+Rokin (8,9s) en Damstraat (6,7s) zakten bij het robot-snelheidsplafond onder
+de reactiedrempel van 10s, terwijl Kalverstraat (11,5s) en Nieuwendijk
+(11,7s) erboven bleven.
+
+**Gekozen oplossing: optie 1 uit het plan (poorten naar buiten), gecombineerd
+met een milde variant van optie 2 (plafondverlaging)** — precies de
+voorkeur die het plan al aangaf. Reden om NIET puur optie 1 te gebruiken:
+Damrak zat al binnen 2 m van `GRENS` op zijn oorspronkelijke bearing (verder
+naar buiten op dezelfde lijn vanaf de oorsprong kwam bij een positie die zelf
+niet eens `isVrijePlek()` was); pure herpositionering op de bestaande bearing
+gaf voor alle drie hooguit 32-34 m, en zelfs op de meetkundig best haalbare
+plek net onder de drempel (35,2 m is de ECHTE grens bij het oude plafond
+3,2 — niet 35 m zoals het plan afrondde: `35,2 / 3,52 m/s = 10,0s` exact).
+
+**Wat er precies veranderd is:**
+- Drie poortposities verplaatst met een **bewuste laterale verschuiving**
+  (niet puur radiaal vanaf de oorsprong) tot een geverifieerd veilige plek
+  ruim voorbij 35 m: Damrak (0, −35,33) → (−4, −37,2), Rokin (0,67, 32,00) →
+  (−6, 33,3), Damstraat (41,00, 1,33) → (53, 2). Elke nieuwe positie
+  gecontroleerd — niet aangenomen — op `isVrijePlek() === true`, binnen de
+  `GRENS`-marge, én een geslaagde route-simulatie (`test-dnm-kern.mjs`).
+  Kalverstraat en Nieuwendijk ongewijzigd (al ruim boven de drempel).
+- Het robot-snelheidsplafond in `spawnRobot()` (de bestaande
+  `Math.min(..., 3.2)` in de basissnelheid-formule): 3,2 → 3,0 (effectief
+  3,52 → 3,30 m/s). Een bewust milde 6,25%-verlaging — genoeg voor een echte
+  marge (~0,6-0,7s boven de drempel i.p.v. 0,0-0,1s), niet zo veel dat de
+  late-game-snelheidsspanning verdwijnt.
+
+**Resultaat, opnieuw gemeten:** alle vijf poorten nu 10,7-12,5s bij het
+plafond (was 6,7-11,7s), en wave 1 op 15,2-22,7s voor de dichtstbijzijnde
+poort — precies binnen het ontwerpdoel van 15-25s. Steunpunt-retour vanaf
+het monument: Kerkklok 10,9s, Reparatie 10,7s (doel 10-15s ✓), Bijenkorf
+2,1s (blijft vlak bij het monument, zoals bedoeld). Speler-doorkruistijd:
+13,5s (doel 10-15s ✓, ongewijzigd sinds D4/D5).
+
+**Verificatie:**
+- `meet-dnm-afstanden.mjs` opnieuw gedraaid: alle vijf poorten ✓, geen enkele
+  meer onder de reactiedrempel.
+- `test-dnm-kern.mjs`: **70/70 groen**, inclusief de route-simulatie vanaf de
+  drie NIEUWE poortposities — bevestigt dat ze niet alleen "vrij" zijn maar
+  ook daadwerkelijk een pad naar het monument hebben.
+- Vier schermafbeeldingen vanaf de drie verplaatste poorten (richting het
+  monument): open straatbeeld, geen clipping door gebouwen, geen visuele
+  afwijkingen.
+- Volledige suite (`node run-all.mjs`, 119 scripts, beide games): **119/119
+  groen** — perfecte score, ook geen van de bekende flakes
+  (`test-nachthemel.mjs`, `test-golf1-economie.mjs`) deze keer.
+
+**Dit ticket is pas formeel af als de eigenaar het gespeeld heeft** (eigen
+acceptatiecriterium uit het plan) — het bestand is na deze ronde gestuurd
+om te spelen.
 
 ---
 

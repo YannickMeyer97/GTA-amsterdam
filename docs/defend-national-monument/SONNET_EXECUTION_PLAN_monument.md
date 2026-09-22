@@ -493,7 +493,15 @@ gevoelsimpact van het hele plan, en de enige die elke coördinaat raakt.*
 - **Acceptatie:** het meetscript draait, de uitkomsten staan hieronder
   genoteerd, en de eigenaar heeft het gespeeld.
 
-> **Meetresultaten D6:** *(vul in bij uitvoering)*
+> **Meetresultaten D6:** bevestigd met `meet-dnm-afstanden.mjs`: Damstraat
+> 6,7s, Rokin 8,9s, Damrak 9,1s bij het plafond — exact de voorspelde
+> onder-de-drempel-uitkomst. Toegepast: optie 1 (poorten naar buiten, met een
+> laterale i.p.v. pure radiale verschuiving — Damrak had op zijn
+> oorspronkelijke bearing letterlijk geen 2 m ruimte meer) gecombineerd met
+> een milde variant van optie 2 (snelheidsplafond 3,2 → 3,0, effectief
+> 3,52 → 3,30 m/s). Herhaalde meting: alle vijf poorten 10,7–12,5s bij het
+> plafond, wave 1 op 15,2–26,4s. Volledig verslag in
+> `ROADMAP_monument.md` onder D6.
 
 ---
 
