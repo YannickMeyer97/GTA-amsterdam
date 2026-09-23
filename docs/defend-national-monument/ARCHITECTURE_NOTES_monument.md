@@ -7,14 +7,16 @@ games delen géén code, dus de twee documenten delen geen inhoud.
 **Status:** dit document beschrijft de game zoals die er vandaag uit ziet, ná
 D0–D6, de eerste speeltest-feedbackronde daarna (robots 15% kleiner,
 minder decor rond het strijdtoneel, minimap + richtingspijlen) en fase 2
-(D7 eindscherm, D8 highscore, D9 opnieuw spelen, D20 monumentschade). Fase 1
+(D7 eindscherm, D8 highscore, D9 opnieuw spelen, D20 monumentschade) en
+fase 3 (poorten, wapenbereik, bouwplekken, torens, hek, bouwfase, economie,
+themagolven — zie §14). Fase 1
 (de herschaling) is volledig afgerond en gemeten, niet alleen berekend.
 Alles hieronder is uit de code gelezen en narekenbaar.
 **Regelnummers zijn sinds D4/D5/D6 op sommige plekken bewust niet meer
 exact** (het bestand groeide met de toelichtingen) — behandel ze als een
 globale vingerwijzing, niet als een contract; de secties die D4/D5/D6/de
 speeltest-feedbackronde/fase 2 rechtstreeks raakten (§1.1, §2, §3.1, §3.5,
-§4.2, §4.3, §5, §6.1, §6.2, §6.3, §7.7, §8, §9.3–§9.6, §10, §12, §13) zijn
+§4.2, §4.3, §5, §6.1, §6.2, §6.3, §7.7, §8, §9.3–§9.6, §10, §12, §13, §14) zijn
 wel bijgewerkt.
 
 **Leeswijzer voor wie een ticket uitvoert:** §10 (valkuilen) en §11 (dode code)
@@ -40,6 +42,7 @@ eerst.
 | 11 | Dode code |
 | 12 | Debug-hook |
 | 13 | Testdekking |
+| 14 | De torenkern (fase 3): poorten, bereik, bouwplekken, torens, hek, bouwfase, economie, themagolven |
 
 ---
 
@@ -881,6 +884,24 @@ anders worden bollen hoge, smalle ellipsen. Het alarm is bewust géén
     in `resetRun()` én in `runStateStand()`.** Velden in `spel`, `upgrades`,
     `kerkklokBoost` en `speler` gaan automatisch mee via `BEGINSTAAT`; losse
     variabelen niet. Zie §9.5.
+15. **`registreerRechthoek()` geeft sinds D11 een handle terug.** Wie een
+    obstakel weer wil weghalen, bewaart die handle en gebruikt
+    `verwijderObstakel(handle)`. Nooit op index uit `obstakels` splicen: de
+    array heeft geen id's en groeit/krimpt met torens en hekken. Zie §14.4.
+16. **De volgorde in `updateRobots()` is een contract.** Monument-contact →
+    bomberdoel (D14) → hek slaan (D13) → lopen. Een robot die slaat, slaat
+    ook de vastloop-detectie over; anders wijkt hij na 1,5 s uit en loopt om
+    het hek heen. Zie §14.5.
+17. **Themagolven veranderen `waveDoel`, het robottype en het aantal poorten
+    voor waves 6, 10, 14, …** Een test die `7 + 3·wave` of "twee poorten
+    vanaf wave 3" aanneemt, moet `themaVoorWave()` /
+    `aantalPoortenVoorWave()` gebruiken. Zie §14.8.
+18. **De mist wordt op twee plekken gezet** (STAP 1 en opnieuw in STAP 2).
+    `MIST_BASIS` wordt daarom pas na het bouwen van de wereld vastgelegd. Zie
+    §14.8.
+19. **Balanswaarden horen niet hard in tests.** Sinds D16 lezen de
+    torentests hun verwachtingen uit `TOREN_TYPES`, zodat een volgende
+    balansronde geen tests breekt, alleen gedrag.
 
 ---
 
@@ -947,6 +968,32 @@ tekenMinimap · updateRichtingspijlen · verbergRichtingspijlen
 projecteerOpScherm · robotPijlenPool · ARENA_SCHAAL
 ```
 
+Door fase 3 toegevoegd (zie §14):
+
+```
+aantalActievePoorten · kiesActievePoorten · kiesSpawnPoort · poortBakens · updatePoortBakens      (D28)
+WAPEN_BEREIK · raycaster                                                                        (D29)
+BOUWPLEKKEN · BOUWPLEK_RADIUS · puntOpRoute · looproute                                         (D10)
+TOREN_TYPES · torens · bouwToren · verwijderToren · updateTorens · activeerBouwplek
+kiesTorenDoel · verwijderObstakel · bouwMenuStand()                                             (D11)
+BOUWFASE_DUUR · VROEGE_START_BONUS_PER_SECONDE · inBouwfase · bouwfaseResterend
+startVolgendeWaveNu                                                                             (D15)
+torenStats · upgradePrijs · reparatieKosten · verkoopOpbrengst · upgradeToren · repareerToren
+verkoopToren · TOREN_VERKOOP_FRACTIE · TOREN_REPARATIE_PER_HP                                   (D12)
+ROBOT_HEK_SCHADE · ROBOT_SLAG_INTERVAL · HEK_CONTACT_AFSTAND · hekInContact · afstandTotHek
+hekPaalOffsets · beschadigToren · vernietigToren                                                (D13)
+BOMBER_DOEL_STRAAL · BOMBER_TORENSCHADE · kiesBomberDoel · bouwwerkPunt                         (D14)
+MUNT_BASIS_MIN · MUNT_BASIS_MAX · WAVE_BONUS_BASIS · WAVE_BONUS_PER_WAVE
+PERFECT_BONUS_BASIS · PERFECT_BONUS_PER_WAVE                                                    (D16)
+THEMAGOLVEN · THEMA_VOLGORDE · THEMA_EERSTE_WAVE · THEMA_INTERVAL · THEMA_BONUS_FACTOR
+themaVoorWave · themaSleutelVoorWave · aantalPoortenVoorWave · robotTypeVoorLopendeWave
+MIST_BASIS                                                                                      (D30)
+```
+
+`runStateStand()` kreeg er `bouwMenuPlek`, `aantalTorens` en
+`aantalObstakels` bij, zodat `test-dnm-reset.mjs` ook torens en obstakels op
+lekken controleert.
+
 Door fase 2 toegevoegd (D7, D8, D9, D20; zie §9.5 en §9.6):
 
 ```
@@ -987,7 +1034,13 @@ bij de eerste gelegenheid die dit bestand tóch alweer aanraakt).
 
 ## 13. Testdekking
 
-Ná fase 2: zes bestanden, 178 checks in totaal.
+Ná fase 3: vijftien bestanden, 387 checks in totaal. De fase-3-bestanden:
+`test-dnm-poorten.mjs` (D28, 17), `test-dnm-wapenbereik.mjs` (D29, 10),
+`test-dnm-bouwplekken.mjs` (D10, 44), `test-dnm-toren-geschut.mjs` (D11, 19),
+`test-dnm-bouwfase.mjs` (D15, 12), `test-dnm-toren-niveaus.mjs` (D12, 21),
+`test-dnm-hek.mjs` (D13, 46 — een echte robot per bouwplek), 
+`test-dnm-toren-aanval.mjs` (D14, 7), `test-dnm-themagolven.mjs` (D30, 13).
+Daaronder de stand ná fase 2:
 
 - `tests/defend-national-monument/test-dnm-laadt.mjs` (D1, 20 checks): de
   game laadt, de wereld is gebouwd, wave 1 staat klaar, en alle 53
@@ -1010,7 +1063,8 @@ Ná fase 2: zes bestanden, 178 checks in totaal.
   staat per tier, overgangen bij heen-en-weer, reparatie, raakbaarheid van
   verborgen/effectonderdelen, animatie van rook en alarm.
 
-Plus één meetscript (`meet-dnm-afstanden.mjs`, D6), dat bewust niet in
+Plus twee meetscripts (`meet-dnm-afstanden.mjs`, D6/D29, en
+`meet-dnm-economie.mjs`, D16), die bewust niet in
 `run-all.mjs` meedraait.
 
 Vóór D0/D1 was dit **nul**: alle 117 (nu 118) testscripts in `tests/` gingen
@@ -1021,3 +1075,109 @@ ziet als je er zelf tegenaan loopt.
 
 Nieuwe tests krijgen het voorvoegsel **`test-dnm-`**, zodat `run-all.mjs` ze
 vanzelf oppikt zonder dat de undead-suite verandert.
+
+---
+
+## 14. De torenkern (fase 3)
+
+### 14.1 Aangekondigde poorten (D28)
+
+`spel.actievePoorten` (lopende wave) en `spel.volgendePoorten` (al gekozen
+voor de volgende, gevuld zodra een wave compleet is). `startWave()` neemt
+`volgendePoorten` over als die er zijn, anders kiest hij zelf (wave 1, reset).
+`kiesSpawnPoort()` loot alleen uit de actieve poorten. De lichtbakens
+(`poortBakens`, één per poort) staan rechtstreeks in de scene en hebben een
+lege `raycast` — ze houden nooit een schot tegen (§10, punt 13).
+
+### 14.2 Wapenbereik (D29)
+
+`WAPEN_BEREIK = 22` is `raycaster.far`. Raakt een schot binnen bereik niets,
+dan doet `toonBuitenBereik()` een tweede raycast met
+`BUITEN_BEREIK_CONTROLE` (50 m) en zet bij een treffer verderop een
+stofwolkje op 22 m. Die functie zet `raycaster.far` daarna altijd terug.
+
+### 14.3 Bouwplekken en looproutes (D10)
+
+`looproute(poort)` simuleert bij het laden (en gecached) de echte route: stap
+0,25 m, botsstraal 0,45, tussenpunt binnen 6 m. **Niet de rechte lijn** — die
+loopt bij Rokin en Nieuwendijk door gebouwen. `puntOpRoute(poort, fractie)`
+geeft een punt plus de lokale looprichting (over ±8 stappen gemiddeld).
+
+Elke `BOUWPLEKKEN`-entry heeft:
+- `poort`, `index` en `positie`;
+- `route` (het routepunt ernaast, met richting) en `zijOffset` (hoe ver de
+  plek loodrecht naast de route ligt; het hek gebruikt die twee);
+- `toren` (of `null`), `groep` en `kaderMateriaal`.
+
+Plekken zijn ook interactiepunten (type `'bouwplek'`).
+
+### 14.4 Torens en hekken (D11–D13)
+
+Eén datamodel voor beide soorten bouwwerk, in `torens`:
+
+```
+{ type: 'geschut'|'hek', plek, groep, niveau, geinvesteerd, hp, hpMax,
+  obstakelHandles: [...], hpBalk,
+  // geschut: kop, spoor, spoorTimer, cooldown, doel, ringen
+  // hek: lijn { ax, az, bx, bz } }
+```
+
+- **Stats per niveau** komen uit `TOREN_TYPES[type].niveaus[niveau - 1]`,
+  via `torenStats()`. De velden op het type zelf zijn niveau 1.
+- **Obstakels:**
+  - een toren registreert één rechthoek van 1,4 × 1,4 m;
+  - een hek registreert één rechthoek per paaltje (0,6 m, 0,3 m tussenruimte),
+    omdat een schuin hek geen assen-uitgelijnde rechthoek is;
+  - `verwijderToren()` haalt ze allemaal via hun handles weg (§10, punt 15).
+- **Kills door een toren** (`raakRobot(robot, schade, 'toren')`) geven een
+  munt en score, maar geen combo en geen special-meter.
+- **Bouwmenu:** `bouwMenuPlek` + `bouwUI`, zelfde patroon als de Bijenkorf.
+  Op een lege plek bouw je (1 toren, 2 hek), op een bezette plek upgrade je
+  (1), repareer je (2) of verkoop je (3). Het menu sluit bij weglopen en bij
+  pauze.
+
+### 14.5 Robot-AI na fase 3 (D13, D14)
+
+Per robot, in deze volgorde (§10, punt 16):
+1. Monument geraakt? → `robotRaaktMonument`.
+2. Bomber met een bouwwerk binnen `BOMBER_DOEL_STRAAL`? → daarop af; bij
+   contact `bomberOntploftBijToren` (45 schade).
+3. Hek in contact (`HEK_CONTACT_AFSTAND`)? → stilstaan, elke 0,8 s
+   `ROBOT_HEK_SCHADE[type]`, vastloop-detectie overslaan.
+4. Anders lopen zoals voorheen (inclusief vastloop-uitwijken).
+
+`beschadigToren()` / `vernietigToren()` zijn de enige manier om een bouwwerk
+schade te doen of te laten sneuvelen: brokstukken, melding, menu dicht, plek
+vrij.
+
+### 14.6 Bouwfase (D15)
+
+`inBouwfase()` is waar zodra een wave compleet is (bonus gegeven, niets meer
+te spawnen, geen robots). De volgende wave start na `BOUWFASE_DUUR` (20 s) of
+met G via `startVolgendeWaveNu()` (bonus €2 per overgeslagen seconde). De
+aftelling in `waveUI` ververst alleen per hele seconde
+(`spel.bouwfaseAftelling`).
+
+### 14.7 Economie (D16)
+
+Alle geldconstanten staan bij elkaar en zijn gemeten met
+`meet-dnm-economie.mjs`:
+- `MUNT_BASIS_MIN/MAX` (€2–10);
+- `WAVE_BONUS_*` (25 + 10·wave);
+- `PERFECT_BONUS_*` (50 + 10·wave, ongewijzigd);
+- `VROEGE_START_BONUS_PER_SECONDE`;
+- `TOREN_TYPES`-prijzen, `TOREN_VERKOOP_FRACTIE` en
+  `TOREN_REPARATIE_PER_HP`.
+
+Wie iets bijstelt, draait het meetscript opnieuw. De meetresultaten staan in
+`ROADMAP_monument.md` (D16).
+
+### 14.8 Themagolven en mist (D30)
+
+`themaSleutelVoorWave(n)` en `themaVoorWave(n)` zijn pure functies: een thema
+op wave 6, 10, 14, … in vaste roulatie. `startWave()` zet `spel.thema` en
+schaalt `waveDoel`; `aantalPoortenVoorWave()` laat een thema het aantal poorten
+bepalen (ook bij de aankondiging vooraf); `robotTypeVoorLopendeWave()` laat een
+thema het robottype bepalen, zonder `kiesRobotTypeVoorWave()` aan te passen.
+`pasMistToe(thema)` zet de mist elke wave opnieuw uit het thema of uit
+`MIST_BASIS`, vastgelegd ná het bouwen van de wereld (§10, punt 18).

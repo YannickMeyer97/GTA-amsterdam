@@ -28,10 +28,14 @@ staat in `SONNET_EXECUTION_PLAN_monument.md` §2.
 Undead. Dit is de reden dat het plan bij testinfrastructuur begint en niet bij
 de herschaling.
 
-**Stand na fase 2 (bijgewerkt):** fase 0, 1 en 2 zijn af. De run heeft nu
-een eindscherm, een highscore, een Opnieuw-knop en een monument dat zichtbaar
-afbrokkelt. Zes testscripts (`test-dnm-*.mjs`, 178 checks) plus één
-meetscript. Na D6 volgde een review van het resterende plan; de bijsturing
+**Stand na fase 3 (bijgewerkt):** fase 0 t/m 3 zijn gebouwd. Naast het
+eindscherm, de highscore en het afbrokkelende monument (fase 2) heeft de game
+nu aangekondigde poorten met lichtbakens, een beperkt wapenbereik, tien
+bouwplekken met geschuttorens en hekken (drie niveaus, repareren, verkopen),
+bombers die bouwwerken aanvallen, een bouwfase van 20 s tussen waves, een
+herijkte economie en themagolven. Vijftien testscripts (`test-dnm-*.mjs`,
+387 checks) plus twee meetscripts. D16 wacht nog op de speeltest van de
+eigenaar (acceptatiecriterium uit het plan). Na D6 volgde een review van het resterende plan; de bijsturing
 daaruit staat in `SONNET_EXECUTION_PLAN_monument.md` §10 en is hieronder al
 in de volgorde verwerkt.
 
@@ -80,16 +84,16 @@ alsnog.
 
 | | Ticket | Kern |
 | --- | --- | --- |
-| ☐ | **D28** | Aangekondigde poorten *(nieuw)* |
-| ☐ | **D29** | Wapenbereik beperken *(nieuw)* |
-| ☐ | **D10** | Bouwplekken |
-| ☐ | **D11** | De geschuttoren |
-| ☐ | **D15** | Bouwfase tussen waves *(naar voren, direct na D11)* |
-| ☐ | **D12** | Torenniveaus en reparatie |
-| ☐ | **D13** | Het hek |
-| ☐ | **D14** | Robots vallen torens aan |
-| ☐ | **D16** | Economie herijken |
-| ☐ | **D30** | Themagolven *(nieuw)* |
+| ☑ | **D28** | Aangekondigde poorten *(nieuw)* |
+| ☑ | **D29** | Wapenbereik beperken *(nieuw)* |
+| ☑ | **D10** | Bouwplekken |
+| ☑ | **D11** | De geschuttoren |
+| ☑ | **D15** | Bouwfase tussen waves *(naar voren, direct na D11)* |
+| ☑ | **D12** | Torenniveaus en reparatie |
+| ☑ | **D13** | Het hek |
+| ☑ | **D14** | Robots vallen torens aan |
+| ◐ | **D16** | Economie herijken (gemeten en bijgesteld; wacht op speeltest) |
+| ☑ | **D30** | Themagolven *(nieuw)* |
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 
@@ -133,6 +137,10 @@ is. De minimap zelf kreeg geen kritiek en blijft ongewijzigd.
 5–13 robots verspreid over alle vijf poorten), niet van de pijlen zelf. D28
 (aangekondigde poorten) raakt die oorzaak. Herbeoordeel D27 dus pas ná D28 —
 misschien is het dan al opgelost.
+
+**Stand na fase 3:** D28 is af, dus robots komen nu uit hooguit twee
+aangekondigde poorten tegelijk. De pijlen zelf zijn niet aangepast; of ze nu
+nog te druk zijn, is aan de speeltest.
 
 ---
 
@@ -647,6 +655,210 @@ bij verslechtering), de echte bronnen (robottreffer en Koninklijke
 Reparatie), raakbaarheid van verborgen en effectonderdelen, en dat rook en
 alarm echt animeren. `test-dnm-reset.mjs` controleert ook de monumentstaat.
 Schermafbeeldingen van alle vier de tiers vanaf het plein gecontroleerd.
+
+### D28 — Aangekondigde poorten (nieuw na de review)
+
+Elke wave komt uit één poort (wave 1–2) of twee (vanaf wave 3), nooit exact
+dezelfde set als de vorige wave. De set voor wave N+1 ligt vast zodra wave N
+compleet is, zodat de pauze gebruikt kan worden om te positioneren en te
+bouwen. De aankondiging heeft vier lagen:
+- een banner na de "gehaald"-banner (frame-gestuurd, geen `setTimeout` dat
+  een reset kan overleven);
+- een tweede regel in `waveUI` die de hele wave blijft staan;
+- een oranje lichtbaken per poort, 42 m hoog, dat boven de daken uitsteekt;
+- een ring op de minimap.
+
+**Onderweg gevonden:** de oude regel "Robots komen uit: …" stond in `shopUI`,
+en was dus alleen zichtbaar met de winkel open. Hij versprong bovendien bij
+elke spawn naar een andere poort. De poortinformatie staat nu in `waveUI`.
+De bakens zijn na een eerste screenshot breder en verzadigder gemaakt: tegen
+de lichte lucht vervaagde transparant oranje tot een flets streepje.
+
+**Verificatie:** `test-dnm-poorten.mjs` (17 checks): 300 lotingen per
+poortaantal, echte spawns alleen bij de actieve poort, 8 opeenvolgende waves
+(aankondiging = gestarte set, bakens, HUD, bannertiming), bakens nooit
+raakbaar, reset.
+
+### D29 — Wapenbereik beperken (nieuw na de review)
+
+**Eerst gemeten** (`meet-dnm-afstanden.mjs` uitgebreid). Vanaf de monumentrand:
+- bouwplek op 55 %: 13–17 m;
+- bouwplek op 25 %: 25–31 m;
+- poort: 35–41 m.
+
+Het plan noemde ~25 m als startpunt, maar dat viel voor drie poorten precies
+op de verre bouwplek (25,2–25,7 m). **Gekozen: 22 m** (`WAPEN_BEREIK`, was
+50 m). Vanaf het monument raak je nu de binnenste helft van elke corridor,
+niet de poort. Bij het robot-snelheidsplafond blijft er ~6,7 s vuurvenster.
+
+Het schot is pure hitscan zonder spoor, dus een schot dat tekort kwam, zag
+eruit als een misser. Nu verschijnt op 22 m een klein stofwolkje, maar alleen
+als er verderop écht iets in de schotlijn staat (een tweede raycast met
+groter bereik). Schieten in de lucht toont niets.
+
+**Verificatie:** `test-dnm-wapenbereik.mjs` (10 checks): zoekt eerst een vrije
+schietrichting van 30 m (zodat een toevallige muur de test niet vervalst),
+dan robot op 20 m geraakt, op 24 m niet (en stofwolkje), lucht geen effect,
+`raycaster.far` na het controleschot hersteld.
+
+### D10 — Bouwplekken
+
+Tien plekken, twee per poort, op 25 % en 55 % van de route.
+
+**Afwijking: "de route" is de gesimuleerde looproute, niet de rechte lijn.**
+Bij Rokin en Nieuwendijk loopt de rechte lijn poort → monument dwars door
+gebouwen; robots glijden daar langs de gevels. `looproute(poort)` simuleert de
+route bij het laden met dezelfde regels als de robot-AI (en als
+`test-dnm-kern.mjs`). Bij de Nieuwendijk lopen robots tussen ~16 % en ~38 %
+door een steeg van ~1,5 m breed waar geen tegel past. Daarom schuift de
+zoektocht langs de route (tot ±15 %, plek 1 richting de poort, plek 2 richting
+het monument).
+
+**Afwijking in de acceptatie:** "elke plek ligt dichter bij zijn eigen poort
+dan bij elke andere" is meetkundig onhaalbaar. De Kalverstraat-plek op 55 %
+ligt ~1 m dichter bij de Rokin-POORT, maar ruim 10 m van de Rokin-ROUTE.
+Getoetst is daarom: dichter bij de eigen route dan bij elke andere route.
+
+`test-dnm-kern.mjs` telt nu 13 interactiepunten (3 steunpunten + 10
+bouwplekken). De overlap- en bereikbaarheidschecks van D2 gelden dus voor alle
+13. **Verificatie:** `test-dnm-bouwplekken.mjs` (44 checks).
+
+### D11 — De geschuttoren
+
+Bouwmenu op een lege bouwplek (T, dan 1), zelfde patroon als de
+Bijenkorf-winkel. De toren zoekt het dichtstbijzijnde doel binnen bereik,
+draait zijn kop mee en vuurt met een kort schotspoor (één herbruikbare lijn
+per toren). Een actief schild blokkeert ook torenschoten. De toren
+registreert één obstakel.
+
+- **`registreerRechthoek()` geeft nu een handle terug**, en
+  `verwijderObstakel(handle)` haalt precies dát obstakel weg. Dat is de door
+  het plan (D13) voorgeschreven aanpak, al in D11 nodig voor verkopen en
+  vernietigen.
+- **`raakRobot(robot, schade = 1, bron = 'speler')`**: de standaardwaarden
+  laten het spelerswapen exact zoals het was.
+- **Een torenkill (`bron = 'toren'`)** laat een munt achter en geeft +100
+  score, maar bouwt géén combo en géén special-meter op: die belonen wat de
+  speler zelf doet. Het eindscherm toont "(N door torens)" en het aantal
+  gebouwde torens.
+
+**Verificatie:** `test-dnm-toren-geschut.mjs` (19 checks).
+`test-dnm-reset.mjs` bouwt nu ook een schietende toren in zijn run, zodat
+torenmodellen, schotsporen en obstakels op lekken gecontroleerd worden.
+
+### D15 — Bouwfase tussen waves (naar voren, direct na D11)
+
+De pauze tussen waves is van 4,5 s naar 20 s gegaan, met een aftelling in de
+HUD. Met G start je de volgende wave vroeg, voor €2 per overgeslagen seconde.
+In de bouwfase spawnt niets. De verste bouwplek ligt ~33 m van het monument:
+heen en terug is dat ~9,5 s op 7 m/s, dus 20 s is genoeg. De aftelling ververst
+alleen als de hele seconde verandert, omdat `updateArcadeUI` ook de winkel
+opnieuw opbouwt.
+
+**Verificatie:** `test-dnm-bouwfase.mjs` (12 checks). `test-dnm-poorten.mjs`
+is aangepast op de langere pauze.
+
+### D12 — Torenniveaus en reparatie
+
+Drie niveaus. Elk niveau verbetert iets anders (bereik, tempo, schade) en is
+zichtbaar aan gouden ringen om de zuil. T op een bezette plek geeft drie
+opties:
+- **1, upgraden:** houdt de opgelopen schade;
+- **2, repareren:** €1 per ontbrekende HP;
+- **3, verkopen:** levert de helft van de investering op (bouwen +
+  upgrades, geen reparaties).
+
+**Verificatie:** `test-dnm-toren-niveaus.mjs` (21 checks).
+
+### D13 — Het hek
+
+Een rij paaltjes loodrecht op de looproute, door het routepunt naast de
+bouwplek: van 3,5 m aan de overkant tot 1 m voorbij de bouwplek. Paaltjes zijn
+0,6 m breed met 0,3 m tussenruimte, te smal voor een robot (0,9 m). **Elk
+paaltje is een eigen obstakel**: `obstakels` kent alleen assen-uitgelijnde
+rechthoeken, en een schuin hek dwars over een diagonale route is dat niet.
+
+Robots die het hek raken, blijven staan en slaan erop, 6–15 schade per 0,8 s
+per type. Ze slaan daarbij de vastloop-detectie over, anders zouden ze na
+1,5 s zijwaarts uitwijken en om het hek heen lopen. Sneuvelt het hek, dan gaan
+model en alle paal-obstakels weg en komt de plek vrij. Torens en hekken hebben
+sinds D13 een HP-balk die alleen bij schade zichtbaar is.
+
+**Verificatie:** `test-dnm-hek.mjs` (46 checks). Op **alle tien** de
+bouwplekken loopt een echte robot de echte route: hij stopt bij het hek, het
+hek verliest HP, het sneuvelt en ruimt op, en de robot loopt door naar het
+monument. Geen enkele corridor waar robots om het hek heen glippen.
+
+### D14 — Robots vallen torens aan
+
+De bomber kiest het dichtstbijzijnde bouwwerk (toren of hek) binnen 10 m als
+doel en ontploft daar voor 45 schade. Een toren van niveau 1 overleeft er
+één, niet twee. Het doel wordt elke frame opnieuw gekozen, dus sneuvelt het
+bouwwerk onderweg, dan loopt de bomber gewoon door naar het monument. Andere
+types laten torens met rust. **Volgorde in de robot-AI:** monument →
+bomberdoel → hek slaan → lopen.
+
+**Verificatie:** `test-dnm-toren-aanval.mjs` (7 checks).
+
+### D16 — Economie herijken (gemeten en bijgesteld; wacht op speeltest)
+
+`meet-dnm-economie.mjs` meet twee dingen:
+- **Inkomsten per wave**, uit de spelformules zelf.
+- **Welke verdediging een wave zónder speler houdt.** Het script simuleert elke
+  wave echt en probeert oplopende configuraties per actieve poort.
+
+**Eerste meting (plan-startwaarden):**
+- **Torens veel te sterk.** Eén toren van niveau 1 per actieve poort hield
+  waves 1–9 alleen, zonder speler.
+- **Geld te ruim.** Na wave 5 had je €1.728, genoeg voor 3,2 volledig
+  uitgeruste poorten, terwijl het doel er één is.
+
+**Bijgesteld, in twee meetrondes:**
+
+| Wat | Was | Nu |
+|---|---|---|
+| Munt (basis) | €5–25 | €2–10 |
+| Wave-bonus | 40 + 15·wave | 25 + 10·wave |
+| Geschuttoren niv. 1/2/3 | €120/150/250 · 12/14/16 m · 0,8/0,6/0,6 s | €150/200/300 · 10/12/14 m · 1,2/1,0/1,0 s |
+| Hek niv. 1/2/3 | €80/80/120 | €100/100/150 |
+
+**Resultaat:**
+- **Inkomsten:** na wave 5 €800 in het basisscenario (1,1 poort, het doel). Een
+  goed spelende speler heeft €1.330 (1,9 poort).
+- **Torens zonder speler:** één toren houdt het nog in de vroege waves (1–4
+  en 6), toren + hek tot wave ~7, daarna wordt het snel duur. Vanaf wave 15
+  houdt geen enkele configuratie het alleen: dan moet de speler zelf vechten.
+
+De torentests (D11/D12/D13) lezen hun verwachte waarden sindsdien uit
+`TOREN_TYPES`. Ze toetsen de regels, niet de balans van dit moment, en
+overleven dus een volgende bijstelling.
+
+**Open voor de speeltest:** met één toren per poort kun je de vroege waves
+misschien té makkelijk wegzetten. De actieve poorten wisselen per wave, dus
+dat vraagt torens bij álle vijf poorten (5 × €150), maar dat is rond wave 5–6
+betaalbaar. Dit is een vraag voor het beslismoment na fase 3, niet iets om
+zonder speeltest verder bij te stellen.
+
+### D30 — Themagolven (nieuw na de review)
+
+Elke 4e wave vanaf wave 6 (6, 10, 14, …) krijgt een thema, in vaste
+roulatie:
+- **Tankkonvooi:** alleen tanks, half zoveel, via één poort.
+- **Spitsuur:** alleen sprinters, 1,3× zoveel, via één poort.
+- **Grachtenmist:** normale mix, maar de mist trekt dicht tot ~38 m zicht.
+
+Een themagolf geeft 1,5× wave-bonus, een eigen banner en een aankondiging met
+de themanaam. **Afwijking:** start bij wave 6, niet bij 4 zoals het plan zei.
+Waves 2–5 introduceren elk een nieuw robottype (wave 4 = de bomber), en een
+tank-themagolf zou die introductie overschrijven.
+
+De mist wordt elke wave opnieuw gezet uit `MIST_BASIS` (vastgelegd na het
+bouwen van de wereld) of het thema. Een tijdelijke staat wordt dus nooit
+"teruggezet" (architectuurregel 6).
+
+**Verificatie:** `test-dnm-themagolven.mjs` (13 checks). `test-dnm-kern.mjs`
+en `test-dnm-poorten.mjs` houden rekening met themagolven via
+`themaVoorWave()` / `aantalPoortenVoorWave()`.
 
 ---
 

@@ -723,7 +723,26 @@ inhoudelijke kern van de verbouwing.*
 - **Acceptatie:** het meetscript draait, de uitkomsten staan hieronder
   genoteerd, en de eigenaar heeft het gespeeld.
 
-> **Meetresultaten D16:** *(vul in bij uitvoering)*
+> **Meetresultaten D16** (`meet-dnm-economie.mjs`, volledige uitleg in
+> `ROADMAP_monument.md`):
+>
+> - **Eerste meting, met de startwaarden uit dit plan.** Eén geschuttoren van
+>   niveau 1 per actieve poort hield waves 1–9 alleen, zonder speler. Na
+>   wave 5 had je €1.728, genoeg voor 3,2 volledig uitgeruste poorten (doel:
+>   één).
+> - **Bijgesteld.**
+>   - Munt: €5–25 → €2–10.
+>   - Wave-bonus: 40 + 15·wave → 25 + 10·wave.
+>   - Geschuttoren: €150/200/300, 10/12/14 m, 1,2/1,0/1,0 s.
+>   - Hek: €100/100/150.
+> - **Na bijstelling.**
+>   - Na wave 5 heb je €800 in het basisscenario (1,1 poort) en €1.330 bij goed
+>     spel (1,9).
+>   - Torens alleen houden het tot wave ~7 betaalbaar, vanaf wave 15 niet
+>     meer.
+> - **Nog open:** de speeltest door de eigenaar (acceptatiecriterium), met
+>   als concrete vraag of de vroege waves met één toren per poort te makkelijk
+>   zijn.
 
 ---
 
