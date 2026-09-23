@@ -80,7 +80,7 @@ const overgangen = await page.evaluate(() => {
     const bannerNogNiet = banner.textContent;
     d.updateWaveSysteem(1.0);   // ≈ 2,1 — aankondiging
     const bannerAankondiging = banner.textContent;
-    d.updateWaveSysteem(3.0);   // > 4,5 — volgende wave start
+    d.updateWaveSysteem(d.BOUWFASE_DUUR);   // voorbij de bouwfase (D15) — volgende wave start
     rijen.push({
       wave: w, actief, aangekondigd, gestart: [...d.spel.actievePoorten], nieuweWave: d.spel.wave,
       bakensTijdensWave, bakensInPauze, hudTijdensWave, hudInPauze, bannerVroeg, bannerNogNiet, bannerAankondiging,
@@ -101,8 +101,8 @@ check('In de pauze branden precies de bakens van de aangekondigde poorten',
   overgangen.every(r => zelfde(r.bakensInPauze, r.aangekondigd)), overgangen.map(r => [r.aangekondigd, r.bakensInPauze]));
 check('De HUD toont tijdens de wave "via <actieve poorten>"',
   overgangen.every(r => r.actief.every(n => r.hudTijdensWave.includes(n)) && r.hudTijdensWave.includes('via')), overgangen[3].hudTijdensWave);
-check('De HUD toont in de pauze "Volgende wave via <aangekondigde poorten>"',
-  overgangen.every(r => r.hudInPauze.includes('Volgende wave via') && r.aangekondigd.every(n => r.hudInPauze.includes(n))), overgangen[3].hudInPauze);
+check('De HUD toont in de pauze "Wave N over … s via <aangekondigde poorten>"',
+  overgangen.every(r => r.hudInPauze.includes(`Wave ${r.wave + 1} over`) && r.hudInPauze.includes('via') && r.aangekondigd.every(n => r.hudInPauze.includes(n))), overgangen[3].hudInPauze);
 check('De aankondigingsbanner komt pas na de "gehaald"-banner (niet vóór 1,8 s)',
   overgangen.every(r => !r.bannerVroeg.startsWith('Volgende wave') && !r.bannerNogNiet.startsWith('Volgende wave')), overgangen.map(r => r.bannerNogNiet));
 check('...en toont dan de aangekondigde poorten',

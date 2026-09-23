@@ -420,7 +420,7 @@
 <div id="kerkklokBanner">🔔 KERKKLOK BOOST: robots sneller, 2x geld</div>
 <div id="richtkruis" style="display:none"></div>
 <div id="popups"></div>
-<div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; klik = schieten &nbsp;·&nbsp; T = interactie &nbsp;·&nbsp; Esc = pauze</div>
+<div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; klik = schieten &nbsp;·&nbsp; T = interactie &nbsp;·&nbsp; G = volgende wave &nbsp;·&nbsp; Esc = pauze</div>
 <div id="minimapUI" style="display:none"><canvas id="minimapCanvas" width="140" height="140"></canvas></div>
 <div id="robotPijlenUI"></div>
 
@@ -2618,6 +2618,10 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyX' && !e.repeat && document.pointerLockElement === renderer.domElement && !spel.gameOver) {
     gebruikSpecial();
   }
+  // Ticket D15: G start de volgende wave meteen (alleen tijdens de bouwfase).
+  if (e.code === 'KeyG' && !e.repeat && document.pointerLockElement === renderer.domElement && !spel.gameOver) {
+    startVolgendeWaveNu();
+  }
 });
 addEventListener('keyup',   e => { ingedrukt[e.code] = false; });
 
@@ -2852,6 +2856,7 @@ const spel = {
   actievePoorten: [],
   volgendePoorten: [],
   aankondigingGetoond: false,
+  bouwfaseAftelling: 0,   // Ticket D15: laatst getoonde hele seconde van de aftelling (alleen voor de HUD)
   waveGeenMonumentSchade: true,   // wordt false zodra een robot deze wave het monument raakt (zie robotRaaktMonument)
   specialMeter: 0                 // 0-100, vult per kill, zie vernietigRobot/gebruikSpecial
 };
@@ -2898,7 +2903,7 @@ function updateArcadeUI() {
   // en in de pauze al de aangekondigde poorten van de volgende. Poortnamen
   // komen uit de vaste SPAWN_POORTEN-lijst, dus innerHTML is hier veilig.
   const poortRegel = spel.volgendePoorten.length
-    ? `Volgende wave via ${poortenTekst(spel.volgendePoorten)}`
+    ? `Wave ${spel.wave + 1} over ${Math.ceil(bouwfaseResterend())} s via ${poortenTekst(spel.volgendePoorten)} — G = nu starten`
     : `via ${poortenTekst(spel.actievePoorten)}`;
   waveUI.innerHTML = `Wave ${spel.wave}, nog ${spel.teSpawnen + robots.length} robots<span class="poorten">${poortRegel}</span>`;
   objectiveUI.textContent = spel.gameOver
@@ -2953,6 +2958,33 @@ function kiesRobotTypeVoorWave(wave) {
     r -= gewicht;
   }
   return 'normal';
+}
+
+// Ticket D15 — bouwfase tussen waves. Met torens erbij was 4,5 s te kort
+// om een beslissing te nemen; 20 s is genoeg om van het monument naar de
+// verste bouwplek (~33 m) en terug te lopen (~9,5 s op 7 m/s) en dan nog te
+// kiezen. Wie niet wil wachten, start de wave vroeg met G en krijgt per
+// overgeslagen seconde een kleine bonus — dat houdt het tempo hoog voor wie
+// snel wil, zonder dat wachten verplicht voelt.
+const BOUWFASE_DUUR = 20;
+const VROEGE_START_BONUS_PER_SECONDE = 2;
+
+function inBouwfase() {
+  return !spel.gameOver && spel.waveBonusGegeven && spel.teSpawnen <= 0 && robots.length === 0;
+}
+function bouwfaseResterend() {
+  return Math.max(0, BOUWFASE_DUUR - spel.tussenWaveTimer);
+}
+function startVolgendeWaveNu() {
+  if (!inBouwfase()) return 0;
+  const bonus = Math.round(bouwfaseResterend() * VROEGE_START_BONUS_PER_SECONDE);
+  if (bonus > 0) {
+    verdienGeld(bonus);
+    updateGeldUI();
+    toonPopup(`Vroege start +€${bonus}`);
+  }
+  startWave(spel.wave + 1);
+  return bonus;
 }
 
 // Ticket D28 — aangekondigde poorten. Eén poort in de eerste twee waves
@@ -3049,7 +3081,14 @@ function updateWaveSysteem(dt) {
       toonWaveBanner(`Volgende wave\nvia ${poortenTekst(spel.volgendePoorten)}`);
       speelPoortSignaal();
     }
-    if (spel.tussenWaveTimer > 4.5) startWave(spel.wave + 1);
+    // Ticket D15: aftelling in de HUD, alleen bijwerken als de hele seconde
+    // verandert (updateArcadeUI bouwt ook de winkel opnieuw op).
+    const rest = Math.ceil(bouwfaseResterend());
+    if (rest !== spel.bouwfaseAftelling) {
+      spel.bouwfaseAftelling = rest;
+      updateArcadeUI();
+    }
+    if (spel.tussenWaveTimer >= BOUWFASE_DUUR) startWave(spel.wave + 1);
   }
 }
 
@@ -4823,7 +4862,9 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, bijenkorfShopOpen, bouwMenuPlek, aantalTorens: torens.length, aantalObstakels: obstakels.length }),
   // Ticket D11: torens.
   TOREN_TYPES, torens, bouwToren, verwijderToren, updateTorens, activeerBouwplek, kiesTorenDoel, verwijderObstakel,
-  bouwMenuStand: () => bouwMenuPlek };
+  bouwMenuStand: () => bouwMenuPlek,
+  // Ticket D15: bouwfase.
+  BOUWFASE_DUUR, VROEGE_START_BONUS_PER_SECONDE, inBouwfase, bouwfaseResterend, startVolgendeWaveNu };
 </script>
 </body>
 </html>
