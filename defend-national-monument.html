@@ -2974,6 +2974,14 @@ function kiesRobotTypeVoorWave(wave) {
 // overgeslagen seconde een kleine bonus — dat houdt het tempo hoog voor wie
 // snel wil, zonder dat wachten verplicht voelt.
 const BOUWFASE_DUUR = 20;
+// Ticket D16: wave-bonus was 40 + 15·wave. Vroeg in de run was dat bijna
+// 40 % van alle inkomsten (€425 van €1.123 na wave 5), en daarmee kon je
+// torens kopen vóór je er één robot voor had hoeven raken. De perfect-bonus
+// blijft zoals hij was: die beloont spelen zonder monumentschade.
+const WAVE_BONUS_BASIS = 25;
+const WAVE_BONUS_PER_WAVE = 10;
+const PERFECT_BONUS_BASIS = 50;
+const PERFECT_BONUS_PER_WAVE = 10;
 const VROEGE_START_BONUS_PER_SECONDE = 2;
 
 function inBouwfase() {
@@ -3059,14 +3067,15 @@ function updateWaveSysteem(dt) {
     spel.tussenWaveTimer += dt;
     if (!spel.waveBonusGegeven) {
       spel.waveBonusGegeven = true;
-      verdienGeld(40 + spel.wave * 15);
+      const waveBonus = WAVE_BONUS_BASIS + spel.wave * WAVE_BONUS_PER_WAVE;
+      verdienGeld(waveBonus);
       updateGeldUI();
-      toonPopup(`Wave bonus +€${40 + spel.wave * 15}`);
+      toonPopup(`Wave bonus +€${waveBonus}`);
       if (spel.waveGeenMonumentSchade) {
         // Perfecte-Wave-bonus: geen enkele robot heeft deze wave het
         // monument geraakt. Eigen banner i.p.v. de normale "gehaald"-tekst,
         // zodat er nooit twee banners tegelijk verschijnen.
-        const perfectBonus = 50 + spel.wave * 10;
+        const perfectBonus = PERFECT_BONUS_BASIS + spel.wave * PERFECT_BONUS_PER_WAVE;
         verdienGeld(perfectBonus);
         updateGeldUI();
         toonPopup(`PERFECTE WAVE! +€${perfectBonus}`);
@@ -3670,19 +3679,32 @@ function animeerBouwplekken() {
 // schade per 0,8 s, 60 HP. 12 m is ruim de helft van het spelersbereik
 // (WAPEN_BEREIK, 22 m) — de speler blijft het sterkste losse wapen, een
 // toren dekt een stuk corridor waar de speler niet is.
+// Ticket D12: drie niveaus; `prijs` is wat het kost om dát niveau te
+// bereiken. Elk niveau maakt de toren op een ander vlak beter (bereik, tempo,
+// schade), zodat een upgrade voelbaar is.
+//
+// Ticket D16 (gemeten met meet-dnm-economie.mjs, zie ROADMAP): met het
+// startpunt uit het plan (€120, 12 m, schot per 0,8 s) hield één toren van
+// niveau 1 per actieve poort de waves 1–9 helemaal alleen, zónder speler —
+// de speler deed er dan niet meer toe. Daarom kleiner bereik en trager
+// vuren, zodat een toren de speler helpt in plaats van vervangt, en duurder,
+// zodat torens met de wapen-upgrades concurreren om hetzelfde geld.
+const GESCHUT_NIVEAUS = [
+  { prijs: 150, bereik: 10, schadePerSchot: 1, schotInterval: 1.2, hp: 60 },
+  { prijs: 200, bereik: 12, schadePerSchot: 1, schotInterval: 1.0, hp: 90 },
+  { prijs: 300, bereik: 14, schadePerSchot: 2, schotInterval: 1.0, hp: 130 },
+];
+const HEK_NIVEAUS = [
+  { prijs: 100, hp: 120 },
+  { prijs: 100, hp: 200 },
+  { prijs: 150, hp: 300 },
+];
 const TOREN_TYPES = {
+  // De velden op het type zelf (prijs, bereik, …) zijn niveau 1.
   geschut: {
-    naam: 'Geschuttoren', prijs: 120, bereik: 12, schadePerSchot: 1, schotInterval: 0.8, hp: 60,
-    omschrijving: 'schiet op robots binnen 12 m',
-    // Ticket D12: drie niveaus. Niveau 1 = de basiswaarden hierboven; `prijs`
-    // is wat het kost om dát niveau te bereiken. Elk niveau maakt de toren
-    // op een ander vlak beter (bereik, tempo, schade), zodat een upgrade
-    // voelbaar is. Bereik blijft ruim onder WAPEN_BEREIK (22 m). Te ijken in D16.
-    niveaus: [
-      { prijs: 120, bereik: 12, schadePerSchot: 1, schotInterval: 0.8, hp: 60 },
-      { prijs: 150, bereik: 14, schadePerSchot: 1, schotInterval: 0.6, hp: 90 },
-      { prijs: 250, bereik: 16, schadePerSchot: 2, schotInterval: 0.6, hp: 130 },
-    ],
+    naam: 'Geschuttoren', ...GESCHUT_NIVEAUS[0],
+    omschrijving: `schiet op robots binnen ${GESCHUT_NIVEAUS[0].bereik} m`,
+    niveaus: GESCHUT_NIVEAUS,
   },
   // Ticket D13: het hek schiet niet, het kóópt tijd. Een rij paaltjes dwars
   // over de looproute; robots die ertegenaan lopen, blijven staan en slaan
@@ -3690,13 +3712,9 @@ const TOREN_TYPES = {
   // werkt het best samen met een toren die de opstopping beschiet. Te ijken
   // in D16.
   hek: {
-    naam: 'Hek', prijs: 80, hp: 120,
+    naam: 'Hek', ...HEK_NIVEAUS[0],
     omschrijving: 'blokkeert de straat, robots moeten erdoorheen slaan',
-    niveaus: [
-      { prijs: 80, hp: 120 },
-      { prijs: 80, hp: 200 },
-      { prijs: 120, hp: 300 },
-    ],
+    niveaus: HEK_NIVEAUS,
   },
 };
 // Ticket D13: hoeveel schade één klap van een robot op een hek doet, per
@@ -4731,12 +4749,20 @@ function verdienGeld(bedrag) {
 const geldUI = document.getElementById('geldUI');
 const popups = document.getElementById('popups');
 
+// Ticket D16: basiswaarde van een munt, vóór type- en combo-multipliers. Was
+// €5–25 (gemiddeld €15); daarmee had je na wave 5 al geld voor ruim drie
+// volledig uitgeruste poorten, terwijl het ontwerpdoel er één is — de
+// schaarste ís de keuze tussen torens en wapen-upgrades. Samen met de
+// lagere wave-bonus (WAVE_BONUS_*) gemeten met meet-dnm-economie.mjs.
+const MUNT_BASIS_MIN = 2;
+const MUNT_BASIS_MAX = 10;
+
 function legMuntNeer(positie, beloningMultiplier = 1) {
   // Plafond van €150: Kerkklok Boost (2x) x Tank-beloning (2.5x) x hoge combo
   // (2x) kunnen tegelijk oplopen tot ~10x de basiswaarde. Dat mag een leuke
   // uitschieter zijn in een schaars, tijdgebonden venster, maar niet
   // onbeperkt — dit is de enige plek waar alle multipliers samenkomen.
-  const bedrag = Math.max(1, Math.min(150, Math.round((5 + Math.floor(Math.random() * 21)) * beloningMultiplier)));   // €5 t/m €25, geschaald per robottype
+  const bedrag = Math.max(1, Math.min(150, Math.round((MUNT_BASIS_MIN + Math.floor(Math.random() * (MUNT_BASIS_MAX - MUNT_BASIS_MIN + 1))) * beloningMultiplier)));   // geschaald per robottype
 
   const munt = new THREE.Group();
   const schijf = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.07, 18),
@@ -5200,7 +5226,9 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   // Ticket D13: het hek.
   ROBOT_HEK_SCHADE, ROBOT_SLAG_INTERVAL, HEK_CONTACT_AFSTAND, hekInContact, afstandTotHek, hekPaalOffsets, beschadigToren, vernietigToren,
   // Ticket D14: bombers vallen bouwwerken aan.
-  BOMBER_DOEL_STRAAL, BOMBER_TORENSCHADE, kiesBomberDoel, bouwwerkPunt };
+  BOMBER_DOEL_STRAAL, BOMBER_TORENSCHADE, kiesBomberDoel, bouwwerkPunt,
+  // Ticket D16: economie.
+  MUNT_BASIS_MIN, MUNT_BASIS_MAX, WAVE_BONUS_BASIS, WAVE_BONUS_PER_WAVE, PERFECT_BONUS_BASIS, PERFECT_BONUS_PER_WAVE };
 </script>
 </body>
 </html>

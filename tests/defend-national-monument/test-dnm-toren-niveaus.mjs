@@ -1,5 +1,10 @@
 // Ticket D12 (SONNET_EXECUTION_PLAN_monument.md, fase 3) — torenniveaus,
 // reparatie en verkopen.
+//
+// Sinds D16 (economie herijkt) komen alle getallen uit TOREN_TYPES.geschut.
+// niveaus; de test toetst de REGELS (prijs = niveauprijs, effect loopt op,
+// schade blijft behouden, reparatie evenredig, verkoop = fractie van de
+// investering), niet de balanswaarden van dit moment.
 import { openDefend, makeChecker } from '../helpers-defend.mjs';
 
 const { browser, page, errs } = await openDefend();
@@ -30,17 +35,19 @@ const niveaus = await page.evaluate(() => {
   rij.push({ ...meet(), betaald: geldVoor3 - d.geldStand() });
   const geldVoor4 = d.geldStand();
   const verder = d.upgradeToren(t);
-  return { rij, verder, geldNaVerder: d.geldStand() - geldVoor4, niveauNaVerder: t.niveau };
+  return { rij, verder, geldNaVerder: d.geldStand() - geldVoor4, niveauNaVerder: t.niveau, cfg: d.TOREN_TYPES.geschut.niveaus };
 });
 const [n1, n2, n3] = niveaus.rij;
-check('Upgradeprijzen: niveau 2 €150, niveau 3 €250, daarna geen', n1.prijs === 150 && n2.prijs === 250 && n3.prijs === null, niveaus.rij.map(r => r.prijs));
-check('Upgraden schrijft precies de upgradeprijs af', n2.betaald === 150 && n3.betaald === 250, niveaus.rij);
-check('Bereik loopt op: 12 → 14 → 16 m', n1.stats.bereik === 12 && n2.stats.bereik === 14 && n3.stats.bereik === 16, niveaus.rij.map(r => r.stats.bereik));
-check('Tempo en schade: niveau 2 sneller (0,6 s), niveau 3 dubbele schade', n2.stats.schotInterval === 0.6 && n3.stats.schadePerSchot === 2 && n1.stats.schadePerSchot === 1, niveaus.rij.map(r => r.stats));
-check('Maximale HP loopt op: 60 → 90 → 130', n1.hpMax === 60 && n2.hpMax === 90 && n3.hpMax === 130, niveaus.rij.map(r => r.hpMax));
+const [c1, c2, c3] = niveaus.cfg;
+check('Upgradeprijzen zijn de niveauprijzen van niveau 2 en 3, daarna geen', n1.prijs === c2.prijs && n2.prijs === c3.prijs && n3.prijs === null, niveaus.rij.map(r => r.prijs));
+check('Upgraden schrijft precies de upgradeprijs af', n2.betaald === c2.prijs && n3.betaald === c3.prijs, niveaus.rij);
+check('Bereik loopt per niveau op', n1.stats.bereik < n2.stats.bereik && n2.stats.bereik < n3.stats.bereik, niveaus.rij.map(r => r.stats.bereik));
+check('Tempo en schade: niveau 2 vuurt sneller, niveau 3 doet meer schade per schot', n2.stats.schotInterval < n1.stats.schotInterval && n3.stats.schadePerSchot > n1.stats.schadePerSchot, niveaus.rij.map(r => r.stats));
+check('Maximale HP loopt per niveau op', n1.hpMax === c1.hp && n2.hpMax === c2.hp && n3.hpMax === c3.hp && c1.hp < c2.hp && c2.hp < c3.hp, niveaus.rij.map(r => r.hpMax));
 check('Niveau is zichtbaar aan de ringen (0 → 1 → 2)', n1.ringen === 0 && n2.ringen === 1 && n3.ringen === 2, niveaus.rij.map(r => r.ringen));
 check('Niveau 3 kan niet verder: geen upgrade, geen geld weg', niveaus.verder === false && niveaus.geldNaVerder === 0 && niveaus.niveauNaVerder === 3, niveaus);
-check('Geïnvesteerd bedrag telt bouwen + upgrades op (€520)', n3.geinvesteerd === 520, n3);
+const totaalInvestering = c1.prijs + c2.prijs + c3.prijs;
+check('Geïnvesteerd bedrag telt bouwen + upgrades op', n3.geinvesteerd === totaalInvestering, n3);
 
 // --- 2. Upgrade behoudt schade; te weinig geld ----------------------------
 
@@ -49,37 +56,39 @@ const schade = await page.evaluate(() => {
   const plek = d.BOUWPLEKKEN.find(b => b.poort === 'Rokin' && b.index === 0);
   d.geldZet(500);
   const t = d.bouwToren(plek, 'geschut');
-  t.hp = 50;
+  const [c1, c2, c3] = d.TOREN_TYPES.geschut.niveaus;
+  t.hp = c1.hp - 10;
   d.upgradeToren(t);
-  const naUpgrade = { hp: t.hp, hpMax: t.hpMax };
-  d.geldZet(100);
+  const naUpgrade = { hp: t.hp, hpMax: t.hpMax, verwachtHp: c2.hp - 10, verwachtMax: c2.hp };
+  d.geldZet(c3.prijs - 1);
   const lukt = d.upgradeToren(t);
-  return { naUpgrade, teWeinig: { lukt, niveau: t.niveau, geld: d.geldStand() } };
+  return { naUpgrade, teWeinig: { lukt, niveau: t.niveau, geld: d.geldStand(), verwachtGeld: c3.prijs - 1 } };
 });
-check('Een upgrade behoudt de opgelopen schade (50/60 → 80/90)', schade.naUpgrade.hp === 80 && schade.naUpgrade.hpMax === 90, schade.naUpgrade);
-check('Te weinig geld voor een upgrade: niets gebeurt', schade.teWeinig.lukt === false && schade.teWeinig.niveau === 2 && schade.teWeinig.geld === 100, schade.teWeinig);
+check('Een upgrade behoudt de opgelopen schade (10 HP kwijt blijft 10 HP kwijt)', schade.naUpgrade.hp === schade.naUpgrade.verwachtHp && schade.naUpgrade.hpMax === schade.naUpgrade.verwachtMax, schade.naUpgrade);
+check('Te weinig geld voor een upgrade (€1 te kort): niets gebeurt', schade.teWeinig.lukt === false && schade.teWeinig.niveau === 2 && schade.teWeinig.geld === schade.teWeinig.verwachtGeld, schade.teWeinig);
 
 // --- 3. Reparatie: kosten evenredig aan ontbrekende HP --------------------
 
 const reparatie = await page.evaluate(() => {
   const d = window.DamChaosDebug;
   const t = d.torens.find(x => x.niveau === 3);
-  t.hp = 100;
+  const perHp = d.TOREN_REPARATIE_PER_HP;
+  t.hp = t.hpMax - 30;
   const kosten30 = d.reparatieKosten(t);
-  t.hp = 65;
+  t.hp = t.hpMax - 65;
   const kosten65 = d.reparatieKosten(t);
-  d.geldZet(40);
+  d.geldZet(kosten65 - 1);
   const teWeinig = d.repareerToren(t);
   const hpNaMislukt = t.hp;
   d.geldZet(200);
   const lukt = d.repareerToren(t);
-  const naReparatie = { hp: t.hp, geld: d.geldStand() };
+  const naReparatie = { hp: t.hp, hpMax: t.hpMax, geld: d.geldStand(), verwachtGeld: 200 - kosten65 };
   const alHeel = d.repareerToren(t);
-  return { kosten30, kosten65, teWeinig, hpNaMislukt, lukt, naReparatie, alHeel, kostenHeel: d.reparatieKosten(t) };
+  return { perHp, kosten30, kosten65, teWeinig, hpNaMislukt, verwachtHpNaMislukt: t.hpMax - 65, lukt, naReparatie, alHeel, kostenHeel: d.reparatieKosten(t) };
 });
-check('Reparatiekosten zijn evenredig: 30 HP kwijt = €30, 65 HP kwijt = €65', reparatie.kosten30 === 30 && reparatie.kosten65 === 65, reparatie);
-check('Te weinig geld voor de reparatie: niets gebeurt', reparatie.teWeinig === false && reparatie.hpNaMislukt === 65, reparatie);
-check('Repareren zet de HP op het maximum en kost precies de reparatieprijs', reparatie.lukt && reparatie.naReparatie.hp === 130 && reparatie.naReparatie.geld === 135, reparatie.naReparatie);
+check('Reparatiekosten zijn evenredig aan de ontbrekende HP (30 HP en 65 HP)', reparatie.kosten30 === Math.ceil(30 * reparatie.perHp) && reparatie.kosten65 === Math.ceil(65 * reparatie.perHp) && reparatie.kosten65 > reparatie.kosten30, reparatie);
+check('Te weinig geld voor de reparatie: niets gebeurt', reparatie.teWeinig === false && reparatie.hpNaMislukt === reparatie.verwachtHpNaMislukt, reparatie);
+check('Repareren zet de HP op het maximum en kost precies de reparatieprijs', reparatie.lukt && reparatie.naReparatie.hp === reparatie.naReparatie.hpMax && reparatie.naReparatie.geld === reparatie.naReparatie.verwachtGeld, reparatie.naReparatie);
 check('Een hele toren repareren kost niets en doet niets', reparatie.alHeel === false && reparatie.kostenHeel === 0, reparatie);
 
 // --- 4. Niveau 3 doet in het gevecht ook echt dubbele schade -------------
@@ -87,16 +96,18 @@ check('Een hele toren repareren kost niets en doet niets', reparatie.alHeel === 
 const gevecht = await page.evaluate(() => {
   const d = window.DamChaosDebug;
   const t = d.torens.find(x => x.niveau === 3);
+  const [c1, , c3] = d.TOREN_TYPES.geschut.niveaus;
   d.spawnRobot(null, 'tank');
   const tank = d.robots[d.robots.length - 1];
-  tank.groep.position.set(t.plek.positie.x + 15, 0, t.plek.positie.z);   // 15 m: alleen binnen bereik van niveau 3 (16 m)
+  const afstand = c3.bereik - 1;   // binnen niveau 3, buiten niveau 1
+  tank.groep.position.set(t.plek.positie.x + afstand, 0, t.plek.positie.z);
   t.cooldown = 0;
   d.updateTorens(0);
   const hp = tank.hp;
   d.scene.remove(tank.groep); d.robots.splice(d.robots.indexOf(tank), 1);
-  return { hp };
+  return { hp, afstand, buitenNiveau1: afstand > c1.bereik, verwachtHp: 3 - c3.schadePerSchot };
 });
-check('Niveau 3 raakt op 15 m (buiten niveau-1-bereik) en doet 2 schade', gevecht.hp === 1, gevecht);
+check('Niveau 3 raakt buiten het niveau-1-bereik en doet zijn eigen schade per schot', gevecht.buitenNiveau1 && gevecht.hp === gevecht.verwachtHp, gevecht);
 
 // --- 5. Verkopen ----------------------------------------------------------
 
@@ -105,11 +116,12 @@ const verkoop = await page.evaluate(() => {
   const t = d.torens.find(x => x.niveau === 3);
   const plek = t.plek;
   const obstakels = d.obstakels.length, geld = d.geldStand(), verdiend = d.runStats.verdiendGeld;
+  const investering = d.TOREN_TYPES.geschut.niveaus.reduce((a, n) => a + n.prijs, 0);
   const opbrengst = d.verkoopToren(t);
-  return { opbrengst, verwacht: Math.round(520 * d.TOREN_VERKOOP_FRACTIE), geld: d.geldStand() - geld, verdiend: d.runStats.verdiendGeld - verdiend,
+  return { opbrengst, investering, verwacht: Math.round(investering * d.TOREN_VERKOOP_FRACTIE), geld: d.geldStand() - geld, verdiend: d.runStats.verdiendGeld - verdiend,
     plekLeeg: plek.toren === null, obstakelWeg: obstakels - d.obstakels.length, inTorens: d.torens.includes(t), uitScene: t.groep.parent === null };
 });
-check('Verkopen levert de helft van de investering op (€260 van €520)', verkoop.opbrengst === 260 && verkoop.verwacht === 260 && verkoop.geld === 260, verkoop);
+check('Verkopen levert de verkoopfractie (de helft) van de totale investering op', verkoop.opbrengst === verkoop.verwacht && verkoop.verwacht === Math.round(verkoop.investering / 2) && verkoop.geld === verkoop.opbrengst, verkoop);
 check('Verkopen maakt de plek weer vrij en haalt toren en obstakel weg', verkoop.plekLeeg && verkoop.obstakelWeg === 1 && !verkoop.inTorens && verkoop.uitScene, verkoop);
 
 // --- 6. Het menu op een bezette plek, met de toetsen ----------------------
