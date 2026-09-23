@@ -2600,9 +2600,16 @@ addEventListener('keydown', e => {
   }
   // Ticket D11: zelfde patroon voor het bouwmenu van een bouwplek.
   if (bouwMenuPlek && !e.repeat && document.pointerLockElement === renderer.domElement && !spel.gameOver) {
-    const typen = Object.keys(TOREN_TYPES);
     const keuze = { Digit1: 0, Digit2: 1, Digit3: 2 }[e.code];
-    if (keuze !== undefined && typen[keuze]) bouwToren(bouwMenuPlek, typen[keuze]);
+    const toren = bouwMenuPlek.toren;
+    if (keuze !== undefined && toren) {
+      // Ticket D12: bezette plek — 1 upgraden, 2 repareren, 3 verkopen.
+      [upgradeToren, repareerToren, verkoopToren][keuze](toren);
+      updateBouwUI();
+    } else if (keuze !== undefined) {
+      const typen = Object.keys(TOREN_TYPES);
+      if (typen[keuze]) bouwToren(bouwMenuPlek, typen[keuze]);
+    }
   }
   // T activeert het dichtstbijzijnde interactiepunt. !e.repeat voorkomt dat
   // ingedrukt houden meerdere keren per toetsdruk koopt/activeert (de
@@ -3660,8 +3667,32 @@ function animeerBouwplekken() {
 // (WAPEN_BEREIK, 22 m) — de speler blijft het sterkste losse wapen, een
 // toren dekt een stuk corridor waar de speler niet is.
 const TOREN_TYPES = {
-  geschut: { naam: 'Geschuttoren', prijs: 120, bereik: 12, schadePerSchot: 1, schotInterval: 0.8, hp: 60 },
+  geschut: {
+    naam: 'Geschuttoren', prijs: 120, bereik: 12, schadePerSchot: 1, schotInterval: 0.8, hp: 60,
+    // Ticket D12: drie niveaus. Niveau 1 = de basiswaarden hierboven; `prijs`
+    // is wat het kost om dát niveau te bereiken. Elk niveau maakt de toren
+    // op een ander vlak beter (bereik, tempo, schade), zodat een upgrade
+    // voelbaar is. Bereik blijft ruim onder WAPEN_BEREIK (22 m). Te ijken in D16.
+    niveaus: [
+      { prijs: 120, bereik: 12, schadePerSchot: 1, schotInterval: 0.8, hp: 60 },
+      { prijs: 150, bereik: 14, schadePerSchot: 1, schotInterval: 0.6, hp: 90 },
+      { prijs: 250, bereik: 16, schadePerSchot: 2, schotInterval: 0.6, hp: 130 },
+    ],
+  },
 };
+// Ticket D12: verkopen levert de helft van alles wat erin zat (bouwen +
+// upgrades; reparaties niet) — genoeg om een verkeerde poortkeuze te
+// herstellen, niet zoveel dat verkopen-en-verplaatsen gratis is.
+const TOREN_VERKOOP_FRACTIE = 0.5;
+const TOREN_REPARATIE_PER_HP = 1;   // € per ontbrekend HP
+
+function torenStats(toren) { return TOREN_TYPES[toren.type].niveaus[toren.niveau - 1]; }
+function upgradePrijs(toren) {
+  const volgend = TOREN_TYPES[toren.type].niveaus[toren.niveau];
+  return volgend ? volgend.prijs : null;
+}
+function reparatieKosten(toren) { return Math.ceil((toren.hpMax - toren.hp) * TOREN_REPARATIE_PER_HP); }
+function verkoopOpbrengst(toren) { return Math.round(toren.geinvesteerd * TOREN_VERKOOP_FRACTIE); }
 const torens = [];
 let bouwMenuPlek = null;   // de bouwplek waarvan het bouwmenu nu open staat
 const bouwUI = document.getElementById('bouwUI');
@@ -3669,18 +3700,17 @@ const bouwUI = document.getElementById('bouwUI');
 function bouwplekPrompt(plek) {
   if (plek.toren) {
     const t = plek.toren;
-    return `${TOREN_TYPES[t.type].naam} — ${Math.ceil(t.hp)}/${t.hpMax} HP`;
+    const basis = `${TOREN_TYPES[t.type].naam} niv. ${t.niveau} — ${Math.ceil(t.hp)}/${t.hpMax} HP`;
+    return bouwMenuPlek === plek ? `${basis} — kies 1/2/3, T om te sluiten` : `${basis} — druk T voor opties`;
   }
   return bouwMenuPlek === plek ? 'Kies een toren met 1, of druk T om te sluiten' : `Druk T om te bouwen (bouwplek ${plek.poort})`;
 }
 
 // Zelfde patroon als de Bijenkorf-winkel: T opent/sluit, cijfertoetsen
 // kopen zolang het menu open is. Geen aparte bouwmodus, geen nieuwe UI-laag.
+// Op een lege plek toont het menu de torens; op een bezette plek (sinds
+// Ticket D12) upgraden, repareren en verkopen.
 function activeerBouwplek(plek) {
-  if (plek.toren) {
-    toonFeedbackMelding(`${TOREN_TYPES[plek.toren.type].naam}: ${Math.ceil(plek.toren.hp)}/${plek.toren.hpMax} HP`);
-    return;
-  }
   if (bouwMenuPlek === plek) sluitBouwMenu();
   else openBouwMenu(plek);
 }
@@ -3695,6 +3725,22 @@ function sluitBouwMenu() {
 }
 function updateBouwUI() {
   if (!bouwMenuPlek) return;
+  if (bouwMenuPlek.toren) {
+    const t = bouwMenuPlek.toren;
+    const cfg = TOREN_TYPES[t.type];
+    const prijs = upgradePrijs(t);
+    const volgend = cfg.niveaus[t.niveau];
+    const duur = (bedrag) => (geld >= bedrag ? '' : ' class="te-duur"');
+    const upgradeRegel = prijs === null
+      ? '<span class="regel gekocht">1, Maximaal niveau bereikt</span>'
+      : `<span class="regel"${duur(prijs)}>1, Upgrade naar niveau ${t.niveau + 1} €${prijs} — bereik ${volgend.bereik} m, ${volgend.schadePerSchot} schade/${volgend.schotInterval}s, ${volgend.hp} HP</span>`;
+    const reparatie = reparatieKosten(t);
+    const reparatieRegel = reparatie === 0
+      ? '<span class="regel gekocht">2, Repareren — toren is heel</span>'
+      : `<span class="regel"${duur(reparatie)}>2, Repareren €${reparatie} (${Math.ceil(t.hp)}/${t.hpMax} HP)</span>`;
+    bouwUI.innerHTML = `<b>${cfg.naam} niveau ${t.niveau}</b> (${bouwMenuPlek.poort}), T om te sluiten:<br>${upgradeRegel}${reparatieRegel}<span class="regel">3, Verkopen +€${verkoopOpbrengst(t)}</span>`;
+    return;
+  }
   const regels = Object.entries(TOREN_TYPES).map(([, cfg], i) => {
     const klasse = geld >= cfg.prijs ? '' : ' class="te-duur"';
     return `<span class="regel"${klasse}>${i + 1}, ${cfg.naam} €${cfg.prijs} — bereik ${cfg.bereik} m, ${cfg.hp} HP</span>`;
@@ -3718,6 +3764,15 @@ function maakGeschutToren(plek) {
   const oog = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.05), new THREE.MeshBasicMaterial({ color: 0x7fd4ff }));
   oog.position.set(0, 0.12, 0.41);
   kop.add(romp, loop, oog);
+  // Ticket D12: niveau-ringen om de zuil (niveau 2: één, niveau 3: twee).
+  const ringen = [0.85, 1.3].map(y => {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.44, 0.07, 8, 20), mat(0xffd75e, 0.35, 0.6));
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = y;
+    ring.visible = false;
+    g.add(ring);
+    return ring;
+  });
   g.add(voet, zuil, kop);
   g.position.copy(plek.positie);
   scene.add(g);
@@ -3734,7 +3789,8 @@ function maakGeschutToren(plek) {
   const x = plek.positie.x, z = plek.positie.z;
   const cfg = TOREN_TYPES.geschut;
   return {
-    type: 'geschut', plek, groep: g, kop, spoor, spoorTimer: 0,
+    type: 'geschut', plek, groep: g, kop, spoor, spoorTimer: 0, ringen,
+    niveau: 1, geinvesteerd: cfg.prijs,
     hp: cfg.hp, hpMax: cfg.hp, cooldown: 0, doel: null,
     obstakel: registreerRechthoek(x - 0.7, x + 0.7, z - 0.7, z + 0.7),
   };
@@ -3768,6 +3824,49 @@ function verwijderToren(toren) {
   if (i >= 0) torens.splice(i, 1);
 }
 
+function upgradeToren(toren) {
+  const prijs = upgradePrijs(toren);
+  if (prijs === null) { toonFeedbackMelding('Deze toren is al op het hoogste niveau'); return false; }
+  if (spel.gameOver) return false;
+  if (geld < prijs) { toonFeedbackMelding(`Niet genoeg geld (upgrade kost €${prijs})`); return false; }
+  geld -= prijs;
+  toren.geinvesteerd += prijs;
+  toren.niveau += 1;
+  // Nieuwe maximum-HP; de schade die de toren al had, blijft staan.
+  const nieuw = torenStats(toren);
+  toren.hp += nieuw.hp - toren.hpMax;
+  toren.hpMax = nieuw.hp;
+  toren.ringen.forEach((ring, i) => { ring.visible = toren.niveau >= i + 2; });
+  updateGeldUI();
+  speelBouw();
+  toonFeedbackMelding(`${TOREN_TYPES[toren.type].naam} naar niveau ${toren.niveau}`);
+  return true;
+}
+
+function repareerToren(toren) {
+  const kosten = reparatieKosten(toren);
+  if (kosten === 0) { toonFeedbackMelding('Toren is al heel'); return false; }
+  if (spel.gameOver) return false;
+  if (geld < kosten) { toonFeedbackMelding(`Niet genoeg geld (reparatie kost €${kosten})`); return false; }
+  geld -= kosten;
+  toren.hp = toren.hpMax;
+  updateGeldUI();
+  speelMunt();
+  toonFeedbackMelding('Toren gerepareerd');
+  return true;
+}
+
+function verkoopToren(toren) {
+  if (spel.gameOver) return 0;
+  const opbrengst = verkoopOpbrengst(toren);
+  verdienGeld(opbrengst);
+  updateGeldUI();
+  verwijderToren(toren);
+  sluitBouwMenu();
+  toonFeedbackMelding(`Toren verkocht +€${opbrengst}`);
+  return opbrengst;
+}
+
 // Dichtstbijzijnde robot binnen bereik (horizontale afstand).
 function kiesTorenDoel(toren, bereik) {
   let beste = null, besteAfstand = bereik;
@@ -3780,7 +3879,7 @@ function kiesTorenDoel(toren, bereik) {
 
 const torenMondingTmp = new THREE.Vector3();
 function vuurToren(toren, robot) {
-  const cfg = TOREN_TYPES[toren.type];
+  const cfg = torenStats(toren);
   toren.cooldown = cfg.schotInterval;
   // Schotspoor van de loopmonding naar het lijf van de robot.
   toren.kop.updateMatrixWorld(true);
@@ -3802,7 +3901,7 @@ function vuurToren(toren, robot) {
 
 function updateTorens(dt) {
   for (const toren of torens) {
-    const cfg = TOREN_TYPES[toren.type];
+    const cfg = torenStats(toren);
     toren.cooldown = Math.max(0, toren.cooldown - dt);
     if (toren.spoorTimer > 0) {
       toren.spoorTimer -= dt;
@@ -4864,7 +4963,10 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   TOREN_TYPES, torens, bouwToren, verwijderToren, updateTorens, activeerBouwplek, kiesTorenDoel, verwijderObstakel,
   bouwMenuStand: () => bouwMenuPlek,
   // Ticket D15: bouwfase.
-  BOUWFASE_DUUR, VROEGE_START_BONUS_PER_SECONDE, inBouwfase, bouwfaseResterend, startVolgendeWaveNu };
+  BOUWFASE_DUUR, VROEGE_START_BONUS_PER_SECONDE, inBouwfase, bouwfaseResterend, startVolgendeWaveNu,
+  // Ticket D12: torenniveaus, reparatie, verkopen.
+  torenStats, upgradePrijs, reparatieKosten, verkoopOpbrengst, upgradeToren, repareerToren, verkoopToren,
+  TOREN_VERKOOP_FRACTIE, TOREN_REPARATIE_PER_HP };
 </script>
 </body>
 </html>
