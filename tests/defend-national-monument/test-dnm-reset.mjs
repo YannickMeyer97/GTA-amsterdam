@@ -70,6 +70,11 @@ const tijdensRun = await page.evaluate(() => {
   for (let i = 0; i < 2; i++) d.koopUpgrade('vuurtempo');
   d.koopUpgrade('pickup');
   d.activeerKerkklokBoost();
+  // Ticket D11: een toren die ook echt schiet (schotspoor, obstakel, torenkill).
+  const toren = d.bouwToren(d.BOUWPLEKKEN[0], 'geschut');
+  d.spawnRobot(null, 'normal');
+  d.robots[d.robots.length - 1].groep.position.set(toren.plek.positie.x + 4, 0, toren.plek.positie.z);
+  d.updateTorens(0);
 
   // Een paar kills: munten en brokstukken belanden in de scene, combo en
   // special-meter lopen op.
@@ -81,7 +86,7 @@ const tijdensRun = await page.evaluate(() => {
 
   d.speler.positie.set(d.speler.positie.x + 5, 0, d.speler.positie.z - 4);
   d.speler.yaw = 0.4; d.speler.pitch = -0.3;
-  return { snelheid: d.speler.snelheid, boost: d.kerkklokBoost.active };
+  return { snelheid: d.speler.snelheid, boost: d.kerkklokBoost.active, torens: d.torens.length, torenKills: d.runStats.torenKills };
 });
 
 await frames(page, 30);
@@ -99,7 +104,7 @@ const voorReset = await page.evaluate(() => {
 });
 
 check('De run liet echt sporen na (snelheid-upgrade, boost, munten, score, monument kapot, game over)',
-  tijdensRun.snelheid > 7 && tijdensRun.boost && voorReset.munten > 0 && voorReset.score > 0 && voorReset.monumentTier === 3 && voorReset.gameOver,
+  tijdensRun.snelheid > 7 && tijdensRun.boost && tijdensRun.torens === 1 && tijdensRun.torenKills === 1 && voorReset.munten > 0 && voorReset.score > 0 && voorReset.monumentTier === 3 && voorReset.gameOver,
   { tijdensRun, voorReset });
 
 // --- 3. Reset, en alles vergelijken met de beginstaat ----------------------

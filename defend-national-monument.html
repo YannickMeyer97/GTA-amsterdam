@@ -125,7 +125,7 @@
     transition: opacity 0.12s ease;
   }
 
-  #shopUI {
+  #shopUI, #bouwUI {
     position: fixed;
     left: 16px;
     bottom: 56px;
@@ -139,9 +139,10 @@
     z-index: 5;
     box-shadow: 0 6px 18px rgba(0,0,0,0.25);
   }
-  #shopUI b { color: #ffd75e; }
-  #shopUI .regel { display: block; }
-  #shopUI .gekocht { color: #83e6a8; }
+  #shopUI b, #bouwUI b { color: #ffd75e; }
+  #shopUI .regel, #bouwUI .regel { display: block; }
+  #shopUI .gekocht, #bouwUI .gekocht { color: #83e6a8; }
+  #bouwUI .te-duur { color: #ff9a8a; }
 
   /* --- Eén centrale interactieprompt onderin, voor alle interactiepunten --- */
   #interactiePrompt {
@@ -414,6 +415,7 @@
   <span class="regel">2, Pickup radius €150</span>
   <span class="regel">3, Loopsnelheid €200</span>
 </div>
+<div id="bouwUI" style="display:none"></div>
 <div id="interactiePrompt"></div>
 <div id="kerkklokBanner">🔔 KERKKLOK BOOST: robots sneller, 2x geld</div>
 <div id="richtkruis" style="display:none"></div>
@@ -663,8 +665,19 @@ function registreerObstakel(object, marge = 0) {
   });
 }
 
+// Geeft sinds Ticket D11 het geregistreerde obstakel terug als handle.
+// `obstakels` is een platte array zonder id's; wie een obstakel later weer
+// moet weghalen (toren verkocht/vernietigd, hek gesneuveld) bewaart deze
+// handle en geeft hem aan verwijderObstakel() — de enige manier die nooit
+// stilletjes het verkeerde element verwijdert.
 function registreerRechthoek(minX, maxX, minZ, maxZ, marge = 0) {
-  obstakels.push({ minX: minX - marge, maxX: maxX + marge, minZ: minZ - marge, maxZ: maxZ + marge });
+  const obstakel = { minX: minX - marge, maxX: maxX + marge, minZ: minZ - marge, maxZ: maxZ + marge };
+  obstakels.push(obstakel);
+  return obstakel;
+}
+function verwijderObstakel(handle) {
+  const i = obstakels.indexOf(handle);
+  if (i >= 0) obstakels.splice(i, 1);
 }
 
 function zet(object, x, y, z, rotY = 0) {
@@ -2585,6 +2598,12 @@ addEventListener('keydown', e => {
     if (e.code === 'Digit2') koopUpgrade('pickup');
     if (e.code === 'Digit3') koopUpgrade('snelheid');
   }
+  // Ticket D11: zelfde patroon voor het bouwmenu van een bouwplek.
+  if (bouwMenuPlek && !e.repeat && document.pointerLockElement === renderer.domElement && !spel.gameOver) {
+    const typen = Object.keys(TOREN_TYPES);
+    const keuze = { Digit1: 0, Digit2: 1, Digit3: 2 }[e.code];
+    if (keuze !== undefined && typen[keuze]) bouwToren(bouwMenuPlek, typen[keuze]);
+  }
   // T activeert het dichtstbijzijnde interactiepunt. !e.repeat voorkomt dat
   // ingedrukt houden meerdere keren per toetsdruk koopt/activeert (de
   // browser stuurt anders herhaalde keydown-events terwijl de toets down
@@ -2638,6 +2657,7 @@ document.addEventListener('pointerlockchange', () => {
     // Ook de Bijenkorf-winkel en de interactieprompt netjes sluiten, zodat
     // pauzeren nooit een open menu of een hangende prompt achterlaat.
     if (bijenkorfShopOpen) { bijenkorfShopOpen = false; shopUI.style.display = 'none'; }
+    sluitBouwMenu();
     verbergInteractiePrompt();
   }
 });
@@ -2848,6 +2868,8 @@ function nieuweRunStats() {
     hoogsteCombo: 0,
     hoogsteWave: 1,
     speelduur: 0,       // seconden actief gespeeld; pauze telt niet mee
+    torensGebouwd: 0,   // Ticket D11
+    torenKills: 0,      // Ticket D11: deel van de kills hierboven dat door een toren kwam
   };
 }
 const runStats = nieuweRunStats();
@@ -3240,7 +3262,8 @@ function toonEindscherm(recordUitslag = null) {
   document.getElementById('eindOndertitel').textContent = `Wave ${spel.wave} bereikt`;
   document.getElementById('eindStats').innerHTML = `
     <span>Score</span><b>${spel.score}</b>
-    <span>Robots vernietigd</span><b>${totaalKills}</b>
+    <span>Robots vernietigd</span><b>${totaalKills}${s.torenKills > 0 ? ` (${s.torenKills} door torens)` : ''}</b>
+    <span>Torens gebouwd</span><b>${s.torensGebouwd}</b>
     <span>Trefferpercentage</span><b>${trefferPct}%</b>
     <span>Geld verdiend</span><b>€${s.verdiendGeld}</b>
     <span>Hoogste combo</span><b>x${s.hoogsteCombo}</b>
@@ -3277,6 +3300,7 @@ function koopUpgrade(type) {
 
 function updateGeldUI() {
   geldUI.textContent = `💰 €${geld}`;
+  updateBouwUI();   // Ticket D11: "te duur"-markering in een open bouwmenu bijwerken
 }
 
 /* ================================================================
@@ -3580,14 +3604,179 @@ for (const plek of BOUWPLEKKEN) {
     bouwplek: plek,
     positie: plek.positie,
     radius: BOUWPLEK_RADIUS,
-    prompt: `Bouwplek ${plek.poort} — torens volgen`,
-    actie: () => toonFeedbackMelding('Hier kun je straks een toren bouwen'),
+    prompt: () => bouwplekPrompt(plek),
+    actie: () => activeerBouwplek(plek),
   });
 }
 
 function animeerBouwplekken() {
   const puls = 0.35 + 0.25 * Math.sin(klok * 2.4);
-  for (const plek of BOUWPLEKKEN) if (!plek.toren) plek.kaderMateriaal.opacity = puls;
+  for (const plek of BOUWPLEKKEN) plek.kaderMateriaal.opacity = plek.toren ? 0.15 : puls;
+}
+
+// --- Ticket D11: torens --------------------------------------------------
+//
+// Balans-startpunt uit het plan, te ijken in D16: €120, bereik 12 m, 1
+// schade per 0,8 s, 60 HP. 12 m is ruim de helft van het spelersbereik
+// (WAPEN_BEREIK, 22 m) — de speler blijft het sterkste losse wapen, een
+// toren dekt een stuk corridor waar de speler niet is.
+const TOREN_TYPES = {
+  geschut: { naam: 'Geschuttoren', prijs: 120, bereik: 12, schadePerSchot: 1, schotInterval: 0.8, hp: 60 },
+};
+const torens = [];
+let bouwMenuPlek = null;   // de bouwplek waarvan het bouwmenu nu open staat
+const bouwUI = document.getElementById('bouwUI');
+
+function bouwplekPrompt(plek) {
+  if (plek.toren) {
+    const t = plek.toren;
+    return `${TOREN_TYPES[t.type].naam} — ${Math.ceil(t.hp)}/${t.hpMax} HP`;
+  }
+  return bouwMenuPlek === plek ? 'Kies een toren met 1, of druk T om te sluiten' : `Druk T om te bouwen (bouwplek ${plek.poort})`;
+}
+
+// Zelfde patroon als de Bijenkorf-winkel: T opent/sluit, cijfertoetsen
+// kopen zolang het menu open is. Geen aparte bouwmodus, geen nieuwe UI-laag.
+function activeerBouwplek(plek) {
+  if (plek.toren) {
+    toonFeedbackMelding(`${TOREN_TYPES[plek.toren.type].naam}: ${Math.ceil(plek.toren.hp)}/${plek.toren.hpMax} HP`);
+    return;
+  }
+  if (bouwMenuPlek === plek) sluitBouwMenu();
+  else openBouwMenu(plek);
+}
+function openBouwMenu(plek) {
+  bouwMenuPlek = plek;
+  updateBouwUI();
+  bouwUI.style.display = 'block';
+}
+function sluitBouwMenu() {
+  bouwMenuPlek = null;
+  bouwUI.style.display = 'none';
+}
+function updateBouwUI() {
+  if (!bouwMenuPlek) return;
+  const regels = Object.entries(TOREN_TYPES).map(([, cfg], i) => {
+    const klasse = geld >= cfg.prijs ? '' : ' class="te-duur"';
+    return `<span class="regel"${klasse}>${i + 1}, ${cfg.naam} €${cfg.prijs} — bereik ${cfg.bereik} m, ${cfg.hp} HP</span>`;
+  }).join('');
+  bouwUI.innerHTML = `<b>Bouwplek ${bouwMenuPlek.poort}</b>, druk een cijfer om te bouwen, T om te sluiten:<br>${regels}`;
+}
+
+function maakGeschutToren(plek) {
+  const g = new THREE.Group();
+  const voet = blok(1.4, 0.5, 1.4, 0x6d6a66, 0.85);
+  voet.position.y = 0.35;
+  const zuil = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.4, 1.0, 10), mat(0x55606b, 0.6, 0.3));
+  zuil.position.y = 1.1;
+  zuil.castShadow = true;
+  const kop = new THREE.Group();
+  kop.position.y = 1.75;
+  const romp = blok(0.8, 0.5, 0.8, 0x4b5a68, 0.5, 0.35);
+  const loop = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 1.0, 8), mat(0x2a2f36, 0.4, 0.6));
+  loop.rotation.x = Math.PI / 2;
+  loop.position.set(0, 0.05, 0.55);
+  const oog = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.05), new THREE.MeshBasicMaterial({ color: 0x7fd4ff }));
+  oog.position.set(0, 0.12, 0.41);
+  kop.add(romp, loop, oog);
+  g.add(voet, zuil, kop);
+  g.position.copy(plek.positie);
+  scene.add(g);
+
+  // Kort schotspoor: één herbruikbare lijn per toren i.p.v. een nieuwe
+  // geometrie per schot.
+  const spoorGeo = new THREE.BufferGeometry();
+  spoorGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+  const spoor = new THREE.Line(spoorGeo, new THREE.LineBasicMaterial({ color: 0x9ff0ff }));
+  spoor.visible = false;
+  spoor.frustumCulled = false;
+  scene.add(spoor);
+
+  const x = plek.positie.x, z = plek.positie.z;
+  const cfg = TOREN_TYPES.geschut;
+  return {
+    type: 'geschut', plek, groep: g, kop, spoor, spoorTimer: 0,
+    hp: cfg.hp, hpMax: cfg.hp, cooldown: 0, doel: null,
+    obstakel: registreerRechthoek(x - 0.7, x + 0.7, z - 0.7, z + 0.7),
+  };
+}
+
+function bouwToren(plek, type) {
+  const cfg = TOREN_TYPES[type];
+  if (!cfg || plek.toren || spel.gameOver) return null;
+  if (geld < cfg.prijs) {
+    toonFeedbackMelding(`Niet genoeg geld (${cfg.naam} kost €${cfg.prijs})`);
+    return null;
+  }
+  geld -= cfg.prijs;
+  updateGeldUI();
+  const toren = maakGeschutToren(plek);
+  plek.toren = toren;
+  torens.push(toren);
+  runStats.torensGebouwd += 1;
+  sluitBouwMenu();
+  speelBouw();
+  toonFeedbackMelding(`${cfg.naam} gebouwd bij ${plek.poort}`);
+  return toren;
+}
+
+function verwijderToren(toren) {
+  scene.remove(toren.groep);
+  scene.remove(toren.spoor);
+  verwijderObstakel(toren.obstakel);
+  toren.plek.toren = null;
+  const i = torens.indexOf(toren);
+  if (i >= 0) torens.splice(i, 1);
+}
+
+// Dichtstbijzijnde robot binnen bereik (horizontale afstand).
+function kiesTorenDoel(toren, bereik) {
+  let beste = null, besteAfstand = bereik;
+  for (const robot of robots) {
+    const a = Math.hypot(robot.groep.position.x - toren.plek.positie.x, robot.groep.position.z - toren.plek.positie.z);
+    if (a <= besteAfstand) { besteAfstand = a; beste = robot; }
+  }
+  return beste;
+}
+
+const torenMondingTmp = new THREE.Vector3();
+function vuurToren(toren, robot) {
+  const cfg = TOREN_TYPES[toren.type];
+  toren.cooldown = cfg.schotInterval;
+  // Schotspoor van de loopmonding naar het lijf van de robot.
+  toren.kop.updateMatrixWorld(true);
+  torenMondingTmp.set(0, 0.05, 1.05).applyMatrix4(toren.kop.matrixWorld);
+  const pos = toren.spoor.geometry.attributes.position;
+  pos.setXYZ(0, torenMondingTmp.x, torenMondingTmp.y, torenMondingTmp.z);
+  pos.setXYZ(1, robot.groep.position.x, robot.groep.position.y + 1.0, robot.groep.position.z);
+  pos.needsUpdate = true;
+  toren.spoor.visible = true;
+  toren.spoorTimer = 0.07;
+  speelTorenSchot();
+  // Zelfde regel als voor het spelerswapen: een actief schild blokkeert.
+  if (robot.type === 'shieldbot' && robot.schildActief) {
+    speelSchildBlok();
+    return;
+  }
+  raakRobot(robot, cfg.schadePerSchot, 'toren');
+}
+
+function updateTorens(dt) {
+  for (const toren of torens) {
+    const cfg = TOREN_TYPES[toren.type];
+    toren.cooldown = Math.max(0, toren.cooldown - dt);
+    if (toren.spoorTimer > 0) {
+      toren.spoorTimer -= dt;
+      if (toren.spoorTimer <= 0) toren.spoor.visible = false;
+    }
+    const doel = kiesTorenDoel(toren, cfg.bereik);
+    toren.doel = doel;
+    if (!doel) continue;
+    // Loop naar het doel draaien — de goedkoopste manier om een toren
+    // levend te laten ogen. De loop wijst lokaal langs +z.
+    toren.kop.rotation.y = Math.atan2(doel.groep.position.x - toren.plek.positie.x, doel.groep.position.z - toren.plek.positie.z);
+    if (toren.cooldown <= 0) vuurToren(toren, doel);
+  }
 }
 
 let huidigeInteractie = null;
@@ -3620,6 +3809,10 @@ function updateInteracties(dt) {
     bijenkorfShopOpen = false;
     shopUI.style.display = 'none';
     toonFeedbackMelding('Bijenkorf Upgrades gesloten (te ver weg)');
+  }
+  // Ticket D11: idem voor het bouwmenu — weglopen van de bouwplek sluit het.
+  if (bouwMenuPlek && (!huidigeInteractie || huidigeInteractie.bouwplek !== bouwMenuPlek)) {
+    sluitBouwMenu();
   }
 }
 
@@ -4095,13 +4288,18 @@ function schiet() {
 
 // Eén treffer: bij de meeste robots is dit meteen dodelijk (hp begint op 1),
 // een tank heeft er een paar nodig voordat vernietigRobot() wordt aangeroepen.
-function raakRobot(robot) {
-  robot.hp -= 1;
-  if (robot.hp <= 0) vernietigRobot(robot);
+// Ticket D11: `schade` en `bron` erbij, met standaardwaarden die het
+// spelerswapen exact laten zoals het was (1 schade, bron 'speler').
+function raakRobot(robot, schade = 1, bron = 'speler') {
+  robot.hp -= schade;
+  if (robot.hp <= 0) vernietigRobot(robot, bron);
 }
 
 // Robot kapot: alle onderdelen vliegen in het rond, munt blijft achter.
-function vernietigRobot(robot) {
+// Ticket D11: een kill door een toren (bron 'toren') laat wél een munt
+// achter en telt mee in de score en de runstatistieken, maar bouwt GEEN
+// combo en GEEN special-meter op: die twee belonen wat de speler zelf doet.
+function vernietigRobot(robot, bron = 'speler') {
   speelExplosie();
 
   const losseDelen = [];
@@ -4116,6 +4314,16 @@ function vernietigRobot(robot) {
 
   scene.remove(robot.groep);
   robots.splice(robots.indexOf(robot), 1);
+  if (robot.type in runStats.kills) runStats.kills[robot.type] += 1;
+  spel.waveKills += 1;
+
+  if (bron === 'toren') {
+    runStats.torenKills += 1;
+    legMuntNeer(robot.groep.position, robot.beloningMultiplier * getRewardMultiplier());
+    spel.score += 100;
+    updateArcadeUI();
+    return;
+  }
 
   // Combo eerst ophogen, zodat de geldbeloning van DEZE kill de eventuele
   // net-bereikte combo-tier al meeneemt (voelt beter dan pas vanaf de
@@ -4123,7 +4331,6 @@ function vernietigRobot(robot) {
   const tierVoor = comboTier(spel.combo);
   spel.combo += 1;
   const tierNa = comboTier(spel.combo);
-  if (robot.type in runStats.kills) runStats.kills[robot.type] += 1;
   runStats.hoogsteCombo = Math.max(runStats.hoogsteCombo, spel.combo);
   legMuntNeer(robot.groep.position, robot.beloningMultiplier * getRewardMultiplier() * getComboGeldMultiplier());
   // Alleen tonen bij het OVERSCHRIJDEN van een drempel, niet bij elke kill
@@ -4133,7 +4340,6 @@ function vernietigRobot(robot) {
   }
   // Tijdens de Kerkklok Boost mag een lopende combo iets langer doorlopen.
   spel.comboTimer = kerkklokBoost.active ? 4.5 : 3.2;
-  spel.waveKills += 1;
   spel.specialMeter = Math.min(100, spel.specialMeter + 8);   // elk robottype telt gelijk mee
   const punten = 100 * Math.max(1, spel.combo);
   spel.score += punten;
@@ -4255,6 +4461,8 @@ function piep(type, startHz, eindHz, duur, volume) {
 }
 
 function speelSchot()    { piep('square', 620, 140, 0.12, 0.12); }
+function speelBouw()        { piep('triangle', 260, 620, 0.22, 0.14); }
+function speelTorenSchot()   { piep('square', 1100, 380, 0.05, 0.035); }
 function speelPoortSignaal() { piep('triangle', 440, 440, 0.18, 0.12); setTimeout(() => piep('triangle', 660, 660, 0.25, 0.12), 180); }
 function speelMonumentKraak() { piep('sawtooth', 110, 38, 0.55, 0.2); setTimeout(() => piep('square', 70, 30, 0.35, 0.12), 120); }
 function speelTramBel()  { piep('sine', 980, 980, 0.08, 0.045); setTimeout(() => piep('sine', 1320, 1320, 0.08, 0.035), 90); }
@@ -4473,6 +4681,9 @@ function resetRun() {
   schietKnopIngedrukt = false;
   huidigeInteractie = null;
   bijenkorfShopOpen = false;
+  // Ticket D11: torens horen bij de run (plan §9 vraag 2: alles weg bij reset).
+  for (const toren of [...torens]) verwijderToren(toren);
+  sluitBouwMenu();
 
   // Zichtbare restanten van de vorige run.
   shopUI.style.display = 'none';
@@ -4532,6 +4743,7 @@ function gameLoop(nu) {
     if (schietKnopIngedrukt) probeerTeSchieten();
     updateWaveSysteem(dt);
     updateRobots(dt);
+    updateTorens(dt);   // Ticket D11
     updateDuiven(dt);
     updateMunten(dt);
     updateBrokstukken(dt);
@@ -4608,7 +4820,10 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   WAPEN_BEREIK, raycaster,
   // Ticket D10: bouwplekken.
   BOUWPLEKKEN, BOUWPLEK_RADIUS, puntOpRoute, looproute,
-  runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, bijenkorfShopOpen }) };
+  runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, bijenkorfShopOpen, bouwMenuPlek, aantalTorens: torens.length, aantalObstakels: obstakels.length }),
+  // Ticket D11: torens.
+  TOREN_TYPES, torens, bouwToren, verwijderToren, updateTorens, activeerBouwplek, kiesTorenDoel, verwijderObstakel,
+  bouwMenuStand: () => bouwMenuPlek };
 </script>
 </body>
 </html>
