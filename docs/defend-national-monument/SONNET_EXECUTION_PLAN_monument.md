@@ -1108,3 +1108,650 @@ documenten. `ROADMAP_monument.md` toont de tabellen in deze volgorde.
   juiste thema in de juiste volgorde, de overrides gelden alleen die wave,
   de wave daarna is weer normaal (inclusief mist), en de banner toont de
   themanaam.
+
+---
+
+## 11. Fase M — Make-over van de Dam (na fase 3, vóór fase 4)
+
+### 11.1 Aanleiding
+
+Na fase 3 heeft de eigenaar gespeeld. Het oordeel: de kaart werkt niet
+lekker. Robots lopen niet duidelijk, de kaart is onhandig en niet mooi, de
+Bijenkorf-winkel staat "medium" gepositioneerd, en "eigenlijk alles is net
+niet". De vraag was een complete make-over van de kaart en het
+interactiesysteem, waarbij het wel de Dam moet blijven.
+
+Wat de code daarover zegt:
+
+- **Robots lopen rechtdoor en glijden langs gevels.** Er zijn geen routes;
+  robots lopen in een rechte lijn naar het monument en lossen botsingen op.
+  Bij Rokin en Nieuwendijk loopt die lijn door gebouwen heen, de
+  Nieuwendijk-robots persen zich door een steeg van ~1,5 m, en de
+  Kalverstraat heeft een hardgecodeerd tussenpunt nodig.
+- **De wereld is als decor gebouwd, niet als speelveld.** Fase 3 moest
+  bouwplekken en hekken aanpassen aan toevallige straatbreedtes, en zelfs
+  een looproute simuleren om te weten waar robots eigenlijk lopen.
+- **De gebouwen staan uitgerekt.** Sinds D4 is `wereld.scale` gelijk aan
+  (1/3, 0,6, 1/3): horizontaal drie keer verkleind, verticaal maar 1,7 keer.
+  Elk gebouw is daardoor bijna twee keer te hoog voor zijn breedte.
+- **De interactie is versnipperd.** Er zijn vier soorten interactiepunten
+  (winkel, kerkklok, reparatie, bouwplek), elk met net een andere
+  bediening. Kerkklok en Reparatie liggen aan de westkant, de winkel aan de
+  oostkant.
+
+### 11.2 Besluiten van de eigenaar
+
+| Onderwerp | Besluit |
+|---|---|
+| Timing | **Nu**, na fase 3 en vóór fase 4. Fase 3 is als basisstand vastgelegd. |
+| Kaartopzet | **Compacte Dam-arena, maar realistisch.** Gebouwen moeten echter en herkenbaarder worden, de vloer deels kinderkopjes. |
+| Detailniveau | **Herkenbaar en gedetailleerd, richting maximaal detail.** |
+| Straten | **De vijf huidige:** Damrak, Rokin, Damstraat, Kalverstraat en Nieuwendijk. |
+| Robotroutes | **Zichtbare vaste routes.** |
+| Routes zichtbaar via | **Rijbaan als pad** + **oplichtende route bij de aankondiging.** |
+| Interactie | **Commandopost bij het monument**, voor wapen-upgrades en monumentreparatie. De Kerkklok blijft bij de Nieuwe Kerk; torens beheer je op hun bouwplek. |
+
+### 11.3 Ontwerpprincipes (hard)
+
+1. **Topologisch echt, maatvoering speelgericht.** Alles staat op de juiste
+   plek ten opzichte van elkaar: het Paleis west, de Nieuwe Kerk noordwest,
+   het monument oost, Krasnapolsky erachter, de Bijenkorf op de hoek met het
+   Damrak, de straten waar ze in het echt uitkomen. De afstanden op het plein
+   worden gekozen op speelbaarheid, niet lineair uit de echte kaart, want de
+   Kalverstraat en de Nieuwendijk liggen in het echt twee keer zo ver weg
+   als het Damrak.
+2. **Mensmaat 1:1, één schaal voor alles.** Er komt geen aparte
+   hoogteschaal meer en ook geen `wereld.scale`: de wereld wordt direct in
+   meters gebouwd. Deuren, verdiepingen, ramen en de pyloon hebben hun echte
+   maat. Een gebouw mag korter of ondieper zijn dan in het echt (minder
+   traveeën), maar wordt nooit vervormd: het Paleis krijgt 13 traveeën in
+   plaats van 23, maar zijn koepel blijft ~51 m hoog.
+
+   Het eerdere voorstel van ~1:2 is in D31 verworpen. Bij 1:2 wordt een deur
+   1,1 m hoog en de speler van 1,7 m een reus, zodat de Dam oogt als een
+   maquette.
+3. **Eén bron voor de indeling.** Eén `DAM_LAYOUT`-object bevat plein,
+   straten, rijbanen, routes, poorten, bouwplekken, commandopost en kerkklok.
+   Gebouwen, botsingen, robotroutes, bouwplekken, bakens en minimap lezen
+   allemaal daaruit. Niets wordt meer afgeleid door te simuleren waar robots
+   toevallig lopen.
+4. **Rijbanen zijn heilig.** Geen decor, obstakel of gebouwdeel op een
+   rijbaan of routestrook. Een test bewaakt dat.
+5. **Robots volgen routes.** Elke straat heeft een vaste route (een lijn met
+   bochten) over de rijbaan naar het monument. Robots volgen die lijn met
+   een kleine zijwaartse spreiding binnen de rijbaan, niet langer rechtdoor
+   met botsingen oplossen.
+6. **De gemeten speelmaten blijven randvoorwaarden.** Met vaste routes
+   gelden ze voor de routelengte, niet voor de rechte lijn. Zo zijn ze in
+   D31 vastgelegd:
+   - **routelengte poort → monumentrand 38–52 m** (D6): bij het
+     snelheidsplafond van 3,3 m/s is dat ≥ 11,5 s, voor de langzaamste
+     wave-1-robot ≤ 36 s;
+   - **`WAPEN_BEREIK` 22 m** (D29): geen poort binnen bereik van de
+     monumentrand of de startplek, en per route één bouwplek binnen en één
+     buiten bereik;
+   - **verste bouwplek ≤ 40 m van de monumentrand** (D15): heen en terug
+     ≤ 11,5 s, binnen de bouwfase van 20 s. Dit was ≤ 35 m. Het is in D31
+     verruimd, zodat Kalverstraat en Nieuwendijk een plek in hun eigen
+     straat krijgen, waar een hek de straat echt afsluit;
+   - **Kerkklok heen en terug 10–15 s** (D5/D6), nu gemeten vanaf de
+     commandopost.
+7. **Grey-box eerst, detail daarna.** De nieuwe indeling wordt eerst met
+   simpele blokken gebouwd en gespeeld. Pas als die speelt, gaat er tijd in
+   gevels en detail.
+8. **Alles blijft single-file, zonder externe assets.** Texturen worden
+   procedureel op een canvas getekend, zoals Undead doet (kopiëren en
+   aanpassen, geen gedeelde code).
+
+### 11.4 Wat blijft en wat wordt vervangen
+
+| Blijft (op de nieuwe kaart herplaatst) | Wordt vervangen |
+|---|---|
+| Poortaankondiging, bakens, themagolven (D28/D30) | De hele wereldbouw van STAP 2 (~2.060 regels) |
+| Wapenbereik en stofwolkje (D29) | Rechtdoor lopen + `tussenpunt` + vastloop-uitwijken als hoofdmechaniek |
+| Torens, hek, niveaus, bombers, bouwfase (D11–D15) | `looproute()`-simulatie en de afgeleide `BOUWPLEKKEN` (D10) |
+| Economie (D16, herijkt in D43) | Bijenkorf-kiosk en Koninklijke Reparatiepost als losse plekken |
+| Eindscherm, highscore, reset, monumentschade (fase 2) | `shopUI` en `bouwUI` als twee losse menu's |
+| Het monumentmodel met schadestaten | `wereld.scale` met aparte hoogteschaal |
+
+Het vastloop-uitwijken blijft als vangnet in de code, maar met vaste routes
+op vrije rijbanen hoort het niet meer af te gaan. Een test meet dat.
+
+### 11.5 Tickets
+
+Nummering loopt door vanaf D30. Dit is een grotere fase dan fase 3; de twee
+beslismomenten (M1, M2) zijn bedoeld om vroeg bij te sturen, niet pas aan
+het eind.
+
+#### Ticket D31 — Plattegrond ontwerpen en laten goedkeuren
+
+- **Doel:** vóór er gebouwd wordt, ligt de nieuwe Dam vast op papier.
+- **Stappen:**
+  - Een plattegrond in bovenaanzicht (SVG of HTML-pagina), op schaal:
+    - plein en gebouwvoetafdrukken;
+    - de vijf straten met rijbanen en tramrails;
+    - de vijf routes met bochten;
+    - poorten, twee bouwplekken per route, commandopost, kerkklok,
+      speler-startplek.
+  - Per route de lengte tot de monumentrand, en toetsing aan de
+    randvoorwaarden uit §11.3 punt 6.
+  - Gebouwschaal kiezen, met per gebouw de maten. Gekozen is mensmaat 1:1
+    (§11.3 punt 2).
+  - Per gebouw een korte lijst kenmerken die er zeker in moeten (zie D37–D39),
+    eventueel aangevuld met referentiefoto's van de eigenaar.
+- **Acceptatie:** de eigenaar keurt de plattegrond goed → **beslismoment M1**.
+- **Uitgevoerd:**
+  - [`PLATTEGROND.html`](PLATTEGROND.html) bevat de indeling één keer, als
+    JSON-blok (`dam-layout`). Tekening, maten en toetsing worden daar live
+    uit berekend. In D32 wordt dat blok letterlijk `DAM_LAYOUT` in de game.
+  - `tests/defend-national-monument/meet-dnm-plattegrond.mjs` laadt de
+    pagina headless en faalt als één toets faalt. Stand: 36/36 goed.
+  - Wacht op M1.
+
+#### Ticket D32 — Nieuw fundament (grey-box)
+
+- **Doel:** de nieuwe indeling speelbaar, met simpele blokken.
+- **Stappen:**
+  - `DAM_LAYOUT` als enige bron.
+  - `GRENS`, botsingen (`registreerRechthoek` per voetafdruk) en speler-
+    startplek komen daaruit.
+  - Gebouwen als massieve blokken op de juiste voetafdruk en hoogte.
+  - Vloer:
+    - kinderkopjes op het plein (nieuwe procedurele textuur; de techniek is
+      Undeads klinkertextuur, gekopieerd);
+    - asfalt met tramrails op Damrak–Rokin;
+    - stoepranden en trottoirs.
+  - De oude wereldbouw van STAP 2 gaat eruit. Het monument en zijn
+    schadestaten blijven.
+- **Acceptatie:** `test-dnm-layout.mjs`:
+  - `DAM_LAYOUT` in de game is gelijk aan het JSON-blok in
+    `PLATTEGROND.html`, zodat de goedgekeurde plattegrond de bron blijft;
+  - de 36 toetsen van de plattegrond gelden ook in de game;
+  - elk geregistreerd obstakel ligt buiten elke rijbaan en routestrook (met
+    marge);
+  - `GRENS` omsluit poorten, bouwplekken, commandopost en kerkklok.
+
+  De bestaande tests draaien mee; tests die aan de oude geometrie hingen,
+  worden bijgewerkt, en per test staat vast waarom.
+
+#### Ticket D33 — Vaste routes over de rijbanen
+
+- **Doel:** robots lopen herkenbaar hun straat af.
+- **Stappen:**
+  - Elke poort heeft een route: een lijst van punten uit `DAM_LAYOUT`.
+  - Robots volgen die met een vaste zijwaartse positie binnen de rijbaan
+    (bij het spawnen gekozen), draaien vloeiend in bochten en houden een
+    minimumafstand tot een voorganger, zodat ze niet op één punt stapelen.
+  - Vastgelegd in D31 (zie `PLATTEGROND.html`):
+    - Damrak en Rokin volgen de rijbaan met tramrails, die west van het
+      monument over het plein loopt, en buigen ~14 m voor het monument af
+      naar de noord- of zuidzijde.
+    - Damstraat komt langs Krasnapolsky en buigt op de hoek af naar de
+      oostzijde.
+    - Kalverstraat en Nieuwendijk zijn in het echt voetgangersstraten. Hun
+      route loopt over een strook donkere klinkers tussen de kinderkopjes,
+      steekt schuin het plein over en kruist de trambaan.
+  - Bouwplekken komen uit `DAM_LAYOUT` en liggen op het trottoir naast de
+    rijbaan. Een hek spant precies de breedte van de rijbaan, dus zonder de
+    paaltjeslijn-truc van D13.
+  - De bomber verlaat zijn route alleen voor een bouwwerk binnen bereik
+    (D14) en keert daarna terug naar het dichtstbijzijnde routepunt.
+- **Acceptatie:** `test-dnm-routes.mjs`:
+  - per poort bereikt een robot van elk type het monument via de route;
+  - hij wijkt nooit meer dan een halve rijbaan van de route af;
+  - de vastloop-detectie gaat in een volle wave nul keer af;
+  - een hek blokkeert de volle rijbaanbreedte.
+
+  `test-dnm-hek.mjs`, `test-dnm-bouwplekken.mjs` en `test-dnm-kern.mjs` gaan
+  over op de routes.
+
+#### Ticket D34 — Routes zichtbaar maken
+
+- **Doel:** je ziet in de bouwfase waar de volgende wave langskomt.
+- **Stappen:**
+  - Tijdens de bouwfase lichten de routes van de aangekondigde poorten op,
+    als een lichtspoor dat van de poort naar het monument over de rijbaan
+    trekt. Tijdens de wave dimt het naar een zwak spoor.
+  - Poortbakens verhuizen naar de straatingang, bij het straatnaambord.
+  - De minimap tekent rijbanen en de actieve routes.
+- **Acceptatie:** `test-dnm-route-zicht.mjs`: in de bouwfase lichten precies
+  de aangekondigde routes op, in de wave zijn ze gedimd, en na een reset is
+  niets meer aan. D27 (pijlen) wordt hierna opnieuw beoordeeld.
+
+#### Ticket D35 — Commandopost bij het monument, één menu
+
+- **Doel:** één plek voor upgrades en reparatie, en één bediening voor alles.
+- **Stappen:**
+  - Een commandopost aan de voet van het monument, aan de pleinkant: een
+    klein paviljoen met luifel en toonbank.
+  - T opent het menu: 1–3 wapen-upgrades (vuurtempo, bereik voor munten,
+    loopsnelheid), 4 monument repareren.
+  - De Bijenkorf-kiosk en de Koninklijke Reparatiepost verdwijnen als
+    interactiepunt. De Kerkklok blijft bij de Nieuwe Kerk, als bewuste
+    looproute met risico.
+  - `shopUI` en `bouwUI` worden één menupaneel met dezelfde opbouw overal:
+    - titel en genummerde opties met prijs;
+    - "te duur" gemarkeerd;
+    - T sluit, weglopen of pauzeren sluit ook.
+  - HUD opruimen: de interactieprompt overlapt nu de besturingshulp onderin,
+    en `waveUI`/`objectiveUI` overlappen op smalle schermen. Beide oplossen.
+- **Acceptatie:** `test-dnm-commandopost.mjs`:
+  - alle vier de opties werken, met de prijs zoals nu;
+  - het menu sluit bij weglopen en bij pauze;
+  - er zijn geen oude winkel- of reparatiepunten meer;
+  - de overlapmeting van alle zichtbare vaste UI-rechthoeken op 1280×720 en
+    1024×640 geeft geen enkele overlap.
+
+**Beslismoment M2 — speelt de grey-box?** De eigenaar speelt de nieuwe
+indeling met simpele blokken. Lopen robots duidelijk, liggen bouwplekken en
+commandopost goed, klopt het ritme? Zo niet, dan eerst bijstellen, vóór er
+tijd in gevels gaat.
+
+#### Ticket D36 — Textuurbibliotheek
+
+- **Doel:** materialen die echt ogen.
+- **Stappen:**
+  - Undeads procedurele canvastexturen (baksteen, klinkers; seed per
+    patroonnaam, texturen op wereldschaal) kopiëren en aanpassen.
+  - Nieuw: kinderkopjes, zandsteen, natuursteen voor banden en lijsten,
+    asfalt, leisteen voor daken, en glas.
+  - Elke textuur is deterministisch (vaste seed), zodat elke laadbeurt er
+    hetzelfde uitziet.
+- **Acceptatie:** `test-dnm-texturen.mjs`: elke textuur bestaat, is
+  deterministisch (twee keer tekenen geeft dezelfde bytes) en heeft de juiste
+  wereldschaal.
+
+#### Ticket D37 — Paleis op de Dam
+
+- **Kenmerken:**
+  - classicistisch, in lichte zandsteen die verweerd grijsgeel oogt;
+  - drie bouwlagen plus zolder, met strakke rijen rechthoekige ramen;
+  - een middenrisaliet met fronton en beeldhouwwerk;
+  - geen grote hoofdingang, maar een rij kleine rondboogpoortjes op de
+    begane grond;
+  - de koepel met lantaarn en een windvaan in de vorm van een schip;
+  - beelden op het dak.
+- **Acceptatie:** schermafbeeldingen vanaf drie vaste standpunten, beoordeeld
+  door de eigenaar, en het prestatiebudget uit D42 wordt niet overschreden.
+
+#### Ticket D38 — Nieuwe Kerk
+
+- **Kenmerken:**
+  - laatgotisch, baksteen met natuurstenen banden;
+  - hoge spitsboogramen met maaswerk, en het grote transeptraam naar de Dam;
+  - steile leien daken met een slank dakruitertje;
+  - geen voltooide hoge toren, zoals in het echt.
+- **Acceptatie:** als D37.
+
+#### Ticket D39 — Oost- en zuidwand: Krasnapolsky, Bijenkorf, warenhuis aan de zuidkant
+
+- **Doel:** de gebouwen die je achter en naast het monument ziet, herkenbaar
+  maken. De exacte kenmerken worden in D31 bevestigd.
+- **Stappen:**
+  - Krasnapolsky als breed 19e-eeuws hotel met veel ramen, balkons en een
+    luifel.
+  - De Bijenkorf op de hoek met het Damrak, met verticale gevelpijlers,
+    grote etalages en vlaggen. Alleen de naam in gewone letters, geen logo.
+  - Het warenhuispand aan de zuidkant richting Rokin en Kalverstraat.
+- **Acceptatie:** als D37.
+
+#### Ticket D40 — Straatwanden
+
+- **Doel:** de vijf straten lezen als Amsterdamse straten.
+- **Stappen:**
+  - Gevelrijen met grachtenpandtypen (trap-, hals- en lijstgevels) in
+    variatie.
+  - Winkelpuien op de begane grond.
+  - Kozijnen en ramen via instancing, zodat het detail niet in draw calls
+    betaald wordt.
+  - Een straatnaambord aan elke straatingang.
+- **Acceptatie:** als D37, plus de draw calls per straatwand binnen budget.
+
+#### Ticket D41 — Sfeer en straatmeubilair
+
+- **Stappen:**
+  - Lantaarns, tramhaltes, fietsenrekken, bankjes, duiven en toeristen,
+    uitsluitend buiten rijbanen en routestroken.
+  - Licht en mist bijstellen voor de nieuwe materialen; de mist van
+    Grachtenmist blijft werken.
+  - Het decor rond het strijdtoneel bewust rustig houden (speeltest na D6).
+- **Acceptatie:** `test-dnm-layout.mjs` blijft groen (niets op een rijbaan),
+  plus schermafbeeldingen.
+
+#### Ticket D42 — Prestaties
+
+- **Stappen:**
+  - Meetscript `meet-dnm-prestaties.mjs`: draw calls, driehoeken,
+    geometrieën, texturen en laadtijd, vanaf vaste standpunten.
+  - Een budget vastleggen en halen, met instancing en samengevoegde
+    geometrie, zodat het extra detail niet de framerate kost.
+  - Direct aansluitend D21 (kwaliteitsinstellingen): met dit detailniveau is
+    een Laag/Normaal/Hoog-schakelaar geen luxe meer.
+- **Acceptatie:** het budget wordt gehaald op alle drie de standpunten, en de
+  meetresultaten staan in de roadmap.
+
+#### Ticket D43 — Herijken en eindspeeltest
+
+- **Stappen:**
+  - `meet-dnm-afstanden.mjs` en `meet-dnm-economie.mjs` op de nieuwe kaart
+    draaien.
+  - Poortafstanden, bouwplekken en economie bijstellen waar de nieuwe
+    routes dat vragen. Dit ticket rondt ook de openstaande speeltest van D16
+    af.
+- **Acceptatie:** de meetscripts binnen de randvoorwaarden, de volledige
+  suite groen, en de eigenaar heeft gespeeld → **beslismoment M3**: klopt de
+  make-over? Daarna het uitgestelde beslismoment van fase 3 (hoe voelt de
+  torenkern?) en de keuze over fase 4 (oververhitting).
+
+### 11.6 Volgorde en beslismomenten
+
+```
+D31 plattegrond ── M1 (goedkeuring)
+  → D32 fundament → D33 routes → D34 routes zichtbaar → D35 commandopost ── M2 (grey-box speeltest)
+  → D36 texturen → D37 Paleis → D38 Nieuwe Kerk → D39 oost/zuid → D40 straatwanden → D41 sfeer
+  → D42 prestaties (+ D21 kwaliteit) → D43 herijken ── M3 (eindspeeltest)
+  → beslismoment fase 3 + keuze fase 4
+```
+
+### 11.7 Doelarchitectuur
+
+Dit is hoe de game er na fase M technisch uitziet. Het is geschreven vóór
+D32, zodat elk ticket hetzelfde doel heeft. Een beknopte versie staat in
+`ARCHITECTURE_NOTES_monument.md` §15. Wijkt de uitvoering af, dan wordt deze
+paragraaf in hetzelfde ticket bijgewerkt.
+
+#### 11.7.1 Coördinaten, eenheden en hoogte
+
+- **Meters, mensmaat 1:1.** +x is oost, +z is zuid, y is omhoog. De
+  oorsprong ligt in het midden van het monument.
+  - `MONUMENT_POSITIE` wordt (0, 0, 0); nu is het (14, 0, −1,33).
+- **`wereld` blijft een `Group`, maar zonder schaal.** `ARENA_SCHAAL`,
+  `GEBOUW_HOOGTE_SCHAAL`, `MONUMENT_HOOGTE_SCHAAL` en `MONUMENT_ROND_Y`
+  verdwijnen.
+  - Er is geen verschil meer tussen "wereldcoördinaat" en
+    "gameplaycoördinaat". Valkuil 4.2 (vergeten ×ARENA_SCHAAL) bestaat
+    daarmee niet meer.
+- **Ooghoogte en snelheid blijven.** Ooghoogte 1,7 m, loopsnelheid 7 m/s.
+  De plattegrond rekent met die 7 m/s.
+- **`vloerHoogte(x, z)`.** De vloer is plat, op twee uitzonderingen na: de
+  drie treden van het monumentplatform (3 × 0,16 m) en de stoepen
+  (0,12 m).
+  - Speler en robots krijgen `y = vloerHoogte(x, z)`.
+  - De functie leest alleen `DAM_LAYOUT`: ringen voor het platform,
+    rechthoeken voor stoepen.
+
+#### 11.7.2 `DAM_LAYOUT` — één bron
+
+- **Wat het is.** Bovenaan STAP 2 staat `const DAM_LAYOUT = { … }`. Dat is
+  letterlijk het JSON-blok uit `PLATTEGROND.html`: dezelfde velden en
+  dezelfde getallen, puur data, dus geen `THREE.Vector3`.
+- **Afgeleide velden.** `bereidLayoutVoor()` maakt daar eenmalig bij het
+  laden van:
+  - `ROUTES`: een `Map` van poortnaam naar
+    `{ punten, segmenten: [{ a, b, lengte, s0, breedte, richting, normaal }], lengte }`;
+  - `MONUMENT_BOX`, `GRENS` en `BOUWPLEKKEN`;
+  - de hekken per plek.
+- **Wijzigen.** Een wijziging gebeurt in `PLATTEGROND.html` en de game
+  tegelijk. `test-dnm-layout.mjs` eist dat de twee gelijk zijn, zodat de
+  goedgekeurde plattegrond altijd de waarheid toont.
+
+| Veld | Gelezen door |
+|---|---|
+| `grens` | spelerbeweging, `willekeurigePlek`, minimap |
+| `monument` (speldoos, platform, treden) | `MONUMENT_BOX`, `afstandTotMonument`, `vloerHoogte`, monumentbouwer |
+| `commandopost`, `kerkklok`, `spelerStart` | interactiepunten, `BEGINSTAAT` |
+| `vlakken` (asfalt, stoep, trambaan, klinkers) | vloerbouwer, `vloerHoogte`, test "rijbanen zijn heilig" |
+| `routes` (punten, breedtes) | robotbeweging, bakens, lichtspoor (D34), minimap, klinkerstroken |
+| `hekBreedte` | hekbouwer |
+| `bouwplekken` | `BOUWPLEKKEN`, bouwplektegels |
+| `gebouwen` (delen, hoogte) | gebouwbouwers, botsingen, schotschil |
+| `decor` | decorbouwer (geen botsing: buiten `GRENS`) |
+
+**Invarianten.** `test-dnm-layout` bewaakt ze; het zijn de 36 toetsen van
+`PLATTEGROND.html` plus:
+
+1. Geen enkel geregistreerd obstakel en geen decor-bounding-box ligt op een
+   rijbaan, trambaan of routestrook.
+2. Gebouwen zijn assen-uitgelijnde rechthoeken (`delen`). Een gebouw met
+   een uitstekend deel krijgt een extra deel, geen `Box3` die meegroeit.
+3. Een bouwplek ligt nooit binnen 0,3 m van een strook; een hek steekt
+   nergens in een gebouw.
+
+#### 11.7.3 Wereldbouw
+
+- **Volgorde bij het laden:**
+  1. `bereidLayoutVoor()`;
+  2. materialen en texturen (register);
+  3. vloer;
+  4. gebouwen;
+  5. monument;
+  6. straatmeubilair;
+  7. botsingen;
+  8. bouwplekken, commandopost en kerkklok;
+  9. `bouwset.klaar()`.
+- **Gebouwbouwers.** `GEBOUW_BOUWERS` is een object van gebouwnaam naar
+  functie `(gebouw, bouwset) → Group`.
+  - Een naam zonder eigen bouwer krijgt het grey-box-blok van D32: een
+    massief blok per deel, op de hoogte uit de layout.
+  - D37–D40 vervangen de bouwers één voor één. De rest van de game merkt
+    daar niets van.
+- **`bouwset` verzamelt, en tekent pas aan het eind.** Twee soorten
+  onderdelen:
+  - **Statisch en uniek** (gevelvlakken, daken, lijsten): de geometrie
+    gaat per materiaal in een lijst. `klaar()` voegt elke lijst samen met
+    `mergeGeometries` tot één mesh.
+  - **Herhaald** (ramen, kozijnen, rondboogpoortjes, lantaarns, paaltjes):
+    per onderdeelsoort één `InstancedMesh`.
+  - Resultaat: een klein, vast aantal draw calls, onafhankelijk van hoeveel
+    ramen er zijn.
+- **Import.** `mergeGeometries` komt uit
+  `three/addons/utils/BufferGeometryUtils.js`. De importmap krijgt daarvoor
+  een `"three/addons/"`-regel naar hetzelfde CDN en dezelfde versie (0.160.0).
+  De testhelper vangt `/examples/jsm/` al af.
+- **Materiaalregister.**
+  - `materiaal(naam)` geeft per naam altijd hetzelfde object terug.
+  - Texturen worden op een canvas getekend met een PRNG die per
+    patroonnaam een vaste seed krijgt (`tekstZaad`), en op wereldschaal
+    gezet (`herschaalUVNaarWereldschaal`). Beide komen uit Undead:
+    gekopieerd en aangepast, niet gedeeld.
+- **Botsingen.**
+  - Alleen `registreerRechthoek`, per `gebouw.delen`, met marge 0,3.
+    `registreerObstakel` (`Box3`) wordt voor gebouwen niet meer gebruikt.
+  - Straatmeubilair met botsing registreert een eigen kleine rechthoek.
+- **Schoten en de wereld: de schotschil.** Schoten raken nu heel `wereld`
+  via een recursieve raycast. Met samengevoegde meshes van tienduizenden
+  driehoeken wordt dat duur, en de bounding sphere van een samengevoegde
+  mesh sluit niets meer uit.
+  - Daarom krijgt de wereld een onzichtbare **schotschil**: één box per
+    gebouwdeel, plus het monument.
+  - Schoten raycasten tegen robots en de schil. Alle detailmeshes krijgen
+    `raycast = geenRaycast`.
+  - Het buiten-bereik-effect van D29 gebruikt dezelfde schil.
+- **Benoemde onderdelen.** Elke gebouwgroep krijgt `name = gebouw.naam`.
+  Herkenbare onderdelen krijgen `userData.onderdeel`, zodat tests en
+  schermafbeeldingen ze kunnen vinden, bijvoorbeeld:
+  - `'koepel'` en `'fronton'` (Paleis);
+  - `'transeptraam'` (Nieuwe Kerk);
+  - `'pyloon'` (monument).
+
+#### 11.7.4 Routes en robotbeweging
+
+- **Robotstaat.**
+  - `route`: een verwijzing naar `ROUTES`.
+  - `s`: de afgelegde afstand langs de route.
+  - `laanFractie`: bij het spawnen gekozen, tussen −1 en 1.
+  - `modus`: `'route'`, `'bouwwerk'`, `'slaan'` of `'terug'`.
+- **Zijwaartse positie.** De zijwaartse afwijking is
+  `laanFractie × (breedte(s)/2 − 0,8)`. Een robot houdt dus zijn eigen
+  "baan", en die versmalt vanzelf waar de strook smaller wordt (van 9 m op
+  het Damrak naar 3 m op het plein).
+- **Modus `route`**, per frame:
+  1. `s` groeit met `v · dt`, tenzij er binnen 1,2 m voor hem een robot op
+     dezelfde route loopt met een laanverschil onder 0,45. Dan wacht hij.
+     Zo ontstaat een rij, geen klont.
+  2. Het stuurpunt is `puntOp(route, s + 1,5)` plus de zijwaartse
+     afwijking. Door dat vooruitkijken worden bochten vanzelf rond.
+  3. De robot beweegt naar het stuurpunt en draait vloeiend
+     (`dt × 6`, zoals nu).
+- **Monument.** `afstandTotMonument(positie) < 0,6` blijft de enige
+  waarheid voor een treffer.
+- **Hek.** Een hek weet zijn `route` en `s`. Een robot op die route met
+  `s ≥ hek.s − HEK_CONTACT_AFSTAND` gaat in modus `slaan`.
+  - Er is geen meetkundige lijntest meer nodig, en het paaltjeslijn-trucje
+    van D13 vervalt.
+  - `hek.lijn` blijft bestaan voor tekenen en voor `bouwwerkPunt` van de
+    bomber.
+- **Bomber.** Modus `bouwwerk` verlaat de route naar het doel van
+  `kiesBomberDoel`. Dat is ongewijzigd: binnen 10 m, en per frame opnieuw
+  gekozen.
+  - Sneuvelt het doel, dan gaat hij naar modus `terug`: hij stuurt naar het
+    dichtstbijzijnde routepunt (projectie, dus een nieuwe `s`) en gaat
+    verder in modus `route`.
+  - Alleen in `bouwwerk` en `terug` draait `losBotsingenOp`.
+- **Vastlopen wordt een meting.** `vastTijd` blijft, maar leidt niet meer
+  tot uitwijken. De teller `spel.vastloopTeller` telt elk geval.
+  `test-dnm-routes` eist 0 in een volle wave.
+- **Wat vervalt:**
+  - `tussenpunt` en `ontwijkOffset`;
+  - de simulatie `looproute()`.
+- **Wat blijft:** `puntOpRoute(poort, fractie)`, met dezelfde retourvorm
+  `{ x, z, rx, rz }` maar op de vaste route. Meetscripts en tests die hem
+  aanroepen, blijven dan werken.
+
+#### 11.7.5 Bouwplekken, hekken, commandopost en menu
+
+- **`BOUWPLEKKEN` komen uit de layout.** De veldnamen blijven waar dat kan:
+  `poort`, `index` (0 = ver, 1 = nabij, dezelfde betekenis als nu),
+  `positie`, `toren`, `groep`. Zo werkt de code van D11–D14 door.
+  - `route` + `zijOffset` worden `s` + `hek` (`{ a, b, breedte }`).
+  - De tegel wordt 1,8 m (was 2,4), zodat hij op een stoep van 2,5 m past.
+    Het torenobstakel blijft 1,4 m.
+- **Hek.** Een rij palen van `hek.a` naar `hek.b`, met per paal een
+  `registreerRechthoek`, zodat hij ook schuin op het plein kan staan.
+  - In een straat spant het hek de hele rijbaan of voetgangersstraat.
+  - Op het plein spant het de strook plus 1 m aan weerszijden.
+- **Commandopost.** Eén interactiepunt van type `'commandopost'` met menu:
+  - 1–3: wapen-upgrades;
+  - 4: monument repareren.
+
+  De Bijenkorf-kiosk en de Koninklijke Reparatiepost vervallen. De
+  Kerkklok verhuist naar `DAM_LAYOUT.kerkklok`.
+- **Eén menupaneel, `menuUI`, in plaats van `shopUI` en `bouwUI`.**
+  - Openen gaat met `openMenu({ titel, opties: [{ toets, tekst, prijs, beschikbaar, actie }] })`,
+    sluiten met `sluitMenu()`.
+  - Het menu sluit bij T, bij weglopen (straal + 1 m) en bij pauze.
+  - De bestaande debug-exports `bijenkorfShopOpenStand` en `bouwMenuStand`
+    blijven als dunne wrappers.
+
+#### 11.7.6 Monument op 1:1
+
+- **Opnieuw opgebouwd op ware grootte**, met een pyloon van 22 m, in een
+  eigen groep in de oorsprong. Zonder niet-uniforme schaal zijn rook en
+  licht vanzelf rond; `MONUMENT_ROND_Y` vervalt.
+- **De schadestaten van D20 blijven.** `pasMonumentSchadeToe`,
+  `zetMonumentDeelZichtbaar` en `userData.puurEffect` blijven; alleen de
+  maten veranderen.
+- **`MONUMENT_BOX` volgt uit `DAM_LAYOUT.monument.speldoos`** (±6 m). De
+  handmatige kopie en valkuil §4.3 verdwijnen.
+
+#### 11.7.7 Tram, decor en sfeer
+
+- **De rijdende trams verdwijnen.** Ze kruisen routes en zijn bewegende
+  obstakels (`bewegendeTrams`).
+- **Eén geparkeerde tram** staat in het Rokin, voorbij de poort en buiten
+  `GRENS`, als achtergrond. Hij heeft geen botsing.
+- **Straatmeubilair** staat alleen buiten rijbanen, trambaan en stroken
+  (invariant 1).
+- **Mist.**
+  - De mist wordt herijkt op afstanden van 1:1. `MIST_BASIS` en de
+    Grachtenmist van D30 blijven werken.
+  - De `far` van de camera (600) en het schaduwvlak van de zon worden op
+    de nieuwe arena gezet:
+    - schaduw: x −70..50 en z −50..50, plus de hoogte van de koepel;
+    - `far`: ≥ 250 m, met de straten als achtergrond.
+
+#### 11.7.8 Interfaces: wat verandert voor bestaande code
+
+| Nu (fase 3) | Na fase M | Opmerking |
+|---|---|---|
+| `ARENA_SCHAAL`, `GEBOUW_HOOGTE_SCHAAL`, `MONUMENT_HOOGTE_SCHAAL`, `MONUMENT_ROND_Y` | vervallen | alles in meters |
+| `wereld.scale` (1/3, 0,6, 1/3) | identiteit | `wereld` komt op de debug-hook |
+| `MONUMENT_POSITIE` (14, 0, −1,33) | (0, 0, 0) | |
+| `MONUMENT_BOX` (handkopie) | uit `DAM_LAYOUT.monument.speldoos` | |
+| `GRENS` | `DAM_LAYOUT.grens` | |
+| `SPAWN_POORTEN` `{ naam, positie, spreidingX/Z, tussenpunt }` | `{ naam, positie, route }` | positie is het eerste routepunt; spreiding wordt `laanFractie` |
+| `looproute(poort)` (simulatie) | `ROUTES.get(naam)` (vast) | |
+| `puntOpRoute(poort, fractie)` | blijft | zelfde retourvorm, op de vaste route |
+| `BOUWPLEKKEN` met `route`, `zijOffset` | uit de layout, met `s` en `hek` | overige velden gelijk |
+| `hekInContact(positie)` (lijntest) | `hekOpRoute(robot)` (op basis van `s`) | `hek.lijn` blijft |
+| `interactiePunten`: 3 vaste + 10 plekken | commandopost + kerkklok + 10 plekken | |
+| `shopUI`, `bouwUI` | `menuUI` | debug-wrappers blijven |
+| `bewegendeTrams` | vervalt | |
+| raycast tegen heel `wereld` | raycast tegen robots + schotschil | |
+
+**De debug-hook `DamChaosDebug`** wordt alleen uitgebreid, niet hernoemd.
+Nieuw erop:
+- `DAM_LAYOUT`, `ROUTES`, `wereld`, `schotschil`;
+- `vloerHoogte`, `puntOp`, `hekOpRoute`;
+- `menuStand`, `openMenu`, `sluitMenu`.
+
+#### 11.7.9 Testmigratie
+
+| Test | Wat verandert | Ticket |
+|---|---|---|
+| `test-dnm-laadt` | verwachte aantallen (obstakels, interactiepunten) uit de layout | D32/D35 |
+| `test-dnm-kern` | robots bereiken het monument via de vaste route, niet via de simulatie; 12 interactiepunten | D33/D35 |
+| `test-dnm-poorten` | poortposities uit de layout; bakens aan de straatingang | D33/D34 |
+| `test-dnm-wapenbereik` | vindt `wereld` via de debug-hook in plaats van `scale.x === ARENA_SCHAAL`; schiet tegen de schotschil | D32 |
+| `test-dnm-bouwplekken` | plekken uit de layout in plaats van `looproute` | D33 |
+| `test-dnm-hek` | hek op route-`s`; spant de volle strook | D33 |
+| `test-dnm-reset` | momentopname zonder trams; spelerstart uit de layout | D32 |
+| overige (toren-*, bouwfase, themagolven, eindscherm, highscore, monument-schade) | naar verwachting alleen posities | D32–D35 |
+| nieuw: `test-dnm-layout`, `-routes`, `-route-zicht`, `-commandopost`, `-texturen` | | D32–D36 |
+| `meet-dnm-afstanden`, `meet-dnm-economie`, nieuw `meet-dnm-prestaties` | opnieuw draaien | D42/D43 |
+
+Regel: een test die aan de oude geometrie hing, wordt in hetzelfde ticket
+bijgewerkt, met in de test zelf één zin waarom.
+
+#### 11.7.10 Prestatiebudget (vast te leggen in D42)
+
+- **Nulmeting.** De huidige game, gemeten op 1280×720 na het laden
+  (scratchpad `meet-nul.mjs`, wordt in D42 `meet-dnm-prestaties.mjs`).
+- **Standpunten:** de drie van de nulmeting, plus in D42 de commandopost en
+  de Kalverstraat-mond.
+
+| Meting | Nu: monument / plein west / Damrak | Budget Hoog | Budget Laag |
+|---|---|---|---|
+| draw calls | 1407 / 1421 / 2314 | ≤ 400 | ≤ 200 |
+| driehoeken in beeld | 50k / 51k / 70k | ≤ 500k | ≤ 200k |
+| geometrieën | 1978 | ≤ 300 | ≤ 300 |
+| texturen | 23 | ≤ 24, elk ≤ 1024² | ≤ 24, elk ≤ 512² |
+| shaderprogramma's | 7 | geen nieuwe na het laden | idem |
+| laadtijd headless | 6,2 s | ≤ 6 s | ≤ 6 s |
+
+Het detail "richting maximaal" betaalt zich in driehoeken, niet in draw
+calls. Dat is precies waar instancing en samenvoegen voor zijn.
+
+#### 11.7.11 Valkuilen die we vooraf kennen
+
+1. **`mergeGeometries` geeft `null`** als de attributen niet overeenkomen:
+   geïndexeerd en niet-geïndexeerd door elkaar, of een ontbrekende `uv`.
+   `bouwset` normaliseert elke geometrie vóór het samenvoegen en gooit een
+   fout bij `null`, zodat het niet stil misgaat.
+2. **Instanties verdwijnen aan de beeldrand** als de bounding sphere van
+   een `InstancedMesh` niet na het zetten van de matrices wordt berekend.
+   Dus altijd `computeBoundingSphere()` in `klaar()`.
+3. **Vloerlagen gaan flikkeren (z-fighting).** Plein, strook, trambaan en
+   stoep liggen op elkaar. Ze krijgen vaste y-verschillen (0 / 0,004 /
+   0,008 / 0,12) of `polygonOffset`.
+4. **Tests zochten `wereld` via de schaal.** Na D32 werkt dat niet meer;
+   ze gebruiken de debug-hook.
+5. **Een canvastextuur met `Math.random`** ziet er elke laadbeurt anders
+   uit. Alleen de PRNG met vaste seed gebruiken; `test-dnm-texturen`
+   vergelijkt bytes.
+6. **Het schaduwvlak en `camera.far` horen bij de oude, geschaalde
+   wereld.** Zonder bijstellen vallen koepel en straten buiten beeld of
+   buiten de schaduw.
+7. **`DAM_LAYOUT` is JSON.** Een `THREE.Vector3` erin maakt de vergelijking
+   met `PLATTEGROND.html` kapot. Omzetten gebeurt alleen in
+   `bereidLayoutVoor()`.

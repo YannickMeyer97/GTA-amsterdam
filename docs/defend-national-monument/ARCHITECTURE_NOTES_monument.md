@@ -43,6 +43,7 @@ eerst.
 | 12 | Debug-hook |
 | 13 | Testdekking |
 | 14 | De torenkern (fase 3): poorten, bereik, bouwplekken, torens, hek, bouwfase, economie, themagolven |
+| 15 | Doelarchitectuur fase M (make-over van de Dam) — nog niet gebouwd |
 
 ---
 
@@ -1181,3 +1182,71 @@ bepalen (ook bij de aankondiging vooraf); `robotTypeVoorLopendeWave()` laat een
 thema het robottype bepalen, zonder `kiesRobotTypeVoorWave()` aan te passen.
 `pasMistToe(thema)` zet de mist elke wave opnieuw uit het thema of uit
 `MIST_BASIS`, vastgelegd ná het bouwen van de wereld (§10, punt 18).
+
+---
+
+## 15. Doelarchitectuur fase M — nog niet gebouwd
+
+**Dit beschrijft de game ná fase M (D32–D43), niet de game van vandaag.**
+Zolang een ticket niet af is, gelden §1–§14. Het volledige ontwerp met de
+motivering staat in `SONNET_EXECUTION_PLAN_monument.md` §11.7; de
+plattegrond met alle maten in `PLATTEGROND.html`. Hieronder staan de
+contracten die elk ticket van fase M moet respecteren. Werk deze sectie per
+ticket bij en verplaats wat gebouwd is naar de gewone secties.
+
+### 15.1 Eén bron: `DAM_LAYOUT`
+
+- `DAM_LAYOUT` is puur JSON en gelijk aan het `dam-layout`-blok in
+  `PLATTEGROND.html`. `test-dnm-layout` vergelijkt de twee.
+- Alles wat een plek heeft, leest daaruit:
+  - `GRENS` en `MONUMENT_BOX`;
+  - routes, poorten, bouwplekken en hekken;
+  - commandopost, kerkklok en spelerstart;
+  - gebouwvoetafdrukken, botsingen en de schotschil.
+- Afgeleide structuren (`ROUTES`, `BOUWPLEKKEN`) maakt
+  `bereidLayoutVoor()` één keer, bij het laden. Daarna wordt niets meer
+  gesimuleerd of afgeleid uit waar robots toevallig lopen.
+
+### 15.2 Coördinaten
+
+- Meters, 1:1, zonder `wereld.scale`. +x oost, +z zuid, oorsprong in het
+  midden van het monument.
+- `ARENA_SCHAAL` en alle hoogteschalen vervallen, en daarmee valkuil §4.2.
+- `vloerHoogte(x, z)` geeft het reliëf: platformtreden en stoepen.
+
+### 15.3 Contracten
+
+1. **Rijbanen zijn heilig.** Geen obstakel, decor of gebouwdeel op een
+   rijbaan, de trambaan of een routestrook.
+2. **Robots volgen routes op `s`.** Een robot heeft `route`, `s`,
+   `laanFractie` en `modus`.
+   - Een hek werkt op route-`s`, zonder lijntest.
+   - Alleen de bomber verlaat zijn route (voor een bouwwerk) en keert
+     terug via projectie.
+   - `afstandTotMonument < 0,6` blijft de enige monumenttreffer.
+3. **Vastlopen is een meting, geen mechaniek.** `spel.vastloopTeller` moet
+   in een volle wave 0 blijven.
+4. **Gebouwen zijn rechthoeken.** Botsing gaat via `registreerRechthoek`
+   per `gebouw.delen`, nooit via een `Box3` die met decor meegroeit.
+5. **Tekenen via de `bouwset`.** Uniek statisch detail wordt per materiaal
+   samengevoegd (`mergeGeometries`); herhaald detail wordt `InstancedMesh`.
+   Budget: ≤ 400 draw calls op Hoog, ≤ 200 op Laag. De nulmeting staat in
+   plan §11.7.10.
+6. **Schoten raken de schotschil**: onzichtbare boxen per gebouwdeel plus
+   het monument, niet de detailmeshes (`raycast = geenRaycast`).
+7. **Eén menu.** `menuUI` met `openMenu` en `sluitMenu`. Het sluit bij T,
+   bij weglopen en bij pauze. De commandopost bedient wapen-upgrades en
+   monumentreparatie; torens beheer je op hun plek.
+8. **Texturen zijn deterministisch**: een canvas met een PRNG met vaste
+   seed per patroonnaam, en UV op wereldschaal.
+
+### 15.4 Wat verdwijnt
+
+- `looproute()`, `tussenpunt` en `ontwijkOffset` als hoofdmechaniek.
+- `bewegendeTrams`.
+- De Bijenkorf-kiosk en de Koninklijke Reparatiepost als interactiepunt.
+- `shopUI` en `bouwUI`.
+- `MONUMENT_ROND_Y`.
+
+De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
+§11.7.9.

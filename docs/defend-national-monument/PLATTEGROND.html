@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plattegrond van de Dam</title>
+<!--
+  Ticket D31 (SONNET_EXECUTION_PLAN_monument.md §11.5) — de plattegrond van
+  fase M, ter goedkeuring bij beslismoment M1.
+
+  De indeling staat één keer, als JSON, in <script id="dam-layout">. Alles op
+  deze pagina (tekening, maten, toetsing) wordt daar live uit berekend; er
+  staat geen enkel getal met de hand in een tabel. In D32 wordt dit blok
+  letterlijk het `DAM_LAYOUT`-object van defend-national-monument.html.
+
+  Controleren zonder browser-oog: tests/defend-national-monument/
+  meet-dnm-plattegrond.mjs laadt deze pagina headless en faalt als één
+  toets faalt.
+-->
+<style>
+  :root {
+    --papier: #f4f0e6; --inkt: #25221d; --zacht: #6b645a; --lijn: #d6cfc0;
+    --goed: #1f7a3a; --fout: #b3261e; --kaart: #fbf8f1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --papier: #1d1b18; --inkt: #ece6da; --zacht: #a59d90; --lijn: #3a362f;
+      --goed: #6fcf8a; --fout: #ff8a80; --kaart: #fbf8f1;
+    }
+  }
+  :root[data-theme="dark"] {
+    --papier: #1d1b18; --inkt: #ece6da; --zacht: #a59d90; --lijn: #3a362f;
+    --goed: #6fcf8a; --fout: #ff8a80; --kaart: #fbf8f1;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--papier); color: var(--inkt);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  h2 { font-size: 1.15rem; margin: 36px 0 8px; border-bottom: 1px solid var(--lijn); padding-bottom: 4px; }
+  p { margin: 6px 0; max-width: 78ch; }
+  .sub { color: var(--zacht); }
+  .kaart { background: var(--kaart); border: 1px solid var(--lijn); border-radius: 6px; margin-top: 16px; overflow: hidden; }
+  .kaart svg { display: block; width: 100%; height: auto; }
+  .legenda { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; font-size: 13px; color: var(--zacht); }
+  .legenda span { display: inline-flex; align-items: center; gap: 6px; }
+  .legenda i { display: inline-block; width: 18px; height: 12px; border: 1px solid #0003; border-radius: 2px; }
+  .tabel { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 5px 10px 5px 0; border-bottom: 1px solid var(--lijn); vertical-align: top; }
+  th { color: var(--zacht); font-weight: 600; }
+  td.n { text-align: right; padding-right: 16px; }
+  .ok { color: var(--goed); font-weight: 600; }
+  .nok { color: var(--fout); font-weight: 600; }
+  .samenvatting { font-weight: 600; margin-top: 10px; }
+  ul { margin: 6px 0; padding-left: 20px; max-width: 80ch; }
+  li { margin: 3px 0; }
+  code { font-size: 0.92em; }
+  .kleurblok { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Plattegrond van de Dam</h1>
+  <p class="sub">Voorstel voor fase M, ticket D31. Bovenaanzicht op schaal: noord is boven, één hokje is 10 m.</p>
+  <p>Mensmaat 1:1: deuren, verdiepingen en ramen hebben hun echte maat. Gebouwen zijn korter of minder diep dan in het echt (minder traveeën), maar nooit uitgerekt. Het plein zelf is compact: de afstanden zijn gekozen op speelbaarheid. De onderlinge ligging klopt met de echte Dam.</p>
+
+  <div class="kaart"><svg id="svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Plattegrond van de Dam"></svg></div>
+  <div class="legenda" id="legenda"></div>
+
+  <h2>Toetsing</h2>
+  <p>De randvoorwaarden uit het plan (§11.3, punt 6), elke keer opnieuw berekend uit de indeling hieronder.</p>
+  <div class="tabel"><table id="toetsen"></table></div>
+  <p class="samenvatting" id="samenvatting"></p>
+
+  <h2>Routes</h2>
+  <p>Looptijden bij de robotsnelheid van <code>spawnRobot</code>: wave 1 is 1,49 tot 2,26 m/s, het plafond is 3,30 m/s.</p>
+  <div class="tabel"><table id="routes"></table></div>
+
+  <h2>Bouwplekken</h2>
+  <p>Twee per route: één binnen het wapenbereik vanaf het monument (nabij), één erbuiten (ver). Een hek komt dwars over de route op de hoogte van de plek. In een straat spant het hek de hele rijbaan of straat, op het plein de klinkerstrook plus een meter aan weerszijden. Een plek is een tegel van 1,8 × 1,8 m; de toren zelf is 1,4 m breed.</p>
+  <div class="tabel"><table id="plekken"></table></div>
+
+  <h2>Gebouwen: maten en kenmerken</h2>
+  <div class="tabel"><table id="gebouwen"></table></div>
+
+  <h2>Keuzes in dit voorstel</h2>
+  <ul id="keuzes"></ul>
+</main>
+
+<script type="application/json" id="dam-layout">
+{
+  "versie": "D31-voorstel-1",
+  "eenheid": "meter, mensmaat 1:1",
+  "assen": "+x = oost, +z = zuid, oorsprong = midden van het monument, y = omhoog",
+  "wapenBereik": 22,
+  "spelerSnelheid": 7,
+  "robotSnelheid": { "wave1Min": 1.485, "wave1Max": 2.255, "plafond": 3.3 },
+
+  "grens": { "minX": -66, "maxX": 47, "minZ": -43, "maxZ": 43 },
+
+  "monument": {
+    "midden": [0, 0],
+    "speldoos": 6,
+    "platformStraal": 9,
+    "treden": [9, 8.2, 7.4],
+    "treeHoogte": 0.16,
+    "pyloonHoogte": 22
+  },
+
+  "commandopost": {
+    "midden": [-11.2, 0],
+    "maat": [2.4, 4],
+    "toonbank": "west",
+    "spelerPlek": [-13.4, 0]
+  },
+  "kerkklok": { "positie": [-55, -25.5] },
+  "spelerStart": { "positie": [-30, 0], "kijkrichting": "oost" },
+
+  "vlakken": [
+    { "naam": "Damrak",                "soort": "asfalt",      "rect": [-23.5, -78, -14.5, -22], "tramsporen": [-20.5, -17.5] },
+    { "naam": "Damrak stoep west",     "soort": "stoep",       "rect": [-27, -78, -23.5, -22] },
+    { "naam": "Damrak stoep oost",     "soort": "stoep",       "rect": [-14.5, -78, -11, -22] },
+    { "naam": "Trambaan over de Dam",  "soort": "trambaan",    "rect": [-23.5, -22, -14.5, 22], "tramsporen": [-20.5, -17.5] },
+    { "naam": "Rokin",                 "soort": "asfalt",      "rect": [-23.5, 22, -14.5, 78], "tramsporen": [-20.5, -17.5] },
+    { "naam": "Rokin stoep west",      "soort": "stoep",       "rect": [-27, 22, -23.5, 78] },
+    { "naam": "Rokin stoep oost",      "soort": "stoep",       "rect": [-14.5, 22, -11, 78] },
+    { "naam": "Damstraat",             "soort": "asfalt",      "rect": [17, 11.5, 68, 16.5] },
+    { "naam": "Damstraat stoep noord", "soort": "stoep",       "rect": [17, 9, 68, 11.5] },
+    { "naam": "Damstraat stoep zuid",  "soort": "stoep",       "rect": [17, 16.5, 68, 19] },
+    { "naam": "Kalverstraat",          "soort": "klinkers",    "rect": [-46.5, 22, -38.5, 78] },
+    { "naam": "Nieuwendijk",           "soort": "klinkers",    "rect": [-46.5, -78, -38.5, -22] }
+  ],
+
+  "routes": [
+    { "poort": "Damrak",       "kleur": "#c8283c", "punten": [[-19, -40], [-19, -14], [-3, -6.3]],       "breedtes": [9, 3] },
+    { "poort": "Rokin",        "kleur": "#12877a", "punten": [[-19, 40], [-19, 14], [-3, 6.3]],         "breedtes": [9, 3] },
+    { "poort": "Damstraat",    "kleur": "#e0661b", "punten": [[44, 14], [14, 14], [6.3, 3]],            "breedtes": [5, 3] },
+    { "poort": "Kalverstraat", "kleur": "#3b3486", "punten": [[-42.5, 30], [-42.5, 19], [-6.3, 5]],     "breedtes": [3, 3] },
+    { "poort": "Nieuwendijk",  "kleur": "#8e3fb8", "punten": [[-42.5, -30], [-42.5, -19], [-6.3, -5]],  "breedtes": [3, 3] }
+  ],
+  "hekBreedte": {
+    "Damrak": [9, null], "Rokin": [9, null], "Damstraat": [5, null],
+    "Kalverstraat": [8, null], "Nieuwendijk": [8, null],
+    "_uitleg": "Per routedeel de breedte die een hek overspant. null = klinkerstrook op het plein: strookbreedte + 2 × 1 m."
+  },
+
+  "bouwplekken": [
+    { "route": "Damrak",       "soort": "ver",   "positie": [-12.75, -32] },
+    { "route": "Damrak",       "soort": "nabij", "positie": [-12.2, -20] },
+    { "route": "Rokin",        "soort": "ver",   "positie": [-12.75, 32] },
+    { "route": "Rokin",        "soort": "nabij", "positie": [-12.2, 20] },
+    { "route": "Damstraat",    "soort": "ver",   "positie": [32, 10.25] },
+    { "route": "Damstraat",    "soort": "nabij", "positie": [15.5, 18.2] },
+    { "route": "Kalverstraat", "soort": "ver",   "positie": [-39.75, 25] },
+    { "route": "Kalverstraat", "soort": "nabij", "positie": [-27, 9] },
+    { "route": "Nieuwendijk",  "soort": "ver",   "positie": [-39.75, -25] },
+    { "route": "Nieuwendijk",  "soort": "nabij", "positie": [-27, -9] }
+  ],
+  "bouwplekHalf": 0.9,
+
+  "gebouwen": [
+    { "naam": "Paleis op de Dam", "ticket": "D37", "kleur": "#d9c79c",
+      "delen": [[-100, -22, -66, 22]], "hoogte": 26, "hoogsteDeel": 51,
+      "maten": "gevel 44 m (13 traveeën in plaats van 23), 34 m diep; gevel ~26 m tot de balustrade, koepel met lantaarn ~51 m",
+      "kenmerken": ["classicistisch, lichte zandsteen die verweerd grijsgeel oogt", "drie bouwlagen plus zolder, strakke rijen rechthoekige ramen", "middenrisaliet met fronton en beeldhouwwerk", "rij kleine rondboogpoortjes op de begane grond, geen grote hoofdingang", "koepel met lantaarn en een windvaan in de vorm van een schip", "beelden op het dak"] },
+    { "naam": "Nieuwe Kerk", "ticket": "D38", "kleur": "#b0705a",
+      "delen": [[-100, -50, -56, -28], [-70, -60, -60, -24], [-56, -48, -46.5, -32]], "hoogte": 28, "hoogsteDeel": 42,
+      "maten": "schip 44 × 22 m, dwarsschip steekt 4 m naar het plein uit, koor tot aan de Nieuwendijk; nok ~28 m, dakruiter ~42 m",
+      "kenmerken": ["laatgotisch, baksteen met natuurstenen banden", "hoge spitsboogramen met maaswerk", "het grote transeptraam in de zuidgevel, schuin naast het Paleis", "steile leien daken met een slank dakruitertje", "geen voltooide hoge toren, zoals in het echt"] },
+    { "naam": "Bijenkorf", "ticket": "D39", "kleur": "#8a6b58",
+      "delen": [[-38.5, -62, -27, -22]], "hoogte": 24, "hoogsteDeel": 24,
+      "maten": "11,5 m aan de Dam, 40 m langs het Damrak; ~24 m hoog",
+      "kenmerken": ["op de hoek Dam–Damrak, tussen Nieuwendijk en Damrak", "verticale gevelpijlers", "grote etalages op de begane grond", "vlaggen aan de gevel", "alleen de naam in gewone letters, geen logo"] },
+    { "naam": "Krasnapolsky", "ticket": "D39", "kleur": "#c9b99c",
+      "delen": [[17, -45, 52, 9]], "hoogte": 24, "hoogsteDeel": 27,
+      "maten": "31 m gevel aan de Dam, achter het monument; ~24 m plus mansardekap",
+      "kenmerken": ["breed 19e-eeuws hotel met veel ramen", "balkons", "luifel boven de ingang", "achtergrond van het monument vanaf het plein"] },
+    { "naam": "Madame Tussauds-blok", "ticket": "D39", "kleur": "#9aa1a8",
+      "delen": [[-38.5, 22, -27, 60]], "hoogte": 22, "hoogsteDeel": 22,
+      "maten": "11,5 m aan de Dam, tussen Kalverstraat en Rokin; ~22 m",
+      "kenmerken": ["warenhuispand aan de zuidkant", "grote winkelpui op de begane grond", "gesloten bovengevel"] },
+    { "naam": "Damrak-oostwand", "ticket": "D40", "kleur": "#b8a58e",
+      "delen": [[-11, -78, 17, -22]], "hoogte": 18, "hoogsteDeel": 18,
+      "maten": "gevelrij van grachtenpanden, ~18 m", "kenmerken": ["trap-, hals- en lijstgevels in variatie", "winkelpuien"] },
+    { "naam": "Damrak-westwand", "ticket": "D40", "kleur": "#b8a58e",
+      "delen": [[-38.5, -78, -27, -62]], "hoogte": 16, "hoogsteDeel": 16,
+      "maten": "gevelrij in het verlengde van de Bijenkorf", "kenmerken": ["grachtenpanden"] },
+    { "naam": "Nieuwendijk-westwand", "ticket": "D40", "kleur": "#b8a58e",
+      "delen": [[-56, -78, -46.5, -48]], "hoogte": 15, "hoogsteDeel": 15,
+      "maten": "gevelrij achter het koor", "kenmerken": ["smalle grachtenpanden"] },
+    { "naam": "Rokin-oostwand", "ticket": "D40", "kleur": "#b8a58e",
+      "delen": [[-11, 22, 17, 60]], "hoogte": 18, "hoogsteDeel": 18,
+      "maten": "gevelrij tussen Rokin en Damstraat", "kenmerken": ["grachtenpanden", "winkelpuien"] },
+    { "naam": "Damstraat-zuidwand", "ticket": "D40", "kleur": "#b8a58e",
+      "delen": [[17, 19, 52, 55]], "hoogte": 16, "hoogsteDeel": 16,
+      "maten": "gevelrij langs de Damstraat", "kenmerken": ["smalle panden", "winkelpuien"] },
+    { "naam": "Kalverstraat-westwand", "ticket": "D40", "kleur": "#b8a58e",
+      "delen": [[-66, 22, -46.5, 60]], "hoogte": 16, "hoogsteDeel": 16,
+      "maten": "blok ten zuiden van het Paleis", "kenmerken": ["grachtenpanden", "winkelpuien aan de Kalverstraat"] }
+  ],
+
+  "decor": [
+    { "naam": "Tram (geparkeerd, voorbij de Rokin-poort)", "rect": [-18.7, 50, -16.3, 78] }
+  ]
+}
+</script>
+
+<script>
+'use strict';
+const L = JSON.parse(document.getElementById('dam-layout').textContent);
+const fmt = (n, d = 1) => n.toLocaleString('nl-NL', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+// ---------- Meetkunde -------------------------------------------------------
+
+const S = L.monument.speldoos;
+// Afstand tot de rand van de speldoos (= MONUMENT_BOX in de game).
+const totRand = (x, z) => Math.hypot(x - Math.max(-S, Math.min(x, S)), z - Math.max(-S, Math.min(z, S)));
+const rectsOverlappen = (a, b, marge = 0) =>
+  a[0] < b[2] - marge && b[0] < a[2] - marge && a[1] < b[3] - marge && b[1] < a[3] - marge;
+const afstandPuntRect = (x, z, r) => Math.hypot(Math.max(r[0] - x, 0, x - r[2]), Math.max(r[1] - z, 0, z - r[3]));
+const segLen = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+
+function routeInfo(route) {
+  const p = route.punten;
+  const segs = [];
+  let s0 = 0;
+  for (let i = 1; i < p.length; i++) {
+    const l = segLen(p[i - 1], p[i]);
+    segs.push({ a: p[i - 1], b: p[i], l, s0, breedte: route.breedtes[i - 1], dx: (p[i][0] - p[i - 1][0]) / l, dz: (p[i][1] - p[i - 1][1]) / l });
+    s0 += l;
+  }
+  return { segs, lengte: s0 };
+}
+function puntOp(info, s) {
+  for (const g of info.segs) {
+    if (s <= g.s0 + g.l || g === info.segs[info.segs.length - 1]) {
+      const t = Math.max(0, Math.min(g.l, s - g.s0));
+      return { x: g.a[0] + g.dx * t, z: g.a[1] + g.dz * t, seg: g };
+    }
+  }
+}
+// Projectie van een punt op de route: s, zijafstand (+ = rechts van de looprichting), segment.
+function projecteer(info, x, z) {
+  let best = null;
+  for (const g of info.segs) {
+    const t = Math.max(0, Math.min(g.l, (x - g.a[0]) * g.dx + (z - g.a[1]) * g.dz));
+    const px = g.a[0] + g.dx * t, pz = g.a[1] + g.dz * t;
+    const d = Math.hypot(x - px, z - pz);
+    if (!best || d < best.d) best = { d, s: g.s0 + t, seg: g, px, pz, zij: (x - px) * -g.dz + (z - pz) * g.dx };
+  }
+  return best;
+}
+// Monsterpunten langs een route, elke 0,25 m.
+function monsters(info, stap = 0.25) {
+  const uit = [];
+  for (let s = 0; s <= info.lengte; s += stap) uit.push({ s, ...puntOp(info, s) });
+  return uit;
+}
+
+const routes = L.routes.map(r => ({ ...r, info: routeInfo(r) }));
+const routeVan = naam => routes.find(r => r.poort === naam);
+const gebouwRects = L.gebouwen.flatMap(g => g.delen.map(rect => ({ gebouw: g.naam, rect })));
+const cp = L.commandopost;
+const cpRect = [cp.midden[0] - cp.maat[0] / 2, cp.midden[1] - cp.maat[1] / 2, cp.midden[0] + cp.maat[0] / 2, cp.midden[1] + cp.maat[1] / 2];
+const H = L.bouwplekHalf;
+const plekRect = p => [p.positie[0] - H, p.positie[1] - H, p.positie[0] + H, p.positie[1] + H];
+const heiligeVlakken = L.vlakken.filter(v => ['asfalt', 'trambaan'].includes(v.soort));
+
+// Minimale vrije afstand tussen een rechthoek en de strook van een route
+// (routelijn ± halve breedte). Negatief = overlap.
+function vrijVanStrook(rect, route, uitzonderingEind = 0) {
+  let min = Infinity;
+  for (const m of monsters(route.info)) {
+    if (m.s > route.info.lengte - uitzonderingEind) break;
+    min = Math.min(min, afstandPuntRect(m.x, m.z, rect) - m.seg.breedte / 2);
+  }
+  return min;
+}
+
+// Hek: dwars op de route, op de s van de plek.
+function hekVoor(plek) {
+  const r = routeVan(plek.route);
+  const pr = projecteer(r.info, ...plek.positie);
+  const segIndex = r.info.segs.indexOf(pr.seg);
+  const vast = L.hekBreedte[plek.route][segIndex];
+  const breedte = vast ?? pr.seg.breedte + 2;
+  const nx = -pr.seg.dz, nz = pr.seg.dx;
+  return { breedte, a: [pr.px - nx * breedte / 2, pr.pz - nz * breedte / 2], b: [pr.px + nx * breedte / 2, pr.pz + nz * breedte / 2], s: pr.s, zij: pr.zij, afstandTotRoute: pr.d };
+}
+
+// ---------- Metingen -------------------------------------------------------
+
+const v = L.robotSnelheid;
+const routeMetingen = routes.map(r => {
+  const ms = monsters(r.info, 0.05);
+  const binnen = ms.filter(m => totRand(m.x, m.z) <= L.wapenBereik).length / ms.length;
+  const eind = r.punten[r.punten.length - 1];
+  return {
+    poort: r.poort, kleur: r.kleur, lengte: r.info.lengte,
+    poortTotRand: totRand(...r.punten[0]),
+    eindTotRand: totRand(...eind),
+    fractieInBereik: binnen,
+    tijdWave1: [r.info.lengte / v.wave1Max, r.info.lengte / v.wave1Min],
+    tijdPlafond: r.info.lengte / v.plafond,
+  };
+});
+
+const plekMetingen = L.bouwplekken.map(p => {
+  const hek = hekVoor(p);
+  return {
+    ...p, hek,
+    totRand: totRand(...p.positie),
+    totCommandopost: Math.hypot(p.positie[0] - cp.spelerPlek[0], p.positie[1] - cp.spelerPlek[1]),
+    vrijVanEigenRoute: Math.min(...routes.map(r => vrijVanStrook(plekRect(p), r))),
+  };
+});
+
+const kerkklokRetour = 2 * Math.hypot(L.kerkklok.positie[0] - cp.spelerPlek[0], L.kerkklok.positie[1] - cp.spelerPlek[1]) / L.spelerSnelheid;
+
+// ---------- Toetsen ---------------------------------------------------------
+
+const toetsen = [];
+const toets = (naam, goed, detail) => toetsen.push({ naam, goed: !!goed, detail });
+
+for (const m of routeMetingen) {
+  toets(`${m.poort}: routelengte 38–52 m`, m.lengte >= 38 && m.lengte <= 52, `${fmt(m.lengte)} m`);
+}
+toets('Elke route bij het plafond (3,3 m/s) ≥ 11,5 s', routeMetingen.every(m => m.tijdPlafond >= 11.5),
+  routeMetingen.map(m => `${m.poort} ${fmt(m.tijdPlafond)} s`).join(', '));
+toets('Elke route in wave 1 voor de langzaamste robot ≤ 36 s', routeMetingen.every(m => m.tijdWave1[1] <= 36),
+  routeMetingen.map(m => `${m.poort} ${fmt(m.tijdWave1[1], 0)} s`).join(', '));
+toets('Geen poort binnen wapenbereik (22 m) van de monumentrand', routeMetingen.every(m => m.poortTotRand > L.wapenBereik + 3),
+  routeMetingen.map(m => `${m.poort} ${fmt(m.poortTotRand)} m`).join(', '));
+const start = L.spelerStart.positie;
+toets('Geen poort binnen wapenbereik van de speler-startplek', routes.every(r => segLen(r.punten[0], start) > L.wapenBereik),
+  routes.map(r => `${r.poort} ${fmt(segLen(r.punten[0], start))} m`).join(', '));
+toets('Elke route eindigt tegen het monument (≤ 0,5 m van de speldoos)', routeMetingen.every(m => m.eindTotRand <= 0.5),
+  routeMetingen.map(m => `${m.poort} ${fmt(m.eindTotRand, 2)} m`).join(', '));
+const eindpunten = routes.map(r => r.punten[r.punten.length - 1]);
+let minEind = Infinity;
+for (let i = 0; i < eindpunten.length; i++) for (let j = i + 1; j < eindpunten.length; j++) minEind = Math.min(minEind, segLen(eindpunten[i], eindpunten[j]));
+toets('Eindpunten liggen ≥ 3 m uit elkaar (robots stapelen niet op één punt)', minEind >= 3, `kleinste ${fmt(minEind)} m`);
+
+const g = L.grens;
+toets('Elke poort ligt ≥ 1,5 m binnen GRENS', routes.every(r => r.punten[0][0] > g.minX + 1.5 && r.punten[0][0] < g.maxX - 1.5 && r.punten[0][1] > g.minZ + 1.5 && r.punten[0][1] < g.maxZ - 1.5), '');
+
+// Routes vrij van gebouwen, commandopost en kerkklok.
+for (const r of routes) {
+  const vrij = Math.min(...gebouwRects.map(b => vrijVanStrook(b.rect, r)));
+  toets(`${r.poort}: strook vrij van gebouwen (≥ 0,5 m)`, vrij >= 0.5, `kleinste vrije ruimte ${fmt(vrij)} m`);
+}
+const cpVrij = Math.min(...routes.map(r => vrijVanStrook(cpRect, r)));
+toets('Commandopost ≥ 2 m van elke routestrook', cpVrij >= 2, `${fmt(cpVrij)} m`);
+toets('Commandopost staat niet op een rijbaan of trambaan', heiligeVlakken.every(vl => !rectsOverlappen(cpRect, vl.rect)), '');
+toets('Commandopost staat naast het platform, niet erop', Math.min(Math.hypot(cpRect[2], cpRect[1]), Math.hypot(cpRect[2], cpRect[3])) >= L.monument.platformStraal && cpRect[2] <= -L.monument.platformStraal + 1.5, '');
+const kk = L.kerkklok.positie;
+const kkRect = [kk[0] - 1, kk[1] - 1, kk[0] + 1, kk[1] + 1];
+toets('Kerkklok retour vanaf de commandopost 10–15 s', kerkklokRetour >= 10 && kerkklokRetour <= 15, `${fmt(kerkklokRetour)} s`);
+toets('Kerkklok vrij van routes (≥ 2 m) en gebouwen', Math.min(...routes.map(r => vrijVanStrook(kkRect, r))) >= 2 && gebouwRects.every(b => !rectsOverlappen(kkRect, b.rect)), '');
+
+// Gebouwen onderling en tegenover straten en platform.
+let gebouwOverlap = [];
+for (let i = 0; i < gebouwRects.length; i++) for (let j = i + 1; j < gebouwRects.length; j++) {
+  const a = gebouwRects[i], b = gebouwRects[j];
+  if (a.gebouw !== b.gebouw && rectsOverlappen(a.rect, b.rect)) gebouwOverlap.push(`${a.gebouw} × ${b.gebouw}`);
+}
+toets('Geen gebouw overlapt een ander gebouw', gebouwOverlap.length === 0, gebouwOverlap.join(', '));
+const straatOverlap = [];
+for (const b of gebouwRects) for (const vl of L.vlakken) if (rectsOverlappen(b.rect, vl.rect)) straatOverlap.push(`${b.gebouw} × ${vl.naam}`);
+toets('Geen gebouw staat op een straat, stoep of trambaan', straatOverlap.length === 0, straatOverlap.join(', '));
+toets('Geen gebouw raakt het monumentplatform', gebouwRects.every(b => afstandPuntRect(0, 0, b.rect) > L.monument.platformStraal + 2), '');
+
+// Bouwplekken.
+for (const r of routes) {
+  const eigen = plekMetingen.filter(p => p.route === r.poort);
+  toets(`${r.poort}: één plek binnen en één buiten het wapenbereik`,
+    eigen.length === 2 && eigen.some(p => p.soort === 'nabij' && p.totRand <= L.wapenBereik) && eigen.some(p => p.soort === 'ver' && p.totRand > L.wapenBereik),
+    eigen.map(p => `${p.soort} ${fmt(p.totRand)} m`).join(', '));
+}
+toets('Verste bouwplek ≤ 40 m van de monumentrand (retour ≤ 11,5 s, bouwfase 20 s)', plekMetingen.every(p => p.totRand <= 40),
+  `verste ${fmt(Math.max(...plekMetingen.map(p => p.totRand)))} m`);
+toets('Elke bouwplek ≥ 0,3 m naast elke routestrook', plekMetingen.every(p => p.vrijVanEigenRoute >= 0.3),
+  `kleinste ${fmt(Math.min(...plekMetingen.map(p => p.vrijVanEigenRoute)), 2)} m`);
+toets('Geen bouwplek op een rijbaan, trambaan of in een gebouw',
+  plekMetingen.every(p => heiligeVlakken.every(vl => !rectsOverlappen(plekRect(p), vl.rect)) && gebouwRects.every(b => !rectsOverlappen(plekRect(p), b.rect, -0.3))), '');
+let minPlek = Infinity;
+for (let i = 0; i < plekMetingen.length; i++) for (let j = i + 1; j < plekMetingen.length; j++) minPlek = Math.min(minPlek, segLen(plekMetingen[i].positie, plekMetingen[j].positie));
+toets('Bouwplekken ≥ 4 m uit elkaar', minPlek >= 4, `kleinste ${fmt(minPlek)} m`);
+// Een hek in een voetgangersstraat loopt bewust van gevel tot gevel; alleen
+// de uiteinden mogen dus een gevel raken, niets van het hek mag erin steken.
+toets('Geen hek steekt in een gebouw (uiteinden mogen een gevel raken)', plekMetingen.every(p => {
+  const h = p.hek;
+  for (let i = 1; i < 40; i++) {
+    const t = i / 40;
+    const x = h.a[0] + (h.b[0] - h.a[0]) * t, z = h.a[1] + (h.b[1] - h.a[1]) * t;
+    if (gebouwRects.some(b => afstandPuntRect(x, z, b.rect) < 0.1)) return false;
+  }
+  return true;
+}), '');
+toets('Elk hek overspant de volle strook van zijn route', plekMetingen.every(p => p.hek.breedte >= routeVan(p.route).info.segs.find(s => p.hek.s >= s.s0 && p.hek.s <= s.s0 + s.l + 1e-6).breedte), '');
+
+window.PLATTEGROND = { layout: L, routeMetingen, plekMetingen, kerkklokRetour, toetsen };
+
+// ---------- Tekenen ---------------------------------------------------------
+
+const svg = document.getElementById('svg');
+const VB = { x: -104, z: -80, w: 176, h: 160 };
+svg.setAttribute('viewBox', `${VB.x} ${VB.z} ${VB.w} ${VB.h}`);
+const NS = 'http://www.w3.org/2000/svg';
+function el(naam, attrs = {}, ouder = svg) {
+  const e = document.createElementNS(NS, naam);
+  for (const [k, w] of Object.entries(attrs)) e.setAttribute(k, w);
+  ouder.appendChild(e);
+  return e;
+}
+const tekst = (x, z, t, attrs = {}) => { const e = el('text', { x, y: z, 'font-size': 2.1, 'text-anchor': 'middle', 'font-family': 'system-ui, sans-serif', fill: '#2a2620', stroke: '#fbf8f1', 'stroke-width': 0.35, 'stroke-opacity': 0.85, 'paint-order': 'stroke', ...attrs }); e.textContent = t; return e; };
+const rect = (r, attrs) => el('rect', { x: r[0], y: r[1], width: r[2] - r[0], height: r[3] - r[1], ...attrs });
+
+const defs = el('defs');
+// Kinderkopjes: onregelmatige ronde koppen in rijen.
+const kk1 = el('pattern', { id: 'kinderkopjes', width: 1.6, height: 1.2, patternUnits: 'userSpaceOnUse' }, defs);
+el('rect', { width: 1.6, height: 1.2, fill: '#d8ceb9' }, kk1);
+for (const [cx, cy, rr] of [[0.4, 0.3, 0.26], [1.2, 0.3, 0.24], [0, 0.9, 0.25], [0.8, 0.9, 0.27], [1.6, 0.9, 0.25]]) el('circle', { cx, cy, r: rr, fill: '#c9bea6' }, kk1);
+const kl = el('pattern', { id: 'klinkers', width: 1, height: 0.5, patternUnits: 'userSpaceOnUse' }, defs);
+el('rect', { width: 1, height: 0.5, fill: '#a58f74' }, kl);
+el('path', { d: 'M0 0.5H1M0.5 0V0.25M0 0.25H1M0 0.25V0.5M1 0.25V0.5', stroke: '#8f7a61', 'stroke-width': 0.06, fill: 'none' }, kl);
+const pijl = el('marker', { id: 'pijl', viewBox: '0 0 10 10', refX: 5, refY: 5, markerWidth: 3.2, markerHeight: 3.2, orient: 'auto-start-reverse' }, defs);
+el('path', { d: 'M1 1L9 5L1 9z', fill: 'context-stroke' }, pijl);
+
+// Ondergrond: het hele plein kinderkopjes.
+rect([VB.x, VB.z, VB.x + VB.w, VB.z + VB.h], { fill: 'url(#kinderkopjes)' });
+
+// Vlakken.
+const vlakKleur = { asfalt: '#5f6166', stoep: '#bdb6a8', trambaan: '#9d9a93', klinkers: '#c6b89c' };
+for (const vl of L.vlakken) {
+  rect(vl.rect, { fill: vlakKleur[vl.soort], stroke: vl.soort === 'stoep' ? '#9d968a' : 'none', 'stroke-width': 0.15 });
+  for (const x of vl.tramsporen ?? []) for (const d of [-0.72, 0.72]) el('line', { x1: x + d, y1: vl.rect[1], x2: x + d, y2: vl.rect[3], stroke: '#2b2b2b', 'stroke-width': 0.18 });
+}
+// Klinkerstroken van de routes (op het plein en in de voetgangersstraten).
+for (const r of routes) for (const s of r.info.segs) {
+  const opAsfalt = L.vlakken.some(vl => vl.soort === 'asfalt' && afstandPuntRect((s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2, vl.rect) === 0);
+  const opTrambaan = L.vlakken.some(vl => vl.soort === 'trambaan' && afstandPuntRect((s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2, vl.rect) === 0);
+  if (opAsfalt || opTrambaan) continue;
+  el('line', { x1: s.a[0], y1: s.a[1], x2: s.b[0], y2: s.b[1], stroke: 'url(#klinkers)', 'stroke-width': s.breedte, 'stroke-linecap': 'butt' });
+  el('line', { x1: s.a[0], y1: s.a[1], x2: s.b[0], y2: s.b[1], stroke: '#7d6a55', 'stroke-width': s.breedte, 'stroke-opacity': 0.55 });
+}
+
+// Monumentplatform met treden, speldoos en pyloon.
+for (const [i, rr] of L.monument.treden.entries()) el('circle', { cx: 0, cy: 0, r: rr, fill: ['#e4dccb', '#ebe4d6', '#f2ede2'][i], stroke: '#a89f8e', 'stroke-width': 0.12 });
+rect([-S, -S, S, S], { fill: 'none', stroke: '#6b645a', 'stroke-width': 0.2, 'stroke-dasharray': '0.8 0.6' });
+rect([-2.3, -2.3, 2.3, 2.3], { fill: '#fbfaf6', stroke: '#6b645a', 'stroke-width': 0.2 });
+tekst(0, 0.7, 'monument', { 'font-size': 1.5 });
+
+// Wapenbereik vanaf de monumentrand: afgeronde rechthoek.
+const B = L.wapenBereik;
+el('rect', { x: -S - B, y: -S - B, width: 2 * (S + B), height: 2 * (S + B), rx: B, ry: B, fill: 'none', stroke: '#b3261e', 'stroke-width': 0.35, 'stroke-dasharray': '1.6 1.2', opacity: 0.8 });
+
+// Gebouwen.
+for (const gb of L.gebouwen) {
+  for (const d of gb.delen) rect(d, { fill: gb.kleur, stroke: '#4d4337', 'stroke-width': 0.3 });
+  // Label in het midden van het deel dat rond het plein in beeld is; in een
+  // smal, lang blok gedraaid, en nooit breder dan het blok.
+  const hoofd = gb.delen[0];
+  const k = [Math.max(hoofd[0], -84), Math.max(hoofd[1], -75), Math.min(hoofd[2], 64), Math.min(hoofd[3], 75)];
+  const cx = (k[0] + k[2]) / 2, cz = (k[1] + k[3]) / 2, bw = k[2] - k[0], bh = k[3] - k[1];
+  const gedraaid = bw < 16 && bh > bw;
+  const ruimte = (gedraaid ? bh : bw) - 2;
+  const groot = gb.ticket !== 'D40';
+  const maat = Math.min(groot ? 2.4 : 1.7, ruimte / (gb.naam.length * 0.6));
+  const draai = gedraaid ? { transform: `rotate(-90 ${cx} ${cz})` } : {};
+  const hoogteTekst = gb.hoogsteDeel > gb.hoogte ? `${gb.hoogte} m · ${gb.hoogsteDeel} m` : `${gb.hoogte} m`;
+  if (gedraaid) {
+    tekst(cx - 0.4, cz, gb.naam, { 'font-size': maat, 'font-weight': groot ? 700 : 400, ...draai });
+    tekst(cx + 2.2, cz, hoogteTekst, { 'font-size': 1.5, fill: '#4d4337', transform: `rotate(-90 ${cx + 2.2} ${cz})` });
+  } else {
+    tekst(cx, cz, gb.naam, { 'font-size': maat, 'font-weight': groot ? 700 : 400 });
+    tekst(cx, cz + maat + 0.6, hoogteTekst, { 'font-size': 1.5, fill: '#4d4337' });
+  }
+}
+for (const d of L.decor) rect(d.rect, { fill: '#e8c547', stroke: '#6b5a14', 'stroke-width': 0.2 });
+
+// GRENS.
+rect([g.minX, g.minZ, g.maxX, g.maxZ], { fill: 'none', stroke: '#25221d', 'stroke-width': 0.35, 'stroke-dasharray': '2.4 1.2' });
+tekst(g.maxX - 1, g.minZ - 1, 'GRENS', { 'text-anchor': 'end', 'font-size': 1.6 });
+
+// Straatnamen.
+const straatLabels = [['Damrak', -19, -68, -90], ['Rokin', -19, 68, -90], ['Damstraat', 58, 14, 0], ['Kalverstraat', -42.5, 66, -90], ['Nieuwendijk', -42.5, -66, -90]];
+for (const [n, x, z, rot] of straatLabels) tekst(x, z, n, { transform: `rotate(${rot} ${x} ${z})`, fill: '#fff', 'font-weight': 700, 'font-size': 2.2, stroke: '#0008', 'stroke-width': 0.35, 'paint-order': 'stroke' });
+
+// Routes: band + lijn met pijlen.
+for (const r of routes) {
+  const pts = r.punten.map(p => p.join(',')).join(' ');
+  el('polyline', { points: pts, fill: 'none', stroke: r.kleur, 'stroke-width': 0.55, 'stroke-linejoin': 'round' });
+  for (let s = 4; s < r.info.lengte - 1; s += 6) {
+    const a = puntOp(r.info, s), b = puntOp(r.info, s + 0.1);
+    el('line', { x1: a.x, y1: a.z, x2: b.x, y2: b.z, stroke: r.kleur, 'stroke-width': 0.55, 'marker-end': 'url(#pijl)' });
+  }
+  // Poort.
+  const [px, pz] = r.punten[0];
+  el('circle', { cx: px, cy: pz, r: 1.6, fill: r.kleur, stroke: '#fff', 'stroke-width': 0.35 });
+  tekst(px, pz + 0.65, 'P', { fill: '#fff', 'font-weight': 700, stroke: 'none', 'font-size': 1.8 });
+}
+
+// Bouwplekken + hekken.
+for (const [i, p] of plekMetingen.entries()) {
+  const r = routeVan(p.route);
+  el('line', { x1: p.hek.a[0], y1: p.hek.a[1], x2: p.hek.b[0], y2: p.hek.b[1], stroke: r.kleur, 'stroke-width': 0.45, 'stroke-dasharray': '0.5 0.35', opacity: 0.9 });
+  rect(plekRect(p), { fill: '#fff', stroke: r.kleur, 'stroke-width': 0.35 });
+  tekst(p.positie[0], p.positie[1] + 0.55, String(i + 1), { 'font-size': 1.4, 'font-weight': 700, fill: r.kleur });
+}
+
+// Commandopost, kerkklok, spelerstart.
+rect(cpRect, { fill: '#2f5d8a', stroke: '#fff', 'stroke-width': 0.25 });
+tekst(cp.midden[0], cp.midden[1] + 0.6, 'C', { fill: '#fff', 'font-weight': 700, stroke: 'none', 'font-size': 1.8 });
+tekst(cp.midden[0], cp.midden[1] + 4.2, 'commandopost', { 'font-size': 1.4, fill: '#2f5d8a', 'font-weight': 700 });
+el('circle', { cx: kk[0], cy: kk[1], r: 1.4, fill: '#b8862b', stroke: '#fff', 'stroke-width': 0.3 });
+tekst(kk[0], kk[1] + 0.6, 'K', { fill: '#fff', 'font-weight': 700, stroke: 'none', 'font-size': 1.7 });
+tekst(kk[0] + 1, kk[1] + 3.6, 'Kerkklok', { 'font-size': 1.6, fill: '#8a6420', 'font-weight': 700 });
+el('path', { d: `M${start[0] + 1.8} ${start[1]} L${start[0] - 1.2} ${start[1] - 1.4} L${start[0] - 1.2} ${start[1] + 1.4} Z`, fill: '#25221d', stroke: '#fff', 'stroke-width': 0.25 });
+tekst(start[0], start[1] + 3.4, 'start speler', { 'font-size': 1.6 });
+
+// Raster (10 m), schaalbalk en noordpijl.
+for (let x = -100; x <= 70; x += 10) el('line', { x1: x, y1: VB.z, x2: x, y2: VB.z + VB.h, stroke: '#000', 'stroke-width': 0.06, opacity: 0.18 });
+for (let z = -80; z <= 80; z += 10) el('line', { x1: VB.x, y1: z, x2: VB.x + VB.w, y2: z, stroke: '#000', 'stroke-width': 0.06, opacity: 0.18 });
+const sb = { x: VB.x + 4, z: VB.z + VB.h - 5 };
+rect([sb.x - 1.5, sb.z - 4, sb.x + 23, sb.z + 2.2], { fill: '#fbf8f1', opacity: 0.9 });
+for (let i = 0; i < 2; i++) rect([sb.x + i * 10, sb.z - 0.6, sb.x + (i + 1) * 10, sb.z + 0.6], { fill: i ? '#fff' : '#25221d', stroke: '#25221d', 'stroke-width': 0.15 });
+tekst(sb.x, sb.z - 1.4, '0', { 'font-size': 1.5 }); tekst(sb.x + 10, sb.z - 1.4, '10', { 'font-size': 1.5 }); tekst(sb.x + 20, sb.z - 1.4, '20 m', { 'font-size': 1.5 });
+const na = { x: VB.x + VB.w - 6, z: VB.z + 7 };
+el('circle', { cx: na.x, cy: na.z, r: 3.6, fill: '#fbf8f1', stroke: '#25221d', 'stroke-width': 0.2 });
+el('path', { d: `M${na.x} ${na.z - 2.8} L${na.x + 1.3} ${na.z + 1.6} L${na.x} ${na.z + 0.8} L${na.x - 1.3} ${na.z + 1.6} Z`, fill: '#25221d' });
+tekst(na.x, na.z - 4.4, 'N', { 'font-weight': 700, 'font-size': 2 });
+
+// ---------- Legenda en tabellen ---------------------------------------------
+
+const legenda = [
+  ['#d8ceb9', 'kinderkopjes (plein)'], ['#5f6166', 'asfalt met tramrails'], ['#9d9a93', 'trambaan over het plein'], ['#c6b89c', 'voetgangersstraat (klinkers)'], ['#a58f74', 'donkere klinkers: route over het plein en in voetgangersstraten'],
+  ['#bdb6a8', 'stoep'], ['#e4dccb', 'monumentplatform (treden)'], ['#2f5d8a', 'C commandopost'], ['#b8862b', 'K Kerkklok'],
+  ['#ffffff', '1–10 bouwplek (stippellijn = hek)'], ['#b3261e', 'rode stippellijn: wapenbereik 22 m vanaf de monumentrand'], ['#e8c547', 'geparkeerde tram (decor)'],
+];
+document.getElementById('legenda').innerHTML = legenda.map(([k, t]) => `<span><i style="background:${k}"></i>${t}</span>`).join('')
+  + routes.map(r => `<span><i style="background:${r.kleur}"></i>route ${r.poort} (P = poort)</span>`).join('');
+
+document.getElementById('toetsen').innerHTML = '<tr><th>Toets</th><th>Uitkomst</th><th>Waarde</th></tr>'
+  + toetsen.map(t => `<tr><td>${t.naam}</td><td class="${t.goed ? 'ok' : 'nok'}">${t.goed ? 'goed' : 'FOUT'}</td><td>${t.detail}</td></tr>`).join('');
+const fout = toetsen.filter(t => !t.goed).length;
+const sam = document.getElementById('samenvatting');
+sam.textContent = fout ? `${fout} van ${toetsen.length} toetsen falen.` : `Alle ${toetsen.length} toetsen zijn goed.`;
+sam.className = 'samenvatting ' + (fout ? 'nok' : 'ok');
+
+document.getElementById('routes').innerHTML = '<tr><th>Route</th><th class="n">Lengte</th><th class="n">Poort → rand (recht)</th><th class="n">Binnen wapenbereik</th><th class="n">Wave 1</th><th class="n">Plafond</th><th>Verloop</th></tr>'
+  + routeMetingen.map((m, i) => `<tr><td><span class="kleurblok" style="background:${m.kleur}"></span>${m.poort}</td><td class="n">${fmt(m.lengte)} m</td><td class="n">${fmt(m.poortTotRand)} m</td><td class="n">${fmt(m.fractieInBereik * 100, 0)} %</td><td class="n">${fmt(m.tijdWave1[0], 0)}–${fmt(m.tijdWave1[1], 0)} s</td><td class="n">${fmt(m.tijdPlafond)} s</td><td>${[
+    'rijbaan met tramrails recht naar het plein, bocht bij de trambaan, klinkerstrook naar de noordzijde van het monument',
+    'spiegelbeeld van het Damrak vanuit het zuiden, naar de zuidzijde van het monument',
+    'smalle straat langs Krasnapolsky, bocht op de hoek, klinkerstrook naar de oostzijde van het monument',
+    'voetgangersstraat met klinkerstrook, bij de straatmond schuin over het plein en de trambaan naar de westzijde',
+    'spiegelbeeld van de Kalverstraat vanuit het noorden',
+  ][i]}</td></tr>`).join('');
+
+document.getElementById('plekken').innerHTML = '<tr><th>#</th><th>Route</th><th>Soort</th><th class="n">Tot monumentrand</th><th class="n">Tot commandopost</th><th class="n">Hekbreedte</th><th class="n">Vrij van routes</th></tr>'
+  + plekMetingen.map((p, i) => `<tr><td>${i + 1}</td><td><span class="kleurblok" style="background:${routeVan(p.route).kleur}"></span>${p.route}</td><td>${p.soort}</td><td class="n">${fmt(p.totRand)} m</td><td class="n">${fmt(p.totCommandopost)} m</td><td class="n">${fmt(p.hek.breedte)} m</td><td class="n">${fmt(p.vrijVanEigenRoute, 2)} m</td></tr>`).join('');
+
+document.getElementById('gebouwen').innerHTML = '<tr><th>Gebouw</th><th>Ticket</th><th>Maten</th><th>Kenmerken die er zeker in moeten</th></tr>'
+  + L.gebouwen.map(gb => `<tr><td><strong>${gb.naam}</strong></td><td>${gb.ticket}</td><td>${gb.maten}</td><td>${gb.kenmerken.join('; ')}</td></tr>`).join('');
+
+document.getElementById('keuzes').innerHTML = [
+  '<strong>Mensmaat 1:1 in plaats van ~1:2.</strong> Bij 1:2 wordt een deur 1,1 m hoog en ziet alles eruit als een maquette. Nu is alleen de breedte ingekort: het Paleis heeft 13 traveeën in plaats van 23, maar zijn koepel is ~51 m, zoals in het echt.',
+  '<strong>De trambaan loopt west van het monument</strong>, van het Damrak naar het Rokin, zoals in het echt. Damrak- en Rokin-robots volgen de rijbaan tot ~14 m voor het monument en buigen dan af.',
+  '<strong>Kalverstraat en Nieuwendijk zijn de lange routes (~49 m).</strong> In het echt liggen ze het verst weg; ze steken het plein schuin over, over een strook donkere klinkers, en kruisen daarbij de trambaan.',
+  '<strong>De Bijenkorf staat tussen Nieuwendijk en Damrak</strong>, met een smalle gevel aan de Dam (11,5 m) en de lange gevel langs het Damrak, die je vanaf het plein schuin ziet.',
+  '<strong>De commandopost staat aan de westvoet van het monument</strong>, met de toonbank naar het plein. Geen enkele route komt binnen 2 m.',
+  '<strong>De Kerkklok staat in de hoek voor de Nieuwe Kerk</strong>, 14 s heen en terug vanaf de commandopost: een bewuste tocht langs de Nieuwendijk.',
+  '<strong>Hekken.</strong> In een straat sluit een hek de hele rijbaan of straat af. Op het plein (plekken 8 en 10) is het hek 5 m breed; robots houden zich aan hun strook en lopen er niet omheen.',
+  '<strong>De rijdende trams verdwijnen van de routes.</strong> Er staat één geparkeerde tram in het Rokin, voorbij de poort, als achtergrond.',
+  '<strong>Criterium bouwplekken.</strong> De verste plek mag 40 m van de monumentrand liggen (was 35 m): heen en terug is dan 11,5 s, en de bouwfase duurt 20 s. Alleen zo krijgen Kalverstraat en Nieuwendijk een plek in hun eigen straat, waar een hek de straat echt afsluit.',
+].map(t => `<li>${t}</li>`).join('');
+</script>
+</body>
+</html>

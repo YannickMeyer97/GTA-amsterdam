@@ -33,7 +33,8 @@ docs/amsterdam-undead/
 docs/defend-national-monument/
   ARCHITECTURE_NOTES_monument.md    → invarianten, contracten, valkuilen
   ROADMAP_monument.md               → roadmap + tickets
-  SONNET_EXECUTION_PLAN_monument.md → uitvoeringsplan (D1-D26)
+  SONNET_EXECUTION_PLAN_monument.md → uitvoeringsplan (D1-D43)
+  PLATTEGROND.html                  → plattegrond fase M (D31), bron van DAM_LAYOUT
 ```
 
 **Naamgevingsregel:** documenten die per game bestaan krijgen een achtervoegsel

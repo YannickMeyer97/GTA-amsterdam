@@ -92,8 +92,57 @@ alsnog.
 | ☑ | **D12** | Torenniveaus en reparatie |
 | ☑ | **D13** | Het hek |
 | ☑ | **D14** | Robots vallen torens aan |
-| ◐ | **D16** | Economie herijken (gemeten en bijgesteld; wacht op speeltest) |
+| ◐ | **D16** | Economie herijken (gemeten en bijgesteld; speeltest verhuist naar D43) |
 | ☑ | **D30** | Themagolven *(nieuw)* |
+
+### Fase M — Make-over van de Dam *(na de speeltest van fase 3, vóór fase 4)*
+
+Na fase 3 werkte de kaart niet lekker: robots liepen niet duidelijk, de kaart
+was onhandig en niet mooi, en de interactie was versnipperd. Het volledige
+plan, met de besluiten van de eigenaar, staat in
+`SONNET_EXECUTION_PLAN_monument.md` §11.
+
+| | Ticket | Kern |
+| --- | --- | --- |
+| ◐ | **D31** | Plattegrond ontwerpen en laten goedkeuren → **M1** *(ontwerp klaar, wacht op goedkeuring)* |
+| ☐ | **D32** | Nieuw fundament (grey-box): `DAM_LAYOUT`, vloer met kinderkopjes, rijbanen, tramrails |
+| ☐ | **D33** | Vaste routes over de rijbanen; bouwplekken en hekken uit de layout |
+| ☐ | **D34** | Routes zichtbaar: oplichtend bij de aankondiging, bakens aan de straatingang |
+| ☐ | **D35** | Commandopost bij het monument, één menupaneel, HUD zonder overlap → **M2** (grey-box speeltest) |
+| ☐ | **D36** | Textuurbibliotheek (gekopieerd uit Undead + kinderkopjes, zandsteen, leisteen, …) |
+| ☐ | **D37** | Paleis op de Dam |
+| ☐ | **D38** | Nieuwe Kerk |
+| ☐ | **D39** | Oost- en zuidwand: Krasnapolsky, Bijenkorf, warenhuis aan de zuidkant |
+| ☐ | **D40** | Straatwanden van de vijf straten |
+| ☐ | **D41** | Sfeer en straatmeubilair |
+| ☐ | **D42** | Prestaties (budget, instancing), direct gevolgd door D21 |
+| ☐ | **D43** | Herijken op de nieuwe kaart + eindspeeltest → **M3** |
+
+**D31 — stand.** De plattegrond staat in
+[`PLATTEGROND.html`](PLATTEGROND.html): bovenaanzicht op schaal, routes met
+looptijden, bouwplekken, gebouwmaten en kenmerken. De indeling staat één keer
+in de pagina, als JSON; alles wordt daaruit berekend. In D32 wordt dat blok
+`DAM_LAYOUT`.
+- **Schaal: mensmaat 1:1** in plaats van ~1:2 (plan §11.3 punt 2).
+- **Routes:**
+
+  | Route | Lengte |
+  |---|---:|
+  | Damrak | 43,8 m |
+  | Rokin | 43,8 m |
+  | Damstraat | 43,4 m |
+  | Kalverstraat | 49,8 m |
+  | Nieuwendijk | 49,8 m |
+
+  - Bij het plafond duurt de snelste route 13,2 s, de langste 15,1 s.
+  - Voor de langzaamste wave-1-robot duurt een route 29–34 s.
+- **Bouwplekken:** de verste ligt 38,7 m van de monumentrand. Het criterium
+  is verruimd van 35 naar 40 m, zodat Kalverstraat en Nieuwendijk een plek
+  in hun eigen straat krijgen (plan §11.3 punt 6).
+- **Kerkklok:** 13,9 s heen en terug vanaf de commandopost.
+- **Toetsing:** `meet-dnm-plattegrond.mjs` geeft 36/36 toetsen goed.
+- **Doelarchitectuur:** plan §11.7, beknopt in `ARCHITECTURE_NOTES_monument.md`
+  §15.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 
@@ -111,7 +160,7 @@ D20 is naar fase 2 verhuisd; deze fase is daarmee leeg.
 
 | | Ticket | Kern |
 | --- | --- | --- |
-| ☐ | **D21** | Kwaliteitsinstellingen |
+| ☐ | **D21** | Kwaliteitsinstellingen *(naar voren: direct na D42, omdat het detailniveau van de make-over dit nodig maakt)* |
 | ☐ | **D22** | Instellingenscherm |
 | ✗ | **D23** | Touch: besturingsgate loskoppelen van Pointer Lock |
 | ✗ | **D24** | Touch: lopen, kijken, vuren |
@@ -141,6 +190,9 @@ misschien is het dan al opgelost.
 **Stand na fase 3:** D28 is af, dus robots komen nu uit hooguit twee
 aangekondigde poorten tegelijk. De pijlen zelf zijn niet aangepast; of ze nu
 nog te druk zijn, is aan de speeltest.
+
+**Na het make-overplan:** herbeoordelen ná D34, als de routes zelf al
+zichtbaar oplichten.
 
 ---
 
