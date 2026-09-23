@@ -3472,6 +3472,124 @@ const interactiePunten = [
   },
 ];
 
+// --- Ticket D10: bouwplekken -------------------------------------------
+//
+// 5 poorten × 2 sokkels = 10 bouwplekken, in de aanloopcorridor van hun
+// EIGEN poort (niet rond het monument): een toren dekt dan één route, niet
+// alles, en dat maakt de poortkeuze betekenisvol. Op 25 % en 55 % van de
+// route poort → monument, met een zijwaartse verschuiving zodat de plek de
+// corridor niet blokkeert.
+//
+// "De route" is NIET de rechte lijn poort → monument: bij Rokin en
+// Nieuwendijk loopt die dwars door gebouwen, en robots glijden daar in
+// werkelijkheid langs de gevels. Daarom wordt de route bij het laden één
+// keer gesimuleerd met dezelfde regels als de robot-AI (rechtdoor naar het
+// doel, botsing oplossen met straal 0,45, Kalverstraat eerst via het
+// tussenpunt tot binnen 6 m) — dezelfde simulatie als test-dnm-kern.mjs.
+const BOUWPLEK_FRACTIES = [0.25, 0.55];
+const BOUWPLEK_RADIUS = 2.5;             // interactieafstand; klein genoeg dat plekken elkaar niet overlappen
+const ROUTE_STAP = 0.25;
+
+const looproutes = new Map();
+function looproute(poort) {
+  if (looproutes.has(poort.naam)) return looproutes.get(poort.naam);
+  const pos = { x: poort.positie.x, z: poort.positie.z };
+  const punten = [{ x: pos.x, z: pos.z }];
+  let tussenpuntBereikt = !poort.tussenpunt;
+  for (let i = 0; i < 3000; i++) {
+    if (!tussenpuntBereikt && Math.hypot(pos.x - poort.tussenpunt.x, pos.z - poort.tussenpunt.z) < 6) tussenpuntBereikt = true;
+    const doel = tussenpuntBereikt ? MONUMENT_POSITIE : poort.tussenpunt;
+    const dx = doel.x - pos.x, dz = doel.z - pos.z, lengte = Math.hypot(dx, dz);
+    pos.x += (dx / lengte) * ROUTE_STAP;
+    pos.z += (dz / lengte) * ROUTE_STAP;
+    losBotsingenOp(pos, 0.45);
+    punten.push({ x: pos.x, z: pos.z });
+    if (afstandTotMonument(pos) < 0.6) break;
+  }
+  looproutes.set(poort.naam, punten);
+  return punten;
+}
+
+// Punt op een fractie van de (gesimuleerde) looproute, plus de lokale
+// looprichting (over een paar meter gemiddeld, zodat één botsingsstap de
+// richting niet laat verspringen).
+function puntOpRoute(poort, fractie) {
+  const punten = looproute(poort);
+  const cumulatief = [0];
+  for (let i = 1; i < punten.length; i++) cumulatief.push(cumulatief[i - 1] + Math.hypot(punten[i].x - punten[i - 1].x, punten[i].z - punten[i - 1].z));
+  const doel = Math.max(0, Math.min(1, fractie)) * cumulatief[cumulatief.length - 1];
+  let i = cumulatief.findIndex(c => c >= doel);
+  if (i < 0) i = punten.length - 1;
+  const voor = punten[Math.max(0, i - 8)], na = punten[Math.min(punten.length - 1, i + 8)];
+  const lengte = Math.hypot(na.x - voor.x, na.z - voor.z) || 1;
+  return { x: punten[i].x, z: punten[i].z, rx: (na.x - voor.x) / lengte, rz: (na.z - voor.z) / lengte };
+}
+
+const BOUWPLEKKEN = [];
+for (const poort of SPAWN_POORTEN) {
+  BOUWPLEK_FRACTIES.forEach((fractie, index) => {
+    // Loodrecht op de looprichting zoeken naar een vrije plek; lukt dat niet,
+    // langs de route schuiven — plek 1 bij voorkeur richting de poort, plek 2
+    // richting het monument, zodat ze elkaar niet naderen. Nodig bij de
+    // Nieuwendijk: tussen ~16 % en ~38 % lopen robots daar door een steeg van
+    // ~1,5 m breed waar geen tegel past. De eerste vrije plek wint
+    // (deterministisch — er zit geen toeval in).
+    const richting = index === 0 ? -1 : 1;
+    const verschuivingen = [0];
+    for (const stap of [0.03, 0.06, 0.09, 0.12, 0.15]) verschuivingen.push(stap * richting, -stap * richting);
+    let positie = null, p = null;
+    zoek:
+    for (const verschuiving of verschuivingen) {
+      p = puntOpRoute(poort, fractie + verschuiving);
+      for (const afstand of [2.2, 3.0, 1.8, 3.6]) {
+        for (const kant of [1, -1]) {
+          const x = p.x - p.rz * afstand * kant, z = p.z + p.rx * afstand * kant;
+          const vrij = isVrijePlek(x, z, 1.4) && afstandTotMonument({ x, z }) > 3
+            && BOUWPLEKKEN.every(b => Math.hypot(b.positie.x - x, b.positie.z - z) >= 2 * BOUWPLEK_RADIUS);
+          if (vrij) { positie = new THREE.Vector3(x, 0, z); break zoek; }
+        }
+      }
+    }
+    if (!positie) positie = new THREE.Vector3(p.x, 0, p.z);   // vangnet; test-dnm-bouwplekken bewaakt dat dit niet nodig is
+    BOUWPLEKKEN.push({ poort: poort.naam, index, positie, hoek: Math.atan2(p.rx, p.rz), toren: null, kaderMateriaal: null });
+  });
+}
+
+// Zichtbaar: een lichte vloertegel met een lage rand die zwak pulseert
+// zolang de plek leeg is. Rechtstreeks in de scene (wereldcoördinaten).
+for (const plek of BOUWPLEKKEN) {
+  const g = new THREE.Group();
+  const tegel = blok(2.4, 0.1, 2.4, 0xb9b2a4, 0.85);
+  tegel.position.y = 0.05;
+  tegel.castShadow = false;
+  g.add(tegel);
+  plek.kaderMateriaal = new THREE.MeshBasicMaterial({ color: 0xffd75e, transparent: true, opacity: 0.5 });
+  for (const [bx, bz, lx, lz] of [[0, 1.15, 2.4, 0.12], [0, -1.15, 2.4, 0.12], [1.15, 0, 0.12, 2.4], [-1.15, 0, 0.12, 2.4]]) {
+    const rand = new THREE.Mesh(new THREE.BoxGeometry(lx, 0.18, lz), plek.kaderMateriaal);
+    rand.position.set(bx, 0.12, bz);
+    g.add(rand);
+  }
+  g.position.copy(plek.positie);
+  g.rotation.y = plek.hoek;
+  scene.add(g);
+  plek.groep = g;
+
+  interactiePunten.push({
+    naam: `Bouwplek ${plek.poort} ${plek.index + 1}`,
+    type: 'bouwplek',
+    bouwplek: plek,
+    positie: plek.positie,
+    radius: BOUWPLEK_RADIUS,
+    prompt: `Bouwplek ${plek.poort} — torens volgen`,
+    actie: () => toonFeedbackMelding('Hier kun je straks een toren bouwen'),
+  });
+}
+
+function animeerBouwplekken() {
+  const puls = 0.35 + 0.25 * Math.sin(klok * 2.4);
+  for (const plek of BOUWPLEKKEN) if (!plek.toren) plek.kaderMateriaal.opacity = puls;
+}
+
 let huidigeInteractie = null;
 
 function updateInteracties(dt) {
@@ -4197,6 +4315,19 @@ function tekenMinimap() {
     minimapCtx.stroke();
   }
 
+  // Ticket D10: bouwplekken als klein vierkantje (gevuld zodra er een toren staat).
+  for (const plek of BOUWPLEKKEN) {
+    const [bx, bz] = naarCanvas(plek.positie.x, plek.positie.z);
+    if (plek.toren) {
+      minimapCtx.fillStyle = '#7fd4ff';
+      minimapCtx.fillRect(bx - 3, bz - 3, 6, 6);
+    } else {
+      minimapCtx.strokeStyle = 'rgba(255, 215, 94, 0.7)';
+      minimapCtx.lineWidth = 1;
+      minimapCtx.strokeRect(bx - 2.5, bz - 2.5, 5, 5);
+    }
+  }
+
   const [mx, mz] = naarCanvas(MONUMENT_POSITIE.x, MONUMENT_POSITIE.z);
   minimapCtx.fillStyle = '#e8c84e';
   minimapCtx.fillRect(mx - 3, mz - 3, 6, 6);
@@ -4409,6 +4540,7 @@ function gameLoop(nu) {
     updateKerkklokBoost(dt);
     updateMonumentEffecten();
     animeerPoortBakens();
+    animeerBouwplekken();
     // updateSpeler() hierboven zet alleen camera.position/rotation; de
     // gecachte matrixWorldInverse waar .project(camera) op leunt wordt pas
     // ververst bij renderer.render() verderop in dit frame. Zonder deze
@@ -4474,6 +4606,8 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   aantalActievePoorten, kiesActievePoorten, kiesSpawnPoort, poortBakens, updatePoortBakens,
   // Ticket D29: wapenbereik.
   WAPEN_BEREIK, raycaster,
+  // Ticket D10: bouwplekken.
+  BOUWPLEKKEN, BOUWPLEK_RADIUS, puntOpRoute, looproute,
   runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, bijenkorfShopOpen }) };
 </script>
 </body>

@@ -66,7 +66,11 @@ const puntenControle = await page.evaluate(() => {
   }
   return { punten, overlappend };
 });
-check('Er zijn 3 interactiepunten', puntenControle.punten.length === 3, puntenControle.punten);
+// Ticket D10: 3 steunpunten + 10 bouwplekken. De overlap- en
+// bereikbaarheidschecks hieronder gelden nu voor alle 13 — precies waar het
+// plan ze voor bedoelde ("de radius-overlapcheck uit D2 wordt nu echt
+// belangrijk").
+check('Er zijn 13 interactiepunten (3 steunpunten + 10 bouwplekken)', puntenControle.punten.length === 13, puntenControle.punten.map(p => p.naam));
 for (const p of puntenControle.punten) {
   check(`Interactiepunt "${p.naam}" ligt binnen GRENS`, p.binnenGrens, p);
   check(`Interactiepunt "${p.naam}" is bereikbaar binnen zijn radius`, p.bereikbaar, p);
