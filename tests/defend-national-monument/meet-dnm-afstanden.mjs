@@ -43,7 +43,32 @@ const metingen = await page.evaluate(() => {
     return { naam: p.naam, afstandVanafSpelerStart: afstand, retourVanafMonument: 2 * afstandVanafMonument / spelerSnelheid };
   });
 
-  return { poortMetingen, langeAsTijd, diagonaal, steunpunten, grens: d.GRENS };
+  // Ticket D29: afstand van de monumentrand tot de twee toekomstige
+  // bouwplekken per poort (25 % en 55 % van de lijn poort → monument, zie
+  // D10). Kalverstraat loopt via zijn tussenpunt: de lijn is dan poort →
+  // tussenpunt → monument, en 25/55 % is een fractie van die hele route.
+  function puntOpRoute(poort, fractie) {
+    const punten = [poort.positie, ...(poort.tussenpunt ? [poort.tussenpunt] : []), d.MONUMENT_POSITIE];
+    const stukken = [];
+    for (let i = 0; i < punten.length - 1; i++) stukken.push(Math.hypot(punten[i + 1].x - punten[i].x, punten[i + 1].z - punten[i].z));
+    let rest = fractie * stukken.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < stukken.length; i++) {
+      if (rest <= stukken[i]) {
+        const t = rest / stukken[i];
+        return { x: punten[i].x + (punten[i + 1].x - punten[i].x) * t, z: punten[i].z + (punten[i + 1].z - punten[i].z) * t };
+      }
+      rest -= stukken[i];
+    }
+    return { x: d.MONUMENT_POSITIE.x, z: d.MONUMENT_POSITIE.z };
+  }
+  const bouwplekAfstanden = d.SPAWN_POORTEN.map(p => ({
+    naam: p.naam,
+    poort: d.afstandTotMonument(p.positie),
+    plek25: d.afstandTotMonument(puntOpRoute(p, 0.25)),
+    plek55: d.afstandTotMonument(puntOpRoute(p, 0.55)),
+  }));
+
+  return { poortMetingen, langeAsTijd, diagonaal, steunpunten, grens: d.GRENS, bouwplekAfstanden };
 });
 
 console.log('=== Robot: poort -> monument (afstandTotMonument, dus tot de doos) ===\n');
@@ -69,6 +94,11 @@ for (const p of metingen.poortMetingen) {
   const plafondRij = p.rijen[p.rijen.length - 1];
   const status = plafondRij.tijdMin < 10 ? '✗ ONDER DE REACTIEDREMPEL' : '✓';
   console.log(`${p.naam.padEnd(14)} bij plafond: ${plafondRij.tijdMin.toFixed(1)}s  ${status}`);
+}
+
+console.log('\n=== Ticket D29: monumentrand → bouwplekken (25 % / 55 %) en poort ===');
+for (const b of metingen.bouwplekAfstanden) {
+  console.log(`${b.naam.padEnd(14)} plek 55 %: ${b.plek55.toFixed(1)} m · plek 25 %: ${b.plek25.toFixed(1)} m · poort: ${b.poort.toFixed(1)} m`);
 }
 
 await browser.close();

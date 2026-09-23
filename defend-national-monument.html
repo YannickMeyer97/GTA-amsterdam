@@ -3869,12 +3869,47 @@ function updateBrokstukken(dt) {
 // --- Het schot zelf ----------------------------------------------
 
 const raycaster = new THREE.Raycaster();
-// Ticket D5: ×ARENA_SCHAAL houdt de verhouding wapenbereik/kaartdiagonaal
-// gelijk aan vóór de herschaling (de diagonaal van GRENS schaalt door de
-// uniforme x/z-schaling ook exact met ARENA_SCHAAL mee, dus dit is
-// wiskundig hetzelfde als 150 herafleiden uit de nieuwe kaartdiagonaal —
-// zie SONNET_EXECUTION_PLAN_monument.md, Ticket D5).
-raycaster.far = 150 * ARENA_SCHAAL;   // verder dan dit reikt het schot niet
+// Ticket D29: het wapenbereik is bewust korter dan de afstand van het
+// monument tot de poorten. Gemeten (meet-dnm-afstanden.mjs) vanaf de
+// monumentrand: bouwplek op 55 % van de corridor 13–17 m, bouwplek op
+// 25 % 25–31 m, poort 35–41 m. Met 22 m dek je vanaf het monument de
+// binnenste helft van elke corridor, maar niet de verre bouwplek en niet de
+// poort — wie verder wil, moet lopen of een toren zetten. 25 m (het
+// startpunt uit het plan) viel voor drie poorten precies op de verre
+// bouwplek (25,2–25,7 m), te krap om betrouwbaar te zijn. Bij het
+// robot-snelheidsplafond (3,30 m/s) blijft er ~6,7 s vuurvenster per robot.
+// Was vóór D29 150 × ARENA_SCHAAL = 50 m: vanaf het monument elke poort.
+const WAPEN_BEREIK = 22;
+raycaster.far = WAPEN_BEREIK;
+// Alleen om te zien of een schot dat binnen bereik niets raakte, iets
+// verderop WEL geraakt zou hebben (zie toonBuitenBereik).
+const BUITEN_BEREIK_CONTROLE = 150 * ARENA_SCHAAL;
+
+// Ticket D29: het schot is pure hitscan zonder spoor, dus een schot dat
+// tekort komt zag er precies zo uit als een misser. Nu verschijnt op het
+// punt waar het bereik ophoudt een klein stofwolkje — alleen als er
+// verderop écht iets in de schotlijn staat, zodat schieten in de lucht
+// niets toont.
+function toonBuitenBereik(doelwitten) {
+  raycaster.far = BUITEN_BEREIK_CONTROLE;
+  const verder = raycaster.intersectObjects(doelwitten, true);
+  raycaster.far = WAPEN_BEREIK;
+  if (verder.length === 0) return;
+  const punt = raycaster.ray.at(WAPEN_BEREIK, new THREE.Vector3());
+  for (let i = 0; i < 5; i++) {
+    const stof = new THREE.Mesh(new THREE.SphereGeometry(0.09 + Math.random() * 0.05, 6, 5),
+      new THREE.MeshBasicMaterial({ color: 0xe9e2d0 }));
+    stof.userData.buitenBereik = true;
+    stof.position.copy(punt);
+    scene.add(stof);
+    brokstukken.push({
+      mesh: stof,
+      snelheid: new THREE.Vector3((Math.random() - 0.5) * 1.6, 1.2 + Math.random(), (Math.random() - 0.5) * 1.6),
+      draai: new THREE.Vector3(),
+      leeftijd: 1.35,   // krimpt vrijwel meteen weg (zie updateBrokstukken)
+    });
+  }
+}
 
 
 let laatsteSchotTijd = -999;
@@ -3902,7 +3937,10 @@ function schiet() {
   raycaster.setFromCamera({ x: 0, y: 0 }, camera);
   const doelwitten = robots.map(r => r.groep).concat([wereld]);
   const raak = raycaster.intersectObjects(doelwitten, true);
-  if (raak.length === 0) return;
+  if (raak.length === 0) {
+    toonBuitenBereik(doelwitten);
+    return;
+  }
 
   // Kijk of we een robot hebben geraakt: loop omhoog door de "ouders"
   // van het geraakte onderdeel tot we (misschien) een robot vinden.
@@ -4434,6 +4472,8 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   monumentSchade, monumentSchadeTier, updateMonumentSchade, pasMonumentSchadeToe, MONUMENT_SCHADE_DREMPELS,
   // Ticket D28: aangekondigde poorten.
   aantalActievePoorten, kiesActievePoorten, kiesSpawnPoort, poortBakens, updatePoortBakens,
+  // Ticket D29: wapenbereik.
+  WAPEN_BEREIK, raycaster,
   runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, bijenkorfShopOpen }) };
 </script>
 </body>
