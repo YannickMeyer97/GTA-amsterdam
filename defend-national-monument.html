@@ -271,6 +271,45 @@
     100% { opacity: 0; transform: translateY(-70px); }
   }
 
+  /* --- Minimap: vast bovenaanzicht van de hele arena (rechtsonder, waar
+       verder niets staat), Ticket "speeltest-feedback na D6" ("lastig te
+       bepalen waar de robots vandaan komen"). Noord (negatieve z) boven,
+       net als een gewone kaart. --- */
+  #minimapUI {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    width: 140px;
+    height: 140px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(20, 30, 45, 0.65);
+    border: 2px solid rgba(255,255,255,0.25);
+    z-index: 15;
+  }
+  #minimapCanvas { display: block; width: 100%; height: 100%; }
+
+  /* --- Richtingspijlen naar robots die buiten beeld zijn. Eén vaste pool
+       elementen (zie MAX_PIJLEN in de module), hergebruikt i.p.v. elk frame
+       aan te maken — dezelfde reden als de brokstukken-pool. --- */
+  #robotPijlenUI {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 8;
+  }
+  .robotpijl {
+    position: absolute;
+    width: 0;
+    height: 0;
+    margin: -14px 0 0 -10px;   /* centreert de driehoek op zijn x/y */
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-bottom: 22px solid rgba(255, 92, 72, 0.88);
+    filter: drop-shadow(0 0 3px rgba(0,0,0,0.7));
+    display: none;
+  }
+
   /* --- Terug-naar-menu-link, altijd zichtbaar rechtsboven (onder de
        special-meter, zodat 'ie niet overlapt met geldUI/scoreUI) --- */
   #menuLink {
@@ -362,6 +401,8 @@
 <div id="richtkruis" style="display:none"></div>
 <div id="popups"></div>
 <div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; klik = schieten &nbsp;·&nbsp; T = interactie &nbsp;·&nbsp; Esc = pauze</div>
+<div id="minimapUI" style="display:none"><canvas id="minimapCanvas" width="140" height="140"></canvas></div>
+<div id="robotPijlenUI"></div>
 
 <div id="startscherm">
   <h1>DAM CHAOS</h1>
@@ -1369,8 +1410,11 @@ function bouwNationaalMonument() {
   }
 
   // Paaltjes rond het monument, zonder alles onnodig te blokkeren.
-  for (let i = 0; i < 20; i++) {
-    const hoek = (i / 20) * Math.PI * 2;
+  // Speeltest-feedback (na D6): "onoverzichtelijk door de vele decor dingen"
+  // — gehalveerd van 20 naar 10, precies op het strijdtoneel waar de
+  // meeste robots aankomen.
+  for (let i = 0; i < 10; i++) {
+    const hoek = (i / 10) * Math.PI * 2;
     const paal = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.85, 8), mat(0xcfc8bc, 0.76));
     paal.position.set(Math.cos(hoek) * 15.5, 0.48, Math.sin(hoek) * 15.5);
     g.add(paal);
@@ -1837,7 +1881,8 @@ function fietsenrek(x, z, rotY = 0) {
 
 }
 fietsenrek(-21, 43, 0);
-fietsenrek(43, 15, Math.PI / 2);
+// Speeltest-feedback (na D6): fietsenrek(43, 15, ...) verwijderd — stond
+// maar ~19m van het monument, midden in het strijdtoneel.
 fietsenrek(-13, -20, 0);   // verschoven i.v.m. het verplaatste Krasnapolsky-gebouw hiernaast
 fietsenrek(70, -25, Math.PI / 2);
 
@@ -2037,9 +2082,13 @@ function straatNaambord(x, z, naam, rotY = 0) {
   g.rotation.y = rotY;
   wereld.add(g);
 }
-straatNaambord(-8, -52, 'Damrak', 0.12);
-straatNaambord(10, 50, 'Rokin', Math.PI + 0.05);
-straatNaambord(79, 7, 'Damstraat', -Math.PI / 2);
+// Ticket D6 verplaatste de daadwerkelijke spawnpunten van Damrak/Rokin/
+// Damstraat naar buiten (zie SPAWN_POORTEN); deze drie straatnaamborden zijn
+// hier meeverschoven zodat het bordje weer overeenkomt met waar de robots nu
+// echt vandaan komen (speeltest-feedback: "lastig te bepalen waar vandaan").
+straatNaambord(-14, -56, 'Damrak', 0.12);
+straatNaambord(-9, 50, 'Rokin', Math.PI + 0.05);
+straatNaambord(100, 6, 'Damstraat', -Math.PI / 2);
 straatNaambord(-47, 60, 'Kalverstraat', Math.PI);
 straatNaambord(-44, -80, 'Nieuwendijk', Math.PI / 2);
 straatNaambord(-88, 35, 'Paleisstraat', Math.PI / 2);
@@ -2347,6 +2396,7 @@ addEventListener('keyup',   e => { ingedrukt[e.code] = false; });
 const startscherm = document.getElementById('startscherm');
 const richtkruis = document.getElementById('richtkruis');
 const hulpUI = document.getElementById('hulpUI');
+const minimapUI = document.getElementById('minimapUI');
 
 startscherm.addEventListener('click', () => {
   initGeluid();   // geluid mag pas starten na een klik (browserregel)
@@ -2358,6 +2408,7 @@ document.addEventListener('pointerlockchange', () => {
   startscherm.style.display = actief ? 'none' : 'flex';
   richtkruis.style.display = actief ? 'block' : 'none';
   hulpUI.style.display = actief ? 'block' : 'none';
+  minimapUI.style.display = actief ? 'block' : 'none';
   if (actief) {
     startscherm.querySelector('h2').textContent = 'Verdedig de Dam — Amsterdam';
   } else {
@@ -3017,12 +3068,17 @@ const ACCENTKLEUREN = [0x4ecdc4, 0xff6b6b, 0xffd93d, 0x6bcB77, 0xc084fc, 0xff9f4
 // tests, debug-exports) intact te laten; alleen UI-teksten tonen de naam.
 // schildDuur/schildPauze zijn alleen relevant voor het shieldbot-gedrag
 // (zie updateRobots/schiet) en worden door andere types genegeerd.
+// Speeltest-feedback (na D6): alle robots 15% kleiner (× 0,85 op de
+// bestaande schaal — was 1,0/0,85/1,4/1,05/1,0). Puur visueel: de
+// botsstraal in updateRobots() is hardgecodeerd 0,45 en negeert `schaal`
+// (zie ARCHITECTURE_NOTES_monument.md §6.4) — de hitbox blijft dus gelijk,
+// alleen het zichtbare model krimpt.
 const ROBOT_TYPES = {
-  normal:    { hpMax: 1, snelheidMultiplier: 1.0,  beloningMultiplier: 1.0, kleur: null,     schaal: 1.0,  monumentSchade: 8 },   // Grunt
-  sprinter:  { hpMax: 1, snelheidMultiplier: 1.6,  beloningMultiplier: 0.6, kleur: 0x2effea, schaal: 0.85, monumentSchade: 8 },   // Runner
-  tank:      { hpMax: 3, snelheidMultiplier: 0.55, beloningMultiplier: 2.5, kleur: 0xd1315c, schaal: 1.4,  monumentSchade: 8 },   // Tank
-  bomber:    { hpMax: 1, snelheidMultiplier: 1.15, beloningMultiplier: 1.0, kleur: 0xff8c00, schaal: 1.05, monumentSchade: 25 },  // Bomber
-  shieldbot: { hpMax: 1, snelheidMultiplier: 0.85, beloningMultiplier: 1.8, kleur: 0x3ad1ff, schaal: 1.0,  monumentSchade: 10, schildDuur: 1.8, schildPauze: 1.0 },  // Shield Bot
+  normal:    { hpMax: 1, snelheidMultiplier: 1.0,  beloningMultiplier: 1.0, kleur: null,     schaal: 0.85,   monumentSchade: 8 },   // Grunt
+  sprinter:  { hpMax: 1, snelheidMultiplier: 1.6,  beloningMultiplier: 0.6, kleur: 0x2effea, schaal: 0.7225, monumentSchade: 8 },   // Runner
+  tank:      { hpMax: 3, snelheidMultiplier: 0.55, beloningMultiplier: 2.5, kleur: 0xd1315c, schaal: 1.19,   monumentSchade: 8 },   // Tank
+  bomber:    { hpMax: 1, snelheidMultiplier: 1.15, beloningMultiplier: 1.0, kleur: 0xff8c00, schaal: 0.8925, monumentSchade: 25 },  // Bomber
+  shieldbot: { hpMax: 1, snelheidMultiplier: 0.85, beloningMultiplier: 1.8, kleur: 0x3ad1ff, schaal: 0.85,   monumentSchade: 10, schildDuur: 1.8, schildPauze: 1.0 },  // Shield Bot
 };
 
 function maakRobot(type = 'normal') {
@@ -3572,6 +3628,131 @@ function speelKerkklok() {
 function speelSchildBlok() { piep('triangle', 900, 700, 0.09, 0.14); }
 
 /* ================================================================
+   STAP 7.5 — OVERZICHT: minimap en richtingspijlen
+   ================================================================
+   Speeltest-feedback (na D6): "lastig te bepalen waar de robots vandaan
+   komen". Twee onafhankelijke hulpmiddelen, allebei alleen bijgewerkt
+   tijdens spelActief (zie STAP 8, gameLoop):
+   - Minimap: vast bovenaanzicht van de hele arena (GRENS), rechtsonder.
+     Noord (negatieve z) boven, net als een gewone kaart.
+   - Richtingspijlen: wijzen naar de dichtstbijzijnde robots die NIET al
+     in beeld zijn — geprojecteerd via de bestaande camera, geen aparte
+     richtingsberekening.
+   ================================================================ */
+
+const minimapCanvas = document.getElementById('minimapCanvas');
+const minimapCtx = minimapCanvas.getContext('2d');
+
+function tekenMinimap() {
+  const b = minimapCanvas.width, h = minimapCanvas.height;
+  minimapCtx.clearRect(0, 0, b, h);
+  minimapCtx.fillStyle = 'rgba(30, 42, 58, 0.9)';
+  minimapCtx.fillRect(0, 0, b, h);
+
+  function naarCanvas(x, z) {
+    return [
+      (x - GRENS.minX) / (GRENS.maxX - GRENS.minX) * b,
+      (z - GRENS.minZ) / (GRENS.maxZ - GRENS.minZ) * h,
+    ];
+  }
+
+  // Monument: goud vierkantje, het vaste referentiepunt.
+  const [mx, mz] = naarCanvas(MONUMENT_POSITIE.x, MONUMENT_POSITIE.z);
+  minimapCtx.fillStyle = '#e8c84e';
+  minimapCtx.fillRect(mx - 3, mz - 3, 6, 6);
+
+  // Robots: kleine rode stippen.
+  minimapCtx.fillStyle = '#ff5c48';
+  for (const robot of robots) {
+    const [rx, rz] = naarCanvas(robot.groep.position.x, robot.groep.position.z);
+    minimapCtx.beginPath();
+    minimapCtx.arc(rx, rz, 2.5, 0, Math.PI * 2);
+    minimapCtx.fill();
+  }
+
+  // Speler: witte driehoek die de kijkrichting toont. yaw=0 kijkt naar -z
+  // (zie updateSpeler: bewegingZ = -cos(yaw) bij zuivere vooruitbeweging),
+  // vandaar -speler.yaw als canvasrotatie voor een driehoek die standaard
+  // "boven" (canvas -y, dus -z, dus noord) wijst.
+  const [px, pz] = naarCanvas(speler.positie.x, speler.positie.z);
+  minimapCtx.save();
+  minimapCtx.translate(px, pz);
+  minimapCtx.rotate(-speler.yaw);
+  minimapCtx.beginPath();
+  minimapCtx.moveTo(0, -6);
+  minimapCtx.lineTo(4, 5);
+  minimapCtx.lineTo(-4, 5);
+  minimapCtx.closePath();
+  minimapCtx.fillStyle = '#ffffff';
+  minimapCtx.fill();
+  minimapCtx.restore();
+}
+
+// --- Richtingspijlen naar robots buiten beeld ------------------------
+
+// Bewust beperkt tot de 5 dichtstbijzijnde — zelfde "minder clutter"-reden
+// als de gehalveerde paaltjes-ring bij het monument (zie bouwNationaalMonument).
+const MAX_PIJLEN = 5;
+const robotPijlenContainer = document.getElementById('robotPijlenUI');
+const robotPijlenPool = [];
+for (let i = 0; i < MAX_PIJLEN; i++) {
+  const el = document.createElement('div');
+  el.className = 'robotpijl';
+  robotPijlenContainer.appendChild(el);
+  robotPijlenPool.push(el);
+}
+
+// Projecteert een wereldpositie naar genormaliseerde schermcoördinaten
+// ([-1,1] op beide assen). opScherm === true betekent: al zichtbaar voor de
+// speler, dus geen pijl nodig — precies het gedrag dat off-screen-indicators
+// in shooters horen te hebben (geen dubbele info als het doelwit al in beeld is).
+function projecteerOpScherm(wereldPositie) {
+  const ndc = wereldPositie.clone().project(camera);
+  let x = ndc.x, y = ndc.y;
+  const achterCamera = ndc.z > 1;
+  if (achterCamera) { x = -x; y = -y; }   // punt achter de camera: spiegelen zodat de pijl toch de juiste kant op wijst
+  const opScherm = !achterCamera && Math.abs(x) <= 1 && Math.abs(y) <= 1;
+  return { x, y, opScherm };
+}
+
+function updateRichtingspijlen() {
+  const kandidaten = [];
+  for (const robot of robots) {
+    const wereldPositie = robot.groep.position.clone();
+    wereldPositie.y += 1;   // richting het lichaam, niet de voeten
+    const { x, y, opScherm } = projecteerOpScherm(wereldPositie);
+    if (opScherm) continue;
+    const afstand = speler.positie.distanceTo(robot.groep.position);
+    kandidaten.push({ x, y, afstand });
+  }
+  kandidaten.sort((a, b) => a.afstand - b.afstand);
+
+  for (let i = 0; i < robotPijlenPool.length; i++) {
+    const el = robotPijlenPool[i];
+    const kandidaat = kandidaten[i];
+    if (!kandidaat) { el.style.display = 'none'; continue; }
+    // Klem de richting op de schermrand met een marge, zodat de pijl niet
+    // letterlijk op de rand plakt.
+    const marge = 0.85;
+    const schaal = marge / Math.max(Math.abs(kandidaat.x), Math.abs(kandidaat.y), 1e-6);
+    const geklemdX = kandidaat.x * schaal;
+    const geklemdY = kandidaat.y * schaal;
+    const schermX = (geklemdX * 0.5 + 0.5) * innerWidth;
+    const schermY = (-geklemdY * 0.5 + 0.5) * innerHeight;   // NDC-y omhoog, scherm-y omlaag
+    const middenX = innerWidth / 2, middenY = innerHeight / 2;
+    const hoek = Math.atan2(schermX - middenX, -(schermY - middenY)) * 180 / Math.PI;
+    el.style.display = 'block';
+    el.style.left = schermX + 'px';
+    el.style.top = schermY + 'px';
+    el.style.transform = `rotate(${hoek}deg)`;
+  }
+}
+
+function verbergRichtingspijlen() {
+  for (const el of robotPijlenPool) el.style.display = 'none';
+}
+
+/* ================================================================
    STAP 8 — DE GAME-LOOP: alles elke frame bijwerken en tekenen
    ================================================================ */
 
@@ -3607,8 +3788,17 @@ function gameLoop(nu) {
     if (typeof updateBewegendeTrams === 'function') updateBewegendeTrams(dt);
     updateInteracties(dt);
     updateKerkklokBoost(dt);
+    // updateSpeler() hierboven zet alleen camera.position/rotation; de
+    // gecachte matrixWorldInverse waar .project(camera) op leunt wordt pas
+    // ververst bij renderer.render() verderop in dit frame. Zonder deze
+    // expliciete update lopen minimap/pijlen één frame achter op de
+    // camera-oriëntatie (merkbaar bij snel omkijken).
+    camera.updateMatrixWorld();
+    tekenMinimap();
+    updateRichtingspijlen();
   } else {
     verbergInteractiePrompt();
+    verbergRichtingspijlen();
   }
 
   // Wapen-terugslag laten uitdempen.
@@ -3647,7 +3837,9 @@ requestAnimationFrame(gameLoop);
 // waarde: anders bevriest de export de waarde van het moment dat deze regel
 // voor het eerst uitgevoerd wordt, in plaats van live mee te lezen.
 window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => bijenkorfShopOpen, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, activeerKerkklokBoost, updateKerkklokBoost,
-  GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerBijenkorfUpgradeShop, updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie };
+  GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerBijenkorfUpgradeShop, updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
+  // Speeltest-feedback (na D6): overzicht-hulpmiddelen.
+  tekenMinimap, updateRichtingspijlen, verbergRichtingspijlen, projecteerOpScherm, robotPijlenPool, ARENA_SCHAAL };
 </script>
 </body>
 </html>

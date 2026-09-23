@@ -144,7 +144,7 @@ Acht beslissingen, allemaal expliciet door de eigenaar gemaakt:
 | 4 | Mapstructuur | **Alleen de documenten sorteren**, HTML blijft op de root |
 | 5 | Bouwen | **Vaste bouwplekken bij de poorten** |
 | 6 | Runstructuur | **Arcade + eindscherm + highscore** (geen meta-progressie) |
-| 7 | Pariteit | **Testsuite + mobiel/touch + kwaliteitsinstellingen** |
+| 7 | Pariteit | **Testsuite + kwaliteitsinstellingen** *(touch geschrapt na de review, zie §10)* |
 | 8 | Omvang | **Volledig plan, gefaseerd**, met beslismomenten per fase |
 
 ### Bewust NIET in dit plan
@@ -687,6 +687,9 @@ inhoudelijke kern van de verbouwing.*
 
 ### Ticket D15 — Bouwfase tussen waves
 
+> **Volgorde (review na D6, §10):** uitvoeren **direct na D11**, niet na D14.
+> Met 4,5 s tussen waves zijn D12–D14 niet eerlijk te speeltesten.
+
 - **Context:** `spel.tussenWaveTimer > 4.5` start nu automatisch de volgende
   wave. Met torens erbij is 4,5 s te kort om een beslissing te nemen.
 - **Doel:** een expliciete voorbereidingsfase.
@@ -727,6 +730,13 @@ inhoudelijke kern van de verbouwing.*
 # FASE 4 — Oververhitting
 
 *Doel: ritme in het schieten, zonder inventarisbeheer.*
+
+> **Voorwaardelijk (review na D6, §10):** deze fase start pas nadat de
+> eigenaar na fase 3 expliciet heeft beslist. Torens nemen een deel van het
+> schietwerk over, en warmte duwt de speler dezelfde kant op — samen kan dat
+> schieten als straf laten voelen. Opties bij het beslismoment: zoals
+> beschreven, een mildere variant (alleen merkbaar bij hoge
+> vuurtempo-upgrades) of schrappen.
 
 ### Ticket D17 — De warmtemechaniek
 
@@ -790,6 +800,10 @@ inhoudelijke kern van de verbouwing.*
 
 ### Ticket D20 — Zichtbare schadestaten
 
+> **Volgorde (review na D6, §10):** uitvoeren **direct na D9**, als laatste
+> ticket van fase 2. Klein, puur visueel, geen afhankelijkheid van torens —
+> en het monument moet al bedreigd voelen vóór de torenfase begint.
+
 - **Context:** `spel.monumentHP` is alleen een getal in de HUD.
 - **Doel:** de staat van het monument afleesbaar maken zonder naar de HUD te
   kijken — dat is wat een verdedigingsspel spannend maakt.
@@ -811,6 +825,11 @@ inhoudelijke kern van de verbouwing.*
 
 *Doel: dezelfde bereikbaarheid als Undead. Deze fase raakt de gameplay niet en
 kan dus veilig als laatste.*
+
+> **Ingekort (review na D6, §10):** alleen D21 en D22 blijven. D23–D26
+> (touch) zijn **geschrapt** — deze game leunt op WASD, T, X en 1–4, en vier
+> tickets touchwerk wegen daar niet tegen op. De specificaties blijven
+> hieronder staan als referentie, mocht het ooit terugkomen.
 
 ### Ticket D21 — Kwaliteitsinstellingen
 
@@ -838,7 +857,7 @@ kan dus veilig als laatste.*
 - **Acceptatie:** `test-dnm-instellingen.mjs`: elke instelling werkt en
   overleeft een herladen.
 
-### Ticket D23 — Touch: besturingsgate loskoppelen van Pointer Lock
+### Ticket D23 — Touch: besturingsgate loskoppelen van Pointer Lock ✗ GESCHRAPT (review na D6)
 
 - **Context:** identiek probleem als Undead's T176.
   `document.pointerLockElement === renderer.domElement` staat op **vier**
@@ -851,7 +870,7 @@ kan dus veilig als laatste.*
 - **Acceptatie:** `test-dnm-besturingsgate.mjs`: beide modi, en de bestaande
   muisbesturing onveranderd.
 
-### Ticket D24 — Touch: lopen, kijken, vuren
+### Ticket D24 — Touch: lopen, kijken, vuren ✗ GESCHRAPT (review na D6)
 
 - **Doel:** virtuele stick links, kijken rechts, vuurknop.
 - **Let op:** de vuurknop mag de kijk-drag niet stelen — in Undead was dat een
@@ -859,7 +878,7 @@ kan dus veilig als laatste.*
   meteen goed: de vuurknop registreert óók als kijkvinger.
 - **Acceptatie:** `test-dnm-touch.mjs` met Playwright's `hasTouch`-context.
 
-### Ticket D25 — Touch: contextknop en bouwen met je duim
+### Ticket D25 — Touch: contextknop en bouwen met je duim ✗ GESCHRAPT (review na D6)
 
 - **Doel:** T (interactie) en de bouwmenu's bruikbaar zonder toetsenbord.
 - **Stappen:** contextknop die toont wat de huidige interactie is (bouwen,
@@ -869,7 +888,7 @@ kan dus veilig als laatste.*
 - **Acceptatie:** `test-dnm-touch-bouwen.mjs`: een toren bouwen, upgraden en
   repareren met alleen aanrakingen.
 
-### Ticket D26 — Touch: liggend, schermindeling, veilige zones
+### Ticket D26 — Touch: liggend, schermindeling, veilige zones ✗ GESCHRAPT (review na D6)
 
 - **Doel:** draaischerm bij staande stand, `env(safe-area-inset-*)`, fullscreen
   bij het starten, wake lock, en een HUD die op 740 × 360 past.
@@ -895,9 +914,10 @@ Na elke fase stopt de uitvoerder en vraagt of we doorgaan:
 | 0 | Staat het vangnet goed genoeg om de herschaling in te gaan? |
 | 1 | **Speelt de nieuwe schaal?** Het belangrijkste beslismoment van het plan — als 1:3 niet goed voelt, is 1:4 of 1:2,5 nog een kleine ingreep, maar alleen nu. |
 | 2 | Voelt de run af genoeg om er systemen bovenop te bouwen? |
-| 3 | Is de tower defense-kern leuk? Zo niet: bijstellen vóór fase 4, niet erna. |
-| 4 | Geeft oververhitting het beoogde ritme, of is het alleen maar hinderlijk? |
-| 5 | Nog door met platformwerk, of is de game af genoeg? |
+| 3 | Is de tower defense-kern leuk? Zo niet: bijstellen vóór fase 4, niet erna. **Plus (review na D6):** gaat fase 4 door zoals beschreven, als mildere variant, of niet? |
+| 4 | Geeft oververhitting het beoogde ritme, of is het alleen maar hinderlijk? *(vervalt als fase 4 geschrapt wordt)* |
+| 5 | *(vervallen — D20 is naar fase 2 verhuisd)* |
+| 6 | Na D21/D22: is de game af genoeg, of pakken we D27 (pijlen) nog op? |
 
 ## 9. Openstaande ontwerpvragen (bewust nog niet beslist)
 
@@ -912,11 +932,160 @@ Genoteerd zodat ze niet stilletjes door de uitvoerder worden ingevuld:
    overbodig of juist essentieel worden. Meten in D16.
 4. **Moeilijkheidsgraden.** Undead heeft ze, deze game niet. Pas zinvol als de
    basiscurve na fase 3 staat.
-5. **Wordt `kiesSpawnPoort()` gewogen?** Hij loot nu volledig uniform. Met
-   torens erbij wordt "welke poort komt er nu" een veel scherpere vraag — maar
-   een gewogen loting die je poortkeuze straft, kan ook oneerlijk voelen.
-   Beslissen na fase 3.
+5. ~~**Wordt `kiesSpawnPoort()` gewogen?**~~ **Beslist in de review na D6:**
+   geen gewogen loting maar aangekondigde poorten — zie D28 (§10). De
+   speler weet vooraf waar de robots vandaan komen, dus een poortkeuze voor
+   een toren wordt een voorspelling i.p.v. een gok.
 6. **Moet de robot-botsstraal `config.schaal` gaan respecteren?** Nu botst een
    tank als een normale robot. Op de nieuwe schaal met smallere straten wordt
    dat zichtbaar — maar het repareren ervan maakt tanks meteen vatbaarder voor
    vastlopen. Meten in D6, beslissen daarna.
+
+---
+
+## 10. Bijsturing na de review (na D6)
+
+Na D6 en de speeltest daarop is het resterende plan doorgelicht op de vraag
+"wordt dit een goed en fijn spel". Twee bevindingen stuurden de keuzes:
+
+1. **Het spawnritme is het echte probleem.** `updateWaveSysteem()` vult na
+   elke kill direct aan tot `maxActieveRobots`, en `kiesSpawnPoort()` loot
+   uniform over alle vijf poorten. Er lopen dus altijd 5–13 robots verspreid
+   over de hele kaart — geen eb en vloed, geen "daar komen ze". Dat is de
+   oorzaak van de speeltest-klacht over pijltjes overal (D27), en het maakt
+   een toren per poort (D10) zwak: die dekt altijd maar 20 % van de spawns.
+2. **De speler maakt torens overbodig.** Hitscan, one-shot voor vier van de
+   vijf types, `raycaster.far` = 50 m — en de poorten liggen op 35–41 m van
+   de monumentrand (gemeten, `meet-dnm-afstanden.mjs`). Vanaf het monument
+   bereik je dus elke poort. Een toren van €120 met 12 m bereik voegt
+   daar weinig aan toe.
+
+Beide stonden in het oorspronkelijke plan als "beslissen na fase 3", maar ze
+bepalen of fase 3 leuk wordt. Ze komen daarom nu vóór de torens.
+
+### Besluiten van de eigenaar
+
+| Onderwerp | Besluit |
+|---|---|
+| Spawnritme | **Aangekondigde poorten** → nieuw ticket D28 |
+| Wapenbereik | **Beperken** zodat torens nodig worden → nieuw ticket D29 |
+| Variatie na wave 5 | **Themagolven** → nieuw ticket D30 |
+| Bouwfase | **D15 naar voren**, direct na D11 |
+| Monumentschade | **D20 naar voren**, direct na D9 (einde fase 2) |
+| Oververhitting | **Beslissen na fase 3** — fase 4 is voorwaardelijk |
+| Touch | **Geschrapt** (D23–D26); alleen D21/D22 blijven |
+| Pijlen (D27) | Blijft backlog; herbeoordelen ná D28 |
+
+### Nieuwe uitvoeringsvolgorde
+
+Fase 2: D7 → D8 → D9 → **D20**
+Fase 3: **D28** → **D29** → D10 → D11 → **D15** → D12 → D13 → D14 → D16 → **D30**
+Fase 4: D17 → D18 → D19 *(alleen na expliciet besluit)*
+Fase 6: D21 → D22
+Backlog: D27
+
+Ticketnummers zijn bewust niet hernummerd — ze staan al in commits en
+documenten. `ROADMAP_monument.md` toont de tabellen in deze volgorde.
+
+### Ticket D28 — Aangekondigde poorten
+
+- **Context:** zie bevinding 1 hierboven. Het `objectiveUI`-regeltje
+  "Robots komen uit: …" toont nu `spel.laatsteSpawnPoort` en springt bij
+  elke spawn naar een andere poort — informatie die niets betekent.
+- **Doel:** elke wave komt uit een klein, vooraf bekend aantal poorten. De
+  speler weet waar het gevaar vandaan komt en kan daarop positioneren (en
+  vanaf fase 3 bouwen).
+- **Stappen:**
+  - `spel.actievePoorten` (array van poortnamen). Wave 1–2: **één** poort,
+    vanaf wave 3: **twee**. Constanten bovenaan het blok met een
+    waarom-comment.
+  - `kiesActievePoorten(wave, vorige)`: kies de set, en nooit exact dezelfde
+    set als de vorige wave (anders voelt het niet als een nieuwe wave).
+  - `kiesSpawnPoort()` loot voortaan alléén uit `spel.actievePoorten`.
+  - **Aankondigen vóór de wave, niet bij de start:** de set voor wave N+1
+    wordt gekozen en getoond zodra wave N compleet is (het moment waarop nu
+    de wave-bonus valt). Zo gebruikt de speler de pauze om te positioneren —
+    en na D15 om te bouwen. Wave 1 kiest bij `startWave(1)`.
+  - Aankondiging, drie lagen: (1) banner via de bestaande
+    `toonWaveBanner()` ("Volgende wave via Damrak en Rokin"), (2) het
+    `objectiveUI`-regeltje toont de actieve poorten, stabiel voor de hele
+    wave, (3) een **lichtbaken** per actieve poort: een dunne, hoge,
+    half-transparante kolom die boven de daken uitsteekt, zodat je hem vanaf
+    het monument ziet zonder de HUD te lezen. Plus één geluid via `piep()`.
+  - Minimap: actieve poorten gemarkeerd (kleine rand of pijlpunt aan de
+    kaartrand) — `tekenMinimap()` bestaat al.
+- **Niet veranderen:** `maxActieveRobots`, het aanvulmechanisme,
+  `waveDoel`, de robot-AI en het Kalverstraat-`tussenpunt`. Alleen de
+  poortkeuze verandert — zo blijft het effect meetbaar.
+- **Let op:** `spel.laatsteSpawnPoort` wordt nog op meer plekken gezet
+  (`spawnRobot`); zoek alle lezers op vóór je het regeltje ombouwt. D9's
+  `resetRun()` moet `actievePoorten` meenemen (als D9 al af is: hier
+  toevoegen, met een check in `test-dnm-reset.mjs`).
+- **Acceptatie:** `test-dnm-poorten.mjs`: over een gesimuleerde wave komen
+  alle spawns uit `spel.actievePoorten`; wave 1–2 heeft er één, wave 3+
+  twee; twee opeenvolgende waves hebben nooit dezelfde set; de set van wave
+  N+1 staat vast vóórdat wave N+1 start; de bakens staan precies bij de
+  actieve poorten. **Plus speeltest:** herbeoordeel D27 (pijlen) direct na
+  dit ticket.
+
+### Ticket D29 — Wapenbereik beperken
+
+- **Context:** zie bevinding 2. `raycaster.far = 150 * ARENA_SCHAAL` (50 m);
+  poorten op 35,1–41,2 m van de monumentrand.
+- **Doel:** vanaf het monument dek je het laatste stuk van een corridor,
+  niet de poort zelf. Wie verder wil, moet lopen (en munten liggen dan ook
+  verder weg) of een toren zetten.
+- **Stappen:**
+  - Eerst meten: breid `meet-dnm-afstanden.mjs` uit met, per poort, de
+    afstand van de monumentrand tot de twee toekomstige bouwplekken op 25 %
+    en 55 % van de lijn (formule uit D10). Dan pas het getal kiezen.
+  - Startpunt: **~25 m** (de helft van nu). Dan reikt het schot vanaf het
+    monument niet tot een poort, maar geeft het bij het plafondtempo
+    (3,30 m/s) nog ~7,5 s vuurvenster per robot — genoeg om te reageren.
+  - Eén constante `WAPEN_BEREIK` met waarom-comment, gebruikt voor
+    `raycaster.far`.
+  - **Feedback buiten bereik is verplicht.** Het schot is pure hitscan
+    zonder spoor: een schot dat te kort komt, ziet er nu precies zo uit als
+    een misser. Voeg een goedkope aanwijzing toe — bijvoorbeeld een kort
+    vonkje of stofwolkje op het punt waar het bereik ophoudt, via de
+    bestaande brokstukken-pool — zodat de speler leert "te ver" te herkennen.
+  - Houd het spelersbereik ruim boven het torenbereik (12 m in D11); de
+    speler blijft het sterkste individuele wapen, alleen niet overal
+    tegelijk.
+- **Niet veranderen:** schade, cooldown, one-shot-gedrag. Alleen het bereik.
+- **Acceptatie:** `test-dnm-wapenbereik.mjs`: een robot net binnen
+  `WAPEN_BEREIK` wordt geraakt, net erbuiten niet; vanaf de speler-startplek
+  ligt geen enkele poort binnen bereik; het buiten-bereik-effect verschijnt
+  alleen bij een schot dat niets raakt binnen bereik. **Plus speeltest** —
+  voelt het als "ik moet kiezen" of als "ik kan niets"?
+
+### Ticket D30 — Themagolven
+
+- **Context:** vanaf wave 5 ligt de typemix vast; daarna stijgen alleen
+  aantal en snelheid. Een eindeloze run wordt eentonig.
+- **Doel:** af en toe een wave met een eigen karakter en naam.
+- **Stappen:**
+  - Elke **4e wave** (4, 8, 12, …) is een themagolf. Welke: roteren door de
+    lijst (`(wave / 4 − 1) % aantal`), niet loten — deterministisch en dus
+    testbaar, en de speler ziet ze allemaal voordat er één terugkomt.
+  - `THEMAGOLVEN`-tabel + een **pure** `themaVoorWave(n)` die `null` of een
+    thema teruggeeft. `startWave()` leest daaruit; niets muteert een
+    basiswaarde die later "teruggezet" moet worden (architectuurregel 6).
+  - Drie voorstellen (namen definitief bij uitvoering, eigen NL-namen, geen
+    bestaande IP):
+    1. **Tankkonvooi** — alleen tanks, `waveDoel` × 0,5, via één poort.
+    2. **Spitsuur** — alleen sprinters, `waveDoel` × 1,3, via één poort.
+    3. **Grachtenmist** — normale mix, maar de mist trekt dicht
+       (`scene.fog.near/far` fors omlaag, gezet vanuit het thema bij
+       `startWave`, en bij elke gewone wave weer uit de basiswaarden). Werkt
+       samen met D29: je ziet ze pas als ze binnen bereik zijn.
+  - Eigen banner via `waveBannerTekst()` en een iets hogere wave-bonus
+    (te ijken; D16's meetscript opnieuw draaien).
+  - De poortkeuze komt uit D28 (`kiesActievePoorten`); een thema mag het
+    aantal poorten overschrijven.
+- **Let op:** D16 meet eerst de basiscurve zónder thema's. Pas daarna dit
+  ticket, anders meet D16 een curve met uitschieters.
+- **Acceptatie:** `test-dnm-themagolven.mjs`: waves 4/8/12 krijgen het
+  juiste thema in de juiste volgorde, de overrides gelden alleen die wave,
+  de wave daarna is weer normaal (inclusief mist), en de banner toont de
+  themanaam.

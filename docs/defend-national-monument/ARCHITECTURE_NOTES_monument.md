@@ -5,13 +5,15 @@ Tegenhanger van `docs/amsterdam-undead/ARCHITECTURE_NOTES_undead.md`; de twee
 games delen géén code, dus de twee documenten delen geen inhoud.
 
 **Status:** dit document beschrijft de game zoals die er vandaag uit ziet, ná
-D0–D6 — Fase 1 (de herschaling) is hiermee volledig afgerond en gemeten, niet
-alleen berekend. Alles hieronder is uit de code gelezen en narekenbaar.
+D0–D6 én de eerste speeltest-feedbackronde daarna (robots 15% kleiner,
+minder decor rond het strijdtoneel, minimap + richtingspijlen). Fase 1 (de
+herschaling) is hiermee volledig afgerond en gemeten, niet alleen berekend.
+Alles hieronder is uit de code gelezen en narekenbaar.
 **Regelnummers zijn sinds D4/D5/D6 op sommige plekken bewust niet meer
 exact** (het bestand groeide met de toelichtingen) — behandel ze als een
-globale vingerwijzing, niet als een contract; de secties die D4/D5/D6
-rechtstreeks raakten (§2, §3.1, §3.5, §4.2, §4.3, §5, §6.2, §6.3, §7.7, §8,
-§12) zijn wel bijgewerkt.
+globale vingerwijzing, niet als een contract; de secties die D4/D5/D6/de
+speeltest-feedbackronde rechtstreeks raakten (§2, §3.1, §3.5, §4.2, §4.3,
+§5, §6.1, §6.2, §6.3, §7.7, §8, §9.4, §10, §12) zijn wel bijgewerkt.
 
 **Leeswijzer voor wie een ticket uitvoert:** §10 (valkuilen) en §11 (dode code)
 zijn de twee secties die je fout kunt ingaan zonder het te merken. Lees die
@@ -369,13 +371,18 @@ interactieprompt verborgen.
 
 ### 6.1 Types (regel 2905)
 
+**Sinds de speeltest-feedback na D6 staat hier niet meer de ontwerpwaarde
+maar × 0,85** (speeltest: "robots voelen nog net iets te groot", 10-20%
+kleiner gevraagd, 15% gekozen). Puur de `schaal`-kolom is geraakt — de rest
+van de tabel staat nog op de D6-waarden.
+
 | Key | Spelernaam | hpMax | snelheid× | beloning× | schade | schaal |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| `normal` | Grunt | 1 | 1,0 | 1,0 | 8 | 1,0 |
-| `sprinter` | Runner | 1 | 1,6 | 0,6 | 8 | 0,85 |
-| `tank` | Tank | 3 | 0,55 | 2,5 | 8 | 1,4 |
-| `bomber` | Bomber | 1 | 1,15 | 1,0 | **25** | 1,05 |
-| `shieldbot` | Shield Bot | 1 | 0,85 | 1,8 | 10 | 1,0 |
+| `normal` | Grunt | 1 | 1,0 | 1,0 | 8 | 0,85 |
+| `sprinter` | Runner | 1 | 1,6 | 0,6 | 8 | 0,7225 |
+| `tank` | Tank | 3 | 0,55 | 2,5 | 8 | 1,19 |
+| `bomber` | Bomber | 1 | 1,15 | 1,0 | **25** | 0,8925 |
+| `shieldbot` | Shield Bot | 1 | 0,85 | 1,8 | 10 | 0,85 |
 
 `shieldbot` heeft daarnaast `schildDuur: 1.8` en `schildPauze: 1.0`.
 
@@ -750,6 +757,37 @@ blijft draaien.
 > `updateWaveSysteem` en `updateRobots` stoppen zelf (beide `if (spel.gameOver)
 > return`), maar de rest niet. D7 en D9 moeten dit expliciet afmaken.
 
+### 9.4 Minimap en richtingspijlen (speeltest-feedback na D6, STAP 7.5)
+
+Antwoord op "lastig te bepalen waar de robots zijn en vandaan komen" — de
+eigenaar koos via `AskUserQuestion` expliciet **beide** opties, niet één:
+
+- **`tekenMinimap()`**: vast 2D-`<canvas>` (`#minimapCanvas`, 140×140px,
+  rechtsonder). Lineaire projectie van de `GRENS`-rechthoek naar canvas-
+  pixels (`(x - GRENS.minX) / (GRENS.maxX - GRENS.minX) * breedte`, idem
+  voor z/hoogte). Monument = gele stip, robots = rode stippen, speler = wit
+  driehoekje geroteerd op `-speler.yaw`. Elk frame volledig herberekend
+  zolang `spelActief`, geen incrementele state.
+- **`updateRichtingspijlen()`**: vaste pool van 5 herbruikbare
+  `.robotpijl`-divs (`robotPijlenPool`, zelfde pool-i.p.v.-recreate-patroon
+  als brokstukken). Per robot: `projecteerOpScherm()` geeft NDC-coördinaten
+  via `Vector3.project(camera)`; robots die al op scherm staan worden
+  overgeslagen, de rest gesorteerd op afstand en de dichtstbijzijnde 5
+  krijgen een pijl. Richting: de NDC-hoek geklemd op een schermrand-marge
+  (`0.85`), rotatie via `atan2(dx, -dy)` (driehoekje wijst standaard omhoog).
+  **Robots verder dan de pool-grootte krijgen simpelweg geen pijl** — bewust
+  geen queue of prioriteit-heuristiek buiten "dichtstbijzijnde eerst".
+
+> **`projecteerOpScherm()` leunt op `camera.matrixWorldInverse`, een
+> gecachte matrix die alleen ververst tijdens `updateMatrixWorld()`.**
+> `updateSpeler(dt)` zet alleen `camera.position`/`camera.rotation` (de
+> lokale transform) — niet de gecachte wereldmatrix. Zonder een expliciete
+> `camera.updateMatrixWorld()` vóór `tekenMinimap()`/`updateRichtingspijlen()`
+> gebruiken beide de camera-oriëntatie van het VORIGE frame (normaal
+> onzichtbaar, ~16ms, maar wel een echte bug — gevonden via een functionele
+> test die de projectie leek om te draaien). De game-loop roept die update nu
+> expliciet aan vlak vóór beide functies; zie §10, punt 12.
+
 ---
 
 ## 10. Valkuilen
@@ -773,6 +811,11 @@ blijft draaien.
    Zie §3.6.
 10. **De resize-handler zet `setPixelRatio` niet opnieuw.** Zie §2.
 11. **Er is geen enkele test.** Zie §13.
+12. **`Vector3.project(camera)` leunt op een gecachte matrix die niet
+    vanzelf meebeweegt met `camera.position`/`camera.rotation`.** Wie ergens
+    anders in de code (of in een test) de camera handmatig verzet en direct
+    daarna projecteert, moet zelf `camera.updateMatrixWorld()` aanroepen —
+    anders projecteer je tegen het vorige frame. Zie §9.4.
 
 ---
 
@@ -830,6 +873,13 @@ Door D4 toegevoegd (1 stuk — een bugfix, geen D4-scope-uitbreiding):
 
 ```
 renderer
+```
+
+Door de speeltest-feedback na D6 toegevoegd (6 stuks, zie §9.4):
+
+```
+tekenMinimap · updateRichtingspijlen · verbergRichtingspijlen
+projecteerOpScherm · robotPijlenPool · ARENA_SCHAAL
 ```
 
 **`renderer` ontbrak, en dat was een latent, tot dan toe onopgemerkt gat.**

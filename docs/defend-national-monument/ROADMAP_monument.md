@@ -28,11 +28,22 @@ staat in `SONNET_EXECUTION_PLAN_monument.md` §2.
 Undead. Dit is de reden dat het plan bij testinfrastructuur begint en niet bij
 de herschaling.
 
+**Stand na D6 (bijgewerkt):** fase 0 en 1 zijn af, de game staat op 3.844
+regels met twee testscripts (`test-dnm-laadt.mjs`, `test-dnm-kern.mjs`) plus
+één meetscript. Na D6 volgde een review van het resterende plan; de
+bijsturing daaruit staat in `SONNET_EXECUTION_PLAN_monument.md` §10 en is
+hieronder al in de volgorde verwerkt.
+
 ---
 
 ## Tickets
 
-Legenda: ☐ open · ◐ bezig · ☑ af
+Legenda: ☐ open · ◐ bezig · ☑ af · ✗ geschrapt
+
+**Volgorde na de review (na D6):** de tabellen hieronder staan in
+uitvoeringsvolgorde, niet in nummervolgorde. Ticketnummers zijn bewust NIET
+hernummerd (ze staan in commits en documenten); nieuwe tickets kregen de
+eerstvolgende vrije nummers D28–D30. Onderbouwing: plan §10.
 
 ### Fase 0 — Fundament
 
@@ -53,7 +64,7 @@ alsnog.
 | --- | --- | --- |
 | ☑ | **D4** | Schaalfundament (voorzichtig, nooit combineren) |
 | ☑ | **D5** | Spelsystemen herijken op de nieuwe schaal |
-| ◐ | **D6** | Meten en bijstellen (code+tests klaar, wacht op speeltest) |
+| ☑ | **D6** | Meten en bijstellen (gespeeld en bevestigd; opvolgpunten hieronder) |
 
 ### Fase 2 — De run krijgt een kop en een staart
 
@@ -62,20 +73,24 @@ alsnog.
 | ☐ | **D7** | Eindscherm met statistieken |
 | ☐ | **D8** | Highscore |
 | ☐ | **D9** | Opnieuw spelen zonder verversen |
+| ☐ | **D20** | Zichtbare schadestaten *(naar voren gehaald uit fase 5)* |
 
 ### Fase 3 — De tower defense-kern
 
 | | Ticket | Kern |
 | --- | --- | --- |
+| ☐ | **D28** | Aangekondigde poorten *(nieuw)* |
+| ☐ | **D29** | Wapenbereik beperken *(nieuw)* |
 | ☐ | **D10** | Bouwplekken |
 | ☐ | **D11** | De geschuttoren |
+| ☐ | **D15** | Bouwfase tussen waves *(naar voren, direct na D11)* |
 | ☐ | **D12** | Torenniveaus en reparatie |
 | ☐ | **D13** | Het hek |
 | ☐ | **D14** | Robots vallen torens aan |
-| ☐ | **D15** | Bouwfase tussen waves |
 | ☐ | **D16** | Economie herijken |
+| ☐ | **D30** | Themagolven *(nieuw)* |
 
-### Fase 4 — Oververhitting
+### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 
 | | Ticket | Kern |
 | --- | --- | --- |
@@ -85,9 +100,7 @@ alsnog.
 
 ### Fase 5 — Het monument wordt een personage
 
-| | Ticket | Kern |
-| --- | --- | --- |
-| ☐ | **D20** | Zichtbare schadestaten |
+D20 is naar fase 2 verhuisd; deze fase is daarmee leeg.
 
 ### Fase 6 — Platform
 
@@ -95,10 +108,30 @@ alsnog.
 | --- | --- | --- |
 | ☐ | **D21** | Kwaliteitsinstellingen |
 | ☐ | **D22** | Instellingenscherm |
-| ☐ | **D23** | Touch: besturingsgate loskoppelen van Pointer Lock |
-| ☐ | **D24** | Touch: lopen, kijken, vuren |
-| ☐ | **D25** | Touch: contextknop en bouwen met je duim |
-| ☐ | **D26** | Touch: liggend, schermindeling, veilige zones |
+| ✗ | **D23** | Touch: besturingsgate loskoppelen van Pointer Lock |
+| ✗ | **D24** | Touch: lopen, kijken, vuren |
+| ✗ | **D25** | Touch: contextknop en bouwen met je duim |
+| ✗ | **D26** | Touch: liggend, schermindeling, veilige zones |
+
+### Backlog — bewust ná alle bovenstaande tickets
+
+| | Ticket | Kern |
+| --- | --- | --- |
+| ☐ | **D27** | Richtingspijlen herzien |
+
+**D27 — Richtingspijlen herzien.** Speeltest-feedback op de
+richtingspijlen-implementatie uit de "Speeltest-feedback na D6"-ronde
+(zie hieronder): "je ziet nu constant overal wat pijltjes" — te druk/
+rommelig zodra er meerdere robots tegelijk buiten beeld zijn (de pool van 5
+kan dus alle 5 tegelijk tonen, en dat voelt niet goed). Expliciet verzoek van
+de eigenaar: **dit ticket bewust ná alle andere tickets oppakken**, niet nu.
+Geen oplossingsrichting vastgelegd — dat is voor als dit ticket aan de beurt
+is. De minimap zelf kreeg geen kritiek en blijft ongewijzigd.
+
+**Na de review:** de drukte is vooral een gevolg van het spawnritme (altijd
+5–13 robots verspreid over alle vijf poorten), niet van de pijlen zelf. D28
+(aangekondigde poorten) raakt die oorzaak. Herbeoordeel D27 dus pas ná D28 —
+misschien is het dan al opgelost.
 
 ---
 
@@ -438,6 +471,65 @@ het monument: Kerkklok 10,9s, Reparatie 10,7s (doel 10-15s ✓), Bijenkorf
 **Dit ticket is pas formeel af als de eigenaar het gespeeld heeft** (eigen
 acceptatiecriterium uit het plan) — het bestand is na deze ronde gestuurd
 om te spelen.
+
+---
+
+### Speeltest-feedback na D6
+
+De eigenaar heeft gespeeld en drie punten teruggegeven: "opzich prima, maar
+nog wat onoverzichtelijk door de vele decor dingen", "robots voelen nog net
+iets te groot" (10-20% kleiner gevraagd), en "lastig te bepalen waar de
+robots zijn en vandaan komen" (expliciet om opties gevraagd). Voor de laatste
+twee punten is met `AskUserQuestion` de scope vastgesteld i.p.v. aangenomen:
+robot-zichtbaarheid via **richtingspijlen aan de schermrand** én een
+**simpele minimap** (beide gekozen, niet één van de twee), decor-overzicht
+via **minder decor rond het strijdtoneel** specifiek (niet overal, niet een
+andere optie uit het lijstje).
+
+**Wat er veranderd is:**
+- **Robots 15% kleiner** (binnen de gevraagde 10-20%-band): elke
+  `schaal`-waarde in `ROBOT_TYPES` × 0,85 (was 1,0/0,85/1,4/1,05/1,0, nu
+  0,85/0,7225/1,19/0,8925/0,85). Puur visueel — zie §6.4 in
+  ARCHITECTURE_NOTES_monument.md: de botsstraal in `updateRobots()` is
+  hardgecodeerd 0,45 en negeert `schaal`, dus de hitbox is ongewijzigd.
+- **Decor rond het strijdtoneel uitgedund**: de paaltjesring om het monument
+  in `bouwNationaalMonument()` van 20 naar 10 palen gehalveerd, en het
+  fietsenrek dat op ~19 m van het monument stond (midden in het strijdtoneel)
+  verwijderd.
+- **Drie straatnaamborden verschoven** (Damrak/Rokin/Damstraat) zodat ze weer
+  overeenkomen met de poortposities die D6 al verplaatste — dit was géén
+  aparte "vandaan komen"-maatregel, maar het rechttrekken van een
+  documentatie-mismatch die D6 per ongeluk had laten staan.
+- **Richtingspijlen aan de schermrand**: vaste pool van 5 herbruikbare
+  `.robotpijl`-divs (zelfde pooling-patroon als brokstukken), één per
+  dichtstbijzijnde off-screen robot, gepositioneerd en geroteerd via
+  `THREE.Vector3.project(camera)` → NDC-coördinaten, geklemd op een
+  schermrand-marge, driehoekje wijst naar de robot.
+- **Simpele minimap**: vast 2D-`<canvas>` rechtsonder, robots (rode stip),
+  monument (gele stip) en speler (wit driehoekje, geroteerd op `speler.yaw`)
+  lineair gemapt vanuit de `GRENS`-rechthoek naar canvas-pixels, elk frame
+  herberekend zolang `spelActief`.
+- **Bugfix tijdens het bouwen van bovenstaande, geen apart verzoek**: in
+  `gameLoop()` liepen `tekenMinimap()`/`updateRichtingspijlen()` vóór
+  `renderer.render()`, maar `updateSpeler(dt)` zet alleen
+  `camera.position`/`camera.rotation` — de gecachte `matrixWorldInverse`
+  waar `.project(camera)` op leunt wordt pas ververst tijdens `render()`.
+  Zonder fix liepen pijlen/minimap dus altijd één frame (~16ms) achter op de
+  camera-oriëntatie, merkbaar bij snel omkijken. Fix: expliciete
+  `camera.updateMatrixWorld()` vlak vóór die twee aanroepen. Ontdekt via een
+  functionele test die de projectie leek om te draaien; bleek eerst een
+  testfout (geen `updateMatrixWorld()` na handmatig de camera verzetten in
+  de test), maar bij het narekenen bleek de echte call-volgorde in
+  `gameLoop()` hetzelfde euvel te hebben — dus wel degelijk een echte,
+  zij het kleine, bug.
+
+**Verificatie:** syntax-/laadcheck, `test-dnm-laadt.mjs` (20/20) en
+`test-dnm-kern.mjs` (70/70) na elke deelstap, een losse functionele test van
+`projecteerOpScherm()`/`tekenMinimap()`/`updateRichtingspijlen()` (robot
+vlak voor de speler → op scherm, robot ver achter de speler → buiten
+scherm, bevestigd via een echt gameLoop-frame i.p.v. handmatige state),
+en de volledige regressiesuite (`node run-all.mjs`, beide games) na alle
+deelstappen samen.
 
 ---
 
