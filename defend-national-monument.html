@@ -3883,6 +3883,52 @@ function vernietigToren(toren) {
   verwijderToren(toren);
 }
 
+// Ticket D14: robots vallen torens aan. De bomber — tot nu toe alleen "meer
+// monumentschade" — krijgt een eigen rol: binnen BOMBER_DOEL_STRAAL kiest hij
+// het dichtstbijzijnde bouwwerk (toren of hek) als doel en ontploft daar. 45
+// schade: een toren van niveau 1 (60 HP) overleeft er één, niet twee. Andere
+// robottypes blijven op het monument gericht en slaan alleen op een hek dat
+// hun route blokkeert (D13). Zonder dit zijn torens gratis.
+const BOMBER_DOEL_STRAAL = 10;
+const BOMBER_TORENSCHADE = 45;
+// Contact met een toren: obstakel-halfbreedte 0,7 + botsstraal 0,45 + marge;
+// groot genoeg dat de botsing met het torenobstakel het contact niet kan
+// verhinderen.
+const BOMBER_TOREN_CONTACT = 1.4;
+
+// Het punt van een bouwwerk waar een robot op af moet: het midden van een
+// toren, of het dichtstbijzijnde punt op de lijn van een hek.
+function bouwwerkPunt(toren, positie) {
+  if (toren.type !== 'hek') return toren.plek.positie;
+  const { ax, az, bx, bz } = toren.lijn;
+  const dx = bx - ax, dz = bz - az;
+  const t = Math.max(0, Math.min(1, ((positie.x - ax) * dx + (positie.z - az) * dz) / (dx * dx + dz * dz)));
+  return new THREE.Vector3(ax + dx * t, 0, az + dz * t);
+}
+function kiesBomberDoel(positie) {
+  let beste = null, besteAfstand = BOMBER_DOEL_STRAAL;
+  for (const toren of torens) {
+    const p = bouwwerkPunt(toren, positie);
+    const a = Math.hypot(p.x - positie.x, p.z - positie.z);
+    if (a <= besteAfstand) { besteAfstand = a; beste = toren; }
+  }
+  return beste;
+}
+function bomberOntploftBijToren(robot, toren) {
+  speelExplosie();
+  const p = robot.groep.position;
+  for (let i = 0; i < 6; i++) {
+    const vonk = new THREE.Mesh(new THREE.SphereGeometry(0.18, 6, 5), new THREE.MeshBasicMaterial({ color: i % 2 ? 0xff8c00 : 0xffd75e }));
+    maakBrokstuk(vonk, p.clone().setY(1), 7);
+  }
+  scene.remove(robot.groep);
+  robots.splice(robots.indexOf(robot), 1);
+  const naam = `${TOREN_TYPES[toren.type].naam} bij ${toren.plek.poort}`;
+  beschadigToren(toren, BOMBER_TORENSCHADE);
+  if (torens.includes(toren)) toonFeedbackMelding(`Bomber raakt ${naam}!`);
+  updateArcadeUI();
+}
+
 function maakGeschutToren(plek) {
   const g = new THREE.Group();
   const voet = blok(1.4, 0.5, 1.4, 0x6d6a66, 0.85);
@@ -4298,10 +4344,7 @@ function updateRobots(dt) {
     if (robot.tussenpunt && !robot.tussenpuntBereikt && positie.distanceTo(robot.tussenpunt) < 6) {
       robot.tussenpuntBereikt = true;
     }
-    const huidigDoel = (robot.tussenpunt && !robot.tussenpuntBereikt) ? robot.tussenpunt : MONUMENT_POSITIE;
-    robot.doel = huidigDoel;
-    // Bij vastlopen wijken ze tijdelijk uit naar een punt naast het huidige doel.
-    const richting = huidigDoel.clone().add(robot.ontwijkOffset).sub(positie).setY(0);
+    let huidigDoel = (robot.tussenpunt && !robot.tussenpuntBereikt) ? robot.tussenpunt : MONUMENT_POSITIE;
 
     // Raakt de robot het monument-vlak zelf (niet alleen het middelpunt)?
     // De obstakel-rechthoek rond het monument houdt robots anders voor altijd
@@ -4309,6 +4352,23 @@ function updateRobots(dt) {
     if (afstandTotMonument(positie) < 0.6) {
       robotRaaktMonument(robot);
       continue;
+    }
+
+    // Ticket D14: een bomber met een bouwwerk binnen bereik gaat daarop af
+    // en ontploft bij aankomst (vóór de hek-check: een bomber slaat niet, hij
+    // ontploft). Het doel wordt elke frame opnieuw gekozen, dus sneuvelt het
+    // bouwwerk onderweg, dan loopt hij gewoon weer naar het monument.
+    if (robot.type === 'bomber') {
+      const torenDoel = kiesBomberDoel(positie);
+      if (torenDoel) {
+        const doelPunt = bouwwerkPunt(torenDoel, positie);
+        const contact = torenDoel.type === 'hek' ? HEK_CONTACT_AFSTAND : BOMBER_TOREN_CONTACT;
+        if (Math.hypot(doelPunt.x - positie.x, doelPunt.z - positie.z) <= contact) {
+          bomberOntploftBijToren(robot, torenDoel);
+          continue;
+        }
+        huidigDoel = doelPunt;
+      }
     }
 
     // Ticket D13: staat er een hek in de weg? Dan blijven staan en slaan in
@@ -4336,6 +4396,10 @@ function updateRobots(dt) {
       continue;
     }
     robot.slagTimer = ROBOT_SLAG_INTERVAL;
+
+    robot.doel = huidigDoel;
+    // Bij vastlopen wijken ze tijdelijk uit naar een punt naast het huidige doel.
+    const richting = huidigDoel.clone().add(robot.ontwijkOffset).sub(positie).setY(0);
 
     richting.normalize();
     const positieVoorStap = positie.clone();
@@ -5134,7 +5198,9 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   torenStats, upgradePrijs, reparatieKosten, verkoopOpbrengst, upgradeToren, repareerToren, verkoopToren,
   TOREN_VERKOOP_FRACTIE, TOREN_REPARATIE_PER_HP,
   // Ticket D13: het hek.
-  ROBOT_HEK_SCHADE, ROBOT_SLAG_INTERVAL, HEK_CONTACT_AFSTAND, hekInContact, afstandTotHek, hekPaalOffsets, beschadigToren, vernietigToren };
+  ROBOT_HEK_SCHADE, ROBOT_SLAG_INTERVAL, HEK_CONTACT_AFSTAND, hekInContact, afstandTotHek, hekPaalOffsets, beschadigToren, vernietigToren,
+  // Ticket D14: bombers vallen bouwwerken aan.
+  BOMBER_DOEL_STRAAL, BOMBER_TORENSCHADE, kiesBomberDoel, bouwwerkPunt };
 </script>
 </body>
 </html>
