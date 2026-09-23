@@ -2864,6 +2864,7 @@ const spel = {
   volgendePoorten: [],
   aankondigingGetoond: false,
   bouwfaseAftelling: 0,   // Ticket D15: laatst getoonde hele seconde van de aftelling (alleen voor de HUD)
+  thema: null,            // Ticket D30: sleutel uit THEMAGOLVEN voor de lopende wave, of null
   waveGeenMonumentSchade: true,   // wordt false zodra een robot deze wave het monument raakt (zie robotRaaktMonument)
   specialMeter: 0                 // 0-100, vult per kill, zie vernietigRobot/gebruikSpecial
 };
@@ -2942,6 +2943,8 @@ function toonWaveBanner(tekst) {
 // types dan al, en de mix/aantallen lopen daarna verder op via
 // kiesRobotTypeVoorWave() en de bestaande waveDoel/maxActieveRobots-formules.
 function waveBannerTekst(nummer) {
+  const thema = themaVoorWave(nummer);
+  if (thema) return `Wave ${nummer}: ${thema.naam}!`;
   if (nummer === 2) return `Wave 2: Sprinters gesignaleerd!`;
   if (nummer === 3) return `Wave 3: Tanks gesignaleerd!`;
   if (nummer === 4) return `Wave 4: Bommenwerpers gesignaleerd!`;
@@ -3002,6 +3005,53 @@ function startVolgendeWaveNu() {
   return bonus;
 }
 
+// Ticket D30 — themagolven. Vanaf wave 5 ligt de typemix vast en stijgen
+// alleen aantal en snelheid; een eindeloze run wordt dan eentonig. Elke 4e
+// wave krijgt daarom een eigen karakter en naam. Start bij wave 6, niet bij
+// 4 zoals het plan zei: waves 2–5 introduceren elk een nieuw robottype
+// (wave 4 = de bomber), en een tank-themagolf zou die introductie
+// overschrijven. Welk thema: roteren door de lijst, niet loten —
+// deterministisch en dus testbaar, en je ziet ze allemaal voordat er één
+// terugkomt.
+const THEMA_EERSTE_WAVE = 6;
+const THEMA_INTERVAL = 4;
+const THEMA_BONUS_FACTOR = 1.5;   // de wave-bonus van een themagolf, als beloning voor het afwijkende karakter
+const THEMAGOLVEN = {
+  tankkonvooi: { naam: 'Tankkonvooi', robotType: 'tank', aantalFactor: 0.5, poorten: 1 },
+  spitsuur:    { naam: 'Spitsuur', robotType: 'sprinter', aantalFactor: 1.3, poorten: 1 },
+  // Mist trekt dicht: je ziet robots pas als ze (bijna) binnen WAPEN_BEREIK zijn.
+  grachtenmist: { naam: 'Grachtenmist', robotType: null, aantalFactor: 1, poorten: null, mist: { kleur: 0x9fb0bd, near: 6, far: 38 } },
+};
+const THEMA_VOLGORDE = ['tankkonvooi', 'spitsuur', 'grachtenmist'];
+
+// Pure functies: geven alleen iets terug, muteren niets.
+function themaSleutelVoorWave(wave) {
+  if (wave < THEMA_EERSTE_WAVE || (wave - THEMA_EERSTE_WAVE) % THEMA_INTERVAL !== 0) return null;
+  return THEMA_VOLGORDE[((wave - THEMA_EERSTE_WAVE) / THEMA_INTERVAL) % THEMA_VOLGORDE.length];
+}
+function themaVoorWave(wave) {
+  const sleutel = themaSleutelVoorWave(wave);
+  return sleutel ? THEMAGOLVEN[sleutel] : null;
+}
+function aantalPoortenVoorWave(wave) {
+  return themaVoorWave(wave)?.poorten ?? aantalActievePoorten(wave);
+}
+function robotTypeVoorLopendeWave() {
+  const thema = spel.thema ? THEMAGOLVEN[spel.thema] : null;
+  return thema?.robotType ?? kiesRobotTypeVoorWave(spel.wave);
+}
+
+// Mist: elke wave opnieuw gezet vanuit de basiswaarden (MIST_BASIS, bij het
+// laden vastgelegd) of het thema — nooit "terugzetten" vanuit een vorige
+// stand (architectuurregel 6).
+function pasMistToe(thema) {
+  const m = thema?.mist ?? MIST_BASIS;
+  scene.fog.color.setHex(m.kleur);
+  scene.fog.near = m.near;
+  scene.fog.far = m.far;
+  scene.background.setHex(thema?.mist ? m.kleur : MIST_BASIS.achtergrond);
+}
+
 // Ticket D28 — aangekondigde poorten. Eén poort in de eerste twee waves
 // (leren waar het gevaar vandaan komt), daarna twee: genoeg om te moeten
 // kiezen waar je staat (en vanaf fase 3 wat je bouwt), niet zoveel dat je
@@ -3033,12 +3083,16 @@ function startWave(nummer) {
   // (volgendePoorten); alleen bij wave 1 of na een reset wordt hier gekozen.
   spel.actievePoorten = spel.volgendePoorten.length
     ? spel.volgendePoorten
-    : kiesActievePoorten(aantalActievePoorten(nummer), spel.actievePoorten);
+    : kiesActievePoorten(aantalPoortenVoorWave(nummer), spel.actievePoorten);
   spel.volgendePoorten = [];
   spel.aankondigingGetoond = false;
   spel.wave = nummer;
   spel.waveKills = 0;
-  spel.waveDoel = 7 + nummer * 3;
+  // Ticket D30: een themagolf kan het aantal robots schalen.
+  const thema = themaVoorWave(nummer);
+  spel.thema = themaSleutelVoorWave(nummer);
+  pasMistToe(thema);
+  spel.waveDoel = Math.round((7 + nummer * 3) * (thema?.aantalFactor ?? 1));
   spel.teSpawnen = spel.waveDoel;
   spel.maxActieveRobots = Math.min(5 + Math.floor(nummer * 0.65), 13);
   spel.tussenWaveTimer = 0;
@@ -3060,14 +3114,14 @@ function updateWaveSysteem(dt) {
     }
   }
   while (spel.teSpawnen > 0 && robots.length < spel.maxActieveRobots) {
-    spawnRobotVanafPoort(kiesRobotTypeVoorWave(spel.wave));
+    spawnRobotVanafPoort(robotTypeVoorLopendeWave());
     spel.teSpawnen--;
   }
   if (spel.teSpawnen <= 0 && robots.length === 0) {
     spel.tussenWaveTimer += dt;
     if (!spel.waveBonusGegeven) {
       spel.waveBonusGegeven = true;
-      const waveBonus = WAVE_BONUS_BASIS + spel.wave * WAVE_BONUS_PER_WAVE;
+      const waveBonus = Math.round((WAVE_BONUS_BASIS + spel.wave * WAVE_BONUS_PER_WAVE) * (spel.thema ? THEMA_BONUS_FACTOR : 1));
       verdienGeld(waveBonus);
       updateGeldUI();
       toonPopup(`Wave bonus +€${waveBonus}`);
@@ -3085,7 +3139,7 @@ function updateWaveSysteem(dt) {
       }
       // Ticket D28: de poorten voor de volgende wave staan vanaf nu vast, zodat
       // de speler de pauze kan gebruiken om zich te positioneren.
-      spel.volgendePoorten = kiesActievePoorten(aantalActievePoorten(spel.wave + 1), spel.actievePoorten);
+      spel.volgendePoorten = kiesActievePoorten(aantalPoortenVoorWave(spel.wave + 1), spel.actievePoorten);
       updatePoortBakens();
       updateArcadeUI();
     }
@@ -3094,7 +3148,8 @@ function updateWaveSysteem(dt) {
     // reset geen losse timer achterlaat.
     if (!spel.aankondigingGetoond && spel.tussenWaveTimer > 1.8) {
       spel.aankondigingGetoond = true;
-      toonWaveBanner(`Volgende wave\nvia ${poortenTekst(spel.volgendePoorten)}`);
+      const volgendThema = themaVoorWave(spel.wave + 1);
+      toonWaveBanner(`${volgendThema ? `Volgende wave: ${volgendThema.naam}` : 'Volgende wave'}\nvia ${poortenTekst(spel.volgendePoorten)}`);
       speelPoortSignaal();
     }
     // Ticket D15: aftelling in de HUD, alleen bijwerken als de hele seconde
@@ -5036,6 +5091,10 @@ let vorigeTijd = performance.now();
 // iets gespeeld is. resetRun() zet deze terug i.p.v. een handgeschreven lijst
 // beginwaarden — een veld dat later aan `spel` wordt toegevoegd, krijgt zo
 // vanzelf zijn beginwaarde terug en kan niet stil gaan lekken.
+// Ticket D30: basiswaarden van de mist, vastgelegd na het bouwen van de
+// wereld (de wereld zet de definitieve mist pas in STAP 2).
+const MIST_BASIS = { kleur: scene.fog.color.getHex(), near: scene.fog.near, far: scene.fog.far, achtergrond: scene.background.getHex() };
+
 const BEGINSTAAT = {
   spel: JSON.parse(JSON.stringify(spel)),
   upgrades: { ...upgrades },
@@ -5228,7 +5287,10 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   // Ticket D14: bombers vallen bouwwerken aan.
   BOMBER_DOEL_STRAAL, BOMBER_TORENSCHADE, kiesBomberDoel, bouwwerkPunt,
   // Ticket D16: economie.
-  MUNT_BASIS_MIN, MUNT_BASIS_MAX, WAVE_BONUS_BASIS, WAVE_BONUS_PER_WAVE, PERFECT_BONUS_BASIS, PERFECT_BONUS_PER_WAVE };
+  MUNT_BASIS_MIN, MUNT_BASIS_MAX, WAVE_BONUS_BASIS, WAVE_BONUS_PER_WAVE, PERFECT_BONUS_BASIS, PERFECT_BONUS_PER_WAVE,
+  // Ticket D30: themagolven.
+  THEMAGOLVEN, THEMA_VOLGORDE, THEMA_EERSTE_WAVE, THEMA_INTERVAL, THEMA_BONUS_FACTOR, themaVoorWave, themaSleutelVoorWave,
+  aantalPoortenVoorWave, robotTypeVoorLopendeWave, MIST_BASIS };
 </script>
 </body>
 </html>

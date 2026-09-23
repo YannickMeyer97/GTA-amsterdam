@@ -149,7 +149,9 @@ const waveControle = await page.evaluate((waves) => {
     return {
       wave: n,
       waveDoel: d.spel.waveDoel,
-      verwachtWaveDoel: 7 + n * 3,
+      // Ticket D30: een themagolf schaalt het aantal (bv. Spitsuur × 1,3).
+      verwachtWaveDoel: Math.round((7 + n * 3) * (d.themaVoorWave(n)?.aantalFactor ?? 1)),
+      thema: d.themaVoorWave(n)?.naam ?? null,
       teSpawnen: d.spel.teSpawnen,
       maxActieveRobots: d.spel.maxActieveRobots,
       verwachtMaxActieveRobots: Math.min(5 + Math.floor(n * 0.65), 13),
@@ -157,7 +159,7 @@ const waveControle = await page.evaluate((waves) => {
   });
 }, [1, 5, 10, 13, 20]);
 for (const w of waveControle) {
-  check(`startWave(${w.wave}): waveDoel = 7 + ${w.wave}·3`, w.waveDoel === w.verwachtWaveDoel, w);
+  check(`startWave(${w.wave}): waveDoel = 7 + ${w.wave}·3${w.thema ? ` × themafactor (${w.thema})` : ''}`, w.waveDoel === w.verwachtWaveDoel, w);
   check(`startWave(${w.wave}): teSpawnen begint gelijk aan waveDoel`, w.teSpawnen === w.waveDoel, w);
   check(`startWave(${w.wave}): maxActieveRobots = min(5 + ⌊${w.wave}·0,65⌋, 13)`, w.maxActieveRobots === w.verwachtMaxActieveRobots, w);
 }
