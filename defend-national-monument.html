@@ -3607,7 +3607,7 @@ for (const poort of SPAWN_POORTEN) {
     const richting = index === 0 ? -1 : 1;
     const verschuivingen = [0];
     for (const stap of [0.03, 0.06, 0.09, 0.12, 0.15]) verschuivingen.push(stap * richting, -stap * richting);
-    let positie = null, p = null;
+    let positie = null, p = null, zijOffset = 0;
     zoek:
     for (const verschuiving of verschuivingen) {
       p = puntOpRoute(poort, fractie + verschuiving);
@@ -3616,12 +3616,16 @@ for (const poort of SPAWN_POORTEN) {
           const x = p.x - p.rz * afstand * kant, z = p.z + p.rx * afstand * kant;
           const vrij = isVrijePlek(x, z, 1.4) && afstandTotMonument({ x, z }) > 3
             && BOUWPLEKKEN.every(b => Math.hypot(b.positie.x - x, b.positie.z - z) >= 2 * BOUWPLEK_RADIUS);
-          if (vrij) { positie = new THREE.Vector3(x, 0, z); break zoek; }
+          if (vrij) { positie = new THREE.Vector3(x, 0, z); zijOffset = afstand * kant; break zoek; }
         }
       }
     }
     if (!positie) positie = new THREE.Vector3(p.x, 0, p.z);   // vangnet; test-dnm-bouwplekken bewaakt dat dit niet nodig is
-    BOUWPLEKKEN.push({ poort: poort.naam, index, positie, hoek: Math.atan2(p.rx, p.rz), toren: null, kaderMateriaal: null });
+    // `route` + `zijOffset` (Ticket D13): het punt op de looproute naast deze
+    // plek en hoe ver de plek daar loodrecht naast ligt — een hek spant
+    // vanaf hier dwars over de route.
+    BOUWPLEKKEN.push({ poort: poort.naam, index, positie, hoek: Math.atan2(p.rx, p.rz), toren: null, kaderMateriaal: null,
+      route: { x: p.x, z: p.z, rx: p.rx, rz: p.rz }, zijOffset });
   });
 }
 
@@ -3669,6 +3673,7 @@ function animeerBouwplekken() {
 const TOREN_TYPES = {
   geschut: {
     naam: 'Geschuttoren', prijs: 120, bereik: 12, schadePerSchot: 1, schotInterval: 0.8, hp: 60,
+    omschrijving: 'schiet op robots binnen 12 m',
     // Ticket D12: drie niveaus. Niveau 1 = de basiswaarden hierboven; `prijs`
     // is wat het kost om dát niveau te bereiken. Elk niveau maakt de toren
     // op een ander vlak beter (bereik, tempo, schade), zodat een upgrade
@@ -3679,7 +3684,31 @@ const TOREN_TYPES = {
       { prijs: 250, bereik: 16, schadePerSchot: 2, schotInterval: 0.6, hp: 130 },
     ],
   },
+  // Ticket D13: het hek schiet niet, het kóópt tijd. Een rij paaltjes dwars
+  // over de looproute; robots die ertegenaan lopen, blijven staan en slaan
+  // erop tot het sneuvelt. Goedkoper dan een toren, veel meer HP, en het
+  // werkt het best samen met een toren die de opstopping beschiet. Te ijken
+  // in D16.
+  hek: {
+    naam: 'Hek', prijs: 80, hp: 120,
+    omschrijving: 'blokkeert de straat, robots moeten erdoorheen slaan',
+    niveaus: [
+      { prijs: 80, hp: 120 },
+      { prijs: 80, hp: 200 },
+      { prijs: 120, hp: 300 },
+    ],
+  },
 };
+// Ticket D13: hoeveel schade één klap van een robot op een hek doet, per
+// type (elke ROBOT_SLAG_INTERVAL seconden). Een tank slaat het hardst.
+const ROBOT_HEK_SCHADE = { normal: 6, sprinter: 4, tank: 15, bomber: 6, shieldbot: 6 };
+const ROBOT_SLAG_INTERVAL = 0.8;
+// Afstand (robotmidden → hek-lijn) waarop een robot het hek "raakt": zijn
+// botsstraal (0,45) + halve paaldikte (0,3) + een kleine marge.
+const HEK_CONTACT_AFSTAND = 1.0;
+const HEK_PAAL = 0.6;          // paaltje van 0,6 × 0,6 m
+const HEK_PAAL_STAP = 0.9;     // 0,3 m tussenruimte: te smal voor een robot (0,9 m breed)
+const HEK_REIKWIJDTE = 3.5;    // zo ver steekt het hek aan de overkant van de route uit
 // Ticket D12: verkopen levert de helft van alles wat erin zat (bouwen +
 // upgrades; reparaties niet) — genoeg om een verkeerde poortkeuze te
 // herstellen, niet zoveel dat verkopen-en-verplaatsen gratis is.
@@ -3733,7 +3762,7 @@ function updateBouwUI() {
     const duur = (bedrag) => (geld >= bedrag ? '' : ' class="te-duur"');
     const upgradeRegel = prijs === null
       ? '<span class="regel gekocht">1, Maximaal niveau bereikt</span>'
-      : `<span class="regel"${duur(prijs)}>1, Upgrade naar niveau ${t.niveau + 1} €${prijs} — bereik ${volgend.bereik} m, ${volgend.schadePerSchot} schade/${volgend.schotInterval}s, ${volgend.hp} HP</span>`;
+      : `<span class="regel"${duur(prijs)}>1, Upgrade naar niveau ${t.niveau + 1} €${prijs} — ${t.type === 'hek' ? '' : `bereik ${volgend.bereik} m, ${volgend.schadePerSchot} schade/${volgend.schotInterval}s, `}${volgend.hp} HP</span>`;
     const reparatie = reparatieKosten(t);
     const reparatieRegel = reparatie === 0
       ? '<span class="regel gekocht">2, Repareren — toren is heel</span>'
@@ -3743,9 +3772,115 @@ function updateBouwUI() {
   }
   const regels = Object.entries(TOREN_TYPES).map(([, cfg], i) => {
     const klasse = geld >= cfg.prijs ? '' : ' class="te-duur"';
-    return `<span class="regel"${klasse}>${i + 1}, ${cfg.naam} €${cfg.prijs} — bereik ${cfg.bereik} m, ${cfg.hp} HP</span>`;
+    return `<span class="regel"${klasse}>${i + 1}, ${cfg.naam} €${cfg.prijs} — ${cfg.omschrijving}, ${cfg.hp} HP</span>`;
   }).join('');
   bouwUI.innerHTML = `<b>Bouwplek ${bouwMenuPlek.poort}</b>, druk een cijfer om te bouwen, T om te sluiten:<br>${regels}`;
+}
+
+// HP-balkje boven een toren of hek (Ticket D13): alleen zichtbaar zodra er
+// schade is, zodat een heel bouwwerk er rustig uitziet.
+function maakHpBalk(hoogte, breedte = 1.2) {
+  const balk = new THREE.Group();
+  balk.position.y = hoogte;
+  const achter = new THREE.Mesh(new THREE.BoxGeometry(breedte, 0.12, 0.06), new THREE.MeshBasicMaterial({ color: 0x2b1b1b }));
+  const vul = new THREE.Mesh(new THREE.BoxGeometry(breedte, 0.12, 0.08), new THREE.MeshBasicMaterial({ color: 0x6fe38a }));
+  balk.add(achter, vul);
+  balk.userData.vul = vul;
+  balk.visible = false;
+  return balk;
+}
+function updateHpBalk(toren) {
+  const fractie = Math.max(0, toren.hp / toren.hpMax);
+  toren.hpBalk.visible = fractie < 1;
+  toren.hpBalk.userData.vul.scale.x = Math.max(0.001, fractie);
+  toren.hpBalk.userData.vul.material.color.setHex(fractie > 0.5 ? 0x6fe38a : fractie > 0.25 ? 0xffc94d : 0xff5c48);
+  // Balk naar de camera draaien (alleen om de verticale as).
+  toren.hpBalk.rotation.y = Math.atan2(camera.position.x - toren.hpBalk.getWorldPosition(hpBalkTmp).x, camera.position.z - hpBalkTmp.z) - toren.groep.rotation.y;
+}
+const hpBalkTmp = new THREE.Vector3();
+
+// Ticket D13: het hek. Paaltjes op een lijn loodrecht op de looproute, door
+// het routepunt naast de bouwplek: van HEK_REIKWIJDTE aan de overkant tot
+// een meter voorbij de bouwplek zelf. Elk paaltje is een eigen klein
+// obstakel — `obstakels` kent alleen assen-uitgelijnde rechthoeken, en een
+// schuin hek dwars over een diagonale route is dat niet.
+function hekPaalOffsets(plek) {
+  const kant = Math.sign(plek.zijOffset) || 1;
+  const van = -kant * HEK_REIKWIJDTE, tot = plek.zijOffset + kant;
+  const [lo, hi] = van < tot ? [van, tot] : [tot, van];
+  const offsets = [];
+  for (let o = lo; o <= hi + 1e-6; o += HEK_PAAL_STAP) offsets.push(o);
+  return offsets;
+}
+function maakHek(plek) {
+  const r = plek.route;
+  const px = -r.rz, pz = r.rx;   // loodrecht op de looprichting
+  const g = new THREE.Group();
+  const paalMat = mat(0x5b2320, 0.7, 0.2);   // donkerrood ijzer, zoals de paaltjes in de stad
+  const obstakelHandles = [];
+  const offsets = hekPaalOffsets(plek);
+  for (const o of offsets) {
+    const x = r.x + px * o, z = r.z + pz * o;
+    const paal = new THREE.Mesh(new THREE.BoxGeometry(HEK_PAAL, 1.3, HEK_PAAL), paalMat);
+    paal.position.set(x, 0.65, z);
+    paal.castShadow = true;
+    g.add(paal);
+    obstakelHandles.push(registreerRechthoek(x - HEK_PAAL / 2, x + HEK_PAAL / 2, z - HEK_PAAL / 2, z + HEK_PAAL / 2));
+  }
+  // Twee dwarsliggers over de hele lengte (alleen beeld).
+  const lengte = offsets[offsets.length - 1] - offsets[0];
+  const midden = (offsets[0] + offsets[offsets.length - 1]) / 2;
+  for (const y of [0.5, 1.05]) {
+    const ligger = new THREE.Mesh(new THREE.BoxGeometry(lengte, 0.14, 0.14), mat(0x3a2a22, 0.8));
+    ligger.position.set(r.x + px * midden, y, r.z + pz * midden);
+    ligger.rotation.y = Math.atan2(-pz, px);
+    g.add(ligger);
+  }
+  scene.add(g);
+  const hpBalk = maakHpBalk(1.8, 1.4);
+  hpBalk.position.x = r.x + px * midden;
+  hpBalk.position.z = r.z + pz * midden;
+  g.add(hpBalk);
+  const cfg = TOREN_TYPES.hek;
+  return {
+    type: 'hek', plek, groep: g, hpBalk, niveau: 1, geinvesteerd: cfg.prijs,
+    hp: cfg.hp, hpMax: cfg.hp, obstakelHandles,
+    // De hek-lijn als lijnstuk, voor de contactcheck van robots.
+    lijn: { ax: r.x + px * offsets[0], az: r.z + pz * offsets[0], bx: r.x + px * offsets[offsets.length - 1], bz: r.z + pz * offsets[offsets.length - 1] },
+    ringen: [],
+  };
+}
+
+function afstandTotHek(hek, positie) {
+  const { ax, az, bx, bz } = hek.lijn;
+  const dx = bx - ax, dz = bz - az;
+  const t = Math.max(0, Math.min(1, ((positie.x - ax) * dx + (positie.z - az) * dz) / (dx * dx + dz * dz)));
+  return Math.hypot(positie.x - (ax + dx * t), positie.z - (az + dz * t));
+}
+function hekInContact(positie) {
+  for (const toren of torens) {
+    if (toren.type === 'hek' && afstandTotHek(toren, positie) <= HEK_CONTACT_AFSTAND) return toren;
+  }
+  return null;
+}
+
+// Schade aan een toren of hek (Ticket D13; D14 gebruikt dit ook voor
+// torens). Bij 0 HP gaat het bouwwerk kapot en komt de plek weer vrij.
+function beschadigToren(toren, schade) {
+  if (!torens.includes(toren)) return;
+  toren.hp -= schade;
+  if (toren.hp <= 0) vernietigToren(toren);
+}
+function vernietigToren(toren) {
+  const midden = toren.hpBalk.getWorldPosition(new THREE.Vector3());
+  for (let i = 0; i < 8; i++) {
+    const brok = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 0.25), mat(toren.type === 'hek' ? 0x5b2320 : 0x55606b, 0.7));
+    maakBrokstuk(brok, midden.clone().setY(0.8), 5);
+  }
+  speelExplosie();
+  toonFeedbackMelding(`${TOREN_TYPES[toren.type].naam} bij ${toren.plek.poort} is gesneuveld!`);
+  if (bouwMenuPlek === toren.plek) sluitBouwMenu();
+  verwijderToren(toren);
 }
 
 function maakGeschutToren(plek) {
@@ -3764,6 +3899,8 @@ function maakGeschutToren(plek) {
   const oog = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.05), new THREE.MeshBasicMaterial({ color: 0x7fd4ff }));
   oog.position.set(0, 0.12, 0.41);
   kop.add(romp, loop, oog);
+  const hpBalk = maakHpBalk(2.45);
+  g.add(hpBalk);
   // Ticket D12: niveau-ringen om de zuil (niveau 2: één, niveau 3: twee).
   const ringen = [0.85, 1.3].map(y => {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.44, 0.07, 8, 20), mat(0xffd75e, 0.35, 0.6));
@@ -3789,10 +3926,10 @@ function maakGeschutToren(plek) {
   const x = plek.positie.x, z = plek.positie.z;
   const cfg = TOREN_TYPES.geschut;
   return {
-    type: 'geschut', plek, groep: g, kop, spoor, spoorTimer: 0, ringen,
+    type: 'geschut', plek, groep: g, kop, spoor, spoorTimer: 0, ringen, hpBalk,
     niveau: 1, geinvesteerd: cfg.prijs,
     hp: cfg.hp, hpMax: cfg.hp, cooldown: 0, doel: null,
-    obstakel: registreerRechthoek(x - 0.7, x + 0.7, z - 0.7, z + 0.7),
+    obstakelHandles: [registreerRechthoek(x - 0.7, x + 0.7, z - 0.7, z + 0.7)],
   };
 }
 
@@ -3805,7 +3942,7 @@ function bouwToren(plek, type) {
   }
   geld -= cfg.prijs;
   updateGeldUI();
-  const toren = maakGeschutToren(plek);
+  const toren = type === 'hek' ? maakHek(plek) : maakGeschutToren(plek);
   plek.toren = toren;
   torens.push(toren);
   runStats.torensGebouwd += 1;
@@ -3817,8 +3954,8 @@ function bouwToren(plek, type) {
 
 function verwijderToren(toren) {
   scene.remove(toren.groep);
-  scene.remove(toren.spoor);
-  verwijderObstakel(toren.obstakel);
+  if (toren.spoor) scene.remove(toren.spoor);
+  for (const handle of toren.obstakelHandles) verwijderObstakel(handle);
   toren.plek.toren = null;
   const i = torens.indexOf(toren);
   if (i >= 0) torens.splice(i, 1);
@@ -3901,6 +4038,8 @@ function vuurToren(toren, robot) {
 
 function updateTorens(dt) {
   for (const toren of torens) {
+    updateHpBalk(toren);
+    if (toren.type !== 'geschut') continue;   // een hek schiet niet
     const cfg = torenStats(toren);
     toren.cooldown = Math.max(0, toren.cooldown - dt);
     if (toren.spoorTimer > 0) {
@@ -4171,6 +4310,32 @@ function updateRobots(dt) {
       robotRaaktMonument(robot);
       continue;
     }
+
+    // Ticket D13: staat er een hek in de weg? Dan blijven staan en slaan in
+    // plaats van door te lopen — en dus ook géén vastloop-detectie, anders
+    // wijkt de robot na 1,5 s zijwaarts uit en loopt hij om het hek heen.
+    const hek = hekInContact(positie);
+    if (hek) {
+      robot.vastTijd = 0;
+      robot.slagTimer = (robot.slagTimer ?? ROBOT_SLAG_INTERVAL) - dt;
+      if (robot.slagTimer <= 0) {
+        robot.slagTimer = ROBOT_SLAG_INTERVAL;
+        beschadigToren(hek, ROBOT_HEK_SCHADE[robot.type] ?? 6);
+        speelHekKlap();
+      }
+      // Naar het hek kijken en met beide armen slaan.
+      const { ax, az, bx, bz } = hek.lijn;
+      const dx = bx - ax, dz = bz - az;
+      const t = Math.max(0, Math.min(1, ((positie.x - ax) * dx + (positie.z - az) * dz) / (dx * dx + dz * dz)));
+      robot.groep.rotation.y = Math.atan2(ax + dx * t - positie.x, az + dz * t - positie.z);
+      const slag = Math.sin((1 - robot.slagTimer / ROBOT_SLAG_INTERVAL) * Math.PI);
+      robot.armLinks.rotation.x = -1.4 + slag * 1.2;
+      robot.armRechts.rotation.x = -1.4 + slag * 1.2;
+      robot.beenLinks.rotation.x = 0;
+      robot.beenRechts.rotation.x = 0;
+      continue;
+    }
+    robot.slagTimer = ROBOT_SLAG_INTERVAL;
 
     richting.normalize();
     const positieVoorStap = positie.clone();
@@ -4599,6 +4764,7 @@ function piep(type, startHz, eindHz, duur, volume) {
 }
 
 function speelSchot()    { piep('square', 620, 140, 0.12, 0.12); }
+function speelHekKlap()      { piep('square', 160, 90, 0.08, 0.05); }
 function speelBouw()        { piep('triangle', 260, 620, 0.22, 0.14); }
 function speelTorenSchot()   { piep('square', 1100, 380, 0.05, 0.035); }
 function speelPoortSignaal() { piep('triangle', 440, 440, 0.18, 0.12); setTimeout(() => piep('triangle', 660, 660, 0.25, 0.12), 180); }
@@ -4966,7 +5132,9 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   BOUWFASE_DUUR, VROEGE_START_BONUS_PER_SECONDE, inBouwfase, bouwfaseResterend, startVolgendeWaveNu,
   // Ticket D12: torenniveaus, reparatie, verkopen.
   torenStats, upgradePrijs, reparatieKosten, verkoopOpbrengst, upgradeToren, repareerToren, verkoopToren,
-  TOREN_VERKOOP_FRACTIE, TOREN_REPARATIE_PER_HP };
+  TOREN_VERKOOP_FRACTIE, TOREN_REPARATIE_PER_HP,
+  // Ticket D13: het hek.
+  ROBOT_HEK_SCHADE, ROBOT_SLAG_INTERVAL, HEK_CONTACT_AFSTAND, hekInContact, afstandTotHek, hekPaalOffsets, beschadigToren, vernietigToren };
 </script>
 </body>
 </html>
