@@ -329,8 +329,9 @@
   }
   #menuLink:hover { background: rgba(20, 30, 45, 0.85); }
 
-  /* --- Startscherm / pauzescherm --- */
-  #startscherm {
+  /* --- Startscherm / pauzescherm, en het eindscherm (Ticket D7) in
+     dezelfde vormtaal --- */
+  #startscherm, #eindscherm {
     position: fixed;
     inset: 0;
     display: flex;
@@ -344,20 +345,22 @@
     cursor: pointer;
     z-index: 10;
   }
-  #startscherm h1 {
+  #eindscherm { cursor: default; z-index: 30; }
+  #startscherm h1, #eindscherm h1 {
     font-size: 64px;
     margin: 0 0 4px 0;
     letter-spacing: 4px;
     color: #ffd75e;
     text-shadow: 0 4px 12px rgba(0,0,0,0.6);
   }
-  #startscherm h2 {
+  #eindscherm h1 { font-size: 52px; color: #ff8a6b; }
+  #startscherm h2, #eindscherm h2 {
     font-size: 20px;
     font-weight: 400;
     margin: 0 0 28px 0;
     color: #cfe8ff;
   }
-  #startscherm .uitleg {
+  #startscherm .uitleg, #eindscherm .uitleg {
     background: rgba(255,255,255,0.1);
     border-radius: 14px;
     padding: 18px 30px;
@@ -365,7 +368,19 @@
     line-height: 1.9;
     margin-bottom: 30px;
   }
-  #startscherm .knop {
+  #eindscherm .stats {
+    display: grid;
+    grid-template-columns: auto auto;
+    column-gap: 28px;
+    text-align: left;
+  }
+  #eindscherm .stats b { color: #ffd75e; }
+  #eindscherm .kills-per-type { grid-column: 1 / -1; font-size: 14px; color: #cfe8ff; }
+  #eindscherm .hint { font-size: 16px; color: #cfe8ff; margin-top: 18px; }
+  #eindscherm .knop { cursor: pointer; }
+  #eindscherm .record { font-size: 18px; color: #cfe8ff; margin: -16px 0 18px 0; min-height: 1.2em; }
+  #eindscherm .record.nieuw { font-size: 28px; font-weight: 800; color: #ffd75e; letter-spacing: 2px; }
+  #startscherm .knop, #eindscherm .knop {
     font-size: 22px;
     font-weight: 700;
     background: #ffd75e;
@@ -415,6 +430,15 @@
     ⏸️ <b>Esc</b> om te pauzeren
   </div>
   <div class="knop">Klik om te spelen</div>
+</div>
+
+<div id="eindscherm" style="display:none">
+  <h1>HET MONUMENT IS GEVALLEN</h1>
+  <h2 id="eindOndertitel">Wave 1 bereikt</h2>
+  <div class="record" id="eindRecord"></div>
+  <div class="uitleg stats" id="eindStats"></div>
+  <div class="knop" id="opnieuwKnop">Opnieuw spelen</div>
+  <a class="hint" id="eindMenuLink" href="index.html">← Terug naar het menu</a>
 </div>
 
 <!-- Three.js laden vanaf een CDN. Dankzij deze "importmap" kunnen we
@@ -1370,6 +1394,40 @@ function bouwKerkklok(x, z) {
 }
 bouwKerkklok(-67, -38);
 
+// Ticket D20: de schadestaat van het monument. Staat hier (vóór
+// bouwNationaalMonument) i.p.v. bij de rest van de monumentlogica in STAP 4,
+// omdat de bouwfunctie de onderdelen er al tijdens het laden in legt.
+const monumentSchade = {
+  tier: 0,          // 0 heel · 1 ≤66% · 2 ≤33% · 3 ≤10%
+  overgangen: 0,    // aantal tier-wissels deze run (voor tests)
+  delen: null,      // gevuld door bouwNationaalMonument()
+};
+// Deze twee constanten staan hier en niet bij monumentSchadeTier(), omdat
+// bouwNationaalMonument() al tijdens het laden pasMonumentSchadeToe(0)
+// aanroept — een `const` verderop zou dan nog in de TDZ zitten.
+const MONUMENT_SCHADE_DREMPELS = [66, 33, 10];   // HP-procent voor tier 1, 2, 3
+// Scheefstand per tier, in radialen om de voet van de pyloon. Klein
+// gehouden: het monument moet aangeslagen ogen, niet omvallen.
+const MONUMENT_SCHEEFSTAND = [0, 0, 0.03, 0.065];
+
+// Het monument heeft een niet-uniforme schaal (x/z × ARENA_SCHAAL, y ×
+// MONUMENT_HOOGTE_SCHAAL). Een bol erin wordt dus een hoge, smalle ellips.
+// Deze factor op scale.y maakt rook en licht in de wereld weer rond.
+const MONUMENT_ROND_Y = ARENA_SCHAAL / MONUMENT_HOOGTE_SCHAAL;
+
+// De raycaster van het wapen slaat onzichtbare objecten NIET over. Een
+// verborgen onderdeel moet dus ook zijn raycast kwijt, anders houdt een
+// onzichtbaar stuk monument schoten tegen.
+// Puur visuele onderdelen (userData.puurEffect) blijven altijd onraakbaar,
+// ook als ze zichtbaar worden.
+const geenRaycast = () => {};
+function zetMonumentDeelZichtbaar(object, zichtbaar) {
+  object.visible = zichtbaar;
+  object.traverse(m => {
+    if (m.isMesh) m.raycast = zichtbaar && !m.userData.puurEffect ? THREE.Mesh.prototype.raycast : geenRaycast;
+  });
+}
+
 function bouwNationaalMonument() {
   const g = new THREE.Group();
 
@@ -1386,15 +1444,130 @@ function bouwNationaalMonument() {
   // Vierzijdige pyloon (i.p.v. ronde zuil): het echte Nationaal Monument is een
   // vierkante witte pyloon. Een 4-segments cilinder, 45° gedraaid zodat een
   // vlakke zijde naar het plein (west) kijkt, geeft precies dat silhouet.
+  // Ticket D20: zuil + top zitten in een eigen `pyloon`-groep met het
+  // draaipunt op de voet (y=2), zodat de scheefstand bij zware schade om de
+  // voet kantelt i.p.v. om het midden. Wereldposities zijn ongewijzigd:
+  // 2 + 11 = 13 (zuil) en 2 + 23,1 = 25,1 (top).
+  const pyloon = new THREE.Group();
+  pyloon.position.y = 2;
+  g.add(pyloon);
   const zuil = new THREE.Mesh(new THREE.CylinderGeometry(1.35, 2.75, 22, 4), mat(PAL.pyloonWit, 0.68));
   zuil.rotation.y = Math.PI / 4;
-  zuil.position.y = 13;
-  g.add(zuil);
+  zuil.position.y = 11;
+  pyloon.add(zuil);
   const top = new THREE.Mesh(new THREE.ConeGeometry(1.7, 2.3, 4), mat(0xffffff, 0.65));
   top.rotation.y = Math.PI / 4;
-  top.position.y = 25.1;
-  g.add(top);
+  top.position.y = 23.1;
+  pyloon.add(top);
 
+  // --- Ticket D20: schadeonderdelen, bij het laden gebouwd en verborgen;
+  // pasMonumentSchadeToe() zet per tier aan wat erbij hoort.
+  //
+  // Scheuren: korte donkere balkjes in een zigzag op een zijvlak van de
+  // pyloon. De pyloon is een 4-zijdige cilinder die 45° gedraaid is, dus de
+  // zijvlakken kijken precies langs ±x en ±z; de afstand van het midden tot
+  // een vlak (apothema) loopt taps af van 2,75·cos45° onderaan naar
+  // 1,35·cos45° bovenaan.
+  const scheurMat = new THREE.MeshBasicMaterial({ color: 0x3b3833 });
+  function apothema(h) { return Math.SQRT1_2 * (2.75 - (2.75 - 1.35) * (h / 22)); }
+  function maakScheur(pad, draaiing) {
+    const scheur = new THREE.Group();
+    for (let i = 0; i < pad.length - 1; i++) {
+      const [h1, z1] = pad[i], [h2, z2] = pad[i + 1];
+      const lengte = Math.hypot(h2 - h1, z2 - z1);
+      const stuk = new THREE.Mesh(new THREE.BoxGeometry(0.28, lengte, 0.16), scheurMat);
+      stuk.position.set(-(apothema((h1 + h2) / 2) + 0.02), (h1 + h2) / 2, (z1 + z2) / 2);
+      stuk.rotation.x = Math.atan2(z2 - z1, h2 - h1);
+      stuk.userData.geenSchaduw = true;
+      stuk.userData.puurEffect = true;
+      stuk.raycast = geenRaycast;
+      scheur.add(stuk);
+    }
+    // Draaien om de pyloon-as brengt het -x-vlak naar een ander zijvlak.
+    scheur.rotation.y = draaiing;
+    pyloon.add(scheur);
+    return scheur;
+  }
+  const scheurenLicht = new THREE.Group();
+  scheurenLicht.add(
+    maakScheur([[3, 0.3], [5.5, -0.25], [7.5, 0.4], [10, -0.1], [12.5, 0.25]], 0),               // west, naar het plein
+    maakScheur([[2.5, -0.5], [4.5, 0.1], [6.5, -0.35], [8.5, 0.2]], Math.PI / 2),                 // noord/zuid
+  );
+  pyloon.add(scheurenLicht);
+  const scheurenZwaar = new THREE.Group();
+  scheurenZwaar.add(
+    maakScheur([[9, -0.6], [11.5, 0.1], [14, -0.3], [16.5, 0.2], [18.5, -0.1]], 0),
+    maakScheur([[3.5, 0.5], [6, -0.1], [9, 0.45], [12, -0.2]], -Math.PI / 2),
+    maakScheur([[5, 0.2], [8, -0.4], [11, 0.1]], Math.PI),
+  );
+  pyloon.add(scheurenZwaar);
+
+  // Afgebroken top: vervangt de spits vanaf tier 2.
+  const afgebrokenTop = new THREE.Group();
+  const stomp = blok(1.7, 0.9, 1.3, PAL.pyloonWit, 0.7);
+  stomp.position.set(0.1, 22.35, 0);
+  stomp.rotation.set(0.12, Math.PI / 4, 0.28);
+  const splinter = blok(0.6, 0.9, 0.5, PAL.pyloonWit, 0.7);
+  splinter.position.set(-0.45, 22.9, 0.3);
+  splinter.rotation.set(0.3, 0.2, -0.35);
+  afgebrokenTop.add(stomp, splinter);
+  pyloon.add(afgebrokenTop);
+
+  // Puin op de bovenste trede, rond de voet van de pyloon (tree3 ligt op
+  // y 1,45 met halve hoogte 0,375, dus het bovenvlak op ~1,83).
+  function maakPuin(stukken) {
+    const puin = new THREE.Group();
+    for (const [hoek, straal, b, h, d, draai] of stukken) {
+      const brok = blok(b, h, d, PAL.pyloonWit, 0.8);
+      brok.position.set(Math.cos(hoek) * straal, 1.83 + h / 2, Math.sin(hoek) * straal);
+      brok.rotation.set(draai * 0.4, draai, draai * 0.3);
+      puin.add(brok);
+    }
+    g.add(puin);
+    return puin;
+  }
+  const puinLicht = maakPuin([[3.3, 3.6, 0.9, 0.5, 0.7, 0.6], [2.6, 4.2, 0.6, 0.4, 0.5, 1.4], [3.9, 4.8, 0.5, 0.35, 0.6, 2.1]]);
+  const puinZwaar = maakPuin([[0.4, 3.8, 1.3, 0.7, 1.0, 0.9], [1.2, 4.5, 0.8, 0.5, 0.9, 2.5], [5.5, 3.9, 1.1, 0.6, 0.8, 0.3],
+                              [4.6, 5.2, 0.7, 0.45, 0.6, 1.8], [2.1, 5.6, 1.0, 0.55, 0.7, 2.9]]);
+
+  // Rook: losse wolkjes die in updateMonumentEffecten() opstijgen, groeien en
+  // vervagen. Eigen materiaal per wolkje, want de opacity verschilt per stuk.
+  const rook = new THREE.Group();
+  const wolkGeo = new THREE.SphereGeometry(1.6, 10, 8);
+  const wolkjes = [];
+  for (let i = 0; i < 7; i++) {
+    const wolk = new THREE.Mesh(wolkGeo, new THREE.MeshBasicMaterial({ color: 0x6d6a66, transparent: true, opacity: 0, depthWrite: false }));
+    wolk.userData = { fase: i / 7, hoek: i * 2.4, geenSchaduw: true };
+    wolk.raycast = geenRaycast;
+    rook.add(wolk);
+    wolkjes.push(wolk);
+  }
+  g.add(rook);
+
+  // Knipperend rood licht op de afgebroken top (tier 3). Bewust GEEN
+  // PointLight: een extra lichtbron die aan/uit gaat laat Three.js alle
+  // materialen opnieuw compileren (een hapering precies op het spannendste
+  // moment). Een onverlicht rood bolletje met een gloedschil leest vanaf
+  // het plein net zo goed als "alarm".
+  const alarm = new THREE.Group();
+  alarm.position.y = 23.4;
+  // Maten zijn lokaal; in de wereld is dat × ARENA_SCHAAL, dus een kern van
+  // ~0,4 m en een gloed van ~1,1 m straal — groot genoeg om vanaf de
+  // poorten (35-40 m) als rode flits te lezen.
+  const alarmKern = new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 10), new THREE.MeshBasicMaterial({ color: 0xff2a1f }));
+  const alarmGloed = new THREE.Mesh(new THREE.SphereGeometry(3.4, 14, 10),
+    // Gewone transparantie, geen additieve menging: die kleurt tegen de
+    // lichte lucht bijna wit en leest dan niet meer als "rood alarm".
+    new THREE.MeshBasicMaterial({ color: 0xff2a1f, transparent: true, opacity: 0.4, depthWrite: false }));
+  for (const m of [alarmKern, alarmGloed]) {
+    m.scale.y = MONUMENT_ROND_Y;
+    m.userData.geenSchaduw = true;
+    m.raycast = geenRaycast;
+    alarm.add(m);
+  }
+  pyloon.add(alarm);
+
+  const figuren = [];
   // Sculptuurachtige figuren aan de voet, abstract maar herkenbaar.
   for (let i = 0; i < 6; i++) {
     const hoek = (i / 6) * Math.PI * 2 + 0.35;
@@ -1407,6 +1580,7 @@ function bouwNationaalMonument() {
     fig.position.set(Math.cos(hoek) * 4.5, 0, Math.sin(hoek) * 4.5);
     fig.rotation.y = -hoek;
     g.add(fig);
+    figuren.push(fig);
   }
 
   // Paaltjes rond het monument, zonder alles onnodig te blokkeren.
@@ -1461,6 +1635,14 @@ function bouwNationaalMonument() {
   // MONUMENT_HOOGTE_SCHAAL (0,8) opleveren, dus 0,8 / 0,6.
   g.scale.y = MONUMENT_HOOGTE_SCHAAL / GEBOUW_HOOGTE_SCHAAL;
   schaduwAan(g);
+  monumentSchade.delen = {
+    pyloon, top, scheurenLicht, scheurenZwaar, afgebrokenTop, puinLicht, puinZwaar,
+    rook, wolkjes, alarm,
+    // Twee van de zes figuren "sneuvelen" bij tier 2: genoeg om het te zien,
+    // niet zoveel dat de voet leeg oogt.
+    sneuvelendeFiguren: [figuren[1], figuren[4]],
+  };
+  pasMonumentSchadeToe(0);
   // Alleen de trappen en zuil blokkeren. De ring eromheen blijft beloopbaar genoeg.
   // Ticket D4: raw getallen, geen Three.js-object — registreerRechthoek() leest
   // geen wereldmatrix, dus dit moet met de hand ×ARENA_SCHAAL (net als de marge:
@@ -1468,6 +1650,32 @@ function bouwNationaalMonument() {
   registreerRechthoek((42 - 10.5) * ARENA_SCHAAL, (42 + 10.5) * ARENA_SCHAAL, (-4 - 10.5) * ARENA_SCHAAL, (-4 + 10.5) * ARENA_SCHAAL, 0.2 * ARENA_SCHAAL);
 }
 bouwNationaalMonument();
+
+// Ticket D20. Zelfde opzet als comboTier(): een pure tier-functie plus een
+// bewaarde vorige tier (monumentSchade.tier), zodat een overgang precies één
+// keer per grensoverschrijding vuurt — ook als de HP heen en weer over de
+// grens gaat.
+function monumentSchadeTier(hpProcent) {
+  let tier = 0;
+  for (const drempel of MONUMENT_SCHADE_DREMPELS) if (hpProcent <= drempel) tier++;
+  return tier;
+}
+
+// Zet de zichtbare staat volledig uit de tier af, zonder vorige stand te
+// onthouden — daardoor schakelt herstel (reparatie, reset) vanzelf terug.
+function pasMonumentSchadeToe(tier) {
+  const d = monumentSchade.delen;
+  zetMonumentDeelZichtbaar(d.scheurenLicht, tier >= 1);
+  zetMonumentDeelZichtbaar(d.puinLicht, tier >= 1);
+  zetMonumentDeelZichtbaar(d.scheurenZwaar, tier >= 2);
+  zetMonumentDeelZichtbaar(d.puinZwaar, tier >= 2);
+  zetMonumentDeelZichtbaar(d.afgebrokenTop, tier >= 2);
+  zetMonumentDeelZichtbaar(d.top, tier < 2);
+  for (const fig of d.sneuvelendeFiguren) zetMonumentDeelZichtbaar(fig, tier < 2);
+  d.rook.visible = tier >= 2;
+  d.alarm.visible = tier >= 3;
+  d.pyloon.rotation.z = MONUMENT_SCHEEFSTAND[tier];
+}
 
 function bouwBijenkorf() {
   const g = new THREE.Group();
@@ -2379,13 +2587,13 @@ addEventListener('keydown', e => {
   // browser stuurt anders herhaalde keydown-events terwijl de toets down
   // blijft). Alleen buiten pointer lock geen interactie, zodat het
   // start-/pauzescherm niet per ongeluk een aankoop triggert.
-  if (e.code === 'KeyT' && !e.repeat && document.pointerLockElement === renderer.domElement) {
+  if (e.code === 'KeyT' && !e.repeat && document.pointerLockElement === renderer.domElement && !spel.gameOver) {
     activeerHuidigeInteractie();
   }
   // X verzilvert de special-meter (zie STAP 3.5, gebruikSpecial) zodra die
   // vol is. Zelfde veiligheidspatroon als T: !e.repeat tegen toets-herhaling,
   // en alleen binnen pointer lock zodat het start-/pauzescherm niets triggert.
-  if (e.code === 'KeyX' && !e.repeat && document.pointerLockElement === renderer.domElement) {
+  if (e.code === 'KeyX' && !e.repeat && document.pointerLockElement === renderer.domElement && !spel.gameOver) {
     gebruikSpecial();
   }
 });
@@ -2399,13 +2607,17 @@ const hulpUI = document.getElementById('hulpUI');
 const minimapUI = document.getElementById('minimapUI');
 
 startscherm.addEventListener('click', () => {
+  // Ticket D7: na game over mag een klik de run niet stilletjes hervatten.
+  if (spel.gameOver) return;
   initGeluid();   // geluid mag pas starten na een klik (browserregel)
   renderer.domElement.requestPointerLock();
 });
 
 document.addEventListener('pointerlockchange', () => {
   const actief = document.pointerLockElement === renderer.domElement;
-  startscherm.style.display = actief ? 'none' : 'flex';
+  // Ticket D7: bij game over verlaat eindigRun() de pointer lock zelf; dan
+  // hoort hier het eindscherm te staan, niet het pauzescherm.
+  startscherm.style.display = actief || spel.gameOver ? 'none' : 'flex';
   richtkruis.style.display = actief ? 'block' : 'none';
   hulpUI.style.display = actief ? 'block' : 'none';
   minimapUI.style.display = actief ? 'block' : 'none';
@@ -2512,8 +2724,9 @@ function willekeurigePlek(minAfstand = 0) {
 // --- De speler elke frame bewegen -------------------------------
 
 function updateSpeler(dt) {
-  // Alleen bewegen als het spel actief is (pointer lock aan).
-  if (document.pointerLockElement === renderer.domElement) {
+  // Alleen bewegen als het spel actief is (pointer lock aan, en sinds
+  // Ticket D7 ook niet meer na game over).
+  if (document.pointerLockElement === renderer.domElement && !spel.gameOver) {
     // Bepaal de gewenste richting op basis van WASD.
     let stapVooruit = 0, stapZijwaarts = 0;
     if (ingedrukt['KeyW']) stapVooruit += 1;
@@ -2614,6 +2827,22 @@ const spel = {
   specialMeter: 0                 // 0-100, vult per kill, zie vernietigRobot/gebruikSpecial
 };
 
+// Ticket D7: statistieken van de lopende run, voor het eindscherm. Een
+// fabrieksfunctie i.p.v. een los object, zodat een reset (D9) hetzelfde
+// object in-place kan vullen en de debug-export geldig blijft.
+function nieuweRunStats() {
+  return {
+    kills: { normal: 0, sprinter: 0, tank: 0, bomber: 0, shieldbot: 0 },
+    schoten: 0,
+    treffers: 0,        // alleen schoten die effect hadden (een schild-blok telt niet)
+    verdiendGeld: 0,    // alles wat binnenkwam (munten + bonussen), uitgaven niet afgetrokken
+    hoogsteCombo: 0,
+    hoogsteWave: 1,
+    speelduur: 0,       // seconden actief gespeeld; pauze telt niet mee
+  };
+}
+const runStats = nieuweRunStats();
+
 const upgrades = {
   vuurtempo: 0,
   pickup: 0,
@@ -2636,7 +2865,7 @@ function updateArcadeUI() {
   scoreUI.innerHTML = `Score ${spel.score}<br>Combo x${spel.combo}`;
   waveUI.textContent = `Wave ${spel.wave}, nog ${spel.teSpawnen + robots.length} robots`;
   objectiveUI.textContent = spel.gameOver
-    ? 'Game over, het Monument is gevallen. Refresh om opnieuw te spelen.'
+    ? 'Game over, het Monument is gevallen.'
     : `Bescherm het Nationaal Monument, ${Math.max(0, Math.ceil(spel.monumentHP))}%`;
   comboUI.textContent = `COMBO x${spel.combo}`;
   comboUI.style.opacity = spel.combo >= 2 && spel.comboTimer > 0 ? '1' : '0';
@@ -2698,6 +2927,7 @@ function startWave(nummer) {
   spel.tussenWaveTimer = 0;
   spel.waveBonusGegeven = false;
   spel.waveGeenMonumentSchade = true;   // reset hier, niet in het wave-compleet-blok (zie updateWaveSysteem)
+  runStats.hoogsteWave = Math.max(runStats.hoogsteWave, nummer);
   toonWaveBanner(waveBannerTekst(nummer));
   updateArcadeUI();
 }
@@ -2719,7 +2949,7 @@ function updateWaveSysteem(dt) {
     spel.tussenWaveTimer += dt;
     if (!spel.waveBonusGegeven) {
       spel.waveBonusGegeven = true;
-      geld += 40 + spel.wave * 15;
+      verdienGeld(40 + spel.wave * 15);
       updateGeldUI();
       toonPopup(`Wave bonus +€${40 + spel.wave * 15}`);
       if (spel.waveGeenMonumentSchade) {
@@ -2727,7 +2957,7 @@ function updateWaveSysteem(dt) {
         // monument geraakt. Eigen banner i.p.v. de normale "gehaald"-tekst,
         // zodat er nooit twee banners tegelijk verschijnen.
         const perfectBonus = 50 + spel.wave * 10;
-        geld += perfectBonus;
+        verdienGeld(perfectBonus);
         updateGeldUI();
         toonPopup(`PERFECTE WAVE! +€${perfectBonus}`);
         toonWaveBanner(`Wave ${spel.wave} — PERFECT!`);
@@ -2769,10 +2999,151 @@ function robotRaaktMonument(robot) {
   toonPopup(`-${schade}% Monument`);
   if (spel.monumentHP <= 0) {
     spel.monumentHP = 0;
-    spel.gameOver = true;
-    toonWaveBanner('Game over');
+    eindigRun();
   }
+  updateMonumentSchade();
   updateArcadeUI();
+}
+
+// Ticket D20. Aanroepen na elke wijziging van spel.monumentHP (treffer,
+// reparatie, reset). Doet alleen iets bij een tier-wissel.
+const MONUMENT_SCHADE_MELDING = {
+  1: 'Het monument scheurt!',
+  2: 'Het monument brokkelt af!',
+  3: 'Het monument staat op instorten!',
+};
+function updateMonumentSchade() {
+  const tier = monumentSchadeTier((spel.monumentHP / MONUMENT_MAX_HP) * 100);
+  if (tier === monumentSchade.tier) return;
+  const erger = tier > monumentSchade.tier;
+  monumentSchade.tier = tier;
+  monumentSchade.overgangen += 1;
+  pasMonumentSchadeToe(tier);
+  // Alleen verslechtering krijgt een melding; bij herstel zegt de
+  // reparatie zelf al "+25 Monument HP". Na game over geen melding meer.
+  if (erger && !spel.gameOver) {
+    toonFeedbackMelding(MONUMENT_SCHADE_MELDING[tier]);
+    speelMonumentKraak();
+    cameraShake = Math.max(cameraShake, 0.25 + tier * 0.08);
+  }
+}
+
+// Rook laten opstijgen en het alarmlicht laten knipperen. Alleen iets te doen
+// vanaf tier 2; daaronder zijn beide onzichtbaar.
+function updateMonumentEffecten() {
+  const d = monumentSchade.delen;
+  if (monumentSchade.tier < 2) return;
+  const dikte = monumentSchade.tier >= 3 ? 0.6 : 0.32;
+  for (const wolk of d.wolkjes) {
+    const t = (klok * 0.16 + wolk.userData.fase) % 1;
+    const s = 1 + t * 2.2;
+    wolk.position.set(Math.cos(wolk.userData.hoek) * (1.5 + t * 2), 9 + t * 13, Math.sin(wolk.userData.hoek) * (1.5 + t * 2));
+    wolk.scale.set(s, s * MONUMENT_ROND_Y, s);
+    wolk.material.opacity = dikte * Math.sin(Math.PI * t);
+  }
+  if (monumentSchade.tier >= 3) {
+    d.alarm.visible = (klok * 2.5) % 1 < 0.5;
+  }
+}
+
+// Ticket D7. spel.gameOver blijft de bron van waarheid; deze functie zet
+// hem en regelt alles wat daar direct bij hoort. De volgorde telt:
+// gameOver moet al true zijn vóór exitPointerLock(), want de
+// pointerlockchange-handler leest hem om het pauzescherm te onderdrukken.
+function eindigRun() {
+  if (spel.gameOver) return;
+  spel.gameOver = true;
+  schietKnopIngedrukt = false;
+  toonWaveBanner('Game over');
+  toonEindscherm(verwerkHighscore());
+  if (document.pointerLockElement) document.exitPointerLock();
+}
+
+// Ticket D8 — één bewaard record. Gekopieerd en aangepast van het patroon
+// in Amsterdam Undead (geen gedeelde code). localStorage kan ontbreken,
+// geweigerd zijn (privacymodus) of met de hand kapotgemaakt zijn; geen van
+// die gevallen mag het spel breken, dus altijd try/catch en bij twijfel
+// "geen record".
+const HIGHSCORE_KEY = 'defendNationalMonumentHighscore';
+
+function leesHighscore() {
+  try {
+    const raw = localStorage.getItem(HIGHSCORE_KEY);
+    if (!raw) return null;
+    const record = JSON.parse(raw);
+    // typeof [] is ook 'object', dus arrays expliciet weigeren.
+    if (!record || typeof record !== 'object' || Array.isArray(record)) return null;
+    if (typeof record.score !== 'number' || !Number.isFinite(record.score) || record.score < 0) return null;
+    // Alleen de bekende velden teruggeven: extra velden worden genegeerd, en
+    // een ongeldige wave of datum kost het record niet (alleen dat veld).
+    return {
+      score: record.score,
+      wave: Number.isInteger(record.wave) && record.wave > 0 ? record.wave : null,
+      datum: typeof record.datum === 'string' ? record.datum : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function schrijfHighscore(record) {
+  try {
+    localStorage.setItem(HIGHSCORE_KEY, JSON.stringify(record));
+  } catch {
+    // Geweigerd of niet beschikbaar: gewoon niets bewaren, geen crash.
+  }
+}
+
+// Vergelijkt de afgelopen run met het record en bewaart hem als hij beter
+// is. Een score van 0 is nooit een record: "NIEUW RECORD!" na een run
+// zonder één kill voelt als een grap.
+function verwerkHighscore() {
+  const vorig = leesHighscore();
+  if (spel.score > (vorig ? vorig.score : 0)) {
+    const record = { score: spel.score, wave: spel.wave, datum: new Date().toISOString().slice(0, 10) };
+    schrijfHighscore(record);
+    return { nieuw: true, record };
+  }
+  return { nieuw: false, record: vorig };
+}
+
+const eindscherm = document.getElementById('eindscherm');
+const ROBOT_WEERGAVENAMEN = { normal: 'Grunt', sprinter: 'Runner', tank: 'Tank', bomber: 'Bomber', shieldbot: 'Shield Bot' };
+
+function formatteerSpeelduur(seconden) {
+  const totaal = Math.floor(seconden);
+  return `${Math.floor(totaal / 60)}:${String(totaal % 60).padStart(2, '0')}`;
+}
+
+function toonEindscherm(recordUitslag = null) {
+  const s = runStats;
+  const recordEl = document.getElementById('eindRecord');
+  recordEl.classList.toggle('nieuw', !!recordUitslag?.nieuw);
+  if (recordUitslag?.nieuw) {
+    recordEl.textContent = 'NIEUW RECORD!';
+  } else if (recordUitslag?.record) {
+    const r = recordUitslag.record;
+    recordEl.textContent = `Record: ${r.score}${r.wave ? ` (wave ${r.wave})` : ''}`;
+  } else {
+    recordEl.textContent = '';
+  }
+  const totaalKills = Object.values(s.kills).reduce((a, b) => a + b, 0);
+  const trefferPct = s.schoten > 0 ? Math.round((s.treffers / s.schoten) * 100) : 0;
+  const perType = Object.entries(s.kills)
+    .filter(([, n]) => n > 0)
+    .map(([type, n]) => `${ROBOT_WEERGAVENAMEN[type] ?? type} ${n}`)
+    .join(' · ');
+  document.getElementById('eindOndertitel').textContent = `Wave ${spel.wave} bereikt`;
+  document.getElementById('eindStats').innerHTML = `
+    <span>Score</span><b>${spel.score}</b>
+    <span>Robots vernietigd</span><b>${totaalKills}</b>
+    <span>Trefferpercentage</span><b>${trefferPct}%</b>
+    <span>Geld verdiend</span><b>€${s.verdiendGeld}</b>
+    <span>Hoogste combo</span><b>x${s.hoogsteCombo}</b>
+    <span>Speelduur</span><b>${formatteerSpeelduur(s.speelduur)}</b>
+    <span class="kills-per-type">${perType || 'Geen robots vernietigd'}</span>
+  `;
+  eindscherm.style.display = 'flex';
 }
 
 function upgradeKosten(type) {
@@ -2940,6 +3311,7 @@ function koopMonumentReparatie() {
   }
   geld -= kosten;
   spel.monumentHP = Math.min(MONUMENT_MAX_HP, spel.monumentHP + 25);
+  updateMonumentSchade();
   updateGeldUI();
   updateArcadeUI();
   toonFeedbackMelding('+25 Monument HP');
@@ -3406,6 +3778,7 @@ function huidigeSchotCooldown() {
   return Math.max(0.07, (0.26 - upgrades.vuurtempo * 0.035) * getComboVuurtempoMultiplier());
 }
 function probeerTeSchieten() {
+  if (spel.gameOver) return;   // Ticket D7: na game over doet een schot niets
   if (klok - laatsteSchotTijd < huidigeSchotCooldown()) return;
   laatsteSchotTijd = klok;
   schiet();
@@ -3419,6 +3792,7 @@ function schiet() {
   vlam.scale.setScalar(0.8 + Math.random() * 0.6);
   vlamTimer = 0.05;
   speelSchot();
+  runStats.schoten += 1;
 
   // Straal vanuit het midden van het scherm (waar het richtkruis staat).
   raycaster.setFromCamera({ x: 0, y: 0 }, camera);
@@ -3447,6 +3821,7 @@ function schiet() {
     }
     toonHitmarker();
     cameraShake = Math.max(cameraShake, 0.12);
+    runStats.treffers += 1;
     raakRobot(robot);
   } else {
     // Muur of grond geraakt: klein grijs vonkje op de inslagplek.
@@ -3488,6 +3863,8 @@ function vernietigRobot(robot) {
   const tierVoor = comboTier(spel.combo);
   spel.combo += 1;
   const tierNa = comboTier(spel.combo);
+  if (robot.type in runStats.kills) runStats.kills[robot.type] += 1;
+  runStats.hoogsteCombo = Math.max(runStats.hoogsteCombo, spel.combo);
   legMuntNeer(robot.groep.position, robot.beloningMultiplier * getRewardMultiplier() * getComboGeldMultiplier());
   // Alleen tonen bij het OVERSCHRIJDEN van een drempel, niet bij elke kill
   // die al in een hoge tier zit — anders spamt dit bij een lange streak.
@@ -3510,6 +3887,14 @@ function vernietigRobot(robot) {
 
 let geld = 0;
 const munten = [];   // { groep, bedrag, basisY }
+
+// Ticket D7: de enige plek waar geld binnenkomt, zodat runStats.verdiendGeld
+// nooit een inkomstenbron mist. Uitgaven (upgrades, reparatie) gaan nog
+// rechtstreeks via `geld -=`.
+function verdienGeld(bedrag) {
+  geld += bedrag;
+  runStats.verdiendGeld += bedrag;
+}
 const geldUI = document.getElementById('geldUI');
 const popups = document.getElementById('popups');
 
@@ -3561,7 +3946,7 @@ function updateMunten(dt) {
     const dz = munt.groep.position.z - speler.positie.z;
     const pickupStraal = 1.4 + upgrades.pickup * 0.45;
     if (dx * dx + dz * dz < pickupStraal * pickupStraal) {
-      geld += munt.bedrag;
+      verdienGeld(munt.bedrag);
       updateGeldUI();
       toonPopup(`+€${munt.bedrag}`);
       speelMunt();
@@ -3610,6 +3995,7 @@ function piep(type, startHz, eindHz, duur, volume) {
 }
 
 function speelSchot()    { piep('square', 620, 140, 0.12, 0.12); }
+function speelMonumentKraak() { piep('sawtooth', 110, 38, 0.55, 0.2); setTimeout(() => piep('square', 70, 30, 0.35, 0.12), 120); }
 function speelTramBel()  { piep('sine', 980, 980, 0.08, 0.045); setTimeout(() => piep('sine', 1320, 1320, 0.08, 0.035), 90); }
 function speelMunt()     { piep('sine', 880, 880, 0.08, 0.15); setTimeout(() => piep('sine', 1320, 1320, 0.15, 0.15), 80); }
 function speelExplosie() {
@@ -3759,6 +4145,83 @@ function verbergRichtingspijlen() {
 let klok = 0;                       // totale speeltijd in seconden
 let vorigeTijd = performance.now();
 
+// Ticket D9: momentopname van de beginstaat, genomen vóórdat er ook maar
+// iets gespeeld is. resetRun() zet deze terug i.p.v. een handgeschreven lijst
+// beginwaarden — een veld dat later aan `spel` wordt toegevoegd, krijgt zo
+// vanzelf zijn beginwaarde terug en kan niet stil gaan lekken.
+const BEGINSTAAT = {
+  spel: JSON.parse(JSON.stringify(spel)),
+  upgrades: { ...upgrades },
+  kerkklokBoost: { ...kerkklokBoost },
+  speler: { positie: speler.positie.clone(), yaw: speler.yaw, pitch: speler.pitch, snelheid: speler.snelheid, bobTijd: speler.bobTijd },
+};
+
+function resetRun() {
+  // Drie arrays met scene-objecten: leeghalen ÉN uit de scene halen.
+  for (const r of robots) scene.remove(r.groep);
+  robots.length = 0;
+  for (const m of munten) scene.remove(m.groep);
+  munten.length = 0;
+  for (const b of brokstukken) scene.remove(b.mesh);
+  brokstukken.length = 0;
+
+  Object.assign(spel, JSON.parse(JSON.stringify(BEGINSTAAT.spel)));
+  Object.assign(upgrades, BEGINSTAAT.upgrades);
+  Object.assign(kerkklokBoost, BEGINSTAAT.kerkklokBoost);
+  Object.assign(runStats, nieuweRunStats());
+
+  // speler.snelheid wordt door de snelheid-upgrade permanent opgehoogd
+  // (koopUpgrade) en nergens anders gereset — precies het lek dat je mist
+  // als je alleen `upgrades` terugzet.
+  speler.positie.copy(BEGINSTAAT.speler.positie);
+  speler.yaw = BEGINSTAAT.speler.yaw;
+  speler.pitch = BEGINSTAAT.speler.pitch;
+  speler.snelheid = BEGINSTAAT.speler.snelheid;
+  speler.bobTijd = BEGINSTAAT.speler.bobTijd;
+
+  geld = 0;
+  laatsteSchotTijd = -999;
+  terugslag = 0;
+  vlamTimer = 0;
+  hitmarkerTimer = 0;
+  cameraShake = 0;
+  schietKnopIngedrukt = false;
+  huidigeInteractie = null;
+  bijenkorfShopOpen = false;
+
+  // Zichtbare restanten van de vorige run.
+  shopUI.style.display = 'none';
+  wapen.position.z = -0.55;
+  wapen.rotation.x = 0;
+  vlam.visible = false;
+  vlamLicht.visible = false;
+  kerkklokBannerUI.style.opacity = '0';
+  hitmarkerUI.style.opacity = '0';
+  verbergInteractiePrompt();
+  verbergRichtingspijlen();
+  eindscherm.style.display = 'none';
+
+  // Monument weer heel (Ticket D20). Rechtstreeks i.p.v. via
+  // updateMonumentSchade(): een reset is geen "herstel"-overgang binnen een
+  // run, en de overgangenteller hoort ook terug op 0.
+  monumentSchade.tier = 0;
+  monumentSchade.overgangen = 0;
+  pasMonumentSchadeToe(0);
+
+  updateGeldUI();
+  startWave(1);
+}
+
+// Opnieuw-knop: resetten en meteen weer spelen. Het startscherm gaat eerst
+// aan als vangnet: lukt de pointer lock niet (de browser mag weigeren), dan
+// staat de speler niet voor een leeg scherm maar voor "klik om te spelen".
+document.getElementById('opnieuwKnop').addEventListener('click', () => {
+  resetRun();
+  startscherm.querySelector('h2').textContent = 'Verdedig de Dam — Amsterdam';
+  startscherm.style.display = 'flex';
+  renderer.domElement.requestPointerLock();
+});
+
 // Zet bij de start de eerste wave en duiven neer.
 startWave(1);
 for (let i = 0; i < 18; i++) plaatsDuif();
@@ -3777,8 +4240,10 @@ function gameLoop(nu) {
   // Alles wat de wereld laat "leven" staat stil zolang het spel gepauzeerd is
   // (pointer lock inactief, bijvoorbeeld na Esc). Voorheen liepen robots,
   // munten en de tram gewoon door tijdens de pauze.
-  const spelActief = document.pointerLockElement === renderer.domElement;
+  // Ticket D7: ook na game over valt álles stil, niet alleen robots en waves.
+  const spelActief = document.pointerLockElement === renderer.domElement && !spel.gameOver;
   if (spelActief) {
+    runStats.speelduur += dt;
     if (schietKnopIngedrukt) probeerTeSchieten();
     updateWaveSysteem(dt);
     updateRobots(dt);
@@ -3788,6 +4253,7 @@ function gameLoop(nu) {
     if (typeof updateBewegendeTrams === 'function') updateBewegendeTrams(dt);
     updateInteracties(dt);
     updateKerkklokBoost(dt);
+    updateMonumentEffecten();
     // updateSpeler() hierboven zet alleen camera.position/rotation; de
     // gecachte matrixWorldInverse waar .project(camera) op leunt wordt pas
     // ververst bij renderer.render() verderop in dit frame. Zonder deze
@@ -3839,7 +4305,17 @@ requestAnimationFrame(gameLoop);
 window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => bijenkorfShopOpen, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, activeerKerkklokBoost, updateKerkklokBoost,
   GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerBijenkorfUpgradeShop, updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
   // Speeltest-feedback (na D6): overzicht-hulpmiddelen.
-  tekenMinimap, updateRichtingspijlen, verbergRichtingspijlen, projecteerOpScherm, robotPijlenPool, ARENA_SCHAAL };
+  tekenMinimap, updateRichtingspijlen, verbergRichtingspijlen, projecteerOpScherm, robotPijlenPool, ARENA_SCHAAL,
+  // Ticket D7: eindscherm en runstatistieken.
+  runStats, eindigRun, toonEindscherm, verdienGeld,
+  // Ticket D8: highscore.
+  HIGHSCORE_KEY, leesHighscore, schrijfHighscore, verwerkHighscore,
+  // Ticket D9: opnieuw spelen. runStateStand bundelt de losse `let`-
+  // variabelen die een reset raakt, als getter (zie het geldStand-patroon).
+  resetRun, BEGINSTAAT,
+  // Ticket D20: zichtbare monumentschade.
+  monumentSchade, monumentSchadeTier, updateMonumentSchade, pasMonumentSchadeToe, MONUMENT_SCHADE_DREMPELS,
+  runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, bijenkorfShopOpen }) };
 </script>
 </body>
 </html>

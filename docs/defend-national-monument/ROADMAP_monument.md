@@ -28,11 +28,12 @@ staat in `SONNET_EXECUTION_PLAN_monument.md` §2.
 Undead. Dit is de reden dat het plan bij testinfrastructuur begint en niet bij
 de herschaling.
 
-**Stand na D6 (bijgewerkt):** fase 0 en 1 zijn af, de game staat op 3.844
-regels met twee testscripts (`test-dnm-laadt.mjs`, `test-dnm-kern.mjs`) plus
-één meetscript. Na D6 volgde een review van het resterende plan; de
-bijsturing daaruit staat in `SONNET_EXECUTION_PLAN_monument.md` §10 en is
-hieronder al in de volgorde verwerkt.
+**Stand na fase 2 (bijgewerkt):** fase 0, 1 en 2 zijn af. De run heeft nu
+een eindscherm, een highscore, een Opnieuw-knop en een monument dat zichtbaar
+afbrokkelt. Zes testscripts (`test-dnm-*.mjs`, 178 checks) plus één
+meetscript. Na D6 volgde een review van het resterende plan; de bijsturing
+daaruit staat in `SONNET_EXECUTION_PLAN_monument.md` §10 en is hieronder al
+in de volgorde verwerkt.
 
 ---
 
@@ -70,10 +71,10 @@ alsnog.
 
 | | Ticket | Kern |
 | --- | --- | --- |
-| ☐ | **D7** | Eindscherm met statistieken |
-| ☐ | **D8** | Highscore |
-| ☐ | **D9** | Opnieuw spelen zonder verversen |
-| ☐ | **D20** | Zichtbare schadestaten *(naar voren gehaald uit fase 5)* |
+| ☑ | **D7** | Eindscherm met statistieken |
+| ☑ | **D8** | Highscore |
+| ☑ | **D9** | Opnieuw spelen zonder verversen |
+| ☑ | **D20** | Zichtbare schadestaten *(naar voren gehaald uit fase 5)* |
 
 ### Fase 3 — De tower defense-kern
 
@@ -530,6 +531,122 @@ vlak voor de speler → op scherm, robot ver achter de speler → buiten
 scherm, bevestigd via een echt gameLoop-frame i.p.v. handmatige state),
 en de volledige regressiesuite (`node run-all.mjs`, beide games) na alle
 deelstappen samen.
+
+---
+
+### D7 — Eindscherm met statistieken
+
+Game over opent nu een eigen `#eindscherm` in de vormtaal van het
+startscherm: bereikte wave, score, robots vernietigd (plus per type met
+weergavenaam), trefferpercentage, verdiend geld, hoogste combo en
+speelduur. `spel.gameOver` blijft de bron van waarheid; de nieuwe
+`eindigRun()` zet hem en regelt de rest.
+
+**Na game over valt álles stil.** `spelActief` in de game-loop is nu
+`pointer lock && !spel.gameOver` (was: alleen pointer lock — munten werden na
+game over nog opgeraapt en de speelduur liep door). Daarnaast los afgedekt:
+`probeerTeSchieten()`, de T- en X-toets, lopen in `updateSpeler()`, en de
+startscherm-klik (die anders stil de lock heraanvroeg en de dode run
+hervatte). De pointerlockchange-handler toont na game over het eindscherm,
+niet het pauzescherm — daarvoor zet `eindigRun()` `gameOver` bewust vóór
+`exitPointerLock()`.
+
+**Afwijking van de tickettekst:** het plan noemde `legMuntNeer()` als plek om
+verdiend geld te tellen, maar daar wordt een munt alleen neergelegd — geld
+komt pas binnen bij het oprapen, en ook via de wave- en perfect-bonus. Alle
+drie de inkomstenbronnen lopen nu via één `verdienGeld(bedrag)`, zodat
+`runStats.verdiendGeld` er geen kan missen. Speelduur telt alleen actieve
+frames (pauze niet), treffers alleen schoten met effect (een schild-blok
+telt niet).
+
+**Verificatie:** `test-dnm-eindscherm.mjs` (26 checks) — met pointer lock
+bewust nog gesimuleerd AAN na game over, zodat de gate zelf bewezen wordt en
+niet het toevallig wegvallen van de lock. Mutatiecheck: met de
+`!spel.gameOver` uit de game-loop gehaald faalt de test op precies de twee
+verwachte punten (munt opgeraapt, speelduur loopt door).
+
+### D8 — Highscore
+
+Sleutel `defendNationalMonumentHighscore`, waarde `{ score, wave, datum }`.
+Gekopieerd en aangepast van het Undead-patroon, met strengere vormvalidatie:
+arrays (`typeof [] === 'object'`) en negatieve scores worden geweigerd, en
+`leesHighscore()` geeft alleen de drie bekende velden terug — extra velden
+worden genegeerd, een ongeldige wave of datum kost alleen dat veld, niet het
+record. Op het eindscherm: "NIEUW RECORD!" of "Record: N (wave W)". Een
+score van 0 is nooit een record.
+
+**Verificatie:** `test-dnm-highscore.mjs` (25 checks): roundtrip, tien
+corrupte vormen (o.a. niet-JSON, array, `null`, score als string, negatief,
+`NaN` letterlijk én via `JSON.stringify`), een record dat een herlaadbeurt
+overleeft, en een volledig geweigerde localStorage (getItem en setItem
+gooien) waarbij game over gewoon werkt.
+
+### D9 — Opnieuw spelen zonder verversen
+
+Een "Opnieuw spelen"-knop op het eindscherm (plus een link terug naar het
+menu). `resetRun()` zet **niet een handgeschreven lijst beginwaarden** terug,
+maar een momentopname (`BEGINSTAAT`) van `spel`, `upgrades`,
+`kerkklokBoost` en de speler, genomen bij het laden vóór `startWave(1)` —
+een veld dat later aan `spel` wordt toegevoegd krijgt zo automatisch zijn
+beginwaarde terug. Daarnaast: robots/munten/brokstukken leeg én uit de
+scene, alle losse `let`-state (`geld`, `laatsteSchotTijd`, `terugslag`,
+`vlamTimer`, `hitmarkerTimer`, `cameraShake`, `schietKnopIngedrukt`,
+`huidigeInteractie`, `bijenkorfShopOpen`), en de zichtbare restanten (open
+winkel, wapenterugslag, mondingsvuur, boost-banner).
+
+De knop zet eerst het startscherm aan als vangnet en vraagt dan de pointer
+lock: weigert de browser, dan staat de speler voor "klik om te spelen" en
+niet voor een leeg scherm.
+
+**Verificatie:** `test-dnm-reset.mjs` (12 checks): momentopname bij het
+laden, een volledige run (60 frames spel, vijf snelheid-upgrades, boost,
+kills, munten, schoten, monument kapot, game over), reset, en dan een
+diepe vergelijking van élke geëxporteerde teller — inclusief het aantal
+scene-kinderen, als vangnet voor objecten die wel uit de array maar niet uit
+de scene gaan. Daarna echt weer spelen (robots spawnen, schieten telt). De
+mutatiecheck (de `speler.snelheid`-reset weggehaald) wordt gevangen met een
+leesbare melding: `speler.snelheid: 7 → 10.25`.
+
+### D20 — Zichtbare schadestaten (naar voren gehaald)
+
+Drie drempels (66 / 33 / 10 % HP), opgebouwd uit onderdelen die bij het
+laden al gebouwd en verborgen worden:
+
+| Tier | HP | Wat je ziet |
+|---|---|---|
+| 1 | ≤ 66 % | scheuren op twee zijvlakken van de pyloon, wat puin op de trede |
+| 2 | ≤ 33 % | spits afgebroken (stomp + splinter), twee van de zes figuren weg, zwaardere scheuren, meer puin, rook, lichte scheefstand |
+| 3 | ≤ 10 % | dikkere rook, meer scheefstand, knipperend rood alarmlicht op de top |
+
+Zelfde patroon als `comboTier()`: een pure `monumentSchadeTier()` plus een
+bewaarde vorige tier, zodat een overgang precies één keer per
+grensoverschrijding vuurt. `pasMonumentSchadeToe(tier)` leidt de hele
+zichtbare staat uit de tier af, dus herstel (Koninklijke Reparatie, reset)
+schakelt vanzelf terug. Alleen verslechtering krijgt een melding, geluid en
+camerashake.
+
+Drie dingen die onderweg opvielen:
+- **Zuil en spits zitten nu in een eigen `pyloon`-groep** met het draaipunt
+  op de voet, zodat de scheefstand om de voet kantelt. Wereldposities zijn
+  exact gelijk gebleven.
+- **De raycaster van het wapen slaat onzichtbare objecten niet over.** Een
+  verborgen stomp of rookwolk zou schoten tegenhouden. Verborgen onderdelen
+  verliezen daarom hun raycast, en puur visuele delen (scheuren, rook,
+  alarm) zijn nooit raakbaar. De test ving hier een echte bug: de scheuren
+  kregen bij het zichtbaar worden hun raycast terug.
+- **Geen `PointLight` voor het alarm**: een lichtbron die aan/uit gaat laat
+  Three.js alle materialen hercompileren, precies op het spannendste moment.
+  Een onverlicht rood bolletje met een gloedschil leest net zo goed. De
+  gloed gebruikt gewone transparantie, want additieve menging kleurde tegen
+  de lichte lucht bijna wit.
+
+**Verificatie:** `test-dnm-monument-schade.mjs` (25 checks): de tier-functie
+op en rond elke grens, de zichtbare staat per tier, overgangen bij heen-en-
+weer over 66 % (zes grensoverschrijdingen = zes overgangen, meldingen alleen
+bij verslechtering), de echte bronnen (robottreffer en Koninklijke
+Reparatie), raakbaarheid van verborgen en effectonderdelen, en dat rook en
+alarm echt animeren. `test-dnm-reset.mjs` controleert ook de monumentstaat.
+Schermafbeeldingen van alle vier de tiers vanaf het plein gecontroleerd.
 
 ---
 

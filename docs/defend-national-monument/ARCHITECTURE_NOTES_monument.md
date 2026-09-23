@@ -5,15 +5,17 @@ Tegenhanger van `docs/amsterdam-undead/ARCHITECTURE_NOTES_undead.md`; de twee
 games delen géén code, dus de twee documenten delen geen inhoud.
 
 **Status:** dit document beschrijft de game zoals die er vandaag uit ziet, ná
-D0–D6 én de eerste speeltest-feedbackronde daarna (robots 15% kleiner,
-minder decor rond het strijdtoneel, minimap + richtingspijlen). Fase 1 (de
-herschaling) is hiermee volledig afgerond en gemeten, niet alleen berekend.
+D0–D6, de eerste speeltest-feedbackronde daarna (robots 15% kleiner,
+minder decor rond het strijdtoneel, minimap + richtingspijlen) en fase 2
+(D7 eindscherm, D8 highscore, D9 opnieuw spelen, D20 monumentschade). Fase 1
+(de herschaling) is volledig afgerond en gemeten, niet alleen berekend.
 Alles hieronder is uit de code gelezen en narekenbaar.
 **Regelnummers zijn sinds D4/D5/D6 op sommige plekken bewust niet meer
 exact** (het bestand groeide met de toelichtingen) — behandel ze als een
 globale vingerwijzing, niet als een contract; de secties die D4/D5/D6/de
-speeltest-feedbackronde rechtstreeks raakten (§2, §3.1, §3.5, §4.2, §4.3,
-§5, §6.1, §6.2, §6.3, §7.7, §8, §9.4, §10, §12) zijn wel bijgewerkt.
+speeltest-feedbackronde/fase 2 rechtstreeks raakten (§1.1, §2, §3.1, §3.5,
+§4.2, §4.3, §5, §6.1, §6.2, §6.3, §7.7, §8, §9.3–§9.6, §10, §12, §13) zijn
+wel bijgewerkt.
 
 **Leeswijzer voor wie een ticket uitvoert:** §10 (valkuilen) en §11 (dode code)
 zijn de twee secties die je fout kunt ingaan zonder het te merken. Lees die
@@ -74,8 +76,10 @@ Zestien vaste elementen, allemaal `position: fixed` bovenop het canvas:
 `comboUI` · `hitmarker` · `waveBanner` · `shopUI` · `interactiePrompt` ·
 `kerkklokBanner` · `richtkruis` · `popups` · `hulpUI` · `startscherm`
 
-**Er is geen eindscherm-element.** Game over wordt getoond door de tekst van
-`objectiveUI` te vervangen (regel 2476). Dat is precies wat D7 verandert.
+Sindsdien bijgekomen: `minimapUI` en `robotPijlenUI` (speeltest-feedback na
+D6, §9.4) en **`eindscherm`** (D7, §9.5) — dezelfde CSS-taal als het
+startscherm, maar met een hogere `z-index` (30) zodat het ook boven
+`menuLink` ligt. Het eindscherm heeft een eigen menulink.
 
 ---
 
@@ -743,8 +747,8 @@ registry, geen ruislaag, geen positioneel geluid.
 const dt = Math.min((nu - vorigeTijd) / 1000, 0.05);   // plafond 50 ms
 klok += dt;
 updateSpeler(dt);                                       // ALTIJD
-const spelActief = document.pointerLockElement === renderer.domElement;
-if (spelActief) { … acht update-functies … } else { verbergInteractiePrompt(); }
+const spelActief = document.pointerLockElement === renderer.domElement && !spel.gameOver;   // sinds D7
+if (spelActief) { runStats.speelduur += dt; … update-functies … } else { verbergInteractiePrompt(); … }
 ```
 
 Let op de volgorde: **`updateSpeler` draait ook tijdens de pauze.** Dat is
@@ -752,10 +756,12 @@ nodig omdat `losBotsingenOp` en de camerapositie anders bevriezen op een
 tussenstand, maar het betekent wel dat de speler-collision tijdens de pauze
 blijft draaien.
 
-> **`spelActief` checkt `spel.gameOver` NIET.** Na game over blijft de loop
-> gewoon draaien: je kunt schieten, munten oprapen en rondlopen.
-> `updateWaveSysteem` en `updateRobots` stoppen zelf (beide `if (spel.gameOver)
-> return`), maar de rest niet. D7 en D9 moeten dit expliciet afmaken.
+> **Sinds D7 checkt `spelActief` ook `spel.gameOver`.** Daarvoor draaide na
+> game over alles door behalve `updateWaveSysteem` en `updateRobots` (die
+> stoppen zelf al): je kon munten oprapen en de speelduur liep door. Omdat
+> niet alles via de game-loop loopt, zijn ook `probeerTeSchieten()` (die de
+> mousedown-handler rechtstreeks aanroept), de T- en X-toets, lopen in
+> `updateSpeler()` en de startscherm-klik apart op `gameOver` afgedekt.
 
 ### 9.4 Minimap en richtingspijlen (speeltest-feedback na D6, STAP 7.5)
 
@@ -788,6 +794,56 @@ eigenaar koos via `AskUserQuestion` expliciet **beide** opties, niet één:
 > test die de projectie leek om te draaien). De game-loop roept die update nu
 > expliciet aan vlak vóór beide functies; zie §10, punt 12.
 
+### 9.5 Eindscherm, highscore en opnieuw spelen (D7, D8, D9)
+
+- **`eindigRun()`** is de enige ingang naar game over (aangeroepen vanuit
+  `robotRaaktMonument()` bij 0 HP). Volgorde telt: eerst `spel.gameOver =
+  true`, dan pas `exitPointerLock()` — de pointerlockchange-handler leest
+  `gameOver` om het pauzescherm te onderdrukken.
+- **`runStats`** (gemaakt door `nieuweRunStats()`): kills per type,
+  schoten, treffers (alleen met effect, een schild-blok telt niet),
+  verdiend geld, hoogste combo, hoogste wave, speelduur (alleen actieve
+  frames). **Alle inkomsten lopen via `verdienGeld(bedrag)`**; wie een
+  nieuwe geldbron toevoegt en rechtstreeks `geld +=` schrijft, laat
+  `verdiendGeld` stil achterlopen. Uitgaven gaan wel nog via `geld -=`.
+- **Highscore** (`HIGHSCORE_KEY = 'defendNationalMonumentHighscore'`):
+  `leesHighscore()` valideert de vorm en geeft alleen `{ score, wave, datum }`
+  terug; `schrijfHighscore()` slikt een geweigerde localStorage in;
+  `verwerkHighscore()` vergelijkt en bewaart (score 0 is nooit een record).
+- **`resetRun()`** zet een momentopname terug (`BEGINSTAAT`, genomen bij het
+  laden vóór `startWave(1)`) van `spel`, `upgrades`, `kerkklokBoost` en de
+  speler. Nieuwe velden in die vier objecten worden dus vanzelf mee-
+  gereset. **Dat geldt NIET voor losse `let`-variabelen op moduleniveau** —
+  die staan met de hand in `resetRun()` én in de getter `runStateStand()`,
+  zodat `test-dnm-reset.mjs` ze kan vergelijken. Zie §10, punt 14.
+
+### 9.6 Zichtbare monumentschade (D20)
+
+`monumentSchade = { tier, overgangen, delen }` staat vóór
+`bouwNationaalMonument()`, omdat die functie tijdens het laden al
+`pasMonumentSchadeToe(0)` aanroept. Om dezelfde reden staan
+`MONUMENT_SCHADE_DREMPELS` en `MONUMENT_SCHEEFSTAND` daar (TDZ — zelfde
+valkuil als de schaduwcamera in D4).
+
+- **`monumentSchadeTier(hpProcent)`**: puur, drempels 66/33/10 → tier 1/2/3.
+- **`updateMonumentSchade()`**: aanroepen na elke wijziging van
+  `spel.monumentHP` (nu: `robotRaaktMonument`, `koopMonumentReparatie`). Doet
+  alleen iets bij een tier-wissel; alleen verslechtering krijgt melding,
+  geluid en camerashake. `resetRun()` zet de staat rechtstreeks terug
+  (inclusief `overgangen = 0`).
+- **`pasMonumentSchadeToe(tier)`** leidt de complete zichtbare staat uit de
+  tier af, zonder vorige stand te onthouden — daardoor schakelt herstel
+  vanzelf terug.
+- **`updateMonumentEffecten()`** (game-loop, alleen actief spel): rook laten
+  opstijgen, alarm laten knipperen. Doet niets onder tier 2.
+
+Zuil en spits zitten sinds D20 in een eigen `pyloon`-groep (draaipunt op de
+voet, y = 2) voor de scheefstand; wereldposities zijn ongewijzigd. Rook en
+alarm krijgen `scale.y × MONUMENT_ROND_Y` (= `ARENA_SCHAAL /
+MONUMENT_HOOGTE_SCHAAL`) om de niet-uniforme monumentschaal op te heffen —
+anders worden bollen hoge, smalle ellipsen. Het alarm is bewust géén
+`PointLight` (aan/uit schakelen dwingt shader-hercompilatie af).
+
 ---
 
 ## 10. Valkuilen
@@ -804,18 +860,27 @@ eigenaar koos via `AskUserQuestion` expliciet **beide** opties, niet één:
    een normale robot. Zie §6.4.
 6. **`registreerRechthoek` schaalt niet mee, `registreerObstakel` wel.** Negen
    aanroepen van elk. Zie §4.2.
-7. **`spelActief` checkt `gameOver` niet.** Zie §9.3.
-8. **`speler.snelheid` wordt permanent opgehoogd** door de upgrade en nergens
-   gereset. Zie §7.4.
+7. ~~**`spelActief` checkt `gameOver` niet.**~~ Opgelost in D7. Zie §9.3.
+8. **`speler.snelheid` wordt permanent opgehoogd** door de upgrade. Binnen een
+   run blijft dat zo; sinds D9 zet `resetRun()` hem terug. Zie §7.4 en §9.5.
 9. **De gameplay-RNG heeft geen seed.** Alleen het decor is deterministisch.
    Zie §3.6.
 10. **De resize-handler zet `setPixelRatio` niet opnieuw.** Zie §2.
-11. **Er is geen enkele test.** Zie §13.
+11. ~~**Er is geen enkele test.**~~ Sinds D1 wel; zie §13.
 12. **`Vector3.project(camera)` leunt op een gecachte matrix die niet
     vanzelf meebeweegt met `camera.position`/`camera.rotation`.** Wie ergens
     anders in de code (of in een test) de camera handmatig verzet en direct
     daarna projecteert, moet zelf `camera.updateMatrixWorld()` aanroepen —
     anders projecteer je tegen het vorige frame. Zie §9.4.
+13. **De raycaster van het wapen slaat onzichtbare objecten niet over.**
+    `raycaster.intersectObjects(…, true)` kijkt niet naar `visible`. Een
+    verborgen mesh in `wereld` houdt dus gewoon schoten tegen. Verberg je
+    iets dat groot genoeg is om geraakt te worden, zet dan ook zijn
+    `raycast` uit (zie `zetMonumentDeelZichtbaar()`, §9.6).
+14. **Een nieuwe `let` op moduleniveau die run-state bevat, moet met de hand
+    in `resetRun()` én in `runStateStand()`.** Velden in `spel`, `upgrades`,
+    `kerkklokBoost` en `speler` gaan automatisch mee via `BEGINSTAAT`; losse
+    variabelen niet. Zie §9.5.
 
 ---
 
@@ -882,6 +947,22 @@ tekenMinimap · updateRichtingspijlen · verbergRichtingspijlen
 projecteerOpScherm · robotPijlenPool · ARENA_SCHAAL
 ```
 
+Door fase 2 toegevoegd (D7, D8, D9, D20; zie §9.5 en §9.6):
+
+```
+runStats · eindigRun · toonEindscherm · verdienGeld                       (D7)
+HIGHSCORE_KEY · leesHighscore · schrijfHighscore · verwerkHighscore        (D8)
+resetRun · BEGINSTAAT · runStateStand()                                    (D9)
+monumentSchade · monumentSchadeTier · updateMonumentSchade
+pasMonumentSchadeToe · MONUMENT_SCHADE_DREMPELS                            (D20)
+```
+
+`runStateStand()` volgt het `…Stand`-getterpatroon maar bundelt negen losse
+`let`-variabelen in één object (`geld`, `laatsteSchotTijd`, `terugslag`,
+`vlamTimer`, `hitmarkerTimer`, `cameraShake`, `schietKnopIngedrukt`,
+`huidigeInteractie`, `bijenkorfShopOpen`) — precies de set die `resetRun()`
+met de hand terugzet.
+
 **`renderer` ontbrak, en dat was een latent, tot dan toe onopgemerkt gat.**
 `tests/helpers-defend.mjs`'s `openDefend({ simuleerPointerLock: true })` las
 sinds D1 al `window.DamChaosDebug.renderer.domElement` (gekopieerd van
@@ -906,7 +987,7 @@ bij de eerste gelegenheid die dit bestand tóch alweer aanraakt).
 
 ## 13. Testdekking
 
-Ná D0/D1/D2: twee bestanden, 90 checks in totaal.
+Ná fase 2: zes bestanden, 178 checks in totaal.
 
 - `tests/defend-national-monument/test-dnm-laadt.mjs` (D1, 20 checks): de
   game laadt, de wereld is gebouwd, wave 1 staat klaar, en alle 53
@@ -916,6 +997,21 @@ Ná D0/D1/D2: twee bestanden, 90 checks in totaal.
   en bereikbaar, een route-simulatie per poort die ook na D4's herschaling
   nog betekenis heeft, de wave-/upgrade-/cooldown-formules, en
   `robotRaaktMonument()`.
+- `test-dnm-eindscherm.mjs` (D7, 26 checks): runStats tijdens een run, het
+  eindscherm en zijn inhoud, en dat na game over alles stilvalt — met
+  pointer lock bewust nog gesimuleerd aan.
+- `test-dnm-highscore.mjs` (D8, 25 checks): roundtrip, tien corrupte vormen,
+  record over een herlaadbeurt heen, geweigerde localStorage.
+- `test-dnm-reset.mjs` (D9, 12 checks): momentopname → volledige run →
+  reset → diepe vergelijking van elke geëxporteerde teller (plus het aantal
+  scene-kinderen en de monumentstaat), daarna echt weer spelen, en de
+  Opnieuw-knop.
+- `test-dnm-monument-schade.mjs` (D20, 25 checks): tier-grenzen, zichtbare
+  staat per tier, overgangen bij heen-en-weer, reparatie, raakbaarheid van
+  verborgen/effectonderdelen, animatie van rook en alarm.
+
+Plus één meetscript (`meet-dnm-afstanden.mjs`, D6), dat bewust niet in
+`run-all.mjs` meedraait.
 
 Vóór D0/D1 was dit **nul**: alle 117 (nu 118) testscripts in `tests/` gingen
 uitsluitend over `amsterdam-undead.html`. Dat was de reden om met
