@@ -107,6 +107,7 @@
     pointer-events: none;
     z-index: 5;
   }
+  #waveUI .poorten { display: block; font-size: 14px; font-weight: 700; color: #ffc47a; }
 
   #comboUI {
     position: fixed;
@@ -199,6 +200,8 @@
     top: 38%;
     left: 50%;
     transform: translateX(-50%);
+    white-space: pre-line;   /* Ticket D28: tweede regel "via <poorten>" */
+    text-align: center;
     padding: 14px 34px;
     background: rgba(10, 20, 40, 0.78);
     color: #ffd75e;
@@ -2823,6 +2826,12 @@ const spel = {
   waveBonusGegeven: false,
   gameOver: false,
   laatsteSpawnPoort: 'Damrak',
+  // Ticket D28: namen uit SPAWN_POORTEN. actievePoorten = waar de lopende
+  // wave vandaan komt; volgendePoorten = al gekozen en aangekondigd voor de
+  // volgende wave (gevuld zodra de huidige wave compleet is).
+  actievePoorten: [],
+  volgendePoorten: [],
+  aankondigingGetoond: false,
   waveGeenMonumentSchade: true,   // wordt false zodra een robot deze wave het monument raakt (zie robotRaaktMonument)
   specialMeter: 0                 // 0-100, vult per kill, zie vernietigRobot/gebruikSpecial
 };
@@ -2863,7 +2872,13 @@ const specialUI = document.getElementById('specialUI');
 function updateArcadeUI() {
   if (!scoreUI) return;
   scoreUI.innerHTML = `Score ${spel.score}<br>Combo x${spel.combo}`;
-  waveUI.textContent = `Wave ${spel.wave}, nog ${spel.teSpawnen + robots.length} robots`;
+  // Ticket D28: tweede regel met de poorten — stabiel voor de hele wave,
+  // en in de pauze al de aangekondigde poorten van de volgende. Poortnamen
+  // komen uit de vaste SPAWN_POORTEN-lijst, dus innerHTML is hier veilig.
+  const poortRegel = spel.volgendePoorten.length
+    ? `Volgende wave via ${poortenTekst(spel.volgendePoorten)}`
+    : `via ${poortenTekst(spel.actievePoorten)}`;
+  waveUI.innerHTML = `Wave ${spel.wave}, nog ${spel.teSpawnen + robots.length} robots<span class="poorten">${poortRegel}</span>`;
   objectiveUI.textContent = spel.gameOver
     ? 'Game over, het Monument is gevallen.'
     : `Bescherm het Nationaal Monument, ${Math.max(0, Math.ceil(spel.monumentHP))}%`;
@@ -2877,7 +2892,7 @@ function updateArcadeUI() {
     <span class="regel">1, Vuurtempo (sneller schieten) €${upgradeKosten('vuurtempo')} <span class="gekocht">lv ${upgrades.vuurtempo}</span></span>
     <span class="regel">2, Pickup radius (munten sneller oprapen) €${upgradeKosten('pickup')} <span class="gekocht">lv ${upgrades.pickup}</span></span>
     <span class="regel">3, Loopsnelheid (sneller lopen) €${upgradeKosten('snelheid')} <span class="gekocht">lv ${upgrades.snelheid}</span></span>
-    <span class="regel">Robots komen uit: ${spel.laatsteSpawnPoort}</span>
+    <span class="regel">Robots komen uit: ${poortenTekst(spel.actievePoorten)}</span>
   `;
 }
 
@@ -2918,7 +2933,40 @@ function kiesRobotTypeVoorWave(wave) {
   return 'normal';
 }
 
+// Ticket D28 — aangekondigde poorten. Eén poort in de eerste twee waves
+// (leren waar het gevaar vandaan komt), daarna twee: genoeg om te moeten
+// kiezen waar je staat (en vanaf fase 3 wat je bouwt), niet zoveel dat je
+// weer overal tegelijk moet zijn. Nooit exact dezelfde set als de vorige
+// wave, anders voelt een nieuwe wave niet als nieuw.
+function aantalActievePoorten(wave) {
+  return wave <= 2 ? 1 : 2;
+}
+function kiesActievePoorten(aantal, vorige = []) {
+  const namen = SPAWN_POORTEN.map(p => p.naam);
+  const zelfdeSet = (a, b) => a.length === b.length && a.every(n => b.includes(n));
+  let keuze = [];
+  for (let poging = 0; poging < 20; poging++) {
+    const pot = [...namen];
+    keuze = [];
+    while (keuze.length < aantal && pot.length) keuze.push(pot.splice(Math.floor(Math.random() * pot.length), 1)[0]);
+    if (!zelfdeSet(keuze, vorige)) return keuze;
+  }
+  // Praktisch onbereikbaar (kans ≤ 1/10 per poging), maar dan deterministisch
+  // een andere set: schuif één plek op in de lijst.
+  return keuze.map(n => namen[(namen.indexOf(n) + 1) % namen.length]);
+}
+function poortenTekst(namen) {
+  return namen.length === 2 ? `${namen[0]} en ${namen[1]}` : namen.join(', ');
+}
+
 function startWave(nummer) {
+  // Ticket D28: de poorten voor deze wave zijn normaal al aangekondigd
+  // (volgendePoorten); alleen bij wave 1 of na een reset wordt hier gekozen.
+  spel.actievePoorten = spel.volgendePoorten.length
+    ? spel.volgendePoorten
+    : kiesActievePoorten(aantalActievePoorten(nummer), spel.actievePoorten);
+  spel.volgendePoorten = [];
+  spel.aankondigingGetoond = false;
   spel.wave = nummer;
   spel.waveKills = 0;
   spel.waveDoel = 7 + nummer * 3;
@@ -2928,7 +2976,8 @@ function startWave(nummer) {
   spel.waveBonusGegeven = false;
   spel.waveGeenMonumentSchade = true;   // reset hier, niet in het wave-compleet-blok (zie updateWaveSysteem)
   runStats.hoogsteWave = Math.max(runStats.hoogsteWave, nummer);
-  toonWaveBanner(waveBannerTekst(nummer));
+  toonWaveBanner(`${waveBannerTekst(nummer)}\nvia ${poortenTekst(spel.actievePoorten)}`);
+  updatePoortBakens();
   updateArcadeUI();
 }
 
@@ -2964,13 +3013,68 @@ function updateWaveSysteem(dt) {
       } else {
         toonWaveBanner(`Wave ${spel.wave} gehaald`);
       }
+      // Ticket D28: de poorten voor de volgende wave staan vanaf nu vast, zodat
+      // de speler de pauze kan gebruiken om zich te positioneren.
+      spel.volgendePoorten = kiesActievePoorten(aantalActievePoorten(spel.wave + 1), spel.actievePoorten);
+      updatePoortBakens();
+      updateArcadeUI();
+    }
+    // De aankondiging pas na de "gehaald"-banner (1,6 s), zodat die twee
+    // elkaar niet overschrijven. Frame-gestuurd i.p.v. setTimeout, zodat een
+    // reset geen losse timer achterlaat.
+    if (!spel.aankondigingGetoond && spel.tussenWaveTimer > 1.8) {
+      spel.aankondigingGetoond = true;
+      toonWaveBanner(`Volgende wave\nvia ${poortenTekst(spel.volgendePoorten)}`);
+      speelPoortSignaal();
     }
     if (spel.tussenWaveTimer > 4.5) startWave(spel.wave + 1);
   }
 }
 
+// Ticket D28: alleen nog uit de actieve poorten van deze wave. Lege lijst
+// (kan alleen via de debug-hook) valt terug op alle poorten.
 function kiesSpawnPoort() {
-  return SPAWN_POORTEN[Math.floor(Math.random() * SPAWN_POORTEN.length)];
+  const kandidaten = SPAWN_POORTEN.filter(p => spel.actievePoorten.includes(p.naam));
+  const pot = kandidaten.length ? kandidaten : SPAWN_POORTEN;
+  return pot[Math.floor(Math.random() * pot.length)];
+}
+
+// Ticket D28: een lichtbaken per poort — een hoge, half-transparante zuil
+// die boven de daken uitsteekt, zodat je vanaf het monument ziet waar de
+// dreiging vandaan komt zonder de HUD te lezen. Zichtbaar bij de actieve
+// poorten tijdens een wave en bij de aangekondigde poorten in de pauze.
+// Rechtstreeks in de scene (wereldcoördinaten), niet in `wereld`.
+const POORT_BAKEN_HOOGTE = 42;
+const poortBakens = new Map();
+for (const poort of SPAWN_POORTEN) {
+  const baken = new THREE.Group();
+  const zuil = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.0, 1.0, POORT_BAKEN_HOOGTE, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xff8c1a, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide }));
+  zuil.position.y = POORT_BAKEN_HOOGTE / 2;
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(1.4, 2.0, 24),
+    new THREE.MeshBasicMaterial({ color: 0xffa23a, transparent: true, opacity: 0.6, depthWrite: false, side: THREE.DoubleSide }));
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.05;
+  for (const m of [zuil, ring]) m.raycast = () => {};   // puur effect, nooit raakbaar (zie ARCHITECTURE_NOTES §10.13)
+  baken.add(zuil, ring);
+  baken.position.set(poort.positie.x, 0, poort.positie.z);
+  baken.visible = false;
+  scene.add(baken);
+  poortBakens.set(poort.naam, baken);
+}
+function updatePoortBakens() {
+  const aan = spel.volgendePoorten.length ? spel.volgendePoorten : spel.actievePoorten;
+  for (const [naam, baken] of poortBakens) baken.visible = aan.includes(naam);
+}
+function animeerPoortBakens() {
+  // Hoog gehouden: tegen de lichte lucht vervaagt een transparant oranje
+  // anders tot een flets streepje.
+  const puls = 0.45 + 0.15 * Math.sin(klok * 3);
+  for (const baken of poortBakens.values()) {
+    if (baken.visible) baken.children[0].material.opacity = puls;
+  }
 }
 
 function spawnPlekVoorPoort(poort) {
@@ -3995,6 +4099,7 @@ function piep(type, startHz, eindHz, duur, volume) {
 }
 
 function speelSchot()    { piep('square', 620, 140, 0.12, 0.12); }
+function speelPoortSignaal() { piep('triangle', 440, 440, 0.18, 0.12); setTimeout(() => piep('triangle', 660, 660, 0.25, 0.12), 180); }
 function speelMonumentKraak() { piep('sawtooth', 110, 38, 0.55, 0.2); setTimeout(() => piep('square', 70, 30, 0.35, 0.12), 120); }
 function speelTramBel()  { piep('sine', 980, 980, 0.08, 0.045); setTimeout(() => piep('sine', 1320, 1320, 0.08, 0.035), 90); }
 function speelMunt()     { piep('sine', 880, 880, 0.08, 0.15); setTimeout(() => piep('sine', 1320, 1320, 0.15, 0.15), 80); }
@@ -4043,6 +4148,17 @@ function tekenMinimap() {
   }
 
   // Monument: goud vierkantje, het vaste referentiepunt.
+  // Ticket D28: oranje ring op de actieve (of aangekondigde) poorten.
+  minimapCtx.strokeStyle = '#ffa23a';
+  minimapCtx.lineWidth = 2;
+  for (const poort of SPAWN_POORTEN) {
+    if (!poortBakens.get(poort.naam).visible) continue;
+    const [px, pz] = naarCanvas(poort.positie.x, poort.positie.z);
+    minimapCtx.beginPath();
+    minimapCtx.arc(px, pz, 6, 0, Math.PI * 2);
+    minimapCtx.stroke();
+  }
+
   const [mx, mz] = naarCanvas(MONUMENT_POSITIE.x, MONUMENT_POSITIE.z);
   minimapCtx.fillStyle = '#e8c84e';
   minimapCtx.fillRect(mx - 3, mz - 3, 6, 6);
@@ -4254,6 +4370,7 @@ function gameLoop(nu) {
     updateInteracties(dt);
     updateKerkklokBoost(dt);
     updateMonumentEffecten();
+    animeerPoortBakens();
     // updateSpeler() hierboven zet alleen camera.position/rotation; de
     // gecachte matrixWorldInverse waar .project(camera) op leunt wordt pas
     // ververst bij renderer.render() verderop in dit frame. Zonder deze
@@ -4315,6 +4432,8 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   resetRun, BEGINSTAAT,
   // Ticket D20: zichtbare monumentschade.
   monumentSchade, monumentSchadeTier, updateMonumentSchade, pasMonumentSchadeToe, MONUMENT_SCHADE_DREMPELS,
+  // Ticket D28: aangekondigde poorten.
+  aantalActievePoorten, kiesActievePoorten, kiesSpawnPoort, poortBakens, updatePoortBakens,
   runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, bijenkorfShopOpen }) };
 </script>
 </body>

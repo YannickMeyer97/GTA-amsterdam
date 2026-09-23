@@ -14,8 +14,12 @@ const { check, report } = makeChecker();
 // Dezelfde functie wordt vóór en ná de run in de pagina uitgevoerd.
 const MOMENTOPNAME = `(() => {
   const d = window.DamChaosDebug;
+  const spel = JSON.parse(JSON.stringify(d.spel));
+  // Ticket D28: welke poort wave 1 krijgt is bewust willekeurig — geen lek.
+  // Het AANTAL (1 in wave 1) moet wel kloppen.
+  spel.actievePoorten = spel.actievePoorten.length;
   return {
-    spel: JSON.parse(JSON.stringify(d.spel)),
+    spel,
     upgrades: { ...d.upgrades },
     kerkklokBoost: { ...d.kerkklokBoost },
     runStats: JSON.parse(JSON.stringify(d.runStats)),
