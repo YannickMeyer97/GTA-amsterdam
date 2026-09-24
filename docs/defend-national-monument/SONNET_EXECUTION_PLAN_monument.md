@@ -1173,6 +1173,14 @@ Wat de code daarover zegt:
    Het eerdere voorstel van ~1:2 is in D31 verworpen. Bij 1:2 wordt een deur
    1,1 m hoog en de speler van 1,7 m een reus, zodat de Dam oogt als een
    maquette.
+
+   **Bij M2 aangevuld:** gebouwen rond het plein hebben ook minder
+   verdiepingen dan in het echt (~25% lager). Het plein is 44 m breed in
+   plaats van ~100 m; op echte hoogte werd het een smalle, hoge ruimte.
+   Verdiepingen, deuren en ramen blijven op ware maat. De onderlinge
+   verschillen blijven zoals in het echt: het Paleis met koepel het hoogst,
+   dan de Nieuwe Kerk en de Beurstoren, dan de warenhuizen en hotels, dan de
+   grachtenpanden.
 3. **Eén bron voor de indeling.** Eén `DAM_LAYOUT`-object bevat plein,
    straten, rijbanen, routes, poorten, bouwplekken, commandopost en kerkklok.
    Gebouwen, botsingen, robotroutes, bouwplekken, bakens en minimap lezen
@@ -1434,6 +1442,13 @@ tijd in gevels gaat.
     - lichte baksteen met spaarzaam natuursteen.
   - **Het Peek & Cloppenburg-gebouw met Madame Tussauds**, tussen
     Kalverstraat en Rokin: vijf bouwlagen in lichte kalksteen.
+- **De gevelnamen** staan er sinds M2 al, als letters op de grey-box
+  (`GEVELNAMEN`); neem ze over in de echte gevels.
+- **Direct na D39: besluit over de plek van de commandopost** (M2). Die
+  blijft aan de monumentvoet, tenzij de eigenaar hem tegen de
+  Bijenkorf-gevel wil. Daar staat hij ~14 m van het monument, en moeten de
+  Kerkklok en de looptijden naar de verste bouwplekken opnieuw worden
+  getoetst.
 - **Acceptatie:** als D37.
 
 #### Ticket D40 — Straatwanden

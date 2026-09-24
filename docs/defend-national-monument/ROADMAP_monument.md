@@ -108,11 +108,11 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D32** | Nieuw fundament (grey-box): `DAM_LAYOUT`, vloer met kinderkopjes, rijbanen, tramrails |
 | ☑ | **D33** | Vaste routes over de rijbanen; bouwplekken en hekken uit de layout |
 | ☑ | **D34** | Routes zichtbaar: oplichtend bij de aankondiging, bakens aan de straatingang |
-| ☑ | **D35** | Commandopost bij het monument, één menupaneel, HUD zonder overlap → **M2** (grey-box speeltest) *(wacht op M2)* |
+| ☑ | **D35** | Commandopost bij het monument, één menupaneel, HUD zonder overlap → **M2** (grey-box speeltest) *(M2 gespeeld)* |
 | ☐ | **D36** | Textuurbibliotheek (gekopieerd uit Undead + kinderkopjes, zandsteen, leisteen, …) |
 | ☐ | **D37** | Paleis op de Dam |
 | ☐ | **D38** | Nieuwe Kerk |
-| ☐ | **D39** | Rond het monument: Bijenkorf, Krasnapolsky, Hotel TwentySeven (Industria), Madame Tussauds |
+| ☐ | **D39** | Rond het monument: Bijenkorf, Krasnapolsky, Hotel TwentySeven (Industria), Madame Tussauds; daarna **besluit plek commandopost** (M2) |
 | ☐ | **D40** | Straatwanden van de vijf straten |
 | ☐ | **D41** | Sfeer en straatmeubilair |
 | ☐ | **D42** | Prestaties (budget, instancing), direct gevolgd door D21 |
@@ -280,13 +280,34 @@ in de pagina, als JSON; alles wordt daaruit berekend. In D32 wordt dat blok
   `test-dnm-kern` (12 interactiepunten) en de drie torentests (paneel
   `menuUI`).
 
-**Beslismoment M2 — speelt de grey-box?** De simpele versie van de nieuwe
-Dam is klaar om te spelen: routes, bouwplekken, commandopost en kerkklok.
-Vóór er tijd in gevels gaat (D36–D41), beoordeelt de eigenaar:
-- lopen robots duidelijk;
-- liggen bouwplekken en commandopost goed;
-- klopt het ritme;
-- zijn pijlen (D27) nog nodig.
+**Beslismoment M2 — gespeeld.** De grey-box is gespeeld en goedgekeurd,
+met deze besluiten:
+
+| Vraag | Besluit | Verwerkt |
+|---|---|---|
+| Lopen robots duidelijk? | Ja. | — |
+| Ritme (looptijden, bouwfase 20 s)? | Prima. | — |
+| Richtingspijlen (D27) nog nodig? | Nee. | D27 geschrapt; de randpijlen naar robots buiten beeld zijn verwijderd. |
+| Kerkklok | Niet direct te zien; zet hem voor het Paleis. | Midden voor het Paleis (−61, 0), 1,7× zo groot; 13,6 s heen en terug vanaf de commandopost. |
+| Commandopost | Misschien liever tegen de Bijenkorf, afhankelijk van hoe die eruit gaat zien. | Blijft aan het monument; het besluit valt direct na D39. |
+| Hoogtes | Nieuwe Kerk en Krasnapolsky voelen te hoog. Alles rond het plein lager, met de verschillen zoals in het echt. | Alles ~25% lager, via minder verdiepingen; de onderlinge verhoudingen kloppen. Oorzaak: het plein is 44 m breed in plaats van ~100 m. |
+| Namen | Zoals in het echt, nu al. | Gevelletters op Bijenkorf, Krasnapolsky, Madame Tussauds/Peek & Cloppenburg en Hotel TwentySeven, in gewone letters, zonder logo. Paleis en Nieuwe Kerk dragen in het echt geen naam. |
+
+Nieuwe hoogtes (m, gevel / hoogste deel):
+
+| Gebouw | Gevel | Hoogste deel |
+|---|---:|---:|
+| Paleis | 20 | 38 |
+| Nieuwe Kerk | 22 | 32 |
+| Beurs van Berlage | 17 | 30 |
+| Hotel TwentySeven (Industria) | 17 | 24 |
+| Bijenkorf | 17 | 23 |
+| Krasnapolsky | 18 | 20 |
+| Madame Tussauds | 17 | 17 |
+| Gevelrijen | 11–13 | 11–13 |
+
+De plattegrond is bijgewerkt (versie M2-1, 37/37 toetsen) en de game volgt
+hem (`test-dnm-layout`).
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 
@@ -315,7 +336,11 @@ D20 is naar fase 2 verhuisd; deze fase is daarmee leeg.
 
 | | Ticket | Kern |
 | --- | --- | --- |
-| ☐ | **D27** | Richtingspijlen herzien |
+| ✗ | **D27** | Richtingspijlen herzien *(geschrapt bij M2: pijlen verwijderd)* |
+
+**D27 — geschrapt bij M2.** De eigenaar heeft ze niet meer nodig nu het
+lichtspoor en de bakens (D34) de routes tonen; de pijlen zijn uit de game
+verwijderd. Hieronder de oorspronkelijke aanleiding.
 
 **D27 — Richtingspijlen herzien.** Speeltest-feedback op de
 richtingspijlen-implementatie uit de "Speeltest-feedback na D6"-ronde

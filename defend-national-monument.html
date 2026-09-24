@@ -302,26 +302,6 @@
   }
   #minimapCanvas { display: block; width: 100%; height: 100%; }
 
-  /* --- Richtingspijlen naar robots die buiten beeld zijn. Eén vaste pool
-       elementen (zie MAX_PIJLEN in de module), hergebruikt i.p.v. elk frame
-       aan te maken — dezelfde reden als de brokstukken-pool. --- */
-  #robotPijlenUI {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 8;
-  }
-  .robotpijl {
-    position: absolute;
-    width: 0;
-    height: 0;
-    margin: -14px 0 0 -10px;   /* centreert de driehoek op zijn x/y */
-    border-left: 10px solid transparent;
-    border-right: 10px solid transparent;
-    border-bottom: 22px solid rgba(255, 92, 72, 0.88);
-    filter: drop-shadow(0 0 3px rgba(0,0,0,0.7));
-    display: none;
-  }
 
   /* --- Terug-naar-menu-link, altijd zichtbaar rechtsboven (onder de
        special-meter, zodat 'ie niet overlapt met geldUI/scoreUI) --- */
@@ -425,7 +405,6 @@
 <div id="popups"></div>
 <div id="hulpUI" style="display:none">WASD lopen &nbsp;·&nbsp; muis kijken &nbsp;·&nbsp; klik schieten &nbsp;·&nbsp; T actie &nbsp;·&nbsp; G volgende wave &nbsp;·&nbsp; Esc pauze</div>
 <div id="minimapUI" style="display:none"><canvas id="minimapCanvas" width="140" height="140"></canvas></div>
-<div id="robotPijlenUI"></div>
 
 <div id="startscherm">
   <h1>DAM CHAOS</h1>
@@ -529,7 +508,7 @@ addEventListener('resize', () => {
    ================================================================ */
 
 const DAM_LAYOUT = {
-  "versie": "D31-voorstel-2",
+  "versie": "M2-1",
   "eenheid": "meter, mensmaat 1:1",
   "assen": "+x = oost, +z = zuid, oorsprong = midden van het monument, y = omhoog",
   "wapenBereik": 22,
@@ -553,7 +532,7 @@ const DAM_LAYOUT = {
     "toonbank": "west",
     "spelerPlek": [-13.4, 0]
   },
-  "kerkklok": { "positie": [-55, -25.5] },
+  "kerkklok": { "positie": [-61, 0] },
   "spelerStart": { "positie": [-30, 0], "kijkrichting": "oost" },
 
   "vlakken": [
@@ -606,47 +585,47 @@ const DAM_LAYOUT = {
 
   "gebouwen": [
     { "naam": "Paleis op de Dam", "ticket": "D37", "kleur": "#d9c79c",
-      "delen": [[-100, -22, -66, 22]], "hoogte": 26, "hoogsteDeel": 51,
-      "maten": "gevel 44 m (13 traveeën in plaats van 23), 34 m diep; gevel ~26 m tot de balustrade, koepel met lantaarn ~51 m",
+      "delen": [[-100, -22, -66, 22]], "hoogte": 20, "hoogsteDeel": 38,
+      "maten": "gevel 44 m (13 traveeën in plaats van 23), 34 m diep; gevel ~20 m tot de balustrade, koepel met lantaarn ~38 m. Na M2 ~25% lager, zie de toelichting",
       "kenmerken": ["classicistisch, lichte zandsteen die verweerd grijsgeel oogt", "drie bouwlagen plus zolder, strakke rijen rechthoekige ramen", "middenrisaliet met fronton en beeldhouwwerk", "rij kleine rondboogpoortjes op de begane grond, geen grote hoofdingang", "koepel met lantaarn en een windvaan in de vorm van een schip", "beelden op het dak"] },
     { "naam": "Nieuwe Kerk", "ticket": "D38", "kleur": "#b0705a",
-      "delen": [[-100, -50, -56, -28], [-70, -60, -60, -24], [-56, -48, -46.5, -32]], "hoogte": 28, "hoogsteDeel": 42,
-      "maten": "schip 44 × 22 m, dwarsschip steekt 4 m naar het plein uit, koor tot aan de Nieuwendijk; nok ~28 m, dakruiter ~42 m",
+      "delen": [[-100, -50, -56, -28], [-70, -60, -60, -24], [-56, -48, -46.5, -32]], "hoogte": 22, "hoogsteDeel": 32,
+      "maten": "schip 44 × 22 m, dwarsschip steekt 4 m naar het plein uit, koor tot aan de Nieuwendijk; nok ~22 m, dakruiter ~32 m",
       "kenmerken": ["laatgotisch, baksteen met natuurstenen banden", "hoge spitsboogramen met maaswerk", "het grote transeptraam in de zuidgevel, schuin naast het Paleis", "steile leien daken met een slank dakruitertje", "geen voltooide hoge toren, zoals in het echt"] },
     { "naam": "Bijenkorf", "ticket": "D39", "kleur": "#8a5a48",
-      "delen": [[-11, -62, 13, -22]], "hoogte": 22, "hoogsteDeel": 30,
-      "maten": "24 m aan de Dam, 40 m langs het Damrak; ~22 m tot de balustrade, torenbekroning boven het midden ~30 m",
+      "delen": [[-11, -62, 13, -22]], "hoogte": 17, "hoogsteDeel": 23,
+      "maten": "24 m aan de Dam, 40 m langs het Damrak; ~17 m tot de balustrade (vijf bouwlagen), torenbekroning boven het midden ~23 m",
       "kenmerken": ["op de hoek Dam–Damrak, aan de oostkant van het Damrak, hoofdingang aan de Dam", "rode baksteen en natuursteen, vijf bouwlagen (begane grond, drie verdiepingen, dakverdieping)", "verticale pijlers (lisenen) op een sokkel, kroonlijst met attiek en balustrade", "segmentvormige frontons op de hoekpaviljoens en het midden, met een torenbekroning boven het midden", "grote etalages op de begane grond", "alleen de naam in gewone letters, geen logo"] },
     { "naam": "Krasnapolsky", "ticket": "D39", "kleur": "#c9b99c",
-      "delen": [[17, -45, 52, 9]], "hoogte": 24, "hoogsteDeel": 27,
-      "maten": "31 m gevel aan de Dam, achter het monument; ~24 m plus mansardekap",
+      "delen": [[17, -45, 52, 9]], "hoogte": 18, "hoogsteDeel": 20,
+      "maten": "31 m gevel aan de Dam, achter het monument; ~18 m plus een kap tot ~20 m",
       "kenmerken": ["oostkant van de Dam, recht achter het monument", "tussen de Warmoesstraat (noord) en de hoek met de Damstraat (zuid)", "breed 19e-eeuws hotel met veel ramen", "balkons", "luifel boven de ingang"] },
     { "naam": "Madame Tussauds-blok", "ticket": "D39", "kleur": "#9aa1a8",
-      "delen": [[-38.5, 22, -27, 60]], "hoogte": 22, "hoogsteDeel": 22,
-      "maten": "11,5 m aan de Dam, tussen Kalverstraat en Rokin; ~22 m",
+      "delen": [[-38.5, 22, -27, 60]], "hoogte": 17, "hoogsteDeel": 17,
+      "maten": "11,5 m aan de Dam, tussen Kalverstraat en Rokin; ~17 m (vijf bouwlagen)",
       "kenmerken": ["het Peek & Cloppenburg-gebouw (1917), Madame Tussauds op de bovenverdiepingen", "vijf bouwlagen in lichte kalksteen", "grote winkelpui op de begane grond", "beeldhouwwerk op de hoeken, in eigen eenvoudige vormen"] },
     { "naam": "Hotel TwentySeven (Industria)", "ticket": "D39", "kleur": "#c9a27e",
-      "delen": [[-11, 22, 9, 55]], "hoogte": 22, "hoogsteDeel": 32,
-      "maten": "20 m aan de Dam, 33 m langs het Rokin; ~22 m, toren met koperen kap ~32 m",
+      "delen": [[-11, 22, 9, 55]], "hoogte": 17, "hoogsteDeel": 24,
+      "maten": "20 m aan de Dam, 33 m langs het Rokin; ~17 m, toren met koperen kap ~24 m",
       "kenmerken": ["het Industria-gebouw (1916) op de zuidoosthoek van de Dam, hoek Rokin", "bijna vrijstaand, met vier verschillende gevels", "asymmetrische gevel aan de Dam met een torenachtig bouwdeel onder een klokvormige, groen uitgeslagen koperen kap", "lichte baksteen met spaarzaam natuursteen", "juwelier op de hoek op straatniveau, hotel op de bovenverdiepingen; namen alleen in gewone letters"] },
     { "naam": "Beurs van Berlage", "ticket": "D40", "kleur": "#a8674e",
-      "delen": [[-11, -100, 13, -68]], "hoogte": 22, "hoogsteDeel": 40,
-      "maten": "achtergrond: noordelijker langs het Damrak, voorbij het Beursplein",
+      "delen": [[-11, -100, 13, -68]], "hoogte": 17, "hoogsteDeel": 30,
+      "maten": "achtergrond: noordelijker langs het Damrak, voorbij het Beursplein; ~17 m, klokkentoren ~30 m",
       "kenmerken": ["baksteen, lange gevel langs het Damrak", "klokkentoren", "alleen in de verte zichtbaar, in de zichtlijn van het Damrak"] },
     { "naam": "Damrak-westwand", "ticket": "D40", "kleur": "#b8a58e",
-      "delen": [[-38.5, -78, -27, -22]], "hoogte": 16, "hoogsteDeel": 16,
+      "delen": [[-38.5, -78, -27, -22]], "hoogte": 13, "hoogsteDeel": 13,
       "maten": "gevelrij tussen Nieuwendijk en Damrak", "kenmerken": ["grachtenpanden", "hoekpanden aan de Dam", "winkelpuien"] },
     { "naam": "Nieuwendijk-westwand", "ticket": "D40", "kleur": "#b8a58e",
-      "delen": [[-56, -78, -46.5, -48]], "hoogte": 15, "hoogsteDeel": 15,
+      "delen": [[-56, -78, -46.5, -48]], "hoogte": 11, "hoogsteDeel": 11,
       "maten": "gevelrij achter het koor", "kenmerken": ["smalle grachtenpanden"] },
     { "naam": "Rokin-oostwand", "ticket": "D40", "kleur": "#b8a58e",
-      "delen": [[-11, 55, 9, 78]], "hoogte": 16, "hoogsteDeel": 16,
+      "delen": [[-11, 55, 9, 78]], "hoogte": 12, "hoogsteDeel": 12,
       "maten": "gevelrij langs het Rokin, na Industria", "kenmerken": ["grachtenpanden"] },
     { "naam": "Damstraat-zuidwand", "ticket": "D40", "kleur": "#b8a58e",
-      "delen": [[13, 22, 17, 55], [17, 19, 52, 55]], "hoogte": 16, "hoogsteDeel": 16,
+      "delen": [[13, 22, 17, 55], [17, 19, 52, 55]], "hoogte": 12, "hoogsteDeel": 12,
       "maten": "hoekpand Nes/Damstraat en de gevelrij langs de Damstraat", "kenmerken": ["smalle panden", "winkelpuien"] },
     { "naam": "Kalverstraat-westwand", "ticket": "D40", "kleur": "#b8a58e",
-      "delen": [[-66, 22, -46.5, 60]], "hoogte": 16, "hoogsteDeel": 16,
+      "delen": [[-66, 22, -46.5, 60]], "hoogte": 12, "hoogsteDeel": 12,
       "maten": "blok ten zuiden van het Paleis", "kenmerken": ["grachtenpanden", "winkelpuien aan de Kalverstraat"] }
   ],
 
@@ -1326,6 +1305,31 @@ function bouwGreyboxGebouw(gebouw) {
 const gebouwGroepen = new Map();
 for (const gebouw of DAM_LAYOUT.gebouwen) gebouwGroepen.set(gebouw.naam, bouwGreyboxGebouw(gebouw));
 
+// Gevelnamen (beslismoment M2): de gebouwen die in het echt hun naam op de
+// gevel dragen, krijgen die nu al, in gewone letters en zonder logo (plan
+// D39). Paleis en Nieuwe Kerk dragen in het echt geen naam. Per naam: de
+// gevel waarop hij staat (x of z van dat vlak), het midden erlangs, de
+// hoogte onder de kroonlijst en de breedte van de letterband.
+const GEVELNAMEN = [
+  { gebouw: 'Bijenkorf', tekst: 'De Bijenkorf', richting: 'south', x: 1, z: -22, y: 13.6, breedte: 11, hoogte: 1.6,
+    kleur: '#f3e7cf' },
+  { gebouw: 'Krasnapolsky', tekst: 'Grand Hotel Krasnapolsky', richting: 'west', x: 17, z: -6.5, y: 15.2, breedte: 20, hoogte: 1.5,
+    kleur: '#e8c86a' },
+  { gebouw: 'Madame Tussauds-blok', tekst: 'Madame Tussauds', richting: 'north', x: -32.75, z: 22, y: 13.8, breedte: 10, hoogte: 1.3,
+    kleur: '#ffffff', subtekst: 'Peek & Cloppenburg' },
+  { gebouw: 'Hotel TwentySeven (Industria)', tekst: 'Hotel TwentySeven', richting: 'north', x: -1, z: 22, y: 14.4, breedte: 9, hoogte: 1.1,
+    kleur: '#e9dcc0' },
+];
+for (const n of GEVELNAMEN) {
+  const bord = maakGevelTekst(gebouwGroepen.get(n.gebouw), n.tekst, n.x, n.y, n.z, n.breedte, n.hoogte, n.richting, {
+    achtergrond: 'rgba(0,0,0,0)', rand: 'rgba(0,0,0,0)', tekstKleur: n.kleur, subtekst: n.subtekst ?? '', subtekstKleur: n.kleur,
+    canvasBreedte: 1600, canvasHoogte: n.subtekst ? 320 : 200, fontSize: 150,
+  });
+  bord.name = `gevelnaam:${n.gebouw}`;
+  bord.userData.onderdeel = 'gevelnaam';
+  bord.raycast = () => {};
+}
+
 // Doodlopende stegen (Warmoesstraat, Nes): een bouwhek dwars over de
 // steeg, met botsing, zodat niemand er ongemerkt de kaart uit loopt.
 for (const a of DAM_LAYOUT.afsluitingen) {
@@ -1441,12 +1445,16 @@ function bouwKerkklok(x, z) {
   belKnop.position.y = 1.48;
   g.add(belKnop);
 
+  // Beslismoment M2: de klok was op ware grootte (~2,5 m) vanaf het monument
+  // niet te zien. 1,7× zo groot leest hij als een klokkenstoel voor het
+  // Paleis, recht in de zichtlijn.
+  g.scale.setScalar(1.7);
   g.position.set(x, 0, z);
   wereld.add(g);
   schaduwAan(g);
-  registreerRechthoek(x - 1.0, x + 1.0, z - 1.0, z + 1.0, 0.3);
+  registreerRechthoek(x - 1.7, x + 1.7, z - 1.7, z + 1.7, 0.3);
 
-  interactieMarkering(x, z, '🔔', 0xffd75e);
+  interactieMarkering(x + 3.2, z, '🔔', 0xffd75e);
 }
 bouwKerkklok(DAM_LAYOUT.kerkklok.positie[0], DAM_LAYOUT.kerkklok.positie[1]);
 
@@ -4350,16 +4358,14 @@ function speelKerkklok() {
 function speelSchildBlok() { piep('triangle', 900, 700, 0.09, 0.14); }
 
 /* ================================================================
-   STAP 7.5 — OVERZICHT: minimap en richtingspijlen
+   STAP 7.5 — OVERZICHT: de minimap
    ================================================================
    Speeltest-feedback (na D6): "lastig te bepalen waar de robots vandaan
-   komen". Twee onafhankelijke hulpmiddelen, allebei alleen bijgewerkt
-   tijdens spelActief (zie STAP 8, gameLoop):
-   - Minimap: vast bovenaanzicht van de hele arena (GRENS), rechtsonder.
-     Noord (negatieve z) boven, net als een gewone kaart.
-   - Richtingspijlen: wijzen naar de dichtstbijzijnde robots die NIET al
-     in beeld zijn — geprojecteerd via de bestaande camera, geen aparte
-     richtingsberekening.
+   komen". De minimap is een vast bovenaanzicht van de hele arena (GRENS),
+   rechtsonder, alleen bijgewerkt tijdens spelActief (zie STAP 8).
+   Noord (negatieve z) boven, net als een gewone kaart.
+   De richtingspijlen naar robots buiten beeld zijn bij beslismoment M2
+   geschrapt: het lichtspoor en de bakens (D34) tonen de routes al.
    ================================================================ */
 
 const minimapCanvas = document.getElementById('minimapCanvas');
@@ -4457,70 +4463,6 @@ function tekenMinimap() {
   minimapCtx.restore();
 }
 
-// --- Richtingspijlen naar robots buiten beeld ------------------------
-
-// Bewust beperkt tot de 5 dichtstbijzijnde — zelfde "minder clutter"-reden
-// als de gehalveerde paaltjes-ring bij het monument (zie bouwNationaalMonument).
-const MAX_PIJLEN = 5;
-const robotPijlenContainer = document.getElementById('robotPijlenUI');
-const robotPijlenPool = [];
-for (let i = 0; i < MAX_PIJLEN; i++) {
-  const el = document.createElement('div');
-  el.className = 'robotpijl';
-  robotPijlenContainer.appendChild(el);
-  robotPijlenPool.push(el);
-}
-
-// Projecteert een wereldpositie naar genormaliseerde schermcoördinaten
-// ([-1,1] op beide assen). opScherm === true betekent: al zichtbaar voor de
-// speler, dus geen pijl nodig — precies het gedrag dat off-screen-indicators
-// in shooters horen te hebben (geen dubbele info als het doelwit al in beeld is).
-function projecteerOpScherm(wereldPositie) {
-  const ndc = wereldPositie.clone().project(camera);
-  let x = ndc.x, y = ndc.y;
-  const achterCamera = ndc.z > 1;
-  if (achterCamera) { x = -x; y = -y; }   // punt achter de camera: spiegelen zodat de pijl toch de juiste kant op wijst
-  const opScherm = !achterCamera && Math.abs(x) <= 1 && Math.abs(y) <= 1;
-  return { x, y, opScherm };
-}
-
-function updateRichtingspijlen() {
-  const kandidaten = [];
-  for (const robot of robots) {
-    const wereldPositie = robot.groep.position.clone();
-    wereldPositie.y += 1;   // richting het lichaam, niet de voeten
-    const { x, y, opScherm } = projecteerOpScherm(wereldPositie);
-    if (opScherm) continue;
-    const afstand = speler.positie.distanceTo(robot.groep.position);
-    kandidaten.push({ x, y, afstand });
-  }
-  kandidaten.sort((a, b) => a.afstand - b.afstand);
-
-  for (let i = 0; i < robotPijlenPool.length; i++) {
-    const el = robotPijlenPool[i];
-    const kandidaat = kandidaten[i];
-    if (!kandidaat) { el.style.display = 'none'; continue; }
-    // Klem de richting op de schermrand met een marge, zodat de pijl niet
-    // letterlijk op de rand plakt.
-    const marge = 0.85;
-    const schaal = marge / Math.max(Math.abs(kandidaat.x), Math.abs(kandidaat.y), 1e-6);
-    const geklemdX = kandidaat.x * schaal;
-    const geklemdY = kandidaat.y * schaal;
-    const schermX = (geklemdX * 0.5 + 0.5) * innerWidth;
-    const schermY = (-geklemdY * 0.5 + 0.5) * innerHeight;   // NDC-y omhoog, scherm-y omlaag
-    const middenX = innerWidth / 2, middenY = innerHeight / 2;
-    const hoek = Math.atan2(schermX - middenX, -(schermY - middenY)) * 180 / Math.PI;
-    el.style.display = 'block';
-    el.style.left = schermX + 'px';
-    el.style.top = schermY + 'px';
-    el.style.transform = `rotate(${hoek}deg)`;
-  }
-}
-
-function verbergRichtingspijlen() {
-  for (const el of robotPijlenPool) el.style.display = 'none';
-}
-
 /* ================================================================
    STAP 8 — DE GAME-LOOP: alles elke frame bijwerken en tekenen
    ================================================================ */
@@ -4586,7 +4528,6 @@ function resetRun() {
   kerkklokBannerUI.style.opacity = '0';
   hitmarkerUI.style.opacity = '0';
   verbergInteractiePrompt();
-  verbergRichtingspijlen();
   eindscherm.style.display = 'none';
 
   // Monument weer heel (Ticket D20). Rechtstreeks i.p.v. via
@@ -4648,14 +4589,12 @@ function gameLoop(nu) {
     // updateSpeler() hierboven zet alleen camera.position/rotation; de
     // gecachte matrixWorldInverse waar .project(camera) op leunt wordt pas
     // ververst bij renderer.render() verderop in dit frame. Zonder deze
-    // expliciete update lopen minimap/pijlen één frame achter op de
+    // expliciete update loopt de minimap één frame achter op de
     // camera-oriëntatie (merkbaar bij snel omkijken).
     camera.updateMatrixWorld();
     tekenMinimap();
-    updateRichtingspijlen();
   } else {
     verbergInteractiePrompt();
-    verbergRichtingspijlen();
   }
 
   // Wapen-terugslag laten uitdempen.
@@ -4696,9 +4635,11 @@ requestAnimationFrame(gameLoop);
 window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => menu === COMMANDOPOST_MENU, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, activeerKerkklokBoost, updateKerkklokBoost,
   GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerBijenkorfUpgradeShop: activeerCommandopost, updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
   // Speeltest-feedback (na D6): overzicht-hulpmiddelen.
-  tekenMinimap, updateRichtingspijlen, verbergRichtingspijlen, projecteerOpScherm, robotPijlenPool,
+  // M2: de richtingspijlen (D27) zijn geschrapt; het lichtspoor en de
+  // bakens tonen waar de robots vandaan komen.
+  tekenMinimap,
   // Ticket D32: het nieuwe fundament (ARENA_SCHAAL bestaat niet meer).
-  DAM_LAYOUT, ROUTES, wereld, vloerHoogte, puntOp, projecteerOpRoute, vloerTextuur, TEXTUUR_TEKENAARS, gebouwGroepen,
+  DAM_LAYOUT, ROUTES, wereld, vloerHoogte, puntOp, projecteerOpRoute, vloerTextuur, TEXTUUR_TEKENAARS, gebouwGroepen, GEVELNAMEN,
   // Ticket D34: routes zichtbaar.
   routeSporen, spoorTextuur, straatIngang, straatNaamborden, SPOOR_HELDER, SPOOR_GEDIMD, animeerPoortBakens,
   // Ticket D33: routevolgen.

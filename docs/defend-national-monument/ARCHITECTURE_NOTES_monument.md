@@ -1392,3 +1392,17 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
   | Rechtsonder | minimap |
 
   Een nieuw vast HUD-element hoort in die meting.
+
+### 15.9 Na M2
+
+- **Richtingspijlen verwijderd.** Weg zijn `updateRichtingspijlen`,
+  `robotPijlenPool`, `#robotPijlenUI` en `.robotpijl`. De minimap is het
+  enige overzichtsmiddel naast spoor en bakens. D27 is geschrapt.
+- **Gevelnamen.** `GEVELNAMEN` (in STAP 2, na de gebouwbouw) hangt per naam
+  een `maakGevelTekst`-bord zonder achtergrond aan de gebouwgroep
+  (`userData.onderdeel = 'gevelnaam'`, niet raakbaar). D37–D39 nemen ze over.
+- **Kerkklok:** op `DAM_LAYOUT.kerkklok` (voor het Paleis), op schaal 1,7.
+  De botsing is ±1,7 m (+0,3 marge); de markering staat 3,2 m ernaast.
+- **Hoogtes** zijn ~25% lager dan in het echt (plan §11.3 punt 2). Ze
+  staan alleen in `DAM_LAYOUT.gebouwen`, dus een wijziging gaat via de
+  plattegrond.
