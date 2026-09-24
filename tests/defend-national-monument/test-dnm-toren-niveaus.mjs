@@ -148,12 +148,12 @@ const menu = await page.evaluate(() => {
   toets('Digit1');
   const naUpgrade = { niveau: t.niveau, menuOpen: d.bouwMenuStand() === plek, tekst: bouwUI.textContent };
   toets('Digit3');
-  return { prompt, tekst, niveauVoor, naUpgrade, naVerkoop: { plekLeeg: plek.toren === null, menuDicht: d.bouwMenuStand() === null } };
+  return { prompt, tekst, niveauVoor, naUpgrade, naVerkoop: { plekLeeg: plek.toren === null, menuOpen: d.bouwMenuStand() === plek, tekst: bouwUI.textContent } };
 });
 check('De prompt bij een toren noemt niveau, HP en "T voor opties"', menu.prompt.includes('niv. 2') && menu.prompt.includes('T voor opties'), menu.prompt);
-check('T op een bezette plek toont upgraden, repareren en verkopen', menu.tekst.includes('Upgrade naar niveau 3') && menu.tekst.includes('Repareren') && menu.tekst.includes('Verkopen'), menu.tekst);
-check('1 upgradet en laat het menu open (met bijgewerkte tekst)', menu.niveauVoor === 2 && menu.naUpgrade.niveau === 3 && menu.naUpgrade.menuOpen && menu.naUpgrade.tekst.includes('Maximaal niveau'), menu.naUpgrade);
-check('3 verkoopt en sluit het menu', menu.naVerkoop.plekLeeg && menu.naVerkoop.menuDicht, menu.naVerkoop);
+check('T op een bezette plek toont upgraden, repareren en verkopen', menu.tekst.includes('Geschuttoren naar niveau 3') && menu.tekst.includes('Toren repareren') && menu.tekst.includes('Toren verkopen'), menu.tekst);
+check('1 upgradet en laat het menu open (met bijgewerkte tekst)', menu.niveauVoor === 2 && menu.naUpgrade.niveau === 3 && menu.naUpgrade.menuOpen && menu.naUpgrade.tekst.includes('maximaal niveau'), menu.naUpgrade);
+check('3 verkoopt; het menu blijft open en biedt weer torens aan (D47)', menu.naVerkoop.plekLeeg && menu.naVerkoop.menuOpen && menu.naVerkoop.tekst.includes('Geschuttoren €'), menu.naVerkoop);
 
 const fails = report(errs);
 await browser.close();

@@ -1432,3 +1432,12 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
   route X" zoekt, gebruikt `plekVoor(X, soort)`. Twee actieve poorten
   kunnen dus dezelfde plek aanwijzen; `meet-dnm-economie` slaat een al
   bebouwde plek over.
+- **Slots (D47).**
+  - Een plek heeft `toren` én `hek`. Elk bouwwerk kent zijn slot
+    (`toren.slot`, via `slotVan(type)`).
+  - `verwijderToren` zet alleen `plek[toren.slot]` op null en tekent een
+    open menu opnieuw.
+  - Code die "staat er iets op deze plek" vraagt, moet kiezen welk slot ze
+    bedoelt: `plek.toren` betekent alleen het torenslot.
+  - Nieuwe torentypes (D48, D49) vallen vanzelf in het torenslot: alles
+    behalve `hek`.

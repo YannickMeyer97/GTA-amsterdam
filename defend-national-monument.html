@@ -1833,7 +1833,8 @@ addEventListener('keydown', e => {
   // (commandopost of bouwplek). Zelfde veiligheidspatroon als T: !e.repeat
   // en alleen binnen pointer lock.
   if (menu && !e.repeat && document.pointerLockElement === renderer.domElement && !spel.gameOver) {
-    const keuze = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 }[e.code];
+    // Ticket D47: tot 6, want een bouwplek met toren én hek heeft 6 opties.
+    const keuze = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, Digit5: 4, Digit6: 5 }[e.code];
     if (keuze !== undefined) kiesMenuOptie(keuze);
   }
   // T activeert het dichtstbijzijnde interactiepunt. !e.repeat voorkomt dat
@@ -2907,8 +2908,9 @@ function kiesMenuOptie(i) {
   const optie = menu.opties()[i];
   if (!optie || optie.klaar) return;
   optie.actie();
-  // Ticket D45: na bouwen of verkopen blijft het menu dicht tot je wegloopt,
-  // anders springt het meteen weer open.
+  // Ticket D45: een optie met `sluit` sluit het menu tot je wegloopt, anders
+  // springt het meteen weer open. (Sinds D47 blijft het bouwmenu na bouwen
+  // en verkopen open: het andere slot is dan meteen te kopen.)
   if (optie.sluit) sluitMenuHandmatig();
   else renderMenu();
 }
@@ -3030,7 +3032,7 @@ const BOUWPLEKKEN = DAM_LAYOUT.bouwplekken.map(b => {
   return {
     naam: b.naam, soort: b.soort, routes: [...b.routes],
     positie: new THREE.Vector3(x, 0, z), hoek: Math.atan2(eerste.rx, eerste.rz),
-    toren: null, kaderMateriaal: null, hekLijnen,
+    toren: null, hek: null, kaderMateriaal: null, hekLijnen,
   };
 });
 // De plek van een soort bij een route (tests en meetscripts).
@@ -3143,43 +3145,54 @@ function upgradePrijs(toren) {
 function reparatieKosten(toren) { return Math.ceil((toren.hpMax - toren.hp) * TOREN_REPARATIE_PER_HP); }
 function verkoopOpbrengst(toren) { return Math.round(toren.geinvesteerd * TOREN_VERKOOP_FRACTIE); }
 const torens = [];
+// Ticket D47: elke plek heeft twee slots. `plek.toren` staat naast de route
+// (geschut, later andere torens), `plek.hek` ligt dwars over de route(s).
+// Ze staan los van elkaar: bouwen, verkopen en sneuvelen raken alleen hun
+// eigen slot.
+const slotVan = type => type === 'hek' ? 'hek' : 'toren';
+function slotStatus(t) {
+  return `${TOREN_TYPES[t.type].naam} niv. ${t.niveau} ${Math.ceil(t.hp)}/${t.hpMax} HP`;
+}
 function bouwplekPrompt(plek) {
   const open = menu?.bron === plek;
-  if (plek.toren) {
-    const t = plek.toren;
-    const basis = `${TOREN_TYPES[t.type].naam} niv. ${t.niveau} — ${Math.ceil(t.hp)}/${t.hpMax} HP`;
-    return open ? `${basis} — kies 1/2/3, T om te sluiten` : `${basis} — druk T voor opties`;
-  }
-  return open ? 'Kies een toren met een cijfer, T om te sluiten' : `Druk T om te bouwen (bouwplek ${plek.naam})`;
+  const bezet = [plek.toren, plek.hek].filter(Boolean).map(slotStatus).join(' · ');
+  const basis = bezet || `Bouwplek ${plek.naam}`;
+  return open ? `${basis}, kies een cijfer, T om te sluiten` : `${basis}, druk T voor opties`;
 }
 
-// Ticket D35: het bouwmenu is een menu op het ene paneel. Op een lege plek
-// de torens; op een bezette plek (sinds D12) upgraden, repareren en verkopen.
+// Upgraden, repareren en verkopen van één bezet slot (sinds D12).
+function slotOpties(t, woord) {
+  const cfg = TOREN_TYPES[t.type];
+  const prijs = upgradePrijs(t);
+  const volgend = cfg.niveaus[t.niveau];
+  const reparatie = reparatieKosten(t);
+  return [
+    prijs === null
+      ? { tekst: `${cfg.naam}: maximaal niveau`, klaar: true, actie: () => {} }
+      : { tekst: `${cfg.naam} naar niveau ${t.niveau + 1} €${prijs}, ${t.type === 'hek' ? '' : `bereik ${volgend.bereik} m, ${volgend.schadePerSchot} schade/${volgend.schotInterval}s, `}${volgend.hp} HP`, prijs, actie: () => upgradeToren(t) },
+    reparatie === 0
+      ? { tekst: `${woord} repareren, is heel`, klaar: true, actie: () => {} }
+      : { tekst: `${woord} repareren €${reparatie} (${Math.ceil(t.hp)}/${t.hpMax} HP)`, prijs: reparatie, actie: () => repareerToren(t) },
+    { tekst: `${woord} verkopen +€${verkoopOpbrengst(t)}`, actie: () => verkoopToren(t) },
+  ];
+}
+// Ticket D35: het bouwmenu is een menu op het ene paneel. Ticket D47: eerst
+// het torenslot, dan het hekslot. Leeg slot: bouwen; bezet slot: upgraden,
+// repareren, verkopen. Het menu blijft na elke keuze open.
 function bouwMenu(plek) {
   return {
     bron: plek,
     hoortBij: punt => punt.bouwplek === plek,
-    titel: () => plek.toren ? `${TOREN_TYPES[plek.toren.type].naam} niveau ${plek.toren.niveau} (${plek.naam})` : `Bouwplek ${plek.naam}`,
+    titel: () => `${plek.soort === 'knooppunt' ? 'Knooppunt' : 'Voorpost'} ${plek.naam}`,
     opties: () => {
-      const t = plek.toren;
-      if (!t) {
-        return Object.entries(TOREN_TYPES).map(([type, cfg]) => ({
-          tekst: `${cfg.naam} €${cfg.prijs} — ${cfg.omschrijving}, ${cfg.hp} HP`, prijs: cfg.prijs, sluit: true,
-          actie: () => bouwToren(plek, type),
-        }));
-      }
-      const cfg = TOREN_TYPES[t.type];
-      const prijs = upgradePrijs(t);
-      const volgend = cfg.niveaus[t.niveau];
-      const reparatie = reparatieKosten(t);
+      const bouwOptie = ([type, cfg]) => ({
+        tekst: `${cfg.naam} €${cfg.prijs}, ${cfg.omschrijving}, ${cfg.hp} HP`, prijs: cfg.prijs,
+        actie: () => bouwToren(plek, type),
+      });
+      const torenTypes = Object.entries(TOREN_TYPES).filter(([type]) => slotVan(type) === 'toren');
       return [
-        prijs === null
-          ? { tekst: 'Maximaal niveau bereikt', klaar: true, actie: () => {} }
-          : { tekst: `Upgrade naar niveau ${t.niveau + 1} €${prijs} — ${t.type === 'hek' ? '' : `bereik ${volgend.bereik} m, ${volgend.schadePerSchot} schade/${volgend.schotInterval}s, `}${volgend.hp} HP`, prijs, actie: () => upgradeToren(t) },
-        reparatie === 0
-          ? { tekst: 'Repareren — toren is heel', klaar: true, actie: () => {} }
-          : { tekst: `Repareren €${reparatie} (${Math.ceil(t.hp)}/${t.hpMax} HP)`, prijs: reparatie, actie: () => repareerToren(t) },
-        { tekst: `Verkopen +€${verkoopOpbrengst(t)}`, sluit: true, actie: () => verkoopToren(t) },
+        ...(plek.toren ? slotOpties(plek.toren, 'Toren') : torenTypes.map(bouwOptie)),
+        ...(plek.hek ? slotOpties(plek.hek, 'Hek') : [bouwOptie(['hek', TOREN_TYPES.hek])]),
       ];
     },
   };
@@ -3225,6 +3238,14 @@ function hekPaalOffsets(hekLijn) {
   const n = Math.max(1, Math.ceil(hekLijn.breedte / HEK_PAAL_STAP));
   return Array.from({ length: n + 1 }, (_, i) => -hekLijn.breedte / 2 + (i * hekLijn.breedte) / n);
 }
+// Ligt (x, z) op de tegel van deze plek, met een halve paal marge? De tegel
+// draait mee met plek.hoek (zie de tegelbouw bij BOUWPLEKKEN).
+function opPlekTegel(plek, x, z) {
+  const dx = x - plek.positie.x, dz = z - plek.positie.z;
+  const c = Math.cos(plek.hoek), s = Math.sin(plek.hoek);
+  const grens = 0.9 + HEK_PAAL / 2;
+  return Math.abs(dx * c - dz * s) < grens && Math.abs(dx * s + dz * c) < grens;
+}
 function maakHek(plek) {
   const g = new THREE.Group();
   const paalMat = mat(0x5b2320, 0.7, 0.2);   // donkerrood ijzer, zoals de paaltjes in de stad
@@ -3233,23 +3254,36 @@ function maakHek(plek) {
   const lijnen = plek.hekLijnen.map(r => {
     const px = -r.rz, pz = r.rx;   // loodrecht op de looprichting
     const offsets = hekPaalOffsets(r);
+    // Ticket D47: geen paal op de tegel van de plek, daar staat (of komt) de
+    // toren. De palen vallen uiteen in aaneengesloten stukken; elk stuk krijgt
+    // eigen dwarsliggers. De contactlijn blijft heel: het gat is voor de
+    // speler, niet voor robots (die de toren daar toch niet passeren).
+    const stukken = [];
+    let stuk = null;
     for (const o of offsets) {
       const x = r.x + px * o, z = r.z + pz * o;
+      if (opPlekTegel(plek, x, z)) { stuk = null; continue; }
+      if (!stuk) stukken.push(stuk = []);
+      stuk.push(o);
       const paal = new THREE.Mesh(new THREE.BoxGeometry(HEK_PAAL, 1.3, HEK_PAAL), paalMat);
       paal.position.set(x, 0.65, z);
       paal.castShadow = true;
       g.add(paal);
       obstakelHandles.push(registreerRechthoek(x - HEK_PAAL / 2, x + HEK_PAAL / 2, z - HEK_PAAL / 2, z + HEK_PAAL / 2));
     }
-    // Twee dwarsliggers over de hele lengte (alleen beeld).
-    const lengte = offsets[offsets.length - 1] - offsets[0];
-    const midden = (offsets[0] + offsets[offsets.length - 1]) / 2;
-    for (const y of [0.5, 1.05]) {
-      const ligger = new THREE.Mesh(new THREE.BoxGeometry(lengte, 0.14, 0.14), liggerMat);
-      ligger.position.set(r.x + px * midden, y, r.z + pz * midden);
-      ligger.rotation.y = Math.atan2(-pz, px);
-      g.add(ligger);
+    // Twee dwarsliggers per stuk (alleen beeld).
+    for (const st of stukken) {
+      if (st.length < 2) continue;
+      const lengte = st[st.length - 1] - st[0];
+      const m = (st[0] + st[st.length - 1]) / 2;
+      for (const y of [0.5, 1.05]) {
+        const ligger = new THREE.Mesh(new THREE.BoxGeometry(lengte, 0.14, 0.14), liggerMat);
+        ligger.position.set(r.x + px * m, y, r.z + pz * m);
+        ligger.rotation.y = Math.atan2(-pz, px);
+        g.add(ligger);
+      }
     }
+    const midden = (offsets[0] + offsets[offsets.length - 1]) / 2;
     // De hek-lijn als lijnstuk, voor de contactcheck van robots.
     return {
       poort: r.poort, s: r.s, mx: r.x + px * midden, mz: r.z + pz * midden,
@@ -3307,7 +3341,6 @@ function vernietigToren(toren) {
   }
   speelExplosie();
   toonFeedbackMelding(`${TOREN_TYPES[toren.type].naam} bij ${toren.plek.naam} is gesneuveld!`);
-  if (menu?.bron === toren.plek) sluitMenu();
   verwijderToren(toren);
 }
 
@@ -3409,7 +3442,7 @@ function maakGeschutToren(plek) {
 
 function bouwToren(plek, type) {
   const cfg = TOREN_TYPES[type];
-  if (!cfg || plek.toren || spel.gameOver) return null;
+  if (!cfg || plek[slotVan(type)] || spel.gameOver) return null;
   if (geld < cfg.prijs) {
     toonFeedbackMelding(`Niet genoeg geld (${cfg.naam} kost €${cfg.prijs})`);
     return null;
@@ -3417,10 +3450,11 @@ function bouwToren(plek, type) {
   geld -= cfg.prijs;
   updateGeldUI();
   const toren = type === 'hek' ? maakHek(plek) : maakGeschutToren(plek);
-  plek.toren = toren;
+  toren.slot = slotVan(type);
+  plek[toren.slot] = toren;
   torens.push(toren);
   runStats.torensGebouwd += 1;
-  if (menu?.bron === plek) sluitMenu();
+  if (menu?.bron === plek) renderMenu();
   speelBouw();
   toonFeedbackMelding(`${cfg.naam} gebouwd bij ${plek.naam}`);
   return toren;
@@ -3430,9 +3464,10 @@ function verwijderToren(toren) {
   scene.remove(toren.groep);
   if (toren.spoor) scene.remove(toren.spoor);
   for (const handle of toren.obstakelHandles) verwijderObstakel(handle);
-  toren.plek.toren = null;
+  toren.plek[toren.slot] = null;
   const i = torens.indexOf(toren);
   if (i >= 0) torens.splice(i, 1);
+  if (menu?.bron === toren.plek) renderMenu();
 }
 
 function upgradeToren(toren) {
@@ -3473,7 +3508,7 @@ function verkoopToren(toren) {
   verdienGeld(opbrengst);
   updateGeldUI();
   verwijderToren(toren);
-  toonFeedbackMelding(`Toren verkocht +€${opbrengst}`);
+  toonFeedbackMelding(`${TOREN_TYPES[toren.type].naam} verkocht +€${opbrengst}`);
   return opbrengst;
 }
 
@@ -4487,10 +4522,11 @@ function tekenMinimap() {
     minimapCtx.stroke();
   }
 
-  // Ticket D10: bouwplekken als klein vierkantje (gevuld zodra er een toren staat).
+  // Ticket D10: bouwplekken als klein vierkantje (gevuld zodra er een toren
+  // of, sinds D47, een hek staat).
   for (const plek of BOUWPLEKKEN) {
     const [bx, bz] = naarMinimap(plek.positie.x, plek.positie.z);
-    if (plek.toren) {
+    if (plek.toren || plek.hek) {
       minimapCtx.fillStyle = '#7fd4ff';
       minimapCtx.fillRect(bx - 3, bz - 3, 6, 6);
     } else {
@@ -4721,7 +4757,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   // Ticket D29: wapenbereik.
   WAPEN_BEREIK, raycaster,
   // Ticket D10: bouwplekken.
-  BOUWPLEKKEN, BOUWPLEK_RADIUS, puntOpRoute, looproute, plekVoor, dichtsteHekLijn,
+  BOUWPLEKKEN, BOUWPLEK_RADIUS, puntOpRoute, looproute, plekVoor, dichtsteHekLijn, opPlekTegel, slotVan,
   runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, bijenkorfShopOpen: menu === COMMANDOPOST_MENU, bouwMenuPlek: menu && menu !== COMMANDOPOST_MENU ? menu.bron : null, aantalTorens: torens.length, aantalObstakels: obstakels.length }),
   // Ticket D11: torens.
   TOREN_TYPES, torens, bouwToren, verwijderToren, updateTorens, activeerBouwplek, kiesTorenDoel, verwijderObstakel,

@@ -1896,6 +1896,12 @@ Besluiten van de eigenaar:
   - robots staan stil in het vuur;
   - een knooppunthek houdt beide routes tegen;
   - verkopen of sneuvelen van het een laat het ander staan.
+- **Uitgevoerd:**
+  - `plek.toren` en `plek.hek` zijn losse slots.
+  - Het menu toont beide slots, met cijfers tot 6, en blijft na bouwen en
+    verkopen open.
+  - Geen hekpaal op de tegel van de plek.
+  - Zie het verslag in de ROADMAP.
 
 #### Ticket D48 — De Bovenleiding
 

@@ -56,7 +56,7 @@ const menu = await page.evaluate(() => {
   const open = { stand: d.bouwMenuStand() === plek, zichtbaar: bouwUI.style.display === 'block', tekst: bouwUI.textContent };
   window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1' }));
   window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Digit1' }));
-  const naBouw = { gebouwd: plek.toren !== null, menuDicht: d.bouwMenuStand() === null && bouwUI.style.display === 'none', geld: d.geldStand() };
+  const naBouw = { gebouwd: plek.toren !== null, menuOpen: d.bouwMenuStand() === plek && bouwUI.style.display === 'block', tekst: bouwUI.textContent, geld: d.geldStand() };
   // Menu op een andere plek openen en dan weglopen.
   d.speler.positie.set(ander.positie.x + 1.4, 0, ander.positie.z);
   d.updateInteracties(0);
@@ -65,9 +65,10 @@ const menu = await page.evaluate(() => {
   d.updateInteracties(0);
   return { prompt, open, naBouw, openBijAnder, dichtNaWeglopen: d.bouwMenuStand() === null && bouwUI.style.display === 'none', prijs: d.TOREN_TYPES.geschut.prijs };
 });
-check('Bij een lege bouwplek vraagt de prompt om een cijfer (menu staat al open)', menu.prompt.includes('Kies een toren met een cijfer'), menu);
+check('Bij een lege bouwplek vraagt de prompt om een cijfer (menu staat al open)', menu.prompt.includes('kies een cijfer'), menu);
 check('Bij een lege bouwplek opent het bouwmenu vanzelf, met de geschuttoren', menu.open.stand && menu.open.zichtbaar && menu.open.tekst.includes(`Geschuttoren €${menu.prijs}`), menu.open);
-check('1 in het bouwmenu bouwt de toren en sluit het menu', menu.naBouw.gebouwd && menu.naBouw.menuDicht && menu.naBouw.geld === 300 - menu.prijs, menu.naBouw);
+// Ticket D47: het menu blijft open, zodat je meteen het hek erbij kunt kopen.
+check('1 in het bouwmenu bouwt de toren; het menu blijft open en biedt nu het hek aan', menu.naBouw.gebouwd && menu.naBouw.menuOpen && menu.naBouw.tekst.includes('Hek €') && menu.naBouw.geld === 300 - menu.prijs, menu.naBouw);
 check('Weglopen van de bouwplek sluit een open bouwmenu', menu.openBijAnder && menu.dichtNaWeglopen, menu);
 
 // --- 3. Schieten: bereik, dichtstbijzijnde doel, interval ------------------

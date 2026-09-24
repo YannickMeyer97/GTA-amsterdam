@@ -112,7 +112,7 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D44** | Minimap draait mee (heading-up) — *na M2* |
 | ☑ | **D45** | Menu opent vanzelf bij commandopost en bouwplek — *na M2* |
 | ☑ | **D46** | Bouwplekken: knooppunten bij het monument + een voorpost per straat — *na M2* |
-| ☐ | **D47** | Eigen hekslot naast het torenslot — *na M2* |
+| ☑ | **D47** | Eigen hekslot naast het torenslot — *na M2* |
 | ☐ | **D48** | Nieuwe toren: Bovenleiding (stroomstoot springt over naar tot 4 robots) — *na M2* |
 | ☐ | **D49** | Nieuwe toren: Muntpers (+50% geld voor kills in bereik) — *na M2* |
 | ☐ | **D36** | Textuurbibliotheek (gekopieerd uit Undead + kinderkopjes, zandsteen, leisteen, …) |
@@ -380,6 +380,32 @@ reproductie die eerder 1 op de 4 keer faalde, faalt niet meer.
     inclusief beide routes van een knooppunt (48 checks).
   - `test-dnm-routes`, `-kern`, `-layout` en de torentests zijn bijgewerkt
     via `plekVoor(route, soort)`.
+
+**D47 — eigen hekslot, verslag.**
+- **Twee slots per plek.** `plek.toren` staat naast de route, `plek.hek`
+  ligt dwars erover. Bouwen, verkopen en sneuvelen raken alleen het eigen
+  slot. De keuze toren-óf-hek is weg: een hek houdt robots vast in het vuur
+  van de toren ernaast.
+- **Menu.**
+  - Eerst het torenslot, dan het hekslot. Een lege plek toont
+    "1 Geschuttoren, 2 Hek".
+  - Met toren en hek zijn er zes opties (upgraden, repareren, verkopen, per
+    slot). De cijfertoetsen gaan daarom tot 6.
+  - Het menu blijft na bouwen en verkopen open, zodat het andere slot
+    meteen te kopen is.
+- **Geen hekpaal op de tegel** (`opPlekTegel`). Het hek valt daar uiteen in
+  stukken met eigen dwarsliggers. De contactlijn blijft heel, dus robots
+  kunnen er niet door.
+- **Minimap:** een plek is gevuld zodra er een toren of een hek staat.
+- **Tests.** `test-dnm-hek` heeft 55 checks. Nieuw daarin:
+  - toren en hek samen, via het menu;
+  - zes opties;
+  - geen paal op een tegel;
+  - robots van beide knooppuntroutes staan tegen het hek en sneuvelen in
+    het vuur;
+  - verkopen of sneuvelen van het een laat het ander staan.
+
+  `test-dnm-toren-geschut` en `-niveaus` toetsen dat het menu openblijft.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 
