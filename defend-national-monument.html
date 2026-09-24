@@ -2126,10 +2126,8 @@ function afstandTotMonument(positie) {
 // eerste routepunt; de spreiding ligt dwars op de eerste routestrook (2 m
 // smaller dan de strook zelf) en 1 m langs de route.
 //
-// Tot D33 volgen robots de routepunten één voor één (`routePunten`), zoals
-// vroeger het ene tussenpunt van de Kalverstraat. D33 vervangt dat door
-// echt routevolgen op afstand langs de route, met eigen baan en onderlinge
-// afstand (plan §11.7.4).
+// Sinds D33 volgen robots de route zelf (zie "Ticket D33: robots volgen
+// hun route" bij updateRobots). `routePunten` blijft voor meetscripts.
 const SPAWN_POORTEN = [...ROUTES.values()].map(route => {
   const eerste = route.segmenten[0];
   const dwars = Math.max(1, eerste.breedte - 2);
@@ -2141,9 +2139,6 @@ const SPAWN_POORTEN = [...ROUTES.values()].map(route => {
     routePunten: route.punten.slice(1).map(([x, z]) => new THREE.Vector3(x, 0, z)),
   };
 });
-// Afstand waarop een robot een routepunt als bereikt beschouwt en naar het
-// volgende loopt.
-const ROUTEPUNT_BEREIKT = 1.5;
 
 const spel = {
   score: 0,
@@ -2168,7 +2163,8 @@ const spel = {
   bouwfaseAftelling: 0,   // Ticket D15: laatst getoonde hele seconde van de aftelling (alleen voor de HUD)
   thema: null,            // Ticket D30: sleutel uit THEMAGOLVEN voor de lopende wave, of null
   waveGeenMonumentSchade: true,   // wordt false zodra een robot deze wave het monument raakt (zie robotRaaktMonument)
-  specialMeter: 0                 // 0-100, vult per kill, zie vernietigRobot/gebruikSpecial
+  specialMeter: 0,                // 0-100, vult per kill, zie vernietigRobot/gebruikSpecial
+  vastloopTeller: 0               // Ticket D33: hoe vaak een robot op zijn route vastliep (hoort 0 te blijven)
 };
 
 // Ticket D7: statistieken van de lopende run, voor het eindscherm. Een
@@ -2509,15 +2505,6 @@ function animeerPoortBakens() {
   for (const baken of poortBakens.values()) {
     if (baken.visible) baken.children[0].material.opacity = puls;
   }
-}
-
-function spawnPlekVoorPoort(poort) {
-  for (let poging = 0; poging < 30; poging++) {
-    const x = poort.positie.x + (Math.random() - 0.5) * poort.spreidingX;
-    const z = poort.positie.z + (Math.random() - 0.5) * poort.spreidingZ;
-    if (isVrijePlek(x, z, 1.0)) return new THREE.Vector3(x, 0, z);
-  }
-  return poort.positie.clone();
 }
 
 function spawnRobotVanafPoort(type = 'normal') {
@@ -2924,27 +2911,17 @@ const interactiePunten = [
 const BOUWPLEK_RADIUS = 2.5;             // interactieafstand; klein genoeg dat plekken elkaar niet overlappen
 const ROUTE_STAP = 0.25;
 
-// De weg die een robot van deze poort vandaan aflegt, in stapjes van 0,25 m,
-// met precies de regels van updateRobots(): routepunten één voor één tot
-// binnen ROUTEPUNT_BEREIKT, botsingen oplossen met straal 0,45. Dient tests
-// en meetscripts (en puntOpRoute hieronder); D33 vervangt dit door de vaste
-// route zelf.
+// De middellijn van de route van deze poort, in stapjes van 0,25 m. Sinds
+// D33 is dat de weg die robots lopen (plus hun eigen baan ernaast); tests en
+// meetscripts gebruiken hem.
 const looproutes = new Map();
 function looproute(poort) {
   if (looproutes.has(poort.naam)) return looproutes.get(poort.naam);
-  const pos = { x: poort.positie.x, z: poort.positie.z };
-  const punten = [{ x: pos.x, z: pos.z }];
-  let index = 0;
-  for (let i = 0; i < 3000; i++) {
-    while (index < poort.routePunten.length - 1 && Math.hypot(pos.x - poort.routePunten[index].x, pos.z - poort.routePunten[index].z) < ROUTEPUNT_BEREIKT) index++;
-    const doel = poort.routePunten[index];
-    const dx = doel.x - pos.x, dz = doel.z - pos.z, lengte = Math.hypot(dx, dz) || 1;
-    pos.x += (dx / lengte) * ROUTE_STAP;
-    pos.z += (dz / lengte) * ROUTE_STAP;
-    losBotsingenOp(pos, 0.45);
-    punten.push({ x: pos.x, z: pos.z });
-    if (afstandTotMonument(pos) < 0.6) break;
-  }
+  const route = ROUTES.get(poort.naam);
+  const punten = [];
+  for (let s = 0; s < route.lengte; s += ROUTE_STAP) { const p = puntOp(route, s); punten.push({ x: p.x, z: p.z }); }
+  const eind = puntOp(route, route.lengte);
+  punten.push({ x: eind.x, z: eind.z });
   looproutes.set(poort.naam, punten);
   return punten;
 }
@@ -3069,7 +3046,6 @@ const ROBOT_SLAG_INTERVAL = 0.8;
 const HEK_CONTACT_AFSTAND = 1.0;
 const HEK_PAAL = 0.6;          // paaltje van 0,6 × 0,6 m
 const HEK_PAAL_STAP = 0.9;     // 0,3 m tussenruimte: te smal voor een robot (0,9 m breed)
-const HEK_REIKWIJDTE = 3.5;    // zo ver steekt het hek aan de overkant van de route uit
 // Ticket D12: verkopen levert de helft van alles wat erin zat (bouwen +
 // upgrades; reparaties niet) — genoeg om een verkeerde poortkeuze te
 // herstellen, niet zoveel dat verkopen-en-verplaatsen gratis is.
@@ -3160,25 +3136,18 @@ function updateHpBalk(toren) {
 }
 const hpBalkTmp = new THREE.Vector3();
 
-// Ticket D13: het hek. Paaltjes op een lijn loodrecht op de looproute, door
-// het routepunt naast de bouwplek: van HEK_REIKWIJDTE aan de overkant tot
-// een meter voorbij de bouwplek zelf. Elk paaltje is een eigen klein
-// obstakel — `obstakels` kent alleen assen-uitgelijnde rechthoeken, en een
-// schuin hek dwars over een diagonale route is dat niet.
+// Ticket D13: het hek. Paaltjes op een lijn loodrecht op de route, door het
+// routepunt naast de bouwplek. Elk paaltje is een eigen klein obstakel:
+// `obstakels` kent alleen assen-uitgelijnde rechthoeken, en een schuin hek
+// dwars over een diagonale route is dat niet.
+//
+// Sinds D32/D33 spant het hek precies de breedte uit de plattegrond
+// (plek.hekBreedte), gecentreerd op de route, met een paal op elk uiteinde.
+// Robots op hun route raken het op basis van s (hekVoorRobot), dus er is geen
+// gat om doorheen te glippen.
 function hekPaalOffsets(plek) {
-  // Ticket D32: bij een plek uit de plattegrond spant het hek precies de
-  // breedte die daar is vastgelegd, gecentreerd op de route. De palen
-  // staan gelijk verdeeld, met een paal op elk uiteinde.
-  if (plek.hekBreedte) {
-    const n = Math.max(1, Math.ceil(plek.hekBreedte / HEK_PAAL_STAP));
-    return Array.from({ length: n + 1 }, (_, i) => -plek.hekBreedte / 2 + (i * plek.hekBreedte) / n);
-  }
-  const kant = Math.sign(plek.zijOffset) || 1;
-  const van = -kant * HEK_REIKWIJDTE, tot = plek.zijOffset + kant;
-  const [lo, hi] = van < tot ? [van, tot] : [tot, van];
-  const offsets = [];
-  for (let o = lo; o <= hi + 1e-6; o += HEK_PAAL_STAP) offsets.push(o);
-  return offsets;
+  const n = Math.max(1, Math.ceil(plek.hekBreedte / HEK_PAAL_STAP));
+  return Array.from({ length: n + 1 }, (_, i) => -plek.hekBreedte / 2 + (i * plek.hekBreedte) / n);
 }
 function maakHek(plek) {
   const r = plek.route;
@@ -3636,8 +3605,11 @@ function maakRobot(type = 'normal') {
     beloningMultiplier: config.beloningMultiplier,
     monumentSchade: config.monumentSchade,
     doel: null,                          // waar wandelt hij heen?
-    routePunten: null,                   // Ticket D32: de routepunten van zijn poort (zie SPAWN_POORTEN)
-    routeIndex: 0,                       // het routepunt waar hij nu naartoe loopt
+    // Ticket D33: routevolgen (zie updateRobots).
+    route: null,                         // de route uit ROUTES, of null ('vrij')
+    s: 0,                                // afgelegde afstand langs de route
+    laanFractie: 0,                      // eigen baan binnen de strook, −1..1
+    modus: 'vrij',                       // 'route', 'bouwwerk', 'terug' of 'vrij'
     pauze: 0,                            // even stilstaan bij aankomst
     snelheid: 1.4 + Math.random(),       // elke robot loopt anders snel
     stapfase: Math.random() * 10,        // zodat ze niet synchroon lopen
@@ -3658,10 +3630,15 @@ function maakRobot(type = 'normal') {
 function spawnRobot(poort = null, type = 'normal') {
   const robot = maakRobot(type);
   if (poort) {
-    robot.groep.position.copy(spawnPlekVoorPoort(poort));
+    // Ticket D33: op de route, in een eigen baan binnen de strook.
+    robot.route = ROUTES.get(poort.naam);
+    robot.s = 0;
+    robot.laanFractie = Math.random() * 2 - 1;
+    robot.modus = 'route';
+    const start = robotRoutePunt(robot, 0);
+    robot.groep.position.set(start.x, 0, start.z);
+    robot.groep.rotation.y = Math.atan2(start.rx, start.rz);
     spel.laatsteSpawnPoort = poort.naam;
-    robot.routePunten = poort.routePunten;
-    robot.routeIndex = 0;
   } else {
     robot.groep.position.copy(willekeurigePlek(18));
   }
@@ -3680,13 +3657,77 @@ function spawnRobot(poort = null, type = 'normal') {
   updateArcadeUI();
 }
 
+// --- Ticket D33: robots volgen hun route ---------------------------------
+//
+// Een robot met een poort heeft een `route` (uit ROUTES), een afstand langs
+// die route (`s`), een eigen baan (`laanFractie`, −1..1, bij het spawnen
+// gekozen) en een `modus`:
+// - 'route':    de route aflopen (de normale toestand);
+// - 'bouwwerk': een bomber die van zijn route afwijkt naar een toren of hek
+//               binnen bereik (D14);
+// - 'terug':    na een verdwenen bouwwerk terug naar de route;
+// - 'vrij':     een robot zonder poort (alleen tests en noodgevallen): recht
+//               naar het monument, met botsingen, zoals vóór fase M.
+// Slaan op een hek is geen aparte modus: dat beslist hekVoorRobot() per
+// frame, zodat een robot na het sneuvelen van het hek vanzelf doorloopt.
+const ROBOT_VOORUITKIJK = 1.5;    // stuurpunt ligt zoveel meter verder langs de route
+const ROBOT_BAAN_MARGE = 0.8;     // zoveel ruimte blijft er tussen buitenste baan en strookrand
+const ROBOT_ONDERLING = 1.2;      // minimale afstand (langs de route) tot een voorganger in dezelfde baan
+const ROBOT_BAAN_BOTSING = 0.9;   // twee robots delen een baan als hun zijwaartse afstand kleiner is
+const ROBOT_TERUG_BEREIKT = 0.5;  // 'terug' is klaar zodra de robot zo dicht bij zijn route is
+const ROBOT_ACHTERSTAND = 2.0;    // s groeit alleen als de robot zo dicht bij zijn plek op de route is
+
+// Zijwaartse afstand tot de middellijn op afstand s: de baan versmalt
+// vanzelf waar de strook smaller wordt (9 m op het Damrak, 3 m op het plein).
+function robotBaan(robot, s) {
+  const p = puntOp(robot.route, s);
+  return robot.laanFractie * Math.max(0, p.breedte / 2 - ROBOT_BAAN_MARGE);
+}
+// Het punt waar de robot op afstand s hoort te lopen: de middellijn plus
+// zijn baan, loodrecht op de looprichting (+ = links).
+function robotRoutePunt(robot, s) {
+  const p = puntOp(robot.route, s);
+  const baan = robot.laanFractie * Math.max(0, p.breedte / 2 - ROBOT_BAAN_MARGE);
+  return { x: p.x - p.rz * baan, z: p.z + p.rx * baan, rx: p.rx, rz: p.rz };
+}
+// Wacht deze robot op een voorganger in zijn baan?
+// De banen worden vergeleken op de plek van de voorganger: staat die al op
+// de smalle strook en deze robot nog op de brede rijbaan, dan telt hoe ze
+// daar straks naast elkaar liggen.
+function robotMoetWachten(robot) {
+  for (const ander of robots) {
+    if (ander === robot || ander.route !== robot.route || ander.modus !== 'route') continue;
+    const voorsprong = ander.s - robot.s;
+    // Op precies dezelfde s gaat de eerder gespawnde voor.
+    if (voorsprong < 0 || voorsprong > ROBOT_ONDERLING) continue;
+    if (voorsprong === 0 && robots.indexOf(ander) > robots.indexOf(robot)) continue;
+    if (Math.abs(robotBaan(ander, ander.s) - robotBaan(robot, ander.s)) < ROBOT_BAAN_BOTSING) return true;
+  }
+  return false;
+}
+// Het hek waar deze robot nu tegenaan staat, of null. Een robot op zijn
+// route raakt een hek van zijn EIGEN route zodra hij op HEK_CONTACT_AFSTAND
+// ervoor is: geen meetkunde, dus ook geen gat om doorheen te glippen. Een
+// robot buiten zijn route (bomber, 'vrij') gebruikt de lijntest van D13.
+function hekVoorRobot(robot) {
+  if (robot.modus === 'route') {
+    for (const toren of torens) {
+      if (toren.type !== 'hek' || toren.plek.poort !== robot.route.poort) continue;
+      if (robot.s >= toren.plek.s - HEK_CONTACT_AFSTAND && robot.s <= toren.plek.s + 1) return toren;
+    }
+    return null;
+  }
+  return hekInContact(robot.groep.position);
+}
+
 function updateRobots(dt) {
   if (spel.gameOver) return;
 
   for (const robot of [...robots]) {
     const positie = robot.groep.position;
 
-    // Tijdelijke zijwaartse uitwijking laten aftellen (zie vastloop-detectie hieronder).
+    // Tijdelijke zijwaartse uitwijking laten aftellen (alleen buiten de
+    // route, zie de vastloop-detectie hieronder).
     if (robot.ontwijkTimer > 0) {
       robot.ontwijkTimer -= dt;
       if (robot.ontwijkTimer <= 0) robot.ontwijkOffset.set(0, 0, 0);
@@ -3705,28 +3746,19 @@ function updateRobots(dt) {
       if (robot.schildMesh) robot.schildMesh.visible = robot.schildActief;
     }
 
-    // Robots komen uit de straatopeningen en lopen de routepunten van hun
-    // poort af (Ticket D32, uit DAM_LAYOUT); het laatste punt ligt tegen het
-    // monument. Een robot zonder poort (willekeurig gespawnd) loopt recht
-    // naar het monument.
-    if (robot.routePunten) {
-      while (robot.routeIndex < robot.routePunten.length - 1
-        && Math.hypot(positie.x - robot.routePunten[robot.routeIndex].x, positie.z - robot.routePunten[robot.routeIndex].z) < ROUTEPUNT_BEREIKT) robot.routeIndex++;
-    }
-    let huidigDoel = robot.routePunten ? robot.routePunten[robot.routeIndex] : MONUMENT_POSITIE;
-
     // Raakt de robot het monument-vlak zelf (niet alleen het middelpunt)?
-    // De obstakel-rechthoek rond het monument houdt robots anders voor altijd
-    // op afstand van het middelpunt, waardoor de monument-HP nooit daalt.
     if (afstandTotMonument(positie) < 0.6) {
       robotRaaktMonument(robot);
       continue;
     }
 
+    let huidigDoel = null;
+
     // Ticket D14: een bomber met een bouwwerk binnen bereik gaat daarop af
     // en ontploft bij aankomst (vóór de hek-check: een bomber slaat niet, hij
-    // ontploft). Het doel wordt elke frame opnieuw gekozen, dus sneuvelt het
-    // bouwwerk onderweg, dan loopt hij gewoon weer naar het monument.
+    // ontploft). Het doel wordt elke frame opnieuw gekozen. Ticket D33: hij
+    // verlaat daarvoor zijn route (modus 'bouwwerk') en keert, als het
+    // bouwwerk weg is, terug naar het dichtstbijzijnde routepunt ('terug').
     if (robot.type === 'bomber') {
       const torenDoel = kiesBomberDoel(positie);
       if (torenDoel) {
@@ -3737,13 +3769,16 @@ function updateRobots(dt) {
           continue;
         }
         huidigDoel = doelPunt;
+        if (robot.route) robot.modus = 'bouwwerk';
+      } else if (robot.modus === 'bouwwerk') {
+        robot.modus = 'terug';
       }
     }
 
     // Ticket D13: staat er een hek in de weg? Dan blijven staan en slaan in
-    // plaats van door te lopen — en dus ook géén vastloop-detectie, anders
-    // wijkt de robot na 1,5 s zijwaarts uit en loopt hij om het hek heen.
-    const hek = hekInContact(positie);
+    // plaats van door te lopen. Ticket D33: op de route op basis van s (zie
+    // hekVoorRobot), zodat er geen gat is om doorheen te glippen.
+    const hek = hekVoorRobot(robot);
     if (hek) {
       robot.vastTijd = 0;
       robot.slagTimer = (robot.slagTimer ?? ROBOT_SLAG_INTERVAL) - dt;
@@ -3766,48 +3801,91 @@ function updateRobots(dt) {
     }
     robot.slagTimer = ROBOT_SLAG_INTERVAL;
 
+    // Waar stuurt de robot naartoe?
+    let wacht = false;
+    if (robot.modus === 'route') {
+      // Een stuurpunt iets verder langs zijn route, in zijn eigen baan: zo
+      // worden bochten vanzelf rond.
+      wacht = robotMoetWachten(robot);
+      // Aan het eind van de route het laatste stukje recht op het monument
+      // af: het eindpunt ligt 0,3 m van de speldoos, maar met de eigen baan
+      // erbij kan dat net buiten de treffergrens (0,6 m) uitkomen.
+      huidigDoel = robot.s >= robot.route.lengte - 0.01
+        ? MONUMENT_POSITIE
+        : robotRoutePunt(robot, Math.min(robot.s + ROBOT_VOORUITKIJK, robot.route.lengte));
+    } else if (robot.modus === 'terug') {
+      const pr = projecteerOpRoute(robot.route, positie.x, positie.z);
+      robot.s = pr.s;
+      huidigDoel = robotRoutePunt(robot, pr.s);
+      if (Math.hypot(huidigDoel.x - positie.x, huidigDoel.z - positie.z) < ROBOT_TERUG_BEREIKT) robot.modus = 'route';
+    } else if (!huidigDoel) {
+      huidigDoel = MONUMENT_POSITIE;   // 'vrij': recht naar het monument
+    }
     robot.doel = huidigDoel;
-    // Bij vastlopen wijken ze tijdelijk uit naar een punt naast het huidige doel.
-    const richting = huidigDoel.clone().add(robot.ontwijkOffset).sub(positie).setY(0);
 
-    richting.normalize();
+    const opRoute = robot.modus === 'route';
+    const ontwijk = opRoute ? { x: 0, z: 0 } : robot.ontwijkOffset;
+    let dx = huidigDoel.x + ontwijk.x - positie.x, dz = huidigDoel.z + ontwijk.z - positie.z;
+    const afstandTotDoel = Math.hypot(dx, dz);
+    if (afstandTotDoel > 1e-6) { dx /= afstandTotDoel; dz /= afstandTotDoel; }
     const positieVoorStap = positie.clone();
     // robot.snelheid blijft de vaste basissnelheid (zie ROBOT_TYPES); de
     // Kerkklok Boost werkt via een multiplier die hier wordt toegepast, dus
     // er wordt nooit iets permanent op robot.snelheid gestapeld en nieuwe
     // spawns tijdens de boost lopen automatisch ook sneller.
     const effectieveSnelheid = robot.snelheid * getRobotSpeedMultiplier();
-    const verplaatsing = effectieveSnelheid * dt;
-    positie.addScaledVector(richting, verplaatsing);
-    losBotsingenOp(positie, 0.45);
+    const verplaatsing = wacht ? 0 : effectieveSnelheid * dt;
+    positie.x += dx * Math.min(verplaatsing, afstandTotDoel);
+    positie.z += dz * Math.min(verplaatsing, afstandTotDoel);
+    if (opRoute) {
+      // Op de route geen botsingen: de strook is vrij (test-dnm-layout), en
+      // een robot die tegen iets op botst, zou van zijn route af raken.
+      //
+      // s groeit met de loopsnelheid, zolang de robot bij zijn plek op de
+      // route is (binnen ROBOT_ACHTERSTAND). Loopt hij achter (een bocht
+      // afsnijden, een baanwissel), dan wacht s tot hij bij is. Niet s uit
+      // een projectie halen: aan de binnenkant van een bocht blijft die op
+      // het hoekpunt hangen, en dan schuift het stuurpunt nooit meer op.
+      const sNieuw = Math.min(robot.s + verplaatsing, robot.route.lengte);
+      const plek = robotRoutePunt(robot, sNieuw);
+      if (Math.hypot(plek.x - positie.x, plek.z - positie.z) <= ROBOT_ACHTERSTAND) robot.s = sNieuw;
+    } else {
+      losBotsingenOp(positie, 0.45);
+    }
 
-    // Botst de robot al een tijdje tegen iets aan zonder echt vooruit te komen?
-    // Dan even zijwaarts uitwijken in plaats van te blijven trillen tegen de muur.
-    if (positie.distanceTo(positieVoorStap) < verplaatsing * 0.15) {
+    // Vastlopen. Op de route is het een meting (spel.vastloopTeller hoort 0
+    // te blijven, test-dnm-routes); daarbuiten is het ook nog het vangnet
+    // van vóór fase M: even zijwaarts uitwijken.
+    if (!wacht && positie.distanceTo(positieVoorStap) < verplaatsing * 0.15) {
       robot.vastTijd += dt;
     } else {
       robot.vastTijd = 0;
     }
-    if (robot.vastTijd > 1.5 && robot.ontwijkTimer <= 0) {
-      const zijkant = Math.random() < 0.5 ? 1 : -1;
-      robot.ontwijkOffset.set(-richting.z * zijkant * 10, 0, richting.x * zijkant * 10);
-      robot.ontwijkTimer = 3;
+    if (robot.vastTijd > 1.5) {
       robot.vastTijd = 0;
+      if (opRoute) {
+        spel.vastloopTeller += 1;
+      } else if (robot.ontwijkTimer <= 0) {
+        const zijkant = Math.random() < 0.5 ? 1 : -1;
+        robot.ontwijkOffset.set(-dz * zijkant * 10, 0, dx * zijkant * 10);
+        robot.ontwijkTimer = 3;
+      }
     }
 
-    const doelHoek = Math.atan2(richting.x, richting.z);
-    let verschil = doelHoek - robot.groep.rotation.y;
-    while (verschil >  Math.PI) verschil -= Math.PI * 2;
-    while (verschil < -Math.PI) verschil += Math.PI * 2;
-    robot.groep.rotation.y += verschil * Math.min(1, dt * 6);
-
-    robot.stapfase += dt * effectieveSnelheid * 5;
-    const zwaai = Math.sin(robot.stapfase) * 0.55;
+    if (verplaatsing > 0 && afstandTotDoel > 1e-6) {
+      const doelHoek = Math.atan2(dx, dz);
+      let verschil = doelHoek - robot.groep.rotation.y;
+      while (verschil >  Math.PI) verschil -= Math.PI * 2;
+      while (verschil < -Math.PI) verschil += Math.PI * 2;
+      robot.groep.rotation.y += verschil * Math.min(1, dt * 6);
+      robot.stapfase += dt * effectieveSnelheid * 5;
+    }
+    const zwaai = wacht ? 0 : Math.sin(robot.stapfase) * 0.55;
     robot.beenLinks.rotation.x  =  zwaai;
     robot.beenRechts.rotation.x = -zwaai;
     robot.armLinks.rotation.x   = -zwaai * 0.8;
     robot.armRechts.rotation.x  =  zwaai * 0.8;
-    positie.y = vloerHoogte(positie.x, positie.z) + Math.abs(Math.sin(robot.stapfase)) * 0.06;
+    positie.y = vloerHoogte(positie.x, positie.z) + Math.abs(zwaai) * 0.11;
   }
 }
 
@@ -4556,6 +4634,8 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   tekenMinimap, updateRichtingspijlen, verbergRichtingspijlen, projecteerOpScherm, robotPijlenPool,
   // Ticket D32: het nieuwe fundament (ARENA_SCHAAL bestaat niet meer).
   DAM_LAYOUT, ROUTES, wereld, vloerHoogte, puntOp, projecteerOpRoute, vloerTextuur, TEXTUUR_TEKENAARS, gebouwGroepen,
+  // Ticket D33: routevolgen.
+  robotRoutePunt, robotBaan, hekVoorRobot, robotMoetWachten, ROBOT_ACHTERSTAND, ROBOT_VOORUITKIJK, ROBOT_BAAN_MARGE, ROBOT_ONDERLING, ROBOT_BAAN_BOTSING,
   // Ticket D7: eindscherm en runstatistieken.
   runStats, eindigRun, toonEindscherm, verdienGeld,
   // Ticket D8: highscore.

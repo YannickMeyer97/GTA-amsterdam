@@ -101,9 +101,11 @@ const routeControle = await page.evaluate(() => {
   const d = window.DamChaosDebug;
   const STAP = 0.25;
   const MAX_STAPPEN = 3000;
-  // Ticket D32: robots lopen sinds fase M de routepunten van hun poort af
-  // (DAM_LAYOUT), niet meer één tussenpunt en dan recht naar het monument.
-  const ROUTEPUNT_BEREIKT = 1.5;   // zelfde constante als de echte AI
+  // Ticket D32/D33: sinds fase M lopen robots hun vaste route uit
+  // DAM_LAYOUT (test-dnm-routes toetst dat met echte robots). Deze
+  // simulatie loopt de routepunten af MET botsingen: zo bewijst hij dat de
+  // corridor zelf vrij is, ook voor een robot die wél zou botsen.
+  const ROUTEPUNT_BEREIKT = 1.5;
 
   function simuleerRoute(poort, straal) {
     const pos = { x: poort.positie.x, z: poort.positie.z };

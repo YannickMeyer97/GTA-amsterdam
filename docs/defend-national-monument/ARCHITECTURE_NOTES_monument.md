@@ -1285,9 +1285,7 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
   - de spreiding ligt dwars op de eerste strook;
   - `routePunten` bevat de overige punten.
 
-  Robots lopen die punten af (`routeIndex`, `ROUTEPUNT_BEREIKT` 1,5 m).
-  `looproute()` simuleert precies dat; `puntOpRoute()` leest de vaste
-  route.
+  `routePunten` wordt sinds D33 alleen nog door meetscripts gebruikt.
 - **Bouwplekken** komen uit `DAM_LAYOUT.bouwplekken`:
   - index 0 = ver, 1 = nabij;
   - `s`, `route`, `zijOffset` en `hekBreedte` worden afgeleid;
@@ -1296,3 +1294,43 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
 - **Weg:** rijdende trams (`bewegendeTrams`), de oude bouwers,
   `registreerObstakel` en de paaltjesring rond het monument. Duiven en
   wolken bleven.
+
+### 15.6 Stand na D33 — routevolgen
+
+- **Robotvelden:** `route` (uit `ROUTES`, of null), `s`, `laanFractie`
+  (−1..1) en `modus`:
+  - `route`: de route aflopen;
+  - `bouwwerk`: een bomber op weg naar een toren of hek;
+  - `terug`: na een verdwenen bouwwerk terug naar de route;
+  - `vrij`: een robot zonder poort; recht naar het monument, met
+    botsingen, zoals vóór fase M.
+- **Hulpfuncties:**
+  - `robotBaan(robot, s)`: `laanFractie × (breedte/2 − 0,8)`;
+  - `robotRoutePunt(robot, s)`: middellijn plus baan, + = links van de
+    looprichting;
+  - `robotMoetWachten(robot)`: vergelijkt de banen op de s van de
+    voorganger; bij gelijke s gaat de eerder gespawnde voor;
+  - `hekVoorRobot(robot)`: in modus `route` op s, anders de lijntest
+    `hekInContact`.
+- **Contracten:**
+  1. In modus `route` geen `losBotsingenOp`. De strook is vrij
+     (`test-dnm-layout`); een botsing zou de robot van zijn route duwen.
+  2. `s` loopt nooit terug en groeit alleen als de robot binnen
+     `ROBOT_ACHTERSTAND` (2 m) van `robotRoutePunt(s)` is. Haal `s` niet
+     uit een projectie (bochtprobleem, zie de roadmap).
+  3. Aan het eind (`s ≥ lengte`) is het stuurdoel `MONUMENT_POSITIE`. De
+     treffer blijft `afstandTotMonument < 0,6`.
+  4. Een hek werkt alleen op robots van zijn eigen route (`plek.poort`) of
+     op robots buiten hun route. Een hek dat een andere route kruist, houdt
+     die robots dus niet tegen; de plattegrond legt geen hek over een
+     andere route.
+- **Constanten:**
+
+  | Naam | Waarde |
+  |---|---:|
+  | `ROBOT_VOORUITKIJK` | 1,5 |
+  | `ROBOT_BAAN_MARGE` | 0,8 |
+  | `ROBOT_ONDERLING` | 1,2 |
+  | `ROBOT_BAAN_BOTSING` | 0,9 |
+  | `ROBOT_TERUG_BEREIKT` | 0,5 |
+  | `ROBOT_ACHTERSTAND` | 2,0 |

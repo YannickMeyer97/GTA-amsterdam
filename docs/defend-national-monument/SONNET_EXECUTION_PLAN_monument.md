@@ -1318,6 +1318,13 @@ het eind.
 
   `test-dnm-hek.mjs`, `test-dnm-bouwplekken.mjs` en `test-dnm-kern.mjs` gaan
   over op de routes.
+- **Uitgevoerd** (verslag in de roadmap). Twee afwijkingen van §11.7.4:
+  - **`s` kinematisch.** `s` groeit met de loopsnelheid zolang de robot
+    binnen 2 m van zijn routeplek is (`ROBOT_ACHTERSTAND`), niet via
+    projectie; die blijft in bochten op het hoekpunt hangen.
+  - **Laatste stuk.** Aan het eind van de route stuurt de robot recht op
+    het monument af, zodat zijn baan hem niet net buiten de treffergrens
+    laat eindigen.
 
 #### Ticket D34 — Routes zichtbaar maken
 

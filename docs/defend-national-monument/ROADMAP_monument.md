@@ -106,7 +106,7 @@ plan, met de besluiten van de eigenaar, staat in
 | --- | --- | --- |
 | ☑ | **D31** | Plattegrond ontwerpen en laten goedkeuren → **M1** *(voorstel 2 goedgekeurd)* |
 | ☑ | **D32** | Nieuw fundament (grey-box): `DAM_LAYOUT`, vloer met kinderkopjes, rijbanen, tramrails |
-| ☐ | **D33** | Vaste routes over de rijbanen; bouwplekken en hekken uit de layout |
+| ☑ | **D33** | Vaste routes over de rijbanen; bouwplekken en hekken uit de layout |
 | ☐ | **D34** | Routes zichtbaar: oplichtend bij de aankondiging, bakens aan de straatingang |
 | ☐ | **D35** | Commandopost bij het monument, één menupaneel, HUD zonder overlap → **M2** (grey-box speeltest) |
 | ☐ | **D36** | Textuurbibliotheek (gekopieerd uit Undead + kinderkopjes, zandsteen, leisteen, …) |
@@ -197,6 +197,38 @@ in de pagina, als JSON; alles wordt daaruit berekend. In D32 wordt dat blok
   | Damrak | 350 (2314) | 13k (70k) |
 
   Laadtijd headless 2,9 s (was 6,2 s).
+
+**D33 — vaste routes, verslag.**
+- **Routevolgen.** Een robot met een poort volgt zijn route op afstand
+  langs de route (`s`):
+  - in een eigen baan (`laanFractie`), die vanzelf versmalt van 9 m op het
+    Damrak naar 3 m op de strook over het plein;
+  - met een stuurpunt 1,5 m vooruit, zodat bochten rond worden;
+  - op 1,2 m afstand van een voorganger in dezelfde baan. Een snelle robot
+    wacht, er ontstaat een rij, geen klont.
+- **`s` groeit met de loopsnelheid**, zolang de robot binnen 2 m van zijn
+  plek op de route is. Eerst werd `s` uit een projectie gehaald, maar aan de
+  binnenkant van een bocht bleef die op het hoekpunt hangen en liepen robots
+  vast.
+- **Eind van de route:** het laatste stukje gaat recht op het monument af.
+  Met de eigen baan erbij kwam het eindpunt anders net buiten de
+  treffergrens.
+- **Hek:** werkt op route-`s` (`hekVoorRobot`), dus ook de buitenste banen
+  komen er niet langs. De oude verdeling van palen over "overkant + plek" is
+  weg.
+- **Bomber:** verlaat zijn route voor een bouwwerk (`bouwwerk`), keert terug
+  via de dichtstbijzijnde routeplek (`terug`) en loopt verder (`route`).
+- **Vastlopen** is op de route een meting: `spel.vastloopTeller`. Het
+  zijwaarts uitwijken blijft alleen buiten de route.
+- **Nieuw: `test-dnm-routes.mjs`** (31 checks, 5× op rij groen). Getoetst
+  met echte robots:
+  - elke poort × elk type bereikt het monument, nooit buiten de strook, `s`
+    loopt nooit terug;
+  - de banen spreiden zoals bedoeld en een snelle robot haalt niet in;
+  - een onverwoestbaar hek houdt alle drie de banen tegen op elke verre
+    plek;
+  - de bomber doorloopt route → bouwwerk → terug → route;
+  - een wave van 40 robots komt volledig aan, met 0 keer vastlopen.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 
