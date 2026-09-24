@@ -113,7 +113,7 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D45** | Menu opent vanzelf bij commandopost en bouwplek — *na M2* |
 | ☑ | **D46** | Bouwplekken: knooppunten bij het monument + een voorpost per straat — *na M2* |
 | ☑ | **D47** | Eigen hekslot naast het torenslot — *na M2* |
-| ☐ | **D48** | Nieuwe toren: Bovenleiding (stroomstoot springt over naar tot 4 robots) — *na M2* |
+| ☑ | **D48** | Nieuwe toren: Bovenleiding (stroomstoot springt over naar tot 4 robots) — *na M2* |
 | ☐ | **D49** | Nieuwe toren: Muntpers (+50% geld voor kills in bereik) — *na M2* |
 | ☐ | **D36** | Textuurbibliotheek (gekopieerd uit Undead + kinderkopjes, zandsteen, leisteen, …) |
 | ☐ | **D37** | Paleis op de Dam |
@@ -406,6 +406,31 @@ reproductie die eerder 1 op de 4 keer faalde, faalt niet meer.
   - verkopen of sneuvelen van het een laat het ander staan.
 
   `test-dnm-toren-geschut` en `-niveaus` toetsen dat het menu openblijft.
+
+**D48 — de Bovenleiding, verslag.**
+- **Wat het is:** een tramdraadmast in het torenslot. Groene mast met een
+  uitlegger, isolatoren en een stuk rijdraad; de uitlegger wijst naar de
+  route. De kop gloeit op bij een stoot. Eigen vorm en eigen geluid (Web
+  Audio, `speelStroomstoot`).
+- **Werking:**
+  - de stoot treft de dichtstbijzijnde robot binnen bereik;
+  - daarna springt hij naar de dichtstbijzijnde nog niet getroffen robot
+    binnen de sprongafstand van de vorige;
+  - de schade daalt per sprong met factor 0,75;
+  - een actief schild vangt de stoot op en stopt de keten;
+  - zonder doelwit vuurt hij niet.
+- **Niveaus (startwaarden, te ijken in D43):**
+
+  | Niveau | Prijs | Bereik | Schade | Robots | Sprong | Interval | HP |
+  |---|---|---|---|---|---|---|---|
+  | 1 | €175 | 10 m | 1 | 3 | 4 m | 2,0 s | 50 |
+  | 2 | €200 | 11 m | 1,5 | 4 | 4,5 m | 1,8 s | 75 |
+  | 3 | €300 | 12 m | 2 | 4 | 5 m | 1,6 s | 110 |
+
+- **Menu:** een lege plek toont nu "1 Geschuttoren, 2 Bovenleiding,
+  3 Hek". De upgradetekst komt per type uit `niveauTekst`.
+- **Tests:** `test-dnm-bovenleiding` (19 checks). `test-dnm-hek` leest het
+  nummer van de hekoptie nu uit het aantal torentypes.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 

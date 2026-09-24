@@ -3099,6 +3099,19 @@ const GESCHUT_NIVEAUS = [
   { prijs: 200, bereik: 12, schadePerSchot: 1, schotInterval: 1.0, hp: 90 },
   { prijs: 300, bereik: 14, schadePerSchot: 2, schotInterval: 1.0, hp: 130 },
 ];
+// Ticket D48: de Bovenleiding. Een tramdraadmast die per schot een
+// stroomstoot geeft. De stoot treft de dichtstbijzijnde robot binnen `bereik`
+// en springt dan over naar de dichtstbijzijnde nog niet getroffen robot
+// binnen `sprong` meter van de vorige, tot `doelen` robots. Elke sprong doet
+// BOVENLEIDING_SPRONG_FACTOR van de schade van de vorige. Trager dan het
+// geschut en zwak tegen één robot, sterk tegen een groep: een antwoord op
+// drukke golven. Te ijken in D43.
+const BOVENLEIDING_NIVEAUS = [
+  { prijs: 175, bereik: 10, schade: 1,   doelen: 3, sprong: 4,   schotInterval: 2.0, hp: 50 },
+  { prijs: 200, bereik: 11, schade: 1.5, doelen: 4, sprong: 4.5, schotInterval: 1.8, hp: 75 },
+  { prijs: 300, bereik: 12, schade: 2,   doelen: 4, sprong: 5,   schotInterval: 1.6, hp: 110 },
+];
+const BOVENLEIDING_SPRONG_FACTOR = 0.75;
 const HEK_NIVEAUS = [
   { prijs: 100, hp: 120 },
   { prijs: 100, hp: 200 },
@@ -3110,6 +3123,13 @@ const TOREN_TYPES = {
     naam: 'Geschuttoren', ...GESCHUT_NIVEAUS[0],
     omschrijving: `schiet op robots binnen ${GESCHUT_NIVEAUS[0].bereik} m`,
     niveaus: GESCHUT_NIVEAUS,
+    niveauTekst: n => `bereik ${n.bereik} m, ${n.schadePerSchot} schade/${n.schotInterval}s, `,
+  },
+  bovenleiding: {
+    naam: 'Bovenleiding', ...BOVENLEIDING_NIVEAUS[0],
+    omschrijving: `stroomstoot springt over op ${BOVENLEIDING_NIVEAUS[0].doelen} robots dicht bij elkaar`,
+    niveaus: BOVENLEIDING_NIVEAUS,
+    niveauTekst: n => `bereik ${n.bereik} m, ${n.doelen} robots, sprong ${n.sprong} m, elke ${n.schotInterval}s, `,
   },
   // Ticket D13: het hek schiet niet, het kóópt tijd. Een rij paaltjes dwars
   // over de looproute; robots die ertegenaan lopen, blijven staan en slaan
@@ -3120,6 +3140,7 @@ const TOREN_TYPES = {
     naam: 'Hek', ...HEK_NIVEAUS[0],
     omschrijving: 'blokkeert de straat, robots moeten erdoorheen slaan',
     niveaus: HEK_NIVEAUS,
+    niveauTekst: () => '',
   },
 };
 // Ticket D13: hoeveel schade één klap van een robot op een hek doet, per
@@ -3169,7 +3190,7 @@ function slotOpties(t, woord) {
   return [
     prijs === null
       ? { tekst: `${cfg.naam}: maximaal niveau`, klaar: true, actie: () => {} }
-      : { tekst: `${cfg.naam} naar niveau ${t.niveau + 1} €${prijs}, ${t.type === 'hek' ? '' : `bereik ${volgend.bereik} m, ${volgend.schadePerSchot} schade/${volgend.schotInterval}s, `}${volgend.hp} HP`, prijs, actie: () => upgradeToren(t) },
+      : { tekst: `${cfg.naam} naar niveau ${t.niveau + 1} €${prijs}, ${cfg.niveauTekst(volgend)}${volgend.hp} HP`, prijs, actie: () => upgradeToren(t) },
     reparatie === 0
       ? { tekst: `${woord} repareren, is heel`, klaar: true, actie: () => {} }
       : { tekst: `${woord} repareren €${reparatie} (${Math.ceil(t.hp)}/${t.hpMax} HP)`, prijs: reparatie, actie: () => repareerToren(t) },
@@ -3440,6 +3461,127 @@ function maakGeschutToren(plek) {
   };
 }
 
+// Ticket D48: de tramdraadmast. Een slanke groene mast met een uitlegger
+// waaraan een stuk rijdraad hangt, op isolatoren; de kop gloeit kort op bij
+// elke stoot. De vonkboog is één herbruikbare lijn (zoals het schotspoor
+// van het geschut), zigzag van de kop langs alle getroffen robots.
+const BOOG_PUNTEN_PER_SPRONG = 6;
+function maakBovenleiding(plek) {
+  const g = new THREE.Group();
+  const voet = blok(1.2, 0.35, 1.2, 0x6d6a66, 0.85);
+  voet.position.y = 0.28;
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, 3.9, 8), mat(0x3f5a4a, 0.6, 0.4));
+  mast.position.y = 2.35;
+  mast.castShadow = true;
+  const arm = blok(1.7, 0.1, 0.1, 0x3f5a4a, 0.6, 0.4);
+  arm.position.set(0.75, 4.05, 0);
+  const schoor = blok(1.2, 0.06, 0.06, 0x3f5a4a, 0.6, 0.4);
+  schoor.position.set(0.5, 3.75, 0);
+  schoor.rotation.z = 0.5;
+  const isolatorMat = mat(0xe8e2d4, 0.3);
+  const isolatoren = [0.35, 1.45].map(x => {
+    const iso = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.22, 8), isolatorMat);
+    iso.position.set(x, 3.88, 0);
+    return iso;
+  });
+  const draad = blok(0.04, 0.04, 1.6, 0x2a2a2a, 0.5, 0.6);
+  draad.position.set(1.45, 3.75, 0);
+  const kopMat = new THREE.MeshBasicMaterial({ color: 0x6fa8c8 });
+  const kop = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), kopMat);
+  kop.position.set(1.45, 3.62, 0);
+  const hpBalk = maakHpBalk(4.5);
+  const ringen = [1.2, 1.6].map(y => {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.05, 8, 16), mat(0xffd75e, 0.35, 0.6));
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = y;
+    ring.visible = false;
+    g.add(ring);
+    return ring;
+  });
+  g.add(voet, mast, arm, schoor, ...isolatoren, draad, kop, hpBalk);
+  g.position.copy(plek.positie);
+  // De uitlegger wijst naar de route, net als een echte mast naast het spoor.
+  const lijn = plek.hekLijnen[0];
+  g.rotation.y = Math.atan2(-(lijn.z - plek.positie.z), lijn.x - plek.positie.x);
+  scene.add(g);
+
+  const boogGeo = new THREE.BufferGeometry();
+  boogGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3 * (1 + BOVENLEIDING_NIVEAUS.at(-1).doelen * BOOG_PUNTEN_PER_SPRONG)), 3));
+  const spoor = new THREE.Line(boogGeo, new THREE.LineBasicMaterial({ color: 0xcdeeff, toneMapped: false }));
+  spoor.visible = false;
+  spoor.frustumCulled = false;
+  scene.add(spoor);
+
+  const x = plek.positie.x, z = plek.positie.z;
+  const cfg = TOREN_TYPES.bovenleiding;
+  return {
+    type: 'bovenleiding', plek, groep: g, kop, kopMat, spoor, spoorTimer: 0, ringen, hpBalk,
+    niveau: 1, geinvesteerd: cfg.prijs,
+    hp: cfg.hp, hpMax: cfg.hp, cooldown: 0, doel: null, laatsteKetting: [],
+    obstakelHandles: [registreerRechthoek(x - 0.6, x + 0.6, z - 0.6, z + 0.6)],
+  };
+}
+
+// De keten van één stroomstoot: eerst de dichtstbijzijnde robot binnen
+// bereik van de mast, dan steeds de dichtstbijzijnde nog niet getroffen robot
+// binnen `sprong` van de vorige. Een robot met een actief schild vangt de
+// stoot op: hij krijgt niets en de keten stopt bij hem.
+function kiesKetting(toren) {
+  const cfg = torenStats(toren);
+  const eerste = kiesTorenDoel(toren, cfg.bereik);
+  if (!eerste) return [];
+  const keten = [eerste];
+  while (keten.length < cfg.doelen) {
+    const vorige = keten[keten.length - 1];
+    if (vorige.type === 'shieldbot' && vorige.schildActief) break;
+    let beste = null, besteAfstand = cfg.sprong;
+    for (const robot of robots) {
+      if (keten.includes(robot)) continue;
+      const a = Math.hypot(robot.groep.position.x - vorige.groep.position.x, robot.groep.position.z - vorige.groep.position.z);
+      if (a <= besteAfstand) { besteAfstand = a; beste = robot; }
+    }
+    if (!beste) break;
+    keten.push(beste);
+  }
+  return keten;
+}
+const boogTmp = new THREE.Vector3();
+function vuurBovenleiding(toren) {
+  const cfg = torenStats(toren);
+  const keten = kiesKetting(toren);
+  if (keten.length === 0) return [];
+  toren.cooldown = cfg.schotInterval;
+  // Vonkboog: van de kop langs elke robot, met een zigzag per sprong.
+  toren.kop.getWorldPosition(boogTmp);
+  const pos = toren.spoor.geometry.attributes.position;
+  pos.setXYZ(0, boogTmp.x, boogTmp.y, boogTmp.z);
+  let n = 1, vx = boogTmp.x, vy = boogTmp.y, vz = boogTmp.z;
+  for (const robot of keten) {
+    const rx = robot.groep.position.x, ry = robot.groep.position.y + 1.1, rz = robot.groep.position.z;
+    for (let i = 1; i <= BOOG_PUNTEN_PER_SPRONG; i++) {
+      const t = i / BOOG_PUNTEN_PER_SPRONG, zig = i < BOOG_PUNTEN_PER_SPRONG ? 0.35 : 0;
+      pos.setXYZ(n++, vx + (rx - vx) * t + (Math.random() - 0.5) * zig, vy + (ry - vy) * t + (Math.random() - 0.5) * zig, vz + (rz - vz) * t + (Math.random() - 0.5) * zig);
+    }
+    vx = rx; vy = ry; vz = rz;
+  }
+  pos.needsUpdate = true;
+  toren.spoor.geometry.setDrawRange(0, n);
+  toren.spoor.visible = true;
+  toren.spoorTimer = 0.12;
+  toren.kopMat.color.setHex(0xe8f8ff);
+  speelStroomstoot();
+  // Aflopende schade per sprong; het schild van een shieldbot vangt alles.
+  const treffers = [];
+  keten.forEach((robot, i) => {
+    const schade = cfg.schade * BOVENLEIDING_SPRONG_FACTOR ** i;
+    if (robot.type === 'shieldbot' && robot.schildActief) { speelSchildBlok(); treffers.push({ robot, schade: 0 }); return; }
+    treffers.push({ robot, schade });
+    raakRobot(robot, schade, 'toren');
+  });
+  toren.laatsteKetting = treffers;
+  return treffers;
+}
+
 function bouwToren(plek, type) {
   const cfg = TOREN_TYPES[type];
   if (!cfg || plek[slotVan(type)] || spel.gameOver) return null;
@@ -3449,7 +3591,7 @@ function bouwToren(plek, type) {
   }
   geld -= cfg.prijs;
   updateGeldUI();
-  const toren = type === 'hek' ? maakHek(plek) : maakGeschutToren(plek);
+  const toren = { hek: maakHek, geschut: maakGeschutToren, bovenleiding: maakBovenleiding }[type](plek);
   toren.slot = slotVan(type);
   plek[toren.slot] = toren;
   torens.push(toren);
@@ -3544,9 +3686,20 @@ function vuurToren(toren, robot) {
   raakRobot(robot, cfg.schadePerSchot, 'toren');
 }
 
+function updateBovenleiding(toren, dt) {
+  toren.cooldown = Math.max(0, toren.cooldown - dt);
+  if (toren.spoorTimer > 0) {
+    toren.spoorTimer -= dt;
+    if (toren.spoorTimer <= 0) { toren.spoor.visible = false; toren.kopMat.color.setHex(0x6fa8c8); }
+  }
+  // Zonder doelwit vuurt hij niet (vuurBovenleiding doet dan niets).
+  if (toren.cooldown <= 0) vuurBovenleiding(toren);
+}
+
 function updateTorens(dt) {
   for (const toren of torens) {
     updateHpBalk(toren);
+    if (toren.type === 'bovenleiding') { updateBovenleiding(toren, dt); continue; }
     if (toren.type !== 'geschut') continue;   // een hek schiet niet
     const cfg = torenStats(toren);
     toren.cooldown = Math.max(0, toren.cooldown - dt);
@@ -4425,6 +4578,13 @@ function speelSchot()    { piep('square', 620, 140, 0.12, 0.12); }
 function speelHekKlap()      { piep('square', 160, 90, 0.08, 0.05); }
 function speelBouw()        { piep('triangle', 260, 620, 0.22, 0.14); }
 function speelTorenSchot()   { piep('square', 1100, 380, 0.05, 0.035); }
+// Ticket D48: knetterende stroomstoot, een zoemende zaagtand met twee korte
+// tikken erachteraan.
+function speelStroomstoot() {
+  piep('sawtooth', 180, 90, 0.16, 0.06);
+  piep('square', 2400, 1600, 0.03, 0.03);
+  setTimeout(() => piep('square', 2100, 1500, 0.03, 0.025), 45);
+}
 function speelPoortSignaal() { piep('triangle', 440, 440, 0.18, 0.12); setTimeout(() => piep('triangle', 660, 660, 0.25, 0.12), 180); }
 function speelMonumentKraak() { piep('sawtooth', 110, 38, 0.55, 0.2); setTimeout(() => piep('square', 70, 30, 0.35, 0.12), 120); }
 function speelTramBel()  { piep('sine', 980, 980, 0.08, 0.045); setTimeout(() => piep('sine', 1320, 1320, 0.08, 0.035), 90); }
@@ -4758,6 +4918,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   WAPEN_BEREIK, raycaster,
   // Ticket D10: bouwplekken.
   BOUWPLEKKEN, BOUWPLEK_RADIUS, puntOpRoute, looproute, plekVoor, dichtsteHekLijn, opPlekTegel, slotVan,
+  BOVENLEIDING_NIVEAUS, BOVENLEIDING_SPRONG_FACTOR, kiesKetting, vuurBovenleiding, updateBovenleiding,
   runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, bijenkorfShopOpen: menu === COMMANDOPOST_MENU, bouwMenuPlek: menu && menu !== COMMANDOPOST_MENU ? menu.bron : null, aantalTorens: torens.length, aantalObstakels: obstakels.length }),
   // Ticket D11: torens.
   TOREN_TYPES, torens, bouwToren, verwijderToren, updateTorens, activeerBouwplek, kiesTorenDoel, verwijderObstakel,

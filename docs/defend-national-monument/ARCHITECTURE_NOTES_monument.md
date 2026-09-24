@@ -1441,3 +1441,12 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
     bedoelt: `plek.toren` betekent alleen het torenslot.
   - Nieuwe torentypes (D48, D49) vallen vanzelf in het torenslot: alles
     behalve `hek`.
+- **Torentypes toevoegen (D48).** Een type heeft:
+  - een `niveaus`-tabel;
+  - `niveauTekst(n)`, voor de upgraderegel in het menu;
+  - een bouwer in de tabel in `bouwToren`;
+  - een tak in `updateTorens`.
+
+  Een zichtbaar effect is één herbruikbare `toren.spoor`-lijn, die
+  `verwijderToren` opruimt. De Bovenleiding tekent zijn boog met
+  `setDrawRange`.

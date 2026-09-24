@@ -16,7 +16,7 @@ await page.evaluate(() => {
   for (const r of [...d.robots]) { d.scene.remove(r.groep); d.robots.splice(d.robots.indexOf(r), 1); }
 });
 
-// --- 1. Bouwen, via het bouwmenu (optie 2) --------------------------------
+// --- 1. Bouwen, via het bouwmenu (de hekoptie na de torens) ---------------
 
 const bouw = await page.evaluate(() => {
   const d = window.DamChaosDebug;
@@ -28,10 +28,12 @@ const bouw = await page.evaluate(() => {
   d.speler.positie.set(plek.positie.x, 0, plek.positie.z);
   d.updateInteracties(0);   // Ticket D45: het menu opent vanzelf
   const menu = document.getElementById('menuUI').textContent;
-  window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit2' }));
-  window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Digit2' }));
+  // Het nummer van de hekoptie: na alle torentypes (D47/D48).
+  const nr = Object.keys(d.TOREN_TYPES).filter(t => t !== 'hek').length + 1;
+  window.dispatchEvent(new KeyboardEvent('keydown', { code: `Digit${nr}` }));
+  window.dispatchEvent(new KeyboardEvent('keyup', { code: `Digit${nr}` }));
   const hek = plek.hek;
-  const uit = { menu, type: hek?.type, geld: d.geldStand(), hp: hek?.hp, palen: hek?.obstakelHandles.length,
+  const uit = { menu, nr, type: hek?.type, geld: d.geldStand(), hp: hek?.hp, palen: hek?.obstakelHandles.length,
     obstakels: d.obstakels.length - obstakelsVoor, prijs: d.TOREN_TYPES.hek.prijs, cfgHp: d.TOREN_TYPES.hek.hp };
   // Een hek schiet niet: robot vlakbij, updateTorens, robot ongedeerd.
   d.spawnRobot(null, 'normal');
@@ -44,8 +46,8 @@ const bouw = await page.evaluate(() => {
   uit.naVerwijderen = d.obstakels.length - obstakelsVoor;
   return uit;
 });
-check('Het bouwmenu biedt het hek aan als optie 2', bouw.menu.includes(`2, Hek €${bouw.prijs}`), bouw.menu);
-check('2 bouwt een hek (prijs afgeschreven, HP van niveau 1)', bouw.type === 'hek' && bouw.geld === 200 - bouw.prijs && bouw.hp === bouw.cfgHp, bouw);
+check('Het bouwmenu biedt het hek aan als laatste optie, na de torens', bouw.menu.includes(`${bouw.nr}, Hek €${bouw.prijs}`), bouw.menu);
+check('Die optie bouwt een hek (prijs afgeschreven, HP van niveau 1)', bouw.type === 'hek' && bouw.geld === 200 - bouw.prijs && bouw.hp === bouw.cfgHp, bouw);
 check('Het hek bestaat uit meerdere paaltjes, elk met een eigen obstakel', bouw.palen >= 5 && bouw.obstakels === bouw.palen, bouw);
 check('Een hek schiet niet', bouw.robotOngedeerd, bouw);
 check('Verwijderen haalt alle paal-obstakels weer weg', bouw.naVerwijderen === 0, bouw);

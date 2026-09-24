@@ -1914,6 +1914,10 @@ Besluiten van de eigenaar:
   - de schade loopt af per sprong;
   - de niveaus lopen op;
   - de toren vuurt niet zonder doelwit.
+- **Uitgevoerd:**
+  - Kettingtoren: tot 3 robots op niveau 1 en 4 op niveau 2–3.
+  - Schadefactor 0,75 per sprong; een schild stopt de keten.
+  - Zie het verslag in de ROADMAP.
 
 #### Ticket D49 — De Muntpers
 
