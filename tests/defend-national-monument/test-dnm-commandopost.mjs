@@ -40,7 +40,7 @@ const menu = await page.evaluate(() => {
   const prompt = document.getElementById('interactiePrompt').textContent;
   d.geldZet(1000);
   const prijzen = { vuurtempo: d.upgradeKosten('vuurtempo'), pickup: d.upgradeKosten('pickup'), snelheid: d.upgradeKosten('snelheid') };
-  toets('KeyT');
+  // Ticket D45: aankomen opent het menu vanzelf, zonder T.
   const open = { stand: d.menuStand() === d.COMMANDOPOST_MENU, zichtbaar: menuUI.style.display === 'block', tekst: menuUI.textContent };
 
   const uit = { prompt, prijzen, open, stappen: [] };
@@ -73,10 +73,21 @@ const menu = await page.evaluate(() => {
   d.spel.monumentHP = d.MONUMENT_MAX_HP;
   toets('KeyT');
   uit.naT = { stand: d.menuStand(), zichtbaar: menuUI.style.display };
+  // Na T blijft het dicht zolang je blijft staan; weglopen en terugkomen
+  // opent het weer (D45).
+  d.updateInteracties(0); d.updateInteracties(0);
+  uit.blijftDicht = d.menuStand() === null;
+  d.speler.positie.set(c.spelerPlek[0] - 6, 0, c.spelerPlek[1]); d.updateInteracties(0);
+  d.speler.positie.set(c.spelerPlek[0], 0, c.spelerPlek[1]); d.updateInteracties(0);
+  uit.weerOpen = d.menuStand() === d.COMMANDOPOST_MENU;
+  // De Kerkklok gaat niet vanzelf af: daar blijft T nodig.
+  const kk = d.DAM_LAYOUT.kerkklok.positie;
+  d.speler.positie.set(kk[0] + 2.6, 0, kk[1]); d.updateInteracties(0);
+  uit.kerkklok = { boost: d.kerkklokBoost.active, menu: d.menuStand(), punt: d.huidigeInteractieStand()?.type };
   return uit;
 });
-check('De prompt bij de commandopost noemt upgrades en reparatie', menu.prompt.includes('commandopost') && menu.prompt.includes('repareren'), menu.prompt);
-check('T opent het menupaneel met titel Commandopost en vier opties',
+check('Bij de commandopost staat het menu meteen open en vraagt de prompt om een keuze', menu.prompt.includes('Kies 1–4'), menu.prompt);
+check('Aankomen opent het menupaneel vanzelf, met titel Commandopost en vier opties',
   menu.open.stand && menu.open.zichtbaar && menu.open.tekst.includes('Commandopost') && ['1, Vuurtempo', '2, Pickup', '3, Loopsnelheid', '4, Monument repareren'].every(t => menu.open.tekst.includes(t)), menu.open);
 check('1–3 kopen de upgrades voor de prijs van nu en het menu blijft open',
   menu.stappen.every(s => s.betaald === menu.prijzen[s.type] && s.niveauErbij === 1 && s.menuOpen), menu.stappen);
@@ -85,7 +96,10 @@ check('Het menu toont na een aankoop het nieuwe niveau', menu.naKoop.includes('(
 check('4 repareert het monument: +25 HP voor €100, menu blijft open', menu.reparatie.hp === 85 && menu.reparatie.betaald === 100 && menu.reparatie.menuOpen, menu.reparatie);
 check('Een heel monument repareren kost niets', menu.alHeel.hp === 100 && menu.alHeel.betaald === 0, menu.alHeel);
 check('Te weinig geld: de opties zijn als "te duur" gemarkeerd', menu.teDuur === 4, menu);
-check('T sluit het menu weer', menu.naT.stand === null && menu.naT.zichtbaar === 'none', menu.naT);
+check('T sluit het menu', menu.naT.stand === null && menu.naT.zichtbaar === 'none', menu.naT);
+check('Na T blijft het menu dicht zolang je blijft staan', menu.blijftDicht, menu);
+check('Weglopen en terugkomen opent het menu weer vanzelf', menu.weerOpen, menu);
+check('De Kerkklok gaat niet vanzelf af (T blijft nodig) en opent geen menu', menu.kerkklok.punt === 'kerkklok' && !menu.kerkklok.boost && menu.kerkklok.menu === null, menu.kerkklok);
 
 // --- 3. Weglopen en pauzeren sluiten het menu ------------------------------
 
@@ -94,14 +108,12 @@ const sluiten = await page.evaluate(() => {
   const c = d.DAM_LAYOUT.commandopost;
   d.speler.positie.set(c.spelerPlek[0], 0, c.spelerPlek[1]);
   d.updateInteracties(0);
-  d.activeerCommandopost();
   const openVoorLopen = d.menuStand() === d.COMMANDOPOST_MENU;
   d.speler.positie.set(c.spelerPlek[0] - 6, 0, c.spelerPlek[1]);
   d.updateInteracties(0);
   const naLopen = d.menuStand();
   d.speler.positie.set(c.spelerPlek[0], 0, c.spelerPlek[1]);
   d.updateInteracties(0);
-  d.activeerCommandopost();
   const openVoorPauze = d.menuStand() === d.COMMANDOPOST_MENU;
   Object.defineProperty(document, 'pointerLockElement', { configurable: true, get() { return null; } });
   document.dispatchEvent(new Event('pointerlockchange'));
@@ -124,9 +136,9 @@ async function meetOverlap(breedte, hoogte) {
     const canvas = d.renderer.domElement;
     Object.defineProperty(document, 'pointerLockElement', { configurable: true, get() { return canvas; } });
     document.dispatchEvent(new Event('pointerlockchange'));
+    d.speler.positie.set(c.spelerPlek[0] - 8, 0, c.spelerPlek[1]); d.updateInteracties(0);
     d.speler.positie.set(c.spelerPlek[0], 0, c.spelerPlek[1]);
-    d.updateInteracties(0);
-    d.activeerCommandopost();
+    d.updateInteracties(0);   // opent vanzelf (D45)
     d.spel.volgendePoorten = ['Kalverstraat', 'Nieuwendijk'];
     d.spel.specialMeter = 100;
     d.spel.combo = 12; d.spel.comboTimer = 5;

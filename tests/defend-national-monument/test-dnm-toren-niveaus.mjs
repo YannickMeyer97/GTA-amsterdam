@@ -136,6 +136,10 @@ const menu = await page.evaluate(() => {
   const toets = (code) => { window.dispatchEvent(new KeyboardEvent('keydown', { code })); window.dispatchEvent(new KeyboardEvent('keyup', { code })); };
   d.geldZet(1000);
   d.speler.positie.set(plek.positie.x + 1.4, 0, plek.positie.z);
+  // Ticket D45: het menu opent vanzelf; eerst T om het te sluiten en de
+  // "druk T"-prompt te zien, dan T om het weer te openen.
+  d.updateInteracties(0);
+  toets('KeyT');
   d.updateInteracties(0);
   const prompt = document.getElementById('interactiePrompt').textContent;
   toets('KeyT');

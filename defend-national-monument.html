@@ -2908,7 +2908,9 @@ function kiesMenuOptie(i) {
   const optie = menu.opties()[i];
   if (!optie || optie.klaar) return;
   optie.actie();
-  if (optie.sluit) sluitMenu();
+  // Ticket D45: na bouwen of verkopen blijft het menu dicht tot je wegloopt,
+  // anders springt het meteen weer open.
+  if (optie.sluit) sluitMenuHandmatig();
   else renderMenu();
 }
 
@@ -2934,8 +2936,17 @@ const COMMANDOPOST_MENU = {
   hoortBij: punt => punt.type === 'commandopost',
 };
 function activeerCommandopost() {
-  if (menu === COMMANDOPOST_MENU) sluitMenu();
+  if (menu === COMMANDOPOST_MENU) sluitMenuHandmatig();
   else openMenu(COMMANDOPOST_MENU);
+}
+// Ticket D45: het menu opent vanzelf zodra je bij de commandopost of een
+// bouwplek staat (zie updateInteracties). Sluit je het met T, dan blijft het
+// dicht tot je wegloopt en terugkomt: `menuHandmatigGesloten` onthoudt bij
+// welk interactiepunt dat was.
+let menuHandmatigGesloten = null;
+function sluitMenuHandmatig() {
+  sluitMenu();
+  menuHandmatigGesloten = huidigeInteractie;
 }
 
 // --- Het centrale interactiesysteem ---------------------------------
@@ -2963,6 +2974,7 @@ const interactiePunten = [
     radius: 2.5,
     prompt: () => menu === COMMANDOPOST_MENU ? 'Kies 1–4, T om te sluiten' : 'Druk T voor de commandopost: upgrades en monument repareren',
     actie: activeerCommandopost,
+    menu: () => COMMANDOPOST_MENU,   // Ticket D45: opent vanzelf
   },
 ];
 
@@ -3055,6 +3067,7 @@ for (const plek of BOUWPLEKKEN) {
     radius: BOUWPLEK_RADIUS,
     prompt: () => bouwplekPrompt(plek),
     actie: () => activeerBouwplek(plek),
+    menu: () => bouwMenu(plek),   // Ticket D45: opent vanzelf
   });
 }
 
@@ -3137,7 +3150,7 @@ function bouwplekPrompt(plek) {
     const basis = `${TOREN_TYPES[t.type].naam} niv. ${t.niveau} — ${Math.ceil(t.hp)}/${t.hpMax} HP`;
     return open ? `${basis} — kies 1/2/3, T om te sluiten` : `${basis} — druk T voor opties`;
   }
-  return open ? 'Kies een toren met een cijfer, of druk T om te sluiten' : `Druk T om te bouwen (bouwplek ${plek.poort})`;
+  return open ? 'Kies een toren met een cijfer, T om te sluiten' : `Druk T om te bouwen (bouwplek ${plek.poort})`;
 }
 
 // Ticket D35: het bouwmenu is een menu op het ene paneel. Op een lege plek
@@ -3172,7 +3185,7 @@ function bouwMenu(plek) {
   };
 }
 function activeerBouwplek(plek) {
-  if (menu?.bron === plek) sluitMenu();
+  if (menu?.bron === plek) sluitMenuHandmatig();
   else openMenu(bouwMenu(plek));
 }
 
@@ -3515,6 +3528,16 @@ function updateInteracties(dt) {
     }
   }
   huidigeInteractie = dichtstbijzijnde;
+  // Een menu mag niet openstaan als de speler wegloopt: anders blijven het
+  // paneel en de cijfertoetsen actief terwijl je alweer ergens anders staat.
+  // Ticket D35: één regel voor elk menu (commandopost en bouwplekken).
+  if (menu && (!huidigeInteractie || !menu.hoortBij(huidigeInteractie))) sluitMenu();
+  // Ticket D45: een punt met een menu opent dat vanzelf, tenzij de speler
+  // het hier net met T sloot. Weglopen wist dat weer.
+  if (huidigeInteractie !== menuHandmatigGesloten) menuHandmatigGesloten = null;
+  if (huidigeInteractie?.menu && !menu && huidigeInteractie !== menuHandmatigGesloten && !spel.gameOver) {
+    openMenu(huidigeInteractie.menu());
+  }
   if (huidigeInteractie) {
     const tekst = typeof huidigeInteractie.prompt === 'function' ? huidigeInteractie.prompt() : huidigeInteractie.prompt;
     toonInteractiePrompt(tekst);
@@ -3522,10 +3545,7 @@ function updateInteracties(dt) {
     verbergInteractiePrompt();
   }
 
-  // Een menu mag niet openstaan als de speler wegloopt: anders blijven het
-  // paneel en de cijfertoetsen actief terwijl je alweer ergens anders staat.
-  // Ticket D35: één regel voor elk menu (commandopost en bouwplekken).
-  if (menu && (!huidigeInteractie || !menu.hoortBij(huidigeInteractie))) sluitMenu();
+
 }
 
 function vindDichtstbijzijndeInteractie() {
@@ -3757,17 +3777,26 @@ function robotMoetWachten(robot) {
   }
   return false;
 }
+// Het eerstvolgende hek op de eigen route van deze robot (nog niet
+// gepasseerd), of null.
+function hekOpRoute(robot) {
+  let beste = null;
+  for (const toren of torens) {
+    if (toren.type !== 'hek' || toren.plek.poort !== robot.route.poort) continue;
+    if (toren.plek.s < robot.s - 0.5) continue;
+    if (!beste || toren.plek.s < beste.plek.s) beste = toren;
+  }
+  return beste;
+}
 // Het hek waar deze robot nu tegenaan staat, of null. Een robot op zijn
-// route raakt een hek van zijn EIGEN route zodra hij op HEK_CONTACT_AFSTAND
-// ervoor is: geen meetkunde, dus ook geen gat om doorheen te glippen. Een
-// robot buiten zijn route (bomber, 'vrij') gebruikt de lijntest van D13.
+// route kan niet langs een hek van zijn eigen route: zijn s en stuurpunt
+// stoppen er vlak voor (zie updateRobots), dus hij loopt er altijd tegenaan.
+// Hij slaat pas als hij het hek echt raakt (lijntest), niet al op afstand.
+// Een robot buiten zijn route (bomber, 'vrij') gebruikt alleen de lijntest.
 function hekVoorRobot(robot) {
   if (robot.modus === 'route') {
-    for (const toren of torens) {
-      if (toren.type !== 'hek' || toren.plek.poort !== robot.route.poort) continue;
-      if (robot.s >= toren.plek.s - HEK_CONTACT_AFSTAND && robot.s <= toren.plek.s + 1) return toren;
-    }
-    return null;
+    const hek = hekOpRoute(robot);
+    return hek && afstandTotHek(hek, robot.groep.position) <= HEK_CONTACT_AFSTAND ? hek : null;
   }
   return hekInContact(robot.groep.position);
 }
@@ -3859,12 +3888,16 @@ function updateRobots(dt) {
       // Een stuurpunt iets verder langs zijn route, in zijn eigen baan: zo
       // worden bochten vanzelf rond.
       wacht = robotMoetWachten(robot);
+      // Een hek op de route begrenst s en het stuurpunt: de robot loopt er
+      // tot vlak voor en raakt het dan (hekVoorRobot), hij kan er nooit langs.
+      const hekVooruit = hekOpRoute(robot);
+      robot.sGrens = hekVooruit ? hekVooruit.plek.s - 0.3 : robot.route.lengte;
       // Aan het eind van de route het laatste stukje recht op het monument
       // af: het eindpunt ligt 0,3 m van de speldoos, maar met de eigen baan
       // erbij kan dat net buiten de treffergrens (0,6 m) uitkomen.
       huidigDoel = robot.s >= robot.route.lengte - 0.01
         ? MONUMENT_POSITIE
-        : robotRoutePunt(robot, Math.min(robot.s + ROBOT_VOORUITKIJK, robot.route.lengte));
+        : robotRoutePunt(robot, Math.min(robot.s + ROBOT_VOORUITKIJK, robot.sGrens));
     } else if (robot.modus === 'terug') {
       const pr = projecteerOpRoute(robot.route, positie.x, positie.z);
       robot.s = pr.s;
@@ -3898,7 +3931,7 @@ function updateRobots(dt) {
       // afsnijden, een baanwissel), dan wacht s tot hij bij is. Niet s uit
       // een projectie halen: aan de binnenkant van een bocht blijft die op
       // het hoekpunt hangen, en dan schuift het stuurpunt nooit meer op.
-      const sNieuw = Math.min(robot.s + verplaatsing, robot.route.lengte);
+      const sNieuw = Math.min(robot.s + verplaatsing, robot.sGrens);
       const plek = robotRoutePunt(robot, sNieuw);
       if (Math.hypot(plek.x - positie.x, plek.z - positie.z) <= ROBOT_ACHTERSTAND) robot.s = sNieuw;
     } else {
@@ -4371,28 +4404,45 @@ function speelSchildBlok() { piep('triangle', 900, 700, 0.09, 0.14); }
 const minimapCanvas = document.getElementById('minimapCanvas');
 const minimapCtx = minimapCanvas.getContext('2d');
 
+// Ticket D44: heading-up, zoals de minimap van Undead (Ticket 67, gekopieerd
+// en aangepast): de speler staat in het midden en wijst altijd omhoog, de
+// kaart draait eromheen mee met de kijkrichting. MINIMAP_BEREIK is de afstand
+// van het midden tot de rand van de kaart.
+const MINIMAP_BEREIK = 55;
+// Wereldpunt → canvaspunt. Een punt recht vóór de speler (wereldrichting
+// (−sin yaw, −cos yaw), zie updateSpeler) komt zo altijd recht boven het
+// midden uit: x' = 0, y' = −afstand·schaal.
+function naarMinimap(x, z) {
+  const b = minimapCanvas.width, h = minimapCanvas.height;
+  const schaal = (b / 2) / MINIMAP_BEREIK;
+  const lx = (x - speler.positie.x) * schaal, lz = (z - speler.positie.z) * schaal;
+  const c = Math.cos(speler.yaw), si = Math.sin(speler.yaw);
+  return [b / 2 + lx * c - lz * si, h / 2 + lx * si + lz * c];
+}
+
 function tekenMinimap() {
   const b = minimapCanvas.width, h = minimapCanvas.height;
+  const schaal = (b / 2) / MINIMAP_BEREIK;
   minimapCtx.clearRect(0, 0, b, h);
   minimapCtx.fillStyle = 'rgba(30, 42, 58, 0.9)';
   minimapCtx.fillRect(0, 0, b, h);
+  const vulRechthoek = ([x0, z0, x1, z1]) => {
+    minimapCtx.beginPath();
+    [[x0, z0], [x1, z0], [x1, z1], [x0, z1]].forEach(([x, z], i) => { const [cx, cz] = naarMinimap(x, z); if (i === 0) minimapCtx.moveTo(cx, cz); else minimapCtx.lineTo(cx, cz); });
+    minimapCtx.closePath();
+    minimapCtx.fill();
+  };
 
-  function naarCanvas(x, z) {
-    return [
-      (x - GRENS.minX) / (GRENS.maxX - GRENS.minX) * b,
-      (z - GRENS.minZ) / (GRENS.maxZ - GRENS.minZ) * h,
-    ];
-  }
+  // Gebouwen als donkere vlakken, zodat je de Dam herkent terwijl hij draait.
+  minimapCtx.fillStyle = 'rgba(8, 12, 20, 0.55)';
+  for (const g of DAM_LAYOUT.gebouwen) for (const deel of g.delen) vulRechthoek(deel);
 
-  // Ticket D34: straten en rijbanen als donkere banen, en de route van elke
+  // Ticket D34: straten en rijbanen als lichtere banen, en de route van elke
   // poort met een spoor: fel oranje in de bouwfase, gedimd tijdens de wave.
-  const schaal = (b / (GRENS.maxX - GRENS.minX) + h / (GRENS.maxZ - GRENS.minZ)) / 2;
   minimapCtx.fillStyle = 'rgba(120, 130, 145, 0.45)';
   for (const v of DAM_LAYOUT.vlakken) {
     if (v.soort === 'stoep') continue;
-    const [x0, z0] = naarCanvas(v.rect[0], v.rect[1]);
-    const [x1, z1] = naarCanvas(v.rect[2], v.rect[3]);
-    minimapCtx.fillRect(x0, z0, x1 - x0, z1 - z0);
+    vulRechthoek(v.rect);
   }
   for (const [naam, spoor] of routeSporen) {
     if (!spoor.visible) continue;
@@ -4401,11 +4451,10 @@ function tekenMinimap() {
     minimapCtx.lineWidth = Math.max(2, SPOOR_BREEDTE * schaal);
     minimapCtx.lineJoin = 'round';
     minimapCtx.beginPath();
-    route.punten.forEach(([x, z], i) => { const [cx, cz] = naarCanvas(x, z); if (i === 0) minimapCtx.moveTo(cx, cz); else minimapCtx.lineTo(cx, cz); });
+    route.punten.forEach(([x, z], i) => { const [cx, cz] = naarMinimap(x, z); if (i === 0) minimapCtx.moveTo(cx, cz); else minimapCtx.lineTo(cx, cz); });
     minimapCtx.stroke();
   }
 
-  // Monument: goud vierkantje, het vaste referentiepunt.
   // Ticket D28: oranje ring op de actieve (of aangekondigde) poorten, sinds
   // D34 bij de straatingang (waar ook het baken staat).
   minimapCtx.strokeStyle = '#ffa23a';
@@ -4413,7 +4462,7 @@ function tekenMinimap() {
   for (const poort of SPAWN_POORTEN) {
     const baken = poortBakens.get(poort.naam);
     if (!baken.visible) continue;
-    const [px, pz] = naarCanvas(baken.position.x, baken.position.z);
+    const [px, pz] = naarMinimap(baken.position.x, baken.position.z);
     minimapCtx.beginPath();
     minimapCtx.arc(px, pz, 6, 0, Math.PI * 2);
     minimapCtx.stroke();
@@ -4421,7 +4470,7 @@ function tekenMinimap() {
 
   // Ticket D10: bouwplekken als klein vierkantje (gevuld zodra er een toren staat).
   for (const plek of BOUWPLEKKEN) {
-    const [bx, bz] = naarCanvas(plek.positie.x, plek.positie.z);
+    const [bx, bz] = naarMinimap(plek.positie.x, plek.positie.z);
     if (plek.toren) {
       minimapCtx.fillStyle = '#7fd4ff';
       minimapCtx.fillRect(bx - 3, bz - 3, 6, 6);
@@ -4432,35 +4481,29 @@ function tekenMinimap() {
     }
   }
 
-  const [mx, mz] = naarCanvas(MONUMENT_POSITIE.x, MONUMENT_POSITIE.z);
+  // Monument: goud vierkantje, het vaste referentiepunt.
+  const [mx, mz] = naarMinimap(MONUMENT_POSITIE.x, MONUMENT_POSITIE.z);
   minimapCtx.fillStyle = '#e8c84e';
-  minimapCtx.fillRect(mx - 3, mz - 3, 6, 6);
+  minimapCtx.fillRect(mx - 3.5, mz - 3.5, 7, 7);
 
   // Robots: kleine rode stippen.
   minimapCtx.fillStyle = '#ff5c48';
   for (const robot of robots) {
-    const [rx, rz] = naarCanvas(robot.groep.position.x, robot.groep.position.z);
+    const [rx, rz] = naarMinimap(robot.groep.position.x, robot.groep.position.z);
     minimapCtx.beginPath();
     minimapCtx.arc(rx, rz, 2.5, 0, Math.PI * 2);
     minimapCtx.fill();
   }
 
-  // Speler: witte driehoek die de kijkrichting toont. yaw=0 kijkt naar -z
-  // (zie updateSpeler: bewegingZ = -cos(yaw) bij zuivere vooruitbeweging),
-  // vandaar -speler.yaw als canvasrotatie voor een driehoek die standaard
-  // "boven" (canvas -y, dus -z, dus noord) wijst.
-  const [px, pz] = naarCanvas(speler.positie.x, speler.positie.z);
-  minimapCtx.save();
-  minimapCtx.translate(px, pz);
-  minimapCtx.rotate(-speler.yaw);
+  // Speler: een vaste witte driehoek in het midden die altijd omhoog wijst;
+  // de kaart draait, niet de speler.
   minimapCtx.beginPath();
-  minimapCtx.moveTo(0, -6);
-  minimapCtx.lineTo(4, 5);
-  minimapCtx.lineTo(-4, 5);
+  minimapCtx.moveTo(b / 2, h / 2 - 6);
+  minimapCtx.lineTo(b / 2 + 4, h / 2 + 5);
+  minimapCtx.lineTo(b / 2 - 4, h / 2 + 5);
   minimapCtx.closePath();
   minimapCtx.fillStyle = '#ffffff';
   minimapCtx.fill();
-  minimapCtx.restore();
 }
 
 /* ================================================================
@@ -4516,6 +4559,7 @@ function resetRun() {
   cameraShake = 0;
   schietKnopIngedrukt = false;
   huidigeInteractie = null;
+  menuHandmatigGesloten = null;
   // Ticket D11: torens horen bij de run (plan §9 vraag 2: alles weg bij reset).
   for (const toren of [...torens]) verwijderToren(toren);
   sluitMenu();
@@ -4637,13 +4681,13 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   // Speeltest-feedback (na D6): overzicht-hulpmiddelen.
   // M2: de richtingspijlen (D27) zijn geschrapt; het lichtspoor en de
   // bakens tonen waar de robots vandaan komen.
-  tekenMinimap,
+  tekenMinimap, naarMinimap, MINIMAP_BEREIK,
   // Ticket D32: het nieuwe fundament (ARENA_SCHAAL bestaat niet meer).
   DAM_LAYOUT, ROUTES, wereld, vloerHoogte, puntOp, projecteerOpRoute, vloerTextuur, TEXTUUR_TEKENAARS, gebouwGroepen, GEVELNAMEN,
   // Ticket D34: routes zichtbaar.
   routeSporen, spoorTextuur, straatIngang, straatNaamborden, SPOOR_HELDER, SPOOR_GEDIMD, animeerPoortBakens,
   // Ticket D33: routevolgen.
-  robotRoutePunt, robotBaan, hekVoorRobot, robotMoetWachten, ROBOT_ACHTERSTAND, ROBOT_VOORUITKIJK, ROBOT_BAAN_MARGE, ROBOT_ONDERLING, ROBOT_BAAN_BOTSING,
+  robotRoutePunt, robotBaan, hekVoorRobot, hekOpRoute, robotMoetWachten, ROBOT_ACHTERSTAND, ROBOT_VOORUITKIJK, ROBOT_BAAN_MARGE, ROBOT_ONDERLING, ROBOT_BAAN_BOTSING,
   // Ticket D7: eindscherm en runstatistieken.
   runStats, eindigRun, toonEindscherm, verdienGeld,
   // Ticket D8: highscore.

@@ -1811,3 +1811,110 @@ calls. Dat is precies waar instancing en samenvoegen voor zijn.
 7. **`DAM_LAYOUT` is JSON.** Een `THREE.Vector3` erin maakt de vergelijking
    met `PLATTEGROND.html` kapot. Omzetten gebeurt alleen in
    `bereidLayoutVoor()`.
+
+### 11.8 Bijsturing na M2: speelbaarheid vóór de gevels
+
+Na de grey-box-speeltest (M2) kwam de eigenaar met vier punten. Ze gaan
+over het spel, niet over het uiterlijk, dus ze komen vóór D36.
+
+- **Menu en kaart.** Zelf het menu openen is onhandig. De minimap moet
+  meedraaien met de kijkrichting, zoals in Undead.
+- **Bouwplekken aan een stille straat.** Er staan bouwplekken aan straten
+  waar die wave niets vandaan komt. Dat voelt onlogisch: plekken moeten ook
+  nuttig zijn als hun straat niet aan de beurt is.
+- **Hek of toren.** Kiezen tussen hek en toren voelt "flat". De toren valt
+  aan, dus die wint altijd.
+- **Meer soorten torens.** Robots moeten op verschillende manieren
+  aangepakt kunnen worden.
+
+Besluiten van de eigenaar:
+- bouwplekken worden **knooppunten + voorposten**;
+- het hek krijgt een **eigen hekslot**;
+- er komen twee nieuwe torens: de **Bovenleiding** en de **Muntpers**.
+
+#### Ticket D44 — Minimap draait mee
+
+- **Doel:** de kaart leest zoals je kijkt.
+- **Stappen:** de speler staat in het midden en wijst altijd omhoog; de
+  kaart draait eromheen ("heading-up"). Het principe komt uit Undead
+  (Ticket 67), gekopieerd en aangepast.
+- **Acceptatie:** `test-dnm-route-zicht` meet de minimap in de draaiende
+  stand. Wat recht voor de speler ligt, staat recht boven het midden, bij
+  elke kijkrichting.
+
+#### Ticket D45 — Menu opent vanzelf
+
+- **Doel:** geen extra toetsdruk om te kopen.
+- **Stappen:**
+  - Kom je bij de commandopost of een bouwplek, dan opent het menu vanzelf;
+    cijfers kopen direct.
+  - T sluit het menu. Het blijft dicht tot je wegloopt en terugkomt.
+  - Weglopen sluit het menu, zoals nu.
+  - De Kerkklok houdt T: die doet direct iets en heeft een wachttijd, dus
+    per ongeluk langslopen mag hem niet afgaan.
+- **Acceptatie:** `test-dnm-commandopost` toetst:
+  - aankomen opent het menu, T sluit het;
+  - na T blijft het dicht zolang je blijft staan;
+  - weglopen en terugkomen opent het weer;
+  - de Kerkklok gaat niet vanzelf af.
+
+  De torentests lopen via het automatisch geopende menu.
+
+#### Ticket D46 — Knooppunten en voorposten
+
+- **Doel:** elke bouwplek is nuttig, ook als zijn straat niet aan de beurt
+  is.
+- **Stappen:**
+  - **Knooppunten** liggen vlak bij het monument, waar routes samenkomen,
+    en zijn dus altijd nuttig.
+  - **Voorposten:** één per straat, in de straat zelf. Ze zijn sterk als die
+    straat aangekondigd is.
+  - De indeling gaat eerst via de plattegrond (nieuwe toetsen voor
+    dekking), daarna naar `DAM_LAYOUT`.
+- **Acceptatie:**
+  - de plattegrondtoetsen zijn goed;
+  - elke route ligt binnen het bereik van minstens één knooppunt;
+  - `test-dnm-bouwplekken` en `test-dnm-layout` zijn groen.
+
+#### Ticket D47 — Eigen hekslot
+
+- **Doel:** het hek wordt een aanvulling op een toren, geen alternatief.
+- **Stappen:**
+  - Elke plek heeft een torenslot naast de route en een hekslot dwars
+    erover.
+  - Een knooppunt legt zijn hek over al zijn routes.
+  - Het menu toont beide slots.
+- **Acceptatie:** `test-dnm-hek`:
+  - toren en hek staan samen op één plek;
+  - robots staan stil in het vuur;
+  - een knooppunthek houdt beide routes tegen;
+  - verkopen of sneuvelen van het een laat het ander staan.
+
+#### Ticket D48 — De Bovenleiding
+
+- **Doel:** een antwoord op drukke golven.
+- **Stappen:** een tramdraadmast die per schot een stroomstoot geeft. De
+  stoot springt over op tot 4 robots die dicht bij elkaar lopen, met
+  aflopende schade per sprong. Ontwerp en beelden zijn origineel.
+- **Acceptatie:** `test-dnm-bovenleiding`:
+  - de sprong raakt maximaal 4 robots, alleen binnen de sprongafstand;
+  - de schade loopt af per sprong;
+  - de niveaus lopen op;
+  - de toren vuurt niet zonder doelwit.
+
+#### Ticket D49 — De Muntpers
+
+- **Doel:** een investering die zichzelf terugverdient.
+- **Stappen:**
+  - Een steuntoren zonder aanval.
+  - Robots die in zijn bereik sneuvelen, door wie dan ook, leveren 50% meer
+    geld op.
+  - Meerdere persen stapelen niet.
+- **Acceptatie:** `test-dnm-muntpers`:
+  - +50% binnen bereik, niets erbuiten;
+  - geen stapeling;
+  - geen aanval;
+  - de toren telt mee in bombers-doelwitten.
+
+Volgorde: D44 → D45 → D46 → D47 → D48 → D49, daarna D36. De economie van
+de nieuwe torens wordt in D43 herijkt, samen met de rest.

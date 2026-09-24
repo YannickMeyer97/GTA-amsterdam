@@ -83,25 +83,30 @@ const beweging = await page.evaluate(async () => {
 });
 check('De pijlpunten schuiven met de tijd (textuur-offset verandert)', beweging.a !== beweging.b || beweging.klokA === beweging.klokB, beweging);
 
-// --- Minimap: rijbanen en het spoor van de actieve route --------------------
+// --- Minimap: draait mee (D44), rijbanen en het spoor van de actieve route --
 
 const minimap = await page.evaluate(() => {
   const d = window.DamChaosDebug;
   d.spel.actievePoorten = []; d.spel.volgendePoorten = ['Damstraat'];
   d.updatePoortBakens();
-  d.tekenMinimap();
   const doek = document.getElementById('minimapCanvas');
   const ctx = doek.getContext('2d');
-  const G = d.GRENS;
-  const naarCanvas = (x, z) => [Math.round((x - G.minX) / (G.maxX - G.minX) * doek.width), Math.round((z - G.minZ) / (G.maxZ - G.minZ) * doek.height)];
-  // Midden van het Damstraat-stuk over het asfalt (x 25–35, z 14).
-  const [cx, cz] = naarCanvas(30, 14);
-  const pix = ctx.getImageData(cx, cz, 1, 1).data;
-  // Een rijbaan zonder spoor (Damrak, x −19, z −35).
-  const [rx, rz] = naarCanvas(-19, -35);
-  const rij = ctx.getImageData(rx, rz, 1, 1).data;
-  return { spoorPixel: [...pix], rijbaanPixel: [...rij] };
+  // Heading-up: een punt 20 m recht vóór de speler staat bij elke
+  // kijkrichting recht boven het midden.
+  const vooruit = [0, 1.1, 2.6, -2.2].map(yaw => {
+    d.speler.positie.set(8, 0, 6); d.speler.yaw = yaw;
+    const [x, y] = d.naarMinimap(8 - Math.sin(yaw) * 20, 6 - Math.cos(yaw) * 20);
+    return [yaw, +x.toFixed(3), +y.toFixed(3)];
+  });
+  const schaal = (doek.width / 2) / d.MINIMAP_BEREIK;
+  // Spoor en rijbaan: speler op het plein, schuin kijkend.
+  d.speler.positie.set(8, 0, 6); d.speler.yaw = 0.7;
+  d.tekenMinimap();
+  const pixel = (x, z) => { const [cx, cz] = d.naarMinimap(x, z); return [...ctx.getImageData(Math.round(cx), Math.round(cz), 1, 1).data]; };
+  return { vooruit, midden: [doek.width / 2, doek.height / 2], schaal, spoorPixel: pixel(30, 14), rijbaanPixel: pixel(-19, -35) };
 });
+check('Minimap draait mee: wat 20 m voor je ligt, staat bij elke kijkrichting recht boven het midden',
+  minimap.vooruit.every(([, x, y]) => Math.abs(x - minimap.midden[0]) < 0.01 && Math.abs(y - (minimap.midden[1] - 20 * minimap.schaal)) < 0.01), minimap.vooruit);
 const [sr, sg, sb] = minimap.spoorPixel;
 const [rr, rg, rb] = minimap.rijbaanPixel;
 check('Minimap: de aangekondigde route is oranje getekend', sr > 200 && sg > 120 && sb < 110, minimap);

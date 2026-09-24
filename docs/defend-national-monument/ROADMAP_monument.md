@@ -109,6 +109,12 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D33** | Vaste routes over de rijbanen; bouwplekken en hekken uit de layout |
 | ☑ | **D34** | Routes zichtbaar: oplichtend bij de aankondiging, bakens aan de straatingang |
 | ☑ | **D35** | Commandopost bij het monument, één menupaneel, HUD zonder overlap → **M2** (grey-box speeltest) *(M2 gespeeld)* |
+| ☑ | **D44** | Minimap draait mee (heading-up) — *na M2* |
+| ☑ | **D45** | Menu opent vanzelf bij commandopost en bouwplek — *na M2* |
+| ☐ | **D46** | Bouwplekken: knooppunten bij het monument + een voorpost per straat — *na M2* |
+| ☐ | **D47** | Eigen hekslot naast het torenslot — *na M2* |
+| ☐ | **D48** | Nieuwe toren: Bovenleiding (stroomstoot springt over naar tot 4 robots) — *na M2* |
+| ☐ | **D49** | Nieuwe toren: Muntpers (+50% geld voor kills in bereik) — *na M2* |
 | ☐ | **D36** | Textuurbibliotheek (gekopieerd uit Undead + kinderkopjes, zandsteen, leisteen, …) |
 | ☐ | **D37** | Paleis op de Dam |
 | ☐ | **D38** | Nieuwe Kerk |
@@ -308,6 +314,33 @@ Nieuwe hoogtes (m, gevel / hoogste deel):
 
 De plattegrond is bijgewerkt (versie M2-1, 37/37 toetsen) en de game volgt
 hem (`test-dnm-layout`).
+
+**D44 — minimap draait mee, verslag.**
+- **Heading-up**, zoals Undead: jij staat in het midden en wijst omhoog,
+  de kaart draait eromheen.
+- **Straal van de kaart:** 55 m (`MINIMAP_BEREIK`).
+- **Nu ook op de kaart:** gebouwen, als donkere vlakken.
+- **Hulpfunctie:** `naarMinimap(x, z)` rekent een wereldpunt om naar een
+  punt op de kaart; tests gebruiken hem ook.
+- **Test:** `test-dnm-route-zicht` toetst dat wat 20 m voor je ligt, bij
+  elke kijkrichting recht boven het midden staat.
+
+**D45 — menu opent vanzelf, verslag.**
+- Bij de commandopost en bij een bouwplek opent het menu vanzelf; cijfers
+  kopen direct.
+- T sluit het. Het blijft dicht tot je wegloopt en terugkomt
+  (`menuHandmatigGesloten`).
+- Na bouwen of verkopen blijft het ook dicht.
+- De Kerkklok houdt T.
+- `test-dnm-commandopost` heeft 22 checks. De torentests en de hektest
+  lopen via het automatisch geopende menu.
+
+**Hekfix (gevonden tijdens D45).** Een robot kon soms op 1–2 m vóór het
+hek gaan staan slaan, omdat de hektoets alleen op `s` keek. Nu begrenst
+het eerstvolgende hek op de route (`hekOpRoute`) `s` en het stuurpunt vlak
+vóór het hek, en slaat een robot pas bij echt contact (lijntest). Hij kan
+er nog steeds niet langs. De hektest is 3× op rij groen, en ook een
+reproductie die eerder 1 op de 4 keer faalde, faalt niet meer.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 

@@ -39,7 +39,7 @@ check('De toren staat in de scene, heeft de HP van niveau 1, en registreert éé
 check('runStats.torensGebouwd telt mee', kopen.naKoop.gebouwdStat === 1, kopen.naKoop);
 check('Op een bezette plek kun je niet nog eens bouwen', kopen.nogmaals === null && kopen.geldNaNogmaals === kopen.naKoop.verwachtGeld, kopen);
 
-// --- 2. Het bouwmenu: T opent, 1 bouwt, weglopen sluit ---------------------
+// --- 2. Het bouwmenu: opent vanzelf (D45), 1 bouwt, weglopen sluit --------
 
 const menu = await page.evaluate(() => {
   const d = window.DamChaosDebug;
@@ -51,9 +51,8 @@ const menu = await page.evaluate(() => {
   d.geldZet(300);
   d.speler.positie.set(plek.positie.x + 1.4, 0, plek.positie.z);
   d.updateInteracties(0);
+  // Ticket D45: het menu opent vanzelf zodra je bij de plek staat.
   const prompt = document.getElementById('interactiePrompt').textContent;
-  window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyT' }));
-  window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyT' }));
   const open = { stand: d.bouwMenuStand() === plek, zichtbaar: bouwUI.style.display === 'block', tekst: bouwUI.textContent };
   window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1' }));
   window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Digit1' }));
@@ -61,14 +60,13 @@ const menu = await page.evaluate(() => {
   // Menu op een andere plek openen en dan weglopen.
   d.speler.positie.set(ander.positie.x + 1.4, 0, ander.positie.z);
   d.updateInteracties(0);
-  d.activeerBouwplek(ander);
   const openBijAnder = d.bouwMenuStand() === ander;
   d.speler.positie.set(ander.positie.x + 15, 0, ander.positie.z);
   d.updateInteracties(0);
   return { prompt, open, naBouw, openBijAnder, dichtNaWeglopen: d.bouwMenuStand() === null && bouwUI.style.display === 'none', prijs: d.TOREN_TYPES.geschut.prijs };
 });
-check('Bij een lege bouwplek vraagt de prompt om T', menu.prompt.includes('Druk T om te bouwen'), menu);
-check('T op een lege bouwplek opent het bouwmenu met de geschuttoren', menu.open.stand && menu.open.zichtbaar && menu.open.tekst.includes(`Geschuttoren €${menu.prijs}`), menu.open);
+check('Bij een lege bouwplek vraagt de prompt om een cijfer (menu staat al open)', menu.prompt.includes('Kies een toren met een cijfer'), menu);
+check('Bij een lege bouwplek opent het bouwmenu vanzelf, met de geschuttoren', menu.open.stand && menu.open.zichtbaar && menu.open.tekst.includes(`Geschuttoren €${menu.prijs}`), menu.open);
 check('1 in het bouwmenu bouwt de toren en sluit het menu', menu.naBouw.gebouwd && menu.naBouw.menuDicht && menu.naBouw.geld === 300 - menu.prijs, menu.naBouw);
 check('Weglopen van de bouwplek sluit een open bouwmenu', menu.openBijAnder && menu.dichtNaWeglopen, menu);
 
