@@ -107,7 +107,7 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D31** | Plattegrond ontwerpen en laten goedkeuren → **M1** *(voorstel 2 goedgekeurd)* |
 | ☑ | **D32** | Nieuw fundament (grey-box): `DAM_LAYOUT`, vloer met kinderkopjes, rijbanen, tramrails |
 | ☑ | **D33** | Vaste routes over de rijbanen; bouwplekken en hekken uit de layout |
-| ☐ | **D34** | Routes zichtbaar: oplichtend bij de aankondiging, bakens aan de straatingang |
+| ☑ | **D34** | Routes zichtbaar: oplichtend bij de aankondiging, bakens aan de straatingang |
 | ☐ | **D35** | Commandopost bij het monument, één menupaneel, HUD zonder overlap → **M2** (grey-box speeltest) |
 | ☐ | **D36** | Textuurbibliotheek (gekopieerd uit Undead + kinderkopjes, zandsteen, leisteen, …) |
 | ☐ | **D37** | Paleis op de Dam |
@@ -229,6 +229,31 @@ in de pagina, als JSON; alles wordt daaruit berekend. In D32 wordt dat blok
     plek;
   - de bomber doorloopt route → bouwwerk → terug → route;
   - een wave van 40 robots komt volledig aan, met 0 keer vastlopen.
+
+**D34 — routes zichtbaar, verslag.**
+- **Lichtspoor per route:** een band van 1,6 m met pijlpunten van poort tot
+  monument, die met de looprichting mee schuiven.
+  - In de bouwfase branden de aangekondigde routes fel (opacity 0,85).
+  - Tijdens de wave branden de actieve routes gedimd (0,2).
+  - Het spoor volgt dezelfde keuze als de bakens (`updatePoortBakens`), dus
+    ook na een reset klopt het vanzelf.
+  - Geen tone mapping op het spoor: ACES dempte het oranje tot een flets
+    goud.
+- **Bakens bij de straatingang.** Het baken staat nu waar de straat op het
+  plein uitkomt (`straatIngang`), niet meer bij de poort diep in de straat.
+  Ernaast staat een grey-box-straatnaambord (D40 maakt er een echt bord
+  van).
+- **Minimap:** tekent straten en rijbanen, en de route van elke poort met
+  een spoor (fel of gedimd). De poortring staat bij de straatingang.
+- **Nieuw: `test-dnm-route-zicht.mjs`** (18 checks):
+  - fel in de bouwfase, gedimd in de wave;
+  - het spoor dekt de hele route en houdt geen schot tegen;
+  - bakens en borden staan bij de straatingang;
+  - de minimap tekent oranje op de route en grijs op een rijbaan zonder
+    dreiging;
+  - na een reset brandt er niets fel.
+- **D27 (pijlen), het eerdere besluit:** herbeoordelen ná D34. Nu het spoor
+  en de bakens de routes tonen, beoordeelt de eigenaar dat bij M2.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 

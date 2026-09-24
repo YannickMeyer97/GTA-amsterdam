@@ -1338,6 +1338,9 @@ het eind.
 - **Acceptatie:** `test-dnm-route-zicht.mjs`: in de bouwfase lichten precies
   de aangekondigde routes op, in de wave zijn ze gedimd, en na een reset is
   niets meer aan. D27 (pijlen) wordt hierna opnieuw beoordeeld.
+- **Uitgevoerd** (verslag in de roadmap). "Na een reset is niets meer aan"
+  is getoetst als: geen fel spoor meer. Wave 1 heeft direct weer een actieve
+  poort, dus die route is gedimd zichtbaar, net als zijn baken.
 
 #### Ticket D35 — Commandopost bij het monument, één menu
 

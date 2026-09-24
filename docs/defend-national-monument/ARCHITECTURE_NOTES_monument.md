@@ -1334,3 +1334,26 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
   | `ROBOT_BAAN_BOTSING` | 0,9 |
   | `ROBOT_TERUG_BEREIKT` | 0,5 |
   | `ROBOT_ACHTERSTAND` | 2,0 |
+
+### 15.7 Stand na D34 — routes zichtbaar
+
+- **`routeSporen`** (poortnaam → Mesh): één band per route, direct in de
+  scene.
+  - Eigenschappen: `userData.puurEffect`, `raycast` uitgezet, `toneMapped:
+    false`, `polygonOffset` tegen de vloer.
+  - Eén gedeelde `spoorTextuur`; `animeerPoortBakens` schuift de offset met
+    `klok`. v groeit met s (één pijlpunt per `SPOOR_PIJL_METERS`).
+- **`updatePoortBakens()` is de enige plek die zichtbaarheid zet**, voor
+  bakens én sporen:
+  - bouwfase (`volgendePoorten` niet leeg): de aangekondigde, fel;
+  - anders: de actieve, gedimd.
+
+  Wie de poortkeuze verandert, roept hem aan; niets anders hoeft te weten
+  dat er sporen zijn.
+- **`straatIngang(route)`:** het eerste routepunt dat niet op asfalt,
+  voetgangersstraat of steeg ligt (de trambaan telt als plein). Bakens
+  staan daar (`baken.userData.ingang`), straatnaamborden rechts ernaast
+  (`straatNaamborden`).
+- **De minimap** leest `DAM_LAYOUT.vlakken` (behalve stoepen) en
+  `routeSporen`. Hij tekent op `GRENS`, dus bij een andere verhouding
+  vervormt hij.

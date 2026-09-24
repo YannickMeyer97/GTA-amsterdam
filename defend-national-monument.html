@@ -2475,8 +2475,27 @@ function kiesSpawnPoort() {
 // poorten tijdens een wave en bij de aangekondigde poorten in de pauze.
 // Rechtstreeks in de scene (wereldcoördinaten), niet in `wereld`.
 const POORT_BAKEN_HOOGTE = 42;
+
+// Ticket D34: waar een straat op het plein uitkomt. Het eerste punt langs de
+// route dat niet meer op een straat ligt (asfalt, voetgangersstraat of
+// steeg); de trambaan over de Dam telt als plein.
+function straatIngang(route) {
+  const straat = DAM_LAYOUT.vlakken.filter(v => v.soort === 'asfalt' || v.soort === 'klinkers' || v.soort === 'steeg');
+  for (let s = 0; s <= route.lengte; s += 0.25) {
+    const p = puntOp(route, s);
+    if (!straat.some(v => p.x >= v.rect[0] && p.x <= v.rect[2] && p.z >= v.rect[1] && p.z <= v.rect[3])) return { s, ...p };
+  }
+  return { s: 0, ...puntOp(route, 0) };
+}
+
+// Ticket D34: het baken staat niet meer diep in de straat bij de poort, maar
+// bij de straatingang, naast het straatnaambord: daar zie je het vanaf het
+// monument het best, en het wijst de straat aan, niet een punt erin.
 const poortBakens = new Map();
+const straatNaamborden = new Map();
 for (const poort of SPAWN_POORTEN) {
+  const route = ROUTES.get(poort.naam);
+  const ingang = straatIngang(route);
   const baken = new THREE.Group();
   const zuil = new THREE.Mesh(
     new THREE.CylinderGeometry(1.0, 1.0, POORT_BAKEN_HOOGTE, 12, 1, true),
@@ -2489,14 +2508,104 @@ for (const poort of SPAWN_POORTEN) {
   ring.position.y = 0.05;
   for (const m of [zuil, ring]) m.raycast = () => {};   // puur effect, nooit raakbaar (zie ARCHITECTURE_NOTES §10.13)
   baken.add(zuil, ring);
-  baken.position.set(poort.positie.x, 0, poort.positie.z);
+  baken.position.set(ingang.x, 0, ingang.z);
+  baken.userData.ingang = ingang;
   baken.visible = false;
   scene.add(baken);
   poortBakens.set(poort.naam, baken);
+
+  // Straatnaambord rechts van de route (in looprichting), net buiten de
+  // strook, leesbaar vanaf het plein. D40 maakt er een echt Amsterdams bord
+  // van; dit is de grey-box-versie.
+  const zij = -(ingang.breedte / 2 + 0.9);
+  const bx = ingang.x - ingang.rz * zij, bz = ingang.z + ingang.rx * zij;
+  const bord = new THREE.Group();
+  bord.name = `straatnaambord:${poort.naam}`;
+  const paal = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 3.2, 8), mat(0x2d3136, 0.5, 0.4));
+  paal.position.y = 1.6;
+  bord.add(paal);
+  const richting = Math.abs(ingang.rx) > Math.abs(ingang.rz) ? (ingang.rx > 0 ? 'east' : 'west') : (ingang.rz > 0 ? 'south' : 'north');
+  maakGevelTekst(bord, poort.naam, 0, 2.9, 0, 1.9, 0.48, richting, {
+    achtergrond: 'rgba(28, 58, 110, 0.96)', rand: 'rgba(255, 255, 255, 0.95)', tekstKleur: '#ffffff', fontSize: 110,
+  });
+  bord.position.set(bx, vloerHoogte(bx, bz), bz);
+  bord.traverse(m => { if (m.isMesh) m.raycast = () => {}; });
+  wereld.add(bord);
+  straatNaamborden.set(poort.naam, bord);
 }
+
+// Ticket D34: het lichtspoor. Een band met pijlpunten over de hele route,
+// van de poort naar het monument; de punten schuiven mee in de looprichting.
+// In de bouwfase licht het spoor van de aangekondigde routes fel op, tijdens
+// de wave is het spoor van de actieve routes gedimd. Een route zonder
+// dreiging heeft geen spoor.
+const SPOOR_BREEDTE = 1.6;
+const SPOOR_PIJL_METERS = 2.2;        // één pijlpunt per zoveel meter
+const SPOOR_SNELHEID = 0.9;           // zoveel pijlpunten per seconde schuiven er voorbij
+const SPOOR_HELDER = 0.85;
+const SPOOR_GEDIMD = 0.2;
+const spoorTextuur = (() => {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64; canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 64, 128);
+  // Een pijlpunt die naar boven wijst: canvas-boven is v = 1, dus met de
+  // looprichting mee (v groeit met s).
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(32, 18); ctx.lineTo(60, 62); ctx.lineTo(46, 62); ctx.lineTo(32, 40); ctx.lineTo(18, 62); ctx.lineTo(4, 62);
+  ctx.closePath();
+  ctx.fill();
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+})();
+const routeSporen = new Map();
+for (const route of ROUTES.values()) {
+  const posities = [], uvs = [], index = [];
+  for (const seg of route.segmenten) {
+    const nx = -seg.rz * SPOOR_BREEDTE / 2, nz = seg.rx * SPOOR_BREEDTE / 2;
+    const y = 0.035;
+    const basis = posities.length / 3;
+    const ex = seg.ax + seg.rx * seg.lengte, ez = seg.az + seg.rz * seg.lengte;
+    posities.push(seg.ax + nx, y, seg.az + nz,  seg.ax - nx, y, seg.az - nz,  ex + nx, y, ez + nz,  ex - nx, y, ez - nz);
+    const v0 = seg.s0 / SPOOR_PIJL_METERS, v1 = (seg.s0 + seg.lengte) / SPOOR_PIJL_METERS;
+    uvs.push(0, v0, 1, v0, 0, v1, 1, v1);
+    index.push(basis, basis + 1, basis + 2, basis + 1, basis + 3, basis + 2);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(posities, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(index);
+  geo.computeVertexNormals();
+  const spoor = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    map: spoorTextuur, color: 0xff9a1f, transparent: true, opacity: SPOOR_HELDER, depthWrite: false, side: THREE.DoubleSide,
+    polygonOffset: true, polygonOffsetFactor: -2,
+    // Geen tone mapping: anders dempt ACES het oranje tot een flets goud en
+    // leest het spoor niet meer als "hier komen ze".
+    toneMapped: false,
+  }));
+  spoor.name = `lichtspoor:${route.poort}`;
+  spoor.userData.puurEffect = true;
+  spoor.raycast = () => {};
+  spoor.visible = false;
+  spoor.renderOrder = 2;
+  scene.add(spoor);
+  routeSporen.set(route.poort, spoor);
+}
+
 function updatePoortBakens() {
-  const aan = spel.volgendePoorten.length ? spel.volgendePoorten : spel.actievePoorten;
+  const bouwfase = spel.volgendePoorten.length > 0;
+  const aan = bouwfase ? spel.volgendePoorten : spel.actievePoorten;
   for (const [naam, baken] of poortBakens) baken.visible = aan.includes(naam);
+  // Ticket D34: het lichtspoor volgt dezelfde keuze: fel voor de
+  // aangekondigde routes in de bouwfase, gedimd voor de actieve tijdens de wave.
+  for (const [naam, spoor] of routeSporen) {
+    spoor.visible = aan.includes(naam);
+    spoor.material.opacity = bouwfase ? SPOOR_HELDER : SPOOR_GEDIMD;
+  }
 }
 function animeerPoortBakens() {
   // Hoog gehouden: tegen de lichte lucht vervaagt een transparant oranje
@@ -2505,6 +2614,9 @@ function animeerPoortBakens() {
   for (const baken of poortBakens.values()) {
     if (baken.visible) baken.children[0].material.opacity = puls;
   }
+  // De pijlpunten schuiven met de looprichting mee (v groeit met s, dus de
+  // offset daalt).
+  spoorTextuur.offset.y = -((klok * SPOOR_SNELHEID) % 1);
 }
 
 function spawnRobotVanafPoort(type = 'normal') {
@@ -4334,13 +4446,36 @@ function tekenMinimap() {
     ];
   }
 
+  // Ticket D34: straten en rijbanen als donkere banen, en de route van elke
+  // poort met een spoor: fel oranje in de bouwfase, gedimd tijdens de wave.
+  const schaal = (b / (GRENS.maxX - GRENS.minX) + h / (GRENS.maxZ - GRENS.minZ)) / 2;
+  minimapCtx.fillStyle = 'rgba(120, 130, 145, 0.45)';
+  for (const v of DAM_LAYOUT.vlakken) {
+    if (v.soort === 'stoep') continue;
+    const [x0, z0] = naarCanvas(v.rect[0], v.rect[1]);
+    const [x1, z1] = naarCanvas(v.rect[2], v.rect[3]);
+    minimapCtx.fillRect(x0, z0, x1 - x0, z1 - z0);
+  }
+  for (const [naam, spoor] of routeSporen) {
+    if (!spoor.visible) continue;
+    const route = ROUTES.get(naam);
+    minimapCtx.strokeStyle = spoor.material.opacity >= SPOOR_HELDER ? 'rgba(255, 162, 58, 0.95)' : 'rgba(255, 162, 58, 0.4)';
+    minimapCtx.lineWidth = Math.max(2, SPOOR_BREEDTE * schaal);
+    minimapCtx.lineJoin = 'round';
+    minimapCtx.beginPath();
+    route.punten.forEach(([x, z], i) => { const [cx, cz] = naarCanvas(x, z); if (i === 0) minimapCtx.moveTo(cx, cz); else minimapCtx.lineTo(cx, cz); });
+    minimapCtx.stroke();
+  }
+
   // Monument: goud vierkantje, het vaste referentiepunt.
-  // Ticket D28: oranje ring op de actieve (of aangekondigde) poorten.
+  // Ticket D28: oranje ring op de actieve (of aangekondigde) poorten, sinds
+  // D34 bij de straatingang (waar ook het baken staat).
   minimapCtx.strokeStyle = '#ffa23a';
   minimapCtx.lineWidth = 2;
   for (const poort of SPAWN_POORTEN) {
-    if (!poortBakens.get(poort.naam).visible) continue;
-    const [px, pz] = naarCanvas(poort.positie.x, poort.positie.z);
+    const baken = poortBakens.get(poort.naam);
+    if (!baken.visible) continue;
+    const [px, pz] = naarCanvas(baken.position.x, baken.position.z);
     minimapCtx.beginPath();
     minimapCtx.arc(px, pz, 6, 0, Math.PI * 2);
     minimapCtx.stroke();
@@ -4634,6 +4769,8 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   tekenMinimap, updateRichtingspijlen, verbergRichtingspijlen, projecteerOpScherm, robotPijlenPool,
   // Ticket D32: het nieuwe fundament (ARENA_SCHAAL bestaat niet meer).
   DAM_LAYOUT, ROUTES, wereld, vloerHoogte, puntOp, projecteerOpRoute, vloerTextuur, TEXTUUR_TEKENAARS, gebouwGroepen,
+  // Ticket D34: routes zichtbaar.
+  routeSporen, spoorTextuur, straatIngang, straatNaamborden, SPOOR_HELDER, SPOOR_GEDIMD, animeerPoortBakens,
   // Ticket D33: routevolgen.
   robotRoutePunt, robotBaan, hekVoorRobot, robotMoetWachten, ROBOT_ACHTERSTAND, ROBOT_VOORUITKIJK, ROBOT_BAAN_MARGE, ROBOT_ONDERLING, ROBOT_BAAN_BOTSING,
   // Ticket D7: eindscherm en runstatistieken.
