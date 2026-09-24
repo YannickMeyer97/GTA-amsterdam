@@ -101,18 +101,18 @@ const routeControle = await page.evaluate(() => {
   const d = window.DamChaosDebug;
   const STAP = 0.25;
   const MAX_STAPPEN = 3000;
-  const TUSSENPUNT_BEREIK = 6;   // zelfde constante als de echte AI (regel ~3057)
+  // Ticket D32: robots lopen sinds fase M de routepunten van hun poort af
+  // (DAM_LAYOUT), niet meer één tussenpunt en dan recht naar het monument.
+  const ROUTEPUNT_BEREIKT = 1.5;   // zelfde constante als de echte AI
 
   function simuleerRoute(poort, straal) {
     const pos = { x: poort.positie.x, z: poort.positie.z };
-    const tussenpunt = poort.tussenpunt || null;
-    let tussenpuntBereikt = !tussenpunt;
+    let index = 0;
     const aankomstDrempel = straal + 0.15;
     for (let i = 0; i < MAX_STAPPEN; i++) {
-      if (tussenpunt && !tussenpuntBereikt && Math.hypot(pos.x - tussenpunt.x, pos.z - tussenpunt.z) < TUSSENPUNT_BEREIK) {
-        tussenpuntBereikt = true;
-      }
-      const doel = (tussenpunt && !tussenpuntBereikt) ? tussenpunt : d.MONUMENT_POSITIE;
+      while (index < poort.routePunten.length - 1
+        && Math.hypot(pos.x - poort.routePunten[index].x, pos.z - poort.routePunten[index].z) < ROUTEPUNT_BEREIKT) index++;
+      const doel = poort.routePunten[index];
       const dx = doel.x - pos.x, dz = doel.z - pos.z;
       const lengte = Math.hypot(dx, dz);
       if (lengte < 1e-6) break;

@@ -12,6 +12,11 @@ fase 3 (poorten, wapenbereik, bouwplekken, torens, hek, bouwfase, economie,
 themagolven — zie §14). Fase 1
 (de herschaling) is volledig afgerond en gemeten, niet alleen berekend.
 Alles hieronder is uit de code gelezen en narekenbaar.
+**Let op, fase M is begonnen:** sinds D32 is de wereld vervangen door de
+grey-box-Dam op 1:1 uit `DAM_LAYOUT`. Wat §3 (de wereld), §4.2 en §4.3
+(schaal en monumentdoos) en §3.5 (rijdende trams) over `ARENA_SCHAAL`,
+`wereld.scale` en de oude bouwers zeggen, geldt niet meer. De actuele stand
+staat in §15.5.
 **Regelnummers zijn sinds D4/D5/D6 op sommige plekken bewust niet meer
 exact** (het bestand groeide met de toelichtingen) — behandel ze als een
 globale vingerwijzing, niet als een contract; de secties die D4/D5/D6/de
@@ -1250,3 +1255,44 @@ ticket bij en verplaats wat gebouwd is naar de gewone secties.
 
 De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
 §11.7.9.
+
+### 15.5 Stand na D32 — wat al gebouwd is
+
+- **`DAM_LAYOUT`** staat bovenaan STAP 2 en is gelijk aan de plattegrond
+  (`test-dnm-layout`). Er is geen `wereld.scale` en geen `ARENA_SCHAAL`
+  meer.
+  - `MONUMENT_POSITIE` is (0, 0, 0).
+  - `MONUMENT_BOX` is ±`speldoos` uit de layout, dezelfde bron als het
+    obstakel. Valkuil §4.3 is weg.
+- **Afgeleid bij het laden:**
+  - `ROUTES` (`segmenten` met `ax`, `az`, `rx`, `rz`, `lengte`, `s0`,
+    `breedte`);
+  - `puntOp(route, s)` en `projecteerOpRoute(route, x, z)`;
+  - `vloerHoogte(x, z)`: 3 × 0,16 m treden, stoepen 0,12 m. De speler-
+    camera en de robots staan erop.
+- **Vloer.** Lagen op vaste hoogte (`VLOER_Y`: plein 0, straat 0,006,
+  strook 0,012, rail 0,03).
+  - Texturen: `TEXTUUR_TEKENAARS` met `tekstZaad` en mulberry32, UV op
+    wereldschaal (`herschaalUVNaarWereldschaal`). De tegelmaat per
+    patroon staat in `TEXTUUR_TEGEL`.
+- **Gebouwen.** `bouwGreyboxGebouw` maakt per deel een blok met kroonlijst,
+  plus een tijdelijk herkenningspunt uit `GREYBOX_BEKRONING`. Dat staat
+  bewust niet in de layout.
+  - Groepen staan in `gebouwGroepen` (naam → Group).
+  - Botsing: `registreerRechthoek` per deel, met marge 0,3.
+- **Poorten en robots.** `SPAWN_POORTEN` wordt afgeleid uit `ROUTES`:
+  - `positie` is het eerste routepunt;
+  - de spreiding ligt dwars op de eerste strook;
+  - `routePunten` bevat de overige punten.
+
+  Robots lopen die punten af (`routeIndex`, `ROUTEPUNT_BEREIKT` 1,5 m).
+  `looproute()` simuleert precies dat; `puntOpRoute()` leest de vaste
+  route.
+- **Bouwplekken** komen uit `DAM_LAYOUT.bouwplekken`:
+  - index 0 = ver, 1 = nabij;
+  - `s`, `route`, `zijOffset` en `hekBreedte` worden afgeleid;
+  - een hek spant `hekBreedte`, gecentreerd op de route;
+  - de tegel is 1,8 m.
+- **Weg:** rijdende trams (`bewegendeTrams`), de oude bouwers,
+  `registreerObstakel` en de paaltjesring rond het monument. Duiven en
+  wolken bleven.

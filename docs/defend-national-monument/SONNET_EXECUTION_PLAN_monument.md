@@ -1277,6 +1277,16 @@ het eind.
 
   De bestaande tests draaien mee; tests die aan de oude geometrie hingen,
   worden bijgewerkt, en per test staat vast waarom.
+- **Uitgevoerd** (verslag in de roadmap):
+  - **Afwijking 1:** naar voren gehaald uit D33. De bouwplekken komen al uit
+    de layout (anders zouden ze op de nieuwe kaart op willekeurige plekken
+    landen), en robots lopen de routepunten af in plaats van één
+    tussenpunt. Het echte routevolgen op `s` blijft D33.
+  - **Afwijking 2:** de schotschil (§11.7.3) is uitgesteld tot de eerste
+    detailgevel (D37). Met één blok per gebouw is een raycast tegen
+    `wereld` nog goedkoop.
+  - **Tijdelijk tot D35:** reparatiepost en upgradekiosk staan bij de
+    commandopost en voor de Bijenkorf.
 
 #### Ticket D33 — Vaste routes over de rijbanen
 

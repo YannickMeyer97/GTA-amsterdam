@@ -489,10 +489,9 @@ const zon = new THREE.DirectionalLight(0xfff2d0, 2.6);
 zon.position.set(70, 100, 45);
 zon.castShadow = true;
 zon.shadow.mapSize.set(2048, 2048);
-// zon.shadow.camera.left/right/top/bottom: zie STAP 2, vlak na
-// wereld.scale.set(...) — die vier grenzen schalen mee met ARENA_SCHAAL
-// (Ticket D4) en die constante bestaat pas daar. near/far (diepte langs de
-// lichtrichting, geen kaartbreedte) blijven hier ongewijzigd.
+// zon.shadow.camera.left/right/top/bottom: zie STAP 2, waar de arena uit
+// DAM_LAYOUT bekend is. near/far (diepte langs de lichtrichting, geen
+// kaartbreedte) staan hier.
 zon.shadow.camera.near   = 10;
 zon.shadow.camera.far    = 300;
 scene.add(zon);
@@ -508,74 +507,170 @@ addEventListener('resize', () => {
 });
 
 /* ================================================================
-   STAP 2 - DE WERELD V2: Polished low-poly Dam Amsterdam
-   Drop-in replacement voor de huidige wereldsectie.
+   STAP 2 — DE WERELD: de Dam op mensmaat 1:1 (fase M)
+   ================================================================
+   Ticket D32 (SONNET_EXECUTION_PLAN_monument.md §11.5, doelarchitectuur
+   §11.7): de wereld wordt direct in meters gebouwd, uit één bron:
+   DAM_LAYOUT. Geen wereld.scale en geen aparte hoogteschaal meer; wat
+   hier op (x, z) staat, staat in de wereld op (x, z).
 
-   Plaats dit blok in de bestaande <script type="module"> direct na
-   de resize-listener en voor de sectie met duiven.
-
-   Belangrijk:
-   - Behoudt dezelfde globale namen: wereld, obstakels, GRENS, mat, blok.
-   - Gameplay blijft hetzelfde: robots, munten, schieten en UI blijven werken.
-   - Schaal: 1 game-unit is ongeveer 1 meter.
-   - Richting: x = west-oost, z = noord-zuid, noord is negatieve z.
+   - +x = oost, +z = zuid (noord is negatieve z), y = omhoog. De oorsprong
+     is het midden van het monument.
+   - DAM_LAYOUT is letterlijk het JSON-blok uit
+     docs/defend-national-monument/PLATTEGROND.html, zoals goedgekeurd bij
+     beslismoment M1. test-dnm-layout.mjs eist dat de twee gelijk blijven:
+     wie de indeling wijzigt, wijzigt ze samen.
+   - Dit is de grey-box: elk gebouw is een massief blok op zijn voetafdruk
+     en hoogte, met hooguit een simpele toren of koepel als herkenningspunt.
+     D36–D40 vervangen ze één voor één door echte gevels.
    ================================================================ */
 
+const DAM_LAYOUT = {
+  "versie": "D31-voorstel-2",
+  "eenheid": "meter, mensmaat 1:1",
+  "assen": "+x = oost, +z = zuid, oorsprong = midden van het monument, y = omhoog",
+  "wapenBereik": 22,
+  "spelerSnelheid": 7,
+  "robotSnelheid": { "wave1Min": 1.485, "wave1Max": 2.255, "plafond": 3.3 },
+
+  "grens": { "minX": -66, "maxX": 47, "minZ": -43, "maxZ": 43 },
+
+  "monument": {
+    "midden": [0, 0],
+    "speldoos": 6,
+    "platformStraal": 9,
+    "treden": [9, 8.2, 7.4],
+    "treeHoogte": 0.16,
+    "pyloonHoogte": 22
+  },
+
+  "commandopost": {
+    "midden": [-11.2, 0],
+    "maat": [2.4, 4],
+    "toonbank": "west",
+    "spelerPlek": [-13.4, 0]
+  },
+  "kerkklok": { "positie": [-55, -25.5] },
+  "spelerStart": { "positie": [-30, 0], "kijkrichting": "oost" },
+
+  "vlakken": [
+    { "naam": "Damrak",                "soort": "asfalt",      "rect": [-23.5, -78, -14.5, -22], "tramsporen": [-20.5, -17.5] },
+    { "naam": "Damrak stoep west",     "soort": "stoep",       "rect": [-27, -78, -23.5, -22] },
+    { "naam": "Damrak stoep oost",     "soort": "stoep",       "rect": [-14.5, -78, -11, -22] },
+    { "naam": "Trambaan over de Dam",  "soort": "trambaan",    "rect": [-23.5, -22, -14.5, 22], "tramsporen": [-20.5, -17.5] },
+    { "naam": "Rokin",                 "soort": "asfalt",      "rect": [-23.5, 22, -14.5, 78], "tramsporen": [-20.5, -17.5] },
+    { "naam": "Rokin stoep west",      "soort": "stoep",       "rect": [-27, 22, -23.5, 78] },
+    { "naam": "Rokin stoep oost",      "soort": "stoep",       "rect": [-14.5, 22, -11, 78] },
+    { "naam": "Damstraat",             "soort": "asfalt",      "rect": [17, 11.5, 68, 16.5] },
+    { "naam": "Damstraat stoep noord", "soort": "stoep",       "rect": [17, 9, 68, 11.5] },
+    { "naam": "Damstraat stoep zuid",  "soort": "stoep",       "rect": [17, 16.5, 68, 19] },
+    { "naam": "Kalverstraat",          "soort": "klinkers",    "rect": [-46.5, 22, -38.5, 78] },
+    { "naam": "Nieuwendijk",           "soort": "klinkers",    "rect": [-46.5, -78, -38.5, -22] },
+    { "naam": "Warmoesstraat",         "soort": "steeg",       "rect": [13, -78, 17, -22] },
+    { "naam": "Nes",                   "soort": "steeg",       "rect": [9, 22, 13, 78] }
+  ],
+  "afsluitingen": [
+    { "naam": "Warmoesstraat", "rect": [13, -29.5, 17, -28.5], "_uitleg": "doodlopend na 7 m; geen route" },
+    { "naam": "Nes",           "rect": [9, 28.5, 13, 29.5],    "_uitleg": "doodlopend na 7 m; geen route" }
+  ],
+
+  "routes": [
+    { "poort": "Damrak",       "kleur": "#c8283c", "punten": [[-19, -40], [-19, -14], [-3, -6.3]],       "breedtes": [9, 3] },
+    { "poort": "Rokin",        "kleur": "#12877a", "punten": [[-19, 40], [-19, 14], [-3, 6.3]],         "breedtes": [9, 3] },
+    { "poort": "Damstraat",    "kleur": "#e0661b", "punten": [[44, 14], [14, 14], [6.3, 3]],            "breedtes": [5, 3] },
+    { "poort": "Kalverstraat", "kleur": "#3b3486", "punten": [[-42.5, 30], [-42.5, 19], [-6.3, 5]],     "breedtes": [3, 3] },
+    { "poort": "Nieuwendijk",  "kleur": "#8e3fb8", "punten": [[-42.5, -30], [-42.5, -19], [-6.3, -5]],  "breedtes": [3, 3] }
+  ],
+  "hekBreedte": {
+    "Damrak": [9, null], "Rokin": [9, null], "Damstraat": [5, null],
+    "Kalverstraat": [8, null], "Nieuwendijk": [8, null],
+    "_uitleg": "Per routedeel de breedte die een hek overspant. null = klinkerstrook op het plein: strookbreedte + 2 × 1 m."
+  },
+
+  "bouwplekken": [
+    { "route": "Damrak",       "soort": "ver",   "positie": [-12.75, -32] },
+    { "route": "Damrak",       "soort": "nabij", "positie": [-12.2, -20] },
+    { "route": "Rokin",        "soort": "ver",   "positie": [-12.75, 32] },
+    { "route": "Rokin",        "soort": "nabij", "positie": [-12.2, 20] },
+    { "route": "Damstraat",    "soort": "ver",   "positie": [32, 10.25] },
+    { "route": "Damstraat",    "soort": "nabij", "positie": [15.5, 18.2] },
+    { "route": "Kalverstraat", "soort": "ver",   "positie": [-39.75, 25] },
+    { "route": "Kalverstraat", "soort": "nabij", "positie": [-27, 9] },
+    { "route": "Nieuwendijk",  "soort": "ver",   "positie": [-39.75, -25] },
+    { "route": "Nieuwendijk",  "soort": "nabij", "positie": [-27, -9] }
+  ],
+  "bouwplekHalf": 0.9,
+
+  "gebouwen": [
+    { "naam": "Paleis op de Dam", "ticket": "D37", "kleur": "#d9c79c",
+      "delen": [[-100, -22, -66, 22]], "hoogte": 26, "hoogsteDeel": 51,
+      "maten": "gevel 44 m (13 traveeën in plaats van 23), 34 m diep; gevel ~26 m tot de balustrade, koepel met lantaarn ~51 m",
+      "kenmerken": ["classicistisch, lichte zandsteen die verweerd grijsgeel oogt", "drie bouwlagen plus zolder, strakke rijen rechthoekige ramen", "middenrisaliet met fronton en beeldhouwwerk", "rij kleine rondboogpoortjes op de begane grond, geen grote hoofdingang", "koepel met lantaarn en een windvaan in de vorm van een schip", "beelden op het dak"] },
+    { "naam": "Nieuwe Kerk", "ticket": "D38", "kleur": "#b0705a",
+      "delen": [[-100, -50, -56, -28], [-70, -60, -60, -24], [-56, -48, -46.5, -32]], "hoogte": 28, "hoogsteDeel": 42,
+      "maten": "schip 44 × 22 m, dwarsschip steekt 4 m naar het plein uit, koor tot aan de Nieuwendijk; nok ~28 m, dakruiter ~42 m",
+      "kenmerken": ["laatgotisch, baksteen met natuurstenen banden", "hoge spitsboogramen met maaswerk", "het grote transeptraam in de zuidgevel, schuin naast het Paleis", "steile leien daken met een slank dakruitertje", "geen voltooide hoge toren, zoals in het echt"] },
+    { "naam": "Bijenkorf", "ticket": "D39", "kleur": "#8a5a48",
+      "delen": [[-11, -62, 13, -22]], "hoogte": 22, "hoogsteDeel": 30,
+      "maten": "24 m aan de Dam, 40 m langs het Damrak; ~22 m tot de balustrade, torenbekroning boven het midden ~30 m",
+      "kenmerken": ["op de hoek Dam–Damrak, aan de oostkant van het Damrak, hoofdingang aan de Dam", "rode baksteen en natuursteen, vijf bouwlagen (begane grond, drie verdiepingen, dakverdieping)", "verticale pijlers (lisenen) op een sokkel, kroonlijst met attiek en balustrade", "segmentvormige frontons op de hoekpaviljoens en het midden, met een torenbekroning boven het midden", "grote etalages op de begane grond", "alleen de naam in gewone letters, geen logo"] },
+    { "naam": "Krasnapolsky", "ticket": "D39", "kleur": "#c9b99c",
+      "delen": [[17, -45, 52, 9]], "hoogte": 24, "hoogsteDeel": 27,
+      "maten": "31 m gevel aan de Dam, achter het monument; ~24 m plus mansardekap",
+      "kenmerken": ["oostkant van de Dam, recht achter het monument", "tussen de Warmoesstraat (noord) en de hoek met de Damstraat (zuid)", "breed 19e-eeuws hotel met veel ramen", "balkons", "luifel boven de ingang"] },
+    { "naam": "Madame Tussauds-blok", "ticket": "D39", "kleur": "#9aa1a8",
+      "delen": [[-38.5, 22, -27, 60]], "hoogte": 22, "hoogsteDeel": 22,
+      "maten": "11,5 m aan de Dam, tussen Kalverstraat en Rokin; ~22 m",
+      "kenmerken": ["het Peek & Cloppenburg-gebouw (1917), Madame Tussauds op de bovenverdiepingen", "vijf bouwlagen in lichte kalksteen", "grote winkelpui op de begane grond", "beeldhouwwerk op de hoeken, in eigen eenvoudige vormen"] },
+    { "naam": "Hotel TwentySeven (Industria)", "ticket": "D39", "kleur": "#c9a27e",
+      "delen": [[-11, 22, 9, 55]], "hoogte": 22, "hoogsteDeel": 32,
+      "maten": "20 m aan de Dam, 33 m langs het Rokin; ~22 m, toren met koperen kap ~32 m",
+      "kenmerken": ["het Industria-gebouw (1916) op de zuidoosthoek van de Dam, hoek Rokin", "bijna vrijstaand, met vier verschillende gevels", "asymmetrische gevel aan de Dam met een torenachtig bouwdeel onder een klokvormige, groen uitgeslagen koperen kap", "lichte baksteen met spaarzaam natuursteen", "juwelier op de hoek op straatniveau, hotel op de bovenverdiepingen; namen alleen in gewone letters"] },
+    { "naam": "Beurs van Berlage", "ticket": "D40", "kleur": "#a8674e",
+      "delen": [[-11, -100, 13, -68]], "hoogte": 22, "hoogsteDeel": 40,
+      "maten": "achtergrond: noordelijker langs het Damrak, voorbij het Beursplein",
+      "kenmerken": ["baksteen, lange gevel langs het Damrak", "klokkentoren", "alleen in de verte zichtbaar, in de zichtlijn van het Damrak"] },
+    { "naam": "Damrak-westwand", "ticket": "D40", "kleur": "#b8a58e",
+      "delen": [[-38.5, -78, -27, -22]], "hoogte": 16, "hoogsteDeel": 16,
+      "maten": "gevelrij tussen Nieuwendijk en Damrak", "kenmerken": ["grachtenpanden", "hoekpanden aan de Dam", "winkelpuien"] },
+    { "naam": "Nieuwendijk-westwand", "ticket": "D40", "kleur": "#b8a58e",
+      "delen": [[-56, -78, -46.5, -48]], "hoogte": 15, "hoogsteDeel": 15,
+      "maten": "gevelrij achter het koor", "kenmerken": ["smalle grachtenpanden"] },
+    { "naam": "Rokin-oostwand", "ticket": "D40", "kleur": "#b8a58e",
+      "delen": [[-11, 55, 9, 78]], "hoogte": 16, "hoogsteDeel": 16,
+      "maten": "gevelrij langs het Rokin, na Industria", "kenmerken": ["grachtenpanden"] },
+    { "naam": "Damstraat-zuidwand", "ticket": "D40", "kleur": "#b8a58e",
+      "delen": [[13, 22, 17, 55], [17, 19, 52, 55]], "hoogte": 16, "hoogsteDeel": 16,
+      "maten": "hoekpand Nes/Damstraat en de gevelrij langs de Damstraat", "kenmerken": ["smalle panden", "winkelpuien"] },
+    { "naam": "Kalverstraat-westwand", "ticket": "D40", "kleur": "#b8a58e",
+      "delen": [[-66, 22, -46.5, 60]], "hoogte": 16, "hoogsteDeel": 16,
+      "maten": "blok ten zuiden van het Paleis", "kenmerken": ["grachtenpanden", "winkelpuien aan de Kalverstraat"] }
+  ],
+
+  "decor": [
+    { "naam": "Tram (geparkeerd, voorbij de Rokin-poort)", "rect": [-18.7, 50, -16.3, 78] }
+  ]
+};
+
 const wereld = new THREE.Group();
-wereld.name = 'Dam Amsterdam polished world';
+wereld.name = 'Dam Amsterdam';
 scene.add(wereld);
 
-// Ticket D4 (SONNET_EXECUTION_PLAN_monument.md, Fase 1) — drie aparte
-// schaalfactoren i.p.v. één. Bij één factor over alles zou het Paleis
-// (22 m) en de monumentpyloon (ook 22 m) allebei naar 7,3 m krimpen, terwijl
-// robots 1,9 m blijven — een poppenhuis met het monument als tuinornament.
-// Met een mildere hoogtefactor blijft de arena omsloten en het monument
-// torenen, terwijl de looproutes wél echt 3× korter worden (dat is het hele
-// punt van deze ronde, zie SONNET_EXECUTION_PLAN_monument.md §2.1).
-const ARENA_SCHAAL = 1 / 3;            // alle x/z-posities en voetafdrukken
-const GEBOUW_HOOGTE_SCHAAL = 0.6;      // alleen hoogtes
-const MONUMENT_HOOGTE_SCHAAL = 0.8;    // het monument krimpt minder (zie bouwNationaalMonument)
-
-// Elke bouwfunctie hieronder voegt zijn geometrie toe aan `wereld` (rechtstreeks
-// of via een eigen sub-groep) en gebruikt nergens scene.add() rechtstreeks voor
-// statisch decor — geverifieerd: de enige scene.add()-aanroepen in dit bestand
-// zijn licht, camera, wereld zelf, en dynamische gameplay-objecten (wolken,
-// duiven, robots, munten, brokstukken) die bewust BUITEN wereld blijven, want
-// die hebben hun eigen, los bijgewerkte wereldcoördinaten (zie SPAWN_POORTEN
-// e.a. in D5). Daardoor is deze ene regel genoeg om de HELE statische stad
-// (positie, voetafdruk én hoogte) te herschalen — geen enkele hardgecodeerde
-// coördinaat in de ~40 bouwfuncties hoeft aangepast. Moet vóór elke bouwfunctie
-// staan: registreerObstakel() leest de wereldmatrix op het moment van
-// registreren (updateWorldMatrix + Box3.setFromObject), niet achteraf.
-wereld.scale.set(ARENA_SCHAAL, GEBOUW_HOOGTE_SCHAAL, ARENA_SCHAAL);
-
-// Ticket D4: de schaduwcamera-frustum (zie STAP 1, was ±110) was afgestemd op
-// de oude, 3× grotere arena. Mee schalen naar ±36,7 geeft bij dezelfde
-// 2048²-shadowmap een veel scherpere schaduw op de nu kleinere kaart — met
-// de oude, te ruime frustum zou de map grotendeels lucht boven een lege
-// vlakte dekken.
-zon.shadow.camera.left   = -110 * ARENA_SCHAAL;
-zon.shadow.camera.right  =  110 * ARENA_SCHAAL;
-zon.shadow.camera.top    =  110 * ARENA_SCHAAL;
-zon.shadow.camera.bottom = -110 * ARENA_SCHAAL;
-// De shadow camera moet zijn projectiematrix herberekenen na deze wijziging
-// (Three.js doet dat niet automatisch bij het zetten van left/right/top/
-// bottom na de eerste render-init).
+// De zon staat op (70, 100, 45) en kijkt naar de oorsprong (het monument).
+// ±80 m dekt de hele arena plus de gebouwen eromheen; bij 2048² is dat
+// ~13 texels per meter.
+zon.shadow.camera.left   = -80;
+zon.shadow.camera.right  =  80;
+zon.shadow.camera.top    =  80;
+zon.shadow.camera.bottom = -80;
 zon.shadow.camera.updateProjectionMatrix();
 
 const obstakels = [];
 
-// Groter speelgebied zodat het plein, Damrak, Rokin en zijstraten kloppen.
-// maxX is verruimd t.o.v. de oorspronkelijke 126: Hotel Krasnapolsky staat
-// nu met de lange gevel (61m) oost van De Bijenkorf en sluit zo die kant
-// van de kaart af (zie bouwKrasnapolsky hieronder), en dat past niet meer
-// binnen de oorspronkelijke kaartrand.
-// Ticket D4: ×ARENA_SCHAAL. GRENS is een pure gameplay-grens (clamping in
-// losBotsingenOp/isVrijePlek), geen Three.js-object — die volgt de
-// wereld-schaal niet automatisch en moet hier met de hand mee.
-const GRENS = { minX: -118 * ARENA_SCHAAL, maxX: 165 * ARENA_SCHAAL, minZ: -118 * ARENA_SCHAAL, maxZ: 106 * ARENA_SCHAAL };
+// De speelgrens komt rechtstreeks uit de plattegrond: net voorbij de
+// poorten, zodat je een straat in kunt kijken maar er niet in verdwijnt.
+const GRENS = { ...DAM_LAYOUT.grens };
 
-// Palet met iets warmere, minder platte kleuren dan de eerste versie.
 const PAL = {
   luchtMist: 0x8fcff2,
   asfalt: 0x6f6f6a,
@@ -654,17 +749,6 @@ function schaduwAan(object) {
   });
 }
 
-function registreerObstakel(object, marge = 0) {
-  object.updateWorldMatrix(true, true);
-  const doos = new THREE.Box3().setFromObject(object);
-  obstakels.push({
-    minX: doos.min.x - marge,
-    maxX: doos.max.x + marge,
-    minZ: doos.min.z - marge,
-    maxZ: doos.max.z + marge
-  });
-}
-
 // Geeft sinds Ticket D11 het geregistreerde obstakel terug als handle.
 // `obstakels` is een platte array zonder id's; wie een obstakel later weer
 // moet weghalen (toren verkocht/vernietigd, hek gesneuveld) bewaart deze
@@ -685,260 +769,6 @@ function zet(object, x, y, z, rotY = 0) {
   object.rotation.y = rotY;
   return object;
 }
-
-function vloerRechthoek(breedte, diepte, x, z, kleur, y = 0.035, hoogte = 0.07) {
-  const v = new THREE.Mesh(new THREE.BoxGeometry(breedte, hoogte, diepte), mat(kleur, 0.98));
-  v.position.set(x, y, z);
-  v.receiveShadow = true;
-  wereld.add(v);
-  return v;
-}
-
-function vloerPoly(punten, kleur, y = 0.08) {
-  const shape = new THREE.Shape();
-  shape.moveTo(punten[0][0], -punten[0][1]);
-  for (let i = 1; i < punten.length; i++) shape.lineTo(punten[i][0], -punten[i][1]);
-  shape.closePath();
-  const geo = new THREE.ShapeGeometry(shape);
-  const mesh = new THREE.Mesh(geo, mat(kleur, 1));
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.position.y = y;
-  mesh.receiveShadow = true;
-  wereld.add(mesh);
-  return mesh;
-}
-
-function lijnOpGrond(x1, z1, x2, z2, kleur = PAL.voeg, dikte = 0.025, y = 0.105) {
-  const dx = x2 - x1;
-  const dz = z2 - z1;
-  const lengte = Math.hypot(dx, dz);
-  const lijn = new THREE.Mesh(new THREE.BoxGeometry(dikte, 0.012, lengte), mat(kleur, 1));
-  lijn.position.set((x1 + x2) / 2, y, (z1 + z2) / 2);
-  lijn.rotation.y = Math.atan2(dx, dz);
-  lijn.receiveShadow = true;
-  wereld.add(lijn);
-  return lijn;
-}
-
-function tegelRaster(minX, maxX, minZ, maxZ, stap = 5) {
-  for (let x = Math.ceil(minX / stap) * stap; x <= maxX; x += stap) {
-    lijnOpGrond(x, minZ, x, maxZ, PAL.voeg, 0.018, 0.112);
-  }
-  for (let z = Math.ceil(minZ / stap) * stap; z <= maxZ; z += stap) {
-    lijnOpGrond(minX, z, maxX, z, PAL.voeg, 0.018, 0.112);
-  }
-}
-
-function driehoekFacade(x, zMidden, yBasis, breedteZ, hoogteY, kleur) {
-  const geo = new THREE.BufferGeometry();
-  const vertices = new Float32Array([
-    x, yBasis, zMidden - breedteZ / 2,
-    x, yBasis, zMidden + breedteZ / 2,
-    x, yBasis + hoogteY, zMidden
-  ]);
-  geo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-  geo.setIndex([0, 1, 2]);
-  geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, mat(kleur, 0.85));
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
-}
-
-function zadeldak(lengteX, diepteZ, hoogte, kleur) {
-  const w = lengteX / 2;
-  const d = diepteZ / 2;
-  const h = hoogte;
-  const geo = new THREE.BufferGeometry();
-  const v = new Float32Array([
-    -w, 0, -d,   w, 0, -d,   -w, 0, d,   w, 0, d,
-    -w, h, 0,    w, h, 0
-  ]);
-  geo.setAttribute('position', new THREE.BufferAttribute(v, 3));
-  geo.setIndex([
-    0, 1, 5, 0, 5, 4,
-    2, 4, 5, 2, 5, 3,
-    0, 4, 2,
-    1, 3, 5,
-    0, 2, 3, 0, 3, 1
-  ]);
-  geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, mat(kleur, 0.78));
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
-}
-
-function raamOpFacade(parent, x, y, z, breedte, hoogte, richting = 'east') {
-  const kozijn = new THREE.Mesh(new THREE.BoxGeometry(0.12, hoogte + 0.22, breedte + 0.22), mat(PAL.kozijn, 0.72));
-  const glas = new THREE.Mesh(new THREE.BoxGeometry(0.14, hoogte, breedte), mat(PAL.raam, 0.45, 0.05));
-  // Met honderden ramen per plein is losse schaduwwerp per raampje niet te
-  // zien maar wel kostbaar; schaduwAan() slaat deze twee daarom over.
-  kozijn.userData.geenSchaduw = true;
-  glas.userData.geenSchaduw = true;
-  if (richting === 'east' || richting === 'west') {
-    kozijn.position.set(x, y, z);
-    glas.position.set(x + (richting === 'east' ? 0.012 : -0.012), y, z);
-  } else {
-    kozijn.geometry = new THREE.BoxGeometry(breedte + 0.22, hoogte + 0.22, 0.12);
-    glas.geometry = new THREE.BoxGeometry(breedte, hoogte, 0.14);
-    kozijn.position.set(x, y, z);
-    glas.position.set(x, y, z + (richting === 'south' ? 0.012 : -0.012));
-  }
-  parent.add(kozijn, glas);
-}
-
-function deurOpFacade(parent, x, y, z, breedte, hoogte, richting = 'east', kleur = 0x3f2b1d) {
-  const deur = richting === 'east' || richting === 'west'
-    ? new THREE.Mesh(new THREE.BoxGeometry(0.16, hoogte, breedte), mat(kleur, 0.8))
-    : new THREE.Mesh(new THREE.BoxGeometry(breedte, hoogte, 0.16), mat(kleur, 0.8));
-  deur.position.set(x, y, z);
-  deur.castShadow = true;
-  parent.add(deur);
-  return deur;
-}
-
-/* ----------------------------------------------------------------
-   Herbruikbare geveldetail-helpers (visual landmark pass)
-   ----------------------------------------------------------------
-   Allemaal volgens dezelfde conventie als raamOpFacade: je geeft een
-   parent-group en lokale coördinaten mee, plus een 'richting' die
-   aangeeft welke gevelzijde het is. Kleine details zetten
-   userData.geenSchaduw zodat schaduwAan() ze overslaat — met honderden
-   van deze dingetjes op het plein scheelt dat fors in schaduw-casters.
-   ---------------------------------------------------------------- */
-
-// Eén gedeeld dubbelzijdig materiaal voor alle spitsboog-toppen: scheelt
-// een uniek materiaal per raam en de dubbelzijdigheid maakt winding-richting
-// irrelevant, ongeacht of de gevel noord of zuid kijkt.
-const spitsboogMateriaal = new THREE.MeshStandardMaterial({ color: PAL.raam, roughness: 0.5, metalness: 0.05, side: THREE.DoubleSide });
-
-// Raster van ramen in één aanroep, zodat de her en der gekopieerde dubbele
-// for-lussen niet meer nodig zijn. x0/y0/z0 is de eerste kolom/rij (net als de
-// bestaande code, dus posities blijven exact gelijk als je een lus vervangt).
-function maakRamenRij(parent, o) {
-  const langsX = (o.richting === 'south' || o.richting === 'north');
-  for (let r = 0; r < o.rijen; r++) {
-    for (let k = 0; k < o.kolommen; k++) {
-      const x = o.x0 + (langsX ? k * o.dx : 0);
-      const z = o.z0 + (langsX ? 0 : k * o.dx);
-      const y = o.y0 + r * o.dy;
-      raamOpFacade(parent, x, y, z, o.raamB, o.raamH, o.richting);
-    }
-  }
-}
-
-// Spitsboograam: een gewoon (rechthoekig) raam met daarboven een driehoekige
-// top in dezelfde donkere ruit-kleur, wat het gotische silhouet geeft.
-function maakSpitsboogRaam(parent, x, y, z, breedte, hoogte, richting = 'south') {
-  raamOpFacade(parent, x, y, z, breedte, hoogte, richting);
-  const langsX = (richting === 'south' || richting === 'north');
-  const uit = (richting === 'south' || richting === 'east') ? 1 : -1;
-  const b = breedte / 2;
-  const topHoogte = breedte * 0.62;
-  const yBasis = y + hoogte / 2;
-  const geo = new THREE.BufferGeometry();
-  const v = langsX
-    ? new Float32Array([-b, 0, 0, b, 0, 0, 0, topHoogte, 0])
-    : new Float32Array([0, 0, -b, 0, 0, b, 0, topHoogte, 0]);
-  geo.setAttribute('position', new THREE.BufferAttribute(v, 3));
-  geo.setIndex([0, 1, 2]);
-  geo.computeVertexNormals();
-  const top = new THREE.Mesh(geo, spitsboogMateriaal);
-  top.position.set(x + (langsX ? 0 : uit * 0.02), yBasis, z + (langsX ? uit * 0.02 : 0));
-  top.userData.geenSchaduw = true;
-  parent.add(top);
-}
-
-// Getrapte steunbeer tegen een gevel: onderblok breed/diep, bovenblok smaller
-// en dichter tegen de muur — het "getrapte" profiel maakt het gotisch. 'uit'
-// bepaalt aan welke kant hij uitsteekt (zelfde richtingconventie).
-function maakSteunbeer(parent, x, z, hoogte, richting = 'south') {
-  const langsX = (richting === 'south' || richting === 'north');
-  const uit = (richting === 'south' || richting === 'east') ? 1 : -1;
-  const onderDiep = 1.3, bovenDiep = 0.8, bw = 1.1, tw = 0.75;
-  const onder = langsX
-    ? blok(bw, hoogte * 0.62, onderDiep, PAL.kerkDonker, 0.88)
-    : blok(onderDiep, hoogte * 0.62, bw, PAL.kerkDonker, 0.88);
-  const bovenY = hoogte * 0.62;
-  onder.position.set(
-    x + (langsX ? 0 : uit * onderDiep / 2),
-    hoogte * 0.31,
-    z + (langsX ? uit * onderDiep / 2 : 0)
-  );
-  parent.add(onder);
-  const boven = langsX
-    ? blok(tw, hoogte * 0.42, bovenDiep, PAL.kerkDonker, 0.88)
-    : blok(bovenDiep, hoogte * 0.42, tw, PAL.kerkDonker, 0.88);
-  boven.position.set(
-    x + (langsX ? 0 : uit * bovenDiep / 2),
-    bovenY + hoogte * 0.21 - 0.1,
-    z + (langsX ? uit * bovenDiep / 2 : 0)
-  );
-  parent.add(boven);
-}
-
-// Rij ronde zuilen langs een gevel, met een doorlopende architraafbalk erboven.
-function maakZuilenrij(parent, o) {
-  const langsX = (o.richting === 'south' || o.richting === 'north');
-  const kl = o.kleur ?? PAL.zandsteenLicht;
-  for (let i = 0; i < o.aantal; i++) {
-    const off = (i - (o.aantal - 1) / 2) * o.tussen;
-    const zuil = new THREE.Mesh(new THREE.CylinderGeometry(o.straal, o.straal, o.hoogte, 10), mat(kl, 0.82));
-    zuil.position.set(o.x + (langsX ? off : 0), o.y + o.hoogte / 2, o.z + (langsX ? 0 : off));
-    zuil.castShadow = true;
-    parent.add(zuil);
-  }
-  const span = (o.aantal - 1) * o.tussen + o.straal * 4;
-  const balk = langsX
-    ? blok(span, 0.85, o.straal * 2.4, kl, 0.82)
-    : blok(o.straal * 2.4, 0.85, span, kl, 0.82);
-  balk.position.set(o.x, o.y + o.hoogte + 0.42, o.z);
-  balk.userData.geenSchaduw = true;
-  parent.add(balk);
-}
-
-// Dunne horizontale lijst/band (kroonlijst, verdiepingsband). Caller bepaalt de
-// maten; standaard zonder schaduw want het is een plat sierstripje.
-function maakDaklijst(parent, breedte, hoogte, diepte, x, y, z, kleur = PAL.zandsteenLicht) {
-  const lijst = blok(breedte, hoogte, diepte, kleur, 0.8);
-  lijst.position.set(x, y, z);
-  lijst.userData.geenSchaduw = true;
-  parent.add(lijst);
-  return lijst;
-}
-
-// Etalagepui: donkere doorlopende glasstrook met smalle penanten ertussen en
-// een luifelplaat erboven. Maakt van een blinde begane grond een warenhuis.
-function maakEtalage(parent, o) {
-  const langsX = (o.richting === 'south' || o.richting === 'north');
-  const uit = (o.richting === 'south' || o.richting === 'east') ? 1 : -1;
-  const dik = 0.25;
-  const glas = langsX
-    ? new THREE.Mesh(new THREE.BoxGeometry(o.breedte, o.hoogte, dik), mat(PAL.etalageGlas, 0.3, 0.15))
-    : new THREE.Mesh(new THREE.BoxGeometry(dik, o.hoogte, o.breedte), mat(PAL.etalageGlas, 0.3, 0.15));
-  glas.position.set(o.x + (langsX ? 0 : uit * 0.05), o.y, o.z + (langsX ? uit * 0.05 : 0));
-  glas.userData.geenSchaduw = true;
-  parent.add(glas);
-  const n = o.penanten ?? 6;
-  const penKleur = o.penantKleur ?? PAL.zandsteen;
-  for (let i = 0; i <= n; i++) {
-    const off = (i / n - 0.5) * o.breedte;
-    const pen = langsX
-      ? blok(0.35, o.hoogte + 0.3, dik + 0.18, penKleur, 0.8)
-      : blok(dik + 0.18, o.hoogte + 0.3, 0.35, penKleur, 0.8);
-    pen.position.set(o.x + (langsX ? off : uit * 0.06), o.y, o.z + (langsX ? uit * 0.06 : off));
-    pen.userData.geenSchaduw = true;
-    parent.add(pen);
-  }
-  const luifel = langsX
-    ? blok(o.breedte + 0.6, 0.2, 1.4, PAL.dakDonker, 0.7)
-    : blok(1.4, 0.2, o.breedte + 0.6, PAL.dakDonker, 0.7);
-  luifel.position.set(o.x + (langsX ? 0 : uit * 0.7), o.y + o.hoogte / 2 + 0.35, o.z + (langsX ? uit * 0.7 : 0));
-  luifel.userData.geenSchaduw = true;
-  parent.add(luifel);
-}
-
 
 function maakGevelTekst(parent, tekst, x, y, z, breedte, hoogte, richting = 'south', opties = {}) {
   const canvas = document.createElement('canvas');
@@ -1051,213 +881,497 @@ function seededRandomFactory(seed = 12345) {
 const rnd = seededRandomFactory(240514);
 function kies(arr) { return arr[Math.floor(rnd() * arr.length)]; }
 
+
 /* ----------------------------------------------------------------
-   Grond, straten, plein en tramrails
+   Afgeleid uit DAM_LAYOUT (Ticket D32)
+   ---------------------------------------------------------------- */
+
+// Routes als segmentenlijst, één keer bij het laden afgeleid. Elk segment
+// kent zijn begin (ax, az), richting (rx, rz), lengte, de afstand langs de
+// route waar het begint (s0) en de breedte van de strook.
+const ROUTES = new Map();
+for (const r of DAM_LAYOUT.routes) {
+  const segmenten = [];
+  let s0 = 0;
+  for (let i = 1; i < r.punten.length; i++) {
+    const [ax, az] = r.punten[i - 1], [bx, bz] = r.punten[i];
+    const lengte = Math.hypot(bx - ax, bz - az);
+    segmenten.push({ ax, az, bx, bz, lengte, s0, breedte: r.breedtes[i - 1], rx: (bx - ax) / lengte, rz: (bz - az) / lengte });
+    s0 += lengte;
+  }
+  ROUTES.set(r.poort, { poort: r.poort, kleur: r.kleur, punten: r.punten, segmenten, lengte: s0 });
+}
+
+// Het punt op afstand `s` langs de route, met de looprichting en de breedte
+// van de strook daar.
+function puntOp(route, s) {
+  const segs = route.segmenten;
+  let seg = segs[segs.length - 1];
+  for (const g of segs) if (s <= g.s0 + g.lengte) { seg = g; break; }
+  const t = Math.max(0, Math.min(seg.lengte, s - seg.s0));
+  return { x: seg.ax + seg.rx * t, z: seg.az + seg.rz * t, rx: seg.rx, rz: seg.rz, breedte: seg.breedte };
+}
+
+// Het dichtstbijzijnde punt van de route bij (x, z): s, dat punt, de
+// richting daar en de afstand ernaartoe.
+function projecteerOpRoute(route, x, z) {
+  let beste = null;
+  for (const g of route.segmenten) {
+    const t = Math.max(0, Math.min(g.lengte, (x - g.ax) * g.rx + (z - g.az) * g.rz));
+    const px = g.ax + g.rx * t, pz = g.az + g.rz * t;
+    const afstand = Math.hypot(x - px, z - pz);
+    if (!beste || afstand < beste.afstand) beste = { s: g.s0 + t, x: px, z: pz, rx: g.rx, rz: g.rz, afstand, segment: g };
+  }
+  return beste;
+}
+
+// Reliëf van de vloer: alleen de treden van het monumentplatform en de
+// stoepen liggen hoger. Speler en robots staan op vloerHoogte(x, z).
+const STOEP_HOOGTE = 0.12;
+const STOEPEN = DAM_LAYOUT.vlakken.filter(v => v.soort === 'stoep');
+function vloerHoogte(x, z) {
+  const m = DAM_LAYOUT.monument;
+  const r = Math.hypot(x - m.midden[0], z - m.midden[1]);
+  let h = 0;
+  for (const straal of m.treden) if (r <= straal) h += m.treeHoogte;
+  if (h > 0) return h;
+  for (const v of STOEPEN) {
+    const [x0, z0, x1, z1] = v.rect;
+    if (x >= x0 && x <= x1 && z >= z0 && z <= z1) return STOEP_HOOGTE;
+  }
+  return 0;
+}
+
+/* ----------------------------------------------------------------
+   Vloertexturen: procedureel getekend, elke laadbeurt hetzelfde
+   ---------------------------------------------------------------- */
+
+// Gekopieerd en aangepast uit amsterdam-undead.html (Ticket 107-vervolg,
+// geen gedeelde code): elke tekenaar krijgt een eigen, vaste
+// toevalsstroom, afgeleid van zijn patroonnaam. Variatie mag, willekeur per
+// laadbeurt niet.
+function tekstZaad(tekst) {
+  let h = 2166136261;
+  for (let i = 0; i < tekst.length; i++) {
+    h ^= tekst.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function maakZaadRandom(zaad) {
+  let t = zaad >>> 0;
+  return function () {                                   // mulberry32
+    t = (t + 0x6D2B79F5) >>> 0;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Hoeveel meter één textuurtegel beslaat. De tekenaars hieronder rekenen
+// hun steenmaten daarop terug, zodat een kinderkopje ~12 cm is en een
+// klinker 21 × 10,5 cm, ongeacht de canvasgrootte.
+const TEXTUUR_TEGEL = { kinderkopjes: 2.4, klinkers: 2.1, straatklinkers: 2.1, asfalt: 4, trambaan: 2.4, stoep: 1.8 };
+const TEXTUUR_PIXELS = 512;
+
+const TEXTUUR_TEKENAARS = {
+  // Kinderkopjes: bolle, onregelmatige keien in rijen van ~12 cm, met een
+  // zandvoeg ertussen. Grijs en blauwgrijs graniet met af en toe een
+  // bruine. Elke kei krijgt een radiaal verloop (licht linksboven), zodat
+  // hij bol leest in plaats van als een plat vlakje.
+  kinderkopjes(ctx, n, rnd) {
+    ctx.fillStyle = '#68625a';
+    ctx.fillRect(0, 0, n, n);
+    const rijen = 20, rijHoogte = n / rijen;
+    for (let rij = 0; rij < rijen; rij++) {
+      // Breedtes per rij die samen precies de tegel vullen (naadloos).
+      const breedtes = [];
+      let som = 0;
+      while (som < n) { const b = rijHoogte * (0.85 + rnd() * 0.55); breedtes.push(b); som += b; }
+      const factor = n / som;
+      let x = (rij % 2) * rijHoogte * 0.4 * factor;
+      for (const b0 of breedtes) {
+        const b = b0 * factor;
+        const tint = rnd();
+        const basis = tint < 0.12 ? [120, 104, 88] : tint < 0.45 ? [110, 114, 120] : [124, 121, 115];
+        const licht = 0.9 + rnd() * 0.22;
+        const [r, g, bl] = basis.map(c => Math.round(c * licht));
+        for (const ox of [0, -n]) {
+          const cx = x + b / 2 + ox + (rnd() - 0.5) * 1.5, cy = rij * rijHoogte + rijHoogte / 2 + (rnd() - 0.5) * 1.5;
+          const rx = b / 2 - 1.6, ry = rijHoogte / 2 - 1.6;
+          const grad = ctx.createRadialGradient(cx - rx * 0.3, cy - ry * 0.35, 0, cx, cy, Math.max(rx, ry));
+          grad.addColorStop(0, `rgb(${Math.min(255, r + 20)},${Math.min(255, g + 20)},${Math.min(255, bl + 20)})`);
+          grad.addColorStop(0.6, `rgb(${r},${g},${bl})`);
+          grad.addColorStop(1, `rgb(${Math.round(r * 0.78)},${Math.round(g * 0.78)},${Math.round(bl * 0.78)})`);
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, rx, ry, (rnd() - 0.5) * 0.25, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        x += b;
+      }
+    }
+  },
+  // Klinkers in blokverband (21 × 10,5 cm), donker roodbruin: de strook
+  // waarover een route het plein oversteekt. Het verband is dat van
+  // Undead; de kleur is hier bewust donkerder dan de kinderkopjes, zodat de
+  // route als pad leest (§11.2: "rijbaan als pad").
+  klinkers(ctx, n, rnd) { tekenBlokverband(ctx, n, rnd, [104, 58, 44], '#2e2622'); },
+  // Dezelfde klinker, lichter en grijzer: de bestrating van de
+  // voetgangersstraten, waar de donkere routestrook overheen loopt.
+  straatklinkers(ctx, n, rnd) { tekenBlokverband(ctx, n, rnd, [150, 132, 118], '#6c635a'); },
+  // Asfalt: donkergrijs met fijne korrel en een paar vlekken.
+  asfalt(ctx, n, rnd) {
+    ctx.fillStyle = '#4b4d50';
+    ctx.fillRect(0, 0, n, n);
+    for (let i = 0; i < 9000; i++) {
+      const g = 60 + Math.floor(rnd() * 50);
+      ctx.fillStyle = `rgb(${g},${g},${g + 3})`;
+      ctx.fillRect(rnd() * n, rnd() * n, 1.4, 1.4);
+    }
+    tekenWrapVlekken(ctx, n, rnd, 7, 0.08);
+  },
+  // Gezaagde natuursteen (18 × 12 cm) in halfsteensverband: de trambaan
+  // over het plein, zoals op de echte Dam tussen de rails.
+  trambaan(ctx, n, rnd) {
+    ctx.fillStyle = '#56534e';
+    ctx.fillRect(0, 0, n, n);
+    const rijen = 20, h = n / rijen, perRij = 13, b = n / perRij;
+    for (let rij = 0; rij < rijen; rij++) {
+      const off = (rij % 2) * b / 2;
+      for (let i = -1; i < perRij; i++) {
+        const g = 128 + Math.round((rnd() - 0.5) * 30);
+        ctx.fillStyle = `rgb(${g},${g - 2},${g - 6})`;
+        ctx.fillRect(off + i * b + 1.5, rij * h + 1.5, b - 3, h - 3);
+      }
+    }
+  },
+  // Stoeptegels van 30 × 30 cm.
+  stoep(ctx, n, rnd) {
+    ctx.fillStyle = '#7a766e';
+    ctx.fillRect(0, 0, n, n);
+    const per = 6, t = n / per;
+    for (let y = 0; y < per; y++) for (let x = 0; x < per; x++) {
+      const g = 168 + Math.round((rnd() - 0.5) * 16);
+      ctx.fillStyle = `rgb(${g},${g - 3},${g - 9})`;
+      ctx.fillRect(x * t + 1.5, y * t + 1.5, t - 3, t - 3);
+    }
+    tekenWrapVlekken(ctx, n, rnd, 5, 0.06);
+  },
+};
+
+function tekenBlokverband(ctx, n, rnd, [r0, g0, b0], voegKleur) {
+  const cellen = 10, cel = n / cellen, voeg = Math.max(2, cel / 16);
+  ctx.fillStyle = voegKleur;
+  ctx.fillRect(0, 0, n, n);
+  const legSteen = (x, y, b, h) => {
+    const f = 0.82 + rnd() * 0.3;
+    ctx.fillStyle = `rgb(${Math.round(r0 * f)},${Math.round(g0 * f)},${Math.round(b0 * f)})`;
+    ctx.fillRect(x + voeg / 2, y + voeg / 2, b - voeg, h - voeg);
+  };
+  for (let gy = 0; gy < cellen; gy++) {
+    for (let gx = 0; gx < cellen; gx++) {
+      const x = gx * cel, y = gy * cel;
+      if ((gx + gy) % 2 === 0) { legSteen(x, y, cel, cel / 2); legSteen(x, y + cel / 2, cel, cel / 2); }
+      else { legSteen(x, y, cel / 2, cel); legSteen(x + cel / 2, y, cel / 2, cel); }
+    }
+  }
+  tekenWrapVlekken(ctx, n, rnd, 6, 0.07);
+}
+
+// Grote, zachte vlekken (vuil, slijtage), in alle negen wrap-posities
+// getekend zodat de tegel naadloos blijft.
+function tekenWrapVlekken(ctx, n, rnd, aantal, maxAlpha) {
+  for (let i = 0; i < aantal; i++) {
+    const cx = rnd() * n, cy = rnd() * n, straal = n * (0.1 + rnd() * 0.16);
+    const alpha = 0.03 + rnd() * maxAlpha;
+    for (const ox of [-n, 0, n]) for (const oy of [-n, 0, n]) {
+      const mx = cx + ox, my = cy + oy;
+      if (mx + straal < 0 || mx - straal > n || my + straal < 0 || my - straal > n) continue;
+      const grad = ctx.createRadialGradient(mx, my, 0, mx, my, straal);
+      grad.addColorStop(0, `rgba(0,0,0,${alpha})`);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(mx - straal, my - straal, straal * 2, straal * 2);
+    }
+  }
+}
+
+const vloerTextuurCache = new Map();
+function vloerTextuur(patroon) {
+  let tex = vloerTextuurCache.get(patroon);
+  if (tex) return tex;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = TEXTUUR_PIXELS;
+  TEXTUUR_TEKENAARS[patroon](canvas.getContext('2d'), TEXTUUR_PIXELS, maakZaadRandom(tekstZaad(patroon)));
+  tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  tex.userData.canvas = canvas;   // voor test-dnm-layout: determinisme
+  vloerTextuurCache.set(patroon, tex);
+  return tex;
+}
+const vloerMateriaalCache = new Map();
+function vloerMateriaal(patroon) {
+  let m = vloerMateriaalCache.get(patroon);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({ map: vloerTextuur(patroon), roughness: 0.93, metalness: 0 });
+    vloerMateriaalCache.set(patroon, m);
+  }
+  return m;
+}
+
+// Gekopieerd uit amsterdam-undead.html (Ticket 106): UV's uit de positie
+// van elke vertex, per vlak de twee assen die het bestrijkt. De geometrie
+// wordt vóór deze aanroep al naar haar wereldpositie verschoven, dus de
+// textuur ligt in wereldmeters en loopt naadloos door van vlak naar vlak.
+function herschaalUVNaarWereldschaal(geometrie, texelsPerMeter) {
+  const pos = geometrie.getAttribute('position');
+  const nrm = geometrie.getAttribute('normal');
+  const uv = geometrie.getAttribute('uv');
+  for (let i = 0; i < pos.count; i++) {
+    const nx = Math.abs(nrm.getX(i)), ny = Math.abs(nrm.getY(i)), nz = Math.abs(nrm.getZ(i));
+    let u, v;
+    if (nx >= ny && nx >= nz) { u = pos.getZ(i); v = pos.getY(i); }
+    else if (ny >= nx && ny >= nz) { u = pos.getX(i); v = pos.getZ(i); }
+    else { u = pos.getX(i); v = pos.getY(i); }
+    uv.setXY(i, u * texelsPerMeter, v * texelsPerMeter);
+  }
+  uv.needsUpdate = true;
+}
+
+/* ----------------------------------------------------------------
+   De vloer
    ---------------------------------------------------------------- */
 
 scene.background = new THREE.Color(PAL.luchtMist);
 scene.fog = new THREE.Fog(PAL.luchtMist, 120, 420);
 
-const grond = new THREE.Mesh(new THREE.PlaneGeometry(620, 620), mat(0x8f8b82, 1));
-grond.rotation.x = -Math.PI / 2;
-grond.receiveShadow = true;
-wereld.add(grond);
+// Vaste hoogtes per vloerlaag, zodat lagen die op elkaar liggen nooit
+// flikkeren (§11.7.11, valkuil 3).
+const VLOER_Y = { plein: 0, straat: 0.006, strook: 0.012, rail: 0.03 };
 
-// Asfaltvlak onder de hele kruising.
-vloerRechthoek(270, 245, 2, -8, PAL.asfalt, 0.025, 0.05);
+function vloerVlak(minX, minZ, maxX, maxZ, y, patroon) {
+  const geo = new THREE.PlaneGeometry(maxX - minX, maxZ - minZ);
+  geo.rotateX(-Math.PI / 2);
+  geo.translate((minX + maxX) / 2, y, (minZ + maxZ) / 2);
+  herschaalUVNaarWereldschaal(geo, 1 / TEXTUUR_TEGEL[patroon]);
+  const m = new THREE.Mesh(geo, vloerMateriaal(patroon));
+  m.receiveShadow = true;
+  m.name = `vloer:${patroon}`;
+  wereld.add(m);
+  return m;
+}
 
-// Het plein is bewust niet perfect rechthoekig. Dat maakt het veel meer Dam.
-const damPleinPunten = [
-  [-86, -42], [-48, -58], [34, -55], [72, -34], [84, 14],
-  [50, 56], [-39, 54], [-82, 30], [-92, -20]
-];
-vloerPoly(damPleinPunten, PAL.plein, 0.09);
+// Het hele plein en alles eromheen: kinderkopjes. Straten liggen erop.
+vloerVlak(-110, -85, 75, 85, VLOER_Y.plein, 'kinderkopjes');
 
-// Lichtere strook op het hoofdplein voor een subtiele looproute richting monument.
-vloerPoly([[-45, -39], [26, -43], [65, -24], [70, 15], [42, 45], [-30, 44], [-67, 23], [-72, -13]], PAL.pleinLicht, 0.102);
-
-// Belangrijke straten rond de Dam.
-vloerRechthoek(34, 76, 0, -91, PAL.asfaltDonker, 0.115, 0.06);       // Damrak
-vloerRechthoek(34, 68, 2, 86, PAL.asfaltDonker, 0.115, 0.06);        // Rokin
-vloerRechthoek(62, 31, 105, 2, PAL.asfaltDonker, 0.115, 0.06);       // Damstraat
-vloerRechthoek(38, 68, -55, 88, PAL.asfaltDonker, 0.115, 0.06);      // Kalverstraat
-vloerRechthoek(39, 74, -50, -91, PAL.asfaltDonker, 0.115, 0.06);     // Nieuwendijk
-vloerRechthoek(44, 24, -109, 38, PAL.asfaltDonker, 0.115, 0.06);     // Paleisstraat west
-
-// Stoepen en randen.
-vloerRechthoek(24, 80, -28, -91, PAL.stoep, 0.125, 0.05);
-vloerRechthoek(24, 80, 29, -91, PAL.stoep, 0.125, 0.05);
-vloerRechthoek(82, 16, 85, -30, PAL.stoep, 0.125, 0.05);
-vloerRechthoek(76, 16, 84, 31, PAL.stoep, 0.125, 0.05);
-vloerRechthoek(72, 16, -6, 64, PAL.stoep, 0.125, 0.05);
-
-tegelRaster(-82, 78, -52, 54, 5);
-
-function zebrapad(x, z, breedte, aantal, rotY = 0) {
-  const groep = new THREE.Group();
-  for (let i = 0; i < aantal; i++) {
-    const streep = new THREE.Mesh(new THREE.BoxGeometry(breedte, 0.045, 1.1), mat(0xf4f0e8, 0.82));
-    streep.position.set((i - (aantal - 1) / 2) * 2.4, 0.16, 0);
-    streep.receiveShadow = true;
-    groep.add(streep);
+const VLAK_PATROON = { asfalt: 'asfalt', trambaan: 'trambaan', klinkers: 'straatklinkers', steeg: 'straatklinkers' };
+for (const v of DAM_LAYOUT.vlakken) {
+  const [x0, z0, x1, z1] = v.rect;
+  if (v.soort === 'stoep') {
+    // Een stoep is een lage plaat: de zijkant is de stoeprand.
+    const geo = new THREE.BoxGeometry(x1 - x0, STOEP_HOOGTE, z1 - z0);
+    geo.translate((x0 + x1) / 2, STOEP_HOOGTE / 2, (z0 + z1) / 2);
+    herschaalUVNaarWereldschaal(geo, 1 / TEXTUUR_TEGEL.stoep);
+    const m = new THREE.Mesh(geo, vloerMateriaal('stoep'));
+    m.receiveShadow = true;
+    m.name = `vloer:stoep:${v.naam}`;
+    wereld.add(m);
+  } else {
+    vloerVlak(x0, z0, x1, z1, VLOER_Y.straat, VLAK_PATROON[v.soort]).name = `vloer:${v.soort}:${v.naam}`;
   }
-  groep.position.set(x, 0, z);
-  groep.rotation.y = rotY;
-  wereld.add(groep);
-}
-zebrapad(0, -52, 16, 7, Math.PI / 2);
-zebrapad(5, 54, 14, 6, Math.PI / 2);
-zebrapad(78, 4, 15, 6, 0);
-zebrapad(-78, 38, 12, 5, 0);
-
-function railCurve(punten, offsetX = 0) {
-  const curve = new THREE.CatmullRomCurve3(
-    punten.map(([x, z]) => new THREE.Vector3(x + offsetX, 0.19, z)),
-    false,
-    'catmullrom',
-    0.2
-  );
-  const geo = new THREE.TubeGeometry(curve, 96, 0.045, 7, false);
-  const mesh = new THREE.Mesh(geo, mat(0x7f858c, 0.34, 0.75));
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  wereld.add(mesh);
-  return { curve, mesh };
+  // Tramrails: twee sporen, spoorwijdte 1,435 m, verzonken in de straat.
+  for (const spoor of v.tramsporen ?? []) {
+    for (const kant of [-0.7175, 0.7175]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.024, z1 - z0), mat(0x8c9196, 0.32, 0.85));
+      rail.position.set(spoor + kant, VLOER_Y.rail - 0.012, (z0 + z1) / 2);
+      rail.receiveShadow = true;
+      rail.name = 'tramrail';
+      wereld.add(rail);
+    }
+  }
 }
 
-const railPad = [[-4, -116], [-3, -78], [-2, -48], [2, -15], [4, 24], [3, 62], [2, 105]];
-const railA = railCurve(railPad, -2.1);
-const railB = railCurve(railPad, 2.1);
-for (let i = 0; i <= 32; i++) {
-  const t = i / 32;
-  const a = railA.curve.getPoint(t);
-  const b = railB.curve.getPoint(t);
-  const midden = a.clone().add(b).multiplyScalar(0.5);
-  const dwars = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.045, 0.32), mat(0x4f453a, 0.85));
-  dwars.position.copy(midden);
-  dwars.position.y = 0.155;
-  const tangent = railA.curve.getTangent(t);
-  dwars.rotation.y = Math.atan2(tangent.x, tangent.z) + Math.PI / 2;
-  dwars.receiveShadow = true;
-  wereld.add(dwars);
+// De routestroken: donkere klinkers waar een route over het plein of door
+// een voetgangersstraat loopt. Op asfalt en de trambaan niet: daar is de
+// rijbaan zelf het pad.
+function opRijbaan(x, z) {
+  return DAM_LAYOUT.vlakken.some(v => (v.soort === 'asfalt' || v.soort === 'trambaan')
+    && x >= v.rect[0] && x <= v.rect[2] && z >= v.rect[1] && z <= v.rect[3]);
+}
+function strookStuk(seg, t0, t1) {
+  const lengte = t1 - t0;
+  if (lengte < 0.05) return;
+  const geo = new THREE.PlaneGeometry(seg.breedte, lengte);
+  geo.rotateX(-Math.PI / 2);
+  geo.rotateY(Math.atan2(seg.rx, seg.rz));
+  const tm = (t0 + t1) / 2;
+  geo.translate(seg.ax + seg.rx * tm, VLOER_Y.strook, seg.az + seg.rz * tm);
+  herschaalUVNaarWereldschaal(geo, 1 / TEXTUUR_TEGEL.klinkers);
+  const m = new THREE.Mesh(geo, vloerMateriaal('klinkers'));
+  m.receiveShadow = true;
+  m.name = 'vloer:routestrook';
+  wereld.add(m);
+}
+for (const route of ROUTES.values()) {
+  route.segmenten.forEach((seg, i) => {
+    // Het segment in stukken van 0,25 m aflopen en alleen de stukken
+    // buiten de rijbaan bestraten.
+    let start = null;
+    const STAP = 0.25;
+    for (let t = 0; t <= seg.lengte + 1e-6; t += STAP) {
+      const buiten = !opRijbaan(seg.ax + seg.rx * t, seg.az + seg.rz * t);
+      if (buiten && start === null) start = t;
+      if ((!buiten || t + STAP > seg.lengte + 1e-6) && start !== null) {
+        strookStuk(seg, start, buiten ? seg.lengte : t);
+        start = null;
+      }
+    }
+    // Een ronde plak in elke bocht, zodat de strook daar niet openvalt.
+    if (i > 0 && !opRijbaan(seg.ax, seg.az)) {
+      const geo = new THREE.CircleGeometry(seg.breedte / 2, 20);
+      geo.rotateX(-Math.PI / 2);
+      geo.translate(seg.ax, VLOER_Y.strook - 0.001, seg.az);
+      herschaalUVNaarWereldschaal(geo, 1 / TEXTUUR_TEGEL.klinkers);
+      const m = new THREE.Mesh(geo, vloerMateriaal('klinkers'));
+      m.receiveShadow = true;
+      m.name = 'vloer:routestrook';
+      wereld.add(m);
+    }
+  });
 }
 
 /* ----------------------------------------------------------------
-   Iconische gebouwen
+   Gebouwen (grey-box)
    ---------------------------------------------------------------- */
 
-function bouwKoninklijkPaleis() {
+// Alleen voor de grey-box: één herkenningspunt per landmark, zodat je de
+// gebouwen al aan hun silhouet herkent voordat D37–D39 de gevels bouwen.
+// Staat bewust niet in DAM_LAYOUT: dat is de plattegrond, dit is tijdelijk
+// uiterlijk.
+const GREYBOX_BEKRONING = {
+  'Paleis op de Dam': { soort: 'koepel', x: -83, z: 0, straal: 4.5 },
+  'Nieuwe Kerk': { soort: 'spits', x: -65, z: -39, straal: 1.6 },
+  'Bijenkorf': { soort: 'toren', x: 1, z: -26, breedte: 6 },
+  'Hotel TwentySeven (Industria)': { soort: 'klok', x: -6.5, z: 26, straal: 3 },
+  'Krasnapolsky': { soort: 'kap' },
+  'Beurs van Berlage': { soort: 'toren', x: -7.5, z: -71.5, breedte: 5 },
+};
+
+function bouwGreyboxGebouw(gebouw) {
   const g = new THREE.Group();
-
-  const hoofd = blok(29, 22, 82, PAL.zandsteen, 0.86);
-  hoofd.position.set(0, 11, 0);
-  g.add(hoofd);
-
-  const plint = blok(31, 2.2, 84, PAL.paleisDonker, 0.88);
-  plint.position.set(0, 1.1, 0);
-  g.add(plint);
-
-  const dakrand = blok(31.5, 1.2, 84.5, PAL.zandsteenLicht, 0.82);
-  dakrand.position.set(0, 22.6, 0);
-  g.add(dakrand);
-
-  const dak = blok(27, 3.2, 78, PAL.dak, 0.75, 0.05);
-  dak.position.set(-0.6, 24.2, 0);
-  g.add(dak);
-
-  // Middenrisaliet met fronton aan de pleinzijde.
-  const midden = blok(6.6, 24.5, 22, PAL.zandsteenLicht, 0.84);
-  midden.position.set(15.4, 12.25, 0);
-  g.add(midden);
-  const fronton = driehoekFacade(18.85, 0, 24.6, 24, 5.8, PAL.zandsteenLicht);
-  g.add(fronton);
-
-  // Kolommen aan de oostgevel, de zijde die je vanaf de Dam ziet.
-  for (let i = 0; i < 11; i++) {
-    const z = -35 + i * 7;
-    const pilaster = blok(0.55, 15, 0.78, PAL.zandsteenLicht, 0.8);
-    pilaster.position.set(15.1, 10.5, z);
-    g.add(pilaster);
+  g.name = gebouw.naam;
+  g.userData.gebouw = gebouw.naam;
+  const kleur = new THREE.Color(gebouw.kleur);
+  const kroonlijstKleur = kleur.clone().multiplyScalar(0.72).getHex();
+  for (const [x0, z0, x1, z1] of gebouw.delen) {
+    const massa = blok(x1 - x0, gebouw.hoogte, z1 - z0, kleur.getHex(), 0.92);
+    massa.position.set((x0 + x1) / 2, gebouw.hoogte / 2, (z0 + z1) / 2);
+    massa.userData.onderdeel = 'massa';
+    g.add(massa);
+    const lijst = blok(x1 - x0 + 0.5, 0.45, z1 - z0 + 0.5, kroonlijstKleur, 0.9);
+    lijst.position.set((x0 + x1) / 2, gebouw.hoogte - 0.2, (z0 + z1) / 2);
+    lijst.userData.onderdeel = 'kroonlijst';
+    g.add(lijst);
+    // Botsing: de voetafdruk zelf plus een kleine marge (§11.7.3).
+    registreerRechthoek(x0, x1, z0, z1, 0.3);
   }
-
-  // Rij ramen op de oostgevel.
-  for (let rij = 0; rij < 4; rij++) {
-    for (let kol = 0; kol < 10; kol++) {
-      raamOpFacade(g, 14.92, 4.4 + rij * 4.2, -34 + kol * 7.5, 1.7, 2.2, 'east');
+  const b = GREYBOX_BEKRONING[gebouw.naam];
+  const extra = gebouw.hoogsteDeel - gebouw.hoogte;
+  if (b && extra > 0) {
+    const top = new THREE.Group();
+    top.userData.onderdeel = b.soort;
+    if (b.soort === 'koepel') {
+      const trommelHoogte = extra - 9;
+      const trommel = new THREE.Mesh(new THREE.CylinderGeometry(b.straal, b.straal, trommelHoogte, 20), mat(PAL.zandsteen, 0.85));
+      trommel.position.set(b.x, gebouw.hoogte + trommelHoogte / 2, b.z);
+      const koepel = new THREE.Mesh(new THREE.SphereGeometry(b.straal, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat(PAL.koper, 0.55, 0.3));
+      koepel.position.set(b.x, gebouw.hoogte + trommelHoogte, b.z);
+      const lantaarnHoogte = 9 - b.straal;
+      const lantaarn = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.0, lantaarnHoogte, 10), mat(PAL.zandsteenLicht, 0.8));
+      lantaarn.position.set(b.x, gebouw.hoogte + trommelHoogte + b.straal + lantaarnHoogte / 2 - 0.4, b.z);
+      top.add(trommel, koepel, lantaarn);
+    } else if (b.soort === 'spits') {
+      const spits = new THREE.Mesh(new THREE.ConeGeometry(b.straal, extra, 6), mat(PAL.dakDonker, 0.8));
+      spits.position.set(b.x, gebouw.hoogte + extra / 2, b.z);
+      top.add(spits);
+    } else if (b.soort === 'toren') {
+      const toren = blok(b.breedte, extra, b.breedte, kleur.getHex(), 0.92);
+      toren.position.set(b.x, gebouw.hoogte + extra / 2, b.z);
+      top.add(toren);
+    } else if (b.soort === 'klok') {
+      const romp = blok(b.straal * 2, extra - b.straal, b.straal * 2, kleur.getHex(), 0.92);
+      romp.position.set(b.x, gebouw.hoogte + (extra - b.straal) / 2, b.z);
+      const kap = new THREE.Mesh(new THREE.SphereGeometry(b.straal * 1.05, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(PAL.koper, 0.55, 0.3));
+      kap.scale.y = 1.3;
+      kap.position.set(b.x, gebouw.hoogte + extra - b.straal, b.z);
+      top.add(romp, kap);
+    } else if (b.soort === 'kap') {
+      const [x0, z0, x1, z1] = gebouw.delen[0];
+      const kap = blok(x1 - x0 - 2.4, extra, z1 - z0 - 2.4, PAL.dak, 0.8);
+      kap.position.set((x0 + x1) / 2, gebouw.hoogte + extra / 2, (z0 + z1) / 2);
+      top.add(kap);
     }
+    g.add(top);
   }
-  deurOpFacade(g, 19.02, 2.3, 0, 6.2, 4.6, 'east', 0x3b2a1c);
-
-  // Groene koepel en kleine gouden details bovenop.
-  const voet = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 4.8, 3.3, 16), mat(PAL.zandsteenLicht, 0.78));
-  voet.position.set(-2.5, 27.3, 0);
-  g.add(voet);
-  const koepel = new THREE.Mesh(new THREE.SphereGeometry(4.4, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat(PAL.koper, 0.58, 0.15));
-  koepel.position.set(-2.5, 28.9, 0);
-  g.add(koepel);
-  const spits = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.42, 5.3, 8), mat(PAL.goud, 0.35, 0.65));
-  spits.position.set(-2.5, 34.3, 0);
-  g.add(spits);
-  const atlasBol = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 8), mat(PAL.goud, 0.45, 0.55));
-  atlasBol.position.set(-13.2, 27.3, 0);
-  g.add(atlasBol);
-
-  // --- Visual landmark pass: monumentaler maken ---------------------
-  // Twee hoekrisalieten geven het klassieke vijfdelige Paleis-silhouet.
-  // Ze steken minder ver naar voren dan het middenrisaliet (oostface 18.7),
-  // zodat de reparatiepost op wereld-x -70 ruim vrij blijft.
-  for (const zc of [-33, 33]) {
-    const risaliet = blok(5, 23, 11, PAL.zandsteenLicht, 0.84);
-    risaliet.position.set(15.0, 11.5, zc);
-    g.add(risaliet);
-    // Kleine fronton-driehoek op elk hoekrisaliet, pleinzijde (oost).
-    const hoekFronton = driehoekFacade(17.55, zc, 23.1, 11, 2.6, PAL.zandsteenLicht);
-    g.add(hoekFronton);
-  }
-
-  // Grote zuilenportiek vóór de ingang: 6 ronde zuilen met architraaf.
-  maakZuilenrij(g, { x: 19.3, y: 2.3, z: 0, aantal: 6, tussen: 3.6, straal: 0.45, hoogte: 14.5, richting: 'east', kleur: PAL.zandsteenLicht });
-
-  // Twee verdiepingsbanden over de oostgevel, tussen de raamrijen.
-  for (const yb of [6.7, 10.9]) {
-    maakDaklijst(g, 0.3, 0.4, 70, 14.75, yb, 0, PAL.zandsteen);
-  }
-
-  // Balustrade langs de oostelijke dakrand: één doorlopende rail plus lage
-  // postjes, allemaal zonder schaduw (klein sierwerk).
-  maakDaklijst(g, 0.5, 0.7, 72, 15.2, 23.55, 0, PAL.balustrade);
-  for (let i = 0; i < 13; i++) {
-    const post = blok(0.45, 1.0, 0.45, PAL.balustrade, 0.8);
-    post.position.set(15.2, 23.7, -36 + i * 6);
-    post.userData.geenSchaduw = true;
-    g.add(post);
-  }
-
-  // Enkele dakkapellen op de oostrand van het platte dak.
-  for (const zc of [-23, -8, 8, 23]) {
-    const kapel = blok(2.2, 1.7, 2.0, PAL.zandsteenLicht, 0.82);
-    kapel.position.set(12.0, 25.9, zc);
-    kapel.userData.geenSchaduw = true;
-    g.add(kapel);
-    const kapelDak = zadeldak(2.6, 2.4, 1.0, PAL.dakDonker);
-    kapelDak.position.set(12.0, 26.75, zc);
-    kapelDak.rotation.y = Math.PI / 2;
-    kapelDak.userData.geenSchaduw = true;
-    g.add(kapelDak);
-  }
-
-  g.position.set(-93, 0, 0);
   wereld.add(g);
   schaduwAan(g);
-  // Expliciete obstakelrechthoek i.p.v. registreerObstakel(Box3): zo groeit de
-  // collision niet stilletjes mee met de nieuwe uitstekende zuilen/risalieten.
-  // Wereldmaten: x = -93 + [-15.75(dakrand/west), 19.75(zuil-oostrand)],
-  // z = [-42.3, 42.3] (plint/dakrand-diepte).
-  // Ticket D4: raw getallen ×ARENA_SCHAAL (zie bouwNationaalMonument hierboven
-  // voor de volledige uitleg van waarom dit met de hand moet).
-  registreerRechthoek(-108.75 * ARENA_SCHAAL, -73.0 * ARENA_SCHAAL, -42.3 * ARENA_SCHAAL, 42.3 * ARENA_SCHAAL, 0.3 * ARENA_SCHAAL);
+  return g;
 }
-bouwKoninklijkPaleis();
+const gebouwGroepen = new Map();
+for (const gebouw of DAM_LAYOUT.gebouwen) gebouwGroepen.set(gebouw.naam, bouwGreyboxGebouw(gebouw));
+
+// Doodlopende stegen (Warmoesstraat, Nes): een bouwhek dwars over de
+// steeg, met botsing, zodat niemand er ongemerkt de kaart uit loopt.
+for (const a of DAM_LAYOUT.afsluitingen) {
+  const [x0, z0, x1, z1] = a.rect;
+  const g = new THREE.Group();
+  g.name = `afsluiting:${a.naam}`;
+  const breedte = x1 - x0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  for (const y of [0.35, 1.05]) {
+    const regel = blok(breedte, 0.08, 0.08, 0xd6d9dc, 0.4, 0.6);
+    regel.position.set(cx, y, cz);
+    g.add(regel);
+  }
+  for (let i = 0; i <= Math.round(breedte / 1.3); i++) {
+    const paal = blok(0.08, 1.2, 0.08, 0xd6d9dc, 0.4, 0.6);
+    paal.position.set(x0 + (i * breedte) / Math.round(breedte / 1.3), 0.6, cz);
+    g.add(paal);
+  }
+  const bord = blok(1.2, 0.45, 0.04, 0xc23a2e, 0.6);
+  bord.position.set(cx, 0.72, cz - 0.07);
+  g.add(bord);
+  wereld.add(g);
+  schaduwAan(g);
+  registreerRechthoek(x0, x1, z0, z1);
+}
+
+// Decor buiten GRENS (de geparkeerde tram in het Rokin): geen botsing, de
+// speler komt er niet.
+for (const d of DAM_LAYOUT.decor) {
+  const [x0, z0, x1, z1] = d.rect;
+  const g = new THREE.Group();
+  g.name = `decor:${d.naam}`;
+  const lengte = z1 - z0, breedte = x1 - x0;
+  const romp = blok(breedte, 2.6, lengte - 0.6, PAL.tramWit, 0.6);
+  romp.position.set(0, 1.75, 0);
+  const band = blok(breedte + 0.04, 0.45, lengte - 0.5, PAL.tramRood, 0.55);
+  band.position.set(0, 1.0, 0);
+  const ramen = blok(breedte + 0.06, 0.95, lengte - 2.4, 0x23303a, 0.35);
+  ramen.position.set(0, 2.35, 0);
+  const dak = blok(breedte - 0.3, 0.3, lengte - 1.4, 0xd0d4d6, 0.5, 0.15);
+  dak.position.set(0, 3.2, 0);
+  g.add(romp, band, ramen, dak);
+  g.position.set((x0 + x1) / 2, 0.03, (z0 + z1) / 2);
+  wereld.add(g);
+  schaduwAan(g);
+}
+
+/* ----------------------------------------------------------------
+   Steunpunten: Koninklijke Reparatie, Kerkklok, upgradekiosk
+   ---------------------------------------------------------------- */
 
 // Koninklijke Reparatiepost: een klein gouden balietje met kroontje en
 // vlaggetje voor de oostgevel van het Paleis (waar de deur zit), zodat
@@ -1289,93 +1403,13 @@ function bouwReparatiepost(x, z) {
   g.position.set(x, 0, z);
   wereld.add(g);
   schaduwAan(g);
-  // Ticket D4: x/z zijn de rauwe, lokale coördinaten waarop g.position hierboven
-  // ook staat — registreerRechthoek() leest geen wereldmatrix, dus dit moet met
-  // de hand ×ARENA_SCHAAL, anders staat de botsbox los van de verkleinde markering.
-  registreerRechthoek((x - 1.1) * ARENA_SCHAAL, (x + 1.1) * ARENA_SCHAAL, (z - 0.9) * ARENA_SCHAAL, (z + 0.9) * ARENA_SCHAAL, 0.3 * ARENA_SCHAAL);
+  registreerRechthoek(x - 1.1, x + 1.1, z - 0.9, z + 0.9, 0.3);
 
   interactieMarkering(x, z, '👑', 0xe0b84a);
 }
-bouwReparatiepost(-70, 5);
-
-function bouwNieuweKerk() {
-  const g = new THREE.Group();
-
-  const schip = blok(52, 15.5, 27, PAL.kerkSteen, 0.9);
-  schip.position.set(0, 7.75, 0);
-  g.add(schip);
-
-  const transept = blok(24, 13.5, 42, PAL.kerkSteen, 0.9);
-  transept.position.set(2, 6.75, 2);
-  g.add(transept);
-
-  // Steilere daken maken het silhouet gotischer (hogere nok, zelfde voet).
-  const dak1 = zadeldak(55, 31, 12, PAL.dakDonker);
-  dak1.position.set(0, 15.45, 0);
-  g.add(dak1);
-
-  const dak2 = zadeldak(27, 45, 10, PAL.dakDonker);
-  dak2.position.set(2, 13.45, 2);
-  dak2.rotation.y = Math.PI / 2;
-  g.add(dak2);
-
-  const toren = blok(10, 24, 10, PAL.kerkDonker, 0.86);
-  toren.position.set(-29, 12, -2);
-  g.add(toren);
-  const torenSpits = new THREE.Mesh(new THREE.ConeGeometry(7.2, 12, 4), mat(PAL.dakDonker, 0.75));
-  torenSpits.rotation.y = Math.PI / 4;
-  torenSpits.position.set(-29, 30, -2);
-  torenSpits.castShadow = true;
-  g.add(torenSpits);
-
-  // Spitsboogramen: dezelfde posities/maten als voorheen, nu met gotische top.
-  for (let i = 0; i < 7; i++) {
-    const x = -20 + i * 7;
-    maakSpitsboogRaam(g, x, 7.2, 13.65, 1.7, 5.5, 'south');
-  }
-  for (let i = 0; i < 4; i++) {
-    maakSpitsboogRaam(g, 25.95, 6.8, -9 + i * 6, 1.5, 4.6, 'east');
-  }
-
-  // Steunberen langs de zuidwestelijke schipmuur (zuidwaarts, richting plein)
-  // en de oostgevel (oostwaarts). Beide staan ruim voor de kerkklok (lokaal
-  // z=29) en de open plein-zijde, dus ze blokkeren geen looproute.
-  for (const bx of [-24, -18, -12]) {
-    maakSteunbeer(g, bx, 13.65, 14, 'south');
-  }
-  const oostBeerZ = [-11, -4, 4, 11];
-  for (const bz of oostBeerZ) {
-    maakSteunbeer(g, 25.95, bz, 14, 'east');
-    // Pinakel-spitsje bovenop elke oostelijke steunbeer.
-    const pin = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.8, 4), mat(PAL.dakDonker, 0.75));
-    pin.position.set(26.6, 15.2, bz);
-    pin.rotation.y = Math.PI / 4;
-    pin.userData.geenSchaduw = true;
-    g.add(pin);
-  }
-
-  // Roosvenster op de zuidgevel van het transept (de prominente pleinzijde).
-  const roosRing = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 0.2, 20), mat(PAL.kerkDonker, 0.8));
-  roosRing.rotation.x = Math.PI / 2;
-  roosRing.position.set(2, 10.5, 23.12);
-  roosRing.userData.geenSchaduw = true;
-  g.add(roosRing);
-  const roosGlas = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.0, 0.16, 20), mat(PAL.raam, 0.45, 0.05));
-  roosGlas.rotation.x = Math.PI / 2;
-  roosGlas.position.set(2, 10.5, 23.16);
-  roosGlas.userData.geenSchaduw = true;
-  g.add(roosGlas);
-
-  g.position.set(-67, 0, -67);
-  wereld.add(g);
-  schaduwAan(g);
-  // Expliciete rechthoek i.p.v. Box3, zodat de steunberen de collision niet
-  // ongemerkt oprekken. Wereldmaten: x = -67 + [-34(toren-west), 27.3(oostbeer)],
-  // z = -67 + [-19(transept-noord), 23(transept-zuid)].
-  // Ticket D4: raw getallen ×ARENA_SCHAAL.
-  registreerRechthoek(-101.3 * ARENA_SCHAAL, -39.5 * ARENA_SCHAAL, -86.3 * ARENA_SCHAAL, -43.7 * ARENA_SCHAAL, 0.3 * ARENA_SCHAAL);
-}
-bouwNieuweKerk();
+// Ticket D32: tijdelijk op de plek van de commandopost (D35 maakt er één
+// menu van, samen met de upgrades).
+bouwReparatiepost(DAM_LAYOUT.commandopost.midden[0], DAM_LAYOUT.commandopost.midden[1]);
 
 // Kerkklok Boost: een kleine bel aan een houten frame, los voor de zuidgevel
 // van de Nieuwe Kerk, zodat spelers hier langs moeten komen voor de tijdelijke
@@ -1403,12 +1437,15 @@ function bouwKerkklok(x, z) {
   g.position.set(x, 0, z);
   wereld.add(g);
   schaduwAan(g);
-  // Ticket D4: zelfde reden als bouwReparatiepost hierboven.
-  registreerRechthoek((x - 1.0) * ARENA_SCHAAL, (x + 1.0) * ARENA_SCHAAL, (z - 1.0) * ARENA_SCHAAL, (z + 1.0) * ARENA_SCHAAL, 0.3 * ARENA_SCHAAL);
+  registreerRechthoek(x - 1.0, x + 1.0, z - 1.0, z + 1.0, 0.3);
 
   interactieMarkering(x, z, '🔔', 0xffd75e);
 }
-bouwKerkklok(-67, -38);
+bouwKerkklok(DAM_LAYOUT.kerkklok.positie[0], DAM_LAYOUT.kerkklok.positie[1]);
+
+/* ----------------------------------------------------------------
+   Het Nationaal Monument
+   ---------------------------------------------------------------- */
 
 // Ticket D20: de schadestaat van het monument. Staat hier (vóór
 // bouwNationaalMonument) i.p.v. bij de rest van de monumentlogica in STAP 4,
@@ -1426,11 +1463,6 @@ const MONUMENT_SCHADE_DREMPELS = [66, 33, 10];   // HP-procent voor tier 1, 2, 3
 // gehouden: het monument moet aangeslagen ogen, niet omvallen.
 const MONUMENT_SCHEEFSTAND = [0, 0, 0.03, 0.065];
 
-// Het monument heeft een niet-uniforme schaal (x/z × ARENA_SCHAAL, y ×
-// MONUMENT_HOOGTE_SCHAAL). Een bol erin wordt dus een hoge, smalle ellips.
-// Deze factor op scale.y maakt rook en licht in de wereld weer rond.
-const MONUMENT_ROND_Y = ARENA_SCHAAL / MONUMENT_HOOGTE_SCHAAL;
-
 // De raycaster van het wapen slaat onzichtbare objecten NIET over. Een
 // verborgen onderdeel moet dus ook zijn raycast kwijt, anders houdt een
 // onzichtbaar stuk monument schoten tegen.
@@ -1445,27 +1477,39 @@ function zetMonumentDeelZichtbaar(object, zichtbaar) {
 }
 
 function bouwNationaalMonument() {
+  // Ticket D32: op mensmaat 1:1, zonder eigen schaal. De pyloon is 22 m,
+  // zoals in het echt; het platform (drie lage treden) komt uit
+  // DAM_LAYOUT.monument, zodat botsing, vloerhoogte en tekening dezelfde
+  // maten gebruiken.
+  const m = DAM_LAYOUT.monument;
   const g = new THREE.Group();
+  g.name = 'Nationaal Monument';
 
-  const tree1 = new THREE.Mesh(new THREE.CylinderGeometry(13, 13, 0.55, 40), mat(PAL.monumentSchaduw, 0.82));
-  tree1.position.y = 0.32;
-  g.add(tree1);
-  const tree2 = new THREE.Mesh(new THREE.CylinderGeometry(10.2, 10.2, 0.48, 40), mat(0xe5ded4, 0.82));
-  tree2.position.y = 0.85;
-  g.add(tree2);
-  const tree3 = new THREE.Mesh(new THREE.CylinderGeometry(6.7, 7.5, 0.75, 36), mat(PAL.monument, 0.75));
-  tree3.position.y = 1.45;
-  g.add(tree3);
+  const tredeKleuren = [PAL.monumentSchaduw, 0xe5ded4, PAL.monument];
+  m.treden.forEach((straal, i) => {
+    const trede = new THREE.Mesh(new THREE.CylinderGeometry(straal, straal, m.treeHoogte, 64), mat(tredeKleuren[i % 3], 0.8));
+    trede.position.y = m.treeHoogte * (i + 0.5);
+    trede.userData.onderdeel = 'trede';
+    g.add(trede);
+  });
+  const platformTop = m.treeHoogte * m.treden.length;
 
-  // Vierzijdige pyloon (i.p.v. ronde zuil): het echte Nationaal Monument is een
-  // vierkante witte pyloon. Een 4-segments cilinder, 45° gedraaid zodat een
-  // vlakke zijde naar het plein (west) kijkt, geeft precies dat silhouet.
-  // Ticket D20: zuil + top zitten in een eigen `pyloon`-groep met het
-  // draaipunt op de voet (y=2), zodat de scheefstand bij zware schade om de
-  // voet kantelt i.p.v. om het midden. Wereldposities zijn ongewijzigd:
-  // 2 + 11 = 13 (zuil) en 2 + 23,1 = 25,1 (top).
+  // Voetstuk in twee lagen onder de pyloon, met de beeldengroepen erop.
+  const voet1 = blok(7, 1.0, 7, PAL.monumentSchaduw, 0.8);
+  voet1.position.y = platformTop + 0.5;
+  const voet2 = blok(5, 0.6, 5, PAL.monument, 0.78);
+  voet2.position.y = platformTop + 1.3;
+  g.add(voet1, voet2);
+  const voetTop1 = platformTop + 1.0;
+  const pyloonVoet = platformTop + 1.6;
+
+  // Vierzijdige pyloon: een 4-segments cilinder, 45° gedraaid zodat een
+  // vlakke zijde naar het Paleis (west) kijkt. Ticket D20: zuil + top in een
+  // eigen `pyloon`-groep met het draaipunt op de voet, zodat de
+  // scheefstand bij zware schade om de voet kantelt.
   const pyloon = new THREE.Group();
-  pyloon.position.y = 2;
+  pyloon.position.y = pyloonVoet;
+  pyloon.userData.onderdeel = 'pyloon';
   g.add(pyloon);
   const zuil = new THREE.Mesh(new THREE.CylinderGeometry(1.35, 2.75, 22, 4), mat(PAL.pyloonWit, 0.68));
   zuil.rotation.y = Math.PI / 4;
@@ -1480,10 +1524,9 @@ function bouwNationaalMonument() {
   // pasMonumentSchadeToe() zet per tier aan wat erbij hoort.
   //
   // Scheuren: korte donkere balkjes in een zigzag op een zijvlak van de
-  // pyloon. De pyloon is een 4-zijdige cilinder die 45° gedraaid is, dus de
-  // zijvlakken kijken precies langs ±x en ±z; de afstand van het midden tot
-  // een vlak (apothema) loopt taps af van 2,75·cos45° onderaan naar
-  // 1,35·cos45° bovenaan.
+  // pyloon. De zijvlakken kijken precies langs ±x en ±z; de afstand van
+  // het midden tot een vlak (apothema) loopt taps af van 2,75·cos45°
+  // onderaan naar 1,35·cos45° bovenaan.
   const scheurMat = new THREE.MeshBasicMaterial({ color: 0x3b3833 });
   function apothema(h) { return Math.SQRT1_2 * (2.75 - (2.75 - 1.35) * (h / 22)); }
   function maakScheur(pad, draaiing) {
@@ -1491,7 +1534,7 @@ function bouwNationaalMonument() {
     for (let i = 0; i < pad.length - 1; i++) {
       const [h1, z1] = pad[i], [h2, z2] = pad[i + 1];
       const lengte = Math.hypot(h2 - h1, z2 - z1);
-      const stuk = new THREE.Mesh(new THREE.BoxGeometry(0.28, lengte, 0.16), scheurMat);
+      const stuk = new THREE.Mesh(new THREE.BoxGeometry(0.2, lengte, 0.12), scheurMat);
       stuk.position.set(-(apothema((h1 + h2) / 2) + 0.02), (h1 + h2) / 2, (z1 + z2) / 2);
       stuk.rotation.x = Math.atan2(z2 - z1, h2 - h1);
       stuk.userData.geenSchaduw = true;
@@ -1499,7 +1542,6 @@ function bouwNationaalMonument() {
       stuk.raycast = geenRaycast;
       scheur.add(stuk);
     }
-    // Draaien om de pyloon-as brengt het -x-vlak naar een ander zijvlak.
     scheur.rotation.y = draaiing;
     pyloon.add(scheur);
     return scheur;
@@ -1529,27 +1571,27 @@ function bouwNationaalMonument() {
   afgebrokenTop.add(stomp, splinter);
   pyloon.add(afgebrokenTop);
 
-  // Puin op de bovenste trede, rond de voet van de pyloon (tree3 ligt op
-  // y 1,45 met halve hoogte 0,375, dus het bovenvlak op ~1,83).
+  // Puin: op het voetstuk (binnen 3,5 m) of op het platform daarbuiten.
   function maakPuin(stukken) {
     const puin = new THREE.Group();
     for (const [hoek, straal, b, h, d, draai] of stukken) {
       const brok = blok(b, h, d, PAL.pyloonWit, 0.8);
-      brok.position.set(Math.cos(hoek) * straal, 1.83 + h / 2, Math.sin(hoek) * straal);
+      const opVoet = straal < 3.4;
+      brok.position.set(Math.cos(hoek) * straal, (opVoet ? voetTop1 : platformTop) + h / 2, Math.sin(hoek) * straal);
       brok.rotation.set(draai * 0.4, draai, draai * 0.3);
       puin.add(brok);
     }
     g.add(puin);
     return puin;
   }
-  const puinLicht = maakPuin([[3.3, 3.6, 0.9, 0.5, 0.7, 0.6], [2.6, 4.2, 0.6, 0.4, 0.5, 1.4], [3.9, 4.8, 0.5, 0.35, 0.6, 2.1]]);
-  const puinZwaar = maakPuin([[0.4, 3.8, 1.3, 0.7, 1.0, 0.9], [1.2, 4.5, 0.8, 0.5, 0.9, 2.5], [5.5, 3.9, 1.1, 0.6, 0.8, 0.3],
-                              [4.6, 5.2, 0.7, 0.45, 0.6, 1.8], [2.1, 5.6, 1.0, 0.55, 0.7, 2.9]]);
+  const puinLicht = maakPuin([[3.3, 4.2, 0.9, 0.5, 0.7, 0.6], [2.6, 4.6, 0.6, 0.4, 0.5, 1.4], [3.9, 5.0, 0.5, 0.35, 0.6, 2.1]]);
+  const puinZwaar = maakPuin([[0.4, 4.1, 1.3, 0.7, 1.0, 0.9], [1.2, 4.7, 0.8, 0.5, 0.9, 2.5], [5.5, 4.3, 1.1, 0.6, 0.8, 0.3],
+                              [4.6, 5.2, 0.7, 0.45, 0.6, 1.8], [2.1, 5.5, 1.0, 0.55, 0.7, 2.9]]);
 
-  // Rook: losse wolkjes die in updateMonumentEffecten() opstijgen, groeien en
-  // vervagen. Eigen materiaal per wolkje, want de opacity verschilt per stuk.
+  // Rook: losse wolkjes die in updateMonumentEffecten() uit de afgebroken
+  // top opstijgen, groeien en vervagen.
   const rook = new THREE.Group();
-  const wolkGeo = new THREE.SphereGeometry(1.6, 10, 8);
+  const wolkGeo = new THREE.SphereGeometry(1.2, 10, 8);
   const wolkjes = [];
   for (let i = 0; i < 7; i++) {
     const wolk = new THREE.Mesh(wolkGeo, new THREE.MeshBasicMaterial({ color: 0x6d6a66, transparent: true, opacity: 0, depthWrite: false }));
@@ -1558,98 +1600,67 @@ function bouwNationaalMonument() {
     rook.add(wolk);
     wolkjes.push(wolk);
   }
+  rook.position.y = pyloonVoet;
   g.add(rook);
 
   // Knipperend rood licht op de afgebroken top (tier 3). Bewust GEEN
-  // PointLight: een extra lichtbron die aan/uit gaat laat Three.js alle
-  // materialen opnieuw compileren (een hapering precies op het spannendste
-  // moment). Een onverlicht rood bolletje met een gloedschil leest vanaf
-  // het plein net zo goed als "alarm".
+  // PointLight: een lichtbron die aan/uit gaat laat Three.js alle
+  // materialen opnieuw compileren.
   const alarm = new THREE.Group();
   alarm.position.y = 23.4;
-  // Maten zijn lokaal; in de wereld is dat × ARENA_SCHAAL, dus een kern van
-  // ~0,4 m en een gloed van ~1,1 m straal — groot genoeg om vanaf de
-  // poorten (35-40 m) als rode flits te lezen.
-  const alarmKern = new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 10), new THREE.MeshBasicMaterial({ color: 0xff2a1f }));
-  const alarmGloed = new THREE.Mesh(new THREE.SphereGeometry(3.4, 14, 10),
-    // Gewone transparantie, geen additieve menging: die kleurt tegen de
-    // lichte lucht bijna wit en leest dan niet meer als "rood alarm".
+  const alarmKern = new THREE.Mesh(new THREE.SphereGeometry(0.45, 12, 10), new THREE.MeshBasicMaterial({ color: 0xff2a1f }));
+  const alarmGloed = new THREE.Mesh(new THREE.SphereGeometry(1.25, 14, 10),
     new THREE.MeshBasicMaterial({ color: 0xff2a1f, transparent: true, opacity: 0.4, depthWrite: false }));
-  for (const m of [alarmKern, alarmGloed]) {
-    m.scale.y = MONUMENT_ROND_Y;
-    m.userData.geenSchaduw = true;
-    m.raycast = geenRaycast;
-    alarm.add(m);
+  for (const d of [alarmKern, alarmGloed]) {
+    d.userData.geenSchaduw = true;
+    d.raycast = geenRaycast;
+    alarm.add(d);
   }
   pyloon.add(alarm);
 
+  // Beeldengroepen op het voetstuk, rond de pyloon.
   const figuren = [];
-  // Sculptuurachtige figuren aan de voet, abstract maar herkenbaar.
   for (let i = 0; i < 6; i++) {
     const hoek = (i / 6) * Math.PI * 2 + 0.35;
     const fig = new THREE.Group();
-    const lijf = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 1.6, 7), mat(0xd6cfc4, 0.78));
-    lijf.position.y = 2.15;
-    const kop = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), mat(0xd6cfc4, 0.78));
-    kop.position.y = 3.1;
+    const lijf = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 1.5, 7), mat(0xd6cfc4, 0.78));
+    lijf.position.y = voetTop1 + 0.75;
+    const kop = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), mat(0xd6cfc4, 0.78));
+    kop.position.y = voetTop1 + 1.7;
     fig.add(lijf, kop);
-    fig.position.set(Math.cos(hoek) * 4.5, 0, Math.sin(hoek) * 4.5);
+    fig.position.set(Math.cos(hoek) * 3.0, 0, Math.sin(hoek) * 3.0);
     fig.rotation.y = -hoek;
     g.add(fig);
     figuren.push(fig);
   }
 
-  // Paaltjes rond het monument, zonder alles onnodig te blokkeren.
-  // Speeltest-feedback (na D6): "onoverzichtelijk door de vele decor dingen"
-  // — gehalveerd van 20 naar 10, precies op het strijdtoneel waar de
-  // meeste robots aankomen.
-  for (let i = 0; i < 10; i++) {
-    const hoek = (i / 10) * Math.PI * 2;
-    const paal = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.85, 8), mat(0xcfc8bc, 0.76));
-    paal.position.set(Math.cos(hoek) * 15.5, 0.48, Math.sin(hoek) * 15.5);
-    g.add(paal);
+  // Twee leeuwen aan de voorzijde (west, naar het Paleis), op de treden.
+  for (const lz of [-2.0, 2.0]) {
+    const lx = -7.9, basis = vloerHoogte(lx, lz);
+    const voet = blok(1.5, 0.7, 1.0, PAL.monumentSchaduw, 0.8);
+    voet.position.set(lx, basis + 0.35, lz);
+    const romp = blok(1.3, 0.65, 0.6, PAL.monument, 0.78);
+    romp.position.set(lx, basis + 1.02, lz);
+    const kop = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 8), mat(PAL.monument, 0.78));
+    kop.position.set(lx - 0.6, basis + 1.35, lz);
+    for (const d of [voet, romp, kop]) { d.userData.geenSchaduw = true; g.add(d); }
   }
 
-  // --- Visual landmark pass: leeuwen (voorzijde/west) en keermuur (achter/oost).
-  // Bewust GEEN obstakelregistratie: dit decor staat buiten de bestaande
-  // trap-rechthoek en zou anders aanvalsroutes vanaf de poorten kunnen
-  // versperren. Omdat het niet in `obstakels` staat, kan het robots nooit
-  // laten vastlopen; ze lopen er hooguit heel even doorheen bij aankomst.
-  for (const lz of [-5, 5]) {
-    const voet = blok(1.7, 0.9, 1.3, PAL.monumentSchaduw, 0.8);
-    voet.position.set(-13.5, 0.45, lz);
-    voet.userData.geenSchaduw = true;
-    g.add(voet);
-    const romp = blok(0.8, 0.8, 1.7, PAL.monument, 0.78);
-    romp.position.set(-13.6, 1.3, lz);
-    romp.userData.geenSchaduw = true;
-    g.add(romp);
-    const kop = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), mat(PAL.monument, 0.78));
-    kop.position.set(-14.3, 1.75, lz);
-    kop.userData.geenSchaduw = true;
-    g.add(kop);
-  }
-  // Lage gebogen keermuur aan de oostzijde: losse segmenten langs een boog met
-  // ruime gaten ertussen, zodat het als muur leest maar niets afsluit.
-  for (let i = 0; i < 5; i++) {
-    const hoek = -0.7 + i * 0.35;   // ~ -40° tot +40° rond de +x (oost) as
-    const seg = blok(1.1, 2.0, 2.6, PAL.monumentSchaduw, 0.8);
-    seg.position.set(Math.cos(hoek) * 13.8, 1.0, Math.sin(hoek) * 13.8);
+  // Lage gebogen muur aan de oostzijde (de urnenmuur), alleen noordoost tot
+  // oost: aan de zuidoostkant komt de Damstraat-route aan (§11.7.7).
+  for (const hoek of [-0.7, -0.35, 0]) {
+    const seg = blok(1.0, 2.0, 2.6, PAL.monumentSchaduw, 0.8);
+    const x = Math.cos(hoek) * 9.6, z = Math.sin(hoek) * 9.6;
+    seg.position.set(x, 1.0, z);
     seg.rotation.y = -hoek;
     seg.userData.geenSchaduw = true;
+    seg.userData.onderdeel = 'urnenmuur';
     g.add(seg);
+    registreerRechthoek(x - 1.2, x + 1.2, z - 1.2, z + 1.2);
   }
 
-  g.position.set(42, 0, -4);
+  g.position.set(m.midden[0], 0, m.midden[1]);
   wereld.add(g);
-  // Ticket D4: het monument krijgt een EIGEN, extra hoogteschaal bovenop de
-  // hoogteschaal die `wereld` al aan alle gebouwen geeft. Alleen y, nooit
-  // x/z — de voetafdruk (paaltjes op straal 15,5, keermuur op 13,8, …)
-  // moet gewoon meeschalen met de rest van de arena (wereld.scale.x/z), dit
-  // corrigeert alleen de HOOGTE naar MONUMENT_HOOGTE_SCHAAL i.p.v.
-  // GEBOUW_HOOGTE_SCHAAL: wereld.scale.y (0,6) × deze factor moet netto
-  // MONUMENT_HOOGTE_SCHAAL (0,8) opleveren, dus 0,8 / 0,6.
-  g.scale.y = MONUMENT_HOOGTE_SCHAAL / GEBOUW_HOOGTE_SCHAAL;
   schaduwAan(g);
   monumentSchade.delen = {
     pyloon, top, scheurenLicht, scheurenZwaar, afgebrokenTop, puinLicht, puinZwaar,
@@ -1659,13 +1670,14 @@ function bouwNationaalMonument() {
     sneuvelendeFiguren: [figuren[1], figuren[4]],
   };
   pasMonumentSchadeToe(0);
-  // Alleen de trappen en zuil blokkeren. De ring eromheen blijft beloopbaar genoeg.
-  // Ticket D4: raw getallen, geen Three.js-object — registreerRechthoek() leest
-  // geen wereldmatrix, dus dit moet met de hand ×ARENA_SCHAAL (net als de marge:
-  // ook de bufferzone rond het monument hoort proportioneel te krimpen).
-  registreerRechthoek((42 - 10.5) * ARENA_SCHAAL, (42 + 10.5) * ARENA_SCHAAL, (-4 - 10.5) * ARENA_SCHAAL, (-4 + 10.5) * ARENA_SCHAAL, 0.2 * ARENA_SCHAAL);
+  // De speldoos blokkeert: robots botsen ertegen en raken zo het monument
+  // (afstandTotMonument < 0,6 met hun straal van 0,45). De treden eromheen
+  // zijn beloopbaar.
+  const s = m.speldoos;
+  registreerRechthoek(m.midden[0] - s, m.midden[0] + s, m.midden[1] - s, m.midden[1] + s);
 }
 bouwNationaalMonument();
+
 
 // Ticket D20. Zelfde opzet als comboTier(): een pure tier-functie plus een
 // bewaarde vorige tier (monumentSchade.tier), zodat een overgang precies één
@@ -1692,423 +1704,6 @@ function pasMonumentSchadeToe(tier) {
   d.alarm.visible = tier >= 3;
   d.pyloon.rotation.z = MONUMENT_SCHEEFSTAND[tier];
 }
-
-function bouwBijenkorf() {
-  const g = new THREE.Group();
-  const hoofd = blok(58, 23, 38, 0xb18b5a, 0.82);
-  hoofd.position.set(0, 11.5, 0);
-  g.add(hoofd);
-  const dak = blok(58, 2.8, 38, 0x3f454d, 0.78);
-  dak.position.set(0, 24.4, 0);
-  g.add(dak);
-  const hoek = blok(13, 28, 13, 0xc3a06b, 0.78);
-  hoek.position.set(-28, 14, 18);
-  g.add(hoek);
-  for (let rij = 0; rij < 5; rij++) {
-    for (let kol = 0; kol < 8; kol++) {
-      raamOpFacade(g, -29.12 + kol * 7.4, 5 + rij * 3.6, 19.12, 2.2, 1.9, 'south');
-    }
-  }
-  for (let rij = 0; rij < 4; rij++) {
-    for (let kol = 0; kol < 5; kol++) {
-      raamOpFacade(g, -29.12, 6 + rij * 4, -11 + kol * 6, 1.8, 2.1, 'west');
-    }
-  }
-  maakGevelTekst(g, 'de Bijenkorf', 0, 20.2, 19.25, 27, 3.7, 'south', {
-    achtergrond: 'rgba(36, 28, 18, 0.92)',
-    rand: 'rgba(238, 194, 88, 0.95)',
-    tekstKleur: '#ffd75e',
-    fontSize: 92
-  });
-
-  // --- Visual landmark pass: echt warenhuis-gevoel -------------------
-  // Grote etalagepuien met luifel op de begane grond, zuid- en westzijde
-  // (de pleinzijden). Onder de bestaande raamrijen (die op y=5/6 beginnen).
-  maakEtalage(g, { x: -3, y: 2.9, z: 19.12, breedte: 52, hoogte: 2.8, penanten: 8, richting: 'south' });
-  maakEtalage(g, { x: -29.12, y: 2.9, z: -4, breedte: 26, hoogte: 2.8, penanten: 5, richting: 'west' });
-
-  // Doorlopende kroonlijst bovenaan de pleingevels.
-  maakDaklijst(g, 58, 0.7, 0.5, 0, 22.7, 19.3, PAL.zandsteenLicht);
-  maakDaklijst(g, 0.5, 0.7, 38, -29.3, 22.7, 0, PAL.zandsteenLicht);
-
-  // Brede hoofdingang midden in de zuidgevel.
-  deurOpFacade(g, -3, 2.4, 19.4, 5.5, 4.8, 'south', 0x2a2018);
-
-  g.position.set(75, 0, -53);
-  wereld.add(g);
-  schaduwAan(g);
-  registreerObstakel(g, 0.5 * ARENA_SCHAAL);   // Ticket D4: marge x ARENA_SCHAAL, proportioneel met de kleinere gebouwen
-
-}
-bouwBijenkorf();
-
-function bouwKrasnapolsky() {
-  const g = new THREE.Group();
-  const hoofd = blok(61, 21, 29, 0xc7b49b, 0.84);
-  hoofd.position.set(0, 10.5, 0);
-  g.add(hoofd);
-  const dak = blok(62, 3.2, 30, PAL.dak, 0.75);
-  dak.position.set(0, 22.4, 0);
-  g.add(dak);
-  const torentje = new THREE.Mesh(new THREE.CylinderGeometry(4, 4.8, 8, 12), mat(0xb89d7f, 0.8));
-  torentje.position.set(-25, 25, -9);
-  g.add(torentje);
-  const torenDak = new THREE.Mesh(new THREE.ConeGeometry(5.4, 5.6, 12), mat(PAL.dakDonker, 0.72));
-  torenDak.position.set(-25, 31.5, -9);
-  g.add(torenDak);
-  for (let rij = 0; rij < 5; rij++) {
-    for (let kol = 0; kol < 9; kol++) {
-      raamOpFacade(g, -26 + kol * 6.5, 4.5 + rij * 3.5, -14.6, 1.9, 1.8, 'north');
-    }
-  }
-  deurOpFacade(g, 0, 2.2, -14.8, 5.5, 4.4, 'north', 0x4a2f20);
-  maakGevelTekst(g, 'Hotel Krasnapolsky', 0, 18.5, -14.95, 32, 3.5, 'north', {
-    achtergrond: 'rgba(45, 32, 24, 0.9)',
-    rand: 'rgba(236, 213, 174, 0.95)',
-    tekstKleur: '#fff2d0',
-    fontSize: 82
-  });
-  // In het echt staat Hotel Krasnapolsky vlak naast De Bijenkorf, aan de
-  // oostkant. Een kwartslag (rotY = 90 graden i.p.v. 180) laat de lange
-  // gevel (61m, met het naambord) naar het westen kijken, het plein op —
-  // net als op de referentiefoto, waar de lange gevel het plein aan die
-  // kant "afsluit" in plaats van er dwars op te staan. De smalle (29m)
-  // zijde wijst nu oost-west, met een ruime tussenafstand tot Bijenkorf's
-  // oostgevel (x=104,5) zodat het gebouw goed zichtbaar blijft.
-  g.position.set(134, 0, -40);
-  g.rotation.y = Math.PI / 2;
-  wereld.add(g);
-  schaduwAan(g);
-  registreerObstakel(g, 0.5 * ARENA_SCHAAL);   // Ticket D4: idem
-
-}
-bouwKrasnapolsky();
-
-function bouwGassanHotel27() {
-  // Op de oude Krasnapolsky-plek staat in het echt een Gassan-winkel op
-  // straatniveau met Hotel27 in de verdiepingen erboven. Zelfde footprint
-  // als de vorige bebouwing daar, dus geen nieuwe obstakel-risico's; alleen
-  // de bewegwijzering en het torentje (een Krasnapolsky-kenmerk) verschillen.
-  const g = new THREE.Group();
-  const hoofd = blok(61, 21, 29, 0xc7b49b, 0.84);
-  hoofd.position.set(0, 10.5, 0);
-  g.add(hoofd);
-  const dak = blok(62, 3.2, 30, PAL.dak, 0.75);
-  dak.position.set(0, 22.4, 0);
-  g.add(dak);
-  for (let rij = 0; rij < 5; rij++) {
-    for (let kol = 0; kol < 9; kol++) {
-      raamOpFacade(g, -26 + kol * 6.5, 4.5 + rij * 3.5, -14.6, 1.9, 1.8, 'north');
-    }
-  }
-  deurOpFacade(g, 0, 2.2, -14.8, 5.5, 4.4, 'north', 0x1c1c1e);
-  // Gassan: opvallend, iets kleiner bord op straatniveau bij de ingang.
-  maakGevelTekst(g, 'Gassan', 0, 4.6, -14.95, 12, 2.2, 'north', {
-    achtergrond: 'rgba(15, 15, 18, 0.92)',
-    rand: 'rgba(210, 210, 215, 0.95)',
-    tekstKleur: '#f4f4f4',
-    fontSize: 78
-  });
-  // Hotel27: groter bord hoog op de gevel, zoals de hotelnaam erboven.
-  maakGevelTekst(g, 'Hotel27', 0, 18.5, -14.95, 26, 3.5, 'north', {
-    achtergrond: 'rgba(20, 24, 30, 0.9)',
-    rand: 'rgba(200, 210, 220, 0.95)',
-    tekstKleur: '#eef3f8',
-    fontSize: 82
-  });
-  g.position.set(72, 0, 58);
-  wereld.add(g);
-  schaduwAan(g);
-  registreerObstakel(g, 0.5 * ARENA_SCHAAL);   // Ticket D4: idem
-
-}
-bouwGassanHotel27();
-
-/* ----------------------------------------------------------------
-   Gevelrijen, winkels en Amsterdamse panden rondom het plein
-   ---------------------------------------------------------------- */
-
-const GEVELKLEUREN = [0x8a4b3a, 0x54402f, 0x3e4a3d, 0xb08d57, 0x6e4a4a, 0x424d5c, 0x94684a, 0x5c4a63, 0xc5a46c, 0x7b6a55, 0x6b2f2a, 0xd8cdb8, 0x35543f];
-
-function maakGrachtenpand(opt = {}) {
-  const breedte = opt.breedte ?? (5.2 + rnd() * 1.4);
-  const diepte = opt.diepte ?? (9.5 + rnd() * 3.5);
-  const hoogte = opt.hoogte ?? (10 + rnd() * 7);
-  const kleur = opt.kleur ?? kies(GEVELKLEUREN);
-  const g = new THREE.Group();
-
-  const romp = blok(breedte, hoogte, diepte, kleur, 0.86);
-  romp.position.y = hoogte / 2;
-  g.add(romp);
-
-  const plint = blok(breedte + 0.2, 1.0, diepte + 0.2, 0x3f352d, 0.86);
-  plint.position.y = 0.5;
-  g.add(plint);
-
-  const dakType = opt.dakType ?? Math.floor(rnd() * 5);
-  if (dakType === 0) {
-    const dak = zadeldak(breedte + 0.6, diepte + 0.6, 2.8, PAL.dakDonker);
-    dak.position.y = hoogte;
-    dak.rotation.y = Math.PI / 2;
-    g.add(dak);
-  } else if (dakType === 1) {
-    // Trapgevel.
-    for (let i = 0; i < 3; i++) {
-      const trap = blok(breedte * (0.86 - i * 0.22), 0.85, 0.9, kleur, 0.84);
-      trap.position.set(0, hoogte + 0.45 + i * 0.85, diepte / 2 + 0.05);
-      g.add(trap);
-    }
-    const dak = blok(breedte + 0.4, 1.5, diepte + 0.2, PAL.dakDonker, 0.78);
-    dak.position.y = hoogte + 0.6;
-    g.add(dak);
-  } else if (dakType === 2) {
-    const dak = blok(breedte + 0.5, 1.8, diepte + 0.5, PAL.dak, 0.78);
-    dak.position.y = hoogte + 0.9;
-    g.add(dak);
-  } else if (dakType === 3) {
-    // Halsgevel: smal verhoogd middenstuk met twee kleine schouderblokjes.
-    const dak = blok(breedte + 0.4, 1.4, diepte + 0.2, PAL.dakDonker, 0.78);
-    dak.position.y = hoogte + 0.6;
-    g.add(dak);
-    const nek = blok(breedte * 0.4, 2.7, 0.7, kleur, 0.84);
-    nek.position.set(0, hoogte + 1.55, diepte / 2 - 0.05);
-    g.add(nek);
-    const nekTop = blok(breedte * 0.46, 0.4, 0.7, PAL.dakDonker, 0.8);
-    nekTop.position.set(0, hoogte + 3.0, diepte / 2 - 0.05);
-    nekTop.userData.geenSchaduw = true;
-    g.add(nekTop);
-    for (const sx of [-1, 1]) {
-      const schouder = blok(breedte * 0.2, 0.55, 0.6, kleur, 0.84);
-      schouder.position.set(sx * breedte * 0.29, hoogte + 0.75, diepte / 2 - 0.05);
-      schouder.userData.geenSchaduw = true;
-      g.add(schouder);
-    }
-  } else {
-    // Klokgevel: drie gestapelde, versmallende blokken (klokvormig silhouet).
-    const dak = blok(breedte + 0.4, 1.4, diepte + 0.2, PAL.dakDonker, 0.78);
-    dak.position.y = hoogte + 0.6;
-    g.add(dak);
-    const breedtes = [0.72, 0.5, 0.3];
-    for (let i = 0; i < 3; i++) {
-      const stuk = blok(breedte * breedtes[i], 0.95, 0.72, kleur, 0.84);
-      stuk.position.set(0, hoogte + 0.9 + i * 0.9, diepte / 2 - 0.05);
-      if (i > 0) stuk.userData.geenSchaduw = true;
-      g.add(stuk);
-    }
-  }
-
-  // Kroonlijst als lichte band net onder de daklijn (één plat stripje per pand).
-  maakDaklijst(g, breedte + 0.15, 0.3, 0.28, 0, hoogte - 0.25, diepte / 2 + 0.09, PAL.zandsteenLicht);
-
-  // Raamritme: brede panden krijgen 3 raamkolommen, smalle 2.
-  const kolommen = breedte > 5.8 ? 3 : 2;
-  const verdiepingen = Math.max(2, Math.floor(hoogte / 3.1));
-  for (let v = 0; v < verdiepingen; v++) {
-    for (let k = 0; k < kolommen; k++) {
-      const x = (k - (kolommen - 1) / 2) * breedte * 0.32;
-      raamOpFacade(g, x, 2.6 + v * 3.05, diepte / 2 + 0.12, 1.2, 1.75, 'south');
-    }
-  }
-  deurOpFacade(g, 0, 1.25, diepte / 2 + 0.14, 1.35, 2.5, 'south', 0x302219);
-
-  // Smalle hijsbalk, zeer Amsterdam herkenbaar.
-  const balk = blok(0.12, 0.12, 1.2, 0x2f2720, 0.8);
-  balk.position.set(0, hoogte + 1.3, diepte / 2 + 0.7);
-  g.add(balk);
-
-  schaduwAan(g);
-  return g;
-}
-
-function plaatsGevelrij({ aantal, x, z, richting = 'x', rotY = 0, tussen = 6.35, startOffset = null, diepte = 10 }) {
-  for (let i = 0; i < aantal; i++) {
-    const pand = maakGrachtenpand({ diepte, hoogte: 9 + rnd() * 9, dakType: Math.floor(rnd() * 5) });
-    const afstand = startOffset === null ? (i - (aantal - 1) / 2) * tussen : startOffset + i * tussen;
-    if (richting === 'x') pand.position.set(x + afstand, 0, z);
-    else pand.position.set(x, 0, z + afstand);
-    pand.rotation.y = rotY;
-    wereld.add(pand);
-    registreerObstakel(pand, 0.25 * ARENA_SCHAAL);   // Ticket D4: idem
-
-  }
-}
-
-// Zuidrand bij Madame Tussauds en Kalverstraat. Deze rij (voorheen op z=70)
-// overlapte in het z-bereik met het Madame Tussauds-blok (dat tot z=68,1
-// reikt): elke westelijke rand van de rij vormde daardoor een concave hoek
-// die smaller was dan een robot (straal 0,45m, dus minstens 0,9m vrije
-// ruimte nodig). Robots die daar via Kalverstraat naartoe liepen raakten
-// permanent vast en konden zelfs met uitwijkgedrag niet ontsnappen, wat een
-// hele wave voor altijd kon laten hangen. De rij staat nu op z=78, ruim
-// voorbij Tussauds' noordgrens, zodat er een echte doorgang overblijft.
-plaatsGevelrij({ aantal: 8, x: -8, z: 78, richting: 'x', rotY: Math.PI, tussen: 6.4, diepte: 12 });
-// Oostranden rond Damstraat: hier stonden voorheen 3 kleine huisjes, maar
-// die plek is nu voor Hotel Krasnapolsky (zie bouwKrasnapolsky hieronder,
-// direct ten oosten van De Bijenkorf). De Damstraat-spawnpoort blijft vrij
-// doorloopbaar, want Krasnapolsky staat noordelijker (rond z=-53) dan de
-// poort zelf (z=4).
-// Noordelijke Damrakgevels.
-plaatsGevelrij({ aantal: 7, x: -28, z: -88, richting: 'z', rotY: Math.PI / 2, tussen: 7.0, startOffset: -24, diepte: 11 });
-plaatsGevelrij({ aantal: 6, x: 30, z: -88, richting: 'z', rotY: -Math.PI / 2, tussen: 7.0, startOffset: -20, diepte: 11 });
-// Zuidwest en Paleisstraat.
-plaatsGevelrij({ aantal: 5, x: -104, z: 58, richting: 'x', rotY: 0, tussen: 6.4, diepte: 11 });
-plaatsGevelrij({ aantal: 5, x: -106, z: 10, richting: 'z', rotY: Math.PI / 2, tussen: 7.0, startOffset: -8, diepte: 10 });
-
-function bouwMadameTussaudsBlok() {
-  const g = new THREE.Group();
-  const hoofd = blok(43, 18, 15, 0x9a765d, 0.84);
-  hoofd.position.y = 9;
-  g.add(hoofd);
-  const kroon = blok(44, 2.3, 15.6, 0x6e584a, 0.82);
-  kroon.position.y = 19.1;
-  g.add(kroon);
-  for (let rij = 0; rij < 4; rij++) {
-    for (let kol = 0; kol < 6; kol++) {
-      raamOpFacade(g, -17 + kol * 6.8, 4 + rij * 3.5, -7.65, 1.9, 1.8, 'north');
-    }
-  }
-  maakGevelTekst(g, 'Madame Tussauds', 0, 15.7, -7.85, 30, 3.4, 'north', {
-    achtergrond: 'rgba(110, 24, 28, 0.92)',
-    rand: 'rgba(248, 229, 185, 0.96)',
-    tekstKleur: '#fff3d6',
-    subtekst: 'Amsterdam',
-    fontSize: 76
-  });
-  g.position.set(-13, 0, 60);
-  wereld.add(g);
-  schaduwAan(g);
-  registreerObstakel(g, 0.3 * ARENA_SCHAAL);   // Ticket D4: idem
-
-}
-bouwMadameTussaudsBlok();
-
-/* ----------------------------------------------------------------
-   Straatmeubilair en sfeerobjecten, gepolijst maar lichtgewicht
-   ---------------------------------------------------------------- */
-
-function lantaarn(x, z, schaal = 1) {
-  const g = new THREE.Group();
-  const stok = new THREE.Mesh(new THREE.CylinderGeometry(0.09 * schaal, 0.14 * schaal, 4.8 * schaal, 10), mat(0x2e4034, 0.55, 0.35));
-  stok.position.y = 2.4 * schaal;
-  g.add(stok);
-  const arm = blok(0.08 * schaal, 0.08 * schaal, 1.35 * schaal, 0x2e4034, 0.55, 0.35);
-  arm.position.set(0, 4.55 * schaal, 0.55 * schaal);
-  arm.rotation.x = 0.14;
-  g.add(arm);
-  const kap = new THREE.Mesh(new THREE.ConeGeometry(0.48 * schaal, 0.55 * schaal, 8), mat(0x2e4034, 0.55, 0.35));
-  kap.position.set(0, 4.55 * schaal, 1.18 * schaal);
-  g.add(kap);
-  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.26 * schaal, 10, 8), new THREE.MeshStandardMaterial({
-    color: 0xfff2b0,
-    emissive: 0xffe28a,
-    emissiveIntensity: 0.32,
-    roughness: 0.45
-  }));
-  lamp.position.set(0, 4.3 * schaal, 1.18 * schaal);
-  g.add(lamp);
-  g.position.set(x, 0, z);
-  wereld.add(g);
-  schaduwAan(g);
-  // Ticket D4: zelfde reden als bouwReparatiepost hierboven.
-  registreerRechthoek((x - 0.25) * ARENA_SCHAAL, (x + 0.25) * ARENA_SCHAAL, (z - 0.25) * ARENA_SCHAAL, (z + 0.25) * ARENA_SCHAAL, 0.1 * ARENA_SCHAAL);
-}
-[
-  [-37, -29], [-35, 23], [18, 28], [25, -20], [0, -8],
-  [-10, -60], [10, -60], [-10, -90], [10, -90], [58, -4],
-  [-49, 30], [14, 43], [75, 28], [75, -32]
-].forEach(([x, z]) => lantaarn(x, z));
-
-function bankje(x, z, rotY = 0) {
-  const g = new THREE.Group();
-  const zitting = blok(3.2, 0.18, 0.85, PAL.hout, 0.78);
-  zitting.position.y = 0.58;
-  g.add(zitting);
-  const leuning = blok(3.2, 0.75, 0.16, PAL.hout, 0.78);
-  leuning.position.set(0, 1.02, -0.42);
-  g.add(leuning);
-  for (const kant of [-1.2, 1.2]) {
-    const poot = blok(0.15, 0.55, 0.62, 0x3d4247, 0.5, 0.3);
-    poot.position.set(kant, 0.28, 0);
-    g.add(poot);
-  }
-  g.position.set(x, 0, z);
-  g.rotation.y = rotY;
-  wereld.add(g);
-  registreerObstakel(g, 0.1 * ARENA_SCHAAL);   // Ticket D4: idem
-
-}
-bankje(17, 14, Math.PI / 8);
-bankje(-40, -31, -0.4);   // verschoven i.v.m. het verplaatste Krasnapolsky-gebouw hiernaast
-bankje(26, -19, Math.PI / 2);
-bankje(-29, 34, 0);
-bankje(54, 21, -0.6);
-
-function terras(x, z, rotY = 0) {
-  const g = new THREE.Group();
-  const stok = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.8, 8), mat(0x8a8a8a, 0.48, 0.35));
-  stok.position.y = 1.4;
-  g.add(stok);
-  const doek = new THREE.Mesh(new THREE.ConeGeometry(2.25, 0.85, 10), mat(0xd6483b, 0.82));
-  doek.position.y = 2.85;
-  g.add(doek);
-  const blad = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.08, 14), mat(0xe8e4da, 0.6));
-  blad.position.y = 0.78;
-  g.add(blad);
-  for (let i = 0; i < 4; i++) {
-    const hoek = (i / 4) * Math.PI * 2 + 0.4;
-    const stoel = blok(0.55, 0.55, 0.55, 0x4a6c50, 0.75);
-    stoel.position.set(Math.cos(hoek) * 1.45, 0.28, Math.sin(hoek) * 1.45);
-    stoel.rotation.y = -hoek;
-    g.add(stoel);
-  }
-  g.position.set(x, 0, z);
-  g.rotation.y = rotY;
-  wereld.add(g);
-  schaduwAan(g);
-  // Ticket D4: zelfde reden als bouwReparatiepost hierboven.
-  registreerRechthoek((x - 2.0) * ARENA_SCHAAL, (x + 2.0) * ARENA_SCHAAL, (z - 2.0) * ARENA_SCHAAL, (z + 2.0) * ARENA_SCHAAL, 0.15 * ARENA_SCHAAL);
-}
-terras(-39, 27); terras(-34, 31); terras(30, 35); terras(35, 31); terras(88, 26);
-
-function fietsenrek(x, z, rotY = 0) {
-  const g = new THREE.Group();
-  const stang = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 9.2, 7), mat(0x777777, 0.4, 0.6));
-  stang.rotation.z = Math.PI / 2;
-  stang.position.y = 0.75;
-  g.add(stang);
-  const kleuren = [0x2d2d2d, 0x7a3030, 0x2f4a6e, 0x333333, 0x5a4a2f, 0x184f45];
-  for (let i = 0; i < 6; i++) {
-    const fiets = new THREE.Group();
-    const kleur = kleuren[i % kleuren.length];
-    for (const kant of [-0.55, 0.55]) {
-      const wiel = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.045, 8, 16), mat(0x222222, 0.6));
-      wiel.position.set(0, 0.35, kant);
-      wiel.rotation.y = Math.PI / 2;
-      fiets.add(wiel);
-    }
-    const frame = blok(0.07, 0.55, 1.08, kleur, 0.6);
-    frame.position.y = 0.58;
-    frame.rotation.x = 0.22;
-    fiets.add(frame);
-    const stuur = blok(0.54, 0.06, 0.06, 0x888888, 0.45, 0.3);
-    stuur.position.set(0, 0.98, -0.54);
-    fiets.add(stuur);
-    fiets.position.set(-4.0 + i * 1.6, 0, 0);
-    fiets.rotation.y = Math.PI / 2 + (rnd() - 0.5) * 0.26;
-    g.add(fiets);
-  }
-  g.position.set(x, 0, z);
-  g.rotation.y = rotY;
-  wereld.add(g);
-  schaduwAan(g);
-  registreerObstakel(g, 0.2 * ARENA_SCHAAL);   // Ticket D4: idem
-
-}
-fietsenrek(-21, 43, 0);
-// Speeltest-feedback (na D6): fietsenrek(43, 15, ...) verwijderd — stond
-// maar ~19m van het monument, midden in het strijdtoneel.
-fietsenrek(-13, -20, 0);   // verschoven i.v.m. het verplaatste Krasnapolsky-gebouw hiernaast
-fietsenrek(70, -25, Math.PI / 2);
 
 // Klein kraampje bij De Bijenkorf dat uitlegt wat de drie upgrades doen en
 // wat ze (vanaf) kosten. De aankoop zelf blijft via de toetsen 1, 2 en 3
@@ -2181,291 +1776,13 @@ function upgradeKiosk(x, z, rotY = 0) {
   g.rotation.y = rotY;
   wereld.add(g);
   schaduwAan(g);
-  // Ticket D4: zelfde reden als bouwReparatiepost hierboven.
-  registreerRechthoek((x - 1.5) * ARENA_SCHAAL, (x + 1.5) * ARENA_SCHAAL, (z - 0.8) * ARENA_SCHAAL, (z + 0.8) * ARENA_SCHAAL, 0.3 * ARENA_SCHAAL);
+  registreerRechthoek(x - 1.5, x + 1.5, z - 0.8, z + 0.8, 0.3);
 }
-upgradeKiosk(60, -22);
-interactieMarkering(60, -17, '🛒', 0xffd75e);
-
-function boom(x, z, schaal = 1) {
-  const g = new THREE.Group();
-  const stam = new THREE.Mesh(new THREE.CylinderGeometry(0.25 * schaal, 0.42 * schaal, 3.1 * schaal, 9), mat(0x6a4a30, 0.82));
-  stam.position.y = 1.55 * schaal;
-  g.add(stam);
-  const kruin1 = new THREE.Mesh(new THREE.IcosahedronGeometry(2.25 * schaal, 1), mat(PAL.groen, 0.86));
-  kruin1.position.y = 4.1 * schaal;
-  const kruin2 = new THREE.Mesh(new THREE.IcosahedronGeometry(1.65 * schaal, 1), mat(0x5d8a43, 0.86));
-  kruin2.position.set(0.85 * schaal, 4.65 * schaal, -0.25 * schaal);
-  g.add(kruin1, kruin2);
-  g.position.set(x, 0, z);
-  wereld.add(g);
-  schaduwAan(g);
-  // Ticket D4: zelfde reden als bouwReparatiepost hierboven (geen marge-argument
-  // hier, dus alleen de vier coördinaten × ARENA_SCHAAL).
-  registreerRechthoek((x - 0.55 * schaal) * ARENA_SCHAAL, (x + 0.55 * schaal) * ARENA_SCHAAL, (z - 0.55 * schaal) * ARENA_SCHAAL, (z + 0.55 * schaal) * ARENA_SCHAAL);
-}
-boom(-43, 18, 1.0); boom(-47, 30, 1.05); boom(25, 39, 0.95); boom(53, 23, 1.1); boom(57, -28, 1.0); boom(-38, -35, 0.9);   // laatste boom verschoven i.v.m. Krasnapolsky hiernaast
-
-function tram(x, z, rotY = 0) {
-  const g = new THREE.Group();
-  const body = blok(4.2, 3.0, 16, PAL.tramWit, 0.62);
-  body.position.y = 1.75;
-  g.add(body);
-  const band = blok(4.35, 0.55, 16.2, PAL.tramRood, 0.55);
-  band.position.y = 2.25;
-  g.add(band);
-  const dak = blok(4.0, 0.5, 15, 0xd0d4d6, 0.48, 0.15);
-  dak.position.y = 3.45;
-  g.add(dak);
-  for (let i = 0; i < 5; i++) {
-    raamOpFacade(g, -2.18, 2.55, -5.8 + i * 2.9, 1.7, 0.85, 'west');
-    raamOpFacade(g, 2.18, 2.55, -5.8 + i * 2.9, 1.7, 0.85, 'east');
-  }
-  for (const dz of [-5.2, 5.2]) {
-    const wielstel = blok(4.6, 0.35, 1.4, 0x30343a, 0.45, 0.45);
-    wielstel.position.set(0, 0.35, dz);
-    g.add(wielstel);
-  }
-  g.position.set(x, 0.02, z);
-  g.rotation.y = rotY;
-  wereld.add(g);
-  schaduwAan(g);
-  registreerObstakel(g, 0.25 * ARENA_SCHAAL);   // Ticket D4: idem
-
-}
-tram(5, -74, 0.03);
-
-function bollardsLangsLijn(x1, z1, x2, z2, aantal) {
-  for (let i = 0; i < aantal; i++) {
-    const t = aantal === 1 ? 0 : i / (aantal - 1);
-    const x = x1 + (x2 - x1) * t;
-    const z = z1 + (z2 - z1) * t;
-    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.75, 8), mat(0x4b4f55, 0.56, 0.35));
-    b.position.set(x, 0.38, z);
-    b.castShadow = true;
-    wereld.add(b);
-  }
-}
-bollardsLangsLijn(-76, -42, -76, 42, 15);
-bollardsLangsLijn(30, -30, 57, -30, 8);
-bollardsLangsLijn(30, 26, 57, 26, 8);
-
-function vlag(x, z, kleur = 0xe23d3d) {
-  const g = new THREE.Group();
-  const paal = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 4.2, 8), mat(0x70777d, 0.45, 0.5));
-  paal.position.y = 2.1;
-  const doek = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.75, 1.35), mat(kleur, 0.9));
-  doek.position.set(0, 3.4, 0.65);
-  g.add(paal, doek);
-  g.position.set(x, 0, z);
-  wereld.add(g);
-}
-vlag(-76, -23, 0xee1c25); vlag(-76, -18, 0xffffff); vlag(-76, -13, 0x21468b);
-
-// Kleine groepjes toeristen als schaalreferentie. Geen obstakels, zodat gameplay soepel blijft.
-function toerist(x, z, kleur = 0x2f4a6e) {
-  const g = new THREE.Group();
-  const benen = blok(0.32, 0.8, 0.28, 0x333333, 0.8);
-  benen.position.y = 0.4;
-  const lijf = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.9, 7), mat(kleur, 0.8));
-  lijf.position.y = 1.2;
-  const hoofd = new THREE.Mesh(new THREE.SphereGeometry(0.23, 8, 6), mat(0xd6a77a, 0.75));
-  hoofd.position.y = 1.83;
-  g.add(benen, lijf, hoofd);
-  g.position.set(x, 0, z);
-  g.rotation.y = rnd() * Math.PI * 2;
-  wereld.add(g);
-  schaduwAan(g);
-}
-const toeristKleuren = [0x2f4a6e, 0x6e4a4a, 0x3e4a3d, 0xb08d57, 0x5c4a63, 0x8a4b3a];
-for (let i = 0; i < 16; i++) {
-  const x = -42 + rnd() * 112;
-  const z = -34 + rnd() * 76;
-  // Houd het monument zelf vrij.
-  const dx = x - 42, dz = z + 4;
-  if (dx * dx + dz * dz < 16 * 16) continue;
-  toerist(x, z, kies(toeristKleuren));
-}
-
-
-// Straatnaamborden, zodat de spawnpoorten en echte Dam-straten leesbaar zijn.
-function straatNaambord(x, z, naam, rotY = 0) {
-  const g = new THREE.Group();
-  const paal = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 3.0, 8), mat(0x2f3740, 0.5, 0.4));
-  paal.position.y = 1.5;
-  g.add(paal);
-  maakGevelTekst(g, naam, 0, 2.55, 0.08, 4.8, 0.86, 'south', {
-    achtergrond: 'rgba(25, 58, 90, 0.94)',
-    rand: 'rgba(230, 238, 246, 0.96)',
-    tekstKleur: '#ffffff',
-    fontSize: 72,
-    canvasBreedte: 900,
-    canvasHoogte: 220
-  });
-  g.position.set(x, 0, z);
-  g.rotation.y = rotY;
-  wereld.add(g);
-}
-// Ticket D6 verplaatste de daadwerkelijke spawnpunten van Damrak/Rokin/
-// Damstraat naar buiten (zie SPAWN_POORTEN); deze drie straatnaamborden zijn
-// hier meeverschoven zodat het bordje weer overeenkomt met waar de robots nu
-// echt vandaan komen (speeltest-feedback: "lastig te bepalen waar vandaan").
-straatNaambord(-14, -56, 'Damrak', 0.12);
-straatNaambord(-9, 50, 'Rokin', Math.PI + 0.05);
-straatNaambord(100, 6, 'Damstraat', -Math.PI / 2);
-straatNaambord(-47, 60, 'Kalverstraat', Math.PI);
-straatNaambord(-44, -80, 'Nieuwendijk', Math.PI / 2);
-straatNaambord(-88, 35, 'Paleisstraat', Math.PI / 2);
-
-// --- Visual landmark pass: herkenbare straatopeningen -------------------
-// Markeert de monden van Damrak en Rokin met een lichte drempelband op de
-// grond en twee flankerende vlaggenmasten. Alles staat bewust op |x| >= 13,
-// ruim buiten de looproute van de robots (die door het midden komen,
-// spreidingX 8), en niets registreert een obstakel — dus geen pathing-risico.
-function straatOpening(xMidden, z, breedte, vlagKleur) {
-  // Drempel: lichte stoepkleurige strook dwars over de straatmond.
-  vloerRechthoek(breedte, 2.6, xMidden, z, PAL.stoep, 0.17, 0.06);
-  // Vlaggenmasten links en rechts van de opening.
-  vlag(xMidden - breedte / 2 + 1.5, z, vlagKleur);
-  vlag(xMidden + breedte / 2 - 1.5, z, vlagKleur);
-}
-straatOpening(0, -52, 32, 0xee1c25);   // Damrak
-straatOpening(2, 52, 32, 0xee1c25);    // Rokin
-
-// Klein tramhalte-accent bij de Damrak-mond: bordje op een paal plus een lage,
-// smalle perronrand langs de oostzijde — ruim buiten de robotroute (x >= 15).
-straatNaambord(16, -49, 'Tramhalte', -0.2);
-(function tramPerron() {
-  const perron = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.3, 12), mat(PAL.stoep, 0.9));
-  perron.position.set(16.5, 0.2, -55);
-  perron.receiveShadow = true;
-  wereld.add(perron);
-})();
-
-// Straatmuzikant en levend standbeeld, herkenbare Dam-sfeer zonder gameplay te blokkeren.
-function straatMuzikant(x, z, rotY = 0) {
-  const g = new THREE.Group();
-  const benen = blok(0.34, 0.8, 0.28, 0x2e2e33, 0.82);
-  benen.position.y = 0.4;
-  const lijf = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.9, 7), mat(0x5c4a63, 0.82));
-  lijf.position.y = 1.2;
-  const hoofd = new THREE.Mesh(new THREE.SphereGeometry(0.23, 10, 8), mat(0xd6a77a, 0.75));
-  hoofd.position.y = 1.82;
-  const gitaar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.72, 0.46), mat(0x9b5e2e, 0.8));
-  gitaar.position.set(0.32, 1.18, 0.2);
-  gitaar.rotation.z = 0.6;
-  const hoed = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.28, 0.12, 12), mat(0x2a2522, 0.75));
-  hoed.position.set(1.0, 0.06, 0.0);
-  g.add(benen, lijf, hoofd, gitaar, hoed);
-  g.position.set(x, 0, z);
-  g.rotation.y = rotY;
-  wereld.add(g);
-  schaduwAan(g);
-}
-straatMuzikant(21, 24, -0.6);
-
-function levendStandbeeld(x, z, rotY = 0) {
-  const g = new THREE.Group();
-  const voet = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.05, 0.25, 12), mat(0x777b80, 0.65));
-  voet.position.y = 0.13;
-  const benen = blok(0.34, 0.8, 0.28, 0x9ca0a5, 0.62, 0.15);
-  benen.position.y = 0.65;
-  const lijf = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.38, 1.0, 8), mat(0xa9adb2, 0.58, 0.15));
-  lijf.position.y = 1.45;
-  const hoofd = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), mat(0xb8bcc0, 0.55, 0.12));
-  hoofd.position.y = 2.1;
-  const arm = blok(0.12, 0.85, 0.12, 0xb0b4b8, 0.55, 0.12);
-  arm.position.set(0.46, 1.48, 0);
-  arm.rotation.z = -0.7;
-  g.add(voet, benen, lijf, hoofd, arm);
-  g.position.set(x, 0, z);
-  g.rotation.y = rotY;
-  wereld.add(g);
-  schaduwAan(g);
-}
-levendStandbeeld(36, 17, -0.35);
-
-// Bewegende decortram langs Damrak en Rokin. De tram krijgt een eigen
-// obstakel-rechthoek die elke frame meebeweegt met de tram zelf, zodat de
-// speler (en robots) er niet meer doorheen kunnen lopen.
-//
-// Ticket D4 — dit is de ENIGE plek in het bestand waar de wereld-schaal WEL
-// met de hand toegepast moet worden op iets dat een kind van `wereld` is.
-// Reden: de tram is de enige plek die `g.position.x/z` (LOKALE coördinaten,
-// relatief aan `wereld`) rechtstreeks in een `obstakels`-rechthoek zet — en
-// die array wordt overal elders vergeleken tegen WERELD-coördinaten. Zolang
-// `wereld.scale` (1,1,1) was, was lokaal toevallig gelijk aan wereld; nu niet
-// meer. Vandaar de expliciete ×ARENA_SCHAAL hieronder, op twee plekken: hier
-// bij het aanmaken en in updateBewegendeTrams() bij elke stap.
-//
-// TRAM_HALF_X/Z schalen mee zodat de botsbox proportioneel blijft met de nu
-// visueel kleinere tram (body is 4,25 × 15,5, ook een kind van `wereld`).
-// `snelheid` (verderop, 5,5) blijft bewust ONGEWIJZIGD: dat is een LOKALE
-// snelheid over dezelfde LOKALE afstand (zMin/zMax hieronder blijven ook
-// ongewijzigd) — de rittijd in seconden blijft dus precies gelijk, alleen de
-// wereld die de tram doorkruist is nu kleiner. Dat is precies wat je wilt
-// voor decoratieve achtergrondanimatie.
-const TRAM_HALF_X = 2.4 * ARENA_SCHAAL;
-const TRAM_HALF_Z = 8.1 * ARENA_SCHAAL;
-const bewegendeTrams = [];
-function maakRijdendeTram() {
-  const g = new THREE.Group();
-  const body = blok(4.25, 3.0, 15.5, PAL.tramWit, 0.62);
-  body.position.y = 1.9;
-  const band = blok(4.45, 0.55, 15.8, PAL.tramRood, 0.55);
-  band.position.y = 2.0;
-  g.add(body, band);
-  for (let i = 0; i < 5; i++) {
-    const raam = new THREE.Mesh(new THREE.BoxGeometry(4.55, 1.0, 1.6), mat(0x23303a, 0.36, 0.05, { emissive: 0x101820, emissiveIntensity: 0.08 }));
-    raam.position.set(0, 2.6, -5.4 + i * 2.7);
-    g.add(raam);
-  }
-  for (const dz of [-5.4, 5.4]) {
-    const wiel = blok(4.6, 0.35, 1.2, 0x30343a, 0.45, 0.45);
-    wiel.position.set(0, 0.35, dz);
-    g.add(wiel);
-  }
-  schaduwAan(g);
-  return g;
-}
-function plaatsRijdendeTram() {
-  const g = maakRijdendeTram();
-  g.position.set(5, 0.05, -112);
-  wereld.add(g);
-  // Eigen obstakel-object dat we straks elke frame bijwerken (minX/maxX
-  // staan vast, alleen minZ/maxZ schuiven mee met de tram).
-  // Ticket D4: g.position.x/z is LOKAAL (relatief aan wereld) — ×ARENA_SCHAAL
-  // om de WERELD-positie te krijgen die de obstakels-array verwacht.
-  const obstakel = { minX: g.position.x * ARENA_SCHAAL - TRAM_HALF_X, maxX: g.position.x * ARENA_SCHAAL + TRAM_HALF_X, minZ: g.position.z * ARENA_SCHAAL - TRAM_HALF_Z, maxZ: g.position.z * ARENA_SCHAAL + TRAM_HALF_Z };
-  obstakels.push(obstakel);
-  bewegendeTrams.push({ groep: g, obstakel, zMin: -112, zMax: 106, richting: 1, snelheid: 5.5, belTimer: 5 });
-}
-plaatsRijdendeTram();
-function updateBewegendeTrams(dt) {
-  for (const t of bewegendeTrams) {
-    t.groep.position.z += t.richting * t.snelheid * dt;
-    if (t.groep.position.z > t.zMax) { t.groep.position.z = t.zMax; t.richting = -1; }
-    if (t.groep.position.z < t.zMin) { t.groep.position.z = t.zMin; t.richting = 1; }
-    t.groep.rotation.y = t.richting > 0 ? 0 : Math.PI;
-    // Ticket D4: t.groep.position.z is LOKAAL — zelfde ×ARENA_SCHAAL als bij
-    // het aanmaken hierboven, anders loopt de botsbox los van de tram.
-    t.obstakel.minZ = t.groep.position.z * ARENA_SCHAAL - TRAM_HALF_Z;
-    t.obstakel.maxZ = t.groep.position.z * ARENA_SCHAAL + TRAM_HALF_Z;
-    t.belTimer -= dt;
-    if (t.belTimer <= 0) {
-      if (typeof speelTramBel === 'function') speelTramBel();
-      t.belTimer = 8 + rnd() * 8;
-    }
-  }
-}
-
-wereld.userData.spawnPoorten = [
-  { naam: 'Damrak', x: 0, z: -106 },
-  { naam: 'Rokin', x: 2, z: 96 },
-  { naam: 'Damstraat', x: 116, z: 4 },
-  { naam: 'Kalverstraat', x: -55, z: 92 },
-  { naam: 'Nieuwendijk', x: -52, z: -106 }
-];
+// Ticket D32: tijdelijk op het plein voor de Bijenkorf, tot D35 de
+// upgrades naar de commandopost verhuist.
+const KIOSK_POSITIE = { x: 4, z: -20.2 };
+upgradeKiosk(KIOSK_POSITIE.x, KIOSK_POSITIE.z);
+interactieMarkering(KIOSK_POSITIE.x, KIOSK_POSITIE.z + 4.2, '🛒', 0xffd75e);
 
 // Wolken in low-poly stijl.
 for (let i = 0; i < 9; i++) {
@@ -2480,20 +1797,6 @@ for (let i = 0; i < 9; i++) {
   wolk.position.set(-170 + rnd() * 340, 70 + rnd() * 30, -175 + rnd() * 330);
   scene.add(wolk);
 }
-
-// Extra: klein debug-object om de globale oriëntatie te herkennen in devtools.
-wereld.userData.layout = {
-  schaal: 'ongeveer 1 unit = 1 meter',
-  orientatie: 'x west-oost, z noord-zuid, noord is negatieve z',
-  belangrijkstePunten: {
-    paleis: { x: -93, z: 0 },
-    nieuweKerk: { x: -67, z: -67 },
-    monument: { x: 42, z: -4 },
-    damrak: { x: 0, z: -91 },
-    rokin: { x: 2, z: 86 }
-  }
-};
-
 
 /* ----------------------------------------------------------------
    Duiven: ze scharrelen rond en vliegen op als je te dichtbij komt
@@ -2576,10 +1879,10 @@ function updateDuiven(dt) {
    ================================================================ */
 
 const speler = {
-  // Ticket D5: ×ARENA_SCHAAL — dit is een gameplay-wereldcoördinaat, geen
-  // kind van `wereld`, dus schaalt niet automatisch mee (zie D4, §4.2).
-  positie: new THREE.Vector3(16 * ARENA_SCHAAL, 0, 30 * ARENA_SCHAAL),   // startplek op de Dam, tussen Paleis en Monument
-  yaw: 2.35,       // draaiing (kijkt richting Paleis en Nieuwe Kerk)
+  // Ticket D32: startplek uit DAM_LAYOUT, op het plein west van de
+  // trambaan, met het monument recht voor je.
+  positie: new THREE.Vector3(DAM_LAYOUT.spelerStart.positie[0], 0, DAM_LAYOUT.spelerStart.positie[1]),
+  yaw: -Math.PI / 2,   // draaiing: vooruit is (−sin yaw, −cos yaw), dus −π/2 kijkt naar het oosten
   pitch: 0,        // op/neer kijken
   hoogte: 1.7,     // ooghoogte in meters
   straal: 0.4,     // "dikte" voor botsingen
@@ -2788,7 +2091,7 @@ function updateSpeler(dt) {
   // Camera op ooghoogte zetten, met een subtiel loop-wiebeltje.
   camera.position.set(
     speler.positie.x,
-    speler.hoogte + Math.sin(speler.bobTijd) * 0.035,
+    vloerHoogte(speler.positie.x, speler.positie.z) + speler.hoogte + Math.sin(speler.bobTijd) * 0.035,
     speler.positie.z
   );
   camera.rotation.y = speler.yaw;
@@ -2805,43 +2108,42 @@ function updateSpeler(dt) {
 
 
 // Arcade structuur v4: verdedig het Nationaal Monument.
-// Ticket D5: ×ARENA_SCHAAL — gameplay-wereldcoördinaat, geen kind van
-// `wereld` (zie D4, §4.2).
-const MONUMENT_POSITIE = new THREE.Vector3(42 * ARENA_SCHAAL, 0, -4 * ARENA_SCHAAL);
-// Zelfde rechthoek als het geregistreerde monument-obstakel (zie registreerRechthoek
-// hierboven — ook die kreeg in D4 dezelfde ×ARENA_SCHAAL, dus deze twee blijven
-// gelijk, zie ARCHITECTURE_NOTES_monument.md §4.3). Robots moeten dit vlak
-// raken, niet alleen dicht bij het middelpunt komen.
-const MONUMENT_BOX = { minX: (42 - 10.7) * ARENA_SCHAAL, maxX: (42 + 10.7) * ARENA_SCHAAL, minZ: (-4 - 10.7) * ARENA_SCHAAL, maxZ: (-4 + 10.7) * ARENA_SCHAAL };
+// Ticket D32: het monument staat in de oorsprong, en de speldoos (het vlak
+// dat robots moeten raken) komt uit DAM_LAYOUT. Dezelfde rechthoek is in
+// bouwNationaalMonument() als obstakel geregistreerd, uit dezelfde bron:
+// de handkopie van vóór fase M (ARCHITECTURE_NOTES §4.3) bestaat niet meer.
+const MONUMENT_POSITIE = new THREE.Vector3(DAM_LAYOUT.monument.midden[0], 0, DAM_LAYOUT.monument.midden[1]);
+const MONUMENT_BOX = {
+  minX: MONUMENT_POSITIE.x - DAM_LAYOUT.monument.speldoos, maxX: MONUMENT_POSITIE.x + DAM_LAYOUT.monument.speldoos,
+  minZ: MONUMENT_POSITIE.z - DAM_LAYOUT.monument.speldoos, maxZ: MONUMENT_POSITIE.z + DAM_LAYOUT.monument.speldoos,
+};
 function afstandTotMonument(positie) {
   const dichtstX = Math.max(MONUMENT_BOX.minX, Math.min(positie.x, MONUMENT_BOX.maxX));
   const dichtstZ = Math.max(MONUMENT_BOX.minZ, Math.min(positie.z, MONUMENT_BOX.maxZ));
   return Math.hypot(positie.x - dichtstX, positie.z - dichtstZ);
 }
-// Kalverstraat-robots liepen in een rechte lijn naar het monument, wat ze
-// rakelings langs (of ogenschijnlijk achter) het Madame Tussauds-blok
-// stuurde en daarna dezelfde oostelijke corridor in als de Rokin-robots —
-// alsof ze van poort wisselden. Het tussenpunt houdt ze eerst duidelijk aan
-// de westkant van Tussauds voordat ze rechtstreeks op het monument afgaan.
-// Ticket D5: elke positie, spreidingX/Z en het tussenpunt ×ARENA_SCHAAL —
-// gameplay-wereldcoördinaten, geen kind van `wereld` (zie D4, §4.2).
-// Ticket D6 (meten en bijstellen): meet-dnm-afstanden.mjs bevestigde dat
-// Damrak/Rokin/Damstraat bij het robot-snelheidsplafond onder de 10s-
-// reactiedrempel zakten (6,7-9,1s). Optie 1 uit het plan: deze drie poorten
-// naar buiten verplaatst tot minstens ~35 m van de monumentrand — met een
-// bewuste, gecontroleerde laterale verschuiving (niet puur radiaal: op de
-// oorspronkelijke bearing liep Damrak binnen 2 m tegen GRENS aan, ver onder
-// de 35 m). Elke nieuwe positie is geverifieerd: isVrijePlek() === true,
-// binnen de GRENS-marge, en de route-simulatie (test-dnm-kern.mjs) bereikt
-// het monument. Gecombineerd met een milde plafondverlaging (zie spawnRobot)
-// voor een echte marge i.p.v. een millimeterwerk-uitkomst rond de drempel.
-const SPAWN_POORTEN = [
-  { naam: 'Damrak', positie: new THREE.Vector3(-4, 0, -37.2), spreidingX: 8 * ARENA_SCHAAL, spreidingZ: 3 * ARENA_SCHAAL },
-  { naam: 'Rokin', positie: new THREE.Vector3(-6, 0, 33.3), spreidingX: 8 * ARENA_SCHAAL, spreidingZ: 3 * ARENA_SCHAAL },
-  { naam: 'Damstraat', positie: new THREE.Vector3(53, 0, 2), spreidingX: 2 * ARENA_SCHAAL, spreidingZ: 8 * ARENA_SCHAAL },
-  { naam: 'Kalverstraat', positie: new THREE.Vector3(-55 * ARENA_SCHAAL, 0, 92 * ARENA_SCHAAL), spreidingX: 6 * ARENA_SCHAAL, spreidingZ: 4 * ARENA_SCHAAL, tussenpunt: new THREE.Vector3(-45 * ARENA_SCHAAL, 0, 45 * ARENA_SCHAAL) },
-  { naam: 'Nieuwendijk', positie: new THREE.Vector3(-52 * ARENA_SCHAAL, 0, -106 * ARENA_SCHAAL), spreidingX: 6 * ARENA_SCHAAL, spreidingZ: 4 * ARENA_SCHAAL }
-];
+// Ticket D32: de poorten komen uit de routes van DAM_LAYOUT. De poort is het
+// eerste routepunt; de spreiding ligt dwars op de eerste routestrook (2 m
+// smaller dan de strook zelf) en 1 m langs de route.
+//
+// Tot D33 volgen robots de routepunten één voor één (`routePunten`), zoals
+// vroeger het ene tussenpunt van de Kalverstraat. D33 vervangt dat door
+// echt routevolgen op afstand langs de route, met eigen baan en onderlinge
+// afstand (plan §11.7.4).
+const SPAWN_POORTEN = [...ROUTES.values()].map(route => {
+  const eerste = route.segmenten[0];
+  const dwars = Math.max(1, eerste.breedte - 2);
+  return {
+    naam: route.poort,
+    positie: new THREE.Vector3(route.punten[0][0], 0, route.punten[0][1]),
+    spreidingX: Math.abs(eerste.rz) * dwars + Math.abs(eerste.rx) * 1,
+    spreidingZ: Math.abs(eerste.rx) * dwars + Math.abs(eerste.rz) * 1,
+    routePunten: route.punten.slice(1).map(([x, z]) => new THREE.Vector3(x, 0, z)),
+  };
+});
+// Afstand waarop een robot een routepunt als bereikt beschouwt en naar het
+// volgende loopt.
+const ROUTEPUNT_BEREIKT = 1.5;
 
 const spel = {
   score: 0,
@@ -3273,8 +2575,10 @@ function updateMonumentEffecten() {
   for (const wolk of d.wolkjes) {
     const t = (klok * 0.16 + wolk.userData.fase) % 1;
     const s = 1 + t * 2.2;
-    wolk.position.set(Math.cos(wolk.userData.hoek) * (1.5 + t * 2), 9 + t * 13, Math.sin(wolk.userData.hoek) * (1.5 + t * 2));
-    wolk.scale.set(s, s * MONUMENT_ROND_Y, s);
+    // Ticket D32: lokaal t.o.v. de voet van de pyloon (rook.position.y),
+    // dus vanaf de afgebroken top op ~22 m omhoog.
+    wolk.position.set(Math.cos(wolk.userData.hoek) * (1 + t * 2.5), 21 + t * 10, Math.sin(wolk.userData.hoek) * (1 + t * 2.5));
+    wolk.scale.setScalar(s);
     wolk.material.opacity = dikte * Math.sin(Math.PI * t);
   }
   if (monumentSchade.tier >= 3) {
@@ -3571,15 +2875,14 @@ function activeerBijenkorfUpgradeShop() {
 
 // --- Het centrale interactiesysteem ---------------------------------
 
-// Ticket D5: elke positie ×ARENA_SCHAAL — gameplay-wereldcoördinaten, geen
-// kind van `wereld` (zie D4, §4.2). `radius` blijft bewust ONgeschaald: dat
-// is een interactieafstand op mensenmaat, geen wereldafstand (D2's
-// overlap-check bewaakt dat de drie punten elkaar dan niet gaan overlappen).
+// Ticket D32: posities uit DAM_LAYOUT (Kerkklok) of tijdelijk rond de
+// commandopost en voor de Bijenkorf, tot D35 er één menu van maakt.
+// `radius` is een interactieafstand op mensenmaat.
 const interactiePunten = [
   {
     naam: 'Kerkklok Boost',
     type: 'kerkklok',
-    positie: new THREE.Vector3(-67 * ARENA_SCHAAL, 0, -38 * ARENA_SCHAAL),
+    positie: new THREE.Vector3(DAM_LAYOUT.kerkklok.positie[0], 0, DAM_LAYOUT.kerkklok.positie[1]),
     radius: 4,
     prompt: () => kerkklokBoost.active
       ? '🔔 Kerkklok Boost is al actief'
@@ -3591,7 +2894,7 @@ const interactiePunten = [
   {
     naam: 'Koninklijke Reparatie',
     type: 'reparatie',
-    positie: new THREE.Vector3(-70 * ARENA_SCHAAL, 0, 5 * ARENA_SCHAAL),
+    positie: new THREE.Vector3(DAM_LAYOUT.commandopost.spelerPlek[0], 0, DAM_LAYOUT.commandopost.spelerPlek[1]),
     radius: 4,
     prompt: 'Druk T voor Koninklijke Reparatie (€100, +25 HP)',
     actie: koopMonumentReparatie,
@@ -3599,7 +2902,7 @@ const interactiePunten = [
   {
     naam: 'Bijenkorf Upgrades',
     type: 'upgradeShop',
-    positie: new THREE.Vector3(60 * ARENA_SCHAAL, 0, -17 * ARENA_SCHAAL),
+    positie: new THREE.Vector3(KIOSK_POSITIE.x, 0, KIOSK_POSITIE.z + 4.2),
     radius: 4,
     prompt: () => bijenkorfShopOpen ? 'Druk T om de winkel te sluiten' : 'Druk T voor Bijenkorf Upgrades',
     actie: activeerBijenkorfUpgradeShop,
@@ -3608,32 +2911,34 @@ const interactiePunten = [
 
 // --- Ticket D10: bouwplekken -------------------------------------------
 //
-// 5 poorten × 2 sokkels = 10 bouwplekken, in de aanloopcorridor van hun
-// EIGEN poort (niet rond het monument): een toren dekt dan één route, niet
-// alles, en dat maakt de poortkeuze betekenisvol. Op 25 % en 55 % van de
-// route poort → monument, met een zijwaartse verschuiving zodat de plek de
-// corridor niet blokkeert.
+// 5 poorten × 2 sokkels = 10 bouwplekken, in de aanloop van hun EIGEN
+// poort (niet rond het monument): een toren dekt dan één route, niet
+// alles, en dat maakt de poortkeuze betekenisvol.
 //
-// "De route" is NIET de rechte lijn poort → monument: bij Rokin en
-// Nieuwendijk loopt die dwars door gebouwen, en robots glijden daar in
-// werkelijkheid langs de gevels. Daarom wordt de route bij het laden één
-// keer gesimuleerd met dezelfde regels als de robot-AI (rechtdoor naar het
-// doel, botsing oplossen met straal 0,45, Kalverstraat eerst via het
-// tussenpunt tot binnen 6 m) — dezelfde simulatie als test-dnm-kern.mjs.
-const BOUWPLEK_FRACTIES = [0.25, 0.55];
+// Ticket D32: de plekken komen uit DAM_LAYOUT.bouwplekken, zoals
+// goedgekeurd in de plattegrond: één "ver" (buiten het wapenbereik vanaf
+// het monument) en één "nabij" per route. Er wordt niets meer afgeleid uit
+// een gesimuleerde looproute. index 0 = ver, 1 = nabij: dezelfde betekenis
+// als de 25 %- en 55 %-plekken van D10, zodat torencode en tests niet
+// hoeven te veranderen.
 const BOUWPLEK_RADIUS = 2.5;             // interactieafstand; klein genoeg dat plekken elkaar niet overlappen
 const ROUTE_STAP = 0.25;
 
+// De weg die een robot van deze poort vandaan aflegt, in stapjes van 0,25 m,
+// met precies de regels van updateRobots(): routepunten één voor één tot
+// binnen ROUTEPUNT_BEREIKT, botsingen oplossen met straal 0,45. Dient tests
+// en meetscripts (en puntOpRoute hieronder); D33 vervangt dit door de vaste
+// route zelf.
 const looproutes = new Map();
 function looproute(poort) {
   if (looproutes.has(poort.naam)) return looproutes.get(poort.naam);
   const pos = { x: poort.positie.x, z: poort.positie.z };
   const punten = [{ x: pos.x, z: pos.z }];
-  let tussenpuntBereikt = !poort.tussenpunt;
+  let index = 0;
   for (let i = 0; i < 3000; i++) {
-    if (!tussenpuntBereikt && Math.hypot(pos.x - poort.tussenpunt.x, pos.z - poort.tussenpunt.z) < 6) tussenpuntBereikt = true;
-    const doel = tussenpuntBereikt ? MONUMENT_POSITIE : poort.tussenpunt;
-    const dx = doel.x - pos.x, dz = doel.z - pos.z, lengte = Math.hypot(dx, dz);
+    while (index < poort.routePunten.length - 1 && Math.hypot(pos.x - poort.routePunten[index].x, pos.z - poort.routePunten[index].z) < ROUTEPUNT_BEREIKT) index++;
+    const doel = poort.routePunten[index];
+    const dx = doel.x - pos.x, dz = doel.z - pos.z, lengte = Math.hypot(dx, dz) || 1;
     pos.x += (dx / lengte) * ROUTE_STAP;
     pos.z += (dz / lengte) * ROUTE_STAP;
     losBotsingenOp(pos, 0.45);
@@ -3644,67 +2949,50 @@ function looproute(poort) {
   return punten;
 }
 
-// Punt op een fractie van de (gesimuleerde) looproute, plus de lokale
-// looprichting (over een paar meter gemiddeld, zodat één botsingsstap de
-// richting niet laat verspringen).
+// Punt op een fractie van de route, plus de lokale looprichting. Sinds D32
+// op de vaste route uit DAM_LAYOUT (zelfde retourvorm als voorheen).
 function puntOpRoute(poort, fractie) {
-  const punten = looproute(poort);
-  const cumulatief = [0];
-  for (let i = 1; i < punten.length; i++) cumulatief.push(cumulatief[i - 1] + Math.hypot(punten[i].x - punten[i - 1].x, punten[i].z - punten[i - 1].z));
-  const doel = Math.max(0, Math.min(1, fractie)) * cumulatief[cumulatief.length - 1];
-  let i = cumulatief.findIndex(c => c >= doel);
-  if (i < 0) i = punten.length - 1;
-  const voor = punten[Math.max(0, i - 8)], na = punten[Math.min(punten.length - 1, i + 8)];
-  const lengte = Math.hypot(na.x - voor.x, na.z - voor.z) || 1;
-  return { x: punten[i].x, z: punten[i].z, rx: (na.x - voor.x) / lengte, rz: (na.z - voor.z) / lengte };
+  const route = ROUTES.get(poort.naam);
+  const p = puntOp(route, Math.max(0, Math.min(1, fractie)) * route.lengte);
+  return { x: p.x, z: p.z, rx: p.rx, rz: p.rz };
 }
 
 const BOUWPLEKKEN = [];
 for (const poort of SPAWN_POORTEN) {
-  BOUWPLEK_FRACTIES.forEach((fractie, index) => {
-    // Loodrecht op de looprichting zoeken naar een vrije plek; lukt dat niet,
-    // langs de route schuiven — plek 1 bij voorkeur richting de poort, plek 2
-    // richting het monument, zodat ze elkaar niet naderen. Nodig bij de
-    // Nieuwendijk: tussen ~16 % en ~38 % lopen robots daar door een steeg van
-    // ~1,5 m breed waar geen tegel past. De eerste vrije plek wint
-    // (deterministisch — er zit geen toeval in).
-    const richting = index === 0 ? -1 : 1;
-    const verschuivingen = [0];
-    for (const stap of [0.03, 0.06, 0.09, 0.12, 0.15]) verschuivingen.push(stap * richting, -stap * richting);
-    let positie = null, p = null, zijOffset = 0;
-    zoek:
-    for (const verschuiving of verschuivingen) {
-      p = puntOpRoute(poort, fractie + verschuiving);
-      for (const afstand of [2.2, 3.0, 1.8, 3.6]) {
-        for (const kant of [1, -1]) {
-          const x = p.x - p.rz * afstand * kant, z = p.z + p.rx * afstand * kant;
-          const vrij = isVrijePlek(x, z, 1.4) && afstandTotMonument({ x, z }) > 3
-            && BOUWPLEKKEN.every(b => Math.hypot(b.positie.x - x, b.positie.z - z) >= 2 * BOUWPLEK_RADIUS);
-          if (vrij) { positie = new THREE.Vector3(x, 0, z); zijOffset = afstand * kant; break zoek; }
-        }
-      }
-    }
-    if (!positie) positie = new THREE.Vector3(p.x, 0, p.z);   // vangnet; test-dnm-bouwplekken bewaakt dat dit niet nodig is
-    // `route` + `zijOffset` (Ticket D13): het punt op de looproute naast deze
-    // plek en hoe ver de plek daar loodrecht naast ligt — een hek spant
-    // vanaf hier dwars over de route.
-    BOUWPLEKKEN.push({ poort: poort.naam, index, positie, hoek: Math.atan2(p.rx, p.rz), toren: null, kaderMateriaal: null,
-      route: { x: p.x, z: p.z, rx: p.rx, rz: p.rz }, zijOffset });
-  });
+  const route = ROUTES.get(poort.naam);
+  for (const [index, soort] of [[0, 'ver'], [1, 'nabij']]) {
+    const b = DAM_LAYOUT.bouwplekken.find(p => p.route === poort.naam && p.soort === soort);
+    const [x, z] = b.positie;
+    const pr = projecteerOpRoute(route, x, z);
+    const segIndex = route.segmenten.indexOf(pr.segment);
+    // `route` + `zijOffset` (Ticket D13): het punt op de route naast deze
+    // plek en hoe ver de plek daar loodrecht naast ligt (+ = links van de
+    // looprichting). `hekBreedte` (D32): wat een hek hier overspant, uit de
+    // plattegrond: de hele rijbaan of straat, op het plein de strook + 2 m.
+    BOUWPLEKKEN.push({
+      poort: poort.naam, index, soort, positie: new THREE.Vector3(x, 0, z), hoek: Math.atan2(pr.rx, pr.rz),
+      toren: null, kaderMateriaal: null,
+      route: { x: pr.x, z: pr.z, rx: pr.rx, rz: pr.rz }, s: pr.s,
+      zijOffset: (x - pr.x) * -pr.rz + (z - pr.z) * pr.rx,
+      hekBreedte: DAM_LAYOUT.hekBreedte[poort.naam][segIndex] ?? pr.segment.breedte + 2,
+    });
+  }
 }
 
 // Zichtbaar: een lichte vloertegel met een lage rand die zwak pulseert
 // zolang de plek leeg is. Rechtstreeks in de scene (wereldcoördinaten).
 for (const plek of BOUWPLEKKEN) {
   const g = new THREE.Group();
-  const tegel = blok(2.4, 0.1, 2.4, 0xb9b2a4, 0.85);
-  tegel.position.y = 0.05;
+  // Ticket D32: tegel 1,8 m (was 2,4), zodat hij op een stoep van 2,5 m
+  // past; het torenobstakel blijft 1,4 m.
+  const tegel = blok(1.8, 0.1, 1.8, 0xb9b2a4, 0.85);
+  tegel.position.y = vloerHoogte(plek.positie.x, plek.positie.z) + 0.05;
   tegel.castShadow = false;
   g.add(tegel);
   plek.kaderMateriaal = new THREE.MeshBasicMaterial({ color: 0xffd75e, transparent: true, opacity: 0.5 });
-  for (const [bx, bz, lx, lz] of [[0, 1.15, 2.4, 0.12], [0, -1.15, 2.4, 0.12], [1.15, 0, 0.12, 2.4], [-1.15, 0, 0.12, 2.4]]) {
+  for (const [bx, bz, lx, lz] of [[0, 0.85, 1.8, 0.12], [0, -0.85, 1.8, 0.12], [0.85, 0, 0.12, 1.8], [-0.85, 0, 0.12, 1.8]]) {
     const rand = new THREE.Mesh(new THREE.BoxGeometry(lx, 0.18, lz), plek.kaderMateriaal);
-    rand.position.set(bx, 0.12, bz);
+    rand.position.set(bx, tegel.position.y + 0.07, bz);
     g.add(rand);
   }
   g.position.copy(plek.positie);
@@ -3878,6 +3166,13 @@ const hpBalkTmp = new THREE.Vector3();
 // obstakel — `obstakels` kent alleen assen-uitgelijnde rechthoeken, en een
 // schuin hek dwars over een diagonale route is dat niet.
 function hekPaalOffsets(plek) {
+  // Ticket D32: bij een plek uit de plattegrond spant het hek precies de
+  // breedte die daar is vastgelegd, gecentreerd op de route. De palen
+  // staan gelijk verdeeld, met een paal op elk uiteinde.
+  if (plek.hekBreedte) {
+    const n = Math.max(1, Math.ceil(plek.hekBreedte / HEK_PAAL_STAP));
+    return Array.from({ length: n + 1 }, (_, i) => -plek.hekBreedte / 2 + (i * plek.hekBreedte) / n);
+  }
   const kant = Math.sign(plek.zijOffset) || 1;
   const van = -kant * HEK_REIKWIJDTE, tot = plek.zijOffset + kant;
   const [lo, hi] = van < tot ? [van, tot] : [tot, van];
@@ -4341,8 +3636,8 @@ function maakRobot(type = 'normal') {
     beloningMultiplier: config.beloningMultiplier,
     monumentSchade: config.monumentSchade,
     doel: null,                          // waar wandelt hij heen?
-    tussenpunt: null,                    // optioneel routepunt vóór het monument (zie SPAWN_POORTEN)
-    tussenpuntBereikt: false,
+    routePunten: null,                   // Ticket D32: de routepunten van zijn poort (zie SPAWN_POORTEN)
+    routeIndex: 0,                       // het routepunt waar hij nu naartoe loopt
     pauze: 0,                            // even stilstaan bij aankomst
     snelheid: 1.4 + Math.random(),       // elke robot loopt anders snel
     stapfase: Math.random() * 10,        // zodat ze niet synchroon lopen
@@ -4365,7 +3660,8 @@ function spawnRobot(poort = null, type = 'normal') {
   if (poort) {
     robot.groep.position.copy(spawnPlekVoorPoort(poort));
     spel.laatsteSpawnPoort = poort.naam;
-    robot.tussenpunt = poort.tussenpunt ? poort.tussenpunt.clone() : null;
+    robot.routePunten = poort.routePunten;
+    robot.routeIndex = 0;
   } else {
     robot.groep.position.copy(willekeurigePlek(18));
   }
@@ -4409,15 +3705,15 @@ function updateRobots(dt) {
       if (robot.schildMesh) robot.schildMesh.visible = robot.schildActief;
     }
 
-    // V4: robots komen uit de straatopeningen en lopen naar het Nationaal Monument.
-    // Sommige poorten (zie SPAWN_POORTEN) geven eerst een tussenpunt mee, zodat
-    // robots duidelijk hun eigen straat volgen voordat ze de laatste rechte lijn
-    // naar het monument inzetten, in plaats van meteen dwars over het plein te
-    // snijden en in eenzelfde corridor als een andere poort te verdwijnen.
-    if (robot.tussenpunt && !robot.tussenpuntBereikt && positie.distanceTo(robot.tussenpunt) < 6) {
-      robot.tussenpuntBereikt = true;
+    // Robots komen uit de straatopeningen en lopen de routepunten van hun
+    // poort af (Ticket D32, uit DAM_LAYOUT); het laatste punt ligt tegen het
+    // monument. Een robot zonder poort (willekeurig gespawnd) loopt recht
+    // naar het monument.
+    if (robot.routePunten) {
+      while (robot.routeIndex < robot.routePunten.length - 1
+        && Math.hypot(positie.x - robot.routePunten[robot.routeIndex].x, positie.z - robot.routePunten[robot.routeIndex].z) < ROUTEPUNT_BEREIKT) robot.routeIndex++;
     }
-    let huidigDoel = (robot.tussenpunt && !robot.tussenpuntBereikt) ? robot.tussenpunt : MONUMENT_POSITIE;
+    let huidigDoel = robot.routePunten ? robot.routePunten[robot.routeIndex] : MONUMENT_POSITIE;
 
     // Raakt de robot het monument-vlak zelf (niet alleen het middelpunt)?
     // De obstakel-rechthoek rond het monument houdt robots anders voor altijd
@@ -4511,7 +3807,7 @@ function updateRobots(dt) {
     robot.beenRechts.rotation.x = -zwaai;
     robot.armLinks.rotation.x   = -zwaai * 0.8;
     robot.armRechts.rotation.x  =  zwaai * 0.8;
-    positie.y = Math.abs(Math.sin(robot.stapfase)) * 0.06;
+    positie.y = vloerHoogte(positie.x, positie.z) + Math.abs(Math.sin(robot.stapfase)) * 0.06;
   }
 }
 
@@ -4629,12 +3925,12 @@ const raycaster = new THREE.Raycaster();
 // startpunt uit het plan) viel voor drie poorten precies op de verre
 // bouwplek (25,2–25,7 m), te krap om betrouwbaar te zijn. Bij het
 // robot-snelheidsplafond (3,30 m/s) blijft er ~6,7 s vuurvenster per robot.
-// Was vóór D29 150 × ARENA_SCHAAL = 50 m: vanaf het monument elke poort.
+// Was vóór D29 50 m: vanaf het monument elke poort.
 const WAPEN_BEREIK = 22;
 raycaster.far = WAPEN_BEREIK;
 // Alleen om te zien of een schot dat binnen bereik niets raakte, iets
 // verderop WEL geraakt zou hebben (zie toonBuitenBereik).
-const BUITEN_BEREIK_CONTROLE = 150 * ARENA_SCHAAL;
+const BUITEN_BEREIK_CONTROLE = 50;
 
 // Ticket D29: het schot is pure hitscan zonder spoor, dus een schot dat
 // tekort komt zag er precies zo uit als een misser. Nu verschijnt op het
@@ -5257,7 +4553,9 @@ requestAnimationFrame(gameLoop);
 window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => bijenkorfShopOpen, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, activeerKerkklokBoost, updateKerkklokBoost,
   GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerBijenkorfUpgradeShop, updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
   // Speeltest-feedback (na D6): overzicht-hulpmiddelen.
-  tekenMinimap, updateRichtingspijlen, verbergRichtingspijlen, projecteerOpScherm, robotPijlenPool, ARENA_SCHAAL,
+  tekenMinimap, updateRichtingspijlen, verbergRichtingspijlen, projecteerOpScherm, robotPijlenPool,
+  // Ticket D32: het nieuwe fundament (ARENA_SCHAAL bestaat niet meer).
+  DAM_LAYOUT, ROUTES, wereld, vloerHoogte, puntOp, projecteerOpRoute, vloerTextuur, TEXTUUR_TEKENAARS, gebouwGroepen,
   // Ticket D7: eindscherm en runstatistieken.
   runStats, eindigRun, toonEindscherm, verdienGeld,
   // Ticket D8: highscore.

@@ -45,10 +45,11 @@ const metingen = await page.evaluate(() => {
 
   // Ticket D29: afstand van de monumentrand tot de twee toekomstige
   // bouwplekken per poort (25 % en 55 % van de lijn poort → monument, zie
-  // D10). Kalverstraat loopt via zijn tussenpunt: de lijn is dan poort →
-  // tussenpunt → monument, en 25/55 % is een fractie van die hele route.
+  // D10). Sinds D32 (fase M) loopt elke route via zijn routepunten uit
+  // DAM_LAYOUT; 25/55 % is een fractie van die hele route. D43 herziet dit
+  // script voor de nieuwe kaart.
   function puntOpRoute(poort, fractie) {
-    const punten = [poort.positie, ...(poort.tussenpunt ? [poort.tussenpunt] : []), d.MONUMENT_POSITIE];
+    const punten = [poort.positie, ...poort.routePunten];
     const stukken = [];
     for (let i = 0; i < punten.length - 1; i++) stukken.push(Math.hypot(punten[i + 1].x - punten[i].x, punten[i + 1].z - punten[i].z));
     let rest = fractie * stukken.reduce((a, b) => a + b, 0);

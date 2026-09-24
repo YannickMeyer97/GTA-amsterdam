@@ -33,7 +33,9 @@ check('Geen enkele poort ligt binnen bereik van de speler-startplek', basis.vana
 
 const richting = await page.evaluate(() => {
   const d = window.DamChaosDebug;
-  const wereld = d.scene.children.find(c => c.isGroup && Math.abs(c.scale.x - d.ARENA_SCHAAL) < 1e-6);
+  // Ticket D32: `wereld` staat sinds fase M op de debug-hook; de oude
+  // zoektocht via wereld.scale (ARENA_SCHAAL) werkt niet meer.
+  const wereld = d.wereld;
   for (const r of [...d.robots]) { d.scene.remove(r.groep); d.robots.splice(d.robots.indexOf(r), 1); }
   d.spel.teSpawnen = 0;
   const kandidaten = [
@@ -45,14 +47,19 @@ const richting = await page.evaluate(() => {
     for (let i = 0; i < 72; i++) {
       d.speler.positie.set(x, 0, z);
       d.speler.yaw = (i / 72) * Math.PI * 2;
-      d.speler.pitch = 0;
-      d.updateSpeler(0);
-      d.camera.updateMatrixWorld(true);
-      d.raycaster.far = 30;
-      d.raycaster.setFromCamera({ x: 0, y: 0 }, d.camera);
-      const hits = d.raycaster.intersectObject(wereld, true);
-      d.raycaster.far = d.WAPEN_BEREIK;
-      if (hits.length === 0) return { gevonden: true, x, z, yaw: d.speler.yaw };
+      // Vrij zowel horizontaal als iets omlaag (zoals straks op een robot van
+      // 20 m gericht wordt): sinds D32 staan er leeuwen op de treden.
+      let vrij = true;
+      for (const pitch of [0, -Math.atan((d.vloerHoogte(x, z) + d.speler.hoogte - 1.0) / 20)]) {
+        d.speler.pitch = pitch;
+        d.updateSpeler(0);
+        d.camera.updateMatrixWorld(true);
+        d.raycaster.far = 30;
+        d.raycaster.setFromCamera({ x: 0, y: 0 }, d.camera);
+        if (d.raycaster.intersectObject(wereld, true).length > 0) vrij = false;
+        d.raycaster.far = d.WAPEN_BEREIK;
+      }
+      if (vrij) return { gevonden: true, x, z, yaw: d.speler.yaw };
     }
   }
   return { gevonden: false };
@@ -76,7 +83,9 @@ async function schietOp(afstand, pitchOverride = null) {
       robot.groep.rotation.set(0, 0, 0);
       robot.groep.updateMatrixWorld(true);
       // Iets omlaag richten, zodat de schotlijn het lijf (~1 m hoog) raakt.
-      d.speler.pitch = -Math.atan((d.speler.hoogte - 1.0) / afstand);
+      // Ticket D32: de speler staat op vloerHoogte (bv. de monumenttreden),
+      // dus richten vanaf de echte ooghoogte.
+      d.speler.pitch = -Math.atan((d.vloerHoogte(richting.x, richting.z) + d.speler.hoogte - 1.0) / afstand);
     }
     if (pitchOverride !== null) d.speler.pitch = pitchOverride;
     d.updateSpeler(0);

@@ -10,9 +10,16 @@
 // dekt één route") wordt daarom getoetst als: dichter bij de eigen route dan
 // bij elke andere route.
 //
-// "Route" = de gesimuleerde looproute uit de game (looproute(poort)), niet
-// de rechte lijn: bij Rokin en Nieuwendijk loopt die rechte lijn dwars door
-// gebouwen, en robots glijden daar langs de gevels.
+// Ticket D32: de plekken komen sinds fase M uit DAM_LAYOUT (de
+// goedgekeurde plattegrond), en "route" is de vaste route uit die layout
+// (d.ROUTES), niet meer de gesimuleerde looproute. Twee toetsen zijn daarom
+// aangepast:
+// - "vrije plek" toetst of het torenobstakel (±0,7 m) vrij staat, niet een
+//   willekeurige marge van 1 m: een plek op een stoep van 2,5 m ligt bewust
+//   dicht bij de gevel;
+// - "naast de looplijn" toetst de afstand tot de RAND van de strook (0,3 m
+//   tot 3 m), niet tot de middellijn: een Damrak-strook is 9 m breed, een
+//   plein-strook 3 m.
 import { openDefend, makeChecker } from '../helpers-defend.mjs';
 
 const { browser, page, errs } = await openDefend();
@@ -20,19 +27,10 @@ const { check, report } = makeChecker();
 
 const r = await page.evaluate(() => {
   const d = window.DamChaosDebug;
-  function routePunten(poort) {
-    return d.looproute(poort);
-  }
-  function afstandTotSegment(p, a, b) {
-    const dx = b.x - a.x, dz = b.z - a.z;
-    const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / (dx * dx + dz * dz)));
-    return Math.hypot(p.x - (a.x + dx * t), p.z - (a.z + dz * t));
-  }
+  // Afstand van p tot de rand van de strook van deze route (negatief = erop).
   function afstandTotRoute(p, poort) {
-    const pts = routePunten(poort);
-    let min = Infinity;
-    for (let i = 0; i < pts.length - 1; i++) min = Math.min(min, afstandTotSegment(p, pts[i], pts[i + 1]));
-    return min;
+    const pr = d.projecteerOpRoute(d.ROUTES.get(poort.naam), p.x, p.z);
+    return pr.afstand - pr.segment.breedte / 2;
   }
   const plekken = d.BOUWPLEKKEN.map(plek => {
     const eigen = d.SPAWN_POORTEN.find(p => p.naam === plek.poort);
@@ -43,7 +41,7 @@ const r = await page.evaluate(() => {
       poort: plek.poort, index: plek.index,
       x: plek.positie.x, z: plek.positie.z,
       binnenGrens: plek.positie.x >= d.GRENS.minX && plek.positie.x <= d.GRENS.maxX && plek.positie.z >= d.GRENS.minZ && plek.positie.z <= d.GRENS.maxZ,
-      vrij: d.isVrijePlek(plek.positie.x, plek.positie.z, 1.0),
+      vrij: d.isVrijePlek(plek.positie.x, plek.positie.z, 0.7),
       buitenMonument: d.afstandTotMonument(plek.positie) > 0,
       eigenRoute, dichtsteAndereRoute: Math.min(...andereRoutes),
       totMonument: d.afstandTotMonument(plek.positie),
@@ -65,11 +63,13 @@ check('Elke poort heeft er precies 2', r.perPoort.every(n => n === 2), r.perPoor
 for (const p of r.plekken) {
   check(`Bouwplek ${p.naam}: binnen GRENS, op een vrije plek, buiten de monumentdoos`, p.binnenGrens && p.vrij && p.buitenMonument, p);
   check(`Bouwplek ${p.naam}: ligt dichter bij de eigen route dan bij elke andere`, p.eigenRoute < p.dichtsteAndereRoute, p);
-  check(`Bouwplek ${p.naam}: naast de looplijn (≥ 1,5 m), niet erop`, p.eigenRoute >= 1.5 && p.eigenRoute <= 3.5, p);
+    // Tegelrand (halve tegel 0,9 m) tot strookrand: 0,3 m tot 3 m.
+  const tegelTotStrook = p.eigenRoute - 0.9;
+  check(`Bouwplek ${p.naam}: naast de strook (tegel 0,3–3 m van de rand), niet erop`, tegelTotStrook >= 0.3 && tegelTotStrook <= 3, { tegelTotStrook, ...p });
   check(`Bouwplek ${p.naam}: is een interactiepunt en staat in de scene`, p.interactie && p.inScene, p);
 }
 check('Geen twee bouwplekken liggen binnen elkaars radius', r.overlap.length === 0, r.overlap);
-check('Per poort ligt plek 1 (25 %) verder van het monument dan plek 2 (55 %)',
+check('Per poort ligt plek 1 (ver) verder van het monument dan plek 2 (nabij)',
   r.perPoort.every((_, i) => {
     const poort = r.plekken.filter(p => p.poort === r.plekken[i * 2].poort);
     return poort.find(p => p.index === 0).totMonument > poort.find(p => p.index === 1).totMonument;

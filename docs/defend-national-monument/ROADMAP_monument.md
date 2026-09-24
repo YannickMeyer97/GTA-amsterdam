@@ -105,7 +105,7 @@ plan, met de besluiten van de eigenaar, staat in
 | | Ticket | Kern |
 | --- | --- | --- |
 | ☑ | **D31** | Plattegrond ontwerpen en laten goedkeuren → **M1** *(voorstel 2 goedgekeurd)* |
-| ☐ | **D32** | Nieuw fundament (grey-box): `DAM_LAYOUT`, vloer met kinderkopjes, rijbanen, tramrails |
+| ☑ | **D32** | Nieuw fundament (grey-box): `DAM_LAYOUT`, vloer met kinderkopjes, rijbanen, tramrails |
 | ☐ | **D33** | Vaste routes over de rijbanen; bouwplekken en hekken uit de layout |
 | ☐ | **D34** | Routes zichtbaar: oplichtend bij de aankondiging, bakens aan de straatingang |
 | ☐ | **D35** | Commandopost bij het monument, één menupaneel, HUD zonder overlap → **M2** (grey-box speeltest) |
@@ -148,6 +148,55 @@ in de pagina, als JSON; alles wordt daaruit berekend. In D32 wordt dat blok
 - **Toetsing:** `meet-dnm-plattegrond.mjs` geeft 37/37 toetsen goed.
 - **Doelarchitectuur:** plan §11.7, beknopt in `ARCHITECTURE_NOTES_monument.md`
   §15.
+
+**D32 — nieuw fundament, verslag.**
+- **De oude wereldbouw is eruit** (~2.060 regels). De Dam wordt nu op
+  mensmaat 1:1 gebouwd uit `DAM_LAYOUT`, letterlijk het JSON-blok uit de
+  plattegrond. `ARENA_SCHAAL`, `GEBOUW_HOOGTE_SCHAAL`,
+  `MONUMENT_HOOGTE_SCHAAL` en `MONUMENT_ROND_Y` bestaan niet meer.
+- **Vloer:**
+  - kinderkopjes op het plein;
+  - asfalt met tramrails op Damrak, Rokin en Damstraat;
+  - natuursteen op de trambaan over de Dam;
+  - stoepen met een stoeprand van 0,12 m;
+  - lichte klinkers in de voetgangersstraten;
+  - donkere klinkerstroken waar een route over het plein loopt.
+
+  Alle texturen worden procedureel getekend met een vaste seed (techniek
+  gekopieerd uit Undead).
+- **Gebouwen:** massieve blokken op hun voetafdruk en hoogte, met één
+  herkenningspunt per landmark: de koepel van het Paleis, de spits van de
+  Nieuwe Kerk, de toren van de Bijenkorf, de koperen kap van Industria.
+  Botsing per deel via `registreerRechthoek`.
+- **Monument:** opnieuw opgebouwd op 1:1 (pyloon 22 m) met alle
+  schadestaten van D20. De paaltjesring is weg; de leeuwen staan op de
+  treden, de urnenmuur alleen aan de noordoostkant.
+- **Naar voren gehaald uit D33:**
+  - de bouwplekken komen al uit de layout, met een hek over de volle
+    rijbaan- of straatbreedte;
+  - robots lopen de routepunten van hun poort af.
+
+  Het echte routevolgen (baan, onderlinge afstand, hek op route-`s`) blijft
+  D33.
+- **Tijdelijk tot D35:** de reparatie staat op de plek van de commandopost,
+  de upgradekiosk op het plein voor de Bijenkorf.
+- **Tests:**
+  - nieuw: `test-dnm-layout.mjs` (23 checks). Die eist dat de game-layout
+    gelijk is aan de plattegrond, dat alle plattegrondtoetsen goed zijn,
+    dat er geen obstakel op een rijbaan of strook ligt, en dat de vloer
+    klopt en de texturen deterministisch zijn;
+  - bijgewerkt: `test-dnm-bouwplekken` (plekken uit de layout, afstand tot
+    de strookrand) en `test-dnm-wapenbereik` (`wereld` via de debug-hook,
+    richten vanaf de echte ooghoogte).
+- **Prestaties** (1280×720, zelfde standpunten als de nulmeting):
+
+  | Standpunt | Draw calls (was) | Driehoeken (was) |
+  |---|---:|---:|
+  | monument | 240 (1407) | 9k (50k) |
+  | plein west | 265 (1421) | 9k (51k) |
+  | Damrak | 350 (2314) | 13k (70k) |
+
+  Laadtijd headless 2,9 s (was 6,2 s).
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 
