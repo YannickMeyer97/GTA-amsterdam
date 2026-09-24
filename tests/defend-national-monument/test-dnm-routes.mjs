@@ -114,13 +114,14 @@ const hek = await page.evaluate(() => {
   const d = window.DamChaosDebug;
   const DT = 1 / 30;
   const uit = [];
-  for (const plek of d.BOUWPLEKKEN.filter(b => b.index === 0)) {
+  for (const plek of d.BOUWPLEKKEN.filter(b => b.soort === 'voorpost')) {
     for (const r of [...d.robots]) { d.scene.remove(r.groep); d.robots.splice(d.robots.indexOf(r), 1); }
     d.spel.monumentHP = 100; d.spel.gameOver = false;
     d.geldZet(500);
     const hekToren = d.bouwToren(plek, 'hek');
     hekToren.hp = 1e9; hekToren.hpMax = 1e9;           // onverwoestbaar: we meten alleen of er iemand langs komt
-    const poort = d.SPAWN_POORTEN.find(p => p.naam === plek.poort);
+    const poort = d.SPAWN_POORTEN.find(p => p.naam === plek.routes[0]);
+    const lijn = plek.hekLijnen[0];
     const robots = [];
     for (const f of [-1, 0, 1]) {
       d.spawnRobot(poort, 'sprinter');
@@ -131,8 +132,8 @@ const hek = await page.evaluate(() => {
     let t = 0;
     while (t < 40) { d.updateRobots(DT); t += DT; }
     uit.push({
-      plek: `${plek.poort} ver`, hekS: +plek.s.toFixed(1), breedte: plek.hekBreedte,
-      voorbij: robots.filter(r => !d.robots.includes(r) || r.s > plek.s).length,
+      plek: `voorpost ${plek.naam}`, hekS: +lijn.s.toFixed(1), breedte: lijn.breedte,
+      voorbij: robots.filter(r => !d.robots.includes(r) || r.s > lijn.s).length,
       slaan: robots.filter(r => d.hekVoorRobot(r) === hekToren).length,
     });
     d.verwijderToren(hekToren);
@@ -152,7 +153,7 @@ const bomber = await page.evaluate(() => {
   const DT = 1 / 30;
   for (const r of [...d.robots]) { d.scene.remove(r.groep); d.robots.splice(d.robots.indexOf(r), 1); }
   d.spel.monumentHP = 100; d.spel.gameOver = false;
-  const plek = d.BOUWPLEKKEN.find(b => b.poort === 'Damrak' && b.index === 0);
+  const plek = d.plekVoor('Damrak', 'voorpost');
   d.geldZet(500);
   const toren = d.bouwToren(plek, 'geschut');
   toren.cooldown = 1e9;                                // schiet niet, zodat de bomber blijft leven

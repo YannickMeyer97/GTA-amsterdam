@@ -29,7 +29,7 @@ await page.goto(pathToFileURL(PAGINA).href);
 const uitkomst = await page.evaluate(() => window.PLATTEGROND && {
   toetsen: window.PLATTEGROND.toetsen,
   routes: window.PLATTEGROND.routeMetingen.map(m => ({ poort: m.poort, lengte: +m.lengte.toFixed(1), poortTotRand: +m.poortTotRand.toFixed(1), inBereik: Math.round(m.fractieInBereik * 100), plafond: +m.tijdPlafond.toFixed(1) })),
-  plekken: window.PLATTEGROND.plekMetingen.map(p => ({ route: p.route, soort: p.soort, totRand: +p.totRand.toFixed(1), hek: +p.hek.breedte.toFixed(1), vrij: +p.vrijVanEigenRoute.toFixed(2) })),
+  plekken: window.PLATTEGROND.plekMetingen.map(p => ({ naam: p.naam, soort: p.soort, routes: p.routes, dekking: p.dekking, totRand: +p.totRand.toFixed(1), hekken: p.hekken.map(h => ({ route: h.route, breedte: +h.breedte.toFixed(1), totPlek: +h.totPlek.toFixed(1) })), vrij: +p.vrijVanEigenRoute.toFixed(2) })),
   kerkklokRetour: +window.PLATTEGROND.kerkklokRetour.toFixed(1),
 });
 if (schermafbeelding) await page.screenshot({ path: schermafbeelding, fullPage: true });

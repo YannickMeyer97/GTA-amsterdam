@@ -1875,6 +1875,13 @@ Besluiten van de eigenaar:
   - de plattegrondtoetsen zijn goed;
   - elke route ligt binnen het bereik van minstens één knooppunt;
   - `test-dnm-bouwplekken` en `test-dnm-layout` zijn groen.
+- **Uitgevoerd:**
+  - Drie knooppunten: Plein noord, Plein zuid en Plein oost.
+  - Vijf voorposten.
+  - Zuidoost en Trambaan-west vielen af: hun hek zou over een andere
+    route of de speldoos lopen.
+  - Een knooppunthek legt één lijn per route.
+  - Zie het verslag in de ROADMAP.
 
 #### Ticket D47 — Eigen hekslot
 

@@ -111,7 +111,7 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D35** | Commandopost bij het monument, één menupaneel, HUD zonder overlap → **M2** (grey-box speeltest) *(M2 gespeeld)* |
 | ☑ | **D44** | Minimap draait mee (heading-up) — *na M2* |
 | ☑ | **D45** | Menu opent vanzelf bij commandopost en bouwplek — *na M2* |
-| ☐ | **D46** | Bouwplekken: knooppunten bij het monument + een voorpost per straat — *na M2* |
+| ☑ | **D46** | Bouwplekken: knooppunten bij het monument + een voorpost per straat — *na M2* |
 | ☐ | **D47** | Eigen hekslot naast het torenslot — *na M2* |
 | ☐ | **D48** | Nieuwe toren: Bovenleiding (stroomstoot springt over naar tot 4 robots) — *na M2* |
 | ☐ | **D49** | Nieuwe toren: Muntpers (+50% geld voor kills in bereik) — *na M2* |
@@ -341,6 +341,45 @@ het eerstvolgende hek op de route (`hekOpRoute`) `s` en het stuurpunt vlak
 vóór het hek, en slaat een robot pas bij echt contact (lijntest). Hij kan
 er nog steeds niet langs. De hektest is 3× op rij groen, en ook een
 reproductie die eerder 1 op de 4 keer faalde, faalt niet meer.
+
+**D46 — knooppunten en voorposten, verslag.**
+- **Nieuwe indeling (8 plekken, was 10).**
+  - Drie knooppunten op het plein:
+    - Plein noord: Damrak en Nieuwendijk;
+    - Plein zuid: Rokin en Kalverstraat;
+    - Plein oost: de hoek van de Damstraat.
+  - Vijf voorposten, één per straat, op de plek van de oude "verre" plek.
+  - De oude "nabije" plekken zijn weg; de knooppunten vervangen ze.
+- **Afgevallen:** Zuidoost (tussen Rokin en Damstraat) en Trambaan-west,
+  uit het eerdere voorstel.
+  - Daar komen de stroken van verschillende routes zo dicht bij elkaar dat
+    een hek over een andere route of over de speldoos zou lopen.
+  - Een hek dat wel vrij ligt, zou 12–19 m van de plek staan, buiten het
+    torenbereik.
+  - Een toets in de plattegrond legt dit vast.
+- **Dekking bij torenbereik 10 m (niveau 1):**
+
+  | Route | Knooppunt | Stuk route binnen bereik |
+  |---|---|---|
+  | Damrak | Plein noord | 23 m |
+  | Nieuwendijk | Plein noord | 15,5 m |
+  | Rokin | Plein zuid | 23 m |
+  | Kalverstraat | Plein zuid | 15,5 m |
+  | Damstraat | Plein oost | 14 m |
+
+- **Hek op een knooppunt.** Het hek legt één lijn over elk van zijn routes,
+  met één HP-pot. Een robot van elk van die routes loopt ertegenaan.
+- **Plattegrond:** versie D46, 46/46 toetsen goed. Nieuwe toetsen:
+  - voorpost per route, buiten het wapenbereik;
+  - dekking per route;
+  - hek ≤ 7 m van zijn plek;
+  - geen hek over een andere route of de speldoos.
+- **Tests.**
+  - `test-dnm-bouwplekken` is herschreven (45 checks).
+  - `test-dnm-hek` loopt alle 10 combinaties van plek en route af,
+    inclusief beide routes van een knooppunt (48 checks).
+  - `test-dnm-routes`, `-kern`, `-layout` en de torentests zijn bijgewerkt
+    via `plekVoor(route, soort)`.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 

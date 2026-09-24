@@ -92,7 +92,7 @@ const r = await page.evaluate(() => {
   const binnen = ([x, z]) => x >= G.minX && x <= G.maxX && z >= G.minZ && z <= G.maxZ;
   const punten = [
     ...L.routes.map(rt => ['poort ' + rt.poort, rt.punten[0]]),
-    ...L.bouwplekken.map(b => [`plek ${b.route} ${b.soort}`, b.positie]),
+    ...L.bouwplekken.map(b => [`plek ${b.naam}`, b.positie]),
     ['commandopost', L.commandopost.spelerPlek], ['kerkklok', L.kerkklok.positie], ['start', L.spelerStart.positie],
   ];
 

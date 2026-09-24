@@ -1406,3 +1406,29 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
 - **Hoogtes** zijn ~25% lager dan in het echt (plan §11.3 punt 2). Ze
   staan alleen in `DAM_LAYOUT.gebouwen`, dus een wijziging gaat via de
   plattegrond.
+
+### 15.10 Bouwplekken na D46
+
+- **Layout.** `DAM_LAYOUT.bouwplekken` heeft per plek:
+  - `naam`;
+  - `soort`: `knooppunt` of `voorpost`;
+  - `routes`: een lijst routenamen;
+  - `positie`.
+
+  `torenBereik` (10) is alleen voor de plattegrondtoetsen.
+- **Plek in de game:**
+  `{ naam, soort, routes, positie, hoek, toren, kaderMateriaal, groep, hekLijnen }`.
+  - `hekLijnen[i]` = `{ poort, s, x, z, rx, rz, breedte }`: het routepunt
+    naast de plek, per route.
+  - Weg zijn `poort`, `index`, `route`, `s`, `zijOffset` en `hekBreedte`.
+  - Tekst in meldingen en menu's gebruikt `plek.naam`.
+- **Hek.** `toren.lijnen[i]` = `{ poort, s, ax, az, bx, bz, mx, mz }`,
+  één per route van de plek.
+  - `hekOpRoute(robot)` geeft `{ hek, lijn }`, voor het eerstvolgende hek
+    op de eigen route. `sGrens` = `lijn.s − 0,3`.
+  - `afstandTotHek` en `bouwwerkPunt` gebruiken de dichtstbijzijnde lijn
+    (`dichtsteHekLijn`).
+- **Valkuil:** een knooppunt hoort bij twee routes. Code die "de plek van
+  route X" zoekt, gebruikt `plekVoor(X, soort)`. Twee actieve poorten
+  kunnen dus dezelfde plek aanwijzen; `meet-dnm-economie` slaat een al
+  bebouwde plek over.

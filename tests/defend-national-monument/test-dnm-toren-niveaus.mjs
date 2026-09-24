@@ -20,7 +20,7 @@ await page.evaluate(() => {
 
 const niveaus = await page.evaluate(() => {
   const d = window.DamChaosDebug;
-  const plek = d.BOUWPLEKKEN.find(b => b.poort === 'Damstraat' && b.index === 0);
+  const plek = d.plekVoor('Damstraat', 'voorpost');
   d.geldZet(2000);
   const t = d.bouwToren(plek, 'geschut');
   const rij = [];
@@ -53,7 +53,7 @@ check('Geïnvesteerd bedrag telt bouwen + upgrades op', n3.geinvesteerd === tota
 
 const schade = await page.evaluate(() => {
   const d = window.DamChaosDebug;
-  const plek = d.BOUWPLEKKEN.find(b => b.poort === 'Rokin' && b.index === 0);
+  const plek = d.plekVoor('Rokin', 'voorpost');
   d.geldZet(500);
   const t = d.bouwToren(plek, 'geschut');
   const [c1, c2, c3] = d.TOREN_TYPES.geschut.niveaus;

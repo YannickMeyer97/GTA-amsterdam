@@ -66,11 +66,11 @@ const puntenControle = await page.evaluate(() => {
   }
   return { punten, overlappend };
 });
-// Ticket D10: steunpunten + 10 bouwplekken. De overlap- en
+// Ticket D10: steunpunten + bouwplekken (D46: 8). De overlap- en
 // bereikbaarheidschecks hieronder gelden voor allemaal. Sinds D35 zijn er
 // twee steunpunten: de Kerkklok en de commandopost (die de Bijenkorf-kiosk
 // en de Koninklijke Reparatie verving).
-check('Er zijn 12 interactiepunten (Kerkklok, commandopost + 10 bouwplekken)', puntenControle.punten.length === 12, puntenControle.punten.map(p => p.naam));
+check('Er zijn 10 interactiepunten (Kerkklok, commandopost + 8 bouwplekken)', puntenControle.punten.length === 10, puntenControle.punten.map(p => p.naam));
 for (const p of puntenControle.punten) {
   check(`Interactiepunt "${p.naam}" ligt binnen GRENS`, p.binnenGrens, p);
   check(`Interactiepunt "${p.naam}" is bereikbaar binnen zijn radius`, p.bereikbaar, p);

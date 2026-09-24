@@ -20,7 +20,7 @@ await page.evaluate(() => {
 
 const kopen = await page.evaluate(() => {
   const d = window.DamChaosDebug;
-  const plek = d.BOUWPLEKKEN.find(b => b.poort === 'Damstraat' && b.index === 1);
+  const plek = d.plekVoor('Damstraat', 'knooppunt');
   const obstakelsVoor = d.obstakels.length;
   d.geldZet(100);
   const teDuur = d.bouwToren(plek, 'geschut');
@@ -45,8 +45,8 @@ const menu = await page.evaluate(() => {
   const d = window.DamChaosDebug;
   const canvas = d.renderer.domElement;
   Object.defineProperty(document, 'pointerLockElement', { configurable: true, get() { return canvas; } });
-  const plek = d.BOUWPLEKKEN.find(b => b.poort === 'Rokin' && b.index === 1);
-  const ander = d.BOUWPLEKKEN.find(b => b.poort === 'Damrak' && b.index === 1);
+  const plek = d.plekVoor('Rokin', 'knooppunt');
+  const ander = d.plekVoor('Damrak', 'knooppunt');
   const bouwUI = document.getElementById('menuUI');
   d.geldZet(300);
   d.speler.positie.set(plek.positie.x + 1.4, 0, plek.positie.z);

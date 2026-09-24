@@ -74,9 +74,10 @@ const verdediging = await page.evaluate(({ MAX_WAVE, CONFIGS }) => {
     d.startWave(wave);
     d.spel.monumentHP = 100000;   // nooit game over; we tellen alleen schade
     for (const poortNaam of d.spel.actievePoorten) {
-      // 55 %-plek (dichter bij het monument) eerst, dan de 25 %-plek.
-      const plekken = d.BOUWPLEKKEN.filter(b => b.poort === poortNaam).sort((a, b) => b.index - a.index);
+      // Knooppunt (dichter bij het monument) eerst, dan de voorpost (D46).
+      const plekken = [d.plekVoor(poortNaam, 'knooppunt'), d.plekVoor(poortNaam, 'voorpost')];
       config.plekken.forEach(([type, niveau], i) => {
+        if (!plekken[i] || plekken[i].toren) return;   // knooppunt al bebouwd door een andere poort
         const t = d.bouwToren(plekken[i], type);
         for (let n = 1; n < niveau; n++) d.upgradeToren(t);
       });

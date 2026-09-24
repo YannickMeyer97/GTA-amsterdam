@@ -30,7 +30,7 @@ const LOOP = `(robot, maxT) => {
 const aanval = await page.evaluate((LOOP) => {
   const d = window.DamChaosDebug;
   const loop = eval(LOOP);
-  const plek = d.BOUWPLEKKEN.find(b => b.poort === 'Damstraat' && b.index === 1);
+  const plek = d.plekVoor('Damstraat', 'knooppunt');
   d.geldZet(1000);
   d.spel.monumentHP = 100;
   const toren = d.bouwToren(plek, 'geschut');
@@ -71,7 +71,7 @@ const zonderDoel = await page.evaluate((LOOP) => {
   const loop = eval(LOOP);
   d.spel.monumentHP = 100;
   // Een toren ver weg, bij een andere poort.
-  const verrePlek = d.BOUWPLEKKEN.find(b => b.poort === 'Nieuwendijk' && b.index === 0);
+  const verrePlek = d.plekVoor('Nieuwendijk', 'voorpost');
   const verreToren = d.bouwToren(verrePlek, 'geschut');
   const poort = d.SPAWN_POORTEN.find(p => p.naam === 'Damstraat');
   d.spawnRobot(poort, 'bomber');
@@ -90,7 +90,7 @@ const anderen = await page.evaluate((LOOP) => {
   const d = window.DamChaosDebug;
   const loop = eval(LOOP);
   d.spel.monumentHP = 100;
-  const plek = d.BOUWPLEKKEN.find(b => b.poort === 'Damstraat' && b.index === 1);
+  const plek = d.plekVoor('Damstraat', 'knooppunt');
   const toren = d.bouwToren(plek, 'geschut');
   const poort = d.SPAWN_POORTEN.find(p => p.naam === 'Damstraat');
   const uit = {};
@@ -114,7 +114,7 @@ const hek = await page.evaluate((LOOP) => {
   const d = window.DamChaosDebug;
   const loop = eval(LOOP);
   d.spel.monumentHP = 100;
-  const plek = d.BOUWPLEKKEN.find(b => b.poort === 'Rokin' && b.index === 1);
+  const plek = d.plekVoor('Rokin', 'knooppunt');
   const h = d.bouwToren(plek, 'hek');
   const poort = d.SPAWN_POORTEN.find(p => p.naam === 'Rokin');
   d.spawnRobot(poort, 'bomber');

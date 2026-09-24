@@ -508,7 +508,7 @@ addEventListener('resize', () => {
    ================================================================ */
 
 const DAM_LAYOUT = {
-  "versie": "M2-1",
+  "versie": "D46",
   "eenheid": "meter, mensmaat 1:1",
   "assen": "+x = oost, +z = zuid, oorsprong = midden van het monument, y = omhoog",
   "wapenBereik": 22,
@@ -570,18 +570,17 @@ const DAM_LAYOUT = {
   },
 
   "bouwplekken": [
-    { "route": "Damrak",       "soort": "ver",   "positie": [-12.75, -32] },
-    { "route": "Damrak",       "soort": "nabij", "positie": [-12.2, -20] },
-    { "route": "Rokin",        "soort": "ver",   "positie": [-12.75, 32] },
-    { "route": "Rokin",        "soort": "nabij", "positie": [-12.2, 20] },
-    { "route": "Damstraat",    "soort": "ver",   "positie": [32, 10.25] },
-    { "route": "Damstraat",    "soort": "nabij", "positie": [15.5, 18.2] },
-    { "route": "Kalverstraat", "soort": "ver",   "positie": [-39.75, 25] },
-    { "route": "Kalverstraat", "soort": "nabij", "positie": [-27, 9] },
-    { "route": "Nieuwendijk",  "soort": "ver",   "positie": [-39.75, -25] },
-    { "route": "Nieuwendijk",  "soort": "nabij", "positie": [-27, -9] }
+    { "naam": "Plein noord",  "soort": "knooppunt", "routes": ["Damrak", "Nieuwendijk"],  "positie": [-13, -14.5] },
+    { "naam": "Plein zuid",   "soort": "knooppunt", "routes": ["Rokin", "Kalverstraat"],  "positie": [-13, 14.5] },
+    { "naam": "Plein oost",   "soort": "knooppunt", "routes": ["Damstraat"],              "positie": [11.5, 4.5] },
+    { "naam": "Damrak",       "soort": "voorpost",  "routes": ["Damrak"],                 "positie": [-12.75, -32] },
+    { "naam": "Rokin",        "soort": "voorpost",  "routes": ["Rokin"],                  "positie": [-12.75, 32] },
+    { "naam": "Damstraat",    "soort": "voorpost",  "routes": ["Damstraat"],              "positie": [32, 10.25] },
+    { "naam": "Kalverstraat", "soort": "voorpost",  "routes": ["Kalverstraat"],           "positie": [-39.75, 25] },
+    { "naam": "Nieuwendijk",  "soort": "voorpost",  "routes": ["Nieuwendijk"],            "positie": [-39.75, -25] }
   ],
   "bouwplekHalf": 0.9,
+  "torenBereik": 10,
 
   "gebouwen": [
     { "naam": "Paleis op de Dam", "ticket": "D37", "kleur": "#d9c79c",
@@ -2952,7 +2951,7 @@ function sluitMenuHandmatig() {
 // --- Het centrale interactiesysteem ---------------------------------
 
 // Ticket D35: twee vaste punten uit DAM_LAYOUT, de Kerkklok en de
-// commandopost, plus straks de tien bouwplekken. `radius` is een
+// commandopost, plus de bouwplekken (D46: acht). `radius` is een
 // interactieafstand op mensenmaat.
 const interactiePunten = [
   {
@@ -2980,16 +2979,13 @@ const interactiePunten = [
 
 // --- Ticket D10: bouwplekken -------------------------------------------
 //
-// 5 poorten × 2 sokkels = 10 bouwplekken, in de aanloop van hun EIGEN
-// poort (niet rond het monument): een toren dekt dan één route, niet
-// alles, en dat maakt de poortkeuze betekenisvol.
-//
 // Ticket D32: de plekken komen uit DAM_LAYOUT.bouwplekken, zoals
-// goedgekeurd in de plattegrond: één "ver" (buiten het wapenbereik vanaf
-// het monument) en één "nabij" per route. Er wordt niets meer afgeleid uit
-// een gesimuleerde looproute. index 0 = ver, 1 = nabij: dezelfde betekenis
-// als de 25 %- en 55 %-plekken van D10, zodat torencode en tests niet
-// hoeven te veranderen.
+// goedgekeurd in de plattegrond. Ticket D46: twee soorten.
+//   - knooppunt: op het plein, waar routes samenkomen; altijd nuttig,
+//     welke straat ook aan de beurt is. Hoort bij één of twee routes.
+//   - voorpost: in de straat zelf, één per route, buiten het wapenbereik.
+// `routes` zijn de routes waar het hek van deze plek overheen gaat: één
+// hek-lijn per route (hekLijnen).
 const BOUWPLEK_RADIUS = 2.5;             // interactieafstand; klein genoeg dat plekken elkaar niet overlappen
 const ROUTE_STAP = 0.25;
 
@@ -3016,26 +3012,30 @@ function puntOpRoute(poort, fractie) {
   return { x: p.x, z: p.z, rx: p.rx, rz: p.rz };
 }
 
-const BOUWPLEKKEN = [];
-for (const poort of SPAWN_POORTEN) {
-  const route = ROUTES.get(poort.naam);
-  for (const [index, soort] of [[0, 'ver'], [1, 'nabij']]) {
-    const b = DAM_LAYOUT.bouwplekken.find(p => p.route === poort.naam && p.soort === soort);
-    const [x, z] = b.positie;
+const BOUWPLEKKEN = DAM_LAYOUT.bouwplekken.map(b => {
+  const [x, z] = b.positie;
+  // Per route het punt op de route naast deze plek, met de looprichting daar
+  // (Ticket D13), de s van dat punt en wat een hek daar overspant (D32): de
+  // hele rijbaan of straat, op het plein de strook + 2 m.
+  const hekLijnen = b.routes.map(naam => {
+    const route = ROUTES.get(naam);
     const pr = projecteerOpRoute(route, x, z);
     const segIndex = route.segmenten.indexOf(pr.segment);
-    // `route` + `zijOffset` (Ticket D13): het punt op de route naast deze
-    // plek en hoe ver de plek daar loodrecht naast ligt (+ = links van de
-    // looprichting). `hekBreedte` (D32): wat een hek hier overspant, uit de
-    // plattegrond: de hele rijbaan of straat, op het plein de strook + 2 m.
-    BOUWPLEKKEN.push({
-      poort: poort.naam, index, soort, positie: new THREE.Vector3(x, 0, z), hoek: Math.atan2(pr.rx, pr.rz),
-      toren: null, kaderMateriaal: null,
-      route: { x: pr.x, z: pr.z, rx: pr.rx, rz: pr.rz }, s: pr.s,
-      zijOffset: (x - pr.x) * -pr.rz + (z - pr.z) * pr.rx,
-      hekBreedte: DAM_LAYOUT.hekBreedte[poort.naam][segIndex] ?? pr.segment.breedte + 2,
-    });
-  }
+    return {
+      poort: naam, s: pr.s, x: pr.x, z: pr.z, rx: pr.rx, rz: pr.rz,
+      breedte: DAM_LAYOUT.hekBreedte[naam][segIndex] ?? pr.segment.breedte + 2,
+    };
+  });
+  const eerste = hekLijnen[0];
+  return {
+    naam: b.naam, soort: b.soort, routes: [...b.routes],
+    positie: new THREE.Vector3(x, 0, z), hoek: Math.atan2(eerste.rx, eerste.rz),
+    toren: null, kaderMateriaal: null, hekLijnen,
+  };
+});
+// De plek van een soort bij een route (tests en meetscripts).
+function plekVoor(routeNaam, soort) {
+  return BOUWPLEKKEN.find(p => p.soort === soort && p.routes.includes(routeNaam)) ?? null;
 }
 
 // Zichtbaar: een lichte vloertegel met een lage rand die zwak pulseert
@@ -3060,7 +3060,7 @@ for (const plek of BOUWPLEKKEN) {
   plek.groep = g;
 
   interactiePunten.push({
-    naam: `Bouwplek ${plek.poort} ${plek.index + 1}`,
+    naam: `Bouwplek ${plek.naam}`,
     type: 'bouwplek',
     bouwplek: plek,
     positie: plek.positie,
@@ -3150,7 +3150,7 @@ function bouwplekPrompt(plek) {
     const basis = `${TOREN_TYPES[t.type].naam} niv. ${t.niveau} — ${Math.ceil(t.hp)}/${t.hpMax} HP`;
     return open ? `${basis} — kies 1/2/3, T om te sluiten` : `${basis} — druk T voor opties`;
   }
-  return open ? 'Kies een toren met een cijfer, T om te sluiten' : `Druk T om te bouwen (bouwplek ${plek.poort})`;
+  return open ? 'Kies een toren met een cijfer, T om te sluiten' : `Druk T om te bouwen (bouwplek ${plek.naam})`;
 }
 
 // Ticket D35: het bouwmenu is een menu op het ene paneel. Op een lege plek
@@ -3159,7 +3159,7 @@ function bouwMenu(plek) {
   return {
     bron: plek,
     hoortBij: punt => punt.bouwplek === plek,
-    titel: () => plek.toren ? `${TOREN_TYPES[plek.toren.type].naam} niveau ${plek.toren.niveau} (${plek.poort})` : `Bouwplek ${plek.poort}`,
+    titel: () => plek.toren ? `${TOREN_TYPES[plek.toren.type].naam} niveau ${plek.toren.niveau} (${plek.naam})` : `Bouwplek ${plek.naam}`,
     opties: () => {
       const t = plek.toren;
       if (!t) {
@@ -3217,57 +3217,73 @@ const hpBalkTmp = new THREE.Vector3();
 // dwars over een diagonale route is dat niet.
 //
 // Sinds D32/D33 spant het hek precies de breedte uit de plattegrond
-// (plek.hekBreedte), gecentreerd op de route, met een paal op elk uiteinde.
+// (hekLijn.breedte), gecentreerd op de route, met een paal op elk uiteinde.
 // Robots op hun route raken het op basis van s (hekVoorRobot), dus er is geen
-// gat om doorheen te glippen.
-function hekPaalOffsets(plek) {
-  const n = Math.max(1, Math.ceil(plek.hekBreedte / HEK_PAAL_STAP));
-  return Array.from({ length: n + 1 }, (_, i) => -plek.hekBreedte / 2 + (i * plek.hekBreedte) / n);
+// gat om doorheen te glippen. Ticket D46: een knooppunt heeft een hek-lijn
+// per route; één hek (één HP-pot) spant ze allemaal.
+function hekPaalOffsets(hekLijn) {
+  const n = Math.max(1, Math.ceil(hekLijn.breedte / HEK_PAAL_STAP));
+  return Array.from({ length: n + 1 }, (_, i) => -hekLijn.breedte / 2 + (i * hekLijn.breedte) / n);
 }
 function maakHek(plek) {
-  const r = plek.route;
-  const px = -r.rz, pz = r.rx;   // loodrecht op de looprichting
   const g = new THREE.Group();
   const paalMat = mat(0x5b2320, 0.7, 0.2);   // donkerrood ijzer, zoals de paaltjes in de stad
+  const liggerMat = mat(0x3a2a22, 0.8);
   const obstakelHandles = [];
-  const offsets = hekPaalOffsets(plek);
-  for (const o of offsets) {
-    const x = r.x + px * o, z = r.z + pz * o;
-    const paal = new THREE.Mesh(new THREE.BoxGeometry(HEK_PAAL, 1.3, HEK_PAAL), paalMat);
-    paal.position.set(x, 0.65, z);
-    paal.castShadow = true;
-    g.add(paal);
-    obstakelHandles.push(registreerRechthoek(x - HEK_PAAL / 2, x + HEK_PAAL / 2, z - HEK_PAAL / 2, z + HEK_PAAL / 2));
-  }
-  // Twee dwarsliggers over de hele lengte (alleen beeld).
-  const lengte = offsets[offsets.length - 1] - offsets[0];
-  const midden = (offsets[0] + offsets[offsets.length - 1]) / 2;
-  for (const y of [0.5, 1.05]) {
-    const ligger = new THREE.Mesh(new THREE.BoxGeometry(lengte, 0.14, 0.14), mat(0x3a2a22, 0.8));
-    ligger.position.set(r.x + px * midden, y, r.z + pz * midden);
-    ligger.rotation.y = Math.atan2(-pz, px);
-    g.add(ligger);
-  }
+  const lijnen = plek.hekLijnen.map(r => {
+    const px = -r.rz, pz = r.rx;   // loodrecht op de looprichting
+    const offsets = hekPaalOffsets(r);
+    for (const o of offsets) {
+      const x = r.x + px * o, z = r.z + pz * o;
+      const paal = new THREE.Mesh(new THREE.BoxGeometry(HEK_PAAL, 1.3, HEK_PAAL), paalMat);
+      paal.position.set(x, 0.65, z);
+      paal.castShadow = true;
+      g.add(paal);
+      obstakelHandles.push(registreerRechthoek(x - HEK_PAAL / 2, x + HEK_PAAL / 2, z - HEK_PAAL / 2, z + HEK_PAAL / 2));
+    }
+    // Twee dwarsliggers over de hele lengte (alleen beeld).
+    const lengte = offsets[offsets.length - 1] - offsets[0];
+    const midden = (offsets[0] + offsets[offsets.length - 1]) / 2;
+    for (const y of [0.5, 1.05]) {
+      const ligger = new THREE.Mesh(new THREE.BoxGeometry(lengte, 0.14, 0.14), liggerMat);
+      ligger.position.set(r.x + px * midden, y, r.z + pz * midden);
+      ligger.rotation.y = Math.atan2(-pz, px);
+      g.add(ligger);
+    }
+    // De hek-lijn als lijnstuk, voor de contactcheck van robots.
+    return {
+      poort: r.poort, s: r.s, mx: r.x + px * midden, mz: r.z + pz * midden,
+      ax: r.x + px * offsets[0], az: r.z + pz * offsets[0], bx: r.x + px * offsets[offsets.length - 1], bz: r.z + pz * offsets[offsets.length - 1],
+    };
+  });
   scene.add(g);
+  // Eén HP-balk, boven de eerste lijn.
   const hpBalk = maakHpBalk(1.8, 1.4);
-  hpBalk.position.x = r.x + px * midden;
-  hpBalk.position.z = r.z + pz * midden;
+  hpBalk.position.x = lijnen[0].mx;
+  hpBalk.position.z = lijnen[0].mz;
   g.add(hpBalk);
   const cfg = TOREN_TYPES.hek;
   return {
     type: 'hek', plek, groep: g, hpBalk, niveau: 1, geinvesteerd: cfg.prijs,
-    hp: cfg.hp, hpMax: cfg.hp, obstakelHandles,
-    // De hek-lijn als lijnstuk, voor de contactcheck van robots.
-    lijn: { ax: r.x + px * offsets[0], az: r.z + pz * offsets[0], bx: r.x + px * offsets[offsets.length - 1], bz: r.z + pz * offsets[offsets.length - 1] },
+    hp: cfg.hp, hpMax: cfg.hp, obstakelHandles, lijnen,
     ringen: [],
   };
 }
 
-function afstandTotHek(hek, positie) {
-  const { ax, az, bx, bz } = hek.lijn;
+function afstandTotLijn(lijn, positie) {
+  const { ax, az, bx, bz } = lijn;
   const dx = bx - ax, dz = bz - az;
   const t = Math.max(0, Math.min(1, ((positie.x - ax) * dx + (positie.z - az) * dz) / (dx * dx + dz * dz)));
   return Math.hypot(positie.x - (ax + dx * t), positie.z - (az + dz * t));
+}
+// De lijn van dit hek die het dichtst bij `positie` ligt.
+function dichtsteHekLijn(hek, positie) {
+  let beste = hek.lijnen[0];
+  for (const l of hek.lijnen) if (afstandTotLijn(l, positie) < afstandTotLijn(beste, positie)) beste = l;
+  return beste;
+}
+function afstandTotHek(hek, positie) {
+  return afstandTotLijn(dichtsteHekLijn(hek, positie), positie);
 }
 function hekInContact(positie) {
   for (const toren of torens) {
@@ -3290,7 +3306,7 @@ function vernietigToren(toren) {
     maakBrokstuk(brok, midden.clone().setY(0.8), 5);
   }
   speelExplosie();
-  toonFeedbackMelding(`${TOREN_TYPES[toren.type].naam} bij ${toren.plek.poort} is gesneuveld!`);
+  toonFeedbackMelding(`${TOREN_TYPES[toren.type].naam} bij ${toren.plek.naam} is gesneuveld!`);
   if (menu?.bron === toren.plek) sluitMenu();
   verwijderToren(toren);
 }
@@ -3312,7 +3328,7 @@ const BOMBER_TOREN_CONTACT = 1.4;
 // toren, of het dichtstbijzijnde punt op de lijn van een hek.
 function bouwwerkPunt(toren, positie) {
   if (toren.type !== 'hek') return toren.plek.positie;
-  const { ax, az, bx, bz } = toren.lijn;
+  const { ax, az, bx, bz } = dichtsteHekLijn(toren, positie);
   const dx = bx - ax, dz = bz - az;
   const t = Math.max(0, Math.min(1, ((positie.x - ax) * dx + (positie.z - az) * dz) / (dx * dx + dz * dz)));
   return new THREE.Vector3(ax + dx * t, 0, az + dz * t);
@@ -3335,7 +3351,7 @@ function bomberOntploftBijToren(robot, toren) {
   }
   scene.remove(robot.groep);
   robots.splice(robots.indexOf(robot), 1);
-  const naam = `${TOREN_TYPES[toren.type].naam} bij ${toren.plek.poort}`;
+  const naam = `${TOREN_TYPES[toren.type].naam} bij ${toren.plek.naam}`;
   beschadigToren(toren, BOMBER_TORENSCHADE);
   if (torens.includes(toren)) toonFeedbackMelding(`Bomber raakt ${naam}!`);
   updateArcadeUI();
@@ -3406,7 +3422,7 @@ function bouwToren(plek, type) {
   runStats.torensGebouwd += 1;
   if (menu?.bron === plek) sluitMenu();
   speelBouw();
-  toonFeedbackMelding(`${cfg.naam} gebouwd bij ${plek.poort}`);
+  toonFeedbackMelding(`${cfg.naam} gebouwd bij ${plek.naam}`);
   return toren;
 }
 
@@ -3778,13 +3794,16 @@ function robotMoetWachten(robot) {
   return false;
 }
 // Het eerstvolgende hek op de eigen route van deze robot (nog niet
-// gepasseerd), of null.
+// gepasseerd), of null. Geeft { hek, lijn }: de lijn is het stuk van dat hek
+// dat over deze route loopt (een knooppunthek heeft er meer, D46).
 function hekOpRoute(robot) {
   let beste = null;
   for (const toren of torens) {
-    if (toren.type !== 'hek' || toren.plek.poort !== robot.route.poort) continue;
-    if (toren.plek.s < robot.s - 0.5) continue;
-    if (!beste || toren.plek.s < beste.plek.s) beste = toren;
+    if (toren.type !== 'hek') continue;
+    for (const lijn of toren.lijnen) {
+      if (lijn.poort !== robot.route.poort || lijn.s < robot.s - 0.5) continue;
+      if (!beste || lijn.s < beste.lijn.s) beste = { hek: toren, lijn };
+    }
   }
   return beste;
 }
@@ -3795,8 +3814,8 @@ function hekOpRoute(robot) {
 // Een robot buiten zijn route (bomber, 'vrij') gebruikt alleen de lijntest.
 function hekVoorRobot(robot) {
   if (robot.modus === 'route') {
-    const hek = hekOpRoute(robot);
-    return hek && afstandTotHek(hek, robot.groep.position) <= HEK_CONTACT_AFSTAND ? hek : null;
+    const vooruit = hekOpRoute(robot);
+    return vooruit && afstandTotLijn(vooruit.lijn, robot.groep.position) <= HEK_CONTACT_AFSTAND ? vooruit.hek : null;
   }
   return hekInContact(robot.groep.position);
 }
@@ -3869,7 +3888,7 @@ function updateRobots(dt) {
         speelHekKlap();
       }
       // Naar het hek kijken en met beide armen slaan.
-      const { ax, az, bx, bz } = hek.lijn;
+      const { ax, az, bx, bz } = dichtsteHekLijn(hek, positie);
       const dx = bx - ax, dz = bz - az;
       const t = Math.max(0, Math.min(1, ((positie.x - ax) * dx + (positie.z - az) * dz) / (dx * dx + dz * dz)));
       robot.groep.rotation.y = Math.atan2(ax + dx * t - positie.x, az + dz * t - positie.z);
@@ -3891,7 +3910,7 @@ function updateRobots(dt) {
       // Een hek op de route begrenst s en het stuurpunt: de robot loopt er
       // tot vlak voor en raakt het dan (hekVoorRobot), hij kan er nooit langs.
       const hekVooruit = hekOpRoute(robot);
-      robot.sGrens = hekVooruit ? hekVooruit.plek.s - 0.3 : robot.route.lengte;
+      robot.sGrens = hekVooruit ? hekVooruit.lijn.s - 0.3 : robot.route.lengte;
       // Aan het eind van de route het laatste stukje recht op het monument
       // af: het eindpunt ligt 0,3 m van de speldoos, maar met de eigen baan
       // erbij kan dat net buiten de treffergrens (0,6 m) uitkomen.
@@ -4702,7 +4721,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   // Ticket D29: wapenbereik.
   WAPEN_BEREIK, raycaster,
   // Ticket D10: bouwplekken.
-  BOUWPLEKKEN, BOUWPLEK_RADIUS, puntOpRoute, looproute,
+  BOUWPLEKKEN, BOUWPLEK_RADIUS, puntOpRoute, looproute, plekVoor, dichtsteHekLijn,
   runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, bijenkorfShopOpen: menu === COMMANDOPOST_MENU, bouwMenuPlek: menu && menu !== COMMANDOPOST_MENU ? menu.bron : null, aantalTorens: torens.length, aantalObstakels: obstakels.length }),
   // Ticket D11: torens.
   TOREN_TYPES, torens, bouwToren, verwijderToren, updateTorens, activeerBouwplek, kiesTorenDoel, verwijderObstakel,

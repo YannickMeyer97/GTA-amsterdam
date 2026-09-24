@@ -1,9 +1,10 @@
 // Ticket D13 (SONNET_EXECUTION_PLAN_monument.md, fase 3) — het hek.
 //
-// Op alle tien de bouwplekken: een echte robot loopt vanaf zijn poort de
-// echte route (updateRobots), moet bij het hek blijven staan en erop slaan,
-// en loopt na het sneuvelen van het hek ongehinderd door naar het monument.
-// Zo vangt deze test ook een corridor waar robots om het hek heen glippen.
+// Op alle bouwplekken, en op een knooppunt voor elk van zijn routes (D46):
+// een echte robot loopt vanaf zijn poort de echte route (updateRobots), moet
+// bij het hek blijven staan en erop slaan, en loopt na het sneuvelen van het
+// hek ongehinderd door naar het monument. Zo vangt deze test ook een corridor
+// waar robots om het hek heen glippen.
 import { openDefend, makeChecker } from '../helpers-defend.mjs';
 
 const { browser, page, errs } = await openDefend();
@@ -21,7 +22,7 @@ const bouw = await page.evaluate(() => {
   const d = window.DamChaosDebug;
   const canvas = d.renderer.domElement;
   Object.defineProperty(document, 'pointerLockElement', { configurable: true, get() { return canvas; } });
-  const plek = d.BOUWPLEKKEN.find(b => b.poort === 'Damrak' && b.index === 1);
+  const plek = d.plekVoor('Damrak', 'knooppunt');
   d.geldZet(200);
   const obstakelsVoor = d.obstakels.length;
   d.speler.positie.set(plek.positie.x, 0, plek.positie.z);
@@ -49,19 +50,19 @@ check('Het hek bestaat uit meerdere paaltjes, elk met een eigen obstakel', bouw.
 check('Een hek schiet niet', bouw.robotOngedeerd, bouw);
 check('Verwijderen haalt alle paal-obstakels weer weg', bouw.naVerwijderen === 0, bouw);
 
-// --- 2. Op alle tien de bouwplekken: stoppen, slaan, sneuvelen, doorlopen --
+// --- 2. Op alle bouwplekken en routes: stoppen, slaan, sneuvelen, doorlopen
 
 const scenario = await page.evaluate(() => {
   const d = window.DamChaosDebug;
   const DT = 1 / 30;
   const uitkomsten = [];
-  for (const plek of d.BOUWPLEKKEN) {
+  for (const plek of d.BOUWPLEKKEN) for (const routeNaam of plek.routes) {
     for (const r of [...d.robots]) { d.scene.remove(r.groep); d.robots.splice(d.robots.indexOf(r), 1); }
     d.spel.monumentHP = 100; d.spel.gameOver = false;
     const obstakelsVoor = d.obstakels.length;
     d.geldZet(500);
     const hek = d.bouwToren(plek, 'hek');
-    const poort = d.SPAWN_POORTEN.find(p => p.naam === plek.poort);
+    const poort = d.SPAWN_POORTEN.find(p => p.naam === routeNaam);
     d.spawnRobot(poort, 'normal');
     const robot = d.robots[d.robots.length - 1];
     let contactNa = null, hpNa10s = null, t = 0;
@@ -87,12 +88,14 @@ const scenario = await page.evaluate(() => {
       d.updateRobots(DT); t += DT;
       if (!d.robots.includes(robot)) { monumentBereikt = d.spel.monumentHP < 100; break; }
     }
-    uitkomsten.push({ plek: `${plek.poort} ${plek.index + 1}`, contactNa, stilGestaan, hpNa10s, gesneuveld, ...naSneuvelen, monumentBereikt,
+    uitkomsten.push({ plek: `${plek.naam} (${routeNaam})`, lijnen: hek.lijnen.length, contactNa, stilGestaan, hpNa10s, gesneuveld, ...naSneuvelen, monumentBereikt,
       positieBijHek: [positieBijHek.x.toFixed(1), positieBijHek.z.toFixed(1)] });
     if (d.torens.includes(hek)) d.verwijderToren(hek);
   }
   return uitkomsten;
 });
+check('Een knooppunthek heeft een lijn per route (D46)', scenario.every(u => u.lijnen === (u.plek.startsWith('Plein noord') || u.plek.startsWith('Plein zuid') ? 2 : 1)), scenario.map(u => [u.plek, u.lijnen]));
+check('Het scenario loopt over 10 combinaties van plek en route (3 knooppunten, 5 voorposten)', scenario.length === 10, scenario.length);
 for (const u of scenario) {
   check(`${u.plek}: de robot bereikt het hek en blijft er staan (glipt er niet omheen)`, u.contactNa !== null && u.stilGestaan, u);
   check(`${u.plek}: het hek verliest HP door de klappen (10 s × 6 per 0,8 s ≈ 72)`, u.hpNa10s !== null && u.hpNa10s <= 120 - 60 && u.hpNa10s > 0, u);
@@ -104,7 +107,7 @@ for (const u of scenario) {
 
 const typen = await page.evaluate(() => {
   const d = window.DamChaosDebug;
-  const plek = d.BOUWPLEKKEN.find(b => b.poort === 'Damstraat' && b.index === 1);
+  const plek = d.plekVoor('Damstraat', 'knooppunt');
   d.geldZet(500);
   const hek = d.bouwToren(plek, 'hek');
   const uit = {};
@@ -112,7 +115,7 @@ const typen = await page.evaluate(() => {
     hek.hp = hek.hpMax;
     d.spawnRobot(null, type);
     const r = d.robots[d.robots.length - 1];
-    const { ax, az, bx, bz } = hek.lijn;
+    const { ax, az, bx, bz } = hek.lijnen[0];
     // Pal tegen het midden van het hek zetten.
     r.groep.position.set((ax + bx) / 2 + (bz - az) * 0.001, 0, (az + bz) / 2);
     r.slagTimer = 0.001;
