@@ -132,7 +132,7 @@ const menu = await page.evaluate(() => {
   Object.defineProperty(document, 'pointerLockElement', { configurable: true, get() { return canvas; } });
   const t = d.torens[0];
   const plek = t.plek;
-  const bouwUI = document.getElementById('bouwUI');
+  const bouwUI = document.getElementById('menuUI');
   const toets = (code) => { window.dispatchEvent(new KeyboardEvent('keydown', { code })); window.dispatchEvent(new KeyboardEvent('keyup', { code })); };
   d.geldZet(1000);
   d.speler.positie.set(plek.positie.x + 1.4, 0, plek.positie.z);

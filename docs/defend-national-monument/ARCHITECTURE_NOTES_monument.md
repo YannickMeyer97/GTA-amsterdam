@@ -1357,3 +1357,38 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
 - **De minimap** leest `DAM_LAYOUT.vlakken` (behalve stoepen) en
   `routeSporen`. Hij tekent op `GRENS`, dus bij een andere verhouding
   vervormt hij.
+
+### 15.8 Stand na D35 — commandopost en één menu
+
+- **Menu-contract.** `menu` is `null` of een object met:
+  - `bron`: `'commandopost'` of de bouwplek;
+  - `titel()`;
+  - `opties()`: elke optie heeft `{ tekst, prijs, klaar, sluit, actie }`;
+  - `hoortBij(interactiepunt)`.
+
+  Verder:
+  - `renderMenu()` tekent het paneel opnieuw; `updateGeldUI` en
+    `updateArcadeUI` roepen hem aan.
+  - `kiesMenuOptie(i)` voert een optie uit en sluit bij `sluit`.
+  - Cijfertoetsen 1–4 werken alleen binnen pointer lock, met `!e.repeat`.
+  - `updateInteracties` sluit het menu zodra het huidige interactiepunt er
+    niet bij hoort; `pointerlockchange` (pauze) en `resetRun` sluiten het
+    ook.
+- **`COMMANDOPOST_MENU`** is een vast object. Vergelijk met
+  `menu === COMMANDOPOST_MENU`, niet met de titel.
+- **Bouwplekmenu:** `bouwMenu(plek)` maakt per opening een nieuw object;
+  vergelijk met `menu?.bron === plek`. Bouwen en verkopen sluiten het menu,
+  upgraden en repareren laten het open.
+- **HUD-indeling** (bewaakt door `test-dnm-commandopost`):
+
+  | Plek | Elementen |
+  |---|---|
+  | Bovenste rij | geld, doel, score |
+  | Links | wave (tot 38vw breed) |
+  | Rechts | special, menu-link |
+  | Midden | combo, kerkklokbanner |
+  | Linksonder | menu |
+  | Onderaan | prompt en hulp, elk één regel |
+  | Rechtsonder | minimap |
+
+  Een nieuw vast HUD-element hoort in die meting.

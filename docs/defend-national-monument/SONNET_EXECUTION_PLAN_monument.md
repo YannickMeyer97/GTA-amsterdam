@@ -1365,6 +1365,9 @@ het eind.
   - er zijn geen oude winkel- of reparatiepunten meer;
   - de overlapmeting van alle zichtbare vaste UI-rechthoeken op 1280×720 en
     1024×640 geeft geen enkele overlap.
+- **Uitgevoerd** (verslag in de roadmap). De wrappers
+  `bijenkorfShopOpenStand`, `bouwMenuStand` en `activeerBijenkorfUpgradeShop`
+  blijven op de debug-hook, en lezen of openen nu het ene menu. Wacht op M2.
 
 **Beslismoment M2 — speelt de grey-box?** De eigenaar speelt de nieuwe
 indeling met simpele blokken. Lopen robots duidelijk, liggen bouwplekken en

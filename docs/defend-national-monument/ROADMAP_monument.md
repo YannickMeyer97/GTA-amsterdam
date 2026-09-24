@@ -108,7 +108,7 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D32** | Nieuw fundament (grey-box): `DAM_LAYOUT`, vloer met kinderkopjes, rijbanen, tramrails |
 | ☑ | **D33** | Vaste routes over de rijbanen; bouwplekken en hekken uit de layout |
 | ☑ | **D34** | Routes zichtbaar: oplichtend bij de aankondiging, bakens aan de straatingang |
-| ☐ | **D35** | Commandopost bij het monument, één menupaneel, HUD zonder overlap → **M2** (grey-box speeltest) |
+| ☑ | **D35** | Commandopost bij het monument, één menupaneel, HUD zonder overlap → **M2** (grey-box speeltest) *(wacht op M2)* |
 | ☐ | **D36** | Textuurbibliotheek (gekopieerd uit Undead + kinderkopjes, zandsteen, leisteen, …) |
 | ☐ | **D37** | Paleis op de Dam |
 | ☐ | **D38** | Nieuwe Kerk |
@@ -254,6 +254,39 @@ in de pagina, als JSON; alles wordt daaruit berekend. In D32 wordt dat blok
   - na een reset brandt er niets fel.
 - **D27 (pijlen), het eerdere besluit:** herbeoordelen ná D34. Nu het spoor
   en de bakens de routes tonen, beoordeelt de eigenaar dat bij M2.
+
+**D35 — commandopost en één menu, verslag.**
+- **De commandopost** staat aan de westvoet van het monument (plek en maat
+  uit `DAM_LAYOUT.commandopost`): een paviljoen met luifel, een toonbank
+  naar het plein en een bord. Botsing op de voetafdruk.
+  - Menu: 1 vuurtempo, 2 pickup radius, 3 loopsnelheid (prijzen zoals nu),
+    4 monument repareren (€100, +25 HP).
+  - De Bijenkorf-kiosk en de Koninklijke Reparatiepost zijn weg. Er zijn nu
+    12 interactiepunten: Kerkklok, commandopost en 10 bouwplekken.
+- **Eén menupaneel** (`menuUI`, `openMenu`, `sluitMenu`, `kiesMenuOptie`)
+  voor de commandopost en de bouwplekken.
+  - Opbouw overal gelijk: titel, genummerde opties met prijs, "te duur" in
+    rood, "klaar" in groen.
+  - T sluit; weglopen (één regel via `menu.hoortBij`) en pauze sluiten ook.
+  - `shopUI`, `bouwUI` en de dubbele toetsafhandeling zijn weg.
+- **HUD zonder overlap op 1280×720 en 1024×640** (gemeten met alle 12 vaste
+  elementen tegelijk in hun breedste stand):
+  - het doel staat in de bovenste rij tussen geld en score;
+  - special, menu-link, combo en kerkklokbanner zijn een stuk omlaag
+    geschoven;
+  - de interactieprompt en de besturingshulp staan altijd op één regel;
+  - het menupaneel staat erboven.
+- **Nieuw: `test-dnm-commandopost.mjs`** (19 checks). Bijgewerkt:
+  `test-dnm-kern` (12 interactiepunten) en de drie torentests (paneel
+  `menuUI`).
+
+**Beslismoment M2 — speelt de grey-box?** De simpele versie van de nieuwe
+Dam is klaar om te spelen: routes, bouwplekken, commandopost en kerkklok.
+Vóór er tijd in gevels gaat (D36–D41), beoordeelt de eigenaar:
+- lopen robots duidelijk;
+- liggen bouwplekken en commandopost goed;
+- klopt het ritme;
+- zijn pijlen (D27) nog nodig.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 

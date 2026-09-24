@@ -27,7 +27,7 @@ const bouw = await page.evaluate(() => {
   d.speler.positie.set(plek.positie.x, 0, plek.positie.z);
   d.updateInteracties(0);
   d.activeerBouwplek(plek);
-  const menu = document.getElementById('bouwUI').textContent;
+  const menu = document.getElementById('menuUI').textContent;
   window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit2' }));
   window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Digit2' }));
   const hek = plek.toren;

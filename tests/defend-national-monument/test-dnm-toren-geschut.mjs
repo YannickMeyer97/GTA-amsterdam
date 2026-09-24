@@ -47,7 +47,7 @@ const menu = await page.evaluate(() => {
   Object.defineProperty(document, 'pointerLockElement', { configurable: true, get() { return canvas; } });
   const plek = d.BOUWPLEKKEN.find(b => b.poort === 'Rokin' && b.index === 1);
   const ander = d.BOUWPLEKKEN.find(b => b.poort === 'Damrak' && b.index === 1);
-  const bouwUI = document.getElementById('bouwUI');
+  const bouwUI = document.getElementById('menuUI');
   d.geldZet(300);
   d.speler.positie.set(plek.positie.x + 1.4, 0, plek.positie.z);
   d.updateInteracties(0);

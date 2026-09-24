@@ -78,7 +78,8 @@ const toets = await page.evaluate(() => {
   return { wave: d.spel.wave, startWave: wave, hulp: document.getElementById('hulpUI').textContent };
 });
 check('G tijdens de bouwfase start de volgende wave', toets.wave === toets.startWave + 1, toets);
-check('De besturingshulp noemt G', toets.hulp.includes('G = volgende wave'), toets.hulp);
+// Ticket D35: de hulptekst is ingekort tot één regel ("G volgende wave").
+check('De besturingshulp noemt G', toets.hulp.includes('G volgende wave'), toets.hulp);
 
 const fails = report(errs);
 await browser.close();

@@ -58,7 +58,7 @@
   /* --- Special-meter, compact onder de score --- */
   #specialUI {
     position: fixed;
-    top: 76px;
+    top: 98px;   /* Ticket D35: onder de score (die is twee regels hoog) */
     right: 16px;
     padding: 6px 14px;
     background: rgba(20, 30, 45, 0.65);
@@ -78,7 +78,7 @@
 
   #objectiveUI {
     position: fixed;
-    top: 72px;
+    top: 16px;   /* Ticket D35: bovenste rij, tussen geld en score (overlapte de wave-regel) */
     left: 50%;
     transform: translateX(-50%);
     min-width: 360px;
@@ -96,8 +96,9 @@
 
   #waveUI {
     position: fixed;
-    top: 72px;
+    top: 84px;
     left: 16px;
+    max-width: min(420px, 38vw);
     padding: 8px 14px;
     background: rgba(20, 30, 45, 0.65);
     color: #cfe8ff;
@@ -111,7 +112,7 @@
 
   #comboUI {
     position: fixed;
-    top: 122px;
+    top: 168px;
     left: 50%;
     transform: translateX(-50%);
     color: #ffd75e;
@@ -125,11 +126,13 @@
     transition: opacity 0.12s ease;
   }
 
-  #shopUI, #bouwUI {
+  /* Ticket D35: één menupaneel voor commandopost en bouwplekken, linksonder
+     boven de besturingshulp (zie de overlapmeting in test-dnm-commandopost). */
+  #menuUI {
     position: fixed;
     left: 16px;
-    bottom: 56px;
-    max-width: 370px;
+    bottom: 120px;
+    max-width: min(440px, 44vw);
     padding: 12px 14px;
     background: rgba(20, 30, 45, 0.72);
     color: rgba(255,255,255,0.92);
@@ -139,15 +142,15 @@
     z-index: 5;
     box-shadow: 0 6px 18px rgba(0,0,0,0.25);
   }
-  #shopUI b, #bouwUI b { color: #ffd75e; }
-  #shopUI .regel, #bouwUI .regel { display: block; }
-  #shopUI .gekocht, #bouwUI .gekocht { color: #83e6a8; }
-  #bouwUI .te-duur { color: #ff9a8a; }
+  #menuUI b { color: #ffd75e; }
+  #menuUI .regel { display: block; }
+  #menuUI .gekocht { color: #83e6a8; }
+  #menuUI .te-duur { color: #ff9a8a; }
 
   /* --- Eén centrale interactieprompt onderin, voor alle interactiepunten --- */
   #interactiePrompt {
     position: fixed;
-    bottom: 40px;
+    bottom: 54px;
     left: 50%;
     transform: translateX(-50%);
     padding: 8px 20px;
@@ -161,12 +164,17 @@
     pointer-events: none;
     z-index: 6;
     transition: opacity 0.12s ease;
+    /* Ticket D35: altijd één regel, anders groeit hij in het menu erboven */
+    white-space: nowrap;
+    max-width: 62vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* --- Bannertje zolang de Kerkklok Boost actief is --- */
   #kerkklokBanner {
     position: fixed;
-    top: 160px;
+    top: 224px;
     left: 50%;
     transform: translateX(-50%);
     padding: 8px 20px;
@@ -224,9 +232,10 @@
     transform: translateX(-50%);
     color: rgba(255,255,255,0.85);
     background: rgba(20, 30, 45, 0.45);
-    padding: 6px 14px;
+    padding: 5px 14px;
     border-radius: 10px;
-    font-size: 14px;
+    font-size: 13px;
+    white-space: nowrap;   /* Ticket D35: altijd één regel, anders schuift hij onder de prompt */
     pointer-events: none;
     z-index: 5;
   }
@@ -318,7 +327,7 @@
        special-meter, zodat 'ie niet overlapt met geldUI/scoreUI) --- */
   #menuLink {
     position: fixed;
-    top: 114px;
+    top: 140px;
     right: 16px;
     padding: 8px 14px;
     background: rgba(20, 30, 45, 0.65);
@@ -409,18 +418,12 @@
 <div id="comboUI">COMBO x2</div>
 <div id="hitmarker"></div>
 <div id="waveBanner"></div>
-<div id="shopUI" style="display:none">
-  <b>Bijenkorf Upgrades</b>, druk 1/2/3 om te kopen, T om te sluiten:<br>
-  <span class="regel">1, Vuurtempo €100</span>
-  <span class="regel">2, Pickup radius €150</span>
-  <span class="regel">3, Loopsnelheid €200</span>
-</div>
-<div id="bouwUI" style="display:none"></div>
+<div id="menuUI" style="display:none"></div>
 <div id="interactiePrompt"></div>
 <div id="kerkklokBanner">🔔 KERKKLOK BOOST: robots sneller, 2x geld</div>
 <div id="richtkruis" style="display:none"></div>
 <div id="popups"></div>
-<div id="hulpUI" style="display:none">WASD = lopen &nbsp;·&nbsp; muis = kijken &nbsp;·&nbsp; klik = schieten &nbsp;·&nbsp; T = interactie &nbsp;·&nbsp; G = volgende wave &nbsp;·&nbsp; Esc = pauze</div>
+<div id="hulpUI" style="display:none">WASD lopen &nbsp;·&nbsp; muis kijken &nbsp;·&nbsp; klik schieten &nbsp;·&nbsp; T actie &nbsp;·&nbsp; G volgende wave &nbsp;·&nbsp; Esc pauze</div>
 <div id="minimapUI" style="display:none"><canvas id="minimapCanvas" width="140" height="140"></canvas></div>
 <div id="robotPijlenUI"></div>
 
@@ -1370,46 +1373,50 @@ for (const d of DAM_LAYOUT.decor) {
 }
 
 /* ----------------------------------------------------------------
-   Steunpunten: Koninklijke Reparatie, Kerkklok, upgradekiosk
+   Steunpunten: commandopost en Kerkklok
    ---------------------------------------------------------------- */
 
-// Koninklijke Reparatiepost: een klein gouden balietje met kroontje en
-// vlaggetje voor de oostgevel van het Paleis (waar de deur zit), zodat
-// spelers een reden hebben om hierheen te lopen voor gratis monument-HP.
-function bouwReparatiepost(x, z) {
+// Ticket D35: de commandopost aan de westvoet van het monument. Een klein
+// paviljoen met luifel en een toonbank naar het plein (west), waar je wapen-
+// upgrades koopt en het monument repareert. Maten en plek uit
+// DAM_LAYOUT.commandopost; de speler staat voor de toonbank (spelerPlek).
+function bouwCommandopost() {
+  const c = DAM_LAYOUT.commandopost;
+  const [mx, mz] = c.midden, [bx, bz] = c.maat;
   const g = new THREE.Group();
-
-  const balie = blok(1.7, 1.0, 0.9, PAL.goud, 0.4, 0.55);
-  balie.position.y = 0.5;
-  g.add(balie);
-  const balieRand = blok(1.8, 0.12, 1.0, 0x8a6a1e, 0.5, 0.4);
-  balieRand.position.y = 1.02;
-  g.add(balieRand);
-
-  const paalL = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 2.4, 8), mat(0x8a6a1e, 0.5, 0.4));
-  paalL.position.set(-0.65, 1.7, 0);
-  g.add(paalL);
-  const vlag = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.55, 0.9), mat(0xe0703a, 0.7));
-  vlag.position.set(-0.65, 2.55, 0.5);
-  g.add(vlag);
-
-  const kroon = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.32, 5), mat(PAL.goud, 0.35, 0.65));
-  kroon.position.set(0.55, 2.35, 0);
-  g.add(kroon);
-  const kroonBol = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), mat(0xd23c3c, 0.4, 0.4));
-  kroonBol.position.set(0.55, 2.55, 0);
-  g.add(kroonBol);
-
-  g.position.set(x, 0, z);
+  g.name = 'Commandopost';
+  // Vier palen en een luifel.
+  for (const [dx, dz] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
+    const paal = blok(0.14, 2.7, 0.14, 0x2d3136, 0.5, 0.4);
+    paal.position.set(dx * (bx / 2 - 0.1), 1.35, dz * (bz / 2 - 0.1));
+    g.add(paal);
+  }
+  const luifel = blok(bx + 0.8, 0.14, bz + 0.5, 0x1f4f7a, 0.6);
+  luifel.position.set(-0.3, 2.76, 0);
+  luifel.rotation.z = -0.08;   // loopt af naar het plein
+  const rand = blok(0.08, 0.3, bz + 0.5, 0xffd75e, 0.5, 0.2);
+  rand.position.set(-bx / 2 - 0.66, 2.62, 0);
+  g.add(luifel, rand);
+  // Toonbank aan de westkant, achterwand aan de monumentkant.
+  const toonbank = blok(0.6, 1.05, bz - 0.4, 0x6b4a2e, 0.8);
+  toonbank.position.set(-bx / 2 + 0.3, 0.525, 0);
+  const blad = blok(0.75, 0.06, bz - 0.3, 0xd9c79c, 0.6);
+  blad.position.set(-bx / 2 + 0.3, 1.08, 0);
+  const achterwand = blok(0.1, 2.2, bz - 0.3, 0x283847, 0.8);
+  achterwand.position.set(bx / 2 - 0.1, 1.1, 0);
+  g.add(toonbank, blad, achterwand);
+  maakGevelTekst(g, 'Commandopost', -bx / 2 - 0.72, 2.25, 0, 2.6, 0.5, 'west', {
+    achtergrond: 'rgba(20, 30, 45, 0.95)', rand: 'rgba(255, 215, 94, 0.95)', tekstKleur: '#ffd75e', fontSize: 96,
+  });
+  g.position.set(mx, 0, mz);
   wereld.add(g);
   schaduwAan(g);
-  registreerRechthoek(x - 1.1, x + 1.1, z - 0.9, z + 0.9, 0.3);
-
-  interactieMarkering(x, z, '👑', 0xe0b84a);
+  registreerRechthoek(mx - bx / 2, mx + bx / 2, mz - bz / 2, mz + bz / 2);
+  // De markering naast de toonbank, niet op de spelerplek zelf: anders staat
+  // de paal midden in beeld zodra je voor de toonbank staat.
+  interactieMarkering(c.spelerPlek[0] + 0.4, c.midden[1] + c.maat[1] / 2 + 1.0, '🛡️', 0xffd75e);
 }
-// Ticket D32: tijdelijk op de plek van de commandopost (D35 maakt er één
-// menu van, samen met de upgrades).
-bouwReparatiepost(DAM_LAYOUT.commandopost.midden[0], DAM_LAYOUT.commandopost.midden[1]);
+bouwCommandopost();
 
 // Kerkklok Boost: een kleine bel aan een houten frame, los voor de zuidgevel
 // van de Nieuwe Kerk, zodat spelers hier langs moeten komen voor de tijdelijke
@@ -1705,84 +1712,6 @@ function pasMonumentSchadeToe(tier) {
   d.pyloon.rotation.z = MONUMENT_SCHEEFSTAND[tier];
 }
 
-// Klein kraampje bij De Bijenkorf dat uitlegt wat de drie upgrades doen en
-// wat ze (vanaf) kosten. De aankoop zelf blijft via de toetsen 1, 2 en 3
-// werken, dit kraampje is puur de uitleg in de wereld zelf.
-function upgradeKiosk(x, z, rotY = 0) {
-  const g = new THREE.Group();
-
-  const toonbank = blok(2.6, 1.1, 1.2, 0x7a5a38, 0.82);
-  toonbank.position.y = 0.55;
-  g.add(toonbank);
-  const paalL = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 8), mat(0x4a3a24, 0.7));
-  paalL.position.set(-1.1, 1.3, 0.5);
-  g.add(paalL);
-  const paalR = paalL.clone();
-  paalR.position.x = 1.1;
-  g.add(paalR);
-  const dak = blok(2.9, 0.18, 1.5, 0xb53b32, 0.7);
-  dak.position.y = 2.65;
-  g.add(dak);
-  // Dunne neonrand onder de dakrand, zodat de kiosk 's avonds opvalt als een
-  // echte winkel in plaats van een los bord.
-  const neonrand = new THREE.Mesh(
-    new THREE.BoxGeometry(3.0, 0.05, 1.6),
-    mat(0xffd75e, 0.4, 0.1, { emissive: 0xffd75e, emissiveIntensity: 0.55 })
-  );
-  neonrand.position.y = 2.54;
-  g.add(neonrand);
-  // Kleine integratie met De Bijenkorf: een luifelrandje in dezelfde donkere
-  // kleur als de warenhuis-luifel, plus twee zijschotten aan de toonbank, zodat
-  // de kiosk als onderdeel van de winkel voelt in plaats van een los kraampje.
-  const luifelrand = blok(3.0, 0.28, 0.12, PAL.dakDonker, 0.7);
-  luifelrand.position.set(0, 2.42, 0.78);
-  luifelrand.userData.geenSchaduw = true;
-  g.add(luifelrand);
-  for (const sx of [-1.28, 1.28]) {
-    const schot = blok(0.12, 1.1, 1.2, PAL.dakDonker, 0.75);
-    schot.position.set(sx, 0.6, 0);
-    schot.userData.geenSchaduw = true;
-    g.add(schot);
-  }
-
-  maakGevelTekst(g, 'UPGRADES', 0, 5.15, 0.62, 3.2, 0.85, 'south', {
-    achtergrond: 'rgba(20, 30, 45, 0.92)',
-    rand: 'rgba(255, 215, 94, 0.95)',
-    tekstKleur: '#ffffff',
-    subtekst: 'Druk T om te winkelen',
-    subtekstKleur: 'rgba(255, 215, 94, 0.95)',
-    fontSize: 64
-  });
-
-  const regels = [
-    { titel: '1. Vuurtempo', sub: 'sneller schieten — vanaf €100' },
-    { titel: '2. Pickup radius', sub: 'munten sneller oprapen — vanaf €150' },
-    { titel: '3. Loopsnelheid', sub: 'sneller lopen — vanaf €200' },
-  ];
-  regels.forEach((regel, i) => {
-    maakGevelTekst(g, regel.titel, 0, 3.6 - i * 1.15, 0.62, 3.6, 1.0, 'south', {
-      achtergrond: 'rgba(20, 30, 45, 0.9)',
-      rand: 'rgba(255, 215, 94, 0.95)',
-      tekstKleur: '#ffd75e',
-      subtekst: regel.sub,
-      subtekstKleur: 'rgba(255,255,255,0.9)',
-      fontSize: 58,
-      canvasBreedte: 900,
-      canvasHoogte: 260
-    });
-  });
-
-  g.position.set(x, 0, z);
-  g.rotation.y = rotY;
-  wereld.add(g);
-  schaduwAan(g);
-  registreerRechthoek(x - 1.5, x + 1.5, z - 0.8, z + 0.8, 0.3);
-}
-// Ticket D32: tijdelijk op het plein voor de Bijenkorf, tot D35 de
-// upgrades naar de commandopost verhuist.
-const KIOSK_POSITIE = { x: 4, z: -20.2 };
-upgradeKiosk(KIOSK_POSITIE.x, KIOSK_POSITIE.z);
-interactieMarkering(KIOSK_POSITIE.x, KIOSK_POSITIE.z + 4.2, '🛒', 0xffd75e);
 
 // Wolken in low-poly stijl.
 for (let i = 0; i < 9; i++) {
@@ -1893,26 +1822,12 @@ const speler = {
 const ingedrukt = {};   // welke toetsen zijn nu ingedrukt?
 addEventListener('keydown', e => {
   ingedrukt[e.code] = true;
-  // De upgrade-hotkeys werken alleen nog terwijl de Bijenkorf-winkel open
-  // staat (zie STAP 3.5, activeerBijenkorfUpgradeShop) — niet meer overal
-  // op de kaart.
-  if (bijenkorfShopOpen) {
-    if (e.code === 'Digit1') koopUpgrade('vuurtempo');
-    if (e.code === 'Digit2') koopUpgrade('pickup');
-    if (e.code === 'Digit3') koopUpgrade('snelheid');
-  }
-  // Ticket D11: zelfde patroon voor het bouwmenu van een bouwplek.
-  if (bouwMenuPlek && !e.repeat && document.pointerLockElement === renderer.domElement && !spel.gameOver) {
-    const keuze = { Digit1: 0, Digit2: 1, Digit3: 2 }[e.code];
-    const toren = bouwMenuPlek.toren;
-    if (keuze !== undefined && toren) {
-      // Ticket D12: bezette plek — 1 upgraden, 2 repareren, 3 verkopen.
-      [upgradeToren, repareerToren, verkoopToren][keuze](toren);
-      updateBouwUI();
-    } else if (keuze !== undefined) {
-      const typen = Object.keys(TOREN_TYPES);
-      if (typen[keuze]) bouwToren(bouwMenuPlek, typen[keuze]);
-    }
+  // Ticket D35: cijfertoetsen kiezen een optie uit het open menu
+  // (commandopost of bouwplek). Zelfde veiligheidspatroon als T: !e.repeat
+  // en alleen binnen pointer lock.
+  if (menu && !e.repeat && document.pointerLockElement === renderer.domElement && !spel.gameOver) {
+    const keuze = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 }[e.code];
+    if (keuze !== undefined) kiesMenuOptie(keuze);
   }
   // T activeert het dichtstbijzijnde interactiepunt. !e.repeat voorkomt dat
   // ingedrukt houden meerdere keren per toetsdruk koopt/activeert (de
@@ -1968,10 +1883,9 @@ document.addEventListener('pointerlockchange', () => {
     startscherm.querySelector('h2').textContent = 'Gepauzeerd, klik om verder te spelen';
     for (const k in ingedrukt) ingedrukt[k] = false;   // toetsen loslaten
     schietKnopIngedrukt = false;
-    // Ook de Bijenkorf-winkel en de interactieprompt netjes sluiten, zodat
-    // pauzeren nooit een open menu of een hangende prompt achterlaat.
-    if (bijenkorfShopOpen) { bijenkorfShopOpen = false; shopUI.style.display = 'none'; }
-    sluitBouwMenu();
+    // Ook het menu en de interactieprompt netjes sluiten, zodat pauzeren
+    // nooit een open menu of een hangende prompt achterlaat.
+    sluitMenu();
     verbergInteractiePrompt();
   }
 });
@@ -2195,7 +2109,6 @@ const scoreUI = document.getElementById('scoreUI');
 const waveUI = document.getElementById('waveUI');
 const objectiveUI = document.getElementById('objectiveUI');
 const comboUI = document.getElementById('comboUI');
-const shopUI = document.getElementById('shopUI');
 const hitmarkerUI = document.getElementById('hitmarker');
 const waveBanner = document.getElementById('waveBanner');
 const interactiePromptUI = document.getElementById('interactiePrompt');
@@ -2220,13 +2133,7 @@ function updateArcadeUI() {
   const specialGereed = spel.specialMeter >= 100;
   specialUI.textContent = specialGereed ? '⚡ SPECIAL GEREED — druk X!' : `⚡ Special: ${Math.floor(spel.specialMeter)}%`;
   specialUI.classList.toggle('gereed', specialGereed);
-  shopUI.innerHTML = `
-    <b>Upgrades</b>, druk tijdens het spelen:<br>
-    <span class="regel">1, Vuurtempo (sneller schieten) €${upgradeKosten('vuurtempo')} <span class="gekocht">lv ${upgrades.vuurtempo}</span></span>
-    <span class="regel">2, Pickup radius (munten sneller oprapen) €${upgradeKosten('pickup')} <span class="gekocht">lv ${upgrades.pickup}</span></span>
-    <span class="regel">3, Loopsnelheid (sneller lopen) €${upgradeKosten('snelheid')} <span class="gekocht">lv ${upgrades.snelheid}</span></span>
-    <span class="regel">Robots komen uit: ${poortenTekst(spel.actievePoorten)}</span>
-  `;
+  renderMenu();   // Ticket D35: prijzen en niveaus in een open menu bijwerken
 }
 
 function toonWaveBanner(tekst) {
@@ -2813,7 +2720,7 @@ function koopUpgrade(type) {
 
 function updateGeldUI() {
   geldUI.textContent = `💰 €${geld}`;
-  updateBouwUI();   // Ticket D11: "te duur"-markering in een open bouwmenu bijwerken
+  renderMenu();   // Ticket D11/D35: "te duur"-markering in een open menu bijwerken
 }
 
 /* ================================================================
@@ -2959,24 +2866,75 @@ function koopMonumentReparatie() {
   speelMunt();
 }
 
-// --- Bijenkorf-upgradewinkel ---------------------------------------
-// De bestaande upgrades (koopUpgrade/upgradeKosten) blijven ongewijzigd;
-// alleen wannéér ze via de toetsen 1/2/3 werken verandert (zie de
-// keydown-listener hierboven): voortaan alleen terwijl dit menu open is.
+// --- Ticket D35: één menupaneel ----------------------------------------
+//
+// Commandopost en bouwplekken gebruiken hetzelfde paneel en dezelfde
+// bediening: T opent en sluit, een cijfer kiest een optie, weglopen of
+// pauzeren sluit. Een menu is een object:
+//   { bron, titel(), opties(), hoortBij(interactiepunt) }
+// opties() geeft [{ tekst, prijs, klaar, sluit, actie }]; `prijs` markeert
+// "te duur", `klaar` een optie die niets meer doet (maximaal niveau, heel),
+// `sluit` sluit het menu na de actie.
+const menuUI = document.getElementById('menuUI');
+let menu = null;
 
-let bijenkorfShopOpen = false;
+function openMenu(def) {
+  menu = def;
+  renderMenu();
+  menuUI.style.display = 'block';
+}
+function sluitMenu() {
+  menu = null;
+  menuUI.style.display = 'none';
+}
+function renderMenu() {
+  if (!menu) return;
+  const regels = menu.opties().map((o, i) => {
+    const klasse = o.klaar ? ' gekocht' : (o.prijs != null && geld < o.prijs ? ' te-duur' : '');
+    return `<span class="regel${klasse}">${i + 1}, ${o.tekst}</span>`;
+  }).join('');
+  menuUI.innerHTML = `<b>${menu.titel()}</b>, druk een cijfer, T om te sluiten:<br>${regels}`;
+}
+function kiesMenuOptie(i) {
+  if (!menu) return;
+  const optie = menu.opties()[i];
+  if (!optie || optie.klaar) return;
+  optie.actie();
+  if (optie.sluit) sluitMenu();
+  else renderMenu();
+}
 
-function activeerBijenkorfUpgradeShop() {
-  bijenkorfShopOpen = !bijenkorfShopOpen;
-  shopUI.style.display = bijenkorfShopOpen ? 'block' : 'none';
-  toonFeedbackMelding(bijenkorfShopOpen ? 'Bijenkorf Upgrades geopend' : 'Bijenkorf Upgrades gesloten');
+// De commandopost aan de voet van het monument: wapen-upgrades en
+// monumentreparatie op één plek. Vervangt de Bijenkorf-kiosk en de
+// Koninklijke Reparatiepost van vóór fase M.
+const COMMANDOPOST_UPGRADES = [
+  ['vuurtempo', 'Vuurtempo, sneller schieten'],
+  ['pickup', 'Pickup radius, munten sneller oprapen'],
+  ['snelheid', 'Loopsnelheid, sneller lopen'],
+];
+const COMMANDOPOST_MENU = {
+  bron: 'commandopost',
+  titel: () => 'Commandopost',
+  opties: () => [
+    ...COMMANDOPOST_UPGRADES.map(([type, tekst]) => upgrades[type] >= 5
+      ? { tekst: `${tekst}, maximaal (niv. 5)`, klaar: true, actie: () => {} }
+      : { tekst: `${tekst} €${upgradeKosten(type)} (niv. ${upgrades[type]})`, prijs: upgradeKosten(type), actie: () => koopUpgrade(type) }),
+    spel.monumentHP >= MONUMENT_MAX_HP
+      ? { tekst: 'Monument repareren, het monument is heel', klaar: true, actie: () => {} }
+      : { tekst: 'Monument repareren €100 (+25 HP)', prijs: 100, actie: koopMonumentReparatie },
+  ],
+  hoortBij: punt => punt.type === 'commandopost',
+};
+function activeerCommandopost() {
+  if (menu === COMMANDOPOST_MENU) sluitMenu();
+  else openMenu(COMMANDOPOST_MENU);
 }
 
 // --- Het centrale interactiesysteem ---------------------------------
 
-// Ticket D32: posities uit DAM_LAYOUT (Kerkklok) of tijdelijk rond de
-// commandopost en voor de Bijenkorf, tot D35 er één menu van maakt.
-// `radius` is een interactieafstand op mensenmaat.
+// Ticket D35: twee vaste punten uit DAM_LAYOUT, de Kerkklok en de
+// commandopost, plus straks de tien bouwplekken. `radius` is een
+// interactieafstand op mensenmaat.
 const interactiePunten = [
   {
     naam: 'Kerkklok Boost',
@@ -2991,20 +2949,12 @@ const interactiePunten = [
     actie: activeerKerkklokBoost,
   },
   {
-    naam: 'Koninklijke Reparatie',
-    type: 'reparatie',
+    naam: 'Commandopost',
+    type: 'commandopost',
     positie: new THREE.Vector3(DAM_LAYOUT.commandopost.spelerPlek[0], 0, DAM_LAYOUT.commandopost.spelerPlek[1]),
-    radius: 4,
-    prompt: 'Druk T voor Koninklijke Reparatie (€100, +25 HP)',
-    actie: koopMonumentReparatie,
-  },
-  {
-    naam: 'Bijenkorf Upgrades',
-    type: 'upgradeShop',
-    positie: new THREE.Vector3(KIOSK_POSITIE.x, 0, KIOSK_POSITIE.z + 4.2),
-    radius: 4,
-    prompt: () => bijenkorfShopOpen ? 'Druk T om de winkel te sluiten' : 'Druk T voor Bijenkorf Upgrades',
-    actie: activeerBijenkorfUpgradeShop,
+    radius: 2.5,
+    prompt: () => menu === COMMANDOPOST_MENU ? 'Kies 1–4, T om te sluiten' : 'Druk T voor de commandopost: upgrades en monument repareren',
+    actie: activeerCommandopost,
   },
 ];
 
@@ -3172,58 +3122,50 @@ function upgradePrijs(toren) {
 function reparatieKosten(toren) { return Math.ceil((toren.hpMax - toren.hp) * TOREN_REPARATIE_PER_HP); }
 function verkoopOpbrengst(toren) { return Math.round(toren.geinvesteerd * TOREN_VERKOOP_FRACTIE); }
 const torens = [];
-let bouwMenuPlek = null;   // de bouwplek waarvan het bouwmenu nu open staat
-const bouwUI = document.getElementById('bouwUI');
-
 function bouwplekPrompt(plek) {
+  const open = menu?.bron === plek;
   if (plek.toren) {
     const t = plek.toren;
     const basis = `${TOREN_TYPES[t.type].naam} niv. ${t.niveau} — ${Math.ceil(t.hp)}/${t.hpMax} HP`;
-    return bouwMenuPlek === plek ? `${basis} — kies 1/2/3, T om te sluiten` : `${basis} — druk T voor opties`;
+    return open ? `${basis} — kies 1/2/3, T om te sluiten` : `${basis} — druk T voor opties`;
   }
-  return bouwMenuPlek === plek ? 'Kies een toren met 1, of druk T om te sluiten' : `Druk T om te bouwen (bouwplek ${plek.poort})`;
+  return open ? 'Kies een toren met een cijfer, of druk T om te sluiten' : `Druk T om te bouwen (bouwplek ${plek.poort})`;
 }
 
-// Zelfde patroon als de Bijenkorf-winkel: T opent/sluit, cijfertoetsen
-// kopen zolang het menu open is. Geen aparte bouwmodus, geen nieuwe UI-laag.
-// Op een lege plek toont het menu de torens; op een bezette plek (sinds
-// Ticket D12) upgraden, repareren en verkopen.
+// Ticket D35: het bouwmenu is een menu op het ene paneel. Op een lege plek
+// de torens; op een bezette plek (sinds D12) upgraden, repareren en verkopen.
+function bouwMenu(plek) {
+  return {
+    bron: plek,
+    hoortBij: punt => punt.bouwplek === plek,
+    titel: () => plek.toren ? `${TOREN_TYPES[plek.toren.type].naam} niveau ${plek.toren.niveau} (${plek.poort})` : `Bouwplek ${plek.poort}`,
+    opties: () => {
+      const t = plek.toren;
+      if (!t) {
+        return Object.entries(TOREN_TYPES).map(([type, cfg]) => ({
+          tekst: `${cfg.naam} €${cfg.prijs} — ${cfg.omschrijving}, ${cfg.hp} HP`, prijs: cfg.prijs, sluit: true,
+          actie: () => bouwToren(plek, type),
+        }));
+      }
+      const cfg = TOREN_TYPES[t.type];
+      const prijs = upgradePrijs(t);
+      const volgend = cfg.niveaus[t.niveau];
+      const reparatie = reparatieKosten(t);
+      return [
+        prijs === null
+          ? { tekst: 'Maximaal niveau bereikt', klaar: true, actie: () => {} }
+          : { tekst: `Upgrade naar niveau ${t.niveau + 1} €${prijs} — ${t.type === 'hek' ? '' : `bereik ${volgend.bereik} m, ${volgend.schadePerSchot} schade/${volgend.schotInterval}s, `}${volgend.hp} HP`, prijs, actie: () => upgradeToren(t) },
+        reparatie === 0
+          ? { tekst: 'Repareren — toren is heel', klaar: true, actie: () => {} }
+          : { tekst: `Repareren €${reparatie} (${Math.ceil(t.hp)}/${t.hpMax} HP)`, prijs: reparatie, actie: () => repareerToren(t) },
+        { tekst: `Verkopen +€${verkoopOpbrengst(t)}`, sluit: true, actie: () => verkoopToren(t) },
+      ];
+    },
+  };
+}
 function activeerBouwplek(plek) {
-  if (bouwMenuPlek === plek) sluitBouwMenu();
-  else openBouwMenu(plek);
-}
-function openBouwMenu(plek) {
-  bouwMenuPlek = plek;
-  updateBouwUI();
-  bouwUI.style.display = 'block';
-}
-function sluitBouwMenu() {
-  bouwMenuPlek = null;
-  bouwUI.style.display = 'none';
-}
-function updateBouwUI() {
-  if (!bouwMenuPlek) return;
-  if (bouwMenuPlek.toren) {
-    const t = bouwMenuPlek.toren;
-    const cfg = TOREN_TYPES[t.type];
-    const prijs = upgradePrijs(t);
-    const volgend = cfg.niveaus[t.niveau];
-    const duur = (bedrag) => (geld >= bedrag ? '' : ' class="te-duur"');
-    const upgradeRegel = prijs === null
-      ? '<span class="regel gekocht">1, Maximaal niveau bereikt</span>'
-      : `<span class="regel"${duur(prijs)}>1, Upgrade naar niveau ${t.niveau + 1} €${prijs} — ${t.type === 'hek' ? '' : `bereik ${volgend.bereik} m, ${volgend.schadePerSchot} schade/${volgend.schotInterval}s, `}${volgend.hp} HP</span>`;
-    const reparatie = reparatieKosten(t);
-    const reparatieRegel = reparatie === 0
-      ? '<span class="regel gekocht">2, Repareren — toren is heel</span>'
-      : `<span class="regel"${duur(reparatie)}>2, Repareren €${reparatie} (${Math.ceil(t.hp)}/${t.hpMax} HP)</span>`;
-    bouwUI.innerHTML = `<b>${cfg.naam} niveau ${t.niveau}</b> (${bouwMenuPlek.poort}), T om te sluiten:<br>${upgradeRegel}${reparatieRegel}<span class="regel">3, Verkopen +€${verkoopOpbrengst(t)}</span>`;
-    return;
-  }
-  const regels = Object.entries(TOREN_TYPES).map(([, cfg], i) => {
-    const klasse = geld >= cfg.prijs ? '' : ' class="te-duur"';
-    return `<span class="regel"${klasse}>${i + 1}, ${cfg.naam} €${cfg.prijs} — ${cfg.omschrijving}, ${cfg.hp} HP</span>`;
-  }).join('');
-  bouwUI.innerHTML = `<b>Bouwplek ${bouwMenuPlek.poort}</b>, druk een cijfer om te bouwen, T om te sluiten:<br>${regels}`;
+  if (menu?.bron === plek) sluitMenu();
+  else openMenu(bouwMenu(plek));
 }
 
 // HP-balkje boven een toren of hek (Ticket D13): alleen zichtbaar zodra er
@@ -3328,7 +3270,7 @@ function vernietigToren(toren) {
   }
   speelExplosie();
   toonFeedbackMelding(`${TOREN_TYPES[toren.type].naam} bij ${toren.plek.poort} is gesneuveld!`);
-  if (bouwMenuPlek === toren.plek) sluitBouwMenu();
+  if (menu?.bron === toren.plek) sluitMenu();
   verwijderToren(toren);
 }
 
@@ -3441,7 +3383,7 @@ function bouwToren(plek, type) {
   plek.toren = toren;
   torens.push(toren);
   runStats.torensGebouwd += 1;
-  sluitBouwMenu();
+  if (menu?.bron === plek) sluitMenu();
   speelBouw();
   toonFeedbackMelding(`${cfg.naam} gebouwd bij ${plek.poort}`);
   return toren;
@@ -3494,7 +3436,6 @@ function verkoopToren(toren) {
   verdienGeld(opbrengst);
   updateGeldUI();
   verwijderToren(toren);
-  sluitBouwMenu();
   toonFeedbackMelding(`Toren verkocht +€${opbrengst}`);
   return opbrengst;
 }
@@ -3573,19 +3514,10 @@ function updateInteracties(dt) {
     verbergInteractiePrompt();
   }
 
-  // De Bijenkorf-winkel moet niet openstaan als de speler wegloopt: anders
-  // blijft het venster (en de 1/2/3-hotkeys) actief terwijl je alweer ergens
-  // anders op het plein staat. Sluit 'm zodra de kiosk niet meer het
-  // dichtstbijzijnde (of enige bereikbare) interactiepunt is.
-  if (bijenkorfShopOpen && (!huidigeInteractie || huidigeInteractie.type !== 'upgradeShop')) {
-    bijenkorfShopOpen = false;
-    shopUI.style.display = 'none';
-    toonFeedbackMelding('Bijenkorf Upgrades gesloten (te ver weg)');
-  }
-  // Ticket D11: idem voor het bouwmenu — weglopen van de bouwplek sluit het.
-  if (bouwMenuPlek && (!huidigeInteractie || huidigeInteractie.bouwplek !== bouwMenuPlek)) {
-    sluitBouwMenu();
-  }
+  // Een menu mag niet openstaan als de speler wegloopt: anders blijven het
+  // paneel en de cijfertoetsen actief terwijl je alweer ergens anders staat.
+  // Ticket D35: één regel voor elk menu (commandopost en bouwplekken).
+  if (menu && (!huidigeInteractie || !menu.hoortBij(huidigeInteractie))) sluitMenu();
 }
 
 function vindDichtstbijzijndeInteractie() {
@@ -4642,13 +4574,11 @@ function resetRun() {
   cameraShake = 0;
   schietKnopIngedrukt = false;
   huidigeInteractie = null;
-  bijenkorfShopOpen = false;
   // Ticket D11: torens horen bij de run (plan §9 vraag 2: alles weg bij reset).
   for (const toren of [...torens]) verwijderToren(toren);
-  sluitBouwMenu();
+  sluitMenu();
 
   // Zichtbare restanten van de vorige run.
-  shopUI.style.display = 'none';
   wapen.position.z = -0.55;
   wapen.rotation.x = 0;
   vlam.visible = false;
@@ -4763,8 +4693,8 @@ requestAnimationFrame(gameLoop);
 // (…Stand, zelfde patroon als het bestaande `geldStand`) i.p.v. de kale
 // waarde: anders bevriest de export de waarde van het moment dat deze regel
 // voor het eerst uitgevoerd wordt, in plaats van live mee te lezen.
-window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => bijenkorfShopOpen, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, activeerKerkklokBoost, updateKerkklokBoost,
-  GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerBijenkorfUpgradeShop, updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
+window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => menu === COMMANDOPOST_MENU, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, activeerKerkklokBoost, updateKerkklokBoost,
+  GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerBijenkorfUpgradeShop: activeerCommandopost, updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
   // Speeltest-feedback (na D6): overzicht-hulpmiddelen.
   tekenMinimap, updateRichtingspijlen, verbergRichtingspijlen, projecteerOpScherm, robotPijlenPool,
   // Ticket D32: het nieuwe fundament (ARENA_SCHAAL bestaat niet meer).
@@ -4788,10 +4718,12 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   WAPEN_BEREIK, raycaster,
   // Ticket D10: bouwplekken.
   BOUWPLEKKEN, BOUWPLEK_RADIUS, puntOpRoute, looproute,
-  runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, bijenkorfShopOpen, bouwMenuPlek, aantalTorens: torens.length, aantalObstakels: obstakels.length }),
+  runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, bijenkorfShopOpen: menu === COMMANDOPOST_MENU, bouwMenuPlek: menu && menu !== COMMANDOPOST_MENU ? menu.bron : null, aantalTorens: torens.length, aantalObstakels: obstakels.length }),
   // Ticket D11: torens.
   TOREN_TYPES, torens, bouwToren, verwijderToren, updateTorens, activeerBouwplek, kiesTorenDoel, verwijderObstakel,
-  bouwMenuStand: () => bouwMenuPlek,
+  bouwMenuStand: () => (menu && menu !== COMMANDOPOST_MENU ? menu.bron : null),
+  // Ticket D35: één menu en de commandopost.
+  menuStand: () => menu, openMenu, sluitMenu, kiesMenuOptie, renderMenu, updateArcadeUI, activeerCommandopost, COMMANDOPOST_MENU,
   // Ticket D15: bouwfase.
   BOUWFASE_DUUR, VROEGE_START_BONUS_PER_SECONDE, inBouwfase, bouwfaseResterend, startVolgendeWaveNu,
   // Ticket D12: torenniveaus, reparatie, verkopen.
