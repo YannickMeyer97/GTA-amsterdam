@@ -3112,6 +3112,17 @@ const BOVENLEIDING_NIVEAUS = [
   { prijs: 300, bereik: 12, schade: 2,   doelen: 4, sprong: 5,   schotInterval: 1.6, hp: 110 },
 ];
 const BOVENLEIDING_SPRONG_FACTOR = 0.75;
+// Ticket D49: de Muntpers. Een steuntoren zonder aanval: robots die binnen
+// zijn bereik sneuvelen, door wie dan ook, laten een munt achter die
+// MUNTPERS_BONUS keer zoveel waard is. Meerdere persen stapelen niet. Een
+// investering die zich terugverdient als je robots in zijn buurt afmaakt.
+// Upgrades geven meer bereik en HP, niet meer bonus. Te ijken in D43.
+const MUNTPERS_NIVEAUS = [
+  { prijs: 150, bereik: 8,  hp: 60 },
+  { prijs: 150, bereik: 10, hp: 90 },
+  { prijs: 200, bereik: 12, hp: 130 },
+];
+const MUNTPERS_BONUS = 1.5;
 const HEK_NIVEAUS = [
   { prijs: 100, hp: 120 },
   { prijs: 100, hp: 200 },
@@ -3121,15 +3132,21 @@ const TOREN_TYPES = {
   // De velden op het type zelf (prijs, bereik, …) zijn niveau 1.
   geschut: {
     naam: 'Geschuttoren', ...GESCHUT_NIVEAUS[0],
-    omschrijving: `schiet op robots binnen ${GESCHUT_NIVEAUS[0].bereik} m`,
+    omschrijving: `schiet binnen ${GESCHUT_NIVEAUS[0].bereik} m`,
     niveaus: GESCHUT_NIVEAUS,
     niveauTekst: n => `bereik ${n.bereik} m, ${n.schadePerSchot} schade/${n.schotInterval}s, `,
   },
   bovenleiding: {
     naam: 'Bovenleiding', ...BOVENLEIDING_NIVEAUS[0],
-    omschrijving: `stroomstoot springt over op ${BOVENLEIDING_NIVEAUS[0].doelen} robots dicht bij elkaar`,
+    omschrijving: `stroomstoot over ${BOVENLEIDING_NIVEAUS[0].doelen} robots`,
     niveaus: BOVENLEIDING_NIVEAUS,
     niveauTekst: n => `bereik ${n.bereik} m, ${n.doelen} robots, sprong ${n.sprong} m, elke ${n.schotInterval}s, `,
+  },
+  muntpers: {
+    naam: 'Muntpers', ...MUNTPERS_NIVEAUS[0],
+    omschrijving: `+50% geld binnen ${MUNTPERS_NIVEAUS[0].bereik} m, valt niet aan`,
+    niveaus: MUNTPERS_NIVEAUS,
+    niveauTekst: n => `bereik ${n.bereik} m, `,
   },
   // Ticket D13: het hek schiet niet, het kóópt tijd. Een rij paaltjes dwars
   // over de looproute; robots die ertegenaan lopen, blijven staan en slaan
@@ -3138,7 +3155,7 @@ const TOREN_TYPES = {
   // in D16.
   hek: {
     naam: 'Hek', ...HEK_NIVEAUS[0],
-    omschrijving: 'blokkeert de straat, robots moeten erdoorheen slaan',
+    omschrijving: 'blokkeert de straat',
     niveaus: HEK_NIVEAUS,
     niveauTekst: () => '',
   },
@@ -3582,6 +3599,81 @@ function vuurBovenleiding(toren) {
   return treffers;
 }
 
+// Ticket D49: de Muntpers. Een gietijzeren pers: sokkel, twee zuilen, een
+// zware kopbalk en een stempel die op een gouden munt neerkomt. Een lage
+// gouden ring op de grond toont het bereik (de enige toren waarvan je dat
+// moet weten om hem te gebruiken). Bij een bonuskill slaat de stempel.
+function maakMuntpers(plek) {
+  const g = new THREE.Group();
+  const sokkel = blok(1.3, 0.4, 1.3, 0x6d6a66, 0.85);
+  sokkel.position.y = 0.3;
+  const ijzer = mat(0x2f3338, 0.55, 0.5);
+  for (const x of [-0.45, 0.45]) {
+    const zuil = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 1.3, 8), ijzer);
+    zuil.position.set(x, 1.15, 0);
+    zuil.castShadow = true;
+    g.add(zuil);
+  }
+  const balk = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.32, 0.5), ijzer);
+  balk.position.y = 1.9;
+  balk.castShadow = true;
+  const stempel = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.5, 12), mat(0x8c8f94, 0.35, 0.8));
+  stempel.position.y = 1.45;
+  const munt = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.06, 18), new THREE.MeshStandardMaterial({ color: 0xffc93c, roughness: 0.25, metalness: 0.85 }));
+  munt.position.y = 0.53;
+  const hpBalk = maakHpBalk(2.4);
+  const ringen = [0.75, 1.0].map(y => {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.04, 8, 14), mat(0xffd75e, 0.35, 0.6));
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(0.45, y, 0);
+    ring.visible = false;
+    g.add(ring);
+    return ring;
+  });
+  g.add(sokkel, balk, stempel, munt, hpBalk);
+  g.position.copy(plek.positie);
+  scene.add(g);
+  // Bereikring, in wereldcoördinaten zodat hij met het niveau kan groeien.
+  const bereikRing = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 64), new THREE.MeshBasicMaterial({ color: 0xffc93c, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide }));
+  bereikRing.rotation.x = -Math.PI / 2;
+  bereikRing.position.set(plek.positie.x, vloerHoogte(plek.positie.x, plek.positie.z) + 0.04, plek.positie.z);
+  bereikRing.scale.setScalar(MUNTPERS_NIVEAUS[0].bereik);
+  scene.add(bereikRing);
+  const x = plek.positie.x, z = plek.positie.z;
+  const cfg = TOREN_TYPES.muntpers;
+  return {
+    type: 'muntpers', plek, groep: g, stempel, stempelTimer: 0, ringen, hpBalk,
+    spoor: bereikRing,   // opgeruimd door verwijderToren, zoals de sporen van andere torens
+    niveau: 1, geinvesteerd: cfg.prijs,
+    hp: cfg.hp, hpMax: cfg.hp, bonusKills: 0,
+    obstakelHandles: [registreerRechthoek(x - 0.65, x + 0.65, z - 0.65, z + 0.65)],
+  };
+}
+// De Muntpers die een kill op deze plek beloont, of null. Meerdere persen
+// in bereik stapelen niet: de eerste telt.
+function muntpersVoor(positie) {
+  for (const toren of torens) {
+    if (toren.type !== 'muntpers') continue;
+    const a = Math.hypot(positie.x - toren.plek.positie.x, positie.z - toren.plek.positie.z);
+    if (a <= torenStats(toren).bereik) return toren;
+  }
+  return null;
+}
+function muntpersBonus(positie) {
+  const pers = muntpersVoor(positie);
+  if (!pers) return 1;
+  pers.bonusKills += 1;
+  pers.stempelTimer = 0.35;
+  return MUNTPERS_BONUS;
+}
+function updateMuntpers(toren, dt) {
+  // Stempel slaat neer en veert terug; bereikring groeit mee met het niveau.
+  toren.stempelTimer = Math.max(0, toren.stempelTimer - dt);
+  const slag = Math.sin((toren.stempelTimer / 0.35) * Math.PI);
+  toren.stempel.position.y = 1.45 - slag * 0.55;
+  toren.spoor.scale.setScalar(torenStats(toren).bereik);
+}
+
 function bouwToren(plek, type) {
   const cfg = TOREN_TYPES[type];
   if (!cfg || plek[slotVan(type)] || spel.gameOver) return null;
@@ -3591,7 +3683,7 @@ function bouwToren(plek, type) {
   }
   geld -= cfg.prijs;
   updateGeldUI();
-  const toren = { hek: maakHek, geschut: maakGeschutToren, bovenleiding: maakBovenleiding }[type](plek);
+  const toren = { hek: maakHek, geschut: maakGeschutToren, bovenleiding: maakBovenleiding, muntpers: maakMuntpers }[type](plek);
   toren.slot = slotVan(type);
   plek[toren.slot] = toren;
   torens.push(toren);
@@ -3700,6 +3792,7 @@ function updateTorens(dt) {
   for (const toren of torens) {
     updateHpBalk(toren);
     if (toren.type === 'bovenleiding') { updateBovenleiding(toren, dt); continue; }
+    if (toren.type === 'muntpers') { updateMuntpers(toren, dt); continue; }   // valt niet aan
     if (toren.type !== 'geschut') continue;   // een hek schiet niet
     const cfg = torenStats(toren);
     toren.cooldown = Math.max(0, toren.cooldown - dt);
@@ -4425,7 +4518,7 @@ function vernietigRobot(robot, bron = 'speler') {
 
   if (bron === 'toren') {
     runStats.torenKills += 1;
-    legMuntNeer(robot.groep.position, robot.beloningMultiplier * getRewardMultiplier());
+    legMuntNeer(robot.groep.position, robot.beloningMultiplier * getRewardMultiplier() * muntpersBonus(robot.groep.position));
     spel.score += 100;
     updateArcadeUI();
     return;
@@ -4438,7 +4531,7 @@ function vernietigRobot(robot, bron = 'speler') {
   spel.combo += 1;
   const tierNa = comboTier(spel.combo);
   runStats.hoogsteCombo = Math.max(runStats.hoogsteCombo, spel.combo);
-  legMuntNeer(robot.groep.position, robot.beloningMultiplier * getRewardMultiplier() * getComboGeldMultiplier());
+  legMuntNeer(robot.groep.position, robot.beloningMultiplier * getRewardMultiplier() * getComboGeldMultiplier() * muntpersBonus(robot.groep.position));
   // Alleen tonen bij het OVERSCHRIJDEN van een drempel, niet bij elke kill
   // die al in een hoge tier zit — anders spamt dit bij een lange streak.
   if (tierNa > tierVoor && COMBO_TIER_MELDING[tierNa]) {
@@ -4919,6 +5012,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   // Ticket D10: bouwplekken.
   BOUWPLEKKEN, BOUWPLEK_RADIUS, puntOpRoute, looproute, plekVoor, dichtsteHekLijn, opPlekTegel, slotVan,
   BOVENLEIDING_NIVEAUS, BOVENLEIDING_SPRONG_FACTOR, kiesKetting, vuurBovenleiding, updateBovenleiding,
+  MUNTPERS_NIVEAUS, MUNTPERS_BONUS, muntpersVoor, muntpersBonus,
   runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, bijenkorfShopOpen: menu === COMMANDOPOST_MENU, bouwMenuPlek: menu && menu !== COMMANDOPOST_MENU ? menu.bron : null, aantalTorens: torens.length, aantalObstakels: obstakels.length }),
   // Ticket D11: torens.
   TOREN_TYPES, torens, bouwToren, verwijderToren, updateTorens, activeerBouwplek, kiesTorenDoel, verwijderObstakel,

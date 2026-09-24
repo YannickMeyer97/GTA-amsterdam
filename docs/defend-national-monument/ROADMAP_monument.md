@@ -114,7 +114,7 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D46** | Bouwplekken: knooppunten bij het monument + een voorpost per straat — *na M2* |
 | ☑ | **D47** | Eigen hekslot naast het torenslot — *na M2* |
 | ☑ | **D48** | Nieuwe toren: Bovenleiding (stroomstoot springt over naar tot 4 robots) — *na M2* |
-| ☐ | **D49** | Nieuwe toren: Muntpers (+50% geld voor kills in bereik) — *na M2* |
+| ☑ | **D49** | Nieuwe toren: Muntpers (+50% geld voor kills in bereik) — *na M2* |
 | ☐ | **D36** | Textuurbibliotheek (gekopieerd uit Undead + kinderkopjes, zandsteen, leisteen, …) |
 | ☐ | **D37** | Paleis op de Dam |
 | ☐ | **D38** | Nieuwe Kerk |
@@ -431,6 +431,34 @@ reproductie die eerder 1 op de 4 keer faalde, faalt niet meer.
   3 Hek". De upgradetekst komt per type uit `niveauTekst`.
 - **Tests:** `test-dnm-bovenleiding` (19 checks). `test-dnm-hek` leest het
   nummer van de hekoptie nu uit het aantal torentypes.
+
+**D49 — de Muntpers, verslag.**
+- **Wat het is:** een gietijzeren pers in het torenslot: sokkel, twee
+  zuilen, een zware kopbalk en een stempel boven een gouden munt. Een lage
+  gouden ring op de grond toont het bereik.
+- **Werking:**
+  - een robot die binnen het bereik sneuvelt, door de speler of door een
+    toren, laat een munt achter die 50% meer waard is (`muntpersBonus` in
+    `vernietigRobot`);
+  - de stempel slaat bij elke bonuskill;
+  - twee persen stapelen niet;
+  - hij valt niet aan, maar telt wel als doelwit voor bombers.
+- **Niveaus (startwaarden, te ijken in D43):**
+
+  | Niveau | Prijs | Bereik | HP |
+  |---|---|---|---|
+  | 1 | €150 | 8 m | 60 |
+  | 2 | €150 | 10 m | 90 |
+  | 3 | €200 | 12 m | 130 |
+
+  Upgrades geven meer bereik en HP, niet meer bonus.
+- **Menu:** een lege plek toont nu "1 Geschuttoren, 2 Bovenleiding,
+  3 Muntpers, 4 Hek". De omschrijvingen zijn ingekort, zodat zes opties
+  ook op 1024×640 zonder overlap passen.
+- **Test:** `test-dnm-muntpers` (13 checks), met `Math.random` vastgezet.
+- **Stapelen in de praktijk:** de knooppunten liggen 26–31 m uit elkaar,
+  dus twee persen overlappen nu nooit. De regel staat er toch, voor als de
+  plekken ooit verschuiven.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 

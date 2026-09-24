@@ -1932,6 +1932,12 @@ Besluiten van de eigenaar:
   - geen stapeling;
   - geen aanval;
   - de toren telt mee in bombers-doelwitten.
+- **Uitgevoerd:**
+  - +50% via `muntpersBonus` in `vernietigRobot`, voor speler- én
+    torenkills.
+  - Geen stapeling.
+  - Een bereikring op de grond.
+  - Zie het verslag in de ROADMAP.
 
 Volgorde: D44 → D45 → D46 → D47 → D48 → D49, daarna D36. De economie van
 de nieuwe torens wordt in D43 herijkt, samen met de rest.
