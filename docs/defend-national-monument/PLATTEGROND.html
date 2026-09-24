@@ -62,7 +62,7 @@
 <body>
 <main>
   <h1>Plattegrond van de Dam</h1>
-  <p class="sub">Voorstel voor fase M, ticket D31. Bovenaanzicht op schaal: noord is boven, één hokje is 10 m.</p>
+  <p class="sub">Voorstel 2 voor fase M, ticket D31: Bijenkorf en Hotel TwentySeven op hun echte plek. Bovenaanzicht op schaal: noord is boven, één hokje is 10 m.</p>
   <p>Mensmaat 1:1: deuren, verdiepingen en ramen hebben hun echte maat. Gebouwen zijn korter of minder diep dan in het echt (minder traveeën), maar nooit uitgerekt. Het plein zelf is compact: de afstanden zijn gekozen op speelbaarheid. De onderlinge ligging klopt met de echte Dam.</p>
 
   <div class="kaart"><svg id="svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Plattegrond van de Dam"></svg></div>
@@ -84,13 +84,25 @@
   <h2>Gebouwen: maten en kenmerken</h2>
   <div class="tabel"><table id="gebouwen"></table></div>
 
+  <h2>Zo ziet de echte Dam eruit</h2>
+  <p>De ligging hieronder is opgezocht, niet uit het hoofd getekend. De kaart volgt deze volgorde rondom; alleen de afstanden zijn ingekort.</p>
+  <ul>
+    <li><strong>Maat:</strong> het plein is ongeveer 200 m van west naar oost en 100 m van noord naar zuid. Op de kaart is dat 83 × 44 m: dezelfde verhouding, compacter.</li>
+    <li><strong>West:</strong> het Paleis, met de gevel naar het oosten. De Nieuwe Kerk staat ernaast, aan de noordkant.</li>
+    <li><strong>Oost:</strong> het Nationaal Monument (pyloon van 22 m) staat tegenover het Paleis en kijkt ernaar. Erachter staat Krasnapolsky, op de noordhoek van de Damstraat.</li>
+    <li><strong>Noord, van west naar oost:</strong> Nieuwe Kerk, Nieuwendijk, gevelrij, Damrak, de Bijenkorf (hoek Dam–Damrak, hoofdingang aan de Dam), de Warmoesstraat en Krasnapolsky.</li>
+    <li><strong>Zuid, van west naar oost:</strong> gevelrij, Kalverstraat, het Peek &amp; Cloppenburg-gebouw met Madame Tussauds, het Rokin, het Industria-gebouw met Hotel TwentySeven (zuidoosthoek, hoek Rokin), de Nes en de Damstraat.</li>
+    <li><strong>Tram:</strong> van het Damrak naar het Rokin, tussen het voetgangersplein voor het Paleis en het monument door.</li>
+  </ul>
+  <p class="sub">Bronnen: Rijksdienst voor het Cultureel Erfgoed (monumentenregister Dam 1, Bijenkorf), Rijksmonumenten.nl (Industria, Nationaal Monument), architectuur.org (Clubgebouw Industria), de website van Hotel TwentySeven en reisgidsen over de Dam. Kaartdiensten zoals OpenStreetMap waren vanuit de bouwomgeving niet bereikbaar.</p>
+
   <h2>Keuzes in dit voorstel</h2>
   <ul id="keuzes"></ul>
 </main>
 
 <script type="application/json" id="dam-layout">
 {
-  "versie": "D31-voorstel-1",
+  "versie": "D31-voorstel-2",
   "eenheid": "meter, mensmaat 1:1",
   "assen": "+x = oost, +z = zuid, oorsprong = midden van het monument, y = omhoog",
   "wapenBereik": 22,
@@ -129,7 +141,13 @@
     { "naam": "Damstraat stoep noord", "soort": "stoep",       "rect": [17, 9, 68, 11.5] },
     { "naam": "Damstraat stoep zuid",  "soort": "stoep",       "rect": [17, 16.5, 68, 19] },
     { "naam": "Kalverstraat",          "soort": "klinkers",    "rect": [-46.5, 22, -38.5, 78] },
-    { "naam": "Nieuwendijk",           "soort": "klinkers",    "rect": [-46.5, -78, -38.5, -22] }
+    { "naam": "Nieuwendijk",           "soort": "klinkers",    "rect": [-46.5, -78, -38.5, -22] },
+    { "naam": "Warmoesstraat",         "soort": "steeg",       "rect": [13, -78, 17, -22] },
+    { "naam": "Nes",                   "soort": "steeg",       "rect": [9, 22, 13, 78] }
+  ],
+  "afsluitingen": [
+    { "naam": "Warmoesstraat", "rect": [13, -29.5, 17, -28.5], "_uitleg": "doodlopend na 7 m; geen route" },
+    { "naam": "Nes",           "rect": [9, 28.5, 13, 29.5],    "_uitleg": "doodlopend na 7 m; geen route" }
   ],
 
   "routes": [
@@ -168,33 +186,38 @@
       "delen": [[-100, -50, -56, -28], [-70, -60, -60, -24], [-56, -48, -46.5, -32]], "hoogte": 28, "hoogsteDeel": 42,
       "maten": "schip 44 × 22 m, dwarsschip steekt 4 m naar het plein uit, koor tot aan de Nieuwendijk; nok ~28 m, dakruiter ~42 m",
       "kenmerken": ["laatgotisch, baksteen met natuurstenen banden", "hoge spitsboogramen met maaswerk", "het grote transeptraam in de zuidgevel, schuin naast het Paleis", "steile leien daken met een slank dakruitertje", "geen voltooide hoge toren, zoals in het echt"] },
-    { "naam": "Bijenkorf", "ticket": "D39", "kleur": "#8a6b58",
-      "delen": [[-38.5, -62, -27, -22]], "hoogte": 24, "hoogsteDeel": 24,
-      "maten": "11,5 m aan de Dam, 40 m langs het Damrak; ~24 m hoog",
-      "kenmerken": ["op de hoek Dam–Damrak, tussen Nieuwendijk en Damrak", "verticale gevelpijlers", "grote etalages op de begane grond", "vlaggen aan de gevel", "alleen de naam in gewone letters, geen logo"] },
+    { "naam": "Bijenkorf", "ticket": "D39", "kleur": "#8a5a48",
+      "delen": [[-11, -62, 13, -22]], "hoogte": 22, "hoogsteDeel": 30,
+      "maten": "24 m aan de Dam, 40 m langs het Damrak; ~22 m tot de balustrade, torenbekroning boven het midden ~30 m",
+      "kenmerken": ["op de hoek Dam–Damrak, aan de oostkant van het Damrak, hoofdingang aan de Dam", "rode baksteen en natuursteen, vijf bouwlagen (begane grond, drie verdiepingen, dakverdieping)", "verticale pijlers (lisenen) op een sokkel, kroonlijst met attiek en balustrade", "segmentvormige frontons op de hoekpaviljoens en het midden, met een torenbekroning boven het midden", "grote etalages op de begane grond", "alleen de naam in gewone letters, geen logo"] },
     { "naam": "Krasnapolsky", "ticket": "D39", "kleur": "#c9b99c",
       "delen": [[17, -45, 52, 9]], "hoogte": 24, "hoogsteDeel": 27,
       "maten": "31 m gevel aan de Dam, achter het monument; ~24 m plus mansardekap",
-      "kenmerken": ["breed 19e-eeuws hotel met veel ramen", "balkons", "luifel boven de ingang", "achtergrond van het monument vanaf het plein"] },
+      "kenmerken": ["oostkant van de Dam, recht achter het monument", "tussen de Warmoesstraat (noord) en de hoek met de Damstraat (zuid)", "breed 19e-eeuws hotel met veel ramen", "balkons", "luifel boven de ingang"] },
     { "naam": "Madame Tussauds-blok", "ticket": "D39", "kleur": "#9aa1a8",
       "delen": [[-38.5, 22, -27, 60]], "hoogte": 22, "hoogsteDeel": 22,
       "maten": "11,5 m aan de Dam, tussen Kalverstraat en Rokin; ~22 m",
-      "kenmerken": ["warenhuispand aan de zuidkant", "grote winkelpui op de begane grond", "gesloten bovengevel"] },
-    { "naam": "Damrak-oostwand", "ticket": "D40", "kleur": "#b8a58e",
-      "delen": [[-11, -78, 17, -22]], "hoogte": 18, "hoogsteDeel": 18,
-      "maten": "gevelrij van grachtenpanden, ~18 m", "kenmerken": ["trap-, hals- en lijstgevels in variatie", "winkelpuien"] },
+      "kenmerken": ["het Peek & Cloppenburg-gebouw (1917), Madame Tussauds op de bovenverdiepingen", "vijf bouwlagen in lichte kalksteen", "grote winkelpui op de begane grond", "beeldhouwwerk op de hoeken, in eigen eenvoudige vormen"] },
+    { "naam": "Hotel TwentySeven (Industria)", "ticket": "D39", "kleur": "#c9a27e",
+      "delen": [[-11, 22, 9, 55]], "hoogte": 22, "hoogsteDeel": 32,
+      "maten": "20 m aan de Dam, 33 m langs het Rokin; ~22 m, toren met koperen kap ~32 m",
+      "kenmerken": ["het Industria-gebouw (1916) op de zuidoosthoek van de Dam, hoek Rokin", "bijna vrijstaand, met vier verschillende gevels", "asymmetrische gevel aan de Dam met een torenachtig bouwdeel onder een klokvormige, groen uitgeslagen koperen kap", "lichte baksteen met spaarzaam natuursteen", "juwelier op de hoek op straatniveau, hotel op de bovenverdiepingen; namen alleen in gewone letters"] },
+    { "naam": "Beurs van Berlage", "ticket": "D40", "kleur": "#a8674e",
+      "delen": [[-11, -100, 13, -68]], "hoogte": 22, "hoogsteDeel": 40,
+      "maten": "achtergrond: noordelijker langs het Damrak, voorbij het Beursplein",
+      "kenmerken": ["baksteen, lange gevel langs het Damrak", "klokkentoren", "alleen in de verte zichtbaar, in de zichtlijn van het Damrak"] },
     { "naam": "Damrak-westwand", "ticket": "D40", "kleur": "#b8a58e",
-      "delen": [[-38.5, -78, -27, -62]], "hoogte": 16, "hoogsteDeel": 16,
-      "maten": "gevelrij in het verlengde van de Bijenkorf", "kenmerken": ["grachtenpanden"] },
+      "delen": [[-38.5, -78, -27, -22]], "hoogte": 16, "hoogsteDeel": 16,
+      "maten": "gevelrij tussen Nieuwendijk en Damrak", "kenmerken": ["grachtenpanden", "hoekpanden aan de Dam", "winkelpuien"] },
     { "naam": "Nieuwendijk-westwand", "ticket": "D40", "kleur": "#b8a58e",
       "delen": [[-56, -78, -46.5, -48]], "hoogte": 15, "hoogsteDeel": 15,
       "maten": "gevelrij achter het koor", "kenmerken": ["smalle grachtenpanden"] },
     { "naam": "Rokin-oostwand", "ticket": "D40", "kleur": "#b8a58e",
-      "delen": [[-11, 22, 17, 60]], "hoogte": 18, "hoogsteDeel": 18,
-      "maten": "gevelrij tussen Rokin en Damstraat", "kenmerken": ["grachtenpanden", "winkelpuien"] },
+      "delen": [[-11, 55, 9, 78]], "hoogte": 16, "hoogsteDeel": 16,
+      "maten": "gevelrij langs het Rokin, na Industria", "kenmerken": ["grachtenpanden"] },
     { "naam": "Damstraat-zuidwand", "ticket": "D40", "kleur": "#b8a58e",
-      "delen": [[17, 19, 52, 55]], "hoogte": 16, "hoogsteDeel": 16,
-      "maten": "gevelrij langs de Damstraat", "kenmerken": ["smalle panden", "winkelpuien"] },
+      "delen": [[13, 22, 17, 55], [17, 19, 52, 55]], "hoogte": 16, "hoogsteDeel": 16,
+      "maten": "hoekpand Nes/Damstraat en de gevelrij langs de Damstraat", "kenmerken": ["smalle panden", "winkelpuien"] },
     { "naam": "Kalverstraat-westwand", "ticket": "D40", "kleur": "#b8a58e",
       "delen": [[-66, 22, -46.5, 60]], "hoogte": 16, "hoogsteDeel": 16,
       "maten": "blok ten zuiden van het Paleis", "kenmerken": ["grachtenpanden", "winkelpuien aan de Kalverstraat"] }
@@ -400,6 +423,10 @@ toets('Geen hek steekt in een gebouw (uiteinden mogen een gevel raken)', plekMet
 }), '');
 toets('Elk hek overspant de volle strook van zijn route', plekMetingen.every(p => p.hek.breedte >= routeVan(p.route).info.segs.find(s => p.hek.s >= s.s0 && p.hek.s <= s.s0 + s.l + 1e-6).breedte), '');
 
+toets('Afsluitingen van stegen liggen niet op een route of rijbaan en binnen GRENS', L.afsluitingen.every(a =>
+  Math.min(...routes.map(r => vrijVanStrook(a.rect, r))) >= 2 && heiligeVlakken.every(vl => !rectsOverlappen(a.rect, vl.rect))
+  && a.rect[0] >= g.minX && a.rect[2] <= g.maxX && a.rect[1] >= g.minZ && a.rect[3] <= g.maxZ), L.afsluitingen.map(a => a.naam).join(', '));
+
 window.PLATTEGROND = { layout: L, routeMetingen, plekMetingen, kerkklokRetour, toetsen };
 
 // ---------- Tekenen ---------------------------------------------------------
@@ -432,7 +459,7 @@ el('path', { d: 'M1 1L9 5L1 9z', fill: 'context-stroke' }, pijl);
 rect([VB.x, VB.z, VB.x + VB.w, VB.z + VB.h], { fill: 'url(#kinderkopjes)' });
 
 // Vlakken.
-const vlakKleur = { asfalt: '#5f6166', stoep: '#bdb6a8', trambaan: '#9d9a93', klinkers: '#c6b89c' };
+const vlakKleur = { asfalt: '#5f6166', stoep: '#bdb6a8', trambaan: '#9d9a93', klinkers: '#c6b89c', steeg: '#c6b89c' };
 for (const vl of L.vlakken) {
   rect(vl.rect, { fill: vlakKleur[vl.soort], stroke: vl.soort === 'stoep' ? '#9d968a' : 'none', 'stroke-width': 0.15 });
   for (const x of vl.tramsporen ?? []) for (const d of [-0.72, 0.72]) el('line', { x1: x + d, y1: vl.rect[1], x2: x + d, y2: vl.rect[3], stroke: '#2b2b2b', 'stroke-width': 0.18 });
@@ -461,7 +488,7 @@ for (const gb of L.gebouwen) {
   for (const d of gb.delen) rect(d, { fill: gb.kleur, stroke: '#4d4337', 'stroke-width': 0.3 });
   // Label in het midden van het deel dat rond het plein in beeld is; in een
   // smal, lang blok gedraaid, en nooit breder dan het blok.
-  const hoofd = gb.delen[0];
+  const hoofd = gb.delen.reduce((m, d) => (d[2] - d[0]) * (d[3] - d[1]) > (m[2] - m[0]) * (m[3] - m[1]) ? d : m);
   const k = [Math.max(hoofd[0], -84), Math.max(hoofd[1], -75), Math.min(hoofd[2], 64), Math.min(hoofd[3], 75)];
   const cx = (k[0] + k[2]) / 2, cz = (k[1] + k[3]) / 2, bw = k[2] - k[0], bh = k[3] - k[1];
   const gedraaid = bw < 16 && bh > bw;
@@ -479,14 +506,15 @@ for (const gb of L.gebouwen) {
   }
 }
 for (const d of L.decor) rect(d.rect, { fill: '#e8c547', stroke: '#6b5a14', 'stroke-width': 0.2 });
+for (const a of L.afsluitingen) rect(a.rect, { fill: '#25221d', stroke: 'none' });
 
 // GRENS.
 rect([g.minX, g.minZ, g.maxX, g.maxZ], { fill: 'none', stroke: '#25221d', 'stroke-width': 0.35, 'stroke-dasharray': '2.4 1.2' });
 tekst(g.maxX - 1, g.minZ - 1, 'GRENS', { 'text-anchor': 'end', 'font-size': 1.6 });
 
 // Straatnamen.
-const straatLabels = [['Damrak', -19, -68, -90], ['Rokin', -19, 68, -90], ['Damstraat', 58, 14, 0], ['Kalverstraat', -42.5, 66, -90], ['Nieuwendijk', -42.5, -66, -90]];
-for (const [n, x, z, rot] of straatLabels) tekst(x, z, n, { transform: `rotate(${rot} ${x} ${z})`, fill: '#fff', 'font-weight': 700, 'font-size': 2.2, stroke: '#0008', 'stroke-width': 0.35, 'paint-order': 'stroke' });
+const straatLabels = [['Damrak', -19, -68, -90, 2.2], ['Rokin', -19, 68, -90, 2.2], ['Damstraat', 58, 14, 0, 2.2], ['Kalverstraat', -42.5, 66, -90, 2.2], ['Nieuwendijk', -42.5, -66, -90, 2.2], ['Warmoesstraat', 15, -45, -90, 1.5], ['Nes', 11, 45, -90, 1.5]];
+for (const [n, x, z, rot, maat] of straatLabels) tekst(x, z, n, { transform: `rotate(${rot} ${x} ${z})`, fill: '#fff', 'font-weight': 700, 'font-size': maat, stroke: '#0008', 'stroke-width': 0.35, 'paint-order': 'stroke' });
 
 // Routes: band + lijn met pijlen.
 for (const r of routes) {
@@ -537,7 +565,7 @@ tekst(na.x, na.z - 4.4, 'N', { 'font-weight': 700, 'font-size': 2 });
 const legenda = [
   ['#d8ceb9', 'kinderkopjes (plein)'], ['#5f6166', 'asfalt met tramrails'], ['#9d9a93', 'trambaan over het plein'], ['#c6b89c', 'voetgangersstraat (klinkers)'], ['#a58f74', 'donkere klinkers: route over het plein en in voetgangersstraten'],
   ['#bdb6a8', 'stoep'], ['#e4dccb', 'monumentplatform (treden)'], ['#2f5d8a', 'C commandopost'], ['#b8862b', 'K Kerkklok'],
-  ['#ffffff', '1–10 bouwplek (stippellijn = hek)'], ['#b3261e', 'rode stippellijn: wapenbereik 22 m vanaf de monumentrand'], ['#e8c547', 'geparkeerde tram (decor)'],
+  ['#ffffff', '1–10 bouwplek (stippellijn = hek)'], ['#25221d', 'afsluiting van een doodlopende steeg'], ['#b3261e', 'rode stippellijn: wapenbereik 22 m vanaf de monumentrand'], ['#e8c547', 'geparkeerde tram (decor)'],
 ];
 document.getElementById('legenda').innerHTML = legenda.map(([k, t]) => `<span><i style="background:${k}"></i>${t}</span>`).join('')
   + routes.map(r => `<span><i style="background:${r.kleur}"></i>route ${r.poort} (P = poort)</span>`).join('');
@@ -568,7 +596,8 @@ document.getElementById('keuzes').innerHTML = [
   '<strong>Mensmaat 1:1 in plaats van ~1:2.</strong> Bij 1:2 wordt een deur 1,1 m hoog en ziet alles eruit als een maquette. Nu is alleen de breedte ingekort: het Paleis heeft 13 traveeën in plaats van 23, maar zijn koepel is ~51 m, zoals in het echt.',
   '<strong>De trambaan loopt west van het monument</strong>, van het Damrak naar het Rokin, zoals in het echt. Damrak- en Rokin-robots volgen de rijbaan tot ~14 m voor het monument en buigen dan af.',
   '<strong>Kalverstraat en Nieuwendijk zijn de lange routes (~49 m).</strong> In het echt liggen ze het verst weg; ze steken het plein schuin over, over een strook donkere klinkers, en kruisen daarbij de trambaan.',
-  '<strong>De Bijenkorf staat tussen Nieuwendijk en Damrak</strong>, met een smalle gevel aan de Dam (11,5 m) en de lange gevel langs het Damrak, die je vanaf het plein schuin ziet.',
+  '<strong>De Bijenkorf staat op de hoek Dam–Damrak, aan de oostkant van het Damrak</strong>, noordelijk van het monument, met de hoofdingang aan de Dam. Tussen de Bijenkorf en Krasnapolsky loopt de Warmoesstraat, als doodlopende steeg zonder route.',
+  '<strong>Hotel TwentySeven staat op de zuidoosthoek, hoek Rokin</strong>, in het Industria-gebouw met zijn toren onder een koperen kap. Ernaast begint de Nes, ook als doodlopende steeg.',
   '<strong>De commandopost staat aan de westvoet van het monument</strong>, met de toonbank naar het plein. Geen enkele route komt binnen 2 m.',
   '<strong>De Kerkklok staat in de hoek voor de Nieuwe Kerk</strong>, 14 s heen en terug vanaf de commandopost: een bewuste tocht langs de Nieuwendijk.',
   '<strong>Hekken.</strong> In een straat sluit een hek de hele rijbaan of straat af. Op het plein (plekken 8 en 10) is het hek 5 m breed; robots houden zich aan hun strook en lopen er niet omheen.',

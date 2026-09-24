@@ -104,7 +104,7 @@ plan, met de besluiten van de eigenaar, staat in
 
 | | Ticket | Kern |
 | --- | --- | --- |
-| ◐ | **D31** | Plattegrond ontwerpen en laten goedkeuren → **M1** *(ontwerp klaar, wacht op goedkeuring)* |
+| ☑ | **D31** | Plattegrond ontwerpen en laten goedkeuren → **M1** *(voorstel 2 goedgekeurd)* |
 | ☐ | **D32** | Nieuw fundament (grey-box): `DAM_LAYOUT`, vloer met kinderkopjes, rijbanen, tramrails |
 | ☐ | **D33** | Vaste routes over de rijbanen; bouwplekken en hekken uit de layout |
 | ☐ | **D34** | Routes zichtbaar: oplichtend bij de aankondiging, bakens aan de straatingang |
@@ -112,7 +112,7 @@ plan, met de besluiten van de eigenaar, staat in
 | ☐ | **D36** | Textuurbibliotheek (gekopieerd uit Undead + kinderkopjes, zandsteen, leisteen, …) |
 | ☐ | **D37** | Paleis op de Dam |
 | ☐ | **D38** | Nieuwe Kerk |
-| ☐ | **D39** | Oost- en zuidwand: Krasnapolsky, Bijenkorf, warenhuis aan de zuidkant |
+| ☐ | **D39** | Rond het monument: Bijenkorf, Krasnapolsky, Hotel TwentySeven (Industria), Madame Tussauds |
 | ☐ | **D40** | Straatwanden van de vijf straten |
 | ☐ | **D41** | Sfeer en straatmeubilair |
 | ☐ | **D42** | Prestaties (budget, instancing), direct gevolgd door D21 |
@@ -140,7 +140,12 @@ in de pagina, als JSON; alles wordt daaruit berekend. In D32 wordt dat blok
   is verruimd van 35 naar 40 m, zodat Kalverstraat en Nieuwendijk een plek
   in hun eigen straat krijgen (plan §11.3 punt 6).
 - **Kerkklok:** 13,9 s heen en terug vanaf de commandopost.
-- **Toetsing:** `meet-dnm-plattegrond.mjs` geeft 36/36 toetsen goed.
+- **Voorstel 2, na feedback van de eigenaar:** de Bijenkorf staat op de hoek
+  Dam–Damrak aan de oostkant van het Damrak, en Hotel TwentySeven
+  (Industria) op de zuidoosthoek bij het Rokin. De Warmoesstraat en de Nes
+  zijn toegevoegd als doodlopende stegen. De ligging rondom is opgezocht
+  (bronnen in de plattegrond).
+- **Toetsing:** `meet-dnm-plattegrond.mjs` geeft 37/37 toetsen goed.
 - **Doelarchitectuur:** plan §11.7, beknopt in `ARCHITECTURE_NOTES_monument.md`
   §15.
 

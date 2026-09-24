@@ -1155,8 +1155,11 @@ Wat de code daarover zegt:
 
 1. **Topologisch echt, maatvoering speelgericht.** Alles staat op de juiste
    plek ten opzichte van elkaar: het Paleis west, de Nieuwe Kerk noordwest,
-   het monument oost, Krasnapolsky erachter, de Bijenkorf op de hoek met het
-   Damrak, de straten waar ze in het echt uitkomen. De afstanden op het plein
+   het monument oost, Krasnapolsky erachter, de Bijenkorf op de hoek
+   Dam–Damrak aan de oostkant van het Damrak, Hotel TwentySeven (Industria)
+   op de zuidoosthoek bij het Rokin, de straten waar ze in het echt
+   uitkomen. De ligging is in D31 opgezocht (`PLATTEGROND.html`, "Zo ziet de
+   echte Dam eruit"). De afstanden op het plein
    worden gekozen op speelbaarheid, niet lineair uit de echte kaart, want de
    Kalverstraat en de Nieuwendijk liggen in het echt twee keer zo ver weg
    als het Damrak.
@@ -1245,8 +1248,9 @@ het eind.
     JSON-blok (`dam-layout`). Tekening, maten en toetsing worden daar live
     uit berekend. In D32 wordt dat blok letterlijk `DAM_LAYOUT` in de game.
   - `tests/defend-national-monument/meet-dnm-plattegrond.mjs` laadt de
-    pagina headless en faalt als één toets faalt. Stand: 36/36 goed.
-  - Wacht op M1.
+    pagina headless en faalt als één toets faalt. Stand: 37/37 goed (voorstel 2).
+  - **M1:** voorstel 2 goedgekeurd door de eigenaar, na één correctie:
+    Bijenkorf en Hotel TwentySeven op hun echte plek.
 
 #### Ticket D32 — Nieuw fundament (grey-box)
 
@@ -1266,7 +1270,7 @@ het eind.
 - **Acceptatie:** `test-dnm-layout.mjs`:
   - `DAM_LAYOUT` in de game is gelijk aan het JSON-blok in
     `PLATTEGROND.html`, zodat de goedgekeurde plattegrond de bron blijft;
-  - de 36 toetsen van de plattegrond gelden ook in de game;
+  - alle toetsen van de plattegrond gelden ook in de game;
   - elk geregistreerd obstakel ligt buiten elke rijbaan en routestrook (met
     marge);
   - `GRENS` omsluit poorten, bouwplekken, commandopost en kerkklok.
@@ -1383,16 +1387,30 @@ tijd in gevels gaat.
   - geen voltooide hoge toren, zoals in het echt.
 - **Acceptatie:** als D37.
 
-#### Ticket D39 — Oost- en zuidwand: Krasnapolsky, Bijenkorf, warenhuis aan de zuidkant
+#### Ticket D39 — Rond het monument: Bijenkorf, Krasnapolsky, Hotel TwentySeven, Madame Tussauds
 
 - **Doel:** de gebouwen die je achter en naast het monument ziet, herkenbaar
-  maken. De exacte kenmerken worden in D31 bevestigd.
+  maken. Ligging en kenmerken zijn in D31 opgezocht; ze staan per gebouw in
+  `PLATTEGROND.html`.
 - **Stappen:**
-  - Krasnapolsky als breed 19e-eeuws hotel met veel ramen, balkons en een
-    luifel.
-  - De Bijenkorf op de hoek met het Damrak, met verticale gevelpijlers,
-    grote etalages en vlaggen. Alleen de naam in gewone letters, geen logo.
-  - Het warenhuispand aan de zuidkant richting Rokin en Kalverstraat.
+  - **De Bijenkorf**, noordelijk van het monument, op de hoek Dam–Damrak aan
+    de oostkant van het Damrak:
+    - rode baksteen en natuursteen, vijf bouwlagen;
+    - verticale pijlers op een sokkel, kroonlijst met attiek en balustrade;
+    - segmentvormige frontons op de hoekpaviljoens en het midden, met een
+      torenbekroning boven het midden;
+    - alleen de naam in gewone letters, geen logo.
+  - **Krasnapolsky**, oostelijk, recht achter het monument, tussen de
+    Warmoesstraat en de Damstraat: een breed 19e-eeuws hotel met veel ramen,
+    balkons en een luifel.
+  - **Hotel TwentySeven in het Industria-gebouw**, op de zuidoosthoek, hoek
+    Rokin:
+    - bijna vrijstaand;
+    - een asymmetrische Damgevel met een torenachtig bouwdeel onder een
+      klokvormige koperen kap;
+    - lichte baksteen met spaarzaam natuursteen.
+  - **Het Peek & Cloppenburg-gebouw met Madame Tussauds**, tussen
+    Kalverstraat en Rokin: vijf bouwlagen in lichte kalksteen.
 - **Acceptatie:** als D37.
 
 #### Ticket D40 — Straatwanden
@@ -1507,7 +1525,7 @@ paragraaf in hetzelfde ticket bijgewerkt.
 | `gebouwen` (delen, hoogte) | gebouwbouwers, botsingen, schotschil |
 | `decor` | decorbouwer (geen botsing: buiten `GRENS`) |
 
-**Invarianten.** `test-dnm-layout` bewaakt ze; het zijn de 36 toetsen van
+**Invarianten.** `test-dnm-layout` bewaakt ze; het zijn alle toetsen van
 `PLATTEGROND.html` plus:
 
 1. Geen enkel geregistreerd obstakel en geen decor-bounding-box ligt op een
