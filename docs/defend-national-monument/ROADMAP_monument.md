@@ -120,7 +120,7 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D36** | Textuurbibliotheek (gekopieerd uit Undead + kinderkopjes, zandsteen, leisteen, …) |
 | ☑ | **D37** | Paleis op de Dam — *schermafbeeldingen bij de eigenaar* |
 | ☑ | **D38** | Nieuwe Kerk — *schermafbeeldingen bij de eigenaar* |
-| ☐ | **D39** | Rond het monument: Bijenkorf, Krasnapolsky, Hotel TwentySeven (Industria), Madame Tussauds; daarna **besluit plek commandopost** (M2) |
+| ☑ | **D39** | Rond het monument: Bijenkorf, Krasnapolsky, Hotel TwentySeven (Industria), Madame Tussauds; daarna **besluit plek commandopost** (M2) — *schermafbeeldingen en besluit bij de eigenaar* |
 | ☐ | **D40** | Straatwanden van de vijf straten |
 | ☐ | **D41** | Sfeer en straatmeubilair |
 | ☐ | **D42** | Prestaties (budget, instancing), direct gevolgd door D21 |
@@ -665,6 +665,69 @@ vijf. Elk hoort bij het knooppunt aan de overkant van zijn weg.
 
   Verder: texturen, botsing, en op loophoogte steekt niets buiten botsing
   + spelerstraal.
+
+**D39 — rond het monument, verslag.**
+- **Bijenkorf** (rode baksteen met natuursteen), aan de Dam en langs het
+  Damrak:
+  - etalages op de begane grond, en aan de Dam de glazen hoofdingang met
+    een luifel;
+  - drie verdiepingen tussen stenen lisenen;
+  - een fries met de naam, kroonlijst, dakverdieping en balustrade;
+  - hoekpaviljoens en midden springen 0,25 m voor en dragen een
+    segmentfronton;
+  - boven het midden een torentje met open bogen en een koperen koepel
+    tot 23 m.
+- **Krasnapolsky** (lichte, gepleisterde steen), aan de Dam, de
+  Warmoesstraat en de Damstraat:
+  - een geblokte begane grond met rondboogramen;
+  - de ingang onder een glazen luifel aan trekstangen;
+  - drie verdiepingen met veel ramen, en smeedijzeren balkons op de eerste
+    twee;
+  - een fries met de naam, kroonlijst en dakverdieping;
+  - een leien mansardekap tot 20 m.
+- **Hotel TwentySeven / Industria** (gele baksteen, spaarzaam natuursteen):
+  - een asymmetrische gevel met op de hoek Dam–Rokin een torendeel van
+    6 × 6 m;
+  - onderin het torendeel de juwelierspui, bovenin rondboogvensters;
+  - een vierkante, klokvormige koperen kap tot 24 m, waarvan de rand iets
+    buiten de toren uitsteekt, zodat je hem ook vanaf het plein ziet;
+  - daarnaast vier gewone traveeën aan de Dam en acht langs het Rokin.
+- **Peek & Cloppenburg / Madame Tussauds** (lichte kalksteen), aan de Dam,
+  het Rokin en de Kalverstraat:
+  - een grote winkelpui;
+  - sterke pijlers, dikker op de hoeken;
+  - vijf bouwlagen;
+  - twee bronzen beelden in eigen, eenvoudige vorm op de hoeken aan de
+    Dam.
+
+  De gevelnaam is nu donker, want wit op lichte kalksteen las slecht.
+- **Gedeeld:**
+  - `raamMetOmlijsting`, `etalage`, `balustrade`, `segmentVorm` en
+    `rondboogRaam`;
+  - `gevelMaterialen()`;
+  - etalages hebben een warme gloed van binnen (`emissive`), anders lezen
+    ze als zwarte gaten.
+- **Gevelnamen:** ze staan op het fries van de echte gevels. De Bijenkorf
+  staat op het vooruitspringende midden en de Industria-naam midden boven
+  de gewone traveeën. De test toetst dat geen gevelonderdeel ervoor zit.
+- **Prestaties:** 64–125 draw calls vanaf vier vaste standpunten (het
+  meeste komt van robots, HUD en het monument), 15k–37k driehoeken en
+  ~1,5 s laadtijd. Elk gebouw is 8–12 meshes.
+- **Test:** `test-dnm-rondom` (34 checks). Per gebouw:
+  - meshes, hoogsteDeel, textuur;
+  - de naam zichtbaar vóór de gevel;
+  - op loophoogte niets buiten botsing + spelerstraal.
+
+  Met stralen geteld:
+  - Bijenkorf: 13 stukken etalageglas en 3 segmentfrontons;
+  - Krasnapolsky: 5 balkons aan de Dam;
+  - Industria: kap boven 22 m;
+  - Tussauds: 2 beelden.
+
+  Verder: koepel, luifel, kap, juwelierspui en winkelpui.
+- **Nog te beslissen: de plek van de commandopost** (zie plan D39). Die
+  staat aan de monumentvoet, tenzij de eigenaar hem tegen de
+  Bijenkorf-gevel wil.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 

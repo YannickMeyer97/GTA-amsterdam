@@ -1470,6 +1470,11 @@ tijd in gevels gaat.
   Kerkklok en de looptijden naar de verste bouwplekken opnieuw worden
   getoetst.
 - **Acceptatie:** als D37.
+- **Uitgevoerd:**
+  - Alle vier de gevels, met de namen op het fries.
+  - `test-dnm-rondom`.
+  - Het besluit over de commandopost ligt bij de eigenaar.
+  - Zie het verslag in de ROADMAP.
 
 #### Ticket D40 — Straatwanden
 

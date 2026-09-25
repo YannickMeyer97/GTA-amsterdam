@@ -1468,9 +1468,6 @@ for (const route of ROUTES.values()) {
 // Staat bewust niet in DAM_LAYOUT: dat is de plattegrond, dit is tijdelijk
 // uiterlijk.
 const GREYBOX_BEKRONING = {
-  'Bijenkorf': { soort: 'toren', x: 1, z: -26, breedte: 6 },
-  'Hotel TwentySeven (Industria)': { soort: 'klok', x: -6.5, z: 26, straal: 3 },
-  'Krasnapolsky': { soort: 'kap' },
   'Beurs van Berlage': { soort: 'toren', x: -7.5, z: -71.5, breedte: 5 },
 };
 
@@ -2098,7 +2095,359 @@ function bouwNieuweKerk(gebouw) {
   return groep;
 }
 
-const GEBOUW_BOUWERS = { 'Paleis op de Dam': bouwPaleis, 'Nieuwe Kerk': bouwNieuweKerk };
+/* ----------------------------------------------------------------
+   Ticket D39: rond het monument
+   ---------------------------------------------------------------- */
+//
+// Bijenkorf, Krasnapolsky, Hotel TwentySeven (Industria) en het Peek &
+// Cloppenburg-gebouw met Madame Tussauds. Kenmerken uit DAM_LAYOUT; de
+// gevels die naar het plein en de routes kijken, krijgen het detail. De
+// namen blijven de gevelletters van M2 (GEVELNAMEN), in gewone letters,
+// zonder logo.
+
+// Gedeelde onderdelen (gevelstelsel: u langs de muur, y omhoog, d naar
+// buiten; `sp` = hoe ver het muurvlak daar vooruit springt).
+// Etalages: glas met een warme gloed van binnen, zodat een winkelpui niet
+// als een zwart gat leest. Eén gedeeld materiaal voor alle gebouwen.
+let etalageMateriaal = null;
+function gevelMaterialen(extra = {}) {
+  etalageMateriaal ??= new THREE.MeshStandardMaterial({ map: vloerTextuur('glas'), color: 0xb8c4cc, emissive: 0x3d2b17, emissiveIntensity: 0.6, roughness: 0.2, metalness: 0.25 });
+  const M = {
+    natuursteen: gevelMateriaal('natuursteen', 0xf0e6d2),
+    raam: gevelMateriaal('roedeRaam'),
+    raamLaag: gevelMateriaal('roedeRaamLaag'),
+    etalage: etalageMateriaal,
+    kozijn: mat(0x2a2724, 0.6, 0.3),
+    deur: mat(0x3a2a1e, 0.75),
+    donker: mat(0x1b1a18, 0.95),
+    ijzer: mat(0x2b2d30, 0.5, 0.6),
+    koper: mat(PAL.koper, 0.55, 0.35),
+    goud: mat(0xd4a93a, 0.3, 0.9),
+    brons: mat(0x5f5038, 0.5, 0.55),
+    lei: gevelMateriaal('leisteen'),
+    ...extra,
+  };
+  M.raam.roughness = M.raamLaag.roughness = 0.35;
+  return M;
+}
+function steenOp(b, M) { return geo => b.voeg('lijstwerk', M.natuursteen, geo, 'natuursteen'); }
+// Raam met stenen omlijsting, lekdorpel en (optioneel) een kleine kroonlijst.
+function raamMetOmlijsting(b, M, gevel, u, y0, y1, w, sp = 0, { laag = false, kroon = false } = {}) {
+  const steen = steenOp(b, M);
+  const u0 = u - w / 2, u1 = u + w / 2, k = 0.15;
+  b.voeg(laag ? 'ramenLaag' : 'ramen', laag ? M.raamLaag : M.raam, gevelBlok(gevel, u0, u1, y0, y1, sp, sp + 0.04));
+  steen(gevelBlok(gevel, u0 - k, u1 + k, y1, y1 + k, sp, sp + 0.12));
+  steen(gevelBlok(gevel, u0 - k, u0, y0, y1, sp, sp + 0.12));
+  steen(gevelBlok(gevel, u1, u1 + k, y0, y1, sp, sp + 0.12));
+  steen(gevelBlok(gevel, u0 - k - 0.05, u1 + k + 0.05, y0 - 0.13, y0, sp, sp + 0.17));
+  if (kroon) steen(gevelBlok(gevel, u0 - 0.25, u1 + 0.25, y1 + k, y1 + k + 0.14, sp, sp + 0.22));
+}
+// Etalage: één grote ruit met dunne donkere stijlen en een stenen dorpel.
+function etalage(b, M, gevel, u0, u1, y0, y1, sp = 0, stijlen = 2) {
+  b.voeg('etalages', M.etalage, gevelBlok(gevel, u0, u1, y0, y1, sp, sp + 0.05), 'glas');
+  for (let i = 0; i <= stijlen; i++) {
+    const u = u0 + (u1 - u0) * i / stijlen;
+    b.voeg('kozijnen', M.kozijn, gevelBlok(gevel, u - 0.06, u + 0.06, y0, y1, sp, sp + 0.1));
+  }
+  b.voeg('kozijnen', M.kozijn, gevelBlok(gevel, u0, u1, y1 - 0.1, y1, sp, sp + 0.1));
+  steenOp(b, M)(gevelBlok(gevel, u0 - 0.05, u1 + 0.05, y0 - 0.3, y0, sp, sp + 0.15));
+}
+// Balustrade: voet, leuning en balusters.
+function balustrade(b, M, gevel, u0, u1, y, sp = 0) {
+  const steen = steenOp(b, M);
+  steen(gevelBlok(gevel, u0, u1, y, y + 0.12, sp - 0.3, sp + 0.05));
+  steen(gevelBlok(gevel, u0, u1, y + 0.62, y + 0.75, sp - 0.3, sp + 0.08));
+  for (let u = u0 + 0.2; u < u1 - 0.1; u += 0.32) steen(opGevel(gevel, new THREE.CylinderGeometry(0.06, 0.09, 0.5, 6).translate(gevel.uNaarX(u), y + 0.37, sp - 0.1)));
+}
+// Segmentfronton: een cirkelsegment met koorde `breedte` en pijl `pijl`.
+function segmentVorm(breedte, pijl) {
+  const R = (breedte * breedte / 4 + pijl * pijl) / (2 * pijl);
+  const h = Math.asin(breedte / 2 / R);
+  const vorm = new THREE.Shape();
+  vorm.moveTo(-breedte / 2, 0);
+  vorm.absarc(0, pijl - R, R, Math.PI / 2 + h, Math.PI / 2 - h, true);
+  vorm.lineTo(-breedte / 2, 0);
+  return vorm;
+}
+// Rondboograam (of -deur): glas in een stenen omlijsting.
+function rondboogRaam(b, M, gevel, u, y0, breedte, recht, sp = 0, materiaal = null) {
+  const x = gevel.uNaarX(u);
+  b.voeg(materiaal ? 'deuren' : 'etalages', materiaal ?? M.etalage, opGevel(gevel, new THREE.ShapeGeometry(rondboogVorm(breedte, recht), 12).translate(x, y0, sp + 0.08)));
+  steenOp(b, M)(opGevel(gevel, new THREE.ExtrudeGeometry(rondboogVorm(breedte + 0.4, recht, rondboogPad(breedte, recht)), { depth: 0.2, bevelEnabled: false, curveSegments: 12 }).translate(x, y0, sp)));
+}
+function nieuweGebouwGroep(gebouw) {
+  const groep = new THREE.Group();
+  groep.name = gebouw.naam;
+  groep.userData.gebouw = gebouw.naam;
+  return groep;
+}
+function afronden(groep, b, gebouw) {
+  b.bouw(groep);
+  for (const [x0, z0, x1, z1] of gebouw.delen) registreerRechthoek(x0, x1, z0, z1, 0.3);
+  wereld.add(groep);
+  return groep;
+}
+// Een gevel in gelijke traveeën: middens van elke travee.
+const traveeMiddens = (u0, u1, n) => Array.from({ length: n }, (_, i) => u0 + (i + 0.5) * (u1 - u0) / n);
+
+// --- De Bijenkorf --------------------------------------------------------
+//
+// Op de hoek Dam–Damrak. Rode baksteen met natuursteen, vijf bouwlagen:
+// etalages op de begane grond, drie verdiepingen tussen lisenen, een fries
+// voor de naam, kroonlijst, dakverdieping en balustrade. Hoekpaviljoens en
+// het midden springen naar voren en dragen een segmentfronton; boven het
+// midden een torentje met een koperen koepel (hoogsteDeel 23 m).
+function bouwBijenkorf(gebouw) {
+  const [x0, z0, x1, z1] = gebouw.delen[0];
+  const groep = nieuweGebouwGroep(gebouw);
+  const b = maakBouwer();
+  const M = gevelMaterialen({ baksteen: gevelMateriaal('baksteen', 0xc9a497) });
+  const baksteen = geo => b.voeg('gevel', M.baksteen, geo, 'baksteen');
+  const steen = steenOp(b, M);
+  baksteen(new THREE.BoxGeometry(x1 - x0, gebouw.hoogte, z1 - z0).translate((x0 + x1) / 2, gebouw.hoogte / 2, (z0 + z1) / 2));
+  const Y = { sokkel: 0.6, etalage: [0.9, 4.0], band: 4.4, rijen: [[5.4, 7.6], [8.2, 10.4], [11.0, 12.3]], fries: [12.7, 14.6], kroonlijst: 15.1, attiek: [15.3, 16.2], balustrade: 16.5 };
+
+  for (const [naam, gevel, u0, u1, n] of [['zuid', gevelStelsel('zuid', z1), x0, x1, 7], ['west', gevelStelsel('west', x0), z0, z1, 12]]) {
+    const t = (u1 - u0) / n;
+    // Voorsprongen: aan de Dam de hoekpaviljoens en de drie middelste traveeën.
+    const sp = i => naam === 'zuid' && (i === 0 || i === n - 1 || Math.abs(i - (n - 1) / 2) <= 1) ? 0.25 : 0;
+    for (let i = 0; i < n; i++) {
+      const a = u0 + i * t, e = a + t, uc = a + t / 2, d = sp(i);
+      if (d) baksteen(gevelBlok(gevel, a, e, 0, gebouw.hoogte, 0, d));
+      steen(gevelBlok(gevel, a, e, 0, Y.sokkel, d, d + 0.1));
+      const ingang = naam === 'zuid' && i === (n - 1) / 2;
+      if (ingang) {
+        // Hoofdingang aan de Dam: glazen deuren, een bovenlicht en een luifel.
+        b.voeg('deuren', M.kozijn, gevelBlok(gevel, uc - 1.3, uc + 1.3, Y.sokkel, 3.3, d, d + 0.06));
+        b.voeg('etalages', M.etalage, gevelBlok(gevel, uc - 1.15, uc + 1.15, 0.7, 3.2, d, d + 0.1), 'glas');
+        b.voeg('etalages', M.etalage, gevelBlok(gevel, uc - 1.3, uc + 1.3, 3.4, 4.1, d, d + 0.08), 'glas');
+        steen(gevelBlok(gevel, uc - 1.8, uc + 1.8, 4.1, 4.3, d, d + 1.4));
+      } else {
+        etalage(b, M, gevel, a + 0.45, e - 0.45, Y.etalage[0], Y.etalage[1], d);
+      }
+      for (const [r0, r1] of Y.rijen) raamMetOmlijsting(b, M, gevel, uc, r0, r1, t - 1.2, d, { laag: r1 - r0 < 1.5, kroon: r0 < 6 });
+      raamMetOmlijsting(b, M, gevel, uc, Y.attiek[0], Y.attiek[1], 1.2, d, { laag: true });
+      steen(gevelBlok(gevel, a - 0.02, e + 0.02, Y.band, Y.band + 0.45, d, d + 0.2));
+      steen(gevelBlok(gevel, a - 0.02, e + 0.02, Y.fries[0], Y.fries[0] + 0.22, d, d + 0.18));
+      steen(gevelBlok(gevel, a - 0.02, e + 0.02, Y.fries[1] - 0.2, Y.fries[1], d, d + 0.25));
+      steen(gevelBlok(gevel, a - 0.2, e + 0.2, Y.fries[1], Y.kroonlijst, d, d + 0.5));
+    }
+    // Lisenen tussen de traveeën.
+    for (let i = 0; i <= n; i++) {
+      const u = u0 + i * t, d = Math.max(sp(Math.max(0, i - 1)), sp(Math.min(n - 1, i)));
+      steen(gevelBlok(gevel, u - 0.25, u + 0.25, Y.band + 0.45, Y.fries[0], d, d + 0.2));
+    }
+    // Boven de kroonlijst: balustrade op de gewone traveeën; paviljoens en
+    // midden krijgen een dichte attiek met een segmentfronton.
+    const groepen = [];
+    for (let i = 0; i < n; i++) {
+      const laatste = groepen[groepen.length - 1];
+      if (laatste && laatste.sp === sp(i)) laatste.e = u0 + (i + 1) * t;
+      else groepen.push({ a: u0 + i * t, e: u0 + (i + 1) * t, sp: sp(i) });
+    }
+    for (const gr of groepen) {
+      if (!gr.sp) { balustrade(b, M, gevel, gr.a, gr.e, Y.balustrade, 0); continue; }
+      steen(gevelBlok(gevel, gr.a, gr.e, Y.balustrade, Y.balustrade + 0.6, gr.sp - 0.3, gr.sp + 0.1));
+      const breedte = gr.e - gr.a, pijl = breedte > 5 ? 1.8 : 1.2, uc = (gr.a + gr.e) / 2;
+      const fronton = new THREE.ExtrudeGeometry(segmentVorm(breedte, pijl), { depth: 0.5, bevelEnabled: false, curveSegments: 16 });
+      steen(opGevel(gevel, fronton.translate(gevel.uNaarX(uc), Y.balustrade + 0.6, gr.sp - 0.4)));
+      const binnen = new THREE.ExtrudeGeometry(segmentVorm(breedte - 0.8, pijl - 0.35), { depth: 0.12, bevelEnabled: false, curveSegments: 16 });
+      baksteen(opGevel(gevel, binnen.translate(gevel.uNaarX(uc), Y.balustrade + 0.72, gr.sp)));
+    }
+  }
+  // Torentje boven het midden, iets achter de gevel.
+  const tx = (x0 + x1) / 2, tz = z1 - 4.5, th0 = gebouw.hoogte - 0.5, th1 = 20.8;
+  baksteen(new THREE.BoxGeometry(5, th1 - th0, 5).translate(tx, (th0 + th1) / 2, tz));
+  for (const [hx, hz] of [[-2.35, -2.35], [2.35, -2.35], [-2.35, 2.35], [2.35, 2.35]]) steen(new THREE.BoxGeometry(0.5, th1 - th0, 0.5).translate(tx + hx, (th0 + th1) / 2, tz + hz));
+  for (const richting of ['zuid', 'noord', 'oost', 'west']) {
+    const vlak = { zuid: tz + 2.5, noord: tz - 2.5, oost: tx + 2.5, west: tx - 2.5 }[richting];
+    const gev = gevelStelsel(richting, vlak), u = richting === 'zuid' || richting === 'noord' ? tx : tz;
+    b.voeg('openingen', M.donker, opGevel(gev, new THREE.ShapeGeometry(rondboogVorm(1.6, 1.6), 10).translate(gev.uNaarX(u), th0 + 1.1, 0.02)));
+  }
+  steen(new THREE.BoxGeometry(5.6, 0.3, 5.6).translate(tx, th1 + 0.15, tz));
+  const koepelTop = gebouw.hoogsteDeel;
+  b.voeg('koepel', M.koper, new THREE.SphereGeometry(2.1, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.62, 1).translate(tx, th1 + 0.3, tz));
+  b.voeg('goud', M.goud, new THREE.SphereGeometry(0.16, 8, 6).translate(tx, koepelTop - 0.45, tz));
+  b.voeg('goud', M.goud, new THREE.CylinderGeometry(0.03, 0.05, 0.4, 6).translate(tx, koepelTop - 0.2, tz));
+  return afronden(groep, b, gebouw);
+}
+
+// --- Krasnapolsky ----------------------------------------------------------
+//
+// Recht achter het monument. Een breed 19e-eeuws hotel in lichte, gepleisterde
+// steen: een geblokte begane grond met rondboogramen en de ingang onder een
+// glazen luifel, drie verdiepingen met veel ramen en balkons, een fries voor
+// de naam, kroonlijst, dakverdieping en een leien mansardekap tot 20 m.
+function bouwKrasnapolsky(gebouw) {
+  const [x0, z0, x1, z1] = gebouw.delen[0];
+  const groep = nieuweGebouwGroep(gebouw);
+  const b = maakBouwer();
+  const M = gevelMaterialen({ pleister: gevelMateriaal('natuursteen', 0xfff3dc) });
+  const muur = geo => b.voeg('gevel', M.pleister, geo, 'natuursteen');
+  const steen = steenOp(b, M);
+  const goot = 18;
+  muur(new THREE.BoxGeometry(x1 - x0, goot, z1 - z0).translate((x0 + x1) / 2, goot / 2, (z0 + z1) / 2));
+  const Y = { begane: 4.6, rijen: [[5.6, 7.9], [8.8, 10.9], [11.8, 13.6]], fries: [14.2, 16.0], kroonlijst: 16.5, attiek: [16.8, 17.7] };
+  // Aan de Dam het hotel zelf (31 m, 11 traveeën, met balkons en luifel);
+  // noordelijker langs de Warmoesstraat en zuidelijk aan de Damstraat
+  // dezelfde opbouw zonder balkons.
+  const gevels = [
+    { gevel: gevelStelsel('west', x0), u0: -22, u1: z1, n: 11, dam: true },
+    { gevel: gevelStelsel('west', x0), u0: z0, u1: -22, n: 7 },
+    { gevel: gevelStelsel('zuid', z1), u0: x0, u1: x1, n: 11 },
+  ];
+  for (const { gevel, u0, u1, n, dam } of gevels) {
+    const t = (u1 - u0) / n;
+    // Geblokte begane grond: stenen lagen met smalle voegen.
+    for (let y = 0.2; y < Y.begane - 0.2; y += 0.5) steen(gevelBlok(gevel, u0, u1, y, y + 0.4, 0, 0.07));
+    steen(gevelBlok(gevel, u0, u1, Y.begane, Y.begane + 0.4, 0, 0.22));
+    traveeMiddens(u0, u1, n).forEach((uc, i) => {
+      const ingang = dam && i === (n - 1) / 2;
+      if (ingang) rondboogRaam(b, M, gevel, uc, 0, 2.2, 2.4, 0.07, M.deur);
+      else rondboogRaam(b, M, gevel, uc, 0.9, t - 1.0, 2.1, 0.07);
+      Y.rijen.forEach(([r0, r1], rij) => {
+        raamMetOmlijsting(b, M, gevel, uc, r0, r1, Math.min(1.5, t - 1.1), 0, { kroon: rij === 0 });
+        // Balkons op de eerste twee verdiepingen, om de travee.
+        if (dam && rij < 2 && i % 2 === 1) {
+          steen(gevelBlok(gevel, uc - 1.1, uc + 1.1, r0 - 0.35, r0 - 0.15, 0, 0.9));
+          b.voeg('smeedwerk', M.ijzer, gevelBlok(gevel, uc - 1.1, uc + 1.1, r0 + 0.7, r0 + 0.76, 0.8, 0.86));
+          for (let u = uc - 1.05; u <= uc + 1.06; u += 0.15) b.voeg('smeedwerk', M.ijzer, gevelBlok(gevel, u - 0.015, u + 0.015, r0 - 0.15, r0 + 0.7, 0.81, 0.84));
+          for (const kant of [-1.1, 1.1]) b.voeg('smeedwerk', M.ijzer, gevelBlok(gevel, uc + kant - 0.02, uc + kant + 0.02, r0 - 0.15, r0 + 0.76, 0, 0.86));
+        }
+      });
+      raamMetOmlijsting(b, M, gevel, uc, Y.attiek[0], Y.attiek[1], 1.1, 0, { laag: true });
+      if (ingang) {
+        // Glazen luifel boven de ingang, aan trekstangen naar de gevel.
+        b.voeg('smeedwerk', M.ijzer, gevelBlok(gevel, uc - 2.4, uc + 2.4, 3.9, 4.05, 0, 2.6));
+        b.voeg('etalages', M.etalage, gevelBlok(gevel, uc - 2.3, uc + 2.3, 4.05, 4.1, 0.05, 2.5), 'glas');
+        for (const kant of [-2.2, 2.2]) {
+          const stang = new THREE.BoxGeometry(0.06, 0.06, 3.0).rotateX(-0.55).translate(gevel.uNaarX(uc + kant), 4.8, 1.25);
+          b.voeg('smeedwerk', M.ijzer, opGevel(gevel, stang));
+        }
+      }
+    });
+    for (let i = 1; i < n; i++) steen(gevelBlok(gevel, u0 + i * t - 0.22, u0 + i * t + 0.22, Y.begane + 0.4, Y.fries[0], 0, 0.14));
+    steen(gevelBlok(gevel, u0, u1, Y.fries[0], Y.fries[0] + 0.2, 0, 0.18));
+    steen(gevelBlok(gevel, u0, u1, Y.fries[1] - 0.2, Y.fries[1], 0, 0.22));
+    steen(gevelBlok(gevel, u0 - 0.3, u1 + 0.3, Y.fries[1], Y.kroonlijst, 0, 0.55));
+  }
+  // Mansardekap: afgeknotte schilddak van lei tot hoogsteDeel.
+  const kapH = gebouw.hoogsteDeel - goot, hx = (x1 - x0) / 2 - 0.3, hz = (z1 - z0) / 2 - 0.3;
+  b.voeg('dak', M.lei, new THREE.CylinderGeometry(0.85, 1, kapH, 4, 1).rotateY(Math.PI / 4).scale(hx / Math.SQRT1_2, 1, hz / Math.SQRT1_2).translate((x0 + x1) / 2, goot + kapH / 2, (z0 + z1) / 2), 'leisteen');
+  return afronden(groep, b, gebouw);
+}
+
+// --- Hotel TwentySeven, in het Industria-gebouw ------------------------------
+//
+// Op de zuidoosthoek, hoek Rokin. Lichte baksteen met spaarzaam
+// natuursteen. De gevel aan de Dam is asymmetrisch: op de hoek met het Rokin
+// een torenachtig bouwdeel onder een klokvormige, groen uitgeslagen koperen
+// kap (tot 24 m), met op straatniveau de winkel van een juwelier; daarnaast
+// vier gewone traveeën.
+function bouwIndustria(gebouw) {
+  const [x0, z0, x1, z1] = gebouw.delen[0];
+  const groep = nieuweGebouwGroep(gebouw);
+  const b = maakBouwer();
+  const M = gevelMaterialen({ baksteen: gevelMateriaal('geleBaksteen'), winkelpui: mat(0x2b2420, 0.55, 0.2) });
+  const baksteen = geo => b.voeg('gevel', M.baksteen, geo, 'geleBaksteen');
+  const steen = steenOp(b, M);
+  baksteen(new THREE.BoxGeometry(x1 - x0, gebouw.hoogte, z1 - z0).translate((x0 + x1) / 2, gebouw.hoogte / 2, (z0 + z1) / 2));
+  const toren = { sp: 0.3, top: 18.8 };   // torendeel van 6 × 6 m op de hoek (x0, z0)
+  const Y = { begane: 4.4, rijen: [[5.2, 7.4], [8.2, 10.4], [11.2, 13.0]], fries: [13.6, 15.2], kroonlijst: 15.7 };
+  // Het torendeel steekt 0,3 m voor beide gevels uit.
+  baksteen(new THREE.BoxGeometry(6 + toren.sp, toren.top, 6 + toren.sp).translate(x0 + 3 - toren.sp / 2, toren.top / 2, z0 + 3 - toren.sp / 2));
+  const gevels = [
+    { gevel: gevelStelsel('noord', z0), a: x0 + 6, e: x1, n: 4, torenU: [x0, x0 + 6] },
+    { gevel: gevelStelsel('west', x0), a: z0 + 6, e: z1, n: 8, torenU: [z0, z0 + 6] },
+  ];
+  for (const { gevel, a, e, n, torenU } of gevels) {
+    const t = (e - a) / n;
+    steen(gevelBlok(gevel, a, e, 0, 0.5, 0, 0.12));
+    steen(gevelBlok(gevel, a, e, Y.begane, Y.begane + 0.35, 0, 0.18));
+    traveeMiddens(a, e, n).forEach(uc => {
+      etalage(b, M, gevel, uc - t / 2 + 0.35, uc + t / 2 - 0.35, 0.8, 3.9, 0);
+      for (const [r0, r1] of Y.rijen) raamMetOmlijsting(b, M, gevel, uc, r0, r1, Math.min(1.6, t - 1.2), 0, { kroon: r0 < 6 });
+    });
+    steen(gevelBlok(gevel, a, e, Y.fries[0], Y.fries[0] + 0.18, 0, 0.12));
+    steen(gevelBlok(gevel, a, e, Y.fries[1] - 0.18, Y.fries[1], 0, 0.15));
+    steen(gevelBlok(gevel, a - 0.1, e + 0.1, Y.fries[1] + 0.3, Y.kroonlijst, 0, 0.4));
+    steen(gevelBlok(gevel, a, e, gebouw.hoogte - 0.2, gebouw.hoogte + 0.05, 0, 0.2));
+    // Torendeel op deze gevel: de juwelierspui, per verdieping één hoog raam,
+    // een stenen band en boven de goot een rij rondboogvensters.
+    const tc = (torenU[0] + torenU[1]) / 2, sp = toren.sp;
+    b.voeg('winkelpui', M.winkelpui, gevelBlok(gevel, torenU[0] + 0.5, torenU[1] - 0.5, 0.3, 4.1, sp, sp + 0.12));
+    etalage(b, M, gevel, torenU[0] + 0.9, torenU[1] - 0.9, 0.9, 3.6, sp + 0.12, 3);
+    for (const [r0, r1] of Y.rijen) raamMetOmlijsting(b, M, gevel, tc, r0, r1, 2.4, sp, { kroon: true });
+    steen(gevelBlok(gevel, torenU[0], torenU[1], Y.begane, Y.begane + 0.35, sp, sp + 0.18));
+    steen(gevelBlok(gevel, torenU[0] - 0.1, torenU[1] + 0.1, gebouw.hoogte - 0.4, gebouw.hoogte, sp, sp + 0.3));
+    for (const du of [-1.6, 0, 1.6]) rondboogRaam(b, M, gevel, tc + du, 17.3, 0.8, 0.7, sp);
+    steen(gevelBlok(gevel, torenU[0] - 0.05, torenU[1] + 0.05, toren.top - 0.3, toren.top, sp, sp + 0.18));
+  }
+  // Klokvormige koperen kap op het torendeel: een vierkante kap (LatheGeometry
+  // met vier segmenten), onderaan uitlopend, bovenin ingesnoerd. Hoog en
+  // steil genoeg om vanaf het plein boven de kroonlijst uit te komen.
+  // De onderrand steekt ~0,4 m buiten de torengevel uit, zodat hij ook van
+  // onderaf, vanaf het plein, boven de kroonlijst zichtbaar is.
+  const kap = [[5.0, 0], [5.1, 0.18], [4.75, 0.9], [4.1, 1.9], [3.2, 2.9], [2.1, 3.7], [1.1, 4.25], [0.35, 4.52], [0, 4.6]].map(([r, y]) => new THREE.Vector2(r, y));
+  const cx = x0 + 3 - toren.sp / 2, cz = z0 + 3 - toren.sp / 2;
+  b.voeg('koepel', M.koper, new THREE.LatheGeometry(kap, 4).rotateY(Math.PI / 4).translate(cx, toren.top, cz));
+  const topY = gebouw.hoogsteDeel;
+  b.voeg('goud', M.goud, new THREE.SphereGeometry(0.2, 8, 6).translate(cx, topY - 0.6, cz));
+  b.voeg('goud', M.goud, new THREE.CylinderGeometry(0.03, 0.06, 0.5, 6).translate(cx, topY - 0.25, cz));
+  return afronden(groep, b, gebouw);
+}
+
+// --- Peek & Cloppenburg met Madame Tussauds --------------------------------
+//
+// Tussen Kalverstraat en Rokin. Vijf bouwlagen in lichte kalksteen, sterke
+// verticale pijlers, een grote winkelpui op de begane grond, en op de twee
+// hoeken aan de Dam een beeld in eigen, eenvoudige vorm.
+function bouwTussauds(gebouw) {
+  const [x0, z0, x1, z1] = gebouw.delen[0];
+  const groep = nieuweGebouwGroep(gebouw);
+  const b = maakBouwer();
+  const M = gevelMaterialen({ kalksteen: gevelMateriaal('natuursteen', 0xffffff) });
+  const muur = geo => b.voeg('gevel', M.kalksteen, geo, 'natuursteen');
+  const steen = steenOp(b, M);
+  muur(new THREE.BoxGeometry(x1 - x0, gebouw.hoogte, z1 - z0).translate((x0 + x1) / 2, gebouw.hoogte / 2, (z0 + z1) / 2));
+  const Y = { pui: [0.6, 4.3], band: 4.6, rijen: [[5.4, 7.6], [8.3, 10.5], [11.2, 12.8]], fries: [13.2, 14.6], kroonlijst: 15.2, zolder: [15.5, 16.5] };
+  const gevels = [
+    { gevel: gevelStelsel('noord', z0), a: x0, e: x1, n: 3 },
+    { gevel: gevelStelsel('oost', x1), a: z0, e: z1, n: 10 },
+    { gevel: gevelStelsel('west', x0), a: z0, e: z1, n: 10 },
+  ];
+  for (const { gevel, a, e, n } of gevels) {
+    const t = (e - a) / n;
+    steen(gevelBlok(gevel, a, e, 0, 0.5, 0, 0.12));
+    etalage(b, M, gevel, a + 0.4, e - 0.4, Y.pui[0], Y.pui[1], 0, n * 2);
+    steen(gevelBlok(gevel, a, e, Y.band - 0.2, Y.band + 0.25, 0, 0.2));
+    for (const uc of traveeMiddens(a, e, n)) {
+      for (const [r0, r1] of Y.rijen) raamMetOmlijsting(b, M, gevel, uc, r0, r1, t - 1.4, 0);
+      raamMetOmlijsting(b, M, gevel, uc, Y.zolder[0], Y.zolder[1], t - 1.8, 0, { laag: true });
+    }
+    // Pijlers: van de band tot de kroonlijst, dikker op de hoeken.
+    for (let i = 0; i <= n; i++) {
+      const u = a + i * t, hoek = i === 0 || i === n, w = hoek ? 0.45 : 0.3;
+      steen(gevelBlok(gevel, Math.max(a, u - w), Math.min(e, u + w), Y.band + 0.25, Y.fries[0], 0, hoek ? 0.3 : 0.24));
+    }
+    steen(gevelBlok(gevel, a, e, Y.fries[0], Y.fries[0] + 0.18, 0, 0.14));
+    steen(gevelBlok(gevel, a, e, Y.fries[1] - 0.18, Y.fries[1], 0, 0.18));
+    steen(gevelBlok(gevel, a - 0.2, e + 0.2, Y.fries[1], Y.kroonlijst, 0, 0.5));
+    steen(gevelBlok(gevel, a, e, gebouw.hoogte - 0.25, gebouw.hoogte, 0, 0.15));
+  }
+  // Twee beelden op de hoeken aan de Dam, op een sokkel op de kroonlijst.
+  for (const x of [x0 + 0.7, x1 - 0.7]) {
+    steen(new THREE.BoxGeometry(0.9, 0.3, 0.9).translate(x, Y.kroonlijst + 0.15, z0 + 0.1));
+    for (const geo of beeldGeometrieen(1.45, x < (x0 + x1) / 2 ? -1 : 1)) b.voeg('beelden', M.brons, geo.translate(x, Y.kroonlijst + 0.3, z0 + 0.1));
+  }
+  return afronden(groep, b, gebouw);
+}
+
+const GEBOUW_BOUWERS = {
+  'Paleis op de Dam': bouwPaleis, 'Nieuwe Kerk': bouwNieuweKerk,
+  'Bijenkorf': bouwBijenkorf, 'Krasnapolsky': bouwKrasnapolsky,
+  'Hotel TwentySeven (Industria)': bouwIndustria, 'Madame Tussauds-blok': bouwTussauds,
+};
 const gebouwGroepen = new Map();
 for (const gebouw of DAM_LAYOUT.gebouwen) gebouwGroepen.set(gebouw.naam, (GEBOUW_BOUWERS[gebouw.naam] ?? bouwGreyboxGebouw)(gebouw));
 
@@ -2108,13 +2457,15 @@ for (const gebouw of DAM_LAYOUT.gebouwen) gebouwGroepen.set(gebouw.naam, (GEBOUW
 // gevel waarop hij staat (x of z van dat vlak), het midden erlangs, de
 // hoogte onder de kroonlijst en de breedte van de letterband.
 const GEVELNAMEN = [
-  { gebouw: 'Bijenkorf', tekst: 'De Bijenkorf', richting: 'south', x: 1, z: -22, y: 13.6, breedte: 11, hoogte: 1.6,
+  // Ticket D39: de letters staan op het fries van de echte gevels; z/x is het
+  // muurvlak daar (bij de Bijenkorf het vooruitspringende midden).
+  { gebouw: 'Bijenkorf', tekst: 'De Bijenkorf', richting: 'south', x: 1, z: -21.75, y: 13.65, breedte: 9.5, hoogte: 1.4,
     kleur: '#f3e7cf' },
   { gebouw: 'Krasnapolsky', tekst: 'Grand Hotel Krasnapolsky', richting: 'west', x: 17, z: -6.5, y: 15.2, breedte: 20, hoogte: 1.5,
     kleur: '#e8c86a' },
   { gebouw: 'Madame Tussauds-blok', tekst: 'Madame Tussauds', richting: 'north', x: -32.75, z: 22, y: 13.8, breedte: 10, hoogte: 1.3,
-    kleur: '#ffffff', subtekst: 'Peek & Cloppenburg' },
-  { gebouw: 'Hotel TwentySeven (Industria)', tekst: 'Hotel TwentySeven', richting: 'north', x: -1, z: 22, y: 14.4, breedte: 9, hoogte: 1.1,
+    kleur: '#3a3226', subtekst: 'Peek & Cloppenburg' },   // donker op lichte kalksteen
+  { gebouw: 'Hotel TwentySeven (Industria)', tekst: 'Hotel TwentySeven', richting: 'north', x: 2, z: 22, y: 14.4, breedte: 9, hoogte: 1.1,
     kleur: '#e9dcc0' },
 ];
 for (const n of GEVELNAMEN) {
