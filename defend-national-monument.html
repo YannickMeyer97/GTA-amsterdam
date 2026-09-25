@@ -1146,6 +1146,33 @@ const TEXTUUR_TEKENAARS = {
   },
 };
 
+// Ticket D37: ramen met roeden. Geen wereldschaal-tegel maar één raam per
+// vlak (UV 0..1): een lichte kozijnrand, witte roeden en donker glas met een
+// zachte hemelreflectie bovenin. `roedeRaam` voor hoge ramen (2 × 4 ruiten),
+// `roedeRaamLaag` voor de lage tussenverdieping (2 × 2).
+function tekenRoedeRaam(ctx, n, rnd, kolommen, rijen) {
+  ctx.fillStyle = '#e9e2d0';
+  ctx.fillRect(0, 0, n, n);
+  const rand = n * 0.07, roede = n * 0.028;
+  const grad = ctx.createLinearGradient(0, rand, 0, n - rand);
+  grad.addColorStop(0, '#6f8595');
+  grad.addColorStop(0.35, '#34444f');
+  grad.addColorStop(1, '#1c252c');
+  ctx.fillStyle = grad;
+  ctx.fillRect(rand, rand, n - 2 * rand, n - 2 * rand);
+  // Per ruit een iets andere glans: oud glas is nooit helemaal vlak.
+  const bw = (n - 2 * rand) / kolommen, bh = (n - 2 * rand) / rijen;
+  for (let r = 0; r < rijen; r++) for (let k = 0; k < kolommen; k++) {
+    ctx.fillStyle = `rgba(210,230,240,${0.03 + rnd() * 0.08})`;
+    ctx.fillRect(rand + k * bw, rand + r * bh, bw, bh);
+  }
+  ctx.fillStyle = '#efe9da';
+  for (let k = 1; k < kolommen; k++) ctx.fillRect(rand + k * bw - roede / 2, rand, roede, n - 2 * rand);
+  for (let r = 1; r < rijen; r++) ctx.fillRect(rand, rand + r * bh - roede / 2, n - 2 * rand, roede);
+}
+TEXTUUR_TEKENAARS.roedeRaam = (ctx, n, rnd) => tekenRoedeRaam(ctx, n, rnd, 2, 4);
+TEXTUUR_TEKENAARS.roedeRaamLaag = (ctx, n, rnd) => tekenRoedeRaam(ctx, n, rnd, 2, 2);
+
 // Ticket D36: de maat van één steen in pixels, uit TEXTUUR_STEEN en de
 // tegelgrootte. Afgerond op een geheel aantal stenen per tegel, anders sluit
 // de tegel niet naadloos.
@@ -1397,7 +1424,6 @@ for (const route of ROUTES.values()) {
 // Staat bewust niet in DAM_LAYOUT: dat is de plattegrond, dit is tijdelijk
 // uiterlijk.
 const GREYBOX_BEKRONING = {
-  'Paleis op de Dam': { soort: 'koepel', x: -83, z: 0, straal: 4.5 },
   'Nieuwe Kerk': { soort: 'spits', x: -65, z: -39, straal: 1.6 },
   'Bijenkorf': { soort: 'toren', x: 1, z: -26, breedte: 6 },
   'Hotel TwentySeven (Industria)': { soort: 'klok', x: -6.5, z: 26, straal: 3 },
@@ -1465,8 +1491,332 @@ function bouwGreyboxGebouw(gebouw) {
   schaduwAan(g);
   return g;
 }
+// --- Samenvoegen per materiaal ---------------------------------------
+//
+// Ticket D37: een gevel met honderden onderdelen (ramen, lijsten, pilasters)
+// zou als losse meshes honderden draw calls kosten. Een Bouwer verzamelt
+// geometrieën die al op hun wereldplek staan, per materiaal, en voegt ze aan
+// het eind samen tot één mesh per materiaal.
+function voegGeometrieenSamen(lijst) {
+  const delen = lijst.map(g => g.index ? g.toNonIndexed() : g);
+  let n = 0;
+  for (const g of delen) n += g.getAttribute('position').count;
+  const pos = new Float32Array(n * 3), nrm = new Float32Array(n * 3), uv = new Float32Array(n * 2);
+  let o = 0;
+  for (const g of delen) {
+    const c = g.getAttribute('position').count;
+    pos.set(g.getAttribute('position').array, o * 3);
+    nrm.set(g.getAttribute('normal').array, o * 3);
+    if (g.getAttribute('uv')) uv.set(g.getAttribute('uv').array, o * 2);
+    o += c;
+  }
+  for (const g of new Set([...lijst, ...delen])) g.dispose();
+  const uit = new THREE.BufferGeometry();
+  uit.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  uit.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  uit.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  uit.computeBoundingBox();
+  uit.computeBoundingSphere();
+  return uit;
+}
+function maakBouwer() {
+  const perMateriaal = new Map();   // naam → { materiaal, geos }
+  return {
+    // `patroon`: textuur op wereldschaal leggen (D36); zonder patroon
+    // blijven de eigen UV's staan (ramen: één raam per vlak).
+    voeg(naam, materiaal, geo, patroon = null) {
+      if (patroon) textuurOpWereldschaal(geo, patroon);
+      if (!perMateriaal.has(naam)) perMateriaal.set(naam, { materiaal, geos: [] });
+      perMateriaal.get(naam).geos.push(geo);
+      return geo;
+    },
+    bouw(groep) {
+      for (const [naam, { materiaal, geos }] of perMateriaal) {
+        const mesh = new THREE.Mesh(voegGeometrieenSamen(geos), materiaal);
+        mesh.name = naam;
+        mesh.userData.onderdeel = naam;
+        mesh.castShadow = mesh.receiveShadow = true;
+        groep.add(mesh);
+      }
+      return groep;
+    },
+  };
+}
+
+/* ----------------------------------------------------------------
+   Ticket D37: het Paleis op de Dam
+   ---------------------------------------------------------------- */
+//
+// Van Campens classicistische stadhuis, vereenvoudigd tot 13 traveeën
+// (plattegrond D31) en ~25% lager (M2): 20 m tot de dekplaat, koepel tot
+// 38 m. Wat er zeker in zit (DAM_LAYOUT.gebouwen, kenmerken):
+//   - lichte zandsteen die verweerd grijsgeel oogt (textuur zandsteen);
+//   - drie bouwlagen plus zolder: een lage onderbouw, dan twee orden met
+//     elk een rij hoge ramen en een rij lage tussenverdiepingsramen;
+//   - een middenrisaliet van vijf traveeën met een fronton, een reliëf in
+//     het timpaan en drie beelden erop, en twee hoekpaviljoens;
+//   - geen grote hoofdingang maar zeven kleine rondboogpoortjes;
+//   - de koepel: vierkante voet, achtkantige open trommel met zuilen,
+//     loden koepel, lantaarn en een vergulde windvaan in de vorm van een
+//     schip.
+// Beeldhouwwerk en beelden zijn eigen, algemene vormen; er is niets
+// nagetekend.
+//
+// Elke gevel heeft een eigen assenstelsel: u loopt langs de gevel, y omhoog
+// en d naar buiten, vanaf het muurvlak. Onderdelen worden in dat stelsel
+// gebouwd en dan op de gevel gezet; daarna gaan ze per materiaal samen.
+const PALEIS = {
+  x0: -100, x1: -66, z0: -22, z1: 22, hoogte: 20,
+  koepel: { x: -83, z: 0 },
+  // Hoogtes van de lagen (m).
+  plint: 0.45, band1: 4.4, band2: 11.6, kroonlijst: 17.8, attiek: 18.5,
+  raamRijen: [
+    { y0: 5.2, y1: 8.1, laag: false },    // eerste orde: hoge ramen
+    { y0: 9.3, y1: 10.5, laag: true },    // tussenverdieping
+    { y0: 12.3, y1: 15.0, laag: false },  // tweede orde
+    { y0: 15.9, y1: 17.0, laag: true },   // zolder
+  ],
+  raamBreedte: 1.45,
+};
+const PALEIS_GEVELS = {
+  // Oostgevel aan de Dam, 13 traveeën. De vlakken van risalieten en
+  // hoekpaviljoens springen naar voren (d).
+  oost: { rotY: Math.PI / 2, uNaarX: u => -u, zet: (g, d) => g.translate(PALEIS.x1 + d, 0, 0),
+    u0: PALEIS.z0, u1: PALEIS.z1, traveeen: 13 },
+  noord: { rotY: Math.PI, uNaarX: u => -u, zet: (g, d) => g.translate(0, 0, PALEIS.z0 - d),
+    u0: PALEIS.x0, u1: PALEIS.x1, traveeen: 10 },
+  zuid: { rotY: 0, uNaarX: u => u, zet: (g, d) => g.translate(0, 0, PALEIS.z1 + d),
+    u0: PALEIS.x0, u1: PALEIS.x1, traveeen: 10 },
+};
+// Hoe ver het muurvlak op plek u van de oostgevel vooruit springt:
+// middenrisaliet 0,35 m, hoekpaviljoens 0,2 m (2 + 2 + 5 + 2 + 2 traveeën).
+function paleisSprong(gevel, u) {
+  if (gevel !== PALEIS_GEVELS.oost) return 0;
+  const t = (PALEIS.z1 - PALEIS.z0) / 13;
+  if (Math.abs(u) <= 2.5 * t + 1e-6) return 0.35;
+  if (Math.abs(u) >= 4.5 * t - 1e-6) return 0.2;
+  return 0;
+}
+// Een geometrie in het gevelstelsel (x = uNaarX(u), z = d) op de gevel zetten.
+function opGevel(gevel, geo, d = 0) {
+  geo.rotateY(gevel.rotY);
+  gevel.zet(geo, 0);
+  return geo;
+}
+// Een blok in het gevelstelsel: u0..u1, y0..y1, d0..d1.
+function gevelBlok(gevel, u0, u1, y0, y1, d0, d1) {
+  const geo = new THREE.BoxGeometry(Math.abs(u1 - u0), y1 - y0, d1 - d0);
+  geo.translate(gevel.uNaarX((u0 + u1) / 2), (y0 + y1) / 2, (d0 + d1) / 2);
+  return opGevel(gevel, geo);
+}
+// Rondboogvorm (rechthoek met halve cirkel erop), onderkant op y = 0.
+function rondboogVorm(breedte, rechtHoogte, gat = null) {
+  const r = breedte / 2;
+  const vorm = new THREE.Shape();
+  vorm.moveTo(-r, 0);
+  vorm.lineTo(r, 0);
+  vorm.lineTo(r, rechtHoogte);
+  vorm.absarc(0, rechtHoogte, r, 0, Math.PI, false);
+  vorm.lineTo(-r, 0);
+  if (gat) vorm.holes.push(gat);
+  return vorm;
+}
+function rondboogPad(breedte, rechtHoogte) {
+  const r = breedte / 2;
+  const pad = new THREE.Path();
+  pad.moveTo(-r, 0);
+  pad.absarc(0, rechtHoogte, r, Math.PI, 0, true);
+  pad.lineTo(r, 0);
+  pad.lineTo(-r, 0);
+  return pad;
+}
+// Een eenvoudig staand beeld: gewaad, bovenlijf, hoofd en een geheven arm.
+// Lokaal rond (0, 0, 0), voeten op y = 0.
+function beeldGeometrieen(hoogte, armKant = 1) {
+  const s = hoogte / 2.2;
+  const gewaad = new THREE.CylinderGeometry(0.28 * s, 0.42 * s, 1.3 * s, 10).translate(0, 0.65 * s, 0);
+  const lijf = new THREE.CylinderGeometry(0.2 * s, 0.27 * s, 0.55 * s, 10).translate(0, 1.55 * s, 0);
+  const hoofd = new THREE.SphereGeometry(0.17 * s, 10, 8).translate(0, 2.0 * s, 0);
+  const arm = new THREE.BoxGeometry(0.11 * s, 0.7 * s, 0.11 * s).rotateZ(-armKant * 0.5).translate(armKant * 0.33 * s, 1.95 * s, 0);
+  const andereArm = new THREE.BoxGeometry(0.1 * s, 0.55 * s, 0.1 * s).rotateZ(armKant * 0.25).translate(-armKant * 0.26 * s, 1.35 * s, 0.05 * s);
+  return [gewaad, lijf, hoofd, arm, andereArm];
+}
+
+function bouwPaleis(gebouw) {
+  const P = PALEIS;
+  const groep = new THREE.Group();
+  groep.name = gebouw.naam;
+  groep.userData.gebouw = gebouw.naam;
+  const b = maakBouwer();
+  const M = {
+    zandsteen: gevelMateriaal('zandsteen'),
+    natuursteen: gevelMateriaal('natuursteen', 0xfff3dc),
+    lood: gevelMateriaal('leisteen', 0xaab2b8),
+    koepel: mat(0x646f71, 0.5, 0.45),
+    raam: gevelMateriaal('roedeRaam'),
+    raamLaag: gevelMateriaal('roedeRaamLaag'),
+    deur: mat(0x3a2a1e, 0.75),
+    donker: mat(0x1b1a18, 0.95),
+    goud: mat(0xd4a93a, 0.3, 0.9),
+    brons: mat(0x5f5038, 0.5, 0.55),
+  };
+  M.raam.roughness = M.raamLaag.roughness = 0.35;
+  const zand = (geo) => b.voeg('gevel', M.zandsteen, geo, 'zandsteen');
+  const steen = (geo) => b.voeg('lijstwerk', M.natuursteen, geo, 'natuursteen');
+
+  // Het hoofdvolume (het muurvlak van alle gevels) en de dekplaat.
+  const massa = new THREE.BoxGeometry(P.x1 - P.x0, P.hoogte, P.z1 - P.z0).translate((P.x0 + P.x1) / 2, P.hoogte / 2, (P.z0 + P.z1) / 2);
+  zand(massa);
+
+  for (const [naam, gevel] of Object.entries(PALEIS_GEVELS)) {
+    const t = (gevel.u1 - gevel.u0) / gevel.traveeen;
+    const middens = Array.from({ length: gevel.traveeen }, (_, i) => gevel.u0 + (i + 0.5) * t);
+    // Stukken met hetzelfde voorsprong: daarover lopen banden en lijsten.
+    const stukken = [];
+    for (let i = 0; i < gevel.traveeen; i++) {
+      const u0 = gevel.u0 + i * t, u1 = u0 + t, sp = paleisSprong(gevel, (u0 + u1) / 2);
+      const laatste = stukken[stukken.length - 1];
+      if (laatste && laatste.sp === sp) laatste.u1 = u1; else stukken.push({ u0, u1, sp });
+    }
+    for (const st of stukken) {
+      // Risaliet of paviljoen: het vooruitspringende muurvlak.
+      if (st.sp > 0) zand(gevelBlok(gevel, st.u0, st.u1, 0, P.hoogte, 0, st.sp));
+      // Plint, twee banden, kroonlijst en dekplaat.
+      steen(gevelBlok(gevel, st.u0, st.u1, 0, P.plint, st.sp, st.sp + 0.12));
+      for (const y of [P.band1, P.band2]) steen(gevelBlok(gevel, st.u0 - 0.1, st.u1 + 0.1, y - 0.15, y + 0.15, st.sp, st.sp + 0.2));
+      steen(gevelBlok(gevel, st.u0 - 0.3, st.u1 + 0.3, P.kroonlijst, P.attiek - 0.2, st.sp, st.sp + 0.35));
+      steen(gevelBlok(gevel, st.u0 - 0.4, st.u1 + 0.4, P.attiek - 0.2, P.attiek, st.sp, st.sp + 0.6));
+      steen(gevelBlok(gevel, st.u0 - 0.2, st.u1 + 0.2, P.hoogte - 0.25, P.hoogte + 0.1, st.sp, st.sp + 0.3));
+    }
+    // Pilasters tussen de traveeën, over beide orden.
+    for (let i = 0; i <= gevel.traveeen; i++) {
+      const u = gevel.u0 + i * t;
+      const sp = Math.max(paleisSprong(gevel, u - t / 2), paleisSprong(gevel, u + t / 2));
+      steen(gevelBlok(gevel, u - 0.24, u + 0.24, P.band1 + 0.15, P.kroonlijst, sp, sp + 0.16));
+    }
+    // Ramen: kozijnomlijsting (vier latten + lekdorpel) en het raam zelf,
+    // iets terugliggend in de omlijsting.
+    for (const u of middens) {
+      const sp = paleisSprong(gevel, u);
+      const middenRisaliet = sp === 0.35;
+      const rijen = [...P.raamRijen];
+      // Onderbouw: kleine vensters, behalve waar de poortjes zitten.
+      if (!middenRisaliet) rijen.push({ y0: 1.7, y1: 3.1, laag: true });
+      for (const rij of rijen) {
+        const w = P.raamBreedte, h = rij.y1 - rij.y0, u0 = u - w / 2, u1 = u + w / 2;
+        b.voeg(rij.laag ? 'ramenLaag' : 'ramen', rij.laag ? M.raamLaag : M.raam, gevelBlok(gevel, u0, u1, rij.y0, rij.y1, sp, sp + 0.04));
+        const k = 0.16;
+        steen(gevelBlok(gevel, u0 - k, u1 + k, rij.y1, rij.y1 + k, sp, sp + 0.12));
+        steen(gevelBlok(gevel, u0 - k, u0, rij.y0, rij.y1, sp, sp + 0.12));
+        steen(gevelBlok(gevel, u1, u1 + k, rij.y0, rij.y1, sp, sp + 0.12));
+        steen(gevelBlok(gevel, u0 - k - 0.06, u1 + k + 0.06, rij.y0 - 0.14, rij.y0, sp, sp + 0.18));
+        // Hoge ramen van de eerste orde krijgen een kleine kroonlijst erboven.
+        if (!rij.laag && rij.y0 < 10) steen(gevelBlok(gevel, u0 - 0.3, u1 + 0.3, rij.y1 + k, rij.y1 + k + 0.14, sp, sp + 0.24));
+      }
+    }
+    if (naam !== 'oost') continue;
+
+    // --- Oostgevel: de zeven poortjes in de middenrisaliet --------------
+    const sp = 0.35, rw = (5 * t) / 7;
+    for (let i = 0; i < 7; i++) {
+      const u = -2.5 * t + (i + 0.5) * rw;
+      const deurBreedte = 1.3, recht = 1.9;
+      const omlijsting = new THREE.ExtrudeGeometry(rondboogVorm(deurBreedte + 0.5, recht, rondboogPad(deurBreedte, recht)), { depth: 0.14, bevelEnabled: false });
+      omlijsting.translate(gevel.uNaarX(u), P.plint, sp);
+      steen(opGevel(gevel, omlijsting));
+      const deur = new THREE.ShapeGeometry(rondboogVorm(deurBreedte, recht), 12);
+      deur.translate(gevel.uNaarX(u), P.plint, sp + 0.02);
+      b.voeg('poortjes', M.deur, opGevel(gevel, deur));
+    }
+
+    // --- Fronton boven de middenrisaliet --------------------------------
+    const fb = 2.5 * t + 0.35, fh = 4.3, fy = P.hoogte + 0.1;
+    const frontonVorm = new THREE.Shape([new THREE.Vector2(-fb, 0), new THREE.Vector2(fb, 0), new THREE.Vector2(0, fh)]);
+    const fronton = new THREE.ExtrudeGeometry(frontonVorm, { depth: 1.6, bevelEnabled: false });
+    fronton.translate(0, fy, sp - 1.2);
+    zand(opGevel(gevel, fronton));
+    // Schuine lijsten en de basislijst van het fronton.
+    const helling = Math.atan2(fh, fb), lengte = Math.hypot(fb, fh) + 0.5;
+    for (const kant of [-1, 1]) {
+      const lijst = new THREE.BoxGeometry(lengte, 0.42, 0.5).rotateZ(-kant * helling).translate(kant * fb / 2, fy + fh / 2 + 0.12, sp + 0.25);
+      steen(opGevel(gevel, lijst));
+    }
+    steen(opGevel(gevel, new THREE.BoxGeometry(2 * fb + 0.6, 0.4, 0.55).translate(0, fy + 0.2, sp + 0.2)));
+    // Reliëf in het timpaan: een ovale cartouche met aan weerszijden
+    // liggende, gedrapeerde figuren. Algemene vormen, niets nagetekend.
+    const cartouche = new THREE.CylinderGeometry(0.9, 0.9, 0.18, 20).rotateX(Math.PI / 2).scale(1, 1.25, 1).translate(0, fy + 1.9, sp + 0.45);
+    steen(opGevel(gevel, cartouche));
+    for (const kant of [-1, 1]) {
+      for (const [dx, lx, ly, rot] of [[2.6, 1.4, 0.5, 0.25], [4.8, 1.2, 0.42, 0.12], [6.6, 0.9, 0.32, 0.05]]) {
+        const figuur = new THREE.SphereGeometry(1, 12, 8).scale(lx, ly, 0.22).rotateZ(-kant * rot).translate(kant * dx, fy + 0.55 + ly * 0.6, sp + 0.42);
+        steen(opGevel(gevel, figuur));
+      }
+    }
+    // Drie beelden: één op de top, twee op de hoeken van het fronton.
+    for (const [u, y, hoog, arm] of [[0, fy + fh + 0.25, 2.6, 1], [-fb + 0.4, fy + 0.4, 2.0, -1], [fb - 0.4, fy + 0.4, 2.0, 1]]) {
+      const sokkel = new THREE.BoxGeometry(0.9, 0.35, 0.9).translate(gevel.uNaarX(u), y - 0.17, sp - 0.2);
+      steen(opGevel(gevel, sokkel));
+      for (const geo of beeldGeometrieen(hoog, arm)) b.voeg('beelden', M.brons, opGevel(gevel, geo.translate(gevel.uNaarX(u), y, sp - 0.2)));
+    }
+  }
+
+  // --- Dak: laag schilddak van lood, met een plat middenvlak -----------
+  const dakHoogte = 3.2, halfX = (P.x1 - P.x0) / 2 - 1.2, halfZ = (P.z1 - P.z0) / 2 - 1.2;
+  const dak = new THREE.CylinderGeometry(0.5, 1, dakHoogte, 4, 1).rotateY(Math.PI / 4).scale(halfX / Math.SQRT1_2, 1, halfZ / Math.SQRT1_2)
+    .translate((P.x0 + P.x1) / 2, P.hoogte + dakHoogte / 2, (P.z0 + P.z1) / 2);
+  b.voeg('dak', M.lood, dak, 'leisteen');
+
+  // --- De koepel ---------------------------------------------------------
+  const { x: kx, z: kz } = P.koepel;
+  const aan = geo => geo.translate(kx, 0, kz);
+  zand(aan(new THREE.BoxGeometry(7.6, 4.8, 7.6).translate(0, P.hoogte + 2.4, 0)));             // vierkante voet tot 24,8
+  steen(aan(new THREE.BoxGeometry(8.2, 0.4, 8.2).translate(0, 25.0, 0)));
+  const r = 3.1, trommelY0 = 25.2, trommelH = 5.0;
+  zand(aan(new THREE.CylinderGeometry(r, r, trommelH, 8).translate(0, trommelY0 + trommelH / 2, 0)));
+  const apothema = r * Math.cos(Math.PI / 8);
+  for (let k = 0; k < 8; k++) {
+    // Open boog in elk vlak van de trommel, en een zuil op elke hoek.
+    const boog = new THREE.ShapeGeometry(rondboogVorm(1.25, 2.6), 10).translate(0, trommelY0 + 0.6, apothema + 0.02).rotateY(Math.PI / 8 + k * Math.PI / 4);
+    b.voeg('openingen', M.donker, aan(boog));
+    const hoek = k * Math.PI / 4;
+    const zuil = new THREE.CylinderGeometry(0.2, 0.22, trommelH - 0.4, 8).translate(Math.sin(hoek) * (r + 0.12), trommelY0 + trommelH / 2, Math.cos(hoek) * (r + 0.12));
+    steen(aan(zuil));
+  }
+  steen(aan(new THREE.CylinderGeometry(r + 0.45, r + 0.3, 0.45, 8).translate(0, trommelY0 + trommelH + 0.22, 0)));
+  const koepelY = trommelY0 + trommelH + 0.45;
+  b.voeg('koepel', M.koepel, aan(new THREE.SphereGeometry(r + 0.1, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 1.1, 1).translate(0, koepelY, 0)));
+  // Lantaarn met kleine openingen en een kapje.
+  const lantaarnY = koepelY + (r + 0.1) * 1.1 - 0.35;
+  zand(aan(new THREE.CylinderGeometry(0.85, 0.9, 1.9, 8).translate(0, lantaarnY + 0.95, 0)));
+  for (let k = 0; k < 8; k++) {
+    const opening = new THREE.ShapeGeometry(rondboogVorm(0.42, 0.8), 6).translate(0, lantaarnY + 0.4, 0.85 * Math.cos(Math.PI / 8) + 0.02).rotateY(Math.PI / 8 + k * Math.PI / 4);
+    b.voeg('openingen', M.donker, aan(opening));
+  }
+  b.voeg('koepel', M.koepel, aan(new THREE.ConeGeometry(1.05, 0.9, 8).translate(0, lantaarnY + 2.35, 0)));
+  // Vergulde bol, pin en de windvaan: een schip met romp, mast en zeil.
+  const vaanY = lantaarnY + 2.8;
+  const goud = geo => b.voeg('windvaan', M.goud, aan(geo));
+  goud(new THREE.SphereGeometry(0.28, 12, 8).translate(0, vaanY + 0.2, 0));
+  goud(new THREE.CylinderGeometry(0.04, 0.05, 0.9, 6).translate(0, vaanY + 0.8, 0));
+  const topY = gebouw.hoogsteDeel;   // de mast van het schip raakt precies de hoogste maat
+  const rompY = topY - 0.9;
+  goud(new THREE.BoxGeometry(1.1, 0.22, 0.12).translate(0, rompY, 0));
+  goud(new THREE.BoxGeometry(0.3, 0.3, 0.12).translate(0.5, rompY + 0.12, 0));
+  goud(new THREE.CylinderGeometry(0.025, 0.025, 0.8, 5).translate(-0.05, rompY + 0.5, 0));
+  const zeil = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(0.45, 0.1), new THREE.Vector2(0, 0.7)]);
+  goud(new THREE.ExtrudeGeometry(zeil, { depth: 0.03, bevelEnabled: false }).translate(-0.02, rompY + 0.15, -0.015));
+
+  b.bouw(groep);
+  // Botsing: de voetafdruk, zoals bij de grey-box (§11.7.3). Risalieten en
+  // lijstwerk steken hooguit 0,6 m uit, binnen marge + spelerstraal.
+  registreerRechthoek(P.x0, P.x1, P.z0, P.z1, 0.3);
+  wereld.add(groep);
+  return groep;
+}
+
+const GEBOUW_BOUWERS = { 'Paleis op de Dam': bouwPaleis };
 const gebouwGroepen = new Map();
-for (const gebouw of DAM_LAYOUT.gebouwen) gebouwGroepen.set(gebouw.naam, bouwGreyboxGebouw(gebouw));
+for (const gebouw of DAM_LAYOUT.gebouwen) gebouwGroepen.set(gebouw.naam, (GEBOUW_BOUWERS[gebouw.naam] ?? bouwGreyboxGebouw)(gebouw));
 
 // Gevelnamen (beslismoment M2): de gebouwen die in het echt hun naam op de
 // gevel dragen, krijgen die nu al, in gewone letters en zonder logo (plan
@@ -5156,7 +5506,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   tekenMinimap, naarMinimap, MINIMAP_BEREIK,
   // Ticket D32: het nieuwe fundament (ARENA_SCHAAL bestaat niet meer).
   DAM_LAYOUT, ROUTES, wereld, vloerHoogte, puntOp, projecteerOpRoute, vloerTextuur, TEXTUUR_TEKENAARS, gebouwGroepen, GEVELNAMEN,
-  THREE, TEXTUUR_TEGEL, TEXTUUR_STEEN, TEXTUUR_PIXELS, steenPixels, tekstZaad, maakZaadRandom, gevelMateriaal, textuurOpWereldschaal,
+  THREE, PALEIS, PALEIS_GEVELS, paleisSprong, voegGeometrieenSamen, TEXTUUR_TEGEL, TEXTUUR_STEEN, TEXTUUR_PIXELS, steenPixels, tekstZaad, maakZaadRandom, gevelMateriaal, textuurOpWereldschaal,
   // Ticket D34: routes zichtbaar.
   routeSporen, spoorTextuur, straatIngang, straatNaamborden, SPOOR_HELDER, SPOOR_GEDIMD, animeerPoortBakens,
   // Ticket D33: routevolgen.

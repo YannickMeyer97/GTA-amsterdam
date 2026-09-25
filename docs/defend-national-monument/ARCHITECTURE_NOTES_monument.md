@@ -1464,3 +1464,23 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
   kleur)`. Zo lopen voegen door van gevel naar gevel.
 - **Valkuil:** `gevelMateriaal` deelt materialen. Wie er één aanpast (bijv.
   `opacity`), past ze allemaal aan; maak dan een `clone()`.
+
+### 15.12 Echte gebouwen (D37 en verder)
+
+- **`GEBOUW_BOUWERS[naam]`** vervangt per gebouw `bouwGreyboxGebouw`. Een
+  bouwer levert een groep met `userData.gebouw` en registreert zijn eigen
+  botsing: de voetafdruk + 0,3 m, zodat `test-dnm-layout` hem vindt.
+- **Samenvoegen.** `maakBouwer()`:
+  - `voeg(naam, materiaal, geo, patroon)` neemt geometrie die al op haar
+    wereldplek staat;
+  - `bouw(groep)` maakt één mesh per naam.
+
+  De meshnaam is ook `userData.onderdeel`, en tests raken hem met stralen.
+- **Gevelstelsel.** u loopt langs de gevel, y omhoog, d naar buiten.
+  `uNaarX` en `rotY` per gevel zorgen dat een vorm in het XY-vlak (Shape,
+  Extrude) met de juiste kant naar buiten staat, zonder gespiegelde
+  driehoeken.
+- **Hoogte.** De hoogste mesh moet `hoogsteDeel` uit `DAM_LAYOUT` raken
+  (±1,5 m, `test-dnm-layout`); het Paleis zet zijn windvaan er exact op.
+- **Valkuil:** alles wat op loophoogte uitsteekt, mag niet verder komen
+  dan botsing + spelerstraal (0,4 m). Anders loopt de camera door steen.

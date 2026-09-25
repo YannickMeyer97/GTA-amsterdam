@@ -116,7 +116,7 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D48** | Nieuwe toren: Bovenleiding (stroomstoot springt over naar tot 4 robots) — *na M2* |
 | ☑ | **D49** | Nieuwe toren: Muntpers (+50% geld voor kills in bereik) — *na M2* |
 | ☑ | **D36** | Textuurbibliotheek (gekopieerd uit Undead + kinderkopjes, zandsteen, leisteen, …) |
-| ☐ | **D37** | Paleis op de Dam |
+| ☑ | **D37** | Paleis op de Dam — *schermafbeeldingen bij de eigenaar* |
 | ☐ | **D38** | Nieuwe Kerk |
 | ☐ | **D39** | Rond het monument: Bijenkorf, Krasnapolsky, Hotel TwentySeven (Industria), Madame Tussauds; daarna **besluit plek commandopost** (M2) |
 | ☐ | **D40** | Straatwanden van de vijf straten |
@@ -493,6 +493,57 @@ reproductie die eerder 1 op de 4 keer faalde, faalt niet meer.
   - materialen gedeeld;
   - alle patronen verschillend.
 - `THREE` staat nu op de debug-hook.
+
+**D37 — Paleis op de Dam, verslag.**
+- **Gevel aan de Dam, 13 traveeën (2 + 2 + 5 + 2 + 2):**
+  - middenrisaliet van 5 traveeën, 0,35 m naar voren; hoekpaviljoens
+    0,2 m;
+  - een lage onderbouw met zeven rondboogpoortjes in de middenrisaliet,
+    ernaast kleine vensters;
+  - twee orden, elk met een rij hoge ramen en een rij lage
+    tussenverdiepingsramen; pilasters tussen alle traveeën;
+  - plint, twee banden, kroonlijst en dekplaat in natuursteen;
+  - fronton boven de middenrisaliet: schuine lijsten, een timpaan met een
+    cartouche en liggende figuren, en drie bronzen beelden erop.
+- **Zijgevels** (noord en zuid): 10 traveeën met dezelfde ramen en lijsten.
+  De achtergevel ligt buiten de kaart.
+- **Dak en koepel:**
+  - een laag loden schilddak;
+  - de koepel: vierkante voet, achtkantige trommel met open bogen en
+    zuilen, loden koepel, lantaarn;
+  - bovenop een vergulde bol met een windvaan in de vorm van een schip;
+    de mast raakt precies 38 m.
+- **Beeldhouwwerk** bestaat uit eigen, algemene vormen; er is niets
+  nagetekend.
+- **Techniek:**
+  - `maakBouwer()` verzamelt onderdelen per materiaal en voegt ze samen
+    (`voegGeometrieenSamen`). Het hele Paleis is 10 meshes.
+  - Onderdelen worden in een gevelstelsel (u, y, d) gebouwd en met
+    `opGevel` op de gevel gezet.
+  - De ramen gebruiken nieuwe roedetexturen (`roedeRaam`,
+    `roedeRaamLaag`).
+- **Prestaties, vanaf drie vaste standpunten:**
+
+  | Standpunt | Draw calls voor | Draw calls na | Driehoeken voor | Driehoeken na |
+  |---|---|---|---|---|
+  | plein | 111 | 103 | 3,7k | 18k |
+  | plein zuidoost | 110 | 108 | 3,9k | 19k |
+  | noordhoek | 92 | 83 | 3,6k | 18k |
+
+  De laadtijd is ~1,4 s, ~0,1 s meer dan ervoor. D42 legt het budget
+  vast; dit zit er ruim onder.
+- **Botsing:** ongewijzigd (voetafdruk + 0,3 m). Op loophoogte steekt
+  niets verder uit dan botsing + spelerstraal; alleen het lijstwerk hoog
+  in de gevel steekt tot 1 m uit.
+- **Test:** `test-dnm-paleis` (13 checks). Onderdelen worden geteld met
+  stralen op de echte geometrie:
+  - 7 poortjes;
+  - 13 ramen per rij;
+  - 8 onderbouwvensters;
+  - 3 beelden;
+  - fronton boven 23 m, windvaan op 38 m.
+
+  Verder: texturen, botsing en uitsteken op loophoogte.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 

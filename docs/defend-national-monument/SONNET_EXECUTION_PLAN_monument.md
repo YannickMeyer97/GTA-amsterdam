@@ -1414,6 +1414,14 @@ tijd in gevels gaat.
   - beelden op het dak.
 - **Acceptatie:** schermafbeeldingen vanaf drie vaste standpunten, beoordeeld
   door de eigenaar, en het prestatiebudget uit D42 wordt niet overschreden.
+- **Uitgevoerd:**
+  - Alle kenmerken zijn gebouwd, samengevoegd tot 10 meshes; de draw calls
+    zijn gedaald.
+  - `test-dnm-paleis` telt de onderdelen met stralen.
+  - D42 bestaat nog niet; het budget wordt daar vastgelegd, en het Paleis
+    gaat ervan uit dat het daar ruim binnen valt.
+  - De schermafbeeldingen liggen bij de eigenaar. Zie het verslag in de
+    ROADMAP.
 
 #### Ticket D38 — Nieuwe Kerk
 
