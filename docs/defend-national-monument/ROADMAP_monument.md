@@ -121,7 +121,7 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D37** | Paleis op de Dam — *schermafbeeldingen bij de eigenaar* |
 | ☑ | **D38** | Nieuwe Kerk — *schermafbeeldingen bij de eigenaar* |
 | ☑ | **D39** | Rond het monument: Bijenkorf, Krasnapolsky, Hotel TwentySeven (Industria), Madame Tussauds; daarna **besluit plek commandopost** (M2) — *schermafbeeldingen en besluit bij de eigenaar* |
-| ☐ | **D40** | Straatwanden van de vijf straten |
+| ☑ | **D40** | Straatwanden van de vijf straten — *schermafbeeldingen bij de eigenaar* |
 | ☐ | **D41** | Sfeer en straatmeubilair |
 | ☐ | **D42** | Prestaties (budget, instancing), direct gevolgd door D21 |
 | ☐ | **D43** | Herijken op de nieuwe kaart + eindspeeltest → **M3** |
@@ -728,6 +728,61 @@ vijf. Elk hoort bij het knooppunt aan de overkant van zijn weg.
 - **Nog te beslissen: de plek van de commandopost** (zie plan D39). Die
   staat aan de monumentvoet, tenzij de eigenaar hem tegen de
   Bijenkorf-gevel wil.
+
+**Besluit commandopost (na D39).** De eigenaar koos niet voor de
+Bijenkorf, maar zei: "ga door met de rest van de tickets". Volgens het plan
+blijft de commandopost dan aan de monumentvoet. Tegen de Bijenkorf zou hij
+de looptijden flink verlengen:
+- de Kerkklok van 13,6 naar 20,3 s heen en terug;
+- de middelste drukpers van 11,5 naar 18,2 s;
+- Kalverstraat noord van 4,4 naar 12,3 s.
+
+Dit kan later alsnog, als de eigenaar dat wil.
+
+**D40 — straatwanden, verslag.**
+- **Grachtenpanden in plaats van grijze blokken,** langs het Damrak (twee
+  kanten plus de hoek aan de Dam), de Nieuwendijk, de Kalverstraat
+  (straat en pleinkant), het Rokin en de Damstraat (straat, hoekpand en de
+  Nes).
+  - Panden zijn 3,8–7,6 m breed.
+  - Vier geveltypen: trap-, hals- (met klauwstukken en een fronton),
+    lijst- en tuitgevel (met hijsbalk).
+  - Rode, donkere, bruine of okergele baksteen, of wit gepleisterd.
+  - Witte ramen met stenen lateien, en winkelpuien in zes kleuren met een
+    etalage en een deur.
+  - Een leien dak achter elke top.
+  - De verdeling is vast per gebouw (seed uit de naam), dus elke laadbeurt
+    geeft dezelfde straat.
+- **Prestaties:** de kleur per pand zit in vertexkleuren onder één
+  materiaal (`maakBouwer` kan nu vertexkleuren samenvoegen). Een hele
+  straatwand is daardoor ≤ 10 meshes; dat doet hier wat instancing zou
+  doen.
+
+  | Standpunt | Draw calls voor | Draw calls na |
+  |---|---|---|
+  | Damrak | 59 | 75 |
+  | Kalverstraat | 56 | 73 |
+  | Damstraat | 39 | 58 |
+  | Nieuwendijk | 48 | 65 |
+
+  Er zijn 27k–53k driehoeken, en de laadtijd is ~1,5 s.
+- **Beurs van Berlage** (in de verte, langs het Damrak): een lange
+  bakstenen gevel met rondboogvensters en de klokkentoren met wijzerplaat
+  en spits tot 30 m.
+- **Straatnaamborden:** een geëmailleerd bordje met rand op een zwarte
+  paal met beugel, aan beide kanten leesbaar. Er zijn nu zeven borden: de
+  vijf routestraten plus de Warmoesstraat en de Nes.
+- **Test:** `test-dnm-straatwanden` (38 checks), per wand:
+  - meshes, hoogsteDeel en breedte van de panden;
+  - ramen in elk pand (met stralen);
+  - elke winkelpui geraakt;
+  - loophoogte.
+
+  Verder over het geheel:
+  - alle vier de geveltypen;
+  - ≥ 3 typen en ≥ 3 kleuren op de lange wanden;
+  - de Beurs, en 7 tweezijdige borden;
+  - dezelfde panden na herladen.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 

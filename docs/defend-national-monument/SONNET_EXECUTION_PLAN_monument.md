@@ -1487,6 +1487,12 @@ tijd in gevels gaat.
     betaald wordt.
   - Een straatnaambord aan elke straatingang.
 - **Acceptatie:** als D37, plus de draw calls per straatwand binnen budget.
+- **Uitgevoerd:**
+  - Rijen grachtenpanden in vier geveltypen met winkelpuien.
+  - Vertexkleuren in plaats van instancing: ≤ 10 meshes per wand.
+  - De Beurs van Berlage, en zeven tweezijdige straatnaamborden.
+  - `test-dnm-straatwanden`.
+  - Zie het verslag in de ROADMAP.
 
 #### Ticket D41 — Sfeer en straatmeubilair
 

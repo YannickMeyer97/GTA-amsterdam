@@ -1467,9 +1467,9 @@ for (const route of ROUTES.values()) {
 // gebouwen al aan hun silhouet herkent voordat D37–D39 de gevels bouwen.
 // Staat bewust niet in DAM_LAYOUT: dat is de plattegrond, dit is tijdelijk
 // uiterlijk.
-const GREYBOX_BEKRONING = {
-  'Beurs van Berlage': { soort: 'toren', x: -7.5, z: -71.5, breedte: 5 },
-};
+// Sinds D40 heeft elk gebouw een eigen bouwer (GEBOUW_BOUWERS); deze tabel
+// blijft voor een eventueel nieuw gebouw dat nog grey-box is.
+const GREYBOX_BEKRONING = {};
 
 function bouwGreyboxGebouw(gebouw) {
   const g = new THREE.Group();
@@ -1542,12 +1542,17 @@ function voegGeometrieenSamen(lijst) {
   let n = 0;
   for (const g of delen) n += g.getAttribute('position').count;
   const pos = new Float32Array(n * 3), nrm = new Float32Array(n * 3), uv = new Float32Array(n * 2);
+  // Ticket D40: vertexkleuren (per pand een eigen tint onder één materiaal);
+  // onderdelen zonder kleur worden wit.
+  const metKleur = delen.some(g => g.getAttribute('color'));
+  const kleur = metKleur ? new Float32Array(n * 3).fill(1) : null;
   let o = 0;
   for (const g of delen) {
     const c = g.getAttribute('position').count;
     pos.set(g.getAttribute('position').array, o * 3);
     nrm.set(g.getAttribute('normal').array, o * 3);
     if (g.getAttribute('uv')) uv.set(g.getAttribute('uv').array, o * 2);
+    if (kleur && g.getAttribute('color')) kleur.set(g.getAttribute('color').array, o * 3);
     o += c;
   }
   for (const g of new Set([...lijst, ...delen])) g.dispose();
@@ -1555,6 +1560,7 @@ function voegGeometrieenSamen(lijst) {
   uit.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   uit.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
   uit.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  if (kleur) uit.setAttribute('color', new THREE.BufferAttribute(kleur, 3));
   uit.computeBoundingBox();
   uit.computeBoundingSphere();
   return uit;
@@ -1564,8 +1570,12 @@ function maakBouwer() {
   return {
     // `patroon`: textuur op wereldschaal leggen (D36); zonder patroon
     // blijven de eigen UV's staan (ramen: één raam per vlak).
-    voeg(naam, materiaal, geo, patroon = null) {
+    voeg(naam, materiaal, geo, patroon = null, kleur = null) {
       if (patroon) textuurOpWereldschaal(geo, patroon);
+      if (kleur !== null) {
+        const c = new THREE.Color(kleur), n = geo.getAttribute('position').count;
+        geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).map((_, i) => [c.r, c.g, c.b][i % 3]), 3));
+      }
       if (!perMateriaal.has(naam)) perMateriaal.set(naam, { materiaal, geos: [] });
       perMateriaal.get(naam).geos.push(geo);
       return geo;
@@ -2443,7 +2453,209 @@ function bouwTussauds(gebouw) {
   return afronden(groep, b, gebouw);
 }
 
+/* ----------------------------------------------------------------
+   Ticket D40: de straatwanden
+   ---------------------------------------------------------------- */
+//
+// De gevelrijen langs Damrak, Nieuwendijk, Kalverstraat, Rokin en Damstraat
+// worden rijen grachtenpanden in variatie: trap-, hals-, lijst- en
+// tuitgevels, 4,4–7,6 m breed, in rode, donkere, bruine of okergele
+// baksteen of wit gepleisterd, met winkelpuien op de begane grond. De
+// verdeling is vast per gevel (seed uit de gebouwnaam), dus elke laadbeurt
+// dezelfde straat.
+//
+// Prestaties: de kleurverschillen tussen panden zitten in vertexkleuren
+// onder één materiaal, en alles gaat per materiaal samen (maakBouwer). Een
+// hele straatwand is zo ~9 meshes, hoeveel panden en ramen er ook in staan;
+// dat doet hier wat instancing zou doen.
+const GEVEL_TINTEN = [0xffffff, 0xa88a80, 0xc9a48c, 0xf0d6ae];   // op de baksteentextuur: rood, donker, bruin, oker
+const PUI_KLEUREN = [0x1f3b2f, 0x2a2724, 0x5e1c1c, 0x1f2f4a, 0x3b3f44, 0x6b5a2a];
+const PAND_TYPES = ['trap', 'hals', 'lijst', 'tuit'];
+let straatwandMateriaalCache = null;
+function straatwandMaterialen() {
+  if (!straatwandMateriaalCache) {
+    const baksteenVC = gevelMateriaal('baksteen').clone();
+    baksteenVC.vertexColors = true;
+    straatwandMateriaalCache = {
+      baksteenVC,
+      pleister: gevelMateriaal('natuursteen', 0xf7f3ea),
+      wit: mat(0xf1eee6, 0.7),
+      puiVC: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, metalness: 0.1, vertexColors: true }),
+    };
+  }
+  return { ...gevelMaterialen(), ...straatwandMateriaalCache };
+}
+
+// Eén pand in het gevelstelsel, van u0 tot u1. `goot` is waar de gevel
+// overgaat in de top, `top` de hoogste punt van de top.
+function bouwPand(b, M, gevel, u0, u1, p) {
+  const w = u1 - u0, uc = (u0 + u1) / 2, x = gevel.uNaarX(uc);
+  const muur = geo => p.pleister ? b.voeg('pleister', M.pleister, geo, 'natuursteen') : b.voeg('gevel', M.baksteenVC, geo, 'baksteen', p.tint);
+  const steen = steenOp(b, M);
+  const wit = geo => b.voeg('wit', M.wit, geo);
+  const pui = geo => b.voeg('puien', M.puiVC, geo, null, p.puiKleur);
+  // Gevel en lijf van het pand (tot de goot), een paar meter diep.
+  muur(gevelBlok(gevel, u0, u1, 0, p.goot, -p.diepte, 0.1));
+  // Begane grond: winkelpui of woonhuis.
+  if (p.winkel) {
+    const deurKant = w > 5.2;
+    pui(gevelBlok(gevel, u0 + 0.12, u1 - 0.12, 3.0, 3.6, 0.1, 0.32));
+    pui(gevelBlok(gevel, u0 + 0.12, u0 + 0.38, 0, 3.0, 0.1, 0.3));
+    pui(gevelBlok(gevel, u1 - 0.38, u1 - 0.12, 0, 3.0, 0.1, 0.3));
+    pui(gevelBlok(gevel, u0 + 0.38, u1 - 0.38, 0, 0.5, 0.1, 0.24));
+    const glasEind = deurKant ? u1 - 1.6 : u1 - 0.38;
+    b.voeg('etalages', M.etalage, gevelBlok(gevel, u0 + 0.38, glasEind, 0.5, 2.95, 0.1, 0.16), 'glas');
+    pui(gevelBlok(gevel, (u0 + 0.38 + glasEind) / 2 - 0.05, (u0 + 0.38 + glasEind) / 2 + 0.05, 0.5, 2.95, 0.1, 0.22));
+    if (deurKant) {
+      pui(gevelBlok(gevel, glasEind, glasEind + 0.12, 0, 3.0, 0.1, 0.3));
+      b.voeg('deuren', M.deur, gevelBlok(gevel, glasEind + 0.12, u1 - 0.38, 0, 2.6, 0.1, 0.18));
+    }
+  } else {
+    b.voeg('deuren', M.deur, gevelBlok(gevel, u0 + 0.5, u0 + 1.5, 0, 2.5, 0.1, 0.18));
+    steen(gevelBlok(gevel, u0 + 0.35, u0 + 1.65, 2.5, 2.7, 0.1, 0.22));
+  }
+  // Verdiepingen: 2 of 3 ramen per verdieping, wit, met een stenen latei.
+  const k = w >= 6.4 ? 3 : 2;
+  const rw = Math.min(1.2, w / k - 0.65);
+  const verdiepingen = Math.max(1, Math.floor((p.goot - 3.6 - 0.3) / 2.9));
+  for (let v = 0; v < verdiepingen; v++) {
+    const y0 = 3.6 + v * 2.9 + 0.55, y1 = y0 + (v === verdiepingen - 1 ? 1.45 : 1.75);
+    for (let j = 0; j < k; j++) {
+      const u = u0 + w * (j + 0.5) / k;
+      b.voeg(v === verdiepingen - 1 ? 'ramenLaag' : 'ramen', v === verdiepingen - 1 ? M.raamLaag : M.raam, gevelBlok(gevel, u - rw / 2, u + rw / 2, y0, y1, 0.1, 0.15));
+      steen(gevelBlok(gevel, u - rw / 2 - 0.1, u + rw / 2 + 0.1, y1, y1 + 0.2, 0.1, 0.18));
+      wit(gevelBlok(gevel, u - rw / 2 - 0.06, u + rw / 2 + 0.06, y0 - 0.1, y0, 0.1, 0.24));
+    }
+  }
+  // De top.
+  const H = p.top - p.goot;
+  const dak = () => b.voeg('dak', M.lei, opGevel(gevel, zadeldak(w - 0.1, H, p.diepte).translate(x, p.goot, -p.diepte / 2 - 0.05)), 'leisteen');
+  if (p.type === 'lijst') {
+    wit(gevelBlok(gevel, u0 - 0.05, u1 + 0.05, p.goot, p.top - 0.15, 0.1, 0.5));
+    wit(gevelBlok(gevel, u0 - 0.1, u1 + 0.1, p.top - 0.15, p.top, 0.1, 0.6));
+  } else if (p.type === 'trap') {
+    const n = Math.max(2, Math.round(H / 0.9)), sh = H / n;
+    for (let i = 0; i < n; i++) {
+      const wi = w - (w - 1.2) * i / (n - 1) - 0.1;
+      muur(gevelBlok(gevel, uc - wi / 2, uc + wi / 2, p.goot + i * sh, p.goot + (i + 1) * sh, -0.25, 0.1));
+      steen(gevelBlok(gevel, uc - wi / 2 - 0.05, uc + wi / 2 + 0.05, p.goot + (i + 1) * sh - 0.12, p.goot + (i + 1) * sh, -0.25, 0.16));
+    }
+    dak();
+  } else if (p.type === 'hals') {
+    const nw = Math.min(2.4, w * 0.45), halsTop = p.top - 0.65;
+    muur(gevelBlok(gevel, uc - nw / 2, uc + nw / 2, p.goot, halsTop, -0.25, 0.1));
+    const r = Math.min((w - nw) / 2 - 0.05, (halsTop - p.goot) * 0.85);
+    for (const kant of [-1, 1]) {
+      const vorm = new THREE.Shape();
+      vorm.moveTo(kant * nw / 2, 0);
+      vorm.lineTo(kant * (nw / 2 + r), 0);
+      vorm.quadraticCurveTo(kant * (nw / 2 + r * 0.15), r * 0.15, kant * nw / 2, r);
+      vorm.lineTo(kant * nw / 2, 0);
+      steen(opGevel(gevel, new THREE.ExtrudeGeometry(vorm, { depth: 0.25, bevelEnabled: false, curveSegments: 8 }).translate(x, p.goot, -0.12)));
+    }
+    steen(opGevel(gevel, new THREE.ExtrudeGeometry(segmentVorm(nw + 0.3, 0.6), { depth: 0.3, bevelEnabled: false, curveSegments: 10 }).translate(x, halsTop, -0.15)));
+    steen(gevelBlok(gevel, uc - nw / 2 - 0.15, uc + nw / 2 + 0.15, halsTop - 0.12, halsTop, -0.15, 0.18));
+    b.voeg('dak', M.lei, opGevel(gevel, zadeldak(w - 0.1, halsTop - p.goot, p.diepte).translate(x, p.goot, -p.diepte / 2 - 0.05)), 'leisteen');
+  } else {
+    const vorm = new THREE.Shape([new THREE.Vector2(-w / 2, 0), new THREE.Vector2(w / 2, 0), new THREE.Vector2(0, H)]);
+    muur(opGevel(gevel, new THREE.ExtrudeGeometry(vorm, { depth: 0.35, bevelEnabled: false }).translate(x, p.goot, -0.25)));
+    // Stenen afdekking langs de schuine kanten, iets korter dan de kant zodat
+    // hij niet boven de nok uitsteekt.
+    const helling = Math.atan2(H, w / 2), lengte = Math.hypot(w / 2, H) - 0.35;
+    for (const kant of [-1, 1]) steen(opGevel(gevel, new THREE.BoxGeometry(lengte, 0.18, 0.4).rotateZ(-kant * helling).translate(x + kant * w / 4, p.goot + H / 2 - 0.02, -0.05)));
+    // Hijsbalk onder de nok.
+    b.voeg('deuren', M.deur, opGevel(gevel, new THREE.BoxGeometry(0.16, 0.16, 0.9).translate(x, p.top - 0.7, 0.4)));
+    dak();
+  }
+}
+
+// Een rij panden langs een gevel, van a tot e. Geeft de panden terug
+// (voor tests en de roadmap).
+function bouwGevelrij(b, M, gevel, a, e, rnd, { hoogte, diepte = 8, winkels = true, richting = '' }) {
+  const breedtes = [];
+  let u = a;
+  while (e - u > 0.5) {
+    const rest = e - u;
+    let w = 4.4 + rnd() * 3.2;
+    // Niet een smal restje overhouden: past de rest in één pand, neem hem
+    // helemaal; anders verdeel de laatste twee panden gelijk.
+    if (rest <= 7.6) w = rest;
+    else if (rest - w < 3.8) w = rest / 2;
+    breedtes.push([u, u + w]);
+    u += w;
+  }
+  return breedtes.map(([u0, u1], i) => {
+    const type = PAND_TYPES[Math.floor(rnd() * PAND_TYPES.length)];
+    // Het eerste pand haalt precies de hoogste maat; de rest varieert.
+    const top = i === 0 ? hoogte : hoogte - rnd() * 2;
+    const goot = type === 'lijst' ? top : Math.max(6.9, top - (type === 'hals' ? 3.6 : 2.4 + rnd() * 1.4));
+    const p = {
+      type, top, goot, diepte, winkel: winkels && rnd() < 0.85,
+      pleister: rnd() < 0.18, tint: GEVEL_TINTEN[Math.floor(rnd() * GEVEL_TINTEN.length)],
+      puiKleur: PUI_KLEUREN[Math.floor(rnd() * PUI_KLEUREN.length)],
+    };
+    bouwPand(b, M, gevel, u0, u1, p);
+    return { u0, u1, type, top, winkel: p.winkel, richting };
+  });
+}
+
+// Een straatwand: per gevel een rij panden; `gevels` = [richting, vlak, a, e, opties].
+function bouwStraatwand(gebouw, gevels) {
+  const groep = nieuweGebouwGroep(gebouw);
+  const b = maakBouwer();
+  const M = straatwandMaterialen();
+  const rnd = maakZaadRandom(tekstZaad(gebouw.naam));
+  groep.userData.panden = gevels.flatMap(([richting, vlak, a, e, opties = {}]) =>
+    bouwGevelrij(b, M, gevelStelsel(richting, vlak), a, e, rnd, { hoogte: gebouw.hoogte, richting, ...opties }));
+  return afronden(groep, b, gebouw);
+}
+const STRAATWANDEN = {
+  'Damrak-westwand': [['oost', -27, -78, -22, { diepte: 5.75 }], ['west', -38.5, -78, -22, { diepte: 5.75 }], ['zuid', -22, -38.5, -27, { diepte: 8 }]],
+  'Nieuwendijk-westwand': [['oost', -46.5, -78, -48, { diepte: 9.5 }]],
+  'Rokin-oostwand': [['west', -11, 55, 78, { diepte: 10 }]],
+  'Damstraat-zuidwand': [['noord', 19, 17, 52, { diepte: 12 }], ['noord', 22, 13, 17, { diepte: 8 }], ['west', 13, 22, 55, { diepte: 4, winkels: false }]],
+  'Kalverstraat-westwand': [['oost', -46.5, 22, 60, { diepte: 9 }], ['noord', 22, -66, -46.5, { diepte: 9 }]],
+};
+
+// --- De Beurs van Berlage -------------------------------------------------
+//
+// Alleen in de verte, in de zichtlijn van het Damrak: een lange bakstenen
+// gevel met rijen rondboogvensters en de klokkentoren op de zuidhoek, met
+// een wijzerplaat en een spits tot 30 m.
+function bouwBeurs(gebouw) {
+  const [x0, z0, x1, z1] = gebouw.delen[0];
+  const groep = nieuweGebouwGroep(gebouw);
+  const b = maakBouwer();
+  const M = gevelMaterialen({ baksteen: gevelMateriaal('baksteen', 0xe8c9b8) });
+  const baksteen = geo => b.voeg('gevel', M.baksteen, geo, 'baksteen');
+  const steen = steenOp(b, M);
+  baksteen(new THREE.BoxGeometry(x1 - x0, gebouw.hoogte, z1 - z0).translate((x0 + x1) / 2, gebouw.hoogte / 2, (z0 + z1) / 2));
+  const gevel = gevelStelsel('west', x0);
+  for (const y of [0.6, 5.2, 11.6, gebouw.hoogte - 0.4]) steen(gevelBlok(gevel, z0, z1, y - 0.2, y + 0.2, 0, 0.15));
+  for (const uc of traveeMiddens(z0, z1 - 6, 8)) {
+    rondboogRaam(b, M, gevel, uc, 1.2, 2.0, 2.6, 0.02, M.donker);
+    rondboogRaam(b, M, gevel, uc, 6.2, 1.6, 3.4, 0.02, M.donker);
+    for (const du of [-0.55, 0.55]) raamMetOmlijsting(b, M, gevel, uc + du, 12.4, 15.2, 0.8, 0);
+  }
+  // Klokkentoren op de zuidhoek.
+  const tx = x0 + 3.5, tz = z1 - 3.5, th = 26;
+  baksteen(new THREE.BoxGeometry(5, th, 5).translate(tx, th / 2, tz));
+  for (const y of [gebouw.hoogte, 19.5, th - 0.2]) steen(new THREE.BoxGeometry(5.3, 0.35, 5.3).translate(tx, y, tz));
+  for (const [richting, vlak, u] of [['west', tx - 2.5, tz], ['zuid', tz + 2.5, tx]]) {
+    const gv = gevelStelsel(richting, vlak);
+    b.voeg('wijzerplaat', M.wit ?? mat(0xf1eee6, 0.6), opGevel(gv, new THREE.CylinderGeometry(1.25, 1.25, 0.1, 24).rotateX(Math.PI / 2).translate(gv.uNaarX(u), 22.2, 0.06)));
+    b.voeg('wijzers', M.donker, opGevel(gv, new THREE.BoxGeometry(0.1, 0.95, 0.05).translate(gv.uNaarX(u), 22.2 + 0.4, 0.14)));
+    b.voeg('wijzers', M.donker, opGevel(gv, new THREE.BoxGeometry(0.7, 0.1, 0.05).translate(gv.uNaarX(u) + 0.3, 22.2, 0.15)));
+    rondboogRaam(b, M, gv, u, 23.6, 1.4, 1.2, 0.02, M.donker);
+  }
+  b.voeg('dak', M.lei, new THREE.ConeGeometry(3.6, gebouw.hoogsteDeel - th - 0.35, 4).rotateY(Math.PI / 4).translate(tx, th + (gebouw.hoogsteDeel - th - 0.35) / 2, tz), 'leisteen');
+  b.voeg('goud', M.goud, new THREE.CylinderGeometry(0.03, 0.05, 0.35, 6).translate(tx, gebouw.hoogsteDeel - 0.175, tz));
+  return afronden(groep, b, gebouw);
+}
+
 const GEBOUW_BOUWERS = {
+  ...Object.fromEntries(Object.entries(STRAATWANDEN).map(([naam, gevels]) => [naam, gebouw => bouwStraatwand(gebouw, gevels)])),
+  'Beurs van Berlage': bouwBeurs,
   'Paleis op de Dam': bouwPaleis, 'Nieuwe Kerk': bouwNieuweKerk,
   'Bijenkorf': bouwBijenkorf, 'Krasnapolsky': bouwKrasnapolsky,
   'Hotel TwentySeven (Industria)': bouwIndustria, 'Madame Tussauds-blok': bouwTussauds,
@@ -3552,6 +3764,37 @@ function straatIngang(route) {
   return { s: 0, ...puntOp(route, 0) };
 }
 
+// Ticket D40: een Amsterdams straatnaambord. Een geëmailleerd bordje met
+// een witte rand op een zwarte paal met een beugel, aan beide kanten
+// leesbaar (de achterkant is de voorkant, gespiegeld geplaatst). De tekst
+// staat op de kant van `richting`; het bord zelf is een dun plaatje ertussen.
+const BORD_ACHTERKANT = { north: 'south', south: 'north', east: 'west', west: 'east' };
+function maakStraatnaambord(naam, x, z, richting) {
+  const bord = new THREE.Group();
+  bord.name = `straatnaambord:${naam}`;
+  const zwart = mat(0x1d1f22, 0.5, 0.4);
+  const paal = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.065, 3.3, 8), zwart);
+  paal.position.y = 1.65;
+  const knop = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), zwart);
+  knop.position.y = 3.33;
+  const breedte = Math.max(1.5, naam.length * 0.16), hoogte = 0.46;
+  const langsX = richting === 'north' || richting === 'south';
+  const plaat = new THREE.Mesh(new THREE.BoxGeometry(langsX ? breedte + 0.06 : 0.06, hoogte + 0.06, langsX ? 0.06 : breedte + 0.06), mat(0x1c3a6e, 0.4, 0.2));
+  plaat.position.y = 2.85;
+  const beugel = new THREE.Mesh(new THREE.BoxGeometry(langsX ? breedte * 0.6 : 0.05, 0.05, langsX ? 0.05 : breedte * 0.6), zwart);
+  beugel.position.y = 3.12;
+  bord.add(paal, knop, plaat, beugel);
+  for (const kant of [richting, BORD_ACHTERKANT[richting]]) {
+    maakGevelTekst(bord, naam, 0, 2.85, 0, breedte, hoogte, kant, {
+      achtergrond: 'rgba(28, 58, 110, 1)', rand: 'rgba(255, 255, 255, 0.95)', tekstKleur: '#ffffff', fontSize: 110,
+    });
+  }
+  bord.position.set(x, vloerHoogte(x, z), z);
+  bord.traverse(m => { if (m.isMesh) m.raycast = () => {}; });
+  wereld.add(bord);
+  return bord;
+}
+
 // Ticket D34: het baken staat niet meer diep in de straat bij de poort, maar
 // bij de straatingang, naast het straatnaambord: daar zie je het vanaf het
 // monument het best, en het wijst de straat aan, niet een punt erin.
@@ -3579,23 +3822,15 @@ for (const poort of SPAWN_POORTEN) {
   poortBakens.set(poort.naam, baken);
 
   // Straatnaambord rechts van de route (in looprichting), net buiten de
-  // strook, leesbaar vanaf het plein. D40 maakt er een echt Amsterdams bord
-  // van; dit is de grey-box-versie.
+  // strook, leesbaar vanaf het plein (D40: een echt, tweezijdig bord).
   const zij = -(ingang.breedte / 2 + 0.9);
   const bx = ingang.x - ingang.rz * zij, bz = ingang.z + ingang.rx * zij;
-  const bord = new THREE.Group();
-  bord.name = `straatnaambord:${poort.naam}`;
-  const paal = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 3.2, 8), mat(0x2d3136, 0.5, 0.4));
-  paal.position.y = 1.6;
-  bord.add(paal);
   const richting = Math.abs(ingang.rx) > Math.abs(ingang.rz) ? (ingang.rx > 0 ? 'east' : 'west') : (ingang.rz > 0 ? 'south' : 'north');
-  maakGevelTekst(bord, poort.naam, 0, 2.9, 0, 1.9, 0.48, richting, {
-    achtergrond: 'rgba(28, 58, 110, 0.96)', rand: 'rgba(255, 255, 255, 0.95)', tekstKleur: '#ffffff', fontSize: 110,
-  });
-  bord.position.set(bx, vloerHoogte(bx, bz), bz);
-  bord.traverse(m => { if (m.isMesh) m.raycast = () => {}; });
-  wereld.add(bord);
-  straatNaamborden.set(poort.naam, bord);
+  straatNaamborden.set(poort.naam, maakStraatnaambord(poort.naam, bx, bz, richting));
+}
+// Ticket D40: ook de twee doodlopende stegen hebben een bord aan hun ingang.
+for (const [naam, x, z, richting] of [['Warmoesstraat', 12.55, -21.4, 'south'], ['Nes', 8.55, 21.4, 'north']]) {
+  straatNaamborden.set(naam, maakStraatnaambord(naam, x, z, richting));
 }
 
 // Ticket D34: het lichtspoor. Een band met pijlpunten over de hele route,
@@ -6168,7 +6403,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   tekenMinimap, naarMinimap, MINIMAP_BEREIK,
   // Ticket D32: het nieuwe fundament (ARENA_SCHAAL bestaat niet meer).
   DAM_LAYOUT, ROUTES, wereld, vloerHoogte, puntOp, projecteerOpRoute, vloerTextuur, TEXTUUR_TEKENAARS, gebouwGroepen, GEVELNAMEN,
-  THREE, PALEIS, PALEIS_GEVELS, paleisSprong, KERK, gevelStelsel, voegGeometrieenSamen, TEXTUUR_TEGEL, TEXTUUR_STEEN, TEXTUUR_PIXELS, steenPixels, tekstZaad, maakZaadRandom, gevelMateriaal, textuurOpWereldschaal,
+  THREE, PALEIS, PALEIS_GEVELS, paleisSprong, KERK, gevelStelsel, STRAATWANDEN, PAND_TYPES, voegGeometrieenSamen, TEXTUUR_TEGEL, TEXTUUR_STEEN, TEXTUUR_PIXELS, steenPixels, tekstZaad, maakZaadRandom, gevelMateriaal, textuurOpWereldschaal,
   // Ticket D34: routes zichtbaar.
   routeSporen, spoorTextuur, straatIngang, straatNaamborden, SPOOR_HELDER, SPOOR_GEDIMD, animeerPoortBakens,
   // Ticket D33: routevolgen.

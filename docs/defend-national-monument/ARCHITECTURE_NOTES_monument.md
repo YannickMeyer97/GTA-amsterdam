@@ -1503,6 +1503,17 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
     voorkant naar buiten.
   - Glas in een Shape gebruikt de vormcoördinaten (meters) als UV; daarom
     is de tegel van `glasInLood` precies 1 m.
+- **D40, vertexkleuren.**
+  - `bouwer.voeg(naam, materiaal, geo, patroon, kleur)` geeft een geometrie
+    een kleurattribuut. `voegGeometrieenSamen` voegt het samen, en
+    onderdelen zonder kleur worden wit.
+  - Het materiaal moet `vertexColors: true` hebben; zie
+    `straatwandMaterialen()`, met een kloon van het gedeelde
+    baksteenmateriaal.
+  - Zo krijgt elk pand een eigen tint zonder eigen mesh.
+- **Straatwanden:** `STRAATWANDEN[naam]` = lijst van
+  `[richting, vlak, a, e, opties]`. `bouwGevelrij` verdeelt elk stuk in
+  panden; `groep.userData.panden` bewaart de uitkomst voor tests.
 - **Testpatroon voor uitsteken:** schiet op loophoogte stralen op de gevel
   en eis dat elk raakpunt binnen een obstakel + spelerstraal ligt
   (`test-dnm-kerk`). Dat werkt voor schuine vlakken en torentjes, niet
