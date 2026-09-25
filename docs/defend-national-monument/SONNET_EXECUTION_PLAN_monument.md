@@ -868,6 +868,13 @@ kan dus veilig als laatste.*
      Tests moeten de keuze vóór navigatie in `localStorage` zetten, niet
      achteraf omschakelen — anders worden ze flaky.
 - **Acceptatie:** `test-dnm-kwaliteit.mjs`, inclusief de laad-terugval.
+- **Uitgevoerd (na D42):**
+  - Presets Laag/Normaal/Hoog; standaard Hoog, op een grof-pointer-apparaat
+    Laag.
+  - Trams zitten er niet in: de tram staat stil (geparkeerd decor), dus er
+    valt niets te besparen.
+  - `test-dnm-kwaliteit` (12 checks) is groen. Zie het verslag in de
+    ROADMAP, bij D42.
 
 ### Ticket D22 — Instellingenscherm
 
@@ -1522,6 +1529,13 @@ tijd in gevels gaat.
     een Laag/Normaal/Hoog-schakelaar geen luxe meer.
 - **Acceptatie:** het budget wordt gehaald op alle drie de standpunten, en de
   meetresultaten staan in de roadmap.
+- **Uitgevoerd:**
+  - Het budget staat in `test-dnm-prestaties` en wordt gehaald vanaf vijf
+    standpunten; de meting staat in de ROADMAP.
+  - Twee geheugenlekken gedicht (robots, effecten en munten maakten eigen
+    geometrie die nooit werd opgeruimd).
+  - D21 direct erna uitgevoerd, zie hieronder bij fase 6 en het verslag in
+    de ROADMAP.
 
 #### Ticket D43 — Herijken en eindspeeltest
 

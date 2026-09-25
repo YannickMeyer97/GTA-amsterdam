@@ -32,15 +32,15 @@ export const executablePathOptie = existsSync(LOKAAL_CHROMIUM_PAD) ? { executabl
 // tweede game) maar functioneel is dit gewoon "de ene gedeelde browser van
 // dit run-all.mjs-proces" — hernoemen is hier bewust buiten scope gehouden,
 // dat raakt run-all.mjs én helpers.mjs voor een zuiver cosmetische reden.
-async function verkrijgBrowserEnContext() {
+async function verkrijgBrowserEnContext(contextOpties = {}) {
   const gedeeld = globalThis.__AMSTERDAM_UNDEAD_SHARED_BROWSER__;
-  const viewport = { width: 640, height: 400 };
+  const opties = { viewport: { width: 640, height: 400 }, ...contextOpties };
   if (gedeeld) {
-    const context = await gedeeld.newContext({ viewport });
+    const context = await gedeeld.newContext(opties);
     return { browser: { close: () => context.close() }, context };
   }
   const browser = await chromium.launch(executablePathOptie);
-  const context = await browser.newContext({ viewport });
+  const context = await browser.newContext(opties);
   return { browser, context };
 }
 
@@ -48,9 +48,14 @@ async function verkrijgBrowserEnContext() {
 // { browser, page, errs } terug. errs verzamelt console errors +
 // pageerrors zodat elk testscript aan het eind kan controleren dat het spel
 // zonder JS-fouten laadt.
-export async function openDefend({ simuleerPointerLock = false } = {}) {
-  const { browser, context } = await verkrijgBrowserEnContext();
+//
+// Ticket D21: `contextOpties` gaat door naar browser.newContext (bijvoorbeeld
+// { isMobile, hasTouch } voor een apparaat met grove aanwijzer), en
+// `initScript` draait vóór het spel laadt (bijvoorbeeld localStorage vullen).
+export async function openDefend({ simuleerPointerLock = false, contextOpties, initScript } = {}) {
+  const { browser, context } = await verkrijgBrowserEnContext(contextOpties);
   const page = await context.newPage();
+  if (initScript) await page.addInitScript(initScript);
   const errs = [];
   page.on('pageerror', e => errs.push(String(e)));
   page.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });

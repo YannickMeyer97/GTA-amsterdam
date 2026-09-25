@@ -123,7 +123,7 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D39** | Rond het monument: Bijenkorf, Krasnapolsky, Hotel TwentySeven (Industria), Madame Tussauds; daarna **besluit plek commandopost** (M2) — *schermafbeeldingen en besluit bij de eigenaar* |
 | ☑ | **D40** | Straatwanden van de vijf straten — *schermafbeeldingen bij de eigenaar* |
 | ☑ | **D41** | Sfeer en straatmeubilair — *schermafbeeldingen bij de eigenaar* |
-| ☐ | **D42** | Prestaties (budget, instancing), direct gevolgd door D21 |
+| ☑ | **D42** | Prestaties (budget, instancing), direct gevolgd door D21 *(D21 ook ☑)* |
 | ☐ | **D43** | Herijken op de nieuwe kaart + eindspeeltest → **M3** |
 
 **D31 — stand.** De plattegrond staat in
@@ -823,6 +823,112 @@ Dit kan later alsnog, als de eigenaar dat wil.
   - niet raakbaar;
   - gloed en kleuren.
 
+**D42 — prestaties, verslag.**
+- **Meetscript** `meet-dnm-prestaties.mjs` (geen test): vijf vaste
+  standpunten (monument, plein-west, Damrak, Paleis, Damstraat), draw calls
+  en driehoeken van de hoofdpass, een drukke scene met 30 robots in beeld,
+  en voor de hele scene meshes, schaduwwerpers, geometrieën, texturen en de
+  laadtijd.
+- **Wat er is samengevoegd:**
+  - alle vloervlakken en de tramrails: één mesh per materiaal;
+  - de statische groepen (afsluitingen, bouwplektegels) via
+    `voegGroepSamen`;
+  - de duif: lijf in één mesh met vertexkleuren, de kop apart (die pikt);
+  - het straatnaambord: paal, knop, beugel en plaat in één mesh;
+  - de robot: romp (lijf, kop, antenne) en gloed (paneel, ogen,
+    antennebol), 11 → 6 meshes (7 voor de Shield Bot).
+- **Platte onderdelen werpen geen schaduw** (`GEEN_SCHADUW`: ramen,
+  puien, etalages, wijzerplaten, …): 200 → 147 schaduwwerpers.
+- **Twee geheugenlekken gedicht.** Elke robot maakte eigen geometrieën, en
+  elke munt, elk vonkje, elk stofwolkje en elke brok maakte nieuwe
+  geometrie en materialen. Niets daarvan werd opgeruimd, dus in een lange
+  run liepen ze op tot duizenden. Nu delen ze allemaal dezelfde geometrie
+  (`ROBOT_GEO`, `EFFECT_GEO`, `EFFECT_MAT`); alleen de gloed wordt één keer
+  per accentkleur gebouwd. Tekstvlakken met dezelfde tekst en opties delen
+  textuur, materiaal en geometrie (`GEVELTEKST_CACHE`): beide kanten van
+  een straatnaambord en van een markeringsicoon.
+- **Meting, kwaliteit Hoog** (640×400 headless; draw calls in de
+  hoofdpass):
+
+  | Standpunt | Draw calls voor | Draw calls na | Driehoeken na |
+  |---|---|---|---|
+  | monument | 155 | 123 | 69k |
+  | plein-west | 200 | 146 | 70k |
+  | Damrak | 65 | 58 | 66k |
+  | Paleis | 83 | 74 | 66k |
+  | Damstraat | 45 | 43 | 48k |
+
+  | Scene | Voor | Na |
+  |---|---|---|
+  | meshes (zonder robots) | 468 | 359 |
+  | schaduwwerpers | 200 | 147 |
+  | geometrieën | 378 | 256 |
+  | texturen | 32 | 27 |
+  | meshes per robot | 11 | 6–7 |
+  | 30 robots in beeld | — | 332 draw calls |
+  | laadtijd tot de debug-hook | ~1,6 s | ~1,6 s |
+
+  Tegenover de nulmeting van vóór fase M (1407 / 1421 / 2314 draw calls
+  vanaf monument, plein-west en Damrak) is dat een factor 10 tot 40.
+- **Budget,** vastgelegd in `test-dnm-prestaties` (17 checks), met ruimte
+  boven de meting zodat een volgend ticket het merkt als het veel toevoegt:
+  ≤ 170 draw calls per standpunt, ≤ 120k driehoeken, ≤ 380 draw calls met
+  30 robots, ≤ 7 meshes per robot, ≤ 380 meshes, ≤ 170 schaduwwerpers,
+  ≤ 300 geometrieën, ≤ 32 texturen van elk ≤ 1024² pixels, laadtijd ≤ 4 s,
+  en geen lek: 40 robots en 40 schoten laten geen geometrie of textuur
+  achter.
+  - Het plan noemde ≤ 24 texturen. Dat was vóór de textuurbibliotheek (D36)
+    en de zeven straatnaamborden (D40); 32 laat ruimte en houdt het klein.
+  - Het plan noemde ≤ 400 draw calls; de meting ligt daar ruim onder, dus
+    het budget is strakker gezet.
+- **Instancing** was niet nodig: samenvoegen per materiaal met
+  vertexkleuren gaf al meer dan het budget vroeg, en houdt de onderdelen
+  raakbaar voor tests.
+- **Bekend, bewust gelaten:** een gesloopte toren ruimt zijn geometrie niet
+  op. Dat is begrensd door het aantal bouwacties (enkele tientallen per
+  run) en is geen lek van betekenis.
+
+**D21 — kwaliteitsinstellingen, verslag.**
+- **Laag / Normaal / Hoog** op het startscherm, onder de startknop, met
+  dezelfde opzet als Undead (`KWALITEIT_PRESETS`, bewaard in
+  `localStorage` onder `defendNationalMonumentKwaliteit`):
+
+  | | Laag | Normaal | Hoog |
+  |---|---|---|---|
+  | pixelratio tot | 0,75 | 1 | 2 |
+  | anti-aliasing | uit | aan | aan |
+  | schaduwen | uit | 1024² | 2048² |
+  | duiven | 6 | 12 | 18 |
+  | toeristen | nee | ja | ja |
+  | brokstukken blijven liggen | 0,8 s | 1,2 s | 1,6 s |
+
+- **Standaard Hoog**: dat is de stand van vóór D21, waarop alle
+  schermafbeeldingen van fase M zijn beoordeeld. Op een apparaat met grove
+  aanwijzer (telefoon, tablet) zonder eigen keuze is het Laag.
+- **De twee lessen uit Undead:**
+  1. alles wordt bij het laden uit de preset gelezen, niet pas bij een
+     klik (T187);
+  2. de test zet de keuze vóór het laden in `localStorage`; hij schakelt
+     maar één keer runtime om, om de knoppen zelf te toetsen.
+- **Runtime omschakelen** werkt voor alles behalve anti-aliasing, die
+  alleen bij het aanmaken van de renderer kan en dus pas na herladen geldt.
+  Schaduwen aan of uit laat de shaders één keer opnieuw compileren; dat
+  gebeurt alleen op het startscherm.
+- **Laag** scheelt vooral de schaduwpass en de pixels (pixelratio,
+  anti-aliasing). Het aantal draw calls in de hoofdpass daalt maar een
+  beetje (bijvoorbeeld plein-west 146 → 137), omdat de gebouwen gelijk
+  blijven.
+- **Startscherm op een laag scherm:** op 400 px hoog (een telefoon liggend)
+  vielen de knoppen buiten beeld. Onder 560 px hoog wordt het startscherm
+  compacter.
+- **Test:** `test-dnm-kwaliteit` (12 checks): standaard Hoog op desktop;
+  bewaard Laag en Normaal gelden bij het laden (ook anti-aliasing); een
+  corrupte sleutel valt stil terug; grove aanwijzer → Laag, maar een
+  bewaarde keuze wint; een klik op Laag en terug naar Hoog, met de keuze
+  bewaard en zonder dat het spel start.
+- **Testhulp:** `openDefend` neemt nu `contextOpties` (bijvoorbeeld
+  `isMobile`, `hasTouch`) en een `initScript` dat vóór het laden draait.
+
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 
 | | Ticket | Kern |
@@ -839,7 +945,7 @@ D20 is naar fase 2 verhuisd; deze fase is daarmee leeg.
 
 | | Ticket | Kern |
 | --- | --- | --- |
-| ☐ | **D21** | Kwaliteitsinstellingen *(naar voren: direct na D42, omdat het detailniveau van de make-over dit nodig maakt)* |
+| ☑ | **D21** | Kwaliteitsinstellingen *(naar voren: uitgevoerd direct na D42, zie het verslag bij D42 in fase M)* |
 | ☐ | **D22** | Instellingenscherm |
 | ✗ | **D23** | Touch: besturingsgate loskoppelen van Pointer Lock |
 | ✗ | **D24** | Touch: lopen, kijken, vuren |

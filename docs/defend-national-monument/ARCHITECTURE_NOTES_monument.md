@@ -1518,3 +1518,53 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
   en eis dat elk raakpunt binnen een obstakel + spelerstraal ligt
   (`test-dnm-kerk`). Dat werkt voor schuine vlakken en torentjes, niet
   alleen voor rechte gevels.
+
+### 15.13 Prestaties en kwaliteit (D42, D21)
+
+- **Gedeelde geometrie is de regel voor alles wat tijdens het spel ontstaat.**
+  Robots (`ROBOT_GEO`, de gloed per accentkleur via `robotGeometrie`),
+  munten, brokken, vonken en stof (`EFFECT_GEO`, `EFFECT_MAT`) maken geen
+  eigen geometrie of materialen meer.
+  - **Valkuil:** roep op deze geometrie nooit `dispose()` aan. Brokstukken
+    lenen de geometrie van de robot die ontplofte, en alle robots delen hem.
+  - **Valkuil:** wijzig deze materialen niet per object (kleur, opacity):
+    het raakt dan alle robots of alle munten. Krimpen en vervagen gaan via
+    de schaal.
+  - Wie een nieuw effect toevoegt, zet zijn geometrie in `EFFECT_GEO`.
+    `test-dnm-prestaties` controleert dat 40 robots en 40 schoten geen
+    geometrie of textuur achterlaten.
+- **Tekstvlakken** (`maakGevelTekst`) delen textuur, materiaal en geometrie
+  bij dezelfde tekst, maten en opties (`GEVELTEKST_CACHE`). Het teruggegeven
+  mesh is wel per aanroep, dus naam, positie en `raycast` mogen per vlak.
+- **Samenvoegen:**
+  - vloervlakken (`vloer:*`) en de tramrails worden na het bouwen per
+    materiaal samengevoegd tot de groep `vloer`;
+  - `voegGroepSamen(groep)` voegt een bestaande, statische groep per
+    materiaal samen (afsluitingen, bouwplektegels). Niet gebruiken op
+    iets dat beweegt of per onderdeel raakbaar moet blijven;
+  - `GEEN_SCHADUW` noemt de onderdeelnamen van `maakBouwer` die geen
+    schaduw werpen (platte delen in het gevelvlak).
+- **Robot:** zes meshes (Shield Bot zeven): twee benen, twee armen, `romp`
+  en `gloed`. De benen en armen blijven los omdat ze bewegen.
+  `updateRobots` gebruikt `beenLinks`/`armLinks` enz. uit het robotobject,
+  niet `children[i]`.
+- **Duif:** `children[0]` is het lijf, `children[1]` de kop.
+  `updateDuiven` laat de kop pikken via `children[1]`; voeg ze niet samen.
+- **Kwaliteit (D21):**
+  - `KWALITEIT_PRESETS` (laag/normaal/hoog), `kwaliteitNu`,
+    `kwaliteitPreset()`. De stand wordt bij het laden gelezen
+    (`leesKwaliteit`: corrupte sleutel → terugval; grove aanwijzer zonder
+    keuze → laag) en vóór de renderer gebruikt, want anti-aliasing kan
+    alleen bij het aanmaken.
+  - Wat de preset raakt: pixelratio, anti-aliasing, schaduwen en hun
+    resolutie, het aantal duiven, de toeristen (`zetToeristen`) en hoe lang
+    brokstukken blijven liggen.
+  - `kiesKwaliteit(naam)` schakelt runtime om en bewaart de keuze. Nieuwe
+    instellingen die de preset volgen, moeten zowel bij het laden als hier
+    worden toegepast.
+  - Debug-hook: `KWALITEIT_PRESETS`, `KWALITEIT_KEY`, `kwaliteitStand()`,
+    `kiesKwaliteit`, `duiven`, `zon`.
+- **Testhulp:** `openDefend({ contextOpties, initScript })`. Zet een
+  kwaliteitskeuze altijd vóór het laden met `initScript`, niet achteraf
+  met `kiesKwaliteit`: omschakelen compileert shaders opnieuw en maakt
+  tests traag.

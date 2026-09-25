@@ -373,6 +373,19 @@
   #eindscherm .knop { cursor: pointer; }
   #eindscherm .record { font-size: 18px; color: #cfe8ff; margin: -16px 0 18px 0; min-height: 1.2em; }
   #eindscherm .record.nieuw { font-size: 28px; font-weight: 800; color: #ffd75e; letter-spacing: 2px; }
+  /* Ticket D21: kwaliteitskeuze onder de startknop. */
+  #kwaliteitKeuze { margin-top: 22px; font-size: 14px; color: #cfe8ff; display: flex; gap: 8px; align-items: center; }
+  .kwaliteitKnop { cursor: pointer; padding: 4px 12px; border-radius: 999px; background: rgba(255,255,255,0.12); color: #fff; }
+  .kwaliteitKnop.actief { background: #ffd75e; color: #24303f; font-weight: 700; }
+  /* Lage schermen (telefoon liggend): alles compacter, zodat de
+     kwaliteitsknoppen onder de startknop binnen beeld blijven. */
+  @media (max-height: 560px) {
+    #startscherm h1 { font-size: 36px; }
+    #startscherm h2 { font-size: 16px; margin-bottom: 12px; }
+    #startscherm .uitleg { font-size: 13px; line-height: 1.5; padding: 8px 18px; margin-bottom: 14px; }
+    #startscherm .knop { font-size: 17px; padding: 8px 26px; }
+    #kwaliteitKeuze { margin-top: 12px; }
+  }
   #startscherm .knop, #eindscherm .knop {
     font-size: 22px;
     font-weight: 700;
@@ -417,6 +430,11 @@
     ⏸️ <b>Esc</b> om te pauzeren
   </div>
   <div class="knop">Klik om te spelen</div>
+  <div id="kwaliteitKeuze">Beeldkwaliteit
+    <span class="kwaliteitKnop" data-kwaliteit="laag">Laag</span>
+    <span class="kwaliteitKnop" data-kwaliteit="normaal">Normaal</span>
+    <span class="kwaliteitKnop" data-kwaliteit="hoog">Hoog</span>
+  </div>
 </div>
 
 <div id="eindscherm" style="display:none">
@@ -456,10 +474,42 @@ scene.fog = new THREE.Fog(0x87ceeb, 140, 340);          // lichte mist in de ver
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 600);
 camera.rotation.order = 'YXZ';                          // eerst draaien (yaw), dan kijken op/neer (pitch)
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+/* Ticket D21: kwaliteitsinstellingen Laag/Normaal/Hoog, gekopieerd en
+   aangepast uit amsterdam-undead.html (T159, T180, T187). `hoog` is de stand
+   van vóór D21, waarop alle schermafbeeldingen van fase M zijn beoordeeld;
+   daarom is hij de standaard. Op een grof-pointer-apparaat (telefoon,
+   tablet) zonder eigen keuze is `laag` de standaard. Alles wordt bij het
+   LADEN uit de preset gelezen (Undead-les T187), niet pas bij een klik. */
+const KWALITEIT_KEY = 'defendNationalMonumentKwaliteit';
+const KWALITEIT_STANDAARD = 'hoog';
+const KWALITEIT_PRESETS = {
+  laag:    { label: 'Laag',    pixelRatioMax: 0.75, antialias: false, schaduwen: false, schaduwResolutie: 1024, duiven: 6,  toeristen: false, brokstukLeven: 0.8 },
+  normaal: { label: 'Normaal', pixelRatioMax: 1,    antialias: true,  schaduwen: true,  schaduwResolutie: 1024, duiven: 12, toeristen: true,  brokstukLeven: 1.2 },
+  hoog:    { label: 'Hoog',    pixelRatioMax: 2,    antialias: true,  schaduwen: true,  schaduwResolutie: 2048, duiven: 18, toeristen: true,  brokstukLeven: 1.6 },
+};
+function isGrofPointerApparaat() {
+  return !!(window.matchMedia && window.matchMedia('(pointer: coarse) and (hover: none)').matches);
+}
+// Een onbekende of corrupte sleutel breekt het spel nooit: stille terugval.
+function leesKwaliteit() {
+  let raw = null;
+  try { raw = localStorage.getItem(KWALITEIT_KEY); } catch { /* geweigerd: terugval */ }
+  if (KWALITEIT_PRESETS[raw]) return raw;
+  return isGrofPointerApparaat() ? 'laag' : KWALITEIT_STANDAARD;
+}
+function schrijfKwaliteit(naam) {
+  try { localStorage.setItem(KWALITEIT_KEY, naam); } catch { /* niet bewaren, geen crash */ }
+}
+let kwaliteitNu = leesKwaliteit();
+function kwaliteitPreset() { return KWALITEIT_PRESETS[kwaliteitNu]; }
+function kwaliteitPixelRatio() { return Math.min(devicePixelRatio, kwaliteitPreset().pixelRatioMax); }
+
+// Anti-aliasing kan alleen bij het aanmaken van de renderer: een andere
+// keuze geldt voor die ene instelling pas na herladen.
+const renderer = new THREE.WebGLRenderer({ antialias: kwaliteitPreset().antialias });
 renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;                      // schaduwen aan
+renderer.setPixelRatio(kwaliteitPixelRatio());
+renderer.shadowMap.enabled = kwaliteitPreset().schaduwen;   // Ticket D21: uit op `laag`
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;       // zachte schaduwranden
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -470,7 +520,7 @@ document.body.appendChild(renderer.domElement);
 const zon = new THREE.DirectionalLight(0xfff2d0, 2.6);
 zon.position.set(70, 100, 45);
 zon.castShadow = true;
-zon.shadow.mapSize.set(2048, 2048);
+zon.shadow.mapSize.set(kwaliteitPreset().schaduwResolutie, kwaliteitPreset().schaduwResolutie);   // Ticket D21
 // zon.shadow.camera.left/right/top/bottom: zie STAP 2, waar de arena uit
 // DAM_LAYOUT bekend is. near/far (diepte langs de lichtrichting, geen
 // kaartbreedte) staan hier.
@@ -776,7 +826,35 @@ function zet(object, x, y, z, rotY = 0) {
   return object;
 }
 
+// Ticket D42: dezelfde tekst met dezelfde maten en opties deelt textuur,
+// materiaal en geometrie: de voor- en achterkant van een straatnaambord en
+// van een markeringsicoon, en alle markeringen met hetzelfde icoon. Niemand
+// wijzigt het materiaal van een tekstvlak achteraf; doe dat dan ook niet.
+const GEVELTEKST_CACHE = new Map();
 function maakGevelTekst(parent, tekst, x, y, z, breedte, hoogte, richting = 'south', opties = {}) {
+  const sleutel = JSON.stringify([tekst, breedte, hoogte, opties]);
+  if (!GEVELTEKST_CACHE.has(sleutel)) GEVELTEKST_CACHE.set(sleutel, tekenGevelTekst(tekst, breedte, hoogte, opties));
+  const { geometrie, materiaal } = GEVELTEKST_CACHE.get(sleutel);
+  const mesh = new THREE.Mesh(geometrie, materiaal);
+
+  const offset = 0.055;
+  mesh.position.set(x, y, z);
+  if (richting === 'north') {
+    mesh.rotation.y = Math.PI;
+    mesh.position.z -= offset;
+  } else if (richting === 'south') {
+    mesh.position.z += offset;
+  } else if (richting === 'east') {
+    mesh.rotation.y = Math.PI / 2;
+    mesh.position.x += offset;
+  } else if (richting === 'west') {
+    mesh.rotation.y = -Math.PI / 2;
+    mesh.position.x -= offset;
+  }
+  parent.add(mesh);
+  return mesh;
+}
+function tekenGevelTekst(tekst, breedte, hoogte, opties) {
   const canvas = document.createElement('canvas');
   canvas.width = opties.canvasBreedte || 1024;
   canvas.height = opties.canvasHoogte || 256;
@@ -826,27 +904,10 @@ function maakGevelTekst(parent, tekst, x, y, z, breedte, hoogte, richting = 'sou
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(breedte, hoogte),
-    new THREE.MeshBasicMaterial({ map: texture, transparent: true })
-  );
-
-  const offset = 0.055;
-  mesh.position.set(x, y, z);
-  if (richting === 'north') {
-    mesh.rotation.y = Math.PI;
-    mesh.position.z -= offset;
-  } else if (richting === 'south') {
-    mesh.position.z += offset;
-  } else if (richting === 'east') {
-    mesh.rotation.y = Math.PI / 2;
-    mesh.position.x += offset;
-  } else if (richting === 'west') {
-    mesh.rotation.y = -Math.PI / 2;
-    mesh.position.x -= offset;
-  }
-  parent.add(mesh);
-  return mesh;
+  return {
+    geometrie: new THREE.PlaneGeometry(breedte, hoogte),
+    materiaal: new THREE.MeshBasicMaterial({ map: texture, transparent: true }),
+  };
 }
 
 // Herbruikbare marker voor een interactiepunt: een zachte lichtcirkel op de
@@ -1480,6 +1541,17 @@ for (const route of ROUTES.values()) {
   });
 }
 
+// Ticket D42: alle vloerstukken en tramrails staan stil; per materiaal één
+// mesh scheelt tientallen draw calls (elke stoep, strook en rail was een
+// eigen mesh).
+{
+  const vloer = new THREE.Group();
+  vloer.name = 'vloer';
+  for (const m of [...wereld.children]) if (m.isMesh && (m.name.startsWith('vloer:') || m.name === 'tramrail')) { wereld.remove(m); vloer.add(m); }
+  voegGroepSamen(vloer);
+  wereld.add(vloer);
+}
+
 /* ----------------------------------------------------------------
    Gebouwen (grey-box)
    ---------------------------------------------------------------- */
@@ -1586,6 +1658,34 @@ function voegGeometrieenSamen(lijst) {
   uit.computeBoundingSphere();
   return uit;
 }
+const GEEN_SCHADUW = new Set(['ramen', 'ramenLaag', 'etalages', 'kozijnen', 'openingen', 'deuren', 'glas', 'wijzers', 'wijzerplaat', 'lampen', 'winkelpui', 'poortjes', 'deur']);
+
+// Ticket D42: een groep statische meshes samenvoegen tot één mesh per
+// materiaal (in het assenstelsel van de groep). Zelfde idee als
+// maakBouwer, maar voor bestaande groepen (bouwplektegels, bouwhekken).
+function voegGroepSamen(groep) {
+  groep.updateMatrixWorld(true);
+  const terug = new THREE.Matrix4().copy(groep.matrixWorld).invert();
+  const emmers = new Map(), weg = [];
+  groep.traverse(m => {
+    if (!m.isMesh || m.userData.nietSamenvoegen) return;
+    const geo = m.geometry.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(terug, m.matrixWorld));
+    if (!emmers.has(m.material)) emmers.set(m.material, { geos: [], schaduw: m.castShadow, ontvang: m.receiveShadow, naam: m.name, raycast: Object.hasOwn(m, 'raycast') ? m.raycast : null });
+    emmers.get(m.material).geos.push(geo);
+    weg.push(m);
+  });
+  for (const m of weg) m.parent.remove(m);
+  for (const [materiaal, e] of emmers) {
+    const mesh = new THREE.Mesh(voegGeometrieenSamen(e.geos), materiaal);
+    mesh.name = e.naam;
+    mesh.castShadow = e.schaduw;
+    mesh.receiveShadow = e.ontvang;
+    if (e.raycast) mesh.raycast = e.raycast;
+    groep.add(mesh);
+  }
+  return groep;
+}
+
 function maakBouwer() {
   const perMateriaal = new Map();   // naam → { materiaal, geos }
   return {
@@ -1606,7 +1706,10 @@ function maakBouwer() {
         const mesh = new THREE.Mesh(voegGeometrieenSamen(geos), materiaal);
         mesh.name = naam;
         mesh.userData.onderdeel = naam;
-        mesh.castShadow = mesh.receiveShadow = true;
+        // Ticket D42: platte onderdelen in het gevelvlak werpen geen schaduw
+        // (je ziet het verschil niet, de schaduwpass wel).
+        mesh.castShadow = !GEEN_SCHADUW.has(naam);
+        mesh.receiveShadow = true;
         groep.add(mesh);
       }
       return groep;
@@ -2733,6 +2836,7 @@ for (const a of DAM_LAYOUT.afsluitingen) {
   g.add(bord);
   wereld.add(g);
   schaduwAan(g);
+  voegGroepSamen(g);   // Ticket D42
   registreerRechthoek(x0, x1, z0, z1);
 }
 
@@ -2889,6 +2993,12 @@ function bouwStraatmeubilair() {
   return groep;
 }
 const straatmeubilair = bouwStraatmeubilair();
+// Ticket D21: de toeristen alleen op normaal en hoog.
+function zetToeristen() {
+  const mensen = straatmeubilair.children.find(m => m.name === 'mensen');
+  if (mensen) mensen.visible = kwaliteitPreset().toeristen;
+}
+zetToeristen();
 
 /* ----------------------------------------------------------------
    Steunpunten: commandopost en Kerkklok
@@ -3255,20 +3365,21 @@ for (let i = 0; i < 9; i++) {
 
 const duiven = [];
 
+// Ticket D42: twee meshes per duif (was drie), met vertexkleuren onder één
+// gedeeld materiaal: het lijf, en de kop met snavel. De kop blijft een eigen
+// mesh (children[1]), want die pikt (zie updateDuiven).
+const DUIF_MATERIAAL = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, vertexColors: true });
 function maakDuif() {
   const duif = new THREE.Group();
-  const lijf = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), mat(0x8d93a1, 0.8));
-  lijf.scale.set(1, 0.85, 1.35);
-  lijf.position.y = 0.16;
-  lijf.castShadow = true;
-  duif.add(lijf);
-  const kop = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), mat(0x5c6472, 0.8));
-  kop.position.set(0, 0.3, 0.16);
-  duif.add(kop);
-  const snavel = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.07, 5), mat(0xd8a24a, 0.7));
-  snavel.rotation.x = Math.PI / 2;
-  snavel.position.set(0, 0.3, 0.26);
-  duif.add(snavel);
+  const lijf = maakBouwer();
+  lijf.voeg('lijf', DUIF_MATERIAAL, new THREE.SphereGeometry(0.14, 8, 6).scale(1, 0.85, 1.35).translate(0, 0.16, 0), null, 0x8d93a1);
+  lijf.bouw(duif);
+  const kop = maakBouwer();
+  kop.voeg('kop', DUIF_MATERIAAL, new THREE.SphereGeometry(0.08, 8, 6), null, 0x5c6472);
+  kop.voeg('kop', DUIF_MATERIAAL, new THREE.ConeGeometry(0.025, 0.07, 5).rotateX(Math.PI / 2).translate(0, 0, 0.1), null, 0xd8a24a);
+  kop.bouw(duif);
+  duif.children[1].position.set(0, 0.3, 0.16);
+  duif.children[1].castShadow = false;
   return duif;
 }
 
@@ -3376,6 +3487,40 @@ addEventListener('keyup',   e => { ingedrukt[e.code] = false; });
 // --- Pointer lock: muis "vastzetten" zodra je klikt ------------
 
 const startscherm = document.getElementById('startscherm');
+
+// Ticket D21: kwaliteit kiezen op het startscherm. Runtime omschakelen
+// werkt voor alles behalve anti-aliasing (die pas na herladen).
+const kwaliteitKnoppen = document.querySelectorAll('#kwaliteitKeuze [data-kwaliteit]');
+function werkKwaliteitKnoppenBij() {
+  for (const k of kwaliteitKnoppen) k.classList.toggle('actief', k.dataset.kwaliteit === kwaliteitNu);
+}
+function kiesKwaliteit(naam) {
+  if (!KWALITEIT_PRESETS[naam]) return false;
+  const oud = kwaliteitPreset();
+  kwaliteitNu = naam;
+  schrijfKwaliteit(naam);
+  const p = kwaliteitPreset();
+  renderer.setPixelRatio(kwaliteitPixelRatio());
+  renderer.setSize(innerWidth, innerHeight);
+  if (p.schaduwen !== oud.schaduwen) {
+    renderer.shadowMap.enabled = p.schaduwen;
+    scene.traverse(m => { for (const x of [].concat(m.material ?? [])) x.needsUpdate = true; });
+  }
+  if (zon.shadow.mapSize.x !== p.schaduwResolutie) {
+    zon.shadow.mapSize.set(p.schaduwResolutie, p.schaduwResolutie);
+    zon.shadow.map?.dispose();
+    zon.shadow.map = null;
+  }
+  while (duiven.length > p.duiven) scene.remove(duiven.pop().groep);
+  while (duiven.length < p.duiven) plaatsDuif();
+  zetToeristen();
+  werkKwaliteitKnoppenBij();
+  return true;
+}
+for (const k of kwaliteitKnoppen) {
+  k.addEventListener('click', e => { e.stopPropagation(); kiesKwaliteit(k.dataset.kwaliteit); });
+}
+werkKwaliteitKnoppenBij();
 const richtkruis = document.getElementById('richtkruis');
 const hulpUI = document.getElementById('hulpUI');
 const minimapUI = document.getElementById('minimapUI');
@@ -3923,21 +4068,20 @@ function straatIngang(route) {
 // leesbaar (de achterkant is de voorkant, gespiegeld geplaatst). De tekst
 // staat op de kant van `richting`; het bord zelf is een dun plaatje ertussen.
 const BORD_ACHTERKANT = { north: 'south', south: 'north', east: 'west', west: 'east' };
+const BORD_MATERIAAL = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45, metalness: 0.3, vertexColors: true });
 function maakStraatnaambord(naam, x, z, richting) {
   const bord = new THREE.Group();
   bord.name = `straatnaambord:${naam}`;
-  const zwart = mat(0x1d1f22, 0.5, 0.4);
-  const paal = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.065, 3.3, 8), zwart);
-  paal.position.y = 1.65;
-  const knop = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), zwart);
-  knop.position.y = 3.33;
   const breedte = Math.max(1.5, naam.length * 0.16), hoogte = 0.46;
   const langsX = richting === 'north' || richting === 'south';
-  const plaat = new THREE.Mesh(new THREE.BoxGeometry(langsX ? breedte + 0.06 : 0.06, hoogte + 0.06, langsX ? 0.06 : breedte + 0.06), mat(0x1c3a6e, 0.4, 0.2));
-  plaat.position.y = 2.85;
-  const beugel = new THREE.Mesh(new THREE.BoxGeometry(langsX ? breedte * 0.6 : 0.05, 0.05, langsX ? 0.05 : breedte * 0.6), zwart);
-  beugel.position.y = 3.12;
-  bord.add(paal, knop, plaat, beugel);
+  // Ticket D42: paal, knop, beugel en plaat in één mesh (vertexkleuren).
+  const b = maakBouwer();
+  const ijzer = BORD_MATERIAAL;
+  b.voeg('bord', ijzer, new THREE.CylinderGeometry(0.05, 0.065, 3.3, 8).translate(0, 1.65, 0), null, 0x1d1f22);
+  b.voeg('bord', ijzer, new THREE.SphereGeometry(0.08, 8, 6).translate(0, 3.33, 0), null, 0x1d1f22);
+  b.voeg('bord', ijzer, new THREE.BoxGeometry(langsX ? breedte * 0.6 : 0.05, 0.05, langsX ? 0.05 : breedte * 0.6).translate(0, 3.12, 0), null, 0x1d1f22);
+  b.voeg('bord', ijzer, new THREE.BoxGeometry(langsX ? breedte + 0.06 : 0.06, hoogte + 0.06, langsX ? 0.06 : breedte + 0.06).translate(0, 2.85, 0), null, 0x1c3a6e);
+  b.bouw(bord);
   for (const kant of [richting, BORD_ACHTERKANT[richting]]) {
     maakGevelTekst(bord, naam, 0, 2.85, 0, breedte, hoogte, kant, {
       achtergrond: 'rgba(28, 58, 110, 1)', rand: 'rgba(255, 255, 255, 0.95)', tekstKleur: '#ffffff', fontSize: 110,
@@ -4612,6 +4756,7 @@ for (const plek of [...BOUWPLEKKEN, ...DRUKPERSPLEKKEN]) {
   }
   g.position.copy(plek.positie);
   g.rotation.y = plek.hoek;
+  voegGroepSamen(g);   // Ticket D42: tegel + vier randen → twee meshes
   scene.add(g);
   plek.groep = g;
 
@@ -4935,10 +5080,33 @@ function beschadigToren(toren, schade) {
   toren.hp -= schade;
   if (toren.hp <= 0) vernietigToren(toren);
 }
+// Ticket D42: kortlevende effecten (brokken, vonken, stof) en munten delen
+// hun geometrie en materiaal. Ze werden bij elk schot, elke kill en elke
+// explosie nieuw gemaakt en nooit opgeruimd: een lek dat in een lange run
+// duizenden geometrieën in het geheugen liet. Niemand wijzigt deze
+// materialen per effect; het krimpen gaat via de schaal.
+const EFFECT_GEO = {
+  brok: new THREE.BoxGeometry(0.25, 0.25, 0.25),
+  bomVonk: new THREE.SphereGeometry(0.18, 6, 5),
+  stof: new THREE.SphereGeometry(0.115, 6, 5),     // geschaald per stofje, rond 1 (het krimpen telt vanaf 1)
+  vonk: new THREE.SphereGeometry(0.08, 6, 6),
+  schildVonk: new THREE.SphereGeometry(0.07, 6, 6),
+  muntSchijf: new THREE.CylinderGeometry(0.35, 0.35, 0.07, 18),
+  muntRand: new THREE.TorusGeometry(0.22, 0.035, 6, 16),
+};
+const EFFECT_MAT = {
+  bomOranje: new THREE.MeshBasicMaterial({ color: 0xff8c00 }),
+  bomGeel: new THREE.MeshBasicMaterial({ color: 0xffd75e }),
+  stof: new THREE.MeshBasicMaterial({ color: 0xe9e2d0 }),
+  vonk: new THREE.MeshBasicMaterial({ color: 0xd8d8d8 }),
+  schildVonk: new THREE.MeshBasicMaterial({ color: 0x9adfff }),
+  muntSchijf: new THREE.MeshStandardMaterial({ color: 0xffc93c, roughness: 0.25, metalness: 0.85 }),
+  muntRand: new THREE.MeshStandardMaterial({ color: 0xb8860b, roughness: 0.3, metalness: 0.8 }),
+};
 function vernietigToren(toren) {
   const midden = toren.hpBalk.getWorldPosition(new THREE.Vector3());
   for (let i = 0; i < 8; i++) {
-    const brok = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 0.25), mat(toren.type === 'hek' ? 0x5b2320 : 0x55606b, 0.7));
+    const brok = new THREE.Mesh(EFFECT_GEO.brok, mat(toren.type === 'hek' ? 0x5b2320 : 0x55606b, 0.7));
     maakBrokstuk(brok, midden.clone().setY(0.8), 5);
   }
   speelExplosie();
@@ -4981,7 +5149,7 @@ function bomberOntploftBijToren(robot, toren) {
   speelExplosie();
   const p = robot.groep.position;
   for (let i = 0; i < 6; i++) {
-    const vonk = new THREE.Mesh(new THREE.SphereGeometry(0.18, 6, 5), new THREE.MeshBasicMaterial({ color: i % 2 ? 0xff8c00 : 0xffd75e }));
+    const vonk = new THREE.Mesh(EFFECT_GEO.bomVonk, i % 2 ? EFFECT_MAT.bomOranje : EFFECT_MAT.bomGeel);
     maakBrokstuk(vonk, p.clone().setY(1), 7);
   }
   scene.remove(robot.groep);
@@ -5461,53 +5629,76 @@ const ROBOT_TYPES = {
   shieldbot: { hpMax: 1, snelheidMultiplier: 0.85, beloningMultiplier: 1.8, kleur: 0x3ad1ff, schaal: 0.85,   monumentSchade: 10, schildDuur: 1.8, schildPauze: 1.0 },  // Shield Bot
 };
 
+// Ticket D42: de delen die niet los bewegen (lijf, kop, antenne; paneel,
+// ogen, antennebol) zijn per robot samengevoegd tot twee meshes: een romp
+// van metaal en een gloeiend deel. De kleur per robot zit in vertexkleuren,
+// dus alle robots delen dezelfde drie materialen. Van 11 naar 6 meshes per
+// robot; in een drukke wave scheelt dat honderden draw calls.
+const ROBOT_METAAL = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.8, vertexColors: true });
+const ROBOT_METAAL_DONKER = new THREE.MeshStandardMaterial({ color: 0x5c6672, roughness: 0.4, metalness: 0.7 });
+const ROBOT_GLOED = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true });
+// Ticket D42: alle robots delen hun geometrie. Vroeger maakte elke robot
+// eigen geometrieën die bij zijn dood nooit werden opgeruimd (geen
+// dispose): een langzaam lek over een lange run. Benen, armen en de romp
+// zijn voor elke robot gelijk; het gloeiende deel verschilt alleen in
+// accentkleur en wordt per kleur één keer gebouwd. Brokstukken lenen
+// dezelfde geometrie, dus niemand mag hem disposen.
+const ROBOT_GEO = {
+  been: new THREE.BoxGeometry(0.22, 0.6, 0.22),
+  arm: new THREE.BoxGeometry(0.16, 0.65, 0.16),
+  schild: new THREE.BoxGeometry(0.62, 0.95, 0.06),
+  romp: null,
+  gloed: new Map(),   // accentkleur → geometrie
+};
+function robotGeometrie(deel, accent) {
+  if (deel === 'romp' && ROBOT_GEO.romp) return ROBOT_GEO.romp;
+  if (deel === 'gloed' && ROBOT_GEO.gloed.has(accent)) return ROBOT_GEO.gloed.get(accent);
+  const b = maakBouwer();
+  if (deel === 'romp') {
+    // Lijf, kop en antenne.
+    b.voeg('romp', ROBOT_METAAL, new THREE.BoxGeometry(0.75, 0.85, 0.45).translate(0, 1.05, 0), null, 0x9aa5b1);
+    b.voeg('romp', ROBOT_METAAL, new THREE.BoxGeometry(0.5, 0.45, 0.45).translate(0, 1.75, 0), null, 0x9aa5b1);
+    b.voeg('romp', ROBOT_METAAL, new THREE.CylinderGeometry(0.02, 0.02, 0.3, 6).translate(0, 2.12, 0), null, 0x5c6672);
+  } else {
+    // Het gloeiende "hartje" op de borst, de ogen en de antennebol.
+    b.voeg('gloed', ROBOT_GLOED, new THREE.BoxGeometry(0.3, 0.3, 0.05).translate(0, 1.1, 0.24), null, accent);
+    for (const kant of [-0.12, 0.12]) b.voeg('gloed', ROBOT_GLOED, new THREE.SphereGeometry(0.06, 8, 8).translate(kant, 1.8, 0.24), null, accent);
+    b.voeg('gloed', ROBOT_GLOED, new THREE.SphereGeometry(0.05, 8, 8).translate(0, 2.3, 0), null, 0xff5555);
+  }
+  const tijdelijk = new THREE.Group();
+  b.bouw(tijdelijk);
+  const geo = tijdelijk.children[0].geometry;
+  if (deel === 'romp') ROBOT_GEO.romp = geo; else ROBOT_GEO.gloed.set(accent, geo);
+  return geo;
+}
 function maakRobot(type = 'normal') {
   const config = ROBOT_TYPES[type] ?? ROBOT_TYPES.normal;
   const groep = new THREE.Group();
   const accent = config.kleur ?? ACCENTKLEUREN[Math.floor(Math.random() * ACCENTKLEUREN.length)];
-  const metaal = new THREE.MeshStandardMaterial({ color: 0x9aa5b1, roughness: 0.35, metalness: 0.8 });
-  const metaalDonker = new THREE.MeshStandardMaterial({ color: 0x5c6672, roughness: 0.4, metalness: 0.7 });
+  const metaalDonker = ROBOT_METAAL_DONKER;
 
   // Benen (bewegen tijdens het lopen).
-  const beenLinks = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.6, 0.22), metaalDonker);
+  const beenLinks = new THREE.Mesh(ROBOT_GEO.been, metaalDonker);
   beenLinks.position.set(-0.18, 0.3, 0);
   const beenRechts = beenLinks.clone();
   beenRechts.position.x = 0.18;
   groep.add(beenLinks, beenRechts);
 
-  // Lijf met een gloeiend "hartje" op de borst.
-  const lijf = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.85, 0.45), metaal);
-  lijf.position.y = 1.05;
-  groep.add(lijf);
-  const paneel = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.05),
-    new THREE.MeshBasicMaterial({ color: accent }));
-  paneel.position.set(0, 1.1, 0.24);
-  groep.add(paneel);
+  // Lijf met een gloeiend "hartje" op de borst, kop met gloeiende ogen en
+  // een antenne: twee meshes met gedeelde geometrie (zie hierboven).
+  const romp = new THREE.Mesh(robotGeometrie('romp'), ROBOT_METAAL);
+  romp.name = 'romp';
+  romp.receiveShadow = true;
+  const gloed = new THREE.Mesh(robotGeometrie('gloed', accent), ROBOT_GLOED);
+  gloed.name = 'gloed';
+  groep.add(romp, gloed);
 
   // Armen (zwaaien tijdens het lopen).
-  const armLinks = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.65, 0.16), metaalDonker);
+  const armLinks = new THREE.Mesh(ROBOT_GEO.arm, metaalDonker);
   armLinks.position.set(-0.5, 1.15, 0);
   const armRechts = armLinks.clone();
   armRechts.position.x = 0.5;
   groep.add(armLinks, armRechts);
-
-  // Kop met gloeiende ogen en antenne.
-  const kop = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.45, 0.45), metaal);
-  kop.position.y = 1.75;
-  groep.add(kop);
-  const oogMateriaal = new THREE.MeshBasicMaterial({ color: accent });
-  for (const kant of [-0.12, 0.12]) {
-    const oog = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), oogMateriaal);
-    oog.position.set(kant, 1.8, 0.24);
-    groep.add(oog);
-  }
-  const antenne = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.3, 6), metaalDonker);
-  antenne.position.y = 2.12;
-  groep.add(antenne);
-  const antenneBol = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8),
-    new THREE.MeshBasicMaterial({ color: 0xff5555 }));
-  antenneBol.position.y = 2.3;
-  groep.add(antenneBol);
 
   // Shield Bot: doorschijnend cyaan schildpaneel vóór het lijf, dat aan/uit
   // knippert (zie updateRobots). Alleen aangemaakt voor dit type, zodat
@@ -5515,7 +5706,7 @@ function maakRobot(type = 'normal') {
   let schildMesh = null;
   if (type === 'shieldbot') {
     schildMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.62, 0.95, 0.06),
+      ROBOT_GEO.schild,
       new THREE.MeshStandardMaterial({ color: 0x3ad1ff, transparent: true, opacity: 0.85, emissive: 0x3ad1ff, emissiveIntensity: 0.6, roughness: 0.3 })
     );
     schildMesh.position.set(0, 1.1, 0.32);
@@ -5930,7 +6121,7 @@ function updateBrokstukken(dt) {
       b.snelheid.x *= 0.7;
       b.snelheid.z *= 0.7;
     }
-    if (b.leeftijd > 1.6) {                        // langzaam krimpen en verdwijnen
+    if (b.leeftijd > kwaliteitPreset().brokstukLeven) {   // langzaam krimpen en verdwijnen (D21: korter op laag)
       b.mesh.scale.multiplyScalar(0.85);
       if (b.mesh.scale.x < 0.05) {
         scene.remove(b.mesh);
@@ -5971,8 +6162,8 @@ function toonBuitenBereik(doelwitten) {
   if (verder.length === 0) return;
   const punt = raycaster.ray.at(WAPEN_BEREIK, new THREE.Vector3());
   for (let i = 0; i < 5; i++) {
-    const stof = new THREE.Mesh(new THREE.SphereGeometry(0.09 + Math.random() * 0.05, 6, 5),
-      new THREE.MeshBasicMaterial({ color: 0xe9e2d0 }));
+    const stof = new THREE.Mesh(EFFECT_GEO.stof, EFFECT_MAT.stof);
+    stof.scale.setScalar((0.09 + Math.random() * 0.05) / 0.115);
     stof.userData.buitenBereik = true;
     stof.position.copy(punt);
     scene.add(stof);
@@ -6028,8 +6219,7 @@ function schiet() {
     // speler misleidende "het werkte"-feedback op een schot dat niets deed.
     if (robot.type === 'shieldbot' && robot.schildActief) {
       speelSchildBlok();
-      const vonk = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6),
-        new THREE.MeshBasicMaterial({ color: 0x9adfff }));
+      const vonk = new THREE.Mesh(EFFECT_GEO.schildVonk, EFFECT_MAT.schildVonk);
       vonk.position.copy(raak[0].point);
       scene.add(vonk);
       brokstukken.push({ mesh: vonk, snelheid: new THREE.Vector3(0, 1, 0), draai: new THREE.Vector3(), leeftijd: 1.5 });
@@ -6041,8 +6231,7 @@ function schiet() {
     raakRobot(robot);
   } else {
     // Muur of grond geraakt: klein grijs vonkje op de inslagplek.
-    const vonk = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6),
-      new THREE.MeshBasicMaterial({ color: 0xd8d8d8 }));
+    const vonk = new THREE.Mesh(EFFECT_GEO.vonk, EFFECT_MAT.vonk);
     vonk.position.copy(raak[0].point);
     scene.add(vonk);
     brokstukken.push({ mesh: vonk, snelheid: new THREE.Vector3(0, 1, 0), draai: new THREE.Vector3(), leeftijd: 1.5 });
@@ -6143,14 +6332,12 @@ function legMuntNeer(positie, beloningMultiplier = 1) {
   const bedrag = Math.max(1, Math.min(150, Math.round((MUNT_BASIS_MIN + Math.floor(Math.random() * (MUNT_BASIS_MAX - MUNT_BASIS_MIN + 1))) * beloningMultiplier)));   // geschaald per robottype
 
   const munt = new THREE.Group();
-  const schijf = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.07, 18),
-    new THREE.MeshStandardMaterial({ color: 0xffc93c, roughness: 0.25, metalness: 0.85 }));
+  const schijf = new THREE.Mesh(EFFECT_GEO.muntSchijf, EFFECT_MAT.muntSchijf);   // D42: gedeeld
   schijf.rotation.x = Math.PI / 2;   // rechtop zetten zoals een draaiende munt
   schijf.castShadow = true;
   munt.add(schijf);
   // Euroteken-streepje op de munt (simpel randje).
-  const rand = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.035, 6, 16),
-    new THREE.MeshStandardMaterial({ color: 0xb8860b, roughness: 0.3, metalness: 0.8 }));
+  const rand = new THREE.Mesh(EFFECT_GEO.muntRand, EFFECT_MAT.muntRand);
   munt.add(rand);
 
   munt.position.set(positie.x, 0.6, positie.z);
@@ -6470,7 +6657,7 @@ document.getElementById('opnieuwKnop').addEventListener('click', () => {
 
 // Zet bij de start de eerste wave en duiven neer.
 startWave(1);
-for (let i = 0; i < 18; i++) plaatsDuif();
+for (let i = 0; i < kwaliteitPreset().duiven; i++) plaatsDuif();   // Ticket D21: 6/12/18
 
 function gameLoop(nu) {
   requestAnimationFrame(gameLoop);
@@ -6557,6 +6744,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   tekenMinimap, naarMinimap, MINIMAP_BEREIK,
   // Ticket D32: het nieuwe fundament (ARENA_SCHAAL bestaat niet meer).
   DAM_LAYOUT, ROUTES, wereld, vloerHoogte, puntOp, projecteerOpRoute, vloerTextuur, TEXTUUR_TEKENAARS, gebouwGroepen, GEVELNAMEN,
+  KWALITEIT_PRESETS, KWALITEIT_KEY, kwaliteitStand: () => kwaliteitNu, kiesKwaliteit, duiven, zon,
   THREE, PALEIS, PALEIS_GEVELS, paleisSprong, KERK, gevelStelsel, STRAATWANDEN, PAND_TYPES, straatmeubilair, voegGeometrieenSamen, TEXTUUR_TEGEL, TEXTUUR_STEEN, TEXTUUR_PIXELS, steenPixels, tekstZaad, maakZaadRandom, gevelMateriaal, textuurOpWereldschaal,
   // Ticket D34: routes zichtbaar.
   routeSporen, spoorTextuur, straatIngang, straatNaamborden, SPOOR_HELDER, SPOOR_GEDIMD, animeerPoortBakens,
