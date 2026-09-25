@@ -119,7 +119,7 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D51** | Drukpers op eigen plekken voor het Paleis, vast inkomen — *speeltest na D49* |
 | ☑ | **D36** | Textuurbibliotheek (gekopieerd uit Undead + kinderkopjes, zandsteen, leisteen, …) |
 | ☑ | **D37** | Paleis op de Dam — *schermafbeeldingen bij de eigenaar* |
-| ☐ | **D38** | Nieuwe Kerk |
+| ☑ | **D38** | Nieuwe Kerk — *schermafbeeldingen bij de eigenaar* |
 | ☐ | **D39** | Rond het monument: Bijenkorf, Krasnapolsky, Hotel TwentySeven (Industria), Madame Tussauds; daarna **besluit plek commandopost** (M2) |
 | ☐ | **D40** | Straatwanden van de vijf straten |
 | ☐ | **D41** | Sfeer en straatmeubilair |
@@ -613,6 +613,58 @@ vijf. Elk hoort bij het knooppunt aan de overkant van zijn weg.
   Met drie persen op niveau 3 is dat €6 per seconde. D43 ijkt dat, samen
   met de rest van de economie.
 - **Test:** `test-dnm-drukpers` (16 checks) vervangt `test-dnm-muntpers`.
+
+**D38 — Nieuwe Kerk, verslag.**
+- **Zuidgevel van het dwarsschip,** de kant die je vanaf de Dam ziet, 2 m
+  achter de noordoosthoek van het Paleis:
+  - een baksteen topgevel met stenen afdekking en een pinakel;
+  - het grote spitsboograam: vier lichten, maaswerk met bogen per licht
+    en per paar, en een roos in de kop;
+  - een spitsboogportaal eronder;
+  - twee achtkantige traptorentjes met stenen banden, lichtspleten en een
+    loden spits.
+- **Koor aan de Nieuwendijk:** een veelhoekige sluiting met vier
+  spitsboogramen van twee lichten, en steunberen in twee versnijdingen.
+- **Verder:**
+  - een raam op de oostkant van het dwarsschip en op het stukje schip
+    tussen dwarsschip en koor;
+  - plint, lekdrempelband en gootlijst in natuursteen;
+  - steile leien zadeldaken, met de nok op 22 m (koor 20 m) en een
+    helling van ~39°;
+  - een topgevel waar het schip boven het lagere koor uitkomt.
+- **Dakruiter op de kruising:** een achtkantige loden lantaarn met
+  spitsboogopeningen en een slanke spits, met een vergulde bol op precies
+  32 m. Geen hoge toren, zoals in het echt.
+- **Nieuw:**
+  - een glas-in-lood-textuur (ruitjes met loodlijnen), naadloos, en
+    toegevoegd aan `test-dnm-texturen`;
+  - `gevelStelsel(richting, vlak)`, het gevelstelsel van D37 voor elke
+    muur;
+  - `apsisStelsel`, voor de vlakken van de apsis;
+  - `kerkRaam` en `steunbeer`.
+- **Prestaties, vanaf drie vaste standpunten:**
+
+  | Standpunt | Draw calls voor | Draw calls na | Driehoeken voor | Driehoeken na |
+  |---|---|---|---|---|
+  | plein → dwarsschip | 79 | 80 | 18k | 33k |
+  | Nieuwendijk → koor | 51 | 44 | 15k | 30k |
+  | monument | 114 | 107 | 19k | 34k |
+
+  De hele kerk is 9 meshes.
+- **Botsing:** per deel de voetafdruk + 0,3 m, plus de twee
+  traptorentjes, die 0,95 m voor de zuidgevel uitsteken. De steunberen
+  van het koor passen binnen de voetafdruk.
+- **Test:** `test-dnm-kerk` (14 checks), met stralen op de echte
+  geometrie:
+  - 4 lichten in het transeptraam, dat tot in de topgevel reikt;
+  - een portaal;
+  - 4 koorramen van 2 lichten;
+  - 2 torentjes;
+  - een dakruiter op 32 m, en verder niets boven de 25 m;
+  - dakhelling ≥ 35°.
+
+  Verder: texturen, botsing, en op loophoogte steekt niets buiten botsing
+  + spelerstraal.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 

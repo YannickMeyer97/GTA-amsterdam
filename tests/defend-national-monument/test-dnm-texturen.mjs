@@ -9,7 +9,7 @@ const { browser, page, errs } = await openDefend();
 const { check, report } = makeChecker();
 
 const PATRONEN = ['kinderkopjes', 'klinkers', 'straatklinkers', 'asfalt', 'trambaan', 'stoep',
-  'baksteen', 'geleBaksteen', 'zandsteen', 'natuursteen', 'leisteen', 'glas'];
+  'baksteen', 'geleBaksteen', 'zandsteen', 'natuursteen', 'leisteen', 'glas', 'glasInLood'];
 
 const r = await page.evaluate((PATRONEN) => {
   const d = window.DamChaosDebug;

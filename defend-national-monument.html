@@ -960,6 +960,9 @@ const TEXTUUR_TEGEL = {
   kinderkopjes: 2.4, klinkers: 2.1, straatklinkers: 2.1, asfalt: 4, trambaan: 2.4, stoep: 1.8,
   // Ticket D36: gevels en daken.
   baksteen: 1.32, geleBaksteen: 1.32, zandsteen: 2.4, natuursteen: 1.2, leisteen: 1.8, glas: 1.5,
+  // Ticket D38: glas-in-lood, één tegel per meter; de ramen van de kerk
+  // gebruiken de vormcoördinaten (meters) direct als UV.
+  glasInLood: 1,
 };
 // Ticket D36: de echte maat van één steen per patroon, in meters, [breedte,
 // hoogte] inclusief voeg. De tekenaars delen hun tegel hierdoor op, en
@@ -1175,6 +1178,43 @@ function tekenRoedeRaam(ctx, n, rnd, kolommen, rijen) {
   for (let r = 1; r < rijen; r++) ctx.fillRect(rand, rand + r * bh - roede / 2, n - 2 * rand, roede);
 }
 TEXTUUR_TEKENAARS.roedeRaam = (ctx, n, rnd) => tekenRoedeRaam(ctx, n, rnd, 2, 4);
+// Ticket D38: glas-in-lood in ruitvorm (4 × 3 ruitjes per meter), elke ruit
+// een iets andere tint van oud, licht groenig glas, met donkere loodlijnen.
+// Naadloos: de schuine lijnen lopen in alle wrap-posities door.
+TEXTUUR_TEKENAARS.glasInLood = (ctx, n, rnd) => {
+  ctx.fillStyle = '#3d4a4c';
+  ctx.fillRect(0, 0, n, n);
+  const kol = 4, rij = 6, bw = n / kol, bh = n / rij;
+  // Ruiten: per cel van het ruitpatroon een ruit, getekend in alle negen
+  // wrap-posities.
+  for (let r = 0; r <= rij; r++) for (let k = 0; k <= kol; k++) {
+    const cx = k * bw + (r % 2) * bw / 2, cy = r * bh;
+    const f = 0.8 + rnd() * 0.45, groen = rnd() < 0.15 ? 18 : 0;
+    ctx.fillStyle = `rgb(${Math.round(92 * f)},${Math.round((112 + groen) * f)},${Math.round(116 * f)})`;
+    for (const ox of [-n, 0, n]) for (const oy of [-n, 0, n]) {
+      ctx.beginPath();
+      ctx.moveTo(cx + ox, cy + oy - bh);
+      ctx.lineTo(cx + ox + bw / 2, cy + oy);
+      ctx.lineTo(cx + ox, cy + oy + bh);
+      ctx.lineTo(cx + ox - bw / 2, cy + oy);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  // Loodlijnen langs de ruitranden: twee families schuine lijnen, met
+  // helling bw / (2·bh), door x = bw/2 + k·bw op y = 0. Over de hele tegel
+  // verschuift een lijn een geheel aantal ruiten, dus de tegel sluit.
+  ctx.strokeStyle = '#1d2122';
+  ctx.lineWidth = Math.max(2, n / 150);
+  const dx = n * bw / (2 * bh);
+  for (let i = -3 * kol; i <= 3 * kol; i++) for (const richting of [1, -1]) {
+    const x0 = bw / 2 + i * bw;
+    ctx.beginPath();
+    ctx.moveTo(x0, 0);
+    ctx.lineTo(x0 + richting * dx, n);
+    ctx.stroke();
+  }
+};
 TEXTUUR_TEKENAARS.roedeRaamLaag = (ctx, n, rnd) => tekenRoedeRaam(ctx, n, rnd, 2, 2);
 
 // Ticket D36: de maat van één steen in pixels, uit TEXTUUR_STEEN en de
@@ -1270,7 +1310,7 @@ function vloerTextuur(patroon) {
 // kleur vermenigvuldigt met de textuur (wit = de textuur zoals getekend),
 // zodat bijvoorbeeld de Bijenkorf een iets donkerder baksteen krijgt dan een
 // grachtenpand zonder een eigen textuur. Glas glanst, steen niet.
-const GEVEL_GLANS = { glas: { roughness: 0.18, metalness: 0.35 }, leisteen: { roughness: 0.7, metalness: 0 } };
+const GEVEL_GLANS = { glas: { roughness: 0.18, metalness: 0.35 }, leisteen: { roughness: 0.7, metalness: 0 }, glasInLood: { roughness: 0.25, metalness: 0.3 } };
 const gevelMateriaalCache = new Map();
 function gevelMateriaal(patroon, kleur = 0xffffff) {
   const sleutel = `${patroon}:${kleur}`;
@@ -1428,7 +1468,6 @@ for (const route of ROUTES.values()) {
 // Staat bewust niet in DAM_LAYOUT: dat is de plattegrond, dit is tijdelijk
 // uiterlijk.
 const GREYBOX_BEKRONING = {
-  'Nieuwe Kerk': { soort: 'spits', x: -65, z: -39, straal: 1.6 },
   'Bijenkorf': { soort: 'toren', x: 1, z: -26, breedte: 6 },
   'Hotel TwentySeven (Industria)': { soort: 'klok', x: -6.5, z: 26, straal: 3 },
   'Krasnapolsky': { soort: 'kap' },
@@ -1818,7 +1857,248 @@ function bouwPaleis(gebouw) {
   return groep;
 }
 
-const GEBOUW_BOUWERS = { 'Paleis op de Dam': bouwPaleis };
+/* ----------------------------------------------------------------
+   Ticket D38: de Nieuwe Kerk
+   ---------------------------------------------------------------- */
+//
+// Laatgotisch, in baksteen met natuurstenen banden en lijsten (DAM_LAYOUT,
+// kenmerken). Wat je vanaf de Dam ziet, krijgt het detail:
+//   - de zuidgevel van het dwarsschip, schuin naast het Paleis: een
+//     topgevel met het grote spitsboograam (vier lichten, maaswerk met
+//     een roos), geflankeerd door twee achtkantige traptorentjes, en een
+//     klein portaal eronder;
+//   - het koor aan de Nieuwendijk, met een veelhoekige sluiting,
+//     steunberen en hoge spitsboogramen;
+//   - steile leien daken, en op de kruising een slank dakruitertje tot
+//     32 m. Geen hoge toren: die is in het echt nooit afgebouwd.
+// Maten uit DAM_LAYOUT: schip [-100..-56] × [-50..-28], dwarsschip
+// [-70..-60] × [-60..-24], koor [-56..-46,5] × [-48..-32]. Goot 13 m (koor
+// 12 m), nok 22 m (koor 20 m).
+const KERK = {
+  schip: { x0: -100, x1: -56, z0: -50, z1: -28, goot: 13, nok: 22 },
+  transept: { x0: -70, x1: -60, z0: -60, z1: -24, goot: 13, nok: 22 },
+  koor: { x0: -56, x1: -46.5, z0: -48, z1: -32, goot: 12, nok: 20 },
+  kruising: { x: -65, z: -39 },
+  traptoren: { straal: 0.95, hoogte: 20, spits: 4.5 },
+};
+KERK.apsis = { x: KERK.koor.x1 - 1.2 - 8, z: (KERK.koor.z0 + KERK.koor.z1) / 2, r: 8 };   // steunbeer van 1,2 m past binnen het koor
+
+// Een gevelstelsel voor een willekeurige, as-uitgelijnde muur (zie
+// PALEIS_GEVELS): u is de wereldcoördinaat langs de muur, `vlak` de x of z
+// van het muurvlak. uNaarX en rotY zijn zo gekozen dat de draaiing geen
+// spiegeling is (anders keren driehoeken om).
+function gevelStelsel(richting, vlak) {
+  switch (richting) {
+    case 'zuid': return { rotY: 0, uNaarX: u => u, zet: geo => geo.translate(0, 0, vlak) };
+    case 'noord': return { rotY: Math.PI, uNaarX: u => -u, zet: geo => geo.translate(0, 0, vlak) };
+    case 'oost': return { rotY: Math.PI / 2, uNaarX: u => -u, zet: geo => geo.translate(vlak, 0, 0) };
+    case 'west': return { rotY: -Math.PI / 2, uNaarX: u => u, zet: geo => geo.translate(vlak, 0, 0) };
+  }
+}
+// Een vlak van een veelhoekige apsis: de normaal wijst naar hoek θ (zoals
+// CylinderGeometry: x = sin θ, z = cos θ); u = 0 is het midden van het vlak.
+function apsisStelsel(cx, cz, apothema, hoek) {
+  return { rotY: hoek, uNaarX: u => u, zet: geo => geo.translate(cx + apothema * Math.sin(hoek), 0, cz + apothema * Math.cos(hoek)) };
+}
+// Gelijkzijdige spitsboog (twee cirkelbogen met straal = breedte),
+// onderkant op y = 0; de top ligt op recht + 0,866 × breedte.
+function spitsboogVorm(breedte, recht, gat = null) {
+  const h = breedte / 2;
+  const vorm = new THREE.Shape();
+  vorm.moveTo(-h, 0);
+  vorm.lineTo(h, 0);
+  vorm.lineTo(h, recht);
+  vorm.absarc(-h, recht, breedte, 0, Math.PI / 3, false);
+  vorm.absarc(h, recht, breedte, 2 * Math.PI / 3, Math.PI, false);
+  vorm.lineTo(-h, 0);
+  if (gat) vorm.holes.push(gat);
+  return vorm;
+}
+function spitsboogPad(breedte, recht) {
+  const h = breedte / 2;
+  const pad = new THREE.Path();
+  pad.moveTo(-h, 0);
+  pad.lineTo(-h, recht);
+  pad.absarc(h, recht, breedte, Math.PI, 2 * Math.PI / 3, true);
+  pad.absarc(-h, recht, breedte, Math.PI / 3, 0, true);
+  pad.lineTo(h, 0);
+  pad.lineTo(-h, 0);
+  return pad;
+}
+function ringVorm(straal, dikte) {
+  const vorm = new THREE.Shape();
+  vorm.absarc(0, 0, straal, 0, Math.PI * 2, false);
+  const gat = new THREE.Path();
+  gat.absarc(0, 0, straal - dikte, 0, Math.PI * 2, true);
+  vorm.holes.push(gat);
+  return vorm;
+}
+// Zadeldak: driehoekige doorsnede, nok langs de lokale z-as, voet op y = 0.
+function zadeldak(breedte, hoogte, lengte) {
+  const vorm = new THREE.Shape([new THREE.Vector2(-breedte / 2, 0), new THREE.Vector2(breedte / 2, 0), new THREE.Vector2(0, hoogte)]);
+  return new THREE.ExtrudeGeometry(vorm, { depth: lengte, bevelEnabled: false }).translate(0, 0, -lengte / 2);
+}
+
+// Een spitsboograam met omlijsting en maaswerk: een stenen stijl tussen
+// elke twee lichten, een kleine spitsboog boven elk licht, bij vier lichten
+// ook een boog over elk paar, en een roos in de kop.
+function kerkRaam(b, M, gevel, u, y0, breedte, recht, lichten, d = 0) {
+  const x = gevel.uNaarX(u);
+  const plaats = (geo, dz = 0) => opGevel(gevel, geo.translate(x, y0, d + dz));
+  const steen = geo => b.voeg('lijstwerk', M.natuursteen, geo, 'natuursteen');
+  const extrude = (vorm, diepte) => new THREE.ExtrudeGeometry(vorm, { depth: diepte, bevelEnabled: false, curveSegments: 14 });
+  b.voeg('glas', M.glas, plaats(new THREE.ShapeGeometry(spitsboogVorm(breedte, recht), 14), 0.03));
+  steen(plaats(extrude(spitsboogVorm(breedte + 0.6, recht, spitsboogPad(breedte, recht)), 0.28)));
+  if (lichten < 2) return;
+  const lw = breedte / lichten, stijl = 0.14;
+  for (let i = 1; i < lichten; i++) steen(plaats(new THREE.BoxGeometry(stijl, recht, 0.18).translate(-breedte / 2 + i * lw, recht / 2, 0.09)));
+  for (let i = 0; i < lichten; i++) {
+    steen(plaats(extrude(spitsboogVorm(lw, recht, spitsboogPad(lw - stijl, recht)), 0.16).translate(-breedte / 2 + (i + 0.5) * lw, 0, 0)));
+  }
+  let kopOnder = recht + 0.866 * lw;
+  if (lichten === 4) {
+    for (const kant of [-1, 1]) steen(plaats(extrude(spitsboogVorm(breedte / 2, recht, spitsboogPad(breedte / 2 - stijl, recht)), 0.17).translate(kant * breedte / 4, 0, 0)));
+    kopOnder = recht + 0.866 * breedte / 2;
+  }
+  const kopHoogte = recht + 0.866 * breedte - kopOnder;
+  const straal = Math.min(breedte * 0.24, kopHoogte * 0.42);
+  steen(plaats(extrude(ringVorm(straal, stijl), 0.17).translate(0, kopOnder + kopHoogte * 0.46, 0)));
+  // Vier spaken in de roos.
+  for (const hoek of [0, Math.PI / 2]) steen(plaats(new THREE.BoxGeometry(straal * 2 - stijl, stijl * 0.8, 0.15).rotateZ(hoek).translate(0, kopOnder + kopHoogte * 0.46, 0.075)));
+}
+// Steunbeer in twee versnijdingen met natuurstenen afdekkingen.
+function steunbeer(b, M, gevel, u, hoogte, breedte = 0.85, diepte = 1.2) {
+  const x = gevel.uNaarX(u);
+  const baksteen = geo => b.voeg('gevel', M.baksteen, opGevel(gevel, geo), 'baksteen');
+  const steen = geo => b.voeg('lijstwerk', M.natuursteen, opGevel(gevel, geo), 'natuursteen');
+  const h1 = hoogte * 0.55, h2 = hoogte - h1;
+  baksteen(new THREE.BoxGeometry(breedte, h1, diepte).translate(x, h1 / 2, diepte / 2));
+  baksteen(new THREE.BoxGeometry(breedte * 0.85, h2, diepte * 0.6).translate(x, h1 + h2 / 2, diepte * 0.3));
+  steen(new THREE.BoxGeometry(breedte + 0.08, 0.16, diepte * 0.5).rotateX(0.5).translate(x, h1 + 0.05, diepte * 0.8));
+  steen(new THREE.BoxGeometry(breedte * 0.85 + 0.08, 0.16, diepte * 0.7).rotateX(0.5).translate(x, hoogte + 0.05, diepte * 0.32));
+  steen(new THREE.BoxGeometry(breedte + 0.1, 0.5, diepte + 0.1).translate(x, 0.25, diepte / 2));
+}
+
+function bouwNieuweKerk(gebouw) {
+  const K = KERK;
+  const groep = new THREE.Group();
+  groep.name = gebouw.naam;
+  groep.userData.gebouw = gebouw.naam;
+  const b = maakBouwer();
+  const M = {
+    baksteen: gevelMateriaal('baksteen', 0xd8c0b0),   // iets bruiner dan de grachtenpanden
+    natuursteen: gevelMateriaal('natuursteen', 0xf0e6d2),
+    lei: gevelMateriaal('leisteen'),
+    glas: gevelMateriaal('glasInLood'),
+    lood: mat(0x56606a, 0.55, 0.4),
+    deur: mat(0x3a2a1e, 0.75),
+    donker: mat(0x1b1a18, 0.95),
+    goud: mat(0xd4a93a, 0.3, 0.9),
+  };
+  const baksteen = geo => b.voeg('gevel', M.baksteen, geo, 'baksteen');
+  const steen = geo => b.voeg('lijstwerk', M.natuursteen, geo, 'natuursteen');
+  const doos = (x0, x1, y0, y1, z0, z1) => new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0).translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+
+  // --- Muren met plint, lekdrempelband en gootlijst -----------------------
+  for (const deel of [K.schip, K.transept]) {
+    baksteen(doos(deel.x0, deel.x1, 0, deel.goot, deel.z0, deel.z1));
+    const om = (y0, y1, e) => steen(doos(deel.x0 - e, deel.x1 + e, y0, y1, deel.z0 - e, deel.z1 + e));
+    om(0, 0.8, 0.12);
+    om(3.3, 3.55, 0.15);
+    om(deel.goot - 0.45, deel.goot, 0.35);
+  }
+  const A = K.apsis;
+  baksteen(doos(K.koor.x0, A.x, 0, K.koor.goot, K.koor.z0, K.koor.z1));
+  const apsisGeo = (r, y0, y1) => new THREE.CylinderGeometry(r, r, y1 - y0, 4, 1, false, 0, Math.PI).translate(A.x, (y0 + y1) / 2, A.z);
+  baksteen(apsisGeo(A.r, 0, K.koor.goot));
+  steen(apsisGeo(A.r + 0.12, 0, 0.8));
+  steen(apsisGeo(A.r + 0.15, 3.3, 3.55));
+  steen(apsisGeo(A.r + 0.35, K.koor.goot - 0.45, K.koor.goot));
+
+  // --- Daken ---------------------------------------------------------------
+  const lei = geo => b.voeg('dak', M.lei, geo, 'leisteen');
+  const s = K.schip, t = K.transept, k = K.koor;
+  lei(zadeldak(s.z1 - s.z0 + 0.8, s.nok - s.goot, s.x1 - s.x0 + 0.3).rotateY(Math.PI / 2).translate((s.x0 + s.x1) / 2 - 0.15, s.goot, (s.z0 + s.z1) / 2));
+  lei(zadeldak(t.x1 - t.x0 + 0.8, t.nok - t.goot, t.z1 - t.z0 - 0.3).translate((t.x0 + t.x1) / 2, t.goot, (t.z0 + t.z1) / 2 - 0.15));
+  lei(zadeldak(k.z1 - k.z0 + 0.8, k.nok - k.goot, A.x - k.x0 + 0.1).rotateY(Math.PI / 2).translate((k.x0 + A.x) / 2, k.goot, A.z));
+  lei(new THREE.CylinderGeometry(0, A.r + 0.4, k.nok - k.goot, 4, 1, false, 0, Math.PI).translate(A.x, k.goot + (k.nok - k.goot) / 2, A.z));
+
+  // --- Topgevels -----------------------------------------------------------
+  // Topgevel: driehoek van baksteen op de muur, met stenen afdekking langs
+  // beide schuine kanten.
+  function topgevel(gevel, uMidden, breedte, voet, hoogte) {
+    const vorm = new THREE.Shape([new THREE.Vector2(-breedte / 2, 0), new THREE.Vector2(breedte / 2, 0), new THREE.Vector2(0, hoogte)]);
+    const x = gevel.uNaarX(uMidden);
+    baksteen(opGevel(gevel, new THREE.ExtrudeGeometry(vorm, { depth: 0.7, bevelEnabled: false }).translate(x, voet, -0.6)));
+    const helling = Math.atan2(hoogte, breedte / 2), lengte = Math.hypot(breedte / 2, hoogte) + 0.2;
+    for (const kant of [-1, 1]) steen(opGevel(gevel, new THREE.BoxGeometry(lengte, 0.35, 0.9).rotateZ(-kant * helling).translate(x + kant * breedte / 4, voet + hoogte / 2 + 0.12, -0.2)));
+    // Een pinakel op de top.
+    steen(opGevel(gevel, new THREE.BoxGeometry(0.5, 0.9, 0.5).translate(x, voet + hoogte + 0.3, -0.1)));
+    steen(opGevel(gevel, new THREE.ConeGeometry(0.35, 1.2, 4).rotateY(Math.PI / 4).translate(x, voet + hoogte + 1.35, -0.1)));
+  }
+  const zuidTransept = gevelStelsel('zuid', t.z1);
+  topgevel(zuidTransept, (t.x0 + t.x1) / 2, t.x1 - t.x0, t.goot, t.nok - t.goot);
+  topgevel(gevelStelsel('oost', s.x1), (s.z0 + s.z1) / 2, s.z1 - s.z0, s.goot, s.nok - s.goot);
+
+  // --- Zuidgevel van het dwarsschip: het grote raam en het portaal ---------
+  const tm = (t.x0 + t.x1) / 2;
+  kerkRaam(b, M, zuidTransept, tm, 4.2, 5.8, 9, 4);
+  // Portaal: spitsboogdeur in een stenen omlijsting met een klein wimberg.
+  const deur = new THREE.ShapeGeometry(spitsboogVorm(1.9, 1.6), 10).translate(zuidTransept.uNaarX(tm), 0, 0.02);
+  b.voeg('deur', M.deur, opGevel(zuidTransept, deur));
+  steen(opGevel(zuidTransept, new THREE.ExtrudeGeometry(spitsboogVorm(2.5, 1.6, spitsboogPad(1.9, 1.6)), { depth: 0.3, bevelEnabled: false, curveSegments: 12 }).translate(zuidTransept.uNaarX(tm), 0, 0)));
+  // Twee achtkantige traptorentjes op de hoeken, met stenen banden en een
+  // leien spits.
+  const T = K.traptoren;
+  for (const x of [t.x0, t.x1]) {
+    const aan = geo => geo.translate(x, 0, t.z1);
+    baksteen(aan(new THREE.CylinderGeometry(T.straal, T.straal, T.hoogte, 8).translate(0, T.hoogte / 2, 0)));
+    for (const y of [0.4, 3.4, t.goot - 0.2, 16.5, T.hoogte - 0.2]) steen(aan(new THREE.CylinderGeometry(T.straal + 0.1, T.straal + 0.1, y < 1 ? 0.8 : 0.3, 8).translate(0, y, 0)));
+    b.voeg('spitsen', M.lood, aan(new THREE.ConeGeometry(T.straal + 0.15, T.spits, 8).translate(0, T.hoogte + T.spits / 2, 0)));
+    b.voeg('goud', M.goud, aan(new THREE.SphereGeometry(0.12, 8, 6).translate(0, T.hoogte + T.spits + 0.08, 0)));
+    // Smalle lichtspleetjes in de toren, naar het plein.
+    for (const y of [6, 10, 14.5]) b.voeg('openingen', M.donker, aan(new THREE.ShapeGeometry(spitsboogVorm(0.3, 0.7), 4).translate(0, y, T.straal * Math.cos(Math.PI / 8) + 0.02)));
+  }
+
+  // --- Overige ramen die je vanaf het plein ziet ---------------------------
+  kerkRaam(b, M, gevelStelsel('oost', t.x1), t.z1 - 2, 4.2, 1.6, 6, 1);     // oostkant dwarsschip, naast het schip
+  kerkRaam(b, M, gevelStelsel('zuid', s.z1), s.x1 - 2, 4.2, 2.4, 6, 2);     // schip, tussen dwarsschip en koor
+  // Koor: een raam in elk vlak van de apsis, steunberen op de hoeken.
+  const apothema = A.r * Math.cos(Math.PI / 8);
+  for (let i = 0; i < 4; i++) {
+    const hoek = Math.PI / 8 + i * Math.PI / 4;
+    kerkRaam(b, M, apsisStelsel(A.x, A.z, apothema, hoek), 0, 3.9, 2.6, 5.0, 2);
+  }
+  for (const hoek of [Math.PI / 4, Math.PI / 2, 3 * Math.PI / 4]) {
+    steunbeer(b, M, apsisStelsel(A.x, A.z, A.r - 0.2, hoek), 0, k.goot - 1.5);
+  }
+
+  // --- Het dakruitertje op de kruising --------------------------------------
+  const kr = K.kruising;
+  const opKruising = geo => geo.translate(kr.x, 0, kr.z);
+  const voetY = s.nok - 0.8, lantaarnH = 3.2;
+  b.voeg('dakruiter', M.lood, opKruising(new THREE.CylinderGeometry(1.1, 1.2, lantaarnH, 8).translate(0, voetY + lantaarnH / 2, 0)));
+  for (let i = 0; i < 8; i++) {
+    const hoek = Math.PI / 8 + i * Math.PI / 4;
+    b.voeg('openingen', M.donker, opKruising(new THREE.ShapeGeometry(spitsboogVorm(0.45, 0.9), 6).translate(0, voetY + 1.2, 1.1 * Math.cos(Math.PI / 8) + 0.03).rotateY(hoek)));
+  }
+  b.voeg('dakruiter', M.lood, opKruising(new THREE.CylinderGeometry(1.45, 1.35, 0.3, 8).translate(0, voetY + lantaarnH + 0.15, 0)));
+  const spitsVoet = voetY + lantaarnH + 0.3, topY = gebouw.hoogsteDeel;
+  const spitsH = topY - 0.55 - spitsVoet;
+  b.voeg('dakruiter', M.lood, opKruising(new THREE.ConeGeometry(1.15, spitsH, 8).translate(0, spitsVoet + spitsH / 2, 0)));
+  b.voeg('goud', M.goud, opKruising(new THREE.SphereGeometry(0.2, 10, 8).translate(0, topY - 0.45, 0)));
+  b.voeg('goud', M.goud, opKruising(new THREE.CylinderGeometry(0.035, 0.05, 0.4, 6).translate(0, topY - 0.2, 0)));
+
+  b.bouw(groep);
+  // Botsing: per deel de voetafdruk + 0,3 m (zoals de grey-box), plus de
+  // traptorentjes die buiten de zuidgevel uitsteken.
+  for (const [x0, z0, x1, z1] of gebouw.delen) registreerRechthoek(x0, x1, z0, z1, 0.3);
+  for (const x of [t.x0, t.x1]) registreerRechthoek(x - T.straal, x + T.straal, t.z1 - T.straal, t.z1 + T.straal);
+  wereld.add(groep);
+  return groep;
+}
+
+const GEBOUW_BOUWERS = { 'Paleis op de Dam': bouwPaleis, 'Nieuwe Kerk': bouwNieuweKerk };
 const gebouwGroepen = new Map();
 for (const gebouw of DAM_LAYOUT.gebouwen) gebouwGroepen.set(gebouw.naam, (GEBOUW_BOUWERS[gebouw.naam] ?? bouwGreyboxGebouw)(gebouw));
 
@@ -5537,7 +5817,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   tekenMinimap, naarMinimap, MINIMAP_BEREIK,
   // Ticket D32: het nieuwe fundament (ARENA_SCHAAL bestaat niet meer).
   DAM_LAYOUT, ROUTES, wereld, vloerHoogte, puntOp, projecteerOpRoute, vloerTextuur, TEXTUUR_TEKENAARS, gebouwGroepen, GEVELNAMEN,
-  THREE, PALEIS, PALEIS_GEVELS, paleisSprong, voegGeometrieenSamen, TEXTUUR_TEGEL, TEXTUUR_STEEN, TEXTUUR_PIXELS, steenPixels, tekstZaad, maakZaadRandom, gevelMateriaal, textuurOpWereldschaal,
+  THREE, PALEIS, PALEIS_GEVELS, paleisSprong, KERK, gevelStelsel, voegGeometrieenSamen, TEXTUUR_TEGEL, TEXTUUR_STEEN, TEXTUUR_PIXELS, steenPixels, tekstZaad, maakZaadRandom, gevelMateriaal, textuurOpWereldschaal,
   // Ticket D34: routes zichtbaar.
   routeSporen, spoorTextuur, straatIngang, straatNaamborden, SPOOR_HELDER, SPOOR_GEDIMD, animeerPoortBakens,
   // Ticket D33: routevolgen.

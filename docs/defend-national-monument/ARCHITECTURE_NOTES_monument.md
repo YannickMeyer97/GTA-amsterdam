@@ -1494,3 +1494,16 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
   (±1,5 m, `test-dnm-layout`); het Paleis zet zijn windvaan er exact op.
 - **Valkuil:** alles wat op loophoogte uitsteekt, mag niet verder komen
   dan botsing + spelerstraal (0,4 m). Anders loopt de camera door steen.
+- **D38, algemene gevelstelsels.**
+  - `gevelStelsel(richting, vlak)` werkt voor elke as-uitgelijnde muur
+    (zuid, noord, oost, west).
+  - `apsisStelsel(cx, cz, apothema, hoek)` werkt voor een schuin vlak; de
+    hoek volgt CylinderGeometry: x = sin θ, z = cos θ.
+  - Een Shape of Extrude in het XY-vlak staat daarmee altijd met de
+    voorkant naar buiten.
+  - Glas in een Shape gebruikt de vormcoördinaten (meters) als UV; daarom
+    is de tegel van `glasInLood` precies 1 m.
+- **Testpatroon voor uitsteken:** schiet op loophoogte stralen op de gevel
+  en eis dat elk raakpunt binnen een obstakel + spelerstraal ligt
+  (`test-dnm-kerk`). Dat werkt voor schuine vlakken en torentjes, niet
+  alleen voor rechte gevels.

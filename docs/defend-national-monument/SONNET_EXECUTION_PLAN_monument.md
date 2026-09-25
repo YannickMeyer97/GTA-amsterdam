@@ -1431,6 +1431,12 @@ tijd in gevels gaat.
   - steile leien daken met een slank dakruitertje;
   - geen voltooide hoge toren, zoals in het echt.
 - **Acceptatie:** als D37.
+- **Uitgevoerd:**
+  - Transeptgevel met het groot raam, maaswerk, portaal en traptorentjes.
+  - Koor met apsis, ramen en steunberen.
+  - Steile leien daken en de dakruiter tot 32 m.
+  - `test-dnm-kerk`, en 9 meshes.
+  - Zie het verslag in de ROADMAP.
 
 #### Ticket D39 — Rond het monument: Bijenkorf, Krasnapolsky, Hotel TwentySeven, Madame Tussauds
 
