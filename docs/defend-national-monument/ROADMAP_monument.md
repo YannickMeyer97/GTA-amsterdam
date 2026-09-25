@@ -115,7 +115,7 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D47** | Eigen hekslot naast het torenslot — *na M2* |
 | ☑ | **D48** | Nieuwe toren: Bovenleiding (stroomstoot springt over naar tot 4 robots) — *na M2* |
 | ☑ | **D49** | Nieuwe toren: Muntpers (+50% geld voor kills in bereik) — *na M2* |
-| ☐ | **D36** | Textuurbibliotheek (gekopieerd uit Undead + kinderkopjes, zandsteen, leisteen, …) |
+| ☑ | **D36** | Textuurbibliotheek (gekopieerd uit Undead + kinderkopjes, zandsteen, leisteen, …) |
 | ☐ | **D37** | Paleis op de Dam |
 | ☐ | **D38** | Nieuwe Kerk |
 | ☐ | **D39** | Rond het monument: Bijenkorf, Krasnapolsky, Hotel TwentySeven (Industria), Madame Tussauds; daarna **besluit plek commandopost** (M2) |
@@ -459,6 +459,40 @@ reproductie die eerder 1 op de 4 keer faalde, faalt niet meer.
 - **Stapelen in de praktijk:** de knooppunten liggen 26–31 m uit elkaar,
   dus twee persen overlappen nu nooit. De regel staat er toch, voor als de
   plekken ooit verschuiven.
+
+**D36 — textuurbibliotheek, verslag.**
+- **Zes nieuwe patronen** in `TEXTUUR_TEKENAARS`, naast de zes vloeren uit
+  D32:
+
+  | Patroon | Voor | Maat |
+  |---|---|---|
+  | baksteen | Bijenkorf, Nieuwe Kerk, grachtenpanden | waalformaat, 22 × 6,6 cm met voeg |
+  | geleBaksteen | Industria / Hotel TwentySeven | idem |
+  | zandsteen | Paleis | blokken van 60 × 30 cm, verweringsstrepen |
+  | natuursteen | banden, lijsten, plinten | platen van 120 × 40 cm |
+  | leisteen | daken | leien van 30 × 20 cm |
+  | glas | ramen en etalages | schuine reflectiebanen |
+
+- **Aanpak:** het verband is gekopieerd uit Undead (halfsteens,
+  seed per patroonnaam); de rest is nieuw.
+  - Alles is in kleur getekend, net als de vloeren.
+  - Elk patroon is naadloos, ook in kleur: `tekenSteenRij` geeft de steen
+    die over de rand valt dezelfde kleur als die links binnenkomt.
+- **Wereldschaal:** `TEXTUUR_STEEN` legt de echte steenmaat vast;
+  `steenPixels` rekent die om naar een geheel aantal stenen per tegel.
+- **Gebruik in D37–D40:**
+  - `gevelMateriaal(patroon, kleur)` is gedeeld per patroon en kleur; glas
+    glanst, steen niet.
+  - `textuurOpWereldschaal(geo, patroon)` zet de UV's.
+- **Nog niet toegepast:** de grey-box ziet er hetzelfde uit. D37–D40
+  bouwen de gevels met deze bibliotheek.
+- **Test:** `test-dnm-texturen` (44 checks):
+  - per patroon: bestaat, deterministisch, naadloos;
+  - steen op wereldschaal, binnen 5%;
+  - UV's op wereldschaal;
+  - materialen gedeeld;
+  - alle patronen verschillend.
+- `THREE` staat nu op de debug-hook.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 

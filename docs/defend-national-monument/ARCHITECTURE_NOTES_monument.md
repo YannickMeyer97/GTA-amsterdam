@@ -1450,3 +1450,17 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
   Een zichtbaar effect is één herbruikbare `toren.spoor`-lijn, die
   `verwijderToren` opruimt. De Bovenleiding tekent zijn boog met
   `setDrawRange`.
+
+### 15.11 Texturen (D36)
+
+- **Eén bibliotheek voor vloer en gevel:** `TEXTUUR_TEKENAARS`, met
+  `TEXTUUR_TEGEL` (meters per tegel) en `vloerTextuur(patroon)` (canvas,
+  cache, seed uit de patroonnaam). De naam `vloerTextuur` is historisch.
+- **Steenpatronen** rekenen hun maat uit `TEXTUUR_STEEN` via
+  `steenPixels`. Wie een tegelmaat verandert, houdt een geheel aantal
+  stenen per tegel, anders sluit hij niet.
+- **Gevels:** geometrie eerst naar wereldpositie verschuiven, dan
+  `textuurOpWereldschaal(geo, patroon)`, dan `gevelMateriaal(patroon,
+  kleur)`. Zo lopen voegen door van gevel naar gevel.
+- **Valkuil:** `gevelMateriaal` deelt materialen. Wie er één aanpast (bijv.
+  `opacity`), past ze allemaal aan; maak dan een `clone()`.

@@ -1395,6 +1395,12 @@ tijd in gevels gaat.
 - **Acceptatie:** `test-dnm-texturen.mjs`: elke textuur bestaat, is
   deterministisch (twee keer tekenen geeft dezelfde bytes) en heeft de juiste
   wereldschaal.
+- **Uitgevoerd:**
+  - Baksteen, gele baksteen, zandsteen, natuursteen, leisteen en glas, naast
+    de vloeren uit D32.
+  - `TEXTUUR_STEEN`, `gevelMateriaal` en `textuurOpWereldschaal`.
+  - De test toetst ook naadloosheid.
+  - Zie het verslag in de ROADMAP.
 
 #### Ticket D37 — Paleis op de Dam
 

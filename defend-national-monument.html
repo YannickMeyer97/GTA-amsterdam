@@ -952,7 +952,21 @@ function maakZaadRandom(zaad) {
 // Hoeveel meter één textuurtegel beslaat. De tekenaars hieronder rekenen
 // hun steenmaten daarop terug, zodat een kinderkopje ~12 cm is en een
 // klinker 21 × 10,5 cm, ongeacht de canvasgrootte.
-const TEXTUUR_TEGEL = { kinderkopjes: 2.4, klinkers: 2.1, straatklinkers: 2.1, asfalt: 4, trambaan: 2.4, stoep: 1.8 };
+const TEXTUUR_TEGEL = {
+  kinderkopjes: 2.4, klinkers: 2.1, straatklinkers: 2.1, asfalt: 4, trambaan: 2.4, stoep: 1.8,
+  // Ticket D36: gevels en daken.
+  baksteen: 1.32, geleBaksteen: 1.32, zandsteen: 2.4, natuursteen: 1.2, leisteen: 1.8, glas: 1.5,
+};
+// Ticket D36: de echte maat van één steen per patroon, in meters, [breedte,
+// hoogte] inclusief voeg. De tekenaars delen hun tegel hierdoor op, en
+// test-dnm-texturen toetst dat het op wereldschaal klopt.
+const TEXTUUR_STEEN = {
+  baksteen: [0.22, 0.066],      // waalformaat 21 × 5 cm + 1 cm voeg
+  geleBaksteen: [0.22, 0.066],
+  zandsteen: [0.6, 0.3],        // gezaagde blokken van het Paleis
+  natuursteen: [1.2, 0.4],      // banden en lijsten: lange, lage platen
+  leisteen: [0.3, 0.2],         // zichtbaar deel van een lei
+};
 const TEXTUUR_PIXELS = 512;
 
 const TEXTUUR_TEKENAARS = {
@@ -1039,7 +1053,135 @@ const TEXTUUR_TEKENAARS = {
     }
     tekenWrapVlekken(ctx, n, rnd, 5, 0.06);
   },
+
+  // --- Ticket D36: gevels en daken --------------------------------------
+  // Zelfde aanpak als de vloeren: in kleur getekend, naadloos, op echte
+  // steenmaat (TEXTUUR_STEEN). Een gebouw mag de kleur nog bijsturen via
+  // de materiaalkleur (gevelMateriaal).
+
+  // Rode baksteen in halfsteensverband, lichte kalkvoeg. Af en toe een
+  // donkerder, harder gebakken steen, zoals in elke Amsterdamse gevel.
+  baksteen(ctx, n, rnd) { tekenHalfsteens(ctx, n, rnd, 'baksteen', [142, 64, 46], '#a39d92', 0.1); },
+  // Lichte, geelbruine baksteen (Industria/Hotel TwentySeven).
+  geleBaksteen(ctx, n, rnd) { tekenHalfsteens(ctx, n, rnd, 'geleBaksteen', [196, 168, 124], '#8f887c', 0.05); },
+  // Zandsteen in blokken met dunne voegen en verticale verweringsstrepen:
+  // het verweerde grijsgeel van het Paleis.
+  zandsteen(ctx, n, rnd) {
+    const [bw, bh] = steenPixels('zandsteen', n);
+    ctx.fillStyle = '#8f8674';
+    ctx.fillRect(0, 0, n, n);
+    for (let y = 0; y < n; y += bh) {
+      tekenSteenRij(ctx, n, bw, (Math.round(y / bh) % 2) * bw / 2, () => {
+        const f = 0.93 + rnd() * 0.12;
+        return `rgb(${Math.round(200 * f)},${Math.round(186 * f)},${Math.round(152 * f)})`;
+      }, (x, k) => { ctx.fillStyle = k; ctx.fillRect(x + 1.5, y + 1.5, bw - 3, bh - 3); });
+    }
+    tekenKorrel(ctx, n, rnd, 5000, 0.08);
+    // Verweringsstrepen: regen die van lijsten afloopt. Wrap op x.
+    for (let i = 0; i < 14; i++) {
+      const x = rnd() * n, b = 2 + rnd() * 6, alpha = 0.04 + rnd() * 0.07;
+      for (const ox of [-n, 0, n]) {
+        const grad = ctx.createLinearGradient(0, 0, 0, n);
+        grad.addColorStop(0, `rgba(60,58,52,${alpha})`);
+        grad.addColorStop(0.5, `rgba(60,58,52,${alpha * 0.4})`);
+        grad.addColorStop(1, `rgba(60,58,52,${alpha})`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(x + ox, 0, b, n);
+      }
+    }
+    tekenWrapVlekken(ctx, n, rnd, 5, 0.06);
+  },
+  // Natuursteen voor banden, lijsten en plinten: fijne korrel, lange platen
+  // met een enkele voeg, een zweem van beitelsporen.
+  natuursteen(ctx, n, rnd) {
+    const [bw, bh] = steenPixels('natuursteen', n);
+    ctx.fillStyle = '#b3aea3';
+    ctx.fillRect(0, 0, n, n);
+    tekenKorrel(ctx, n, rnd, 9000, 0.1);
+    ctx.strokeStyle = 'rgba(90,86,78,0.08)';
+    ctx.lineWidth = 1;
+    for (let y = 2; y < n; y += 3) { ctx.beginPath(); ctx.moveTo(0, y + rnd()); ctx.lineTo(n, y + rnd()); ctx.stroke(); }
+    // Voegen gecentreerd op de steenrand: de voeg op de tegelrand valt dan
+    // half links en half rechts, en de tegel sluit naadloos.
+    ctx.fillStyle = '#7d786e';
+    for (let y = 0; y <= n; y += bh) ctx.fillRect(0, y - 1, n, 2);
+    for (let x = 0; x <= n; x += bw) ctx.fillRect(x - 1, 0, 2, n);
+    tekenWrapVlekken(ctx, n, rnd, 4, 0.05);
+  },
+  // Leien in rijen, elke rij een halve lei verschoven; de onderrand van elke
+  // lei werpt een smalle schaduw op de rij eronder. Blauwgrijs.
+  leisteen(ctx, n, rnd) {
+    const [bw, bh] = steenPixels('leisteen', n);
+    ctx.fillStyle = '#23272d';
+    ctx.fillRect(0, 0, n, n);
+    for (let y = 0; y < n; y += bh) {
+      tekenSteenRij(ctx, n, bw, (Math.round(y / bh) % 2) * bw / 2, () => {
+        const f = 0.85 + rnd() * 0.3;
+        return `rgb(${Math.round(76 * f)},${Math.round(84 * f)},${Math.round(96 * f)})`;
+      }, (x, k) => {
+        ctx.fillStyle = k;
+        ctx.fillRect(x + 1, y + 1, bw - 2, bh - 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillRect(x + 1, y + bh - 4, bw - 2, 3);
+      });
+    }
+    tekenWrapVlekken(ctx, n, rnd, 5, 0.08);
+  },
+  // Glas: donker blauwgrijs met zachte schuine reflectiebanen. Naadloos,
+  // zodat een hele etalage of een rij ramen één materiaal kan delen.
+  glas(ctx, n, rnd) {
+    ctx.fillStyle = '#2b3a47';
+    ctx.fillRect(0, 0, n, n);
+    for (let i = 0; i < 5; i++) {
+      const x0 = rnd() * n, b = n * (0.04 + rnd() * 0.12), alpha = 0.04 + rnd() * 0.08;
+      for (const ox of [-2 * n, -n, 0, n]) {
+        ctx.fillStyle = `rgba(200,225,240,${alpha})`;
+        ctx.beginPath();
+        ctx.moveTo(x0 + ox, n); ctx.lineTo(x0 + ox + b, n);
+        ctx.lineTo(x0 + ox + b + n, 0); ctx.lineTo(x0 + ox + n, 0);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  },
 };
+
+// Ticket D36: de maat van één steen in pixels, uit TEXTUUR_STEEN en de
+// tegelgrootte. Afgerond op een geheel aantal stenen per tegel, anders sluit
+// de tegel niet naadloos.
+function steenPixels(patroon, n) {
+  const tegel = TEXTUUR_TEGEL[patroon], [b, h] = TEXTUUR_STEEN[patroon];
+  return [n / Math.round(tegel / b), n / Math.round(tegel / h)];
+}
+// Een rij stenen van breedte bw, `off` pixels verschoven, naadloos: de steen
+// die over de rechterrand valt, is dezelfde (zelfde kleur) als die links
+// binnenkomt. `kleur()` wordt precies één keer per steen aangeroepen.
+function tekenSteenRij(ctx, n, bw, off, kleur, teken) {
+  const aantal = Math.round(n / bw);
+  const kleuren = Array.from({ length: aantal }, kleur);
+  for (let i = -1; i <= aantal; i++) teken(off + i * bw, kleuren[(i + aantal) % aantal]);
+}
+// Halfsteensverband voor baksteen: elke rij een halve steen verschoven.
+function tekenHalfsteens(ctx, n, rnd, patroon, [r0, g0, b0], voegKleur, kansDonker) {
+  const [bw, bh] = steenPixels(patroon, n);
+  const voeg = Math.max(2, bh * 0.16);
+  ctx.fillStyle = voegKleur;
+  ctx.fillRect(0, 0, n, n);
+  for (let y = 0, rij = 0; y < n - 0.5; y += bh, rij++) {
+    tekenSteenRij(ctx, n, bw, (rij % 2) * bw / 2, () => {
+      const f = (rnd() < kansDonker ? 0.62 : 0.86) + rnd() * 0.22;
+      return `rgb(${Math.round(r0 * f)},${Math.round(g0 * f)},${Math.round(b0 * f)})`;
+    }, (x, k) => { ctx.fillStyle = k; ctx.fillRect(x + voeg / 2, y + voeg / 2, bw - voeg, bh - voeg); });
+  }
+  tekenWrapVlekken(ctx, n, rnd, 6, 0.06);
+}
+// Fijne korrel: lichte en donkere spikkels over het hele vlak.
+function tekenKorrel(ctx, n, rnd, aantal, alpha) {
+  for (let i = 0; i < aantal; i++) {
+    ctx.fillStyle = rnd() < 0.5 ? `rgba(0,0,0,${alpha})` : `rgba(255,255,255,${alpha})`;
+    ctx.fillRect(rnd() * n, rnd() * n, 1.3, 1.3);
+  }
+}
 
 function tekenBlokverband(ctx, n, rnd, [r0, g0, b0], voegKleur) {
   const cellen = 10, cel = n / cellen, voeg = Math.max(2, cel / 16);
@@ -1092,6 +1234,28 @@ function vloerTextuur(patroon) {
   tex.userData.canvas = canvas;   // voor test-dnm-layout: determinisme
   vloerTextuurCache.set(patroon, tex);
   return tex;
+}
+// Ticket D36: materialen voor gevels en daken, per patroon en kleur. De
+// kleur vermenigvuldigt met de textuur (wit = de textuur zoals getekend),
+// zodat bijvoorbeeld de Bijenkorf een iets donkerder baksteen krijgt dan een
+// grachtenpand zonder een eigen textuur. Glas glanst, steen niet.
+const GEVEL_GLANS = { glas: { roughness: 0.18, metalness: 0.35 }, leisteen: { roughness: 0.7, metalness: 0 } };
+const gevelMateriaalCache = new Map();
+function gevelMateriaal(patroon, kleur = 0xffffff) {
+  const sleutel = `${patroon}:${kleur}`;
+  let m = gevelMateriaalCache.get(sleutel);
+  if (!m) {
+    const glans = GEVEL_GLANS[patroon] ?? { roughness: 0.9, metalness: 0 };
+    m = new THREE.MeshStandardMaterial({ map: vloerTextuur(patroon), color: kleur, ...glans });
+    gevelMateriaalCache.set(sleutel, m);
+  }
+  return m;
+}
+// Een geometrie in wereldcoördinaten texturen voor dit patroon: UV's op de
+// echte maat van de tegel.
+function textuurOpWereldschaal(geometrie, patroon) {
+  herschaalUVNaarWereldschaal(geometrie, 1 / TEXTUUR_TEGEL[patroon]);
+  return geometrie;
 }
 const vloerMateriaalCache = new Map();
 function vloerMateriaal(patroon) {
@@ -4992,6 +5156,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   tekenMinimap, naarMinimap, MINIMAP_BEREIK,
   // Ticket D32: het nieuwe fundament (ARENA_SCHAAL bestaat niet meer).
   DAM_LAYOUT, ROUTES, wereld, vloerHoogte, puntOp, projecteerOpRoute, vloerTextuur, TEXTUUR_TEKENAARS, gebouwGroepen, GEVELNAMEN,
+  THREE, TEXTUUR_TEGEL, TEXTUUR_STEEN, TEXTUUR_PIXELS, steenPixels, tekstZaad, maakZaadRandom, gevelMateriaal, textuurOpWereldschaal,
   // Ticket D34: routes zichtbaar.
   routeSporen, spoorTextuur, straatIngang, straatNaamborden, SPOOR_HELDER, SPOOR_GEDIMD, animeerPoortBakens,
   // Ticket D33: routevolgen.
