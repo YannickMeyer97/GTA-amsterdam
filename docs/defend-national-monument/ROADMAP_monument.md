@@ -122,7 +122,7 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D38** | Nieuwe Kerk — *schermafbeeldingen bij de eigenaar* |
 | ☑ | **D39** | Rond het monument: Bijenkorf, Krasnapolsky, Hotel TwentySeven (Industria), Madame Tussauds; daarna **besluit plek commandopost** (M2) — *schermafbeeldingen en besluit bij de eigenaar* |
 | ☑ | **D40** | Straatwanden van de vijf straten — *schermafbeeldingen bij de eigenaar* |
-| ☐ | **D41** | Sfeer en straatmeubilair |
+| ☑ | **D41** | Sfeer en straatmeubilair — *schermafbeeldingen bij de eigenaar* |
 | ☐ | **D42** | Prestaties (budget, instancing), direct gevolgd door D21 |
 | ☐ | **D43** | Herijken op de nieuwe kaart + eindspeeltest → **M3** |
 
@@ -783,6 +783,45 @@ Dit kan later alsnog, als de eigenaar dat wil.
   - ≥ 3 typen en ≥ 3 kleuren op de lange wanden;
   - de Beurs, en 7 tweezijdige borden;
   - dezelfde panden na herladen.
+
+**D41 — sfeer en straatmeubilair, verslag.**
+- **Plekken in `DAM_LAYOUT.meubilair`,** eerst in de plattegrond getoetst
+  (versie D41, 51/51 goed):
+  - elk meubel ≥ 0,8 m van elke routestrook;
+  - niet op een rijbaan of de trambaan, niet in een gebouw;
+  - ≥ 2,5 m van elk interactiepunt;
+  - niets binnen 11 m van het monumentmidden: het strijdtoneel blijft
+    rustig;
+  - Amsterdammertjes op de stoeprand;
+  - het perron naast de trambaan.
+- **In de game:**
+  - 33 lantaarns, zwarte palen met een gloeiende kap (emissive, geen eigen
+    lichtbron);
+  - 144 Amsterdammertjes langs de stoepranden van Damrak, Rokin en
+    Damstraat, in eigen vorm en zonder het stadswapen;
+  - 4 banken;
+  - 3 fietsenrekken met fietsen in zes kleuren;
+  - de tramhalte Dam: perron met witte rand, abri met glas, dak, bankje
+    en haltebord;
+  - 11 toeristen in vier groepjes, aan de randen van het plein, met
+    telkens één fotograaf.
+- **Decor en spel:**
+  - het decor houdt geen schoten tegen;
+  - lantaarns, banken, rekken, abri en de groepjes hebben een kleine
+    botsing; de paaltjes niet;
+  - alles is één groep van 12 meshes, met vertexkleuren voor fietsen en
+    kleding.
+- **Licht en mist:** gecontroleerd met Grachtenmist. De gevels lossen
+  netjes op in de mist, en de gloeiende lampen en etalages blijven
+  zichtbaar. Er was niets bij te stellen.
+- **Test:** `test-dnm-meubilair` (9 checks):
+  - aantallen;
+  - afstand tot routestroken;
+  - niet op een rijbaan;
+  - niet bij interactiepunten;
+  - rustig rond het monument;
+  - niet raakbaar;
+  - gloed en kleuren.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 

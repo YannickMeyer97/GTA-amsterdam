@@ -1504,6 +1504,12 @@ tijd in gevels gaat.
   - Het decor rond het strijdtoneel bewust rustig houden (speeltest na D6).
 - **Acceptatie:** `test-dnm-layout.mjs` blijft groen (niets op een rijbaan),
   plus schermafbeeldingen.
+- **Uitgevoerd:**
+  - Het meubilair staat in `DAM_LAYOUT` en is in de plattegrond
+    getoetst.
+  - `test-dnm-meubilair` en `test-dnm-layout` zijn groen.
+  - De mist van Grachtenmist werkt ongewijzigd.
+  - Zie het verslag in de ROADMAP.
 
 #### Ticket D42 — Prestaties
 

@@ -102,7 +102,7 @@
 
 <script type="application/json" id="dam-layout">
 {
-  "versie": "D50",
+  "versie": "D41",
   "eenheid": "meter, mensmaat 1:1",
   "assen": "+x = oost, +z = zuid, oorsprong = midden van het monument, y = omhoog",
   "wapenBereik": 22,
@@ -228,7 +228,28 @@
 
   "decor": [
     { "naam": "Tram (geparkeerd, voorbij de Rokin-poort)", "rect": [-18.7, 50, -16.3, 78] }
-  ]
+  ],
+
+  "meubilair": {
+    "_uitleg": "D41: straatmeubilair, alleen buiten rijbanen en routestroken, en rustig rond het strijdtoneel (aan de randen van het plein).",
+    "lantaarns": [
+      [-28.5, -20.5], [-37, -20.5], [-9.5, -20.5], [9.5, -20.5], [15.5, -8], [15.5, 4],
+      [-9.5, 20.5], [5.5, 20.5], [-28.5, 20.5], [-37, 20.5], [-60, -16], [-60, 16],
+      [-12.2, -32], [-12.2, -44], [-12.2, -56], [-25.3, -32], [-25.3, -44],
+      [-12.2, 32], [-12.2, 44], [-12.2, 56], [-25.3, 32], [-25.3, 44],
+      [25, 10.25], [37, 10.25], [49, 10.25], [31, 17.75], [43, 17.75],
+      [-39.6, 30], [-39.6, 42], [-45.4, 36], [-39.6, -30], [-39.6, -42], [-45.4, -36]
+    ],
+    "paaltjes": [
+      [-14.25, -24, -14.25, -76, 2], [-23.75, -24, -23.75, -76, 2],
+      [-14.25, 24, -14.25, 76, 2], [-23.75, 24, -23.75, 48, 2],
+      [19, 11.25, 66, 11.25, 2], [19, 16.75, 66, 16.75, 2]
+    ],
+    "banken": [[13.5, -14, "west"], [13.5, -2, "west"], [-55, -18, "zuid"], [-55, 18, "noord"]],
+    "fietsenrekken": [[-34.5, -20.6, -30.5, "zuid"], [4, -20.6, 7.5, "zuid"], [-35.5, 20.6, -31, "noord"]],
+    "tramhalte": { "naam": "Dam", "perron": [-25.4, -6, -23.7, 2], "abri": [-25.2, -4.5, -24.4, -0.5] },
+    "toeristen": [[-2, -19.5, 3], [-56, -5, 3], [-30, 18.8, 3], [11.5, -17, 2]]
+  }
 }
 </script>
 
@@ -472,6 +493,33 @@ toets('Drukpersplekken: ≥ 5 m van elke routestrook, niet op een rijbaan en nie
 toets('Drukpersplekken liggen ≥ 6,5 m van de Kerkklok en ≥ 5 m van elkaar (interactie overlapt niet)', L.drukpersplekken.every((p, i) =>
   segLen(p.positie, L.kerkklok.positie) >= 6.5 && L.drukpersplekken.every((q, j) => i === j || segLen(p.positie, q.positie) >= 5)), '');
 
+// D41: straatmeubilair.
+const M = L.meubilair;
+const puntRect = ([x, z], h) => [x - h, z - h, x + h, z + h];
+const interactiePlekken = [...L.bouwplekken.map(p => p.positie), ...L.drukpersplekken.map(p => p.positie), L.commandopost.spelerPlek, L.kerkklok.positie];
+const meubels = [
+  ...M.lantaarns.map(p => ({ soort: 'lantaarn', rect: puntRect(p, 0.2) })),
+  ...M.banken.map(([x, z, r]) => ({ soort: 'bank', rect: r === 'west' || r === 'oost' ? [x - 0.35, z - 0.95, x + 0.35, z + 0.95] : [x - 0.95, z - 0.35, x + 0.95, z + 0.35] })),
+  ...M.fietsenrekken.map(([x0, z, x1]) => ({ soort: 'fietsenrek', rect: [x0, z - 0.9, x1, z + 0.9] })),
+  { soort: 'abri', rect: M.tramhalte.abri },
+  ...M.toeristen.map(([x, z]) => ({ soort: 'toeristen', rect: puntRect([x, z], 0.9) })),
+];
+const meubelFout = meubels.filter(m =>
+  Math.min(...routes.map(r => vrijVanStrook(m.rect, r))) < 0.8
+  || heiligeVlakken.some(vl => rectsOverlappen(m.rect, vl.rect))
+  || gebouwRects.some(b => rectsOverlappen(m.rect, b.rect, -0.3))
+  || interactiePlekken.some(p => afstandPuntRect(p[0], p[1], m.rect) < 2.5));
+toets('Straatmeubilair: ≥ 0,8 m van elke routestrook, niet op rijbaan of trambaan, niet in een gebouw, ≥ 2,5 m van elk interactiepunt', meubelFout.length === 0,
+  meubelFout.length ? meubelFout.map(m => `${m.soort} ${m.rect.map(v => fmt(v)).join('/')}`).join('; ') : `${meubels.length} stuks`);
+const paaltjes = M.paaltjes.flatMap(([x0, z0, x1, z1, stap]) => {
+  const n = Math.round(Math.hypot(x1 - x0, z1 - z0) / stap);
+  return Array.from({ length: n + 1 }, (_, i) => [x0 + (x1 - x0) * i / n, z0 + (z1 - z0) * i / n]);
+});
+const paalFout = paaltjes.filter(p => heiligeVlakken.some(vl => afstandPuntRect(p[0], p[1], vl.rect) < 0.1) || Math.min(...routes.map(r => vrijVanStrook(puntRect(p, 0.06), r))) < 0.1);
+toets('Amsterdammertjes staan op de stoeprand, niet op de rijbaan en niet op een routestrook', paalFout.length === 0, `${paaltjes.length} paaltjes${paalFout.length ? `, fout: ${paalFout.length}` : ''}`);
+toets('Tramhalte: perron naast de trambaan, niet erop', !heiligeVlakken.some(vl => rectsOverlappen(M.tramhalte.perron, vl.rect)) && afstandPuntRect(-23.5, (M.tramhalte.perron[1] + M.tramhalte.perron[3]) / 2, M.tramhalte.perron) < 0.5, '');
+toets('Het strijdtoneel blijft rustig: geen meubilair binnen 11 m van het monumentmidden', meubels.every(m => afstandPuntRect(0, 0, m.rect) >= 11), '');
+
 toets('Afsluitingen van stegen liggen niet op een route of rijbaan en binnen GRENS', L.afsluitingen.every(a =>
   Math.min(...routes.map(r => vrijVanStrook(a.rect, r))) >= 2 && heiligeVlakken.every(vl => !rectsOverlappen(a.rect, vl.rect))
   && a.rect[0] >= g.minX && a.rect[2] <= g.maxX && a.rect[1] >= g.minZ && a.rect[3] <= g.maxZ), L.afsluitingen.map(a => a.naam).join(', '));
@@ -555,6 +603,17 @@ for (const gb of L.gebouwen) {
   }
 }
 for (const d of L.decor) rect(d.rect, { fill: '#e8c547', stroke: '#6b5a14', 'stroke-width': 0.2 });
+// D41: straatmeubilair (klein, grijs).
+{
+  const M = L.meubilair;
+  for (const [x, z] of M.lantaarns) el('circle', { cx: x, cy: z, r: 0.35, fill: '#3b3a36' });
+  for (const [x0, z0, x1, z1] of M.paaltjes) el('line', { x1: x0, y1: z0, x2: x1, y2: z1, stroke: '#7a2e22', 'stroke-width': 0.18, 'stroke-dasharray': '0.18 1.82' });
+  for (const [x, z, r] of M.banken) rect(r === 'west' || r === 'oost' ? [x - 0.35, z - 0.95, x + 0.35, z + 0.95] : [x - 0.95, z - 0.35, x + 0.95, z + 0.35], { fill: '#6b4f2f' });
+  for (const [x0, z, x1] of M.fietsenrekken) rect([x0, z - 0.9, x1, z + 0.9], { fill: 'none', stroke: '#3b3a36', 'stroke-width': 0.15 });
+  rect(M.tramhalte.perron, { fill: '#b9b4a8', stroke: '#6b645a', 'stroke-width': 0.1 });
+  rect(M.tramhalte.abri, { fill: '#2f5d8a' });
+  for (const [x, z, n] of M.toeristen) el('circle', { cx: x, cy: z, r: 0.9, fill: '#d0547a', opacity: 0.6 });
+}
 for (const a of L.afsluitingen) rect(a.rect, { fill: '#25221d', stroke: 'none' });
 
 // GRENS.
@@ -624,7 +683,7 @@ tekst(na.x, na.z - 4.4, 'N', { 'font-weight': 700, 'font-size': 2 });
 const legenda = [
   ['#d8ceb9', 'kinderkopjes (plein)'], ['#5f6166', 'asfalt met tramrails'], ['#9d9a93', 'trambaan over het plein'], ['#c6b89c', 'voetgangersstraat (klinkers)'], ['#a58f74', 'donkere klinkers: route over het plein en in voetgangersstraten'],
   ['#bdb6a8', 'stoep'], ['#e4dccb', 'monumentplatform (treden)'], ['#2f5d8a', 'C commandopost'], ['#b8862b', 'K Kerkklok'],
-  ['#ffffff', '1–3 knooppunt (zwarte rand, cirkel = torenbereik 10 m), 4–6 voorpost aan de overkant; stippellijn = hek'], ['#e8c547', '€ drukpersplek (D51)'], ['#25221d', 'afsluiting van een doodlopende steeg'], ['#b3261e', 'rode stippellijn: wapenbereik 22 m vanaf de monumentrand'], ['#e8c547', 'geparkeerde tram (decor)'],
+  ['#ffffff', '1–3 knooppunt (zwarte rand, cirkel = torenbereik 10 m), 4–6 voorpost aan de overkant; stippellijn = hek'], ['#e8c547', '€ drukpersplek (D51)'], ['#25221d', 'afsluiting van een doodlopende steeg'], ['#b3261e', 'rode stippellijn: wapenbereik 22 m vanaf de monumentrand'], ['#e8c547', 'geparkeerde tram (decor)'], ['#3b3a36', 'lantaarn, fietsenrek (D41)'], ['#7a2e22', 'Amsterdammertjes'], ['#6b4f2f', 'bank'], ['#2f5d8a', 'tramhalte Dam (abri)'], ['#d0547a', 'groepje toeristen'],
 ];
 document.getElementById('legenda').innerHTML = legenda.map(([k, t]) => `<span><i style="background:${k}"></i>${t}</span>`).join('')
   + routes.map(r => `<span><i style="background:${r.kleur}"></i>route ${r.poort} (P = poort)</span>`).join('');

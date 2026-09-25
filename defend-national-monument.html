@@ -508,7 +508,7 @@ addEventListener('resize', () => {
    ================================================================ */
 
 const DAM_LAYOUT = {
-  "versie": "D50",
+  "versie": "D41",
   "eenheid": "meter, mensmaat 1:1",
   "assen": "+x = oost, +z = zuid, oorsprong = midden van het monument, y = omhoog",
   "wapenBereik": 22,
@@ -634,7 +634,28 @@ const DAM_LAYOUT = {
 
   "decor": [
     { "naam": "Tram (geparkeerd, voorbij de Rokin-poort)", "rect": [-18.7, 50, -16.3, 78] }
-  ]
+  ],
+
+  "meubilair": {
+    "_uitleg": "D41: straatmeubilair, alleen buiten rijbanen en routestroken, en rustig rond het strijdtoneel (aan de randen van het plein).",
+    "lantaarns": [
+      [-28.5, -20.5], [-37, -20.5], [-9.5, -20.5], [9.5, -20.5], [15.5, -8], [15.5, 4],
+      [-9.5, 20.5], [5.5, 20.5], [-28.5, 20.5], [-37, 20.5], [-60, -16], [-60, 16],
+      [-12.2, -32], [-12.2, -44], [-12.2, -56], [-25.3, -32], [-25.3, -44],
+      [-12.2, 32], [-12.2, 44], [-12.2, 56], [-25.3, 32], [-25.3, 44],
+      [25, 10.25], [37, 10.25], [49, 10.25], [31, 17.75], [43, 17.75],
+      [-39.6, 30], [-39.6, 42], [-45.4, 36], [-39.6, -30], [-39.6, -42], [-45.4, -36]
+    ],
+    "paaltjes": [
+      [-14.25, -24, -14.25, -76, 2], [-23.75, -24, -23.75, -76, 2],
+      [-14.25, 24, -14.25, 76, 2], [-23.75, 24, -23.75, 48, 2],
+      [19, 11.25, 66, 11.25, 2], [19, 16.75, 66, 16.75, 2]
+    ],
+    "banken": [[13.5, -14, "west"], [13.5, -2, "west"], [-55, -18, "zuid"], [-55, 18, "noord"]],
+    "fietsenrekken": [[-34.5, -20.6, -30.5, "zuid"], [4, -20.6, 7.5, "zuid"], [-35.5, 20.6, -31, "noord"]],
+    "tramhalte": { "naam": "Dam", "perron": [-25.4, -6, -23.7, 2], "abri": [-25.2, -4.5, -24.4, -0.5] },
+    "toeristen": [[-2, -19.5, 3], [-56, -5, 3], [-30, 18.8, 3], [11.5, -17, 2]]
+  }
 };
 
 const wereld = new THREE.Group();
@@ -2735,6 +2756,139 @@ for (const d of DAM_LAYOUT.decor) {
   wereld.add(g);
   schaduwAan(g);
 }
+
+/* ----------------------------------------------------------------
+   Ticket D41: straatmeubilair
+   ---------------------------------------------------------------- */
+//
+// Lantaarns, Amsterdammertjes, banken, fietsenrekken met fietsen, de
+// tramhalte Dam en groepjes toeristen. Plekken uit DAM_LAYOUT.meubilair,
+// getoetst in de plattegrond: nooit op een rijbaan of routestrook, niet bij
+// een interactiepunt, en rustig rond het monument. Alles in één groep,
+// samengevoegd per materiaal; kleuren van fietsen en kleding via
+// vertexkleuren. Geen eigen lichtbronnen: de lampen gloeien (emissive).
+const MEUBILAIR_RICHTING = { noord: Math.PI, zuid: 0, oost: Math.PI / 2, west: -Math.PI / 2 };   // rotatie waarmee lokaal +z die kant op kijkt
+const FIETS_KLEUREN = [0x1d1d1d, 0x2f4f7a, 0x7a2222, 0x3e6b3a, 0xd8d2c4, 0x6b6b6b];
+const KLEDING_KLEUREN = [0xc0392b, 0x2e86c1, 0xf1c40f, 0x27ae60, 0x8e44ad, 0xe67e22, 0x34495e, 0xecf0f1];
+const HUID_KLEUREN = [0xf1c8a8, 0xd9a47c, 0x8d5a3b, 0xe8b894];
+function bouwStraatmeubilair() {
+  const M = DAM_LAYOUT.meubilair;
+  const groep = new THREE.Group();
+  groep.name = 'straatmeubilair';
+  const b = maakBouwer();
+  const rnd = maakZaadRandom(tekstZaad('straatmeubilair'));
+  const kies = lijst => lijst[Math.floor(rnd() * lijst.length)];
+  const MM = {
+    ijzer: gevelMaterialen().ijzer,
+    lamp: new THREE.MeshStandardMaterial({ color: 0xfff2cf, emissive: 0xffc46a, emissiveIntensity: 0.7, roughness: 0.3 }),
+    paaltje: mat(0x6b2418, 0.6, 0.1),
+    hout: mat(0x7a5634, 0.8),
+    staal: mat(0x9aa2a8, 0.35, 0.8),
+    vc: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, metalness: 0.1, vertexColors: true }),
+    perron: gevelMateriaal('stoep', 0xe6e2da),
+    glas: gevelMateriaal('glas', 0xdfe8ee),
+    abri: mat(0x2f5d8a, 0.5, 0.3),
+    wit: mat(0xf1eee6, 0.6),
+  };
+  // Een geometrie lokaal bouwen en op (x, z) met rotatie r zetten.
+  const zet = (geo, x, z, r = 0, y = 0) => geo.rotateY(r).translate(x, y + vloerHoogte(x, z), z);
+
+  // Lantaarns: zwarte paal met een vierkante lampenkap.
+  for (const [x, z] of M.lantaarns) {
+    b.voeg('ijzer', MM.ijzer, zet(new THREE.CylinderGeometry(0.16, 0.2, 0.6, 8).translate(0, 0.3, 0), x, z));
+    b.voeg('ijzer', MM.ijzer, zet(new THREE.CylinderGeometry(0.06, 0.08, 3.4, 8).translate(0, 2.2, 0), x, z));
+    b.voeg('lampen', MM.lamp, zet(new THREE.CylinderGeometry(0.22, 0.14, 0.5, 4).rotateY(Math.PI / 4).translate(0, 4.15, 0), x, z));
+    b.voeg('ijzer', MM.ijzer, zet(new THREE.ConeGeometry(0.3, 0.3, 4).rotateY(Math.PI / 4).translate(0, 4.55, 0), x, z));
+    registreerRechthoek(x - 0.2, x + 0.2, z - 0.2, z + 0.2);
+  }
+  // Amsterdammertjes langs de stoeprand (geen botsing: te klein om je aan te stoten).
+  let paaltjes = 0;
+  for (const [x0, z0, x1, z1, stap] of M.paaltjes) {
+    const n = Math.round(Math.hypot(x1 - x0, z1 - z0) / stap);
+    for (let i = 0; i <= n; i++) {
+      const x = x0 + (x1 - x0) * i / n, z = z0 + (z1 - z0) * i / n;
+      b.voeg('paaltjes', MM.paaltje, zet(new THREE.CylinderGeometry(0.07, 0.085, 0.8, 8).translate(0, 0.4, 0), x, z));
+      b.voeg('paaltjes', MM.paaltje, zet(new THREE.SphereGeometry(0.075, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 0.8, 0), x, z));
+      paaltjes++;
+    }
+  }
+  // Banken: houten zitting en rugleuning op twee ijzeren poten.
+  for (const [x, z, richting] of M.banken) {
+    const r = MEUBILAIR_RICHTING[richting];
+    for (const dz of [-0.12, 0.04, 0.2]) b.voeg('hout', MM.hout, zet(new THREE.BoxGeometry(1.8, 0.05, 0.13).translate(0, 0.45, dz), x, z, r));
+    for (const dy of [0.62, 0.78]) b.voeg('hout', MM.hout, zet(new THREE.BoxGeometry(1.8, 0.12, 0.04).translate(0, dy, -0.25), x, z, r));
+    for (const dx of [-0.75, 0.75]) b.voeg('ijzer', MM.ijzer, zet(new THREE.BoxGeometry(0.06, 0.85, 0.55).translate(dx, 0.42, -0.02), x, z, r));
+    const h = richting === 'west' || richting === 'oost' ? [0.35, 0.95] : [0.95, 0.35];
+    registreerRechthoek(x - h[0], x + h[0], z - h[1], z + h[1]);
+  }
+  // Fietsenrekken: stalen beugels met fietsen in allerlei kleuren.
+  let fietsen = 0;
+  for (const [x0, z, x1, richting] of M.fietsenrekken) {
+    const r = MEUBILAIR_RICHTING[richting];
+    for (let x = x0 + 0.35; x <= x1 - 0.3; x += 0.7) {
+      b.voeg('staal', MM.staal, zet(new THREE.TorusGeometry(0.35, 0.03, 6, 12, Math.PI).rotateY(Math.PI / 2).translate(0, 0.02, 0), x, z, 0));
+      if (rnd() < 0.85) {
+        const kleur = kies(FIETS_KLEUREN), dx = (rnd() - 0.5) * 0.1;
+        for (const wz of [-0.52, 0.52]) b.voeg('banden', MM.ijzer, zet(new THREE.TorusGeometry(0.33, 0.035, 5, 16).rotateY(Math.PI / 2).translate(dx, 0.35, wz), x, z, r));
+        const frame = [[0.9, 0.62, -0.1, 0.35], [0.7, 0.35, 0.05, -0.9], [0.62, 0.4, 0.26, 0.6]];
+        for (const [lengte, y, zc, kanteling] of frame) b.voeg('fietsen', MM.vc, zet(new THREE.BoxGeometry(0.04, 0.04, lengte).rotateX(kanteling).translate(dx, y, zc), x, z, r), null, kleur);
+        b.voeg('fietsen', MM.vc, zet(new THREE.BoxGeometry(0.5, 0.03, 0.03).translate(dx, 0.98, 0.45), x, z, r), null, 0x1d1d1d);
+        b.voeg('fietsen', MM.vc, zet(new THREE.BoxGeometry(0.12, 0.05, 0.25).translate(dx, 0.9, -0.3), x, z, r), null, 0x1d1d1d);
+        fietsen++;
+      }
+    }
+    registreerRechthoek(x0, x1, z - 0.9, z + 0.9);
+  }
+  // Tramhalte Dam: perron, abri met glazen wanden, dak, bankje en een bord.
+  const T = M.tramhalte;
+  const [p0, q0, p1, q1] = T.perron;
+  b.voeg('perron', MM.perron, new THREE.BoxGeometry(p1 - p0, 0.12, q1 - q0).translate((p0 + p1) / 2, 0.06, (q0 + q1) / 2), 'stoep');
+  b.voeg('wit', MM.wit, new THREE.BoxGeometry(0.2, 0.125, q1 - q0).translate(p1 - 0.1, 0.065, (q0 + q1) / 2));
+  const [a0, c0, a1, c1] = T.abri;
+  const ax = (a0 + a1) / 2, az = (c0 + c1) / 2;
+  b.voeg('abri', MM.abri, new THREE.BoxGeometry(a1 - a0 + 0.3, 0.12, c1 - c0 + 0.3).translate(ax, 2.55, az));
+  for (const [x, z] of [[a0, c0], [a0, c1], [a1, c0], [a1, c1]]) b.voeg('abri', MM.abri, new THREE.BoxGeometry(0.08, 2.5, 0.08).translate(x, 1.37, z));
+  b.voeg('glas', MM.glas, new THREE.BoxGeometry(0.04, 2.1, c1 - c0 - 0.1).translate(a0, 1.3, az), 'glas');
+  for (const z of [c0, c1]) b.voeg('glas', MM.glas, new THREE.BoxGeometry(a1 - a0 - 0.1, 2.1, 0.04).translate(ax, 1.3, z), 'glas');
+  b.voeg('hout', MM.hout, new THREE.BoxGeometry(0.35, 0.05, 2.2).translate(a0 + 0.25, 0.62, az));
+  registreerRechthoek(a0 - 0.05, a0 + 0.05, c0, c1);
+  const haltebord = new THREE.Group();
+  haltebord.position.set(a1 + 0.05, 0, c1 + 0.5);
+  maakGevelTekst(haltebord, T.naam, 0, 2.3, 0, 0.9, 0.42, 'east', { achtergrond: 'rgba(255,255,255,1)', rand: 'rgba(28,58,110,1)', tekstKleur: '#1c3a6e', fontSize: 120 });
+  b.voeg('abri', MM.abri, new THREE.CylinderGeometry(0.04, 0.04, 2.5, 6).translate(a1 + 0.05, 1.25, c1 + 0.5));
+  groep.add(haltebord);
+  // Toeristen: kleine groepjes aan de rand van het plein, kijkend naar het
+  // monument (bij het Paleis naar het Paleis). Eén heeft een fototoestel op.
+  let mensen = 0;
+  for (const [gx, gz, aantal] of M.toeristen) {
+    const kijk = gx < -45 ? -Math.PI / 2 : Math.atan2(-gx, -gz);
+    for (let i = 0; i < aantal; i++) {
+      const hoek = (i / aantal) * Math.PI * 2 + rnd();
+      const x = gx + Math.cos(hoek) * 0.55, z = gz + Math.sin(hoek) * 0.55;
+      const lengte = 1.55 + rnd() * 0.35, s = lengte / 1.75;
+      const r = kijk + (rnd() - 0.5) * 0.6;
+      const kleding = kies(KLEDING_KLEUREN), broek = kies([0x2c3e50, 0x34495e, 0x6b5a45, 0x1d1d1d]), huid = kies(HUID_KLEUREN);
+      for (const dx of [-0.1, 0.1]) b.voeg('mensen', MM.vc, zet(new THREE.BoxGeometry(0.13 * s, 0.8 * s, 0.15 * s).translate(dx * s, 0.4 * s, 0), x, z, r), null, broek);
+      b.voeg('mensen', MM.vc, zet(new THREE.BoxGeometry(0.4 * s, 0.6 * s, 0.24 * s).translate(0, 1.1 * s, 0), x, z, r), null, kleding);
+      b.voeg('mensen', MM.vc, zet(new THREE.SphereGeometry(0.12 * s, 10, 8).translate(0, 1.55 * s, 0), x, z, r), null, huid);
+      const foto = i === 0;
+      for (const kant of [-1, 1]) {
+        const arm = foto ? new THREE.BoxGeometry(0.09 * s, 0.5 * s, 0.09 * s).rotateX(-1.2).translate(kant * 0.13 * s, 1.35 * s, 0.2 * s)
+          : new THREE.BoxGeometry(0.09 * s, 0.55 * s, 0.09 * s).translate(kant * 0.25 * s, 1.08 * s, 0);
+        b.voeg('mensen', MM.vc, zet(arm, x, z, r), null, kleding);
+      }
+      if (foto) b.voeg('mensen', MM.vc, zet(new THREE.BoxGeometry(0.16 * s, 0.1 * s, 0.08 * s).translate(0, 1.5 * s, 0.4 * s), x, z, r), null, 0x151515);
+      mensen++;
+    }
+    registreerRechthoek(gx - 0.9, gx + 0.9, gz - 0.9, gz + 0.9);
+  }
+  b.bouw(groep);
+  groep.traverse(m => { if (m.isMesh) m.raycast = () => {}; });   // decor houdt geen schoten tegen
+  groep.userData.aantallen = { lantaarns: M.lantaarns.length, paaltjes, banken: M.banken.length, fietsen, mensen };
+  wereld.add(groep);
+  return groep;
+}
+const straatmeubilair = bouwStraatmeubilair();
 
 /* ----------------------------------------------------------------
    Steunpunten: commandopost en Kerkklok
@@ -6403,7 +6557,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   tekenMinimap, naarMinimap, MINIMAP_BEREIK,
   // Ticket D32: het nieuwe fundament (ARENA_SCHAAL bestaat niet meer).
   DAM_LAYOUT, ROUTES, wereld, vloerHoogte, puntOp, projecteerOpRoute, vloerTextuur, TEXTUUR_TEKENAARS, gebouwGroepen, GEVELNAMEN,
-  THREE, PALEIS, PALEIS_GEVELS, paleisSprong, KERK, gevelStelsel, STRAATWANDEN, PAND_TYPES, voegGeometrieenSamen, TEXTUUR_TEGEL, TEXTUUR_STEEN, TEXTUUR_PIXELS, steenPixels, tekstZaad, maakZaadRandom, gevelMateriaal, textuurOpWereldschaal,
+  THREE, PALEIS, PALEIS_GEVELS, paleisSprong, KERK, gevelStelsel, STRAATWANDEN, PAND_TYPES, straatmeubilair, voegGeometrieenSamen, TEXTUUR_TEGEL, TEXTUUR_STEEN, TEXTUUR_PIXELS, steenPixels, tekstZaad, maakZaadRandom, gevelMateriaal, textuurOpWereldschaal,
   // Ticket D34: routes zichtbaar.
   routeSporen, spoorTextuur, straatIngang, straatNaamborden, SPOOR_HELDER, SPOOR_GEDIMD, animeerPoortBakens,
   // Ticket D33: routevolgen.
