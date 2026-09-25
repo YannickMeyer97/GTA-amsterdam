@@ -1,7 +1,8 @@
 // Ticket D10 (SONNET_EXECUTION_PLAN_monument.md, fase 3) — bouwplekken.
 //
-// Ticket D46: 3 knooppunten op het plein + 5 voorposten, één per straat.
-// Een knooppunt hoort bij één of twee routes (plek.routes).
+// Ticket D46: 3 knooppunten op het plein. Ticket D50: 3 voorposten, elk aan
+// de overkant van de weg tegenover een knooppunt (was: 5, één per straat).
+// Een plek hoort bij één of twee routes (plek.routes).
 //
 // Afwijking van de tickettekst, bewust: het plan eist "elke plek ligt
 // dichter bij zijn eigen poort dan bij elke andere". Dat is meetkundig
@@ -60,15 +61,21 @@ const r = await page.evaluate(() => {
   }
   return {
     plekken, overlap, wapenBereik: d.WAPEN_BEREIK,
-    voorpostenPerPoort: d.SPAWN_POORTEN.map(p => d.BOUWPLEKKEN.filter(b => b.soort === 'voorpost' && b.routes.includes(p.naam)).length),
+    overkant: d.BOUWPLEKKEN.filter(b => b.soort === 'knooppunt').map(k => {
+      const v = d.BOUWPLEKKEN.filter(b => b.soort === 'voorpost' && b.overkantVan === k.naam);
+      const route = d.ROUTES.get(k.routes[0]);
+      const kant = p => { const pr = d.projecteerOpRoute(route, p.positie.x, p.positie.z); return Math.sign((p.positie.x - pr.x) * -pr.rz + (p.positie.z - pr.z) * pr.rx); };
+      return { knooppunt: k.naam, voorposten: v.map(p => p.naam), andereKant: v.length === 1 && kant(v[0]) !== kant(k), afstand: v[0] ? v[0].positie.distanceTo(k.positie) : null };
+    }),
     knooppuntPerPoort: d.SPAWN_POORTEN.map(p => d.BOUWPLEKKEN.filter(b => b.soort === 'knooppunt' && b.routes.includes(p.naam)).length),
     plekVoor: [d.plekVoor('Rokin', 'knooppunt')?.naam, d.plekVoor('Rokin', 'voorpost')?.naam],
   };
 });
 
-check('Er zijn 8 bouwplekken: 3 knooppunten en 5 voorposten', r.plekken.length === 8 && r.plekken.filter(p => p.soort === 'knooppunt').length === 3, r.plekken.map(p => [p.naam, p.soort]));
-check('Elke poort heeft precies één voorpost en één knooppunt', r.voorpostenPerPoort.every(n => n === 1) && r.knooppuntPerPoort.every(n => n === 1), r);
-check('plekVoor vindt de plek van een soort bij een route', r.plekVoor[0] === 'Plein zuid' && r.plekVoor[1] === 'Rokin', r.plekVoor);
+check('Er zijn 6 bouwplekken: 3 knooppunten en 3 voorposten (D50)', r.plekken.length === 6 && r.plekken.filter(p => p.soort === 'knooppunt').length === 3, r.plekken.map(p => [p.naam, p.soort]));
+check('Elke poort heeft precies één knooppunt', r.knooppuntPerPoort.every(n => n === 1), r.knooppuntPerPoort);
+for (const o of r.overkant) check(`${o.knooppunt}: één voorpost aan de overkant van de weg, ≤ 16 m verderop`, o.andereKant && o.afstand <= 16, o);
+check('plekVoor vindt de plek van een soort bij een route (Rokin: de voorpost tegenover Plein zuid)', r.plekVoor[0] === 'Plein zuid' && r.plekVoor[1] === 'Kalverstraat noord', r.plekVoor);
 for (const p of r.plekken) {
   check(`Bouwplek ${p.naam}: binnen GRENS, op een vrije plek, buiten de monumentdoos`, p.binnenGrens && p.vrij && p.buitenMonument, p);
   check(`Bouwplek ${p.naam}: ligt dichter bij een eigen route dan bij elke andere`, p.eigenRoute < p.dichtsteAndereRoute, p);
@@ -79,8 +86,7 @@ for (const p of r.plekken) {
   check(`Bouwplek ${p.naam}: is een interactiepunt en staat in de scene`, p.interactie && p.inScene, p);
 }
 check('Geen twee bouwplekken liggen binnen elkaars radius', r.overlap.length === 0, r.overlap);
-check('Knooppunten liggen binnen het wapenbereik, voorposten erbuiten',
-  r.plekken.every(p => p.soort === 'knooppunt' ? p.totMonument <= r.wapenBereik : p.totMonument > r.wapenBereik),
+check('Knooppunten liggen binnen het wapenbereik', r.plekken.every(p => p.soort !== 'knooppunt' || p.totMonument <= r.wapenBereik),
   r.plekken.map(p => [p.naam, p.totMonument.toFixed(1)]));
 
 const fails = report(errs);

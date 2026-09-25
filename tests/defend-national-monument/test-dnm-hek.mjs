@@ -29,7 +29,7 @@ const bouw = await page.evaluate(() => {
   d.updateInteracties(0);   // Ticket D45: het menu opent vanzelf
   const menu = document.getElementById('menuUI').textContent;
   // Het nummer van de hekoptie: na alle torentypes (D47/D48).
-  const nr = Object.keys(d.TOREN_TYPES).filter(t => t !== 'hek').length + 1;
+  const nr = Object.entries(d.TOREN_TYPES).filter(([t, cfg]) => t !== 'hek' && !cfg.alleenOp).length + 1;
   window.dispatchEvent(new KeyboardEvent('keydown', { code: `Digit${nr}` }));
   window.dispatchEvent(new KeyboardEvent('keyup', { code: `Digit${nr}` }));
   const hek = plek.hek;
@@ -90,14 +90,14 @@ const scenario = await page.evaluate(() => {
       d.updateRobots(DT); t += DT;
       if (!d.robots.includes(robot)) { monumentBereikt = d.spel.monumentHP < 100; break; }
     }
-    uitkomsten.push({ plek: `${plek.naam} (${routeNaam})`, lijnen: hek.lijnen.length, contactNa, stilGestaan, hpNa10s, gesneuveld, ...naSneuvelen, monumentBereikt,
+    uitkomsten.push({ plek: `${plek.naam} (${routeNaam})`, lijnen: hek.lijnen.length, routes: plek.routes.length, contactNa, stilGestaan, hpNa10s, gesneuveld, ...naSneuvelen, monumentBereikt,
       positieBijHek: [positieBijHek.x.toFixed(1), positieBijHek.z.toFixed(1)] });
     if (d.torens.includes(hek)) d.verwijderToren(hek);
   }
   return uitkomsten;
 });
-check('Een knooppunthek heeft een lijn per route (D46)', scenario.every(u => u.lijnen === (u.plek.startsWith('Plein noord') || u.plek.startsWith('Plein zuid') ? 2 : 1)), scenario.map(u => [u.plek, u.lijnen]));
-check('Het scenario loopt over 10 combinaties van plek en route (3 knooppunten, 5 voorposten)', scenario.length === 10, scenario.length);
+check('Een hek heeft een lijn per route van zijn plek (D46)', scenario.every(u => u.lijnen === u.routes) && scenario.some(u => u.lijnen === 2), scenario.map(u => [u.plek, u.lijnen]));
+check('Het scenario loopt over 9 combinaties van plek en route (3 knooppunten, 3 voorposten, D50)', scenario.length === 9, scenario.length);
 for (const u of scenario) {
   check(`${u.plek}: de robot bereikt het hek en blijft er staan (glipt er niet omheen)`, u.contactNa !== null && u.stilGestaan, u);
   check(`${u.plek}: het hek verliest HP door de klappen (10 s × 6 per 0,8 s ≈ 72)`, u.hpNa10s !== null && u.hpNa10s <= 120 - 60 && u.hpNa10s > 0, u);

@@ -78,7 +78,7 @@
   <div class="tabel"><table id="routes"></table></div>
 
   <h2>Bouwplekken</h2>
-  <p>Twee soorten (D46). <strong>Knooppunten</strong> liggen op het plein, binnen het wapenbereik, waar routes samenkomen: een toren daar is altijd nuttig, welke straat ook aan de beurt is. <strong>Voorposten</strong> liggen in de straat zelf, één per route, buiten het wapenbereik: sterk als die straat aangekondigd is. Een hek komt dwars over elke route van de plek (een knooppunt dus over twee), op de hoogte van de plek. In een straat spant het hek de hele rijbaan of straat, op het plein de klinkerstrook plus een meter aan weerszijden. Een plek is een tegel van 1,8 × 1,8 m; de toren zelf is 1,4 m breed.</p>
+  <p>Twee soorten (D46, D50). <strong>Knooppunten</strong> liggen op het plein, binnen het wapenbereik, waar routes samenkomen: een toren daar is altijd nuttig, welke straat ook aan de beurt is. <strong>Voorposten</strong> staan aan de overkant van de weg tegenover hun knooppunt (D50, speeltest: de plekken in de straten lagen te ver weg om munten te halen). Samen nemen ze dezelfde routes van twee kanten onder vuur. Een hek komt dwars over elke route van de plek (een knooppunt dus over twee), op de hoogte van de plek. In een straat spant het hek de hele rijbaan of straat, op het plein de klinkerstrook plus een meter aan weerszijden. Een plek is een tegel van 1,8 × 1,8 m; de toren zelf is 1,4 m breed.</p>
   <div class="tabel"><table id="plekken"></table></div>
 
   <h2>Gebouwen: maten en kenmerken</h2>
@@ -102,7 +102,7 @@
 
 <script type="application/json" id="dam-layout">
 {
-  "versie": "D46",
+  "versie": "D50",
   "eenheid": "meter, mensmaat 1:1",
   "assen": "+x = oost, +z = zuid, oorsprong = midden van het monument, y = omhoog",
   "wapenBereik": 22,
@@ -167,12 +167,16 @@
     { "naam": "Plein noord",  "soort": "knooppunt", "routes": ["Damrak", "Nieuwendijk"],  "positie": [-13, -14.5] },
     { "naam": "Plein zuid",   "soort": "knooppunt", "routes": ["Rokin", "Kalverstraat"],  "positie": [-13, 14.5] },
     { "naam": "Plein oost",   "soort": "knooppunt", "routes": ["Damstraat"],              "positie": [11.5, 4.5] },
-    { "naam": "Damrak",       "soort": "voorpost",  "routes": ["Damrak"],                 "positie": [-12.75, -32] },
-    { "naam": "Rokin",        "soort": "voorpost",  "routes": ["Rokin"],                  "positie": [-12.75, 32] },
-    { "naam": "Damstraat",    "soort": "voorpost",  "routes": ["Damstraat"],              "positie": [32, 10.25] },
-    { "naam": "Kalverstraat", "soort": "voorpost",  "routes": ["Kalverstraat"],           "positie": [-39.75, 25] },
-    { "naam": "Nieuwendijk",  "soort": "voorpost",  "routes": ["Nieuwendijk"],            "positie": [-39.75, -25] }
+    { "naam": "Damrak west",        "soort": "voorpost", "overkantVan": "Plein noord", "routes": ["Damrak", "Nieuwendijk"], "positie": [-25, -19] },
+    { "naam": "Kalverstraat noord", "soort": "voorpost", "overkantVan": "Plein zuid",  "routes": ["Kalverstraat"], "positie": [-26.5, 8.4] },
+    { "naam": "Damstraat zuid",     "soort": "voorpost", "overkantVan": "Plein oost",  "routes": ["Damstraat"],             "positie": [17.2, 17.75] }
   ],
+  "drukpersplekken": [
+    { "naam": "Drukpers noord",  "positie": [-62, -9] },
+    { "naam": "Drukpers zuid",   "positie": [-62, 9] },
+    { "naam": "Drukpers midden", "positie": [-53.5, 0] }
+  ],
+  "_drukpers": "D51: drie plekken alleen voor een drukpers, voor het Paleis, rond de Kerkklok. Geen route in de buurt.",
   "bouwplekHalf": 0.9,
   "torenBereik": 10,
 
@@ -402,11 +406,20 @@ toets('Geen gebouw raakt het monumentplatform', gebouwRects.every(b => afstandPu
 
 // Bouwplekken (D46): knooppunten op het plein, voorposten in de straat.
 const knooppunten = plekMetingen.filter(p => p.soort === 'knooppunt');
+// D50: elke voorpost staat aan de overkant van de weg tegenover zijn
+// knooppunt, zodat je tussen de twee weinig loopt (munten ophalen).
+const voorposten = plekMetingen.filter(p => p.soort === 'voorpost');
+for (const k of knooppunten) {
+  const v = voorposten.filter(p => p.overkantVan === k.naam);
+  const r = routeVan(k.routes[0]);
+  const zij = p => Math.sign(projecteer(r.info, ...p.positie).zij);
+  toets(`${k.naam}: één voorpost aan de overkant van de ${k.routes[0]}, ≤ 16 m verderop`,
+    v.length === 1 && zij(v[0]) !== zij(k) && segLen(v[0].positie, k.positie) <= 16,
+    v.map(p => `${p.naam}, ${fmt(segLen(p.positie, k.positie))} m`).join(', '));
+}
+toets('Elke voorpost dekt elk van zijn routes ≥ 5 m binnen torenbereik', voorposten.every(p => p.routes.every(n => p.dekking[n] >= 5)),
+  voorposten.map(p => `${p.naam}: ${p.routes.map(n => `${n} ${fmt(p.dekking[n])} m`).join(', ')}`).join('; '));
 for (const r of routes) {
-  const voorposten = plekMetingen.filter(p => p.soort === 'voorpost' && p.routes.includes(r.poort));
-  toets(`${r.poort}: één voorpost in de eigen straat, buiten het wapenbereik`,
-    voorposten.length === 1 && voorposten[0].routes.length === 1 && voorposten[0].totRand > L.wapenBereik,
-    voorposten.map(p => `${fmt(p.totRand)} m van de rand`).join(', '));
   const kp = knooppunten.filter(p => p.routes.includes(r.poort));
   toets(`${r.poort}: ≥ 5 m van de route binnen torenbereik (${L.torenBereik} m) van een knooppunt`,
     kp.some(p => p.dekking[r.poort] >= 5), kp.map(p => `${p.naam} ${fmt(p.dekking[r.poort])} m`).join(', '));
@@ -450,6 +463,14 @@ toets('Geen hek steekt in een gebouw (uiteinden mogen een gevel raken)', plekMet
   return true;
 })), '');
 toets('Elk hek overspant de volle strook van zijn route', plekMetingen.every(p => p.hekken.every(h => h.breedte >= routeVan(h.route).info.segs.find(s => h.s >= s.s0 && h.s <= s.s0 + s.l + 1e-6).breedte)), '');
+
+// D51: de drukpersplekken voor het Paleis.
+const persRect = p => [p.positie[0] - H, p.positie[1] - H, p.positie[0] + H, p.positie[1] + H];
+toets('Drukpersplekken: ≥ 5 m van elke routestrook, niet op een rijbaan en niet in een gebouw', L.drukpersplekken.every(p =>
+  Math.min(...routes.map(r => vrijVanStrook(persRect(p), r))) >= 5 && heiligeVlakken.every(vl => !rectsOverlappen(persRect(p), vl.rect)) && gebouwRects.every(b => !rectsOverlappen(persRect(p), b.rect, -0.3))),
+  L.drukpersplekken.map(p => `${p.naam} ${fmt(Math.min(...routes.map(r => vrijVanStrook(persRect(p), r))))} m`).join(', '));
+toets('Drukpersplekken liggen ≥ 6,5 m van de Kerkklok en ≥ 5 m van elkaar (interactie overlapt niet)', L.drukpersplekken.every((p, i) =>
+  segLen(p.positie, L.kerkklok.positie) >= 6.5 && L.drukpersplekken.every((q, j) => i === j || segLen(p.positie, q.positie) >= 5)), '');
 
 toets('Afsluitingen van stegen liggen niet op een route of rijbaan en binnen GRENS', L.afsluitingen.every(a =>
   Math.min(...routes.map(r => vrijVanStrook(a.rect, r))) >= 2 && heiligeVlakken.every(vl => !rectsOverlappen(a.rect, vl.rect))
@@ -570,6 +591,12 @@ for (const [i, p] of plekMetingen.entries()) {
   tekst(p.positie[0], p.positie[1] + 0.55, String(i + 1), { 'font-size': 1.4, 'font-weight': 700, fill: kleur });
 }
 
+// Drukpersplekken (D51): goud.
+for (const p of L.drukpersplekken) {
+  rect(persRect(p), { fill: '#e8c547', stroke: '#6b5a14', 'stroke-width': 0.3 });
+  tekst(p.positie[0], p.positie[1] + 0.55, '€', { 'font-size': 1.4, 'font-weight': 700, fill: '#6b5a14', stroke: 'none' });
+}
+
 // Commandopost, kerkklok, spelerstart.
 rect(cpRect, { fill: '#2f5d8a', stroke: '#fff', 'stroke-width': 0.25 });
 tekst(cp.midden[0], cp.midden[1] + 0.6, 'C', { fill: '#fff', 'font-weight': 700, stroke: 'none', 'font-size': 1.8 });
@@ -597,7 +624,7 @@ tekst(na.x, na.z - 4.4, 'N', { 'font-weight': 700, 'font-size': 2 });
 const legenda = [
   ['#d8ceb9', 'kinderkopjes (plein)'], ['#5f6166', 'asfalt met tramrails'], ['#9d9a93', 'trambaan over het plein'], ['#c6b89c', 'voetgangersstraat (klinkers)'], ['#a58f74', 'donkere klinkers: route over het plein en in voetgangersstraten'],
   ['#bdb6a8', 'stoep'], ['#e4dccb', 'monumentplatform (treden)'], ['#2f5d8a', 'C commandopost'], ['#b8862b', 'K Kerkklok'],
-  ['#ffffff', '1–3 knooppunt (zwarte rand, cirkel = torenbereik 10 m), 4–8 voorpost; stippellijn = hek'], ['#25221d', 'afsluiting van een doodlopende steeg'], ['#b3261e', 'rode stippellijn: wapenbereik 22 m vanaf de monumentrand'], ['#e8c547', 'geparkeerde tram (decor)'],
+  ['#ffffff', '1–3 knooppunt (zwarte rand, cirkel = torenbereik 10 m), 4–6 voorpost aan de overkant; stippellijn = hek'], ['#e8c547', '€ drukpersplek (D51)'], ['#25221d', 'afsluiting van een doodlopende steeg'], ['#b3261e', 'rode stippellijn: wapenbereik 22 m vanaf de monumentrand'], ['#e8c547', 'geparkeerde tram (decor)'],
 ];
 document.getElementById('legenda').innerHTML = legenda.map(([k, t]) => `<span><i style="background:${k}"></i>${t}</span>`).join('')
   + routes.map(r => `<span><i style="background:${r.kleur}"></i>route ${r.poort} (P = poort)</span>`).join('');
@@ -635,6 +662,8 @@ document.getElementById('keuzes').innerHTML = [
   '<strong>Hoogtes ~25% lager dan in het echt</strong> (M2). Het plein is compact (44 m breed in plaats van ~100 m); op echte hoogte voelde het als een smalle, hoge ruimte. Verdiepingen, deuren en ramen blijven op ware maat, er zijn alleen minder verdiepingen. De onderlinge verschillen kloppen: het Paleis met koepel het hoogst, dan de Nieuwe Kerk en de Beurstoren, dan warenhuizen en hotels, dan de grachtenpanden.',
   '<strong>Hekken.</strong> In een straat sluit een hek de hele rijbaan of straat af. Op het plein is het hek 5 m breed; robots houden zich aan hun strook en lopen er niet omheen. Een knooppunt legt een hek over elk van zijn routes.',
   '<strong>Knooppunten en voorposten (D46).</strong> De oude indeling had twee plekken per straat; een straat die niet aan de beurt was, maakte er twee nutteloos. Nu staan er drie knooppunten op het plein, waar routes samenkomen: noord (Damrak en Nieuwendijk), zuid (Rokin en Kalverstraat) en oost (de hoek van de Damstraat, de enige route aan die kant). Een vierde knooppunt tussen Rokin en Damstraat of op de trambaan is onderzocht en afgevallen: daar komen de stroken zo dicht bij elkaar dat een hek over een andere route of over de speldoos zou lopen. Daarnaast één voorpost per straat, waar de oude "verre" plek stond.',
+  '<strong>Drukpersen voor het Paleis (D51).</strong> De drukpers is geen toren meer op een bouwplek. Hij heeft drie eigen plekken voor het Paleis, rond de Kerkklok, ver van elke route, en levert om de 10 s geld op, los van de robots. Elk niveau verdient zichzelf in ~250 s terug: gemiddeld drie rondes van ~85 s (wave ~65 s + bouwfase 20 s).',
+  '<strong>Voorposten aan de overkant (D50).</strong> Na de speeltest van D49: de voorposten in de straten lagen tot 39 m van de monumentrand, te ver lopen om munten op te halen. Nu staat tegenover elk knooppunt één voorpost aan de andere kant van de weg: Damrak west (voor de zuidgevel van de Damrak-westwand), Kalverstraat noord (net ten westen van de tramrails) en Damstraat zuid (boven de noordwesthoek van de Damstraat-zuidwand). Kalverstraat noord dekt alleen de Kalverstraat: dichter bij de Rokin-bocht zou zijn hek over de Rokin-strook lopen. De Rokin ligt al voor 23 m onder Plein zuid.',
   '<strong>De rijdende trams verdwijnen van de routes.</strong> Er staat één geparkeerde tram in het Rokin, voorbij de poort, als achtergrond.',
   '<strong>Criterium bouwplekken.</strong> De verste plek mag 40 m van de monumentrand liggen (was 35 m): heen en terug is dan 11,5 s, en de bouwfase duurt 20 s. Alleen zo krijgen Kalverstraat en Nieuwendijk een plek in hun eigen straat, waar een hek de straat echt afsluit.',
 ].map(t => `<li>${t}</li>`).join('');

@@ -114,7 +114,9 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D46** | Bouwplekken: knooppunten bij het monument + een voorpost per straat — *na M2* |
 | ☑ | **D47** | Eigen hekslot naast het torenslot — *na M2* |
 | ☑ | **D48** | Nieuwe toren: Bovenleiding (stroomstoot springt over naar tot 4 robots) — *na M2* |
-| ☑ | **D49** | Nieuwe toren: Muntpers (+50% geld voor kills in bereik) — *na M2* |
+| ☑ | **D49** | Nieuwe toren: Muntpers (+50% geld voor kills in bereik) — *na M2; vervangen door D51* |
+| ☑ | **D50** | Voorposten aan de overkant van de knooppunten — *speeltest na D49* |
+| ☑ | **D51** | Drukpers op eigen plekken voor het Paleis, vast inkomen — *speeltest na D49* |
 | ☑ | **D36** | Textuurbibliotheek (gekopieerd uit Undead + kinderkopjes, zandsteen, leisteen, …) |
 | ☑ | **D37** | Paleis op de Dam — *schermafbeeldingen bij de eigenaar* |
 | ☐ | **D38** | Nieuwe Kerk |
@@ -544,6 +546,73 @@ reproductie die eerder 1 op de 4 keer faalde, faalt niet meer.
   - fronton boven 23 m, windvaan op 38 m.
 
   Verder: texturen, botsing en uitsteken op loophoogte.
+
+**Speeltest na D49 (tijdens D37).** Twee punten van de eigenaar:
+1. De voorposten in de straten liggen te ver om munten te halen. Zet ze
+   aan de overkant van de weg tegenover de knooppunten, op drie plekken:
+   - voor de zuidgevel van de Damrak-westwand;
+   - aan de noordkant van de Kalverstraat-route, net ten westen van de
+     tramrails;
+   - boven de noordwesthoek van de Damstraat-zuidwand.
+2. De muntpers voelt raar als toren. Haal hem uit het torenmenu en geef
+   hem drie eigen aankooppunten voor het Paleis, met een vast inkomen los
+   van de robots, dat zich gemiddeld in drie rondes terugverdient.
+
+Drie plekken voor vijf voorposten is gelezen als: de drie vervangen alle
+vijf. Elk hoort bij het knooppunt aan de overkant van zijn weg.
+
+**D50 — voorposten aan de overkant, verslag.**
+
+| Voorpost | Tegenover | Afstand | Routes (hek) | Dekking bij 10 m |
+|---|---|---|---|---|
+| Damrak west (-25, -19) | Plein noord | 12,8 m | Damrak + Nieuwendijk | 15 m + 15,5 m |
+| Kalverstraat noord (-26,5, 8,4) | Plein zuid | 14,8 m | Kalverstraat | 18 m |
+| Damstraat zuid (17,2, 17,75) | Plein oost | 14,4 m | Damstraat | 17,5 m |
+
+- **Nu 6 plekken, was 8.** De verste plek ligt op 23 m van de
+  monumentrand, waar dat 38,7 m was.
+- **Kalverstraat noord dekt de Rokin niet.** Dichter bij de Rokin-bocht
+  zou zijn hek over de Rokin-strook lopen, of 8 m van de plek komen te
+  liggen. De Rokin ligt al voor 23 m onder Plein zuid.
+- **Plattegrond:** versie D50, 47/47 goed. De toets "één voorpost per
+  straat" is vervangen door twee toetsen:
+  - één voorpost aan de overkant van elk knooppunt, ≤ 16 m verderop;
+  - elke voorpost dekt zijn eigen routes.
+- **`plekVoor(route, 'voorpost')`:** zonder eigen voorpost geeft het de
+  voorpost tegenover het knooppunt van die route (Rokin → Kalverstraat
+  noord).
+- **Tests:** `test-dnm-bouwplekken` (38), `test-dnm-hek` (9 combinaties
+  van plek en route) en `test-dnm-kern` (11 interactiepunten) zijn
+  bijgewerkt.
+
+**D51 — Drukpers voor het Paleis, verslag.**
+- **Weg uit het torenmenu.** Een gewone plek toont weer "1 Geschuttoren,
+  2 Bovenleiding, 3 Hek". De +50%-bonus op kills is verwijderd.
+- **Drie drukpersplekken** (`DAM_LAYOUT.drukpersplekken`): noord (-62, -9)
+  en zuid (-62, 9) naast de Kerkklok, en midden (-53,5, 0) ervoor.
+  - Ze liggen ≥ 6,5 m van de Kerkklok, zodat de interacties niet
+    overlappen, en 19 m van elke route.
+  - Ze hebben een gouden rand. Het menu biedt alleen de drukpers, zonder
+    hekslot en zonder reparatie.
+- **Inkomen:** om de 10 s betalen alle persen samen uit, met één popup
+  ("+€12 drukpers"). Alleen in het actieve spel, dus niet tijdens pauze
+  of na game over.
+- **Terugverdienen in 3 rondes:**
+  - een ronde is ~85 s: de waves 1–12 duren gemeten 55–84 s, gemiddeld
+    ~72 s met robots die tot aan het monument lopen, iets korter als de
+    speler schiet; daarbij komt de bouwfase van 20 s;
+  - elk niveau verdient zijn totale investering daarom in 250 s terug
+    (`DRUKPERS_TERUGVERDIEN_S`).
+
+  | Niveau | Prijs | Totaal geïnvesteerd | Inkomen |
+  |---|---|---|---|
+  | 1 | €150 | €150 | €6 per 10 s |
+  | 2 | €150 | €300 | €12 per 10 s |
+  | 3 | €200 | €500 | €20 per 10 s |
+
+  Met drie persen op niveau 3 is dat €6 per seconde. D43 ijkt dat, samen
+  met de rest van de economie.
+- **Test:** `test-dnm-drukpers` (16 checks) vervangt `test-dnm-muntpers`.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 

@@ -70,7 +70,7 @@ const puntenControle = await page.evaluate(() => {
 // bereikbaarheidschecks hieronder gelden voor allemaal. Sinds D35 zijn er
 // twee steunpunten: de Kerkklok en de commandopost (die de Bijenkorf-kiosk
 // en de Koninklijke Reparatie verving).
-check('Er zijn 10 interactiepunten (Kerkklok, commandopost + 8 bouwplekken)', puntenControle.punten.length === 10, puntenControle.punten.map(p => p.naam));
+check('Er zijn 11 interactiepunten (Kerkklok, commandopost, 6 bouwplekken, 3 drukpersplekken)', puntenControle.punten.length === 11, puntenControle.punten.map(p => p.naam));
 for (const p of puntenControle.punten) {
   check(`Interactiepunt "${p.naam}" ligt binnen GRENS`, p.binnenGrens, p);
   check(`Interactiepunt "${p.naam}" is bereikbaar binnen zijn radius`, p.bereikbaar, p);

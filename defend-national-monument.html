@@ -508,7 +508,7 @@ addEventListener('resize', () => {
    ================================================================ */
 
 const DAM_LAYOUT = {
-  "versie": "D46",
+  "versie": "D50",
   "eenheid": "meter, mensmaat 1:1",
   "assen": "+x = oost, +z = zuid, oorsprong = midden van het monument, y = omhoog",
   "wapenBereik": 22,
@@ -573,12 +573,16 @@ const DAM_LAYOUT = {
     { "naam": "Plein noord",  "soort": "knooppunt", "routes": ["Damrak", "Nieuwendijk"],  "positie": [-13, -14.5] },
     { "naam": "Plein zuid",   "soort": "knooppunt", "routes": ["Rokin", "Kalverstraat"],  "positie": [-13, 14.5] },
     { "naam": "Plein oost",   "soort": "knooppunt", "routes": ["Damstraat"],              "positie": [11.5, 4.5] },
-    { "naam": "Damrak",       "soort": "voorpost",  "routes": ["Damrak"],                 "positie": [-12.75, -32] },
-    { "naam": "Rokin",        "soort": "voorpost",  "routes": ["Rokin"],                  "positie": [-12.75, 32] },
-    { "naam": "Damstraat",    "soort": "voorpost",  "routes": ["Damstraat"],              "positie": [32, 10.25] },
-    { "naam": "Kalverstraat", "soort": "voorpost",  "routes": ["Kalverstraat"],           "positie": [-39.75, 25] },
-    { "naam": "Nieuwendijk",  "soort": "voorpost",  "routes": ["Nieuwendijk"],            "positie": [-39.75, -25] }
+    { "naam": "Damrak west",        "soort": "voorpost", "overkantVan": "Plein noord", "routes": ["Damrak", "Nieuwendijk"], "positie": [-25, -19] },
+    { "naam": "Kalverstraat noord", "soort": "voorpost", "overkantVan": "Plein zuid",  "routes": ["Kalverstraat"], "positie": [-26.5, 8.4] },
+    { "naam": "Damstraat zuid",     "soort": "voorpost", "overkantVan": "Plein oost",  "routes": ["Damstraat"],             "positie": [17.2, 17.75] }
   ],
+  "drukpersplekken": [
+    { "naam": "Drukpers noord",  "positie": [-62, -9] },
+    { "naam": "Drukpers zuid",   "positie": [-62, 9] },
+    { "naam": "Drukpers midden", "positie": [-53.5, 0] }
+  ],
+  "_drukpers": "D51: drie plekken alleen voor een drukpers, voor het Paleis, rond de Kerkklok. Geen route in de buurt.",
   "bouwplekHalf": 0.9,
   "torenBereik": 10,
 
@@ -3544,19 +3548,35 @@ const BOUWPLEKKEN = DAM_LAYOUT.bouwplekken.map(b => {
   });
   const eerste = hekLijnen[0];
   return {
-    naam: b.naam, soort: b.soort, routes: [...b.routes],
+    naam: b.naam, soort: b.soort, routes: [...b.routes], overkantVan: b.overkantVan ?? null,
     positie: new THREE.Vector3(x, 0, z), hoek: Math.atan2(eerste.rx, eerste.rz),
     toren: null, hek: null, kaderMateriaal: null, hekLijnen,
   };
 });
-// De plek van een soort bij een route (tests en meetscripts).
+// De plek van een soort bij een route (tests en meetscripts). Ticket D50:
+// een voorpost staat tegenover een knooppunt en hoeft niet elke route van
+// dat knooppunt te dekken; zonder eigen voorpost geeft dit de voorpost aan
+// de overkant van het knooppunt van die route.
 function plekVoor(routeNaam, soort) {
-  return BOUWPLEKKEN.find(p => p.soort === soort && p.routes.includes(routeNaam)) ?? null;
+  const eigen = BOUWPLEKKEN.find(p => p.soort === soort && p.routes.includes(routeNaam));
+  if (eigen || soort !== 'voorpost') return eigen ?? null;
+  const knoop = plekVoor(routeNaam, 'knooppunt');
+  return BOUWPLEKKEN.find(p => p.soort === 'voorpost' && p.overkantVan === knoop?.naam) ?? null;
 }
+
+// Ticket D51: drie plekken alleen voor een drukpers, voor het Paleis. Ze
+// hebben geen route en geen hekslot; het bouwmenu biedt er alleen de
+// drukpers aan.
+const DRUKPERSPLEKKEN = DAM_LAYOUT.drukpersplekken.map(b => ({
+  naam: b.naam, soort: 'drukpers', routes: [], overkantVan: null,
+  positie: new THREE.Vector3(b.positie[0], 0, b.positie[1]), hoek: Math.PI / 2,
+  toren: null, hek: null, kaderMateriaal: null, hekLijnen: [],
+}));
 
 // Zichtbaar: een lichte vloertegel met een lage rand die zwak pulseert
 // zolang de plek leeg is. Rechtstreeks in de scene (wereldcoördinaten).
-for (const plek of BOUWPLEKKEN) {
+// Drukpersplekken krijgen een gouden rand.
+for (const plek of [...BOUWPLEKKEN, ...DRUKPERSPLEKKEN]) {
   const g = new THREE.Group();
   // Ticket D32: tegel 1,8 m (was 2,4), zodat hij op een stoep van 2,5 m
   // past; het torenobstakel blijft 1,4 m.
@@ -3564,7 +3584,7 @@ for (const plek of BOUWPLEKKEN) {
   tegel.position.y = vloerHoogte(plek.positie.x, plek.positie.z) + 0.05;
   tegel.castShadow = false;
   g.add(tegel);
-  plek.kaderMateriaal = new THREE.MeshBasicMaterial({ color: 0xffd75e, transparent: true, opacity: 0.5 });
+  plek.kaderMateriaal = new THREE.MeshBasicMaterial({ color: plek.soort === 'drukpers' ? 0xffb300 : 0xffd75e, transparent: true, opacity: 0.5 });
   for (const [bx, bz, lx, lz] of [[0, 0.85, 1.8, 0.12], [0, -0.85, 1.8, 0.12], [0.85, 0, 0.12, 1.8], [-0.85, 0, 0.12, 1.8]]) {
     const rand = new THREE.Mesh(new THREE.BoxGeometry(lx, 0.18, lz), plek.kaderMateriaal);
     rand.position.set(bx, tegel.position.y + 0.07, bz);
@@ -3589,7 +3609,7 @@ for (const plek of BOUWPLEKKEN) {
 
 function animeerBouwplekken() {
   const puls = 0.35 + 0.25 * Math.sin(klok * 2.4);
-  for (const plek of BOUWPLEKKEN) plek.kaderMateriaal.opacity = plek.toren ? 0.15 : puls;
+  for (const plek of [...BOUWPLEKKEN, ...DRUKPERSPLEKKEN]) plek.kaderMateriaal.opacity = plek.toren ? 0.15 : puls;
 }
 
 // --- Ticket D11: torens --------------------------------------------------
@@ -3626,17 +3646,23 @@ const BOVENLEIDING_NIVEAUS = [
   { prijs: 300, bereik: 12, schade: 2,   doelen: 4, sprong: 5,   schotInterval: 1.6, hp: 110 },
 ];
 const BOVENLEIDING_SPRONG_FACTOR = 0.75;
-// Ticket D49: de Muntpers. Een steuntoren zonder aanval: robots die binnen
-// zijn bereik sneuvelen, door wie dan ook, laten een munt achter die
-// MUNTPERS_BONUS keer zoveel waard is. Meerdere persen stapelen niet. Een
-// investering die zich terugverdient als je robots in zijn buurt afmaakt.
-// Upgrades geven meer bereik en HP, niet meer bonus. Te ijken in D43.
-const MUNTPERS_NIVEAUS = [
-  { prijs: 150, bereik: 8,  hp: 60 },
-  { prijs: 150, bereik: 10, hp: 90 },
-  { prijs: 200, bereik: 12, hp: 130 },
-];
-const MUNTPERS_BONUS = 1.5;
+// Ticket D51 (was D49, de Muntpers): de Drukpers. Staat alleen op de
+// drie drukpersplekken voor het Paleis en levert om de DRUKPERS_INTERVAL
+// seconden geld op, los van de robots. Speeltest-eis: gemiddeld in drie
+// rondes terugverdiend. Een ronde is ~85 s (wave ~65 s, gemeten over wave
+// 1–12, plus de bouwfase van 20 s), dus elk niveau verdient zijn totale
+// investering in ~250 s terug: inkomen per interval = investering /
+// DRUKPERS_TERUGVERDIEN_S × interval. Te ijken in D43.
+const DRUKPERS_INTERVAL = 10;
+const DRUKPERS_TERUGVERDIEN_S = 250;
+const DRUKPERS_NIVEAUS = [
+  { prijs: 150, hp: 60 },
+  { prijs: 150, hp: 90 },
+  { prijs: 200, hp: 130 },
+].map((n, i, rij) => {
+  const investering = rij.slice(0, i + 1).reduce((som, x) => som + x.prijs, 0);
+  return { ...n, inkomen: Math.round(investering / DRUKPERS_TERUGVERDIEN_S * DRUKPERS_INTERVAL) };
+});
 const HEK_NIVEAUS = [
   { prijs: 100, hp: 120 },
   { prijs: 100, hp: 200 },
@@ -3656,11 +3682,11 @@ const TOREN_TYPES = {
     niveaus: BOVENLEIDING_NIVEAUS,
     niveauTekst: n => `bereik ${n.bereik} m, ${n.doelen} robots, sprong ${n.sprong} m, elke ${n.schotInterval}s, `,
   },
-  muntpers: {
-    naam: 'Muntpers', ...MUNTPERS_NIVEAUS[0],
-    omschrijving: `+50% geld binnen ${MUNTPERS_NIVEAUS[0].bereik} m, valt niet aan`,
-    niveaus: MUNTPERS_NIVEAUS,
-    niveauTekst: n => `bereik ${n.bereik} m, `,
+  drukpers: {
+    naam: 'Drukpers', ...DRUKPERS_NIVEAUS[0], alleenOp: 'drukpers',
+    omschrijving: `€${DRUKPERS_NIVEAUS[0].inkomen} per ${DRUKPERS_INTERVAL} s`,
+    niveaus: DRUKPERS_NIVEAUS,
+    niveauTekst: n => `€${n.inkomen} per ${DRUKPERS_INTERVAL} s, `,
   },
   // Ticket D13: het hek schiet niet, het kóópt tijd. Een rij paaltjes dwars
   // over de looproute; robots die ertegenaan lopen, blijven staan en slaan
@@ -3735,13 +3761,17 @@ function bouwMenu(plek) {
   return {
     bron: plek,
     hoortBij: punt => punt.bouwplek === plek,
-    titel: () => `${plek.soort === 'knooppunt' ? 'Knooppunt' : 'Voorpost'} ${plek.naam}`,
+    titel: () => plek.soort === 'drukpers' ? plek.naam : `${plek.soort === 'knooppunt' ? 'Knooppunt' : 'Voorpost'} ${plek.naam}`,
     opties: () => {
       const bouwOptie = ([type, cfg]) => ({
-        tekst: `${cfg.naam} €${cfg.prijs}, ${cfg.omschrijving}, ${cfg.hp} HP`, prijs: cfg.prijs,
+        tekst: `${cfg.naam} €${cfg.prijs}, ${cfg.omschrijving}${cfg.alleenOp ? '' : `, ${cfg.hp} HP`}`, prijs: cfg.prijs,
         actie: () => bouwToren(plek, type),
       });
-      const torenTypes = Object.entries(TOREN_TYPES).filter(([type]) => slotVan(type) === 'toren');
+      // Ticket D51: op een drukpersplek alleen de drukpers, zonder hekslot.
+      if (plek.soort === 'drukpers') {
+        return plek.toren ? slotOpties(plek.toren, 'Drukpers').filter(o => !o.tekst.includes('repareren')) : [bouwOptie(['drukpers', TOREN_TYPES.drukpers])];
+      }
+      const torenTypes = Object.entries(TOREN_TYPES).filter(([type, cfg]) => slotVan(type) === 'toren' && !cfg.alleenOp);
       return [
         ...(plek.toren ? slotOpties(plek.toren, 'Toren') : torenTypes.map(bouwOptie)),
         ...(plek.hek ? slotOpties(plek.hek, 'Hek') : [bouwOptie(['hek', TOREN_TYPES.hek])]),
@@ -4113,11 +4143,10 @@ function vuurBovenleiding(toren) {
   return treffers;
 }
 
-// Ticket D49: de Muntpers. Een gietijzeren pers: sokkel, twee zuilen, een
-// zware kopbalk en een stempel die op een gouden munt neerkomt. Een lage
-// gouden ring op de grond toont het bereik (de enige toren waarvan je dat
-// moet weten om hem te gebruiken). Bij een bonuskill slaat de stempel.
-function maakMuntpers(plek) {
+// Ticket D49/D51: de Drukpers. Een gietijzeren pers: sokkel, twee zuilen,
+// een zware kopbalk en een stempel die op een gouden munt neerkomt. Bij
+// elke uitbetaling slaat de stempel.
+function maakDrukpers(plek) {
   const g = new THREE.Group();
   const sokkel = blok(1.3, 0.4, 1.3, 0x6d6a66, 0.85);
   sokkel.position.y = 0.3;
@@ -4147,57 +4176,57 @@ function maakMuntpers(plek) {
   g.add(sokkel, balk, stempel, munt, hpBalk);
   g.position.copy(plek.positie);
   scene.add(g);
-  // Bereikring, in wereldcoördinaten zodat hij met het niveau kan groeien.
-  const bereikRing = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 64), new THREE.MeshBasicMaterial({ color: 0xffc93c, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide }));
-  bereikRing.rotation.x = -Math.PI / 2;
-  bereikRing.position.set(plek.positie.x, vloerHoogte(plek.positie.x, plek.positie.z) + 0.04, plek.positie.z);
-  bereikRing.scale.setScalar(MUNTPERS_NIVEAUS[0].bereik);
-  scene.add(bereikRing);
   const x = plek.positie.x, z = plek.positie.z;
-  const cfg = TOREN_TYPES.muntpers;
+  const cfg = TOREN_TYPES.drukpers;
   return {
-    type: 'muntpers', plek, groep: g, stempel, stempelTimer: 0, ringen, hpBalk,
-    spoor: bereikRing,   // opgeruimd door verwijderToren, zoals de sporen van andere torens
+    type: 'drukpers', plek, groep: g, stempel, stempelTimer: 0, ringen, hpBalk,
     niveau: 1, geinvesteerd: cfg.prijs,
-    hp: cfg.hp, hpMax: cfg.hp, bonusKills: 0,
+    hp: cfg.hp, hpMax: cfg.hp, verdiend: 0,
     obstakelHandles: [registreerRechthoek(x - 0.65, x + 0.65, z - 0.65, z + 0.65)],
   };
 }
-// De Muntpers die een kill op deze plek beloont, of null. Meerdere persen
-// in bereik stapelen niet: de eerste telt.
-function muntpersVoor(positie) {
-  for (const toren of torens) {
-    if (toren.type !== 'muntpers') continue;
-    const a = Math.hypot(positie.x - toren.plek.positie.x, positie.z - toren.plek.positie.z);
-    if (a <= torenStats(toren).bereik) return toren;
+// Alle drukpersen betalen op dezelfde tik uit, met één popup voor het
+// totaal: drie persen die elk om de 10 s een eigen "+€6" tonen, zou te
+// druk zijn. De tik loopt alleen in het actieve spel (updateTorens), dus
+// niet tijdens pauze of na game over.
+let drukpersTimer = 0;
+function updateDrukpersen(dt) {
+  const persen = torens.filter(t => t.type === 'drukpers');
+  for (const pers of persen) {
+    pers.stempelTimer = Math.max(0, pers.stempelTimer - dt);
+    const slag = Math.sin((pers.stempelTimer / 0.35) * Math.PI);
+    pers.stempel.position.y = 1.45 - slag * 0.55;
   }
-  return null;
-}
-function muntpersBonus(positie) {
-  const pers = muntpersVoor(positie);
-  if (!pers) return 1;
-  pers.bonusKills += 1;
-  pers.stempelTimer = 0.35;
-  return MUNTPERS_BONUS;
-}
-function updateMuntpers(toren, dt) {
-  // Stempel slaat neer en veert terug; bereikring groeit mee met het niveau.
-  toren.stempelTimer = Math.max(0, toren.stempelTimer - dt);
-  const slag = Math.sin((toren.stempelTimer / 0.35) * Math.PI);
-  toren.stempel.position.y = 1.45 - slag * 0.55;
-  toren.spoor.scale.setScalar(torenStats(toren).bereik);
+  drukpersTimer += dt;
+  if (drukpersTimer < DRUKPERS_INTERVAL) return 0;
+  drukpersTimer -= DRUKPERS_INTERVAL;
+  let totaal = 0;
+  for (const pers of persen) {
+    const bedrag = torenStats(pers).inkomen;
+    pers.verdiend += bedrag;
+    pers.stempelTimer = 0.35;
+    totaal += bedrag;
+  }
+  if (totaal > 0) {
+    verdienGeld(totaal);
+    updateGeldUI();
+    toonPopup(`+€${totaal} drukpers`);
+  }
+  return totaal;
 }
 
 function bouwToren(plek, type) {
   const cfg = TOREN_TYPES[type];
   if (!cfg || plek[slotVan(type)] || spel.gameOver) return null;
+  // Ticket D51: de drukpers alleen op een drukpersplek, en daar niets anders.
+  if ((cfg.alleenOp ?? null) !== (plek.soort === 'drukpers' ? 'drukpers' : null)) return null;
   if (geld < cfg.prijs) {
     toonFeedbackMelding(`Niet genoeg geld (${cfg.naam} kost €${cfg.prijs})`);
     return null;
   }
   geld -= cfg.prijs;
   updateGeldUI();
-  const toren = { hek: maakHek, geschut: maakGeschutToren, bovenleiding: maakBovenleiding, muntpers: maakMuntpers }[type](plek);
+  const toren = { hek: maakHek, geschut: maakGeschutToren, bovenleiding: maakBovenleiding, drukpers: maakDrukpers }[type](plek);
   toren.slot = slotVan(type);
   plek[toren.slot] = toren;
   torens.push(toren);
@@ -4303,10 +4332,11 @@ function updateBovenleiding(toren, dt) {
 }
 
 function updateTorens(dt) {
+  updateDrukpersen(dt);   // Ticket D51
   for (const toren of torens) {
     updateHpBalk(toren);
     if (toren.type === 'bovenleiding') { updateBovenleiding(toren, dt); continue; }
-    if (toren.type === 'muntpers') { updateMuntpers(toren, dt); continue; }   // valt niet aan
+    if (toren.type === 'drukpers') continue;   // valt niet aan; zie updateDrukpersen
     if (toren.type !== 'geschut') continue;   // een hek schiet niet
     const cfg = torenStats(toren);
     toren.cooldown = Math.max(0, toren.cooldown - dt);
@@ -5032,7 +5062,7 @@ function vernietigRobot(robot, bron = 'speler') {
 
   if (bron === 'toren') {
     runStats.torenKills += 1;
-    legMuntNeer(robot.groep.position, robot.beloningMultiplier * getRewardMultiplier() * muntpersBonus(robot.groep.position));
+    legMuntNeer(robot.groep.position, robot.beloningMultiplier * getRewardMultiplier());
     spel.score += 100;
     updateArcadeUI();
     return;
@@ -5045,7 +5075,7 @@ function vernietigRobot(robot, bron = 'speler') {
   spel.combo += 1;
   const tierNa = comboTier(spel.combo);
   runStats.hoogsteCombo = Math.max(runStats.hoogsteCombo, spel.combo);
-  legMuntNeer(robot.groep.position, robot.beloningMultiplier * getRewardMultiplier() * getComboGeldMultiplier() * muntpersBonus(robot.groep.position));
+  legMuntNeer(robot.groep.position, robot.beloningMultiplier * getRewardMultiplier() * getComboGeldMultiplier());
   // Alleen tonen bij het OVERSCHRIJDEN van een drempel, niet bij elke kill
   // die al in een hoge tier zit — anders spamt dit bij een lange streak.
   if (tierNa > tierVoor && COMBO_TIER_MELDING[tierNa]) {
@@ -5291,7 +5321,7 @@ function tekenMinimap() {
 
   // Ticket D10: bouwplekken als klein vierkantje (gevuld zodra er een toren
   // of, sinds D47, een hek staat).
-  for (const plek of BOUWPLEKKEN) {
+  for (const plek of [...BOUWPLEKKEN, ...DRUKPERSPLEKKEN]) {
     const [bx, bz] = naarMinimap(plek.positie.x, plek.positie.z);
     if (plek.toren || plek.hek) {
       minimapCtx.fillStyle = '#7fd4ff';
@@ -5384,6 +5414,7 @@ function resetRun() {
   menuHandmatigGesloten = null;
   // Ticket D11: torens horen bij de run (plan §9 vraag 2: alles weg bij reset).
   for (const toren of [...torens]) verwijderToren(toren);
+  drukpersTimer = 0;   // Ticket D51
   sluitMenu();
 
   // Zichtbare restanten van de vorige run.
@@ -5527,7 +5558,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   // Ticket D10: bouwplekken.
   BOUWPLEKKEN, BOUWPLEK_RADIUS, puntOpRoute, looproute, plekVoor, dichtsteHekLijn, opPlekTegel, slotVan,
   BOVENLEIDING_NIVEAUS, BOVENLEIDING_SPRONG_FACTOR, kiesKetting, vuurBovenleiding, updateBovenleiding,
-  MUNTPERS_NIVEAUS, MUNTPERS_BONUS, muntpersVoor, muntpersBonus,
+  DRUKPERSPLEKKEN, DRUKPERS_NIVEAUS, DRUKPERS_INTERVAL, DRUKPERS_TERUGVERDIEN_S, updateDrukpersen, drukpersTimerStand: () => drukpersTimer,
   runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, bijenkorfShopOpen: menu === COMMANDOPOST_MENU, bouwMenuPlek: menu && menu !== COMMANDOPOST_MENU ? menu.bron : null, aantalTorens: torens.length, aantalObstakels: obstakels.length }),
   // Ticket D11: torens.
   TOREN_TYPES, torens, bouwToren, verwijderToren, updateTorens, activeerBouwplek, kiesTorenDoel, verwijderObstakel,

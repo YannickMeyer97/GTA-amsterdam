@@ -1953,5 +1953,35 @@ Besluiten van de eigenaar:
   - Een bereikring op de grond.
   - Zie het verslag in de ROADMAP.
 
+#### Ticket D50 — Voorposten aan de overkant (speeltest na D49)
+
+- **Doel:** minder lopen tussen de plekken om munten op te halen.
+- **Stappen:** tegenover elk knooppunt één voorpost aan de andere kant
+  van de weg, op de drie plekken die de eigenaar aanwees. Ze vervangen de
+  vijf voorposten in de straten.
+- **Acceptatie:**
+  - de plattegrondtoetsen zijn goed: één voorpost per knooppunt aan de
+    overkant, ≤ 16 m verderop, en elke voorpost dekt zijn routes;
+  - `test-dnm-bouwplekken` en `test-dnm-hek` zijn groen.
+- **Uitgevoerd:** zie het verslag in de ROADMAP.
+
+#### Ticket D51 — Drukpers voor het Paleis (speeltest na D49)
+
+- **Doel:** een geldbron die los staat van het vechten.
+- **Stappen:**
+  - De Muntpers (D49) gaat uit het torenmenu.
+  - Drie eigen plekken voor het Paleis, alleen voor een drukpers.
+  - Vast inkomen om de 10 s; elk niveau verdient zich gemiddeld in drie
+    rondes terug.
+- **Acceptatie:** `test-dnm-drukpers`:
+  - de drukpers staat niet in het gewone menu;
+  - drie plekken, geen toren of hek daarop;
+  - de uitbetaling om de 10 s, met één popup;
+  - los van de robots;
+  - terugverdiend in 230–270 s;
+  - verkopen en reset werken.
+- **Uitgevoerd:** zie het verslag in de ROADMAP.
+
 Volgorde: D44 → D45 → D46 → D47 → D48 → D49, daarna D36. De economie van
-de nieuwe torens wordt in D43 herijkt, samen met de rest.
+de nieuwe torens wordt in D43 herijkt, samen met de rest. Na de speeltest
+tijdens D37 kwamen D50 en D51 erbij; daarna volgt D38.

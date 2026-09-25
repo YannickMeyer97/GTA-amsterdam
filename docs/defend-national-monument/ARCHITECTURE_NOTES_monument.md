@@ -1428,6 +1428,16 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
     op de eigen route. `sGrens` = `lijn.s − 0,3`.
   - `afstandTotHek` en `bouwwerkPunt` gebruiken de dichtstbijzijnde lijn
     (`dichtsteHekLijn`).
+- **D50:** een voorpost heeft `overkantVan` (de naam van zijn knooppunt)
+  en hoeft niet elke route van dat knooppunt te dekken.
+- **D51:** `DRUKPERSPLEKKEN` is een aparte lijst, met dezelfde vorm als
+  een bouwplek (`soort: 'drukpers'`, geen routes, geen hekLijnen). Hij
+  zit bewust niet in `BOUWPLEKKEN`, want code en tests nemen daar routes
+  aan.
+  - `TOREN_TYPES.drukpers.alleenOp = 'drukpers'`: `bouwToren` weigert een
+    type op de verkeerde soort plek.
+  - Het inkomen loopt via `updateDrukpersen` (in `updateTorens`), op één
+    gedeelde tik.
 - **Valkuil:** een knooppunt hoort bij twee routes. Code die "de plek van
   route X" zoekt, gebruikt `plekVoor(X, soort)`. Twee actieve poorten
   kunnen dus dezelfde plek aanwijzen; `meet-dnm-economie` slaat een al
