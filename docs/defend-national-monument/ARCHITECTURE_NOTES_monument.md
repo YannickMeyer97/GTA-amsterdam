@@ -1568,3 +1568,17 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
   kwaliteitskeuze altijd vóór het laden met `initScript`, niet achteraf
   met `kiesKwaliteit`: omschakelen compileert shaders opnieuw en maakt
   tests traag.
+
+### 15.14 Meten op de nieuwe kaart (D43)
+
+- **Looptijd = routelengte, niet hemelsbreed.** Robots lopen over hun
+  route; `afstandTotMonument(poort)` is 4–7 m korter dan wat een robot
+  werkelijk loopt. `meet-dnm-afstanden` laat daarom een echte robot met
+  1 m/s de route aflopen (`updateRobots`), met `laanFractie = 0`.
+- **Rondeduur** hangt sterk af van de verdediging: zonder torens ~97 s,
+  met een verdediging die de wave houdt ~65 s (inclusief de bouwfase van
+  20 s). Alles wat per seconde betaalt (de drukpers) moet op de korte
+  ronde worden geijkt, want die speelt een speler die verdedigt.
+- **Afgeleide waarden:** het drukpersinkomen wordt berekend uit
+  `DRUKPERS_TERUGVERDIEN_S` (nu 200 s). Verander die ene constante, niet
+  de inkomens zelf; `test-dnm-drukpers` toetst het resultaat.

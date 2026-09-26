@@ -94,12 +94,13 @@ check('Geen drukpersplek overlapt de Kerkklok (≥ 6,5 m)', r.plekken.every(p =>
 check('Op een drukpersplek kan geen toren en geen hek', r.andersOpPers.every(x => x === null), r.andersOpPers);
 check('Het menu op een drukpersplek biedt alleen de drukpers', r.persMenu.includes('1, Drukpers €150') && !r.persMenu.includes('2,'), r.persMenu);
 check('1 bouwt de drukpers', r.naBouw.type === 'drukpers' && r.naBouw.geld === 850, r.naBouw);
-check('Om de 10 s betalen de persen uit: 2 persen × €6 → €0 na 5 s, €12 na 15 s, €24 na 25 s', r.inkomen.geldReeks.join() === `0,${2 * r.inkomen.perPers},${4 * r.inkomen.perPers}`, r.inkomen);
+check('Om de 10 s betalen de persen uit: 2 persen → €0 na 5 s, 2× het inkomen na 15 s, 4× na 25 s', r.inkomen.geldReeks.join() === `0,${2 * r.inkomen.perPers},${4 * r.inkomen.perPers}`, r.inkomen);
 check('Eén popup per uitbetaling, niet één per pers', r.inkomen.popups === 2, r.inkomen);
 check('Elke pers houdt bij wat hij verdiend heeft', r.inkomen.verdiend.every(v => v === 2 * r.inkomen.perPers), r.inkomen.verdiend);
 check('Los van de robots: een kill naast de pers levert hetzelfde als elders', r.killBijPers === r.killElders, r);
 check('Upgraden verhoogt het inkomen', r.upgrade.niveau === 2 && r.upgrade.na > r.upgrade.voor, r.upgrade);
-check('Elk niveau verdient zich in ~3 rondes (van ~85 s) terug: 230–270 s', r.terugverdien.every(t => t.seconden >= 230 && t.seconden <= 270), r.terugverdien);
+// Ticket D43: een ronde met verdediging duurt gemeten ~65 s (was aangenomen ~85 s).
+check('Elk niveau verdient zich in ~3 rondes (van ~65 s) terug: 180–215 s', r.terugverdien.every(t => t.seconden >= 180 && t.seconden <= 215), r.terugverdien);
 check('Een bezette drukpersplek: upgraden en verkopen, geen hek en geen reparatie', r.bezetMenu.includes('Drukpers naar niveau 3') && r.bezetMenu.includes('Drukpers verkopen') && !r.bezetMenu.includes('Hek') && !r.bezetMenu.includes('repareren'), r.bezetMenu);
 check('Verkopen levert de helft op en maakt de plek vrij', r.verkoop.opbrengst === 75 && r.verkoop.plekLeeg && r.verkoop.geld === 75, r.verkoop);
 check('Een nieuwe run begint zonder persen en met de teller op nul', r.naReset.persen === 0 && r.naReset.timer === 0, r.naReset);

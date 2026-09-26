@@ -4804,9 +4804,15 @@ const GESCHUT_NIVEAUS = [
 // binnen `sprong` meter van de vorige, tot `doelen` robots. Elke sprong doet
 // BOVENLEIDING_SPRONG_FACTOR van de schade van de vorige. Trager dan het
 // geschut en zwak tegen één robot, sterk tegen een groep: een antwoord op
-// drukke golven. Te ijken in D43.
+// drukke golven.
+// Ticket D43: niveau 1 van €175 naar €150, gelijk aan het geschut. Gemeten
+// (zelfde simulatie als meet-dnm-economie) was hij duurder én zwakker dan
+// een geschuttoren op niveau 1 (wave 12: 24 tegen 38 kills), dus nooit de
+// betere koop. Nu is het een echte keuze: alleen zwakker, samen met een
+// geschuttoren sterker dan twee geschuttorens (wave 15: 5 tegen 28 schade),
+// en de hele ladder kost voor beide €650.
 const BOVENLEIDING_NIVEAUS = [
-  { prijs: 175, bereik: 10, schade: 1,   doelen: 3, sprong: 4,   schotInterval: 2.0, hp: 50 },
+  { prijs: 150, bereik: 10, schade: 1,   doelen: 3, sprong: 4,   schotInterval: 2.0, hp: 50 },
   { prijs: 200, bereik: 11, schade: 1.5, doelen: 4, sprong: 4.5, schotInterval: 1.8, hp: 75 },
   { prijs: 300, bereik: 12, schade: 2,   doelen: 4, sprong: 5,   schotInterval: 1.6, hp: 110 },
 ];
@@ -4814,12 +4820,17 @@ const BOVENLEIDING_SPRONG_FACTOR = 0.75;
 // Ticket D51 (was D49, de Muntpers): de Drukpers. Staat alleen op de
 // drie drukpersplekken voor het Paleis en levert om de DRUKPERS_INTERVAL
 // seconden geld op, los van de robots. Speeltest-eis: gemiddeld in drie
-// rondes terugverdiend. Een ronde is ~85 s (wave ~65 s, gemeten over wave
-// 1–12, plus de bouwfase van 20 s), dus elk niveau verdient zijn totale
-// investering in ~250 s terug: inkomen per interval = investering /
-// DRUKPERS_TERUGVERDIEN_S × interval. Te ijken in D43.
+// rondes terugverdiend: inkomen per interval = investering /
+// DRUKPERS_TERUGVERDIEN_S × interval.
+// Ticket D43: herijkt van 250 naar 200 s. D51 rekende met een ronde van
+// ~85 s (robots die ongehinderd tot het monument lopen). Gemeten op de
+// nieuwe kaart (meet-dnm-economie, deel C) duurt een ronde met een
+// verdediging die de wave houdt gemiddeld 65 s inclusief de bouwfase
+// (waves 1–12); zonder verdediging 98 s. Wie verdedigt, speelt de korte
+// ronde: 200 s is daar 3,1 rondes. Door het afronden van het inkomen is
+// niveau 1 in 188 s terugverdiend, niveau 2 en 3 in 200 s.
 const DRUKPERS_INTERVAL = 10;
-const DRUKPERS_TERUGVERDIEN_S = 250;
+const DRUKPERS_TERUGVERDIEN_S = 200;
 const DRUKPERS_NIVEAUS = [
   { prijs: 150, hp: 60 },
   { prijs: 150, hp: 90 },

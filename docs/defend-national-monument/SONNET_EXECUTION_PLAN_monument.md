@@ -1549,6 +1549,13 @@ tijd in gevels gaat.
   suite groen, en de eigenaar heeft gespeeld → **beslismoment M3**: klopt de
   make-over? Daarna het uitgestelde beslismoment van fase 3 (hoe voelt de
   torenkern?) en de keuze over fase 4 (oververhitting).
+- **Uitgevoerd (deels):**
+  - Beide meetscripts herzien en gedraaid. Looptijden en bouwplekken
+    kloppen; de economie haalt het D16-doel.
+  - Herijkt: drukpers terugverdiend in 200 s (was 250 s, op een gemeten
+    ronde van ~65 s) en Bovenleiding niveau 1 €150 (was €175).
+  - Open: de eindspeeltest door de eigenaar (**M3**). De vragen staan in
+    het verslag in de ROADMAP.
 
 ### 11.6 Volgorde en beslismomenten
 

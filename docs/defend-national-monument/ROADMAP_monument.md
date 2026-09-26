@@ -124,7 +124,7 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D40** | Straatwanden van de vijf straten — *schermafbeeldingen bij de eigenaar* |
 | ☑ | **D41** | Sfeer en straatmeubilair — *schermafbeeldingen bij de eigenaar* |
 | ☑ | **D42** | Prestaties (budget, instancing), direct gevolgd door D21 *(D21 ook ☑)* |
-| ☐ | **D43** | Herijken op de nieuwe kaart + eindspeeltest → **M3** |
+| ◐ | **D43** | Herijken op de nieuwe kaart + eindspeeltest → **M3** *(gemeten en herijkt; de eindspeeltest door de eigenaar staat open)* |
 
 **D31 — stand.** De plattegrond staat in
 [`PLATTEGROND.html`](PLATTEGROND.html): bovenaanzicht op schaal, routes met
@@ -928,6 +928,71 @@ Dit kan later alsnog, als de eigenaar dat wil.
   bewaard en zonder dat het spel start.
 - **Testhulp:** `openDefend` neemt nu `contextOpties` (bijvoorbeeld
   `isMobile`, `hasTouch`) en een `initScript` dat vóór het laden draait.
+
+**D43 — herijken op de nieuwe kaart, verslag.**
+- **Meetscripts herzien:**
+  - `meet-dnm-afstanden` mat hemelsbreed. Robots lopen sinds D33 over hun
+    route, dus nu loopt per poort één echte robot met 1 m/s zijn route af
+    tot het monument: de tijd is de werkelijke looplengte. Daarnaast per
+    route waar de twee bouwplekken liggen, langs de route gemeten.
+  - `meet-dnm-economie` meet nu ook de rondeduur (deel C) en heeft een
+    scenario met één drukpers.
+- **Looptijden: niets bij te stellen.**
+
+  | Poort | Gelopen | Wave 1 | Plafond | Sprinter op plafond |
+  |---|---|---|---|---|
+  | Damrak | 43,2 m | 18,5–27,7 s | 13,1 s | 8,2 s |
+  | Rokin | 44,0 m | 18,9–28,2 s | 13,3 s | 8,3 s |
+  | Damstraat | 42,8 m | 18,4–27,4 s | 13,0 s | 8,1 s |
+  | Kalverstraat | 49,1 m | 21,1–31,4 s | 14,9 s | 9,3 s |
+  | Nieuwendijk | 49,1 m | 21,1–31,5 s | 14,9 s | 9,3 s |
+
+  Doel uit D6: dichtste poort 15–25 s, verste tot ~35 s, nooit onder 10 s
+  voor een basisrobot. Dat klopt voor alle vijf. Een sprinter op het
+  plafond haalt het in 8–9 s; dat is de rol van dat type en was vóór de
+  nieuwe kaart ook zo.
+- **Bouwplekken:** de knooppunten liggen 5,5–11 m van de monumentrand, de
+  voorposten 16–23 m. Alles ligt binnen het wapenbereik van 22 m, behalve
+  de voorpost Damrak west (23 m, net erbuiten). Langs de route ligt de voorpost op 49–63 % en het knooppunt op
+  71–92 % van de weg. Niets bij te stellen.
+- **Economie: het D16-doel houdt.** Na wave 5 heb je €797 (1,1 poort) in
+  het basisscenario en €1.328 (1,9) bij goed spel. Met één drukpers na
+  wave 1 is dat €1.380 (2,0); na wave 8 €2.925 tegen €2.732. De pers is
+  dus aantrekkelijk, niet dominant.
+- **Bijgesteld: de drukpers verdiende zich te traag terug.**
+  - D51 rekende met een ronde van ~85 s. Gemeten duurt een ronde met een
+    verdediging die de wave houdt 63–65 s (waves 1–12, inclusief de
+    bouwfase); zonder verdediging 97 s. Met 250 s kostte terugverdienen dus
+    3,9 rondes, en nog meer als de speler ook schiet.
+  - `DRUKPERS_TERUGVERDIEN_S` 250 → 200 s: 3,2 rondes. Het inkomen per
+    10 s wordt €8 / €15 / €25 (was €6 / €12 / €20).
+- **Bijgesteld: de Bovenleiding op niveau 1 was nooit de betere koop.**
+  - Gemeten in dezelfde simulatie, één toren per actieve poort: de
+    Bovenleiding niveau 1 (€175) doodde op wave 12 24 van de 43 robots,
+    tegen 38 voor een geschuttoren niveau 1 (€150). Duurder én zwakker.
+  - Als tweede toren werkt hij wel zoals bedoeld: geschut + Bovenleiding
+    liet op wave 15 5 schade door, twee geschuttorens 28. Op niveau 3 is
+    hij de sterkste losse toren.
+  - Niveau 1: €175 → €150. De hele ladder kost nu voor beide €650.
+- **Voor de eindspeeltest (M3), concrete vragen aan de eigenaar:**
+  1. Zijn de vroege waves te makkelijk? Zonder speler houdt één
+     geschuttoren niveau 1 per poort waves 1–4 al (open sinds D16).
+  2. Voelt de drukpers nu als een goede investering, zonder dat hij de
+     torens verdringt?
+  3. Kies je de Bovenleiding nu ook eens als tweede toren?
+  4. Klopt de make-over (M3)? Daarna het uitgestelde besluit over fase 3
+     (hoe voelt de torenkern?) en over fase 4 (oververhitting).
+- **Tests:**
+  - `test-dnm-drukpers` toetst nu 180–215 s terugverdientijd (was
+    230–270 s).
+  - De lekcontrole in `test-dnm-prestaties` viel één keer om op +1
+    geometrie: een zeldzaam effect (een schildvonk hangt af van de
+    willekeurige schildtiming) kwam pas in de meetrondes voor het eerst in
+    beeld. Ze staat nu een marge van 3 toe; een echt lek geeft er ≥ 40.
+  - Volledige suite: 142/146 in de gezamenlijke run; de drie
+    Undead-uitvallers (camerabeweging, nachthemel,
+    trefferfeedback-per-wapen) zijn bekende timinggevoelige tests en zijn
+    los groen, net als `test-dnm-prestaties` met de marge.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 

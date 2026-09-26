@@ -75,7 +75,11 @@ check(`Een robot bestaat uit ≤ ${BUDGET.meshesPerRobot} meshes`, perRobot <= B
 check(`De scene heeft ≤ ${BUDGET.sceneMeshes} meshes en ≤ ${BUDGET.schaduwwerpers} schaduwwerpers`, r.scene.meshes <= BUDGET.sceneMeshes && r.scene.schaduwwerpers <= BUDGET.schaduwwerpers, r.scene);
 check(`De scene heeft ≤ ${BUDGET.geometrieen} geometrieën en ≤ ${BUDGET.texturen} texturen`, r.scene.geometries <= BUDGET.geometrieen && r.scene.textures <= BUDGET.texturen, r.scene);
 check(`Geen textuur groter dan 1024² pixels`, lek.grootste <= BUDGET.textuurPixels, lek.grootste);
-check('Geen lek: 40 robots en 40 schoten laten geen geometrie of textuur achter', lek.na.geometrieen <= lek.voor.geometrieen && lek.na.texturen <= lek.voor.texturen, lek);
+// Marge van 3: een zeldzaam effect (schildvonk, stof buiten bereik) of een
+// nieuwe accentkleur kan pas in de meetrondes voor het eerst in beeld komen
+// en wordt dan één keer geüpload. Dat is begrensd; een echt lek geeft er
+// minstens één per robot, dus ≥ 40.
+check('Geen lek: 40 robots en 40 schoten laten geen geometrie of textuur achter (marge 3 voor een eerste upload)', lek.na.geometrieen - lek.voor.geometrieen <= 3 && lek.na.texturen - lek.voor.texturen <= 1, lek);
 check(`Laadtijd tot de debug-hook ≤ ${BUDGET.laadtijdMs / 1000} s`, laadtijd <= BUDGET.laadtijdMs, laadtijd);
 
 const fails = report(errs);

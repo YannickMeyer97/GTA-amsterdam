@@ -18,6 +18,14 @@
 // Oplopende configuraties per actieve poort; de eerste die in twee pogingen
 // geen enkele monumentschade toelaat, "houdt de wave". Omdat de speler zelf
 // ook schiet, is dit een BOVENGRENS van wat er nodig is.
+//
+// Ticket D43 — herzien voor de nieuwe kaart:
+// - Deel C: de rondeduur (wave + bouwfase), uit dezelfde simulatie. Daarmee
+//   toetsen we de regel van de eigenaar (D51): een drukpers verdient zich
+//   gemiddeld in drie rondes terug.
+// - Deel A krijgt een derde scenario: goed spel, plus één drukpers die na
+//   wave 1 gekocht wordt (€150, daarna niet opgewaardeerd). Inkomen per
+//   ronde = rondeduur × inkomen per seconde.
 import { openDefend } from '../helpers-defend.mjs';
 
 const MAX_WAVE = Number(process.argv[2] || 20);
@@ -91,6 +99,12 @@ const verdediging = await page.evaluate(({ MAX_WAVE, CONFIGS }) => {
     }
     return { schade: 100000 - d.spel.monumentHP, duur: t, poorten: d.spel.actievePoorten.length, kills: d.runStats.torenKills };
   }
+  // Ticket D43: de rondeduur zonder verdediging (robots lopen tot het
+  // monument: de langste wave) en met de verdediging die de wave houdt.
+  function rondeduur(wave, config) {
+    const a = simuleer(wave, config), b = simuleer(wave, config);
+    return (a.duur + b.duur) / 2;
+  }
   const rijen = [];
   for (let wave = 1; wave <= MAX_WAVE; wave++) {
     const pogingen = [];
@@ -100,20 +114,34 @@ const verdediging = await page.evaluate(({ MAX_WAVE, CONFIGS }) => {
       pogingen.push({ config: config.naam, schade: [a.schade, b.schade] });
       if (a.schade === 0 && b.schade === 0) { houdt = { ...config, poorten: a.poorten }; break; }
     }
-    rijen.push({ wave, houdt, pogingen });
+    const duurNiets = rondeduur(wave, CONFIGS[0]);
+    const duurHoudt = houdt ? rondeduur(wave, houdt) : duurNiets;
+    rijen.push({ wave, houdt, pogingen, duurNiets, duurHoudt });
   }
   d.resetRun();
   return rijen;
 }, { MAX_WAVE, CONFIGS });
 
+const pers = await page.evaluate(() => {
+  const d = window.DamChaosDebug;
+  return { bouwfase: d.BOUWFASE_DUUR, interval: d.DRUKPERS_INTERVAL, terugverdien: d.DRUKPERS_TERUGVERDIEN_S, niveaus: d.DRUKPERS_NIVEAUS.map(n => ({ prijs: n.prijs, inkomen: n.inkomen })) };
+});
+// Rondeduur per wave: de wave met de verdediging die hem houdt, plus de
+// bouwfase. Zonder speler; met een speler die schiet is hij korter.
+const rondeduurVan = wave => { const v = verdediging[wave - 1]; return (v ? v.duurHoudt : 0) + pers.bouwfase; };
+
 console.log('=== Deel A — inkomsten per wave (€) ===');
-console.log('wave  robots  basis  cum.basis   goed  cum.goed   mix (% normal/sprinter/tank/bomber/shieldbot)');
-let cumBasis = 0, cumGoed = 0;
+console.log(`Drukpers-scenario: goed spel, één drukpers niveau 1 (€${pers.niveaus[0].prijs}) na wave 1, €${pers.niveaus[0].inkomen} per ${pers.interval} s.`);
+console.log('wave  robots  basis  cum.basis   goed  cum.goed   +pers  cum.pers   mix (% normal/sprinter/tank/bomber/shieldbot)');
+let cumBasis = 0, cumGoed = 0, cumPers = 0;
 for (const r of inkomsten) {
-  cumBasis += r.basis; cumGoed += r.goed;
-  r.cumBasis = cumBasis; r.cumGoed = cumGoed;
+  // De pers betaalt vanaf de bouwfase na wave 1 (daar gekocht) tot het eind van deze ronde.
+  const persInkomen = r.wave === 1 ? 0 : Math.round(rondeduurVan(r.wave) * pers.niveaus[0].inkomen / pers.interval);
+  const persKosten = r.wave === 1 ? pers.niveaus[0].prijs : 0;
+  cumBasis += r.basis; cumGoed += r.goed; cumPers += r.goed + persInkomen - persKosten;
+  r.cumBasis = cumBasis; r.cumGoed = cumGoed; r.cumPers = cumPers;
   const mix = ['normal', 'sprinter', 'tank', 'bomber', 'shieldbot'].map(t => String(r.mix[t] || 0).padStart(2)).join('/');
-  console.log(`${String(r.wave).padStart(4)}  ${String(r.aantal).padStart(6)}  ${String(r.basis).padStart(5)}  ${String(cumBasis).padStart(9)}  ${String(r.goed).padStart(5)}  ${String(cumGoed).padStart(8)}   ${mix}`);
+  console.log(`${String(r.wave).padStart(4)}  ${String(r.aantal).padStart(6)}  ${String(r.basis).padStart(5)}  ${String(cumBasis).padStart(9)}  ${String(r.goed).padStart(5)}  ${String(cumGoed).padStart(8)}  ${String(persInkomen).padStart(6)}  ${String(cumPers).padStart(8)}   ${mix}`);
 }
 
 console.log('\n=== Deel B — verdediging die de wave ZONDER speler houdt (per actieve poort) ===');
@@ -130,7 +158,19 @@ console.log(`"Volledig uitgerust" = beide plekken van één poort met een toren 
 for (const w of [3, 5, 8]) {
   const r = inkomsten[w - 1];
   if (!r) continue;
-  console.log(`Na wave ${w}: basis €${r.cumBasis} (${(r.cumBasis / VOLLEDIG_UITGERUST).toFixed(1)} poorten) · goed €${r.cumGoed} (${(r.cumGoed / VOLLEDIG_UITGERUST).toFixed(1)} poorten)`);
+  console.log(`Na wave ${w}: basis €${r.cumBasis} (${(r.cumBasis / VOLLEDIG_UITGERUST).toFixed(1)} poorten) · goed €${r.cumGoed} (${(r.cumGoed / VOLLEDIG_UITGERUST).toFixed(1)} poorten) · goed + drukpers €${r.cumPers} (${(r.cumPers / VOLLEDIG_UITGERUST).toFixed(1)} poorten)`);
 }
+
+console.log('\n=== Deel C — rondeduur en de drukpersregel (D51) ===');
+console.log(`Een ronde = de wave + de bouwfase van ${pers.bouwfase} s. Zonder speler; wie schiet, maakt de wave korter.`);
+console.log('wave  zonder verdediging   met de verdediging die hem houdt');
+for (const v of verdediging) {
+  console.log(`${String(v.wave).padStart(4)}  ${(v.duurNiets + pers.bouwfase).toFixed(0).padStart(6)} s             ${(v.duurHoudt + pers.bouwfase).toFixed(0).padStart(6)} s`);
+}
+const tot12 = verdediging.slice(0, 12);
+const gemNiets = tot12.reduce((a, v) => a + v.duurNiets + pers.bouwfase, 0) / tot12.length;
+const gemHoudt = tot12.reduce((a, v) => a + v.duurHoudt + pers.bouwfase, 0) / tot12.length;
+console.log(`Gemiddeld over waves 1–${tot12.length}: ${gemNiets.toFixed(0)} s zonder verdediging, ${gemHoudt.toFixed(0)} s met.`);
+console.log(`Drukpers: terugverdiend in ${pers.terugverdien} s = ${(pers.terugverdien / gemNiets).toFixed(1)}–${(pers.terugverdien / gemHoudt).toFixed(1)} rondes (doel van de eigenaar: gemiddeld 3).`);
 
 await browser.close();
