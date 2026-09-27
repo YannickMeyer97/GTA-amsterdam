@@ -1136,6 +1136,11 @@ waarom de game basic voelt en je nergens naartoe werkt.
 - **Test:** `test-dnm-koeling` (8 checks); `test-dnm-commandopost` volgt
   de vijf opties.
 
+**Terloops gevonden (na D53):** de wavebanner kondigde de types nog aan
+op de oude waves ("Wave 3: Tanks gesignaleerd!", terwijl tanks sinds D53
+bij wave 2 komen). `waveBannerTekst` leidt dat nu af uit
+`ROBOT_TYPE_VANAF`; `test-dnm-kern` bewaakt het.
+
 **Terloops gevonden:** de HUD telde tijdens een wave één robot te veel
 ("nog 14 robots" in wave 1 van 13). `spawnRobot` werkt de HUD bij vóórdat
 de spawnlus `teSpawnen` verlaagde; nu eerst aftellen, dan spawnen.

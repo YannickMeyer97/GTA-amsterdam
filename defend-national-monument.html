@@ -3909,13 +3909,14 @@ function toonWaveBanner(tekst, tip = '') {
 // verschijnt. Vanaf wave 6 blijft het gewoon "Wave X" — de speler kent de
 // types dan al, en de mix/aantallen lopen daarna verder op via
 // kiesRobotTypeVoorWave() en de bestaande waveDoel/maxActieveRobots-formules.
+// Ticket D53: afgeleid uit ROBOT_TYPE_VANAF, zodat de aankondiging nooit
+// meer achterloopt op wanneer een type echt komt.
+const ROBOT_TYPE_MEERVOUD = { sprinter: 'Sprinters', tank: 'Tanks', bomber: 'Bommenwerpers', shieldbot: 'Shield Bots' };
 function waveBannerTekst(nummer) {
   const thema = themaVoorWave(nummer);
   if (thema) return `Wave ${nummer}: ${thema.naam}!`;
-  if (nummer === 2) return `Wave 2: Sprinters gesignaleerd!`;
-  if (nummer === 3) return `Wave 3: Tanks gesignaleerd!`;
-  if (nummer === 4) return `Wave 4: Bommenwerpers gesignaleerd!`;
-  if (nummer === 5) return `Wave 5: Shield Bots gesignaleerd!`;
+  const nieuw = Object.keys(ROBOT_TYPE_MEERVOUD).filter(t => ROBOT_TYPE_VANAF[t] === nummer).map(t => ROBOT_TYPE_MEERVOUD[t]);
+  if (nieuw.length) return `Wave ${nummer}: ${nieuw.join(' en ')} gesignaleerd!`;
   return `Wave ${nummer}`;
 }
 
