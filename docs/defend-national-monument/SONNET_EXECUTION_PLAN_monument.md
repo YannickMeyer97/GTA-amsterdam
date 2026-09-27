@@ -813,6 +813,13 @@ inhoudelijke kern van de verbouwing.*
 - **Acceptatie:** `test-dnm-koeling.mjs`: prijsformule, effect per niveau, en
   dat het aantal schoten tot oververhitting meetbaar stijgt.
 
+> **Uitgevoerd na M3 (D17–D19).** De eigenaar koos voor uitvoeren. Gekozen
+> is de mildere variant: 4 warmte per schot in plaats van 9, omdat tijdens
+> een salvo niet wordt afgekoeld (de vertraging is langer dan de tijd
+> tussen twee schoten) en 9 dus neerkwam op 12 schoten. De rest zoals
+> beschreven; de koeling staat bij de commandopost (D35 verving de
+> Bijenkorf-winkel). Zie de ROADMAP.
+
 ---
 
 # FASE 5 — Het monument wordt een personage

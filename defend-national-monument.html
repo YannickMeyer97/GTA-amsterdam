@@ -242,6 +242,21 @@
   }
 
   /* --- Richtkruis in het midden van het scherm --- */
+  /* Ticket D18: warmtemeter vlak onder het richtkruis, waar je ogen al zijn. */
+  #warmteUI {
+    position: fixed; top: calc(50% + 22px); left: 50%; transform: translateX(-50%);
+    width: 70px; height: 6px; border-radius: 3px; background: rgba(0,0,0,0.35);
+    pointer-events: none; z-index: 5; overflow: visible;
+  }
+  #warmteVul { height: 100%; width: 0%; border-radius: 3px; background: #7fd4ff; }
+  #warmteTekst {
+    position: absolute; top: 9px; left: 50%; transform: translateX(-50%);
+    font-size: 13px; font-weight: 900; letter-spacing: 1px; color: #ff5a3c;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.8); white-space: nowrap; display: none;
+  }
+  #warmteUI.oververhit #warmteVul { background: #ff3b1a; animation: warmteKnipper 0.25s steps(2) infinite; }
+  #warmteUI.oververhit #warmteTekst { display: block; }
+  @keyframes warmteKnipper { 50% { opacity: 0.35; } }
   #richtkruis {
     position: fixed;
     top: 50%;
@@ -416,6 +431,7 @@
 <div id="interactiePrompt"></div>
 <div id="kerkklokBanner">🔔 KERKKLOK BOOST: robots sneller, 2x geld</div>
 <div id="richtkruis" style="display:none"></div>
+<div id="warmteUI" style="display:none"><div id="warmteVul"></div><div id="warmteTekst">OVERVERHIT</div></div>
 <div id="popups"></div>
 <div id="hulpUI" style="display:none">WASD lopen &nbsp;·&nbsp; muis kijken &nbsp;·&nbsp; klik schieten &nbsp;·&nbsp; T actie &nbsp;·&nbsp; G volgende wave &nbsp;·&nbsp; Esc pauze</div>
 <div id="minimapUI" style="display:none"><canvas id="minimapCanvas" width="140" height="140"></canvas></div>
@@ -3539,6 +3555,7 @@ document.addEventListener('pointerlockchange', () => {
   // hoort hier het eindscherm te staan, niet het pauzescherm.
   startscherm.style.display = actief || spel.gameOver ? 'none' : 'flex';
   richtkruis.style.display = actief ? 'block' : 'none';
+  warmteUI.style.display = actief ? 'block' : 'none';   // Ticket D18
   hulpUI.style.display = actief ? 'block' : 'none';
   minimapUI.style.display = actief ? 'block' : 'none';
   if (actief) {
@@ -3764,6 +3781,7 @@ function nieuweRunStats() {
     speelduur: 0,       // seconden actief gespeeld; pauze telt niet mee
     torensGebouwd: 0,   // Ticket D11
     torenKills: 0,      // Ticket D11: deel van de kills hierboven dat door een toren kwam
+    oververhit: 0,      // Ticket D17: hoe vaak het wapen oververhit raakte
   };
 }
 const runStats = nieuweRunStats();
@@ -3771,7 +3789,8 @@ const runStats = nieuweRunStats();
 const upgrades = {
   vuurtempo: 0,
   pickup: 0,
-  snelheid: 0
+  snelheid: 0,
+  koeling: 0,   // Ticket D19
 };
 
 const scoreUI = document.getElementById('scoreUI');
@@ -4009,8 +4028,10 @@ function updateWaveSysteem(dt) {
     }
   }
   while (spel.teSpawnen > 0 && robots.length < spel.maxActieveRobots) {
-    spawnRobotVanafPoort(robotTypeVoorLopendeWave());
+    // Eerst aftellen, dan spawnen: spawnRobot werkt de HUD bij, en anders
+    // telt "nog N robots" de nieuwe robot dubbel (zag je als 14 in wave 1).
     spel.teSpawnen--;
+    spawnRobotVanafPoort(robotTypeVoorLopendeWave());
   }
   if (spel.teSpawnen <= 0 && robots.length === 0) {
     spel.tussenWaveTimer += dt;
@@ -4406,7 +4427,7 @@ function toonEindscherm(recordUitslag = null) {
 }
 
 function upgradeKosten(type) {
-  const basis = { vuurtempo: 100, pickup: 150, snelheid: 200 }[type];
+  const basis = { vuurtempo: 100, pickup: 150, snelheid: 200, koeling: 125 }[type];
   return basis + upgrades[type] * basis;
 }
 
@@ -4626,6 +4647,7 @@ const COMMANDOPOST_UPGRADES = [
   ['vuurtempo', 'Vuurtempo, sneller schieten'],
   ['pickup', 'Pickup radius, munten sneller oprapen'],
   ['snelheid', 'Loopsnelheid, sneller lopen'],
+  ['koeling', 'Koeling, later oververhit'],   // Ticket D19
 ];
 const COMMANDOPOST_MENU = {
   bron: 'commandopost',
@@ -4677,7 +4699,7 @@ const interactiePunten = [
     type: 'commandopost',
     positie: new THREE.Vector3(DAM_LAYOUT.commandopost.spelerPlek[0], 0, DAM_LAYOUT.commandopost.spelerPlek[1]),
     radius: 2.5,
-    prompt: () => menu === COMMANDOPOST_MENU ? 'Kies 1–4, T om te sluiten' : 'Druk T voor de commandopost: upgrades en monument repareren',
+    prompt: () => menu === COMMANDOPOST_MENU ? `Kies 1–${COMMANDOPOST_MENU.opties().length}, T om te sluiten` : 'Druk T voor de commandopost: upgrades en monument repareren',
     actie: activeerCommandopost,
     menu: () => COMMANDOPOST_MENU,   // Ticket D45: opent vanzelf
   },
@@ -6105,9 +6127,11 @@ function updateRobots(dt) {
 // --- Het wapenmodel, vastgemaakt aan de camera -------------------
 
 const wapen = new THREE.Group();
+// Ticket D18: één eigen materiaal voor de loop, zodat hij mee kan gloeien
+// met de warmte (zie updateWarmte).
+const wapenLoopMateriaal = new THREE.MeshStandardMaterial({ color: 0x3a4148, roughness: 0.4, metalness: 0.7, emissive: 0xff3b1a, emissiveIntensity: 0 });
 {
-  const loop = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.055, 0.42),
-    new THREE.MeshStandardMaterial({ color: 0x3a4148, roughness: 0.4, metalness: 0.7 }));
+  const loop = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.055, 0.42), wapenLoopMateriaal);
   loop.position.set(0, 0.03, -0.3);
   wapen.add(loop);
   const kast = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.24),
@@ -6174,7 +6198,7 @@ function updateBrokstukken(dt) {
   for (let i = brokstukken.length - 1; i >= 0; i--) {
     const b = brokstukken[i];
     b.leeftijd += dt;
-    b.snelheid.y -= 14 * dt;                       // zwaartekracht
+    if (!b.zwevend) b.snelheid.y -= 14 * dt;      // zwaartekracht (stoom, D18, stijgt op)
     b.mesh.position.addScaledVector(b.snelheid, dt);
     b.mesh.rotation.x += b.draai.x * dt;
     b.mesh.rotation.y += b.draai.y * dt;
@@ -6245,11 +6269,94 @@ let laatsteSchotTijd = -999;
 function huidigeSchotCooldown() {
   return Math.max(0.07, (0.26 - upgrades.vuurtempo * 0.035) * getComboVuurtempoMultiplier());
 }
+
+// --- Tickets D17–D19: oververhitting ----------------------------------
+//
+// Blijven vuren wordt zelfbeperkend. Elk schot voegt warmte toe; wie even
+// stopt, koelt af (na een korte vertraging, anders koelt het wapen tussen
+// twee schoten al af en voelt de meter nergens naar). Bij 100 is het wapen
+// oververhit en vuurt het niet tot de warmte onder WARMTE_HERVAT_DREMPEL
+// zakt: een echte onderbreking van ~2,6 s, geen gestotter rond 99.
+// De afkoelvertraging (0,35 s) is langer dan de tijd tussen twee schoten
+// (0,26 s, of korter met upgrades): tijdens een salvo koelt het wapen dus
+// niet af, en bepaalt WARMTE_PER_SCHOT hoeveel schoten een salvo telt.
+// Het plan noemde 9 (≈11 schoten, 3 s vuren); gemeten voelt dat als straf.
+// Daarom de mildere variant uit het plan: 4, ≈25 schoten, 6,5 s zonder
+// upgrades en ~2 s met vuurtempo 5. Koeling (D19) is het tegenwicht.
+const WARMTE_PER_SCHOT = 4;
+const WARMTE_AFKOELING = 28;           // per seconde
+const WARMTE_AFKOEL_VERTRAGING = 0.35; // s na het laatste schot
+const WARMTE_HERVAT_DREMPEL = 35;
+// Ticket D19: per niveau koeling 12% minder warmte per schot (niveau 5: 40%
+// minder, ≈63 schoten per salvo) en 8/s meer afkoeling (sneller weer
+// schietklaar na een salvo of een oververhitting).
+const KOELING_WARMTE_FACTOR = 0.12;
+const KOELING_AFKOELING_PER_NIVEAU = 8;
+const wapenWarmte = { warmte: 0, oververhit: false, sindsSchot: 99, stoomTimer: 0 };
+function warmtePerSchot() { return WARMTE_PER_SCHOT * (1 - KOELING_WARMTE_FACTOR * upgrades.koeling); }
+function warmteAfkoeling() { return WARMTE_AFKOELING + KOELING_AFKOELING_PER_NIVEAU * upgrades.koeling; }
+
 function probeerTeSchieten() {
   if (spel.gameOver) return;   // Ticket D7: na game over doet een schot niets
+  if (wapenWarmte.oververhit) return;   // Ticket D17
   if (klok - laatsteSchotTijd < huidigeSchotCooldown()) return;
   laatsteSchotTijd = klok;
   schiet();
+  wapenWarmte.sindsSchot = 0;
+  wapenWarmte.warmte = Math.min(100, wapenWarmte.warmte + warmtePerSchot());
+  if (wapenWarmte.warmte >= 100) {
+    wapenWarmte.oververhit = true;
+    runStats.oververhit += 1;
+    speelOververhit();
+    blaasStoom(6);
+  }
+}
+
+function updateWarmte(dt) {
+  const w = wapenWarmte;
+  w.sindsSchot += dt;
+  if (w.sindsSchot >= WARMTE_AFKOEL_VERTRAGING) w.warmte = Math.max(0, w.warmte - warmteAfkoeling() * dt);
+  if (w.oververhit && w.warmte <= WARMTE_HERVAT_DREMPEL) {
+    w.oververhit = false;
+    speelAfgekoeld();
+  }
+  if (w.oververhit) {
+    w.stoomTimer -= dt;
+    if (w.stoomTimer <= 0) { blaasStoom(1); w.stoomTimer = 0.18; }
+  }
+  toonWarmte();
+}
+
+// Ticket D18: meter onder het richtkruis, loop die gloeit, stoom.
+const warmteUI = document.getElementById('warmteUI');
+const warmteVul = document.getElementById('warmteVul');
+function toonWarmte() {
+  const w = wapenWarmte, f = w.warmte / 100;
+  warmteVul.style.width = `${(f * 100).toFixed(1)}%`;
+  // Van koel blauw via geel naar rood.
+  warmteVul.style.background = w.oververhit ? '' : `hsl(${Math.round(200 - 200 * f)}, 90%, ${Math.round(70 - 15 * f)}%)`;
+  warmteUI.classList.toggle('oververhit', w.oververhit);
+  wapenLoopMateriaal.emissiveIntensity = f * f * 1.6;
+}
+const stoomMateriaal = new THREE.MeshBasicMaterial({ color: 0xe8eef2, transparent: true, opacity: 0.7, depthWrite: false });
+const stoomPositie = new THREE.Vector3();
+function blaasStoom(aantal) {
+  wapen.updateMatrixWorld(true);
+  stoomPositie.set(0, 0.06, -0.45).applyMatrix4(wapen.matrixWorld);
+  for (let i = 0; i < aantal; i++) {
+    const wolk = new THREE.Mesh(EFFECT_GEO.stof, stoomMateriaal);
+    wolk.scale.setScalar(0.25 + Math.random() * 0.2);
+    wolk.position.copy(stoomPositie);
+    wolk.castShadow = false;
+    scene.add(wolk);
+    brokstukken.push({
+      mesh: wolk,
+      snelheid: new THREE.Vector3((Math.random() - 0.5) * 0.5, 0.9 + Math.random() * 0.6, (Math.random() - 0.5) * 0.5),
+      draai: new THREE.Vector3(),
+      leeftijd: kwaliteitPreset().brokstukLeven - 0.1,   // krimpt vrijwel meteen weg
+      zwevend: true,
+    });
+  }
 }
 
 function schiet() {
@@ -6512,6 +6619,9 @@ function speelKerkklok() {
 // Metalig "afgeketst" geluid als een schot een actief Shield Bot-schild
 // raakt: duidelijk anders dan speelSchot()/een normale treffer, zodat de
 // speler meteen hoort dat het schot niets deed.
+// Ticket D18: sissen bij oververhitting, een klikje als hij weer mag.
+function speelOververhit() { piep('sawtooth', 1800, 300, 0.45, 0.07); setTimeout(() => piep('square', 180, 120, 0.12, 0.06), 60); }
+function speelAfgekoeld()  { piep('triangle', 520, 780, 0.08, 0.08); }
 function speelSchildBlok() { piep('triangle', 900, 700, 0.09, 0.14); }
 
 /* ================================================================
@@ -6678,6 +6788,8 @@ function resetRun() {
 
   geld = 0;
   laatsteSchotTijd = -999;
+  Object.assign(wapenWarmte, { warmte: 0, oververhit: false, sindsSchot: 99, stoomTimer: 0 });   // Ticket D17
+  toonWarmte();
   terugslag = 0;
   vlamTimer = 0;
   hitmarkerTimer = 0;
@@ -6744,6 +6856,7 @@ function gameLoop(nu) {
   if (spelActief) {
     runStats.speelduur += dt;
     if (schietKnopIngedrukt) probeerTeSchieten();
+    updateWarmte(dt);   // Ticket D17
     updateWaveSysteem(dt);
     updateRobots(dt);
     updateTorens(dt);   // Ticket D11
@@ -6831,6 +6944,22 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   WAPEN_BEREIK, raycaster,
   // Ticket D10: bouwplekken.
   BOUWPLEKKEN, BOUWPLEK_RADIUS, puntOpRoute, looproute, plekVoor, dichtsteHekLijn, opPlekTegel, slotVan,
+  // Tickets D17–D19: oververhitting.
+  wapenWarmte, updateWarmte, warmtePerSchot, warmteAfkoeling, wapenLoopMateriaal,
+  // Houdt `duur` seconden de vuurknop vast (of los) in stappen van 1/60 s,
+  // met dezelfde volgorde als gameLoop; geeft het aantal schoten terug.
+  simuleerVuren: (duur, vuren = true, stap = 1 / 60) => {
+    let schoten = 0;
+    for (let t = 0; t < duur - 1e-9; t += stap) {
+      klok += stap;
+      const voor = runStats.schoten;
+      if (vuren) probeerTeSchieten();
+      schoten += runStats.schoten - voor;
+      updateWarmte(stap);
+    }
+    return schoten;
+  },
+  WARMTE_PER_SCHOT, WARMTE_AFKOELING, WARMTE_AFKOEL_VERTRAGING, WARMTE_HERVAT_DREMPEL, KOELING_WARMTE_FACTOR, KOELING_AFKOELING_PER_NIVEAU,
   BOVENLEIDING_NIVEAUS, BOVENLEIDING_SPRONG_FACTOR, BOVENLEIDING_TANK_FACTOR, kiesKetting, vuurBovenleiding, updateBovenleiding,
   DRUKPERSPLEKKEN, DRUKPERS_NIVEAUS, DRUKPERS_INTERVAL, DRUKPERS_TERUGVERDIEN_S, updateDrukpersen, drukpersTimerStand: () => drukpersTimer,
   runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, bijenkorfShopOpen: menu === COMMANDOPOST_MENU, bouwMenuPlek: menu && menu !== COMMANDOPOST_MENU ? menu.bron : null, aantalTorens: torens.length, aantalObstakels: obstakels.length }),

@@ -1092,13 +1092,53 @@ waarom de game basic voelt en je nergens naartoe werkt.
   schoten), `test-dnm-bovenleiding` (volle schade per sprong, tanks de
   helft) en `test-dnm-themagolven` (de tips).
 
-### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
+### Fase 4 — Oververhitting *(besloten na M3: uitvoeren)*
 
 | | Ticket | Kern |
 | --- | --- | --- |
-| ☐ | **D17** | De warmtemechaniek |
-| ☐ | **D18** | Warmte zichtbaar en hoorbaar maken |
-| ☐ | **D19** | Koeling als vierde upgrade |
+| ☑ | **D17** | De warmtemechaniek *(mildere variant)* |
+| ☑ | **D18** | Warmte zichtbaar en hoorbaar maken |
+| ☑ | **D19** | Koeling als vierde upgrade |
+
+**D17 — de warmtemechaniek, verslag.**
+- Elk schot geeft warmte; na 0,35 s zonder schieten koelt het wapen af met
+  28 per seconde. Bij 100 is het oververhit en vuurt het niet, tot de
+  warmte onder 35 zakt: een onderbreking van ~2,6 s (hysterese, geen
+  gestotter rond 99).
+- **Mildere variant.** Het plan noemde 9 warmte per schot. De test liet
+  zien wat dat betekent: omdat de afkoelvertraging (0,35 s) langer is dan
+  de tijd tussen twee schoten (0,26 s), koelt het wapen tijdens een salvo
+  nooit af. Met 9 was je na 12 schoten (3 s) oververhit, ook zonder
+  upgrades. Dat voelt als straf, precies het risico dat het plan noemde.
+  Nu 4 per schot: een salvo van ~25 schoten, 6,5 s zonder upgrades en
+  ~1,1 s met vuurtempo 5. De vuurtempo-upgrade krijgt zo een keerzijde.
+- Een oververhitting telt mee in `runStats.oververhit`; een reset wist de
+  warmte.
+- **Test:** `test-dnm-warmte` (15 checks, samen met D18). De tijd loopt via
+  `DamChaosDebug.simuleerVuren(duur, vuren)`, niet via echte frames.
+
+**D18 — warmte zichtbaar en hoorbaar, verslag.**
+- Een smalle meter vlak onder het richtkruis, van koel blauw via geel naar
+  rood. Oververhit: de meter knippert rood en eronder staat OVERVERHIT.
+  Bijna vol (99) heeft die tekst niet.
+- De loop van het wapen gloeit mee (emissive, kwadratisch oplopend).
+- Stoom uit de loop bij oververhitting, en zolang hij oververhit blijft;
+  de wolkjes stijgen op in plaats van te vallen.
+- Een sissend geluid bij oververhitting en een klikje als hij weer mag,
+  met de bestaande `piep()`.
+
+**D19 — koeling, verslag.**
+- Vierde upgrade bij de commandopost (toets 4; reparatie is nu 5):
+  €125 × (niveau + 1), tot niveau 5.
+- Per niveau 12% minder warmte per schot en 8/s snellere afkoeling. Op
+  niveau 5 is een salvo ~63 schoten, en ben je sneller weer schietklaar.
+- De prompt bij de commandopost telt de opties nu zelf ("Kies 1–5").
+- **Test:** `test-dnm-koeling` (8 checks); `test-dnm-commandopost` volgt
+  de vijf opties.
+
+**Terloops gevonden:** de HUD telde tijdens een wave één robot te veel
+("nog 14 robots" in wave 1 van 13). `spawnRobot` werkt de HUD bij vóórdat
+de spawnlus `teSpawnen` verlaagde; nu eerst aftellen, dan spawnen.
 
 ### Fase 5 — Het monument wordt een personage
 

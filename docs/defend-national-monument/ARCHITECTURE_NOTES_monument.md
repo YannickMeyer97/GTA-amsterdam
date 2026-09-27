@@ -1582,3 +1582,25 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
 - **Afgeleide waarden:** het drukpersinkomen wordt berekend uit
   `DRUKPERS_TERUGVERDIEN_S` (nu 200 s). Verander die ene constante, niet
   de inkomens zelf; `test-dnm-drukpers` toetst het resultaat.
+
+### 15.15 Oververhitting (D17–D19)
+
+- **Staat:** `wapenWarmte` = `{ warmte, oververhit, sindsSchot, stoomTimer }`.
+  `probeerTeSchieten` weigert zolang `oververhit`, en telt na elk schot
+  `warmtePerSchot()` op. `updateWarmte(dt)` koelt af na
+  `WARMTE_AFKOEL_VERTRAGING` en heft de blokkade op onder
+  `WARMTE_HERVAT_DREMPEL`. Het draait alleen in het actieve spel.
+- **Valkuil:** zolang de tijd tussen twee schoten korter is dan de
+  afkoelvertraging (altijd, ook zonder upgrades), koelt het wapen tijdens
+  een salvo niet af. `WARMTE_PER_SCHOT` bepaalt dus direct hoeveel schoten
+  een salvo telt (100 / 4 = 25). Wie de vertraging of het basistempo
+  verandert, verandert dat gevoel.
+- **Koeling** werkt via `warmtePerSchot()` en `warmteAfkoeling()`; lees de
+  constanten nooit direct.
+- **Weergave:** `toonWarmte()` zet de meter (`#warmteUI`, zichtbaar met het
+  richtkruis), de klasse `oververhit` en de gloed van
+  `wapenLoopMateriaal`. Stoom gaat via de brokstukken met `zwevend: true`
+  (geen zwaartekracht) en de gedeelde `EFFECT_GEO.stof`.
+- **Tests:** `DamChaosDebug.simuleerVuren(duur, vuren = true)` houdt de
+  vuurknop vast of los in stappen van 1/60 s, in dezelfde volgorde als
+  `gameLoop`, en telt de schoten.

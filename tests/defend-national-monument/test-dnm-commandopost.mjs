@@ -53,15 +53,15 @@ const menu = await page.evaluate(() => {
   uit.snelheidErbij = +(d.speler.snelheid - snelheidVoor).toFixed(2);
   uit.naKoop = menuUI.textContent;
 
-  // 4: monument repareren (eerst schade).
+  // 5: monument repareren (eerst schade). Sinds D19 is 4 de koeling.
   d.spel.monumentHP = 60;
   d.renderMenu();
   const geld = d.geldStand();
-  toets('Digit4');
+  toets('Digit5');
   uit.reparatie = { hp: d.spel.monumentHP, betaald: geld - d.geldStand(), menuOpen: d.menuStand() === d.COMMANDOPOST_MENU };
   d.spel.monumentHP = d.MONUMENT_MAX_HP;
   const geldVoorHeel = d.geldStand();
-  toets('Digit4');
+  toets('Digit5');
   uit.alHeel = { hp: d.spel.monumentHP, betaald: geldVoorHeel - d.geldStand() };
 
   // Te weinig geld (en een beschadigd monument): alle vier gemarkeerd.
@@ -86,16 +86,16 @@ const menu = await page.evaluate(() => {
   uit.kerkklok = { boost: d.kerkklokBoost.active, menu: d.menuStand(), punt: d.huidigeInteractieStand()?.type };
   return uit;
 });
-check('Bij de commandopost staat het menu meteen open en vraagt de prompt om een keuze', menu.prompt.includes('Kies 1–4'), menu.prompt);
-check('Aankomen opent het menupaneel vanzelf, met titel Commandopost en vier opties',
-  menu.open.stand && menu.open.zichtbaar && menu.open.tekst.includes('Commandopost') && ['1, Vuurtempo', '2, Pickup', '3, Loopsnelheid', '4, Monument repareren'].every(t => menu.open.tekst.includes(t)), menu.open);
+check('Bij de commandopost staat het menu meteen open en vraagt de prompt om een keuze', menu.prompt.includes('Kies 1–5'), menu.prompt);
+check('Aankomen opent het menupaneel vanzelf, met titel Commandopost en vijf opties (D19: Koeling)',
+  menu.open.stand && menu.open.zichtbaar && menu.open.tekst.includes('Commandopost') && ['1, Vuurtempo', '2, Pickup', '3, Loopsnelheid', '4, Koeling', '5, Monument repareren'].every(t => menu.open.tekst.includes(t)), menu.open);
 check('1–3 kopen de upgrades voor de prijs van nu en het menu blijft open',
   menu.stappen.every(s => s.betaald === menu.prijzen[s.type] && s.niveauErbij === 1 && s.menuOpen), menu.stappen);
 check('Loopsnelheid werkt echt (+0,65 m/s)', menu.snelheidErbij === 0.65, menu);
 check('Het menu toont na een aankoop het nieuwe niveau', menu.naKoop.includes('(niv. 1)'), menu.naKoop);
-check('4 repareert het monument: +25 HP voor €100, menu blijft open', menu.reparatie.hp === 85 && menu.reparatie.betaald === 100 && menu.reparatie.menuOpen, menu.reparatie);
+check('5 repareert het monument: +25 HP voor €100, menu blijft open', menu.reparatie.hp === 85 && menu.reparatie.betaald === 100 && menu.reparatie.menuOpen, menu.reparatie);
 check('Een heel monument repareren kost niets', menu.alHeel.hp === 100 && menu.alHeel.betaald === 0, menu.alHeel);
-check('Te weinig geld: de opties zijn als "te duur" gemarkeerd', menu.teDuur === 4, menu);
+check('Te weinig geld: de opties zijn als "te duur" gemarkeerd', menu.teDuur === 5, menu);
 check('T sluit het menu', menu.naT.stand === null && menu.naT.zichtbaar === 'none', menu.naT);
 check('Na T blijft het menu dicht zolang je blijft staan', menu.blijftDicht, menu);
 check('Weglopen en terugkomen opent het menu weer vanzelf', menu.weerOpen, menu);
