@@ -390,7 +390,12 @@
   #eindscherm .record { font-size: 18px; color: #cfe8ff; margin: -16px 0 18px 0; min-height: 1.2em; }
   #eindscherm .record.nieuw { font-size: 28px; font-weight: 800; color: #ffd75e; letter-spacing: 2px; }
   /* Ticket D21: kwaliteitskeuze onder de startknop. */
-  #kwaliteitKeuze { margin-top: 22px; font-size: 14px; color: #cfe8ff; display: flex; gap: 8px; align-items: center; }
+  /* Ticket D22: instellingen in een klein raster: label links, keuze rechts. */
+  #instellingen { margin-top: 20px; display: grid; grid-template-columns: auto auto; gap: 8px 14px; align-items: center; font-size: 14px; color: #cfe8ff; cursor: default; }
+  #instellingen > span { text-align: right; }
+  #kwaliteitKeuze, #geluidKeuze, .instelRij { display: flex; gap: 8px; align-items: center; }
+  #gevoeligheid { width: 150px; accent-color: #ffd75e; cursor: pointer; }
+  #gevoeligheidWaarde { min-width: 3.2em; text-align: left; }
   .kwaliteitKnop { cursor: pointer; padding: 4px 12px; border-radius: 999px; background: rgba(255,255,255,0.12); color: #fff; }
   .kwaliteitKnop.actief { background: #ffd75e; color: #24303f; font-weight: 700; }
   /* Lage schermen (telefoon liggend): alles compacter, zodat de
@@ -400,7 +405,7 @@
     #startscherm h2 { font-size: 16px; margin-bottom: 12px; }
     #startscherm .uitleg { font-size: 13px; line-height: 1.5; padding: 8px 18px; margin-bottom: 14px; }
     #startscherm .knop { font-size: 17px; padding: 8px 26px; }
-    #kwaliteitKeuze { margin-top: 12px; }
+    #instellingen { margin-top: 10px; gap: 4px 12px; font-size: 13px; }
   }
   #startscherm .knop, #eindscherm .knop {
     font-size: 22px;
@@ -447,10 +452,20 @@
     ⏸️ <b>Esc</b> om te pauzeren
   </div>
   <div class="knop">Klik om te spelen</div>
-  <div id="kwaliteitKeuze">Beeldkwaliteit
-    <span class="kwaliteitKnop" data-kwaliteit="laag">Laag</span>
-    <span class="kwaliteitKnop" data-kwaliteit="normaal">Normaal</span>
-    <span class="kwaliteitKnop" data-kwaliteit="hoog">Hoog</span>
+  <div id="instellingen">
+    <span>Beeldkwaliteit</span>
+    <div id="kwaliteitKeuze">
+      <span class="kwaliteitKnop" data-kwaliteit="laag">Laag</span>
+      <span class="kwaliteitKnop" data-kwaliteit="normaal">Normaal</span>
+      <span class="kwaliteitKnop" data-kwaliteit="hoog">Hoog</span>
+    </div>
+    <span>Muisgevoeligheid</span>
+    <div class="instelRij"><input type="range" id="gevoeligheid" min="0.3" max="2" step="0.1" value="1"><span id="gevoeligheidWaarde">1,0×</span></div>
+    <span>Geluid</span>
+    <div id="geluidKeuze">
+      <span class="kwaliteitKnop" data-geluid="aan">Aan</span>
+      <span class="kwaliteitKnop" data-geluid="uit">Uit</span>
+    </div>
   </div>
 </div>
 
@@ -520,6 +535,28 @@ function schrijfKwaliteit(naam) {
 let kwaliteitNu = leesKwaliteit();
 function kwaliteitPreset() { return KWALITEIT_PRESETS[kwaliteitNu]; }
 function kwaliteitPixelRatio() { return Math.min(devicePixelRatio, kwaliteitPreset().pixelRatioMax); }
+
+// Ticket D22: de overige instellingen (muisgevoeligheid, geluid), samen
+// onder één sleutel. De kwaliteit houdt zijn eigen sleutel uit D21. Een
+// ontbrekende, corrupte of onzinnige waarde valt stil terug op de standaard.
+const INSTELLINGEN_KEY = 'defendNationalMonumentInstellingen';
+const INSTELLINGEN_STANDAARD = { gevoeligheid: 1, geluid: true };
+const GEVOELIGHEID_MIN = 0.3, GEVOELIGHEID_MAX = 2;
+function leesInstellingen() {
+  const uit = { ...INSTELLINGEN_STANDAARD };
+  let bewaard = null;
+  try { bewaard = JSON.parse(localStorage.getItem(INSTELLINGEN_KEY)); } catch { /* corrupt of geweigerd */ }
+  if (bewaard && typeof bewaard === 'object') {
+    const g = bewaard.gevoeligheid;
+    if (typeof g === 'number' && g >= GEVOELIGHEID_MIN && g <= GEVOELIGHEID_MAX) uit.gevoeligheid = g;
+    if (typeof bewaard.geluid === 'boolean') uit.geluid = bewaard.geluid;
+  }
+  return uit;
+}
+function schrijfInstellingen() {
+  try { localStorage.setItem(INSTELLINGEN_KEY, JSON.stringify(instellingen)); } catch { /* niet bewaren, geen crash */ }
+}
+const instellingen = leesInstellingen();
 
 // Anti-aliasing kan alleen bij het aanmaken van de renderer: een andere
 // keuze geldt voor die ene instelling pas na herladen.
@@ -3538,6 +3575,35 @@ for (const k of kwaliteitKnoppen) {
   k.addEventListener('click', e => { e.stopPropagation(); kiesKwaliteit(k.dataset.kwaliteit); });
 }
 werkKwaliteitKnoppenBij();
+
+// Ticket D22: muisgevoeligheid en geluid. Klikken en slepen in het
+// instellingenblok start het spel niet.
+const instellingenUI = document.getElementById('instellingen');
+for (const soort of ['click', 'mousedown', 'pointerdown']) instellingenUI.addEventListener(soort, e => e.stopPropagation());
+const gevoeligheidUI = document.getElementById('gevoeligheid');
+const gevoeligheidWaardeUI = document.getElementById('gevoeligheidWaarde');
+const geluidKnoppen = document.querySelectorAll('#geluidKeuze [data-geluid]');
+function werkInstellingenBij() {
+  gevoeligheidUI.value = String(instellingen.gevoeligheid);
+  gevoeligheidWaardeUI.textContent = `${instellingen.gevoeligheid.toFixed(1).replace('.', ',')}×`;
+  for (const k of geluidKnoppen) k.classList.toggle('actief', (k.dataset.geluid === 'aan') === instellingen.geluid);
+}
+function zetGevoeligheid(waarde) {
+  const g = Math.round(Math.min(GEVOELIGHEID_MAX, Math.max(GEVOELIGHEID_MIN, Number(waarde))) * 10) / 10;
+  if (!Number.isFinite(g)) return false;
+  instellingen.gevoeligheid = g;
+  schrijfInstellingen();
+  werkInstellingenBij();
+  return true;
+}
+function zetGeluid(aan) {
+  instellingen.geluid = !!aan;
+  schrijfInstellingen();
+  werkInstellingenBij();
+}
+gevoeligheidUI.addEventListener('input', () => zetGevoeligheid(gevoeligheidUI.value));
+for (const k of geluidKnoppen) k.addEventListener('click', () => zetGeluid(k.dataset.geluid === 'aan'));
+werkInstellingenBij();
 const richtkruis = document.getElementById('richtkruis');
 const hulpUI = document.getElementById('hulpUI');
 const minimapUI = document.getElementById('minimapUI');
@@ -3579,8 +3645,8 @@ document.addEventListener('pointerlockchange', () => {
 // Rondkijken met de muis (alleen als pointer lock actief is).
 addEventListener('mousemove', e => {
   if (document.pointerLockElement !== renderer.domElement) return;
-  speler.yaw   -= e.movementX * 0.0022;
-  speler.pitch -= e.movementY * 0.0022;
+  speler.yaw   -= e.movementX * 0.0022 * instellingen.gevoeligheid;   // Ticket D22
+  speler.pitch -= e.movementY * 0.0022 * instellingen.gevoeligheid;
   // Niet verder dan recht omhoog/omlaag kunnen kijken.
   speler.pitch = Math.max(-1.45, Math.min(1.45, speler.pitch));
 });
@@ -6578,7 +6644,8 @@ function initGeluid() {
 
 // Hulpje: een simpel toontje dat in volume en toonhoogte wegzakt.
 function piep(type, startHz, eindHz, duur, volume) {
-  if (!audio) return;
+  if (!audio || !instellingen.geluid) return;   // Ticket D22: geluid uit
+  piep.teller = (piep.teller ?? 0) + 1;         // alleen voor tests (piepTeller)
   const osc = audio.createOscillator();
   const gain = audio.createGain();
   osc.type = type;
@@ -6923,7 +6990,8 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   tekenMinimap, naarMinimap, MINIMAP_BEREIK,
   // Ticket D32: het nieuwe fundament (ARENA_SCHAAL bestaat niet meer).
   DAM_LAYOUT, ROUTES, wereld, vloerHoogte, puntOp, projecteerOpRoute, vloerTextuur, TEXTUUR_TEKENAARS, gebouwGroepen, GEVELNAMEN,
-  KWALITEIT_PRESETS, KWALITEIT_KEY, kwaliteitStand: () => kwaliteitNu, kiesKwaliteit, duiven, zon,
+  KWALITEIT_PRESETS, KWALITEIT_KEY, kwaliteitStand: () => kwaliteitNu, kiesKwaliteit,
+  instellingen, INSTELLINGEN_KEY, zetGevoeligheid, zetGeluid, piepTeller: () => piep.teller ?? 0, initGeluid, duiven, zon,
   THREE, PALEIS, PALEIS_GEVELS, paleisSprong, KERK, gevelStelsel, STRAATWANDEN, PAND_TYPES, straatmeubilair, voegGeometrieenSamen, TEXTUUR_TEGEL, TEXTUUR_STEEN, TEXTUUR_PIXELS, steenPixels, tekstZaad, maakZaadRandom, gevelMateriaal, textuurOpWereldschaal,
   // Ticket D34: routes zichtbaar.
   routeSporen, spoorTextuur, straatIngang, straatNaamborden, SPOOR_HELDER, SPOOR_GEDIMD, animeerPoortBakens,

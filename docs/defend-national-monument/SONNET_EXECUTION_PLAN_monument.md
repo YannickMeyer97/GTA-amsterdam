@@ -889,6 +889,9 @@ kan dus veilig als laatste.*
   geluid aan/uit op één plek in het startscherm.
 - **Acceptatie:** `test-dnm-instellingen.mjs`: elke instelling werkt en
   overleeft een herladen.
+- **Uitgevoerd (na M3):** kwaliteit, muisgevoeligheid (0,3–2,0×) en geluid
+  in één blok op het start- en pauzescherm; `test-dnm-instellingen` is
+  groen. Zie de ROADMAP.
 
 ### Ticket D23 — Touch: besturingsgate loskoppelen van Pointer Lock ✗ GESCHRAPT (review na D6)
 

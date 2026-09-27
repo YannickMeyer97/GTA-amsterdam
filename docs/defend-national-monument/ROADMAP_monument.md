@@ -1149,11 +1149,27 @@ D20 is naar fase 2 verhuisd; deze fase is daarmee leeg.
 | | Ticket | Kern |
 | --- | --- | --- |
 | ☑ | **D21** | Kwaliteitsinstellingen *(naar voren: uitgevoerd direct na D42, zie het verslag bij D42 in fase M)* |
-| ☐ | **D22** | Instellingenscherm |
+| ☑ | **D22** | Instellingenscherm |
 | ✗ | **D23** | Touch: besturingsgate loskoppelen van Pointer Lock |
 | ✗ | **D24** | Touch: lopen, kijken, vuren |
 | ✗ | **D25** | Touch: contextknop en bouwen met je duim |
 | ✗ | **D26** | Touch: liggend, schermindeling, veilige zones |
+
+**D22 — instellingenscherm, verslag.**
+- Eén blok onder de startknop, in een klein raster: Beeldkwaliteit (de
+  knoppen uit D21), Muisgevoeligheid (schuif 0,3–2,0×, standaard 1,0×) en
+  Geluid (Aan/Uit). Het startscherm is ook het pauzescherm, dus je kunt
+  alles tijdens een run met Esc aanpassen.
+- Gevoeligheid en geluid staan samen onder
+  `defendNationalMonumentInstellingen`; de kwaliteit houdt zijn eigen
+  sleutel. Een corrupte of onzinnige waarde valt stil terug op de
+  standaard.
+- Geluid uit: `piep()`, waar alle geluiden doorheen gaan, speelt niets.
+- Klikken of slepen in het blok start het spel niet.
+- Past op 1280×720 en op 640×400 (compacte stand onder 560 px hoogte).
+- **Test:** `test-dnm-instellingen` (16 checks): standaard, instellen via
+  knoppen en schuif, overleeft herladen (ook het effect op de camera en
+  het geluid), drie soorten corrupte sleutels, en naast de kwaliteit.
 
 ### Backlog — bewust ná alle bovenstaande tickets
 
