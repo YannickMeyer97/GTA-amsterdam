@@ -28,8 +28,8 @@ const keuze = await page.evaluate(() => {
   }
   return { aantallen, eenZelfde, tweeZelfde, ongeldig, dubbel };
 });
-const verwachtAantal = { 1: 1, 2: 1, 3: 2, 4: 2, 10: 2, 25: 2 };
-check('Wave 1–2: één poort, vanaf wave 3: twee', keuze.aantallen.every(([w, n]) => n === verwachtAantal[w]), keuze.aantallen);
+const verwachtAantal = { 1: 1, 2: 2, 3: 2, 4: 2, 10: 2, 25: 2 };   // D53: twee poorten vanaf wave 2
+check('Wave 1: één poort, vanaf wave 2: twee', keuze.aantallen.every(([w, n]) => n === verwachtAantal[w]), keuze.aantallen);
 check('Eén poort: nooit dezelfde als de vorige wave (300 lotingen)', keuze.eenZelfde === 0, keuze);
 check('Twee poorten: nooit exact dezelfde set als de vorige wave (300 lotingen)', keuze.tweeZelfde === 0, keuze);
 check('Alleen bestaande poortnamen, nooit twee keer dezelfde poort', keuze.ongeldig === 0 && keuze.dubbel === 0, keuze);
@@ -95,8 +95,8 @@ check('Over 8 waves: elke wave start met precies de aangekondigde poorten',
   overgangen.every(r => zelfde(r.gestart, r.aangekondigd) && r.nieuweWave === r.wave + 1), overgangen.map(r => [r.wave, r.aangekondigd, r.gestart]));
 check('Over 8 waves: de aangekondigde set is nooit gelijk aan die van de lopende wave',
   overgangen.every(r => !zelfde(r.aangekondigd, r.actief)), overgangen.map(r => [r.actief, r.aangekondigd]));
-check('Over 8 waves: aantal aangekondigde poorten klopt met de volgende wave (1 voor wave 2, daarna 2, een themagolf mag afwijken)',
-  overgangen.every(r => r.aangekondigd.length === r.verwachtAantal && r.verwachtAantal === (r.themaPoorten ?? (r.wave + 1 <= 2 ? 1 : 2))), overgangen.map(r => [r.wave + 1, r.aangekondigd.length]));
+check('Over 8 waves: aantal aangekondigde poorten klopt met de volgende wave (2 vanaf wave 2 sinds D53, een themagolf mag afwijken)',
+  overgangen.every(r => r.aangekondigd.length === r.verwachtAantal && r.verwachtAantal === (r.themaPoorten ?? (r.wave + 1 <= 1 ? 1 : 2))), overgangen.map(r => [r.wave + 1, r.aangekondigd.length]));
 check('Tijdens een wave branden precies de bakens van de actieve poorten',
   overgangen.every(r => zelfde(r.bakensTijdensWave, r.actief)), overgangen.map(r => [r.actief, r.bakensTijdensWave]));
 check('In de pauze branden precies de bakens van de aangekondigde poorten',

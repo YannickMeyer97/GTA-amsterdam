@@ -3828,12 +3828,12 @@ function waveBannerTekst(nummer) {
 // Simpele gewogen loting: hoe hoger de wave, hoe meer robottypes er
 // "meedoen" en hoe groter hun aandeel wordt. Elk type dat al eerder is
 // aangekondigd (zie waveBannerTekst) blijft daarna gewoon meedoen.
+// Ticket D53 (M3: "de eerste rondes zijn erg makkelijk"): elk type komt
+// een wave eerder. Wave 1 blijft de leerwave met alleen gewone robots.
+const ROBOT_TYPE_VANAF = { normal: 1, sprinter: 2, tank: 2, bomber: 3, shieldbot: 4 };
 function kiesRobotTypeVoorWave(wave) {
-  const gewichten = [['normal', 10]];
-  if (wave >= 2) gewichten.push(['sprinter', 5]);
-  if (wave >= 3) gewichten.push(['tank', 3]);
-  if (wave >= 4) gewichten.push(['bomber', 3]);
-  if (wave >= 5) gewichten.push(['shieldbot', 3]);
+  const gewichten = [['normal', 10], ['sprinter', 5], ['tank', 3], ['bomber', 3], ['shieldbot', 3]]
+    .filter(([type]) => wave >= ROBOT_TYPE_VANAF[type]);
   const totaal = gewichten.reduce((som, [, gewicht]) => som + gewicht, 0);
   let r = Math.random() * totaal;
   for (const [type, gewicht] of gewichten) {
@@ -3849,7 +3849,10 @@ function kiesRobotTypeVoorWave(wave) {
 // kiezen. Wie niet wil wachten, start de wave vroeg met G en krijgt per
 // overgeslagen seconde een kleine bonus — dat houdt het tempo hoog voor wie
 // snel wil, zonder dat wachten verplicht voelt.
-const BOUWFASE_DUUR = 20;
+// Ticket D52 (M3): 20 → 10 s, de eigenaar vond de pauze te lang. Op de
+// nieuwe kaart ligt de verste gewone bouwplek 23 m van de monumentrand
+// (6,6 s heen en terug); bouwen kan ook tijdens een wave.
+const BOUWFASE_DUUR = 10;
 // Ticket D16: wave-bonus was 40 + 15·wave. Vroeg in de run was dat bijna
 // 40 % van alle inkomsten (€425 van €1.123 na wave 5), en daarmee kon je
 // torens kopen vóór je er één robot voor had hoeven raken. De perfect-bonus
@@ -3930,8 +3933,9 @@ function pasMistToe(thema) {
 // kiezen waar je staat (en vanaf fase 3 wat je bouwt), niet zoveel dat je
 // weer overal tegelijk moet zijn. Nooit exact dezelfde set als de vorige
 // wave, anders voelt een nieuwe wave niet als nieuw.
+// Ticket D53: twee poorten vanaf wave 2 (was 3).
 function aantalActievePoorten(wave) {
-  return wave <= 2 ? 1 : 2;
+  return wave <= 1 ? 1 : 2;
 }
 function kiesActievePoorten(aantal, vorige = []) {
   const namen = SPAWN_POORTEN.map(p => p.naam);
@@ -3951,6 +3955,14 @@ function poortenTekst(namen) {
   return namen.length === 2 ? `${namen[0]} en ${namen[1]}` : namen.join(', ');
 }
 
+// Ticket D53: drie robots meer per wave (was 7 + 3·wave). Vroeg merk je
+// dat (wave 1: 13 in plaats van 10), later nauwelijks (wave 10: 40 in
+// plaats van 37).
+const WAVE_AANTAL_BASIS = 10;
+const WAVE_AANTAL_PER_WAVE = 3;
+function waveBasisAantal(wave) {
+  return WAVE_AANTAL_BASIS + wave * WAVE_AANTAL_PER_WAVE;
+}
 function startWave(nummer) {
   // Ticket D28: de poorten voor deze wave zijn normaal al aangekondigd
   // (volgendePoorten); alleen bij wave 1 of na een reset wordt hier gekozen.
@@ -3965,7 +3977,7 @@ function startWave(nummer) {
   const thema = themaVoorWave(nummer);
   spel.thema = themaSleutelVoorWave(nummer);
   pasMistToe(thema);
-  spel.waveDoel = Math.round((7 + nummer * 3) * (thema?.aantalFactor ?? 1));
+  spel.waveDoel = Math.round(waveBasisAantal(nummer) * (thema?.aantalFactor ?? 1));
   spel.teSpawnen = spel.waveDoel;
   spel.maxActieveRobots = Math.min(5 + Math.floor(nummer * 0.65), 13);
   spel.tussenWaveTimer = 0;
@@ -4793,8 +4805,12 @@ function animeerBouwplekken() {
 // de speler deed er dan niet meer toe. Daarom kleiner bereik en trager
 // vuren, zodat een toren de speler helpt in plaats van vervangt, en duurder,
 // zodat torens met de wapen-upgrades concurreren om hetzelfde geld.
+// Ticket D53 (M3: "de eerste rondes zijn erg makkelijk"): niveau 1 vuurt
+// elke 1,6 s (was 1,2). Gemeten: met 1,2 s hield één toren per poort
+// waves 1–5 alleen, zonder speler. Met 1,6 s houdt hij waves 1–2 alleen;
+// vanaf wave 3 moet de speler meeschieten of een tweede toren zetten.
 const GESCHUT_NIVEAUS = [
-  { prijs: 150, bereik: 10, schadePerSchot: 1, schotInterval: 1.2, hp: 60 },
+  { prijs: 150, bereik: 10, schadePerSchot: 1, schotInterval: 1.6, hp: 60 },
   { prijs: 200, bereik: 12, schadePerSchot: 1, schotInterval: 1.0, hp: 90 },
   { prijs: 300, bereik: 14, schadePerSchot: 2, schotInterval: 1.0, hp: 130 },
 ];
@@ -4827,10 +4843,12 @@ const BOVENLEIDING_SPRONG_FACTOR = 0.75;
 // nieuwe kaart (meet-dnm-economie, deel C) duurt een ronde met een
 // verdediging die de wave houdt gemiddeld 65 s inclusief de bouwfase
 // (waves 1–12); zonder verdediging 98 s. Wie verdedigt, speelt de korte
-// ronde: 200 s is daar 3,1 rondes. Door het afronden van het inkomen is
-// niveau 1 in 188 s terugverdiend, niveau 2 en 3 in 200 s.
+// ronde: 200 s is daar 3,1 rondes.
+// Ticket D52: met de bouwfase van 10 s (was 20) en de zwaardere vroege
+// waves (D53) duurt zo'n ronde gemiddeld 55 s (waves 1–12), dus 165 s.
+// Het inkomen wordt €9 / €18 / €30 per 10 s: alle drie in 167 s terug.
 const DRUKPERS_INTERVAL = 10;
-const DRUKPERS_TERUGVERDIEN_S = 200;
+const DRUKPERS_TERUGVERDIEN_S = 165;
 const DRUKPERS_NIVEAUS = [
   { prijs: 150, hp: 60 },
   { prijs: 150, hp: 90 },
@@ -6332,8 +6350,10 @@ const popups = document.getElementById('popups');
 // volledig uitgeruste poorten, terwijl het ontwerpdoel er één is — de
 // schaarste ís de keuze tussen torens en wapen-upgrades. Samen met de
 // lagere wave-bonus (WAVE_BONUS_*) gemeten met meet-dnm-economie.mjs.
+// Ticket D53: €2–8 (was €2–10). Drie robots meer per wave gaf anders na
+// wave 5 geld voor 2,1 poorten bij goed spel; het doel is ~1–2.
 const MUNT_BASIS_MIN = 2;
-const MUNT_BASIS_MAX = 10;
+const MUNT_BASIS_MAX = 8;
 
 function legMuntNeer(positie, beloningMultiplier = 1) {
   // Plafond van €150: Kerkklok Boost (2x) x Tank-beloning (2.5x) x hoge combo
@@ -6771,7 +6791,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   // Ticket D20: zichtbare monumentschade.
   monumentSchade, monumentSchadeTier, updateMonumentSchade, pasMonumentSchadeToe, MONUMENT_SCHADE_DREMPELS,
   // Ticket D28: aangekondigde poorten.
-  aantalActievePoorten, kiesActievePoorten, kiesSpawnPoort, poortBakens, updatePoortBakens,
+  aantalActievePoorten, kiesActievePoorten, ROBOT_TYPE_VANAF, waveBasisAantal, kiesSpawnPoort, poortBakens, updatePoortBakens,
   // Ticket D29: wapenbereik.
   WAPEN_BEREIK, raycaster,
   // Ticket D10: bouwplekken.

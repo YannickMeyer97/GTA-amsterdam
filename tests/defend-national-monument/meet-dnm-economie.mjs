@@ -35,7 +35,7 @@ const inkomsten = await page.evaluate((MAX_WAVE) => {
   const d = window.DamChaosDebug;
   const rijen = [];
   for (let wave = 1; wave <= MAX_WAVE; wave++) {
-    const aantal = 7 + wave * 3;   // zelfde formule als startWave()
+    const aantal = d.waveBasisAantal(wave);   // zelfde formule als startWave() (D53: 10 + 3·wave)
     const telling = {};
     const N = 20000;
     for (let i = 0; i < N; i++) { const t = d.kiesRobotTypeVoorWave(wave); telling[t] = (telling[t] || 0) + 1; }

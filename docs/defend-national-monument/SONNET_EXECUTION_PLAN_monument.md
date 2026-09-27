@@ -1554,8 +1554,18 @@ tijd in gevels gaat.
     kloppen; de economie haalt het D16-doel.
   - Herijkt: drukpers terugverdiend in 200 s (was 250 s, op een gemeten
     ronde van ~65 s) en Bovenleiding niveau 1 €150 (was €175).
-  - Open: de eindspeeltest door de eigenaar (**M3**). De vragen staan in
-    het verslag in de ROADMAP.
+  - De eindspeeltest (**M3**) is gespeeld; de antwoorden staan in de
+    ROADMAP. Daaruit volgen D52–D54.
+
+#### Tickets na M3
+
+- **D52 — bouwfase 10 s.** Op verzoek van de eigenaar; de drukpers wordt
+  opnieuw op 3 rondes geijkt. *Uitgevoerd, zie de ROADMAP.*
+- **D53 — vroege rondes moeilijker.** Robottypes eerder, twee poorten
+  vanaf wave 2, meer robots, een tragere geschuttoren niveau 1, en de
+  economie terug op het D16-doel. *Uitgevoerd, zie de ROADMAP.*
+- **D54 — geschut of Bovenleiding.** De speler moet zien waarom hij de een
+  of de ander kiest.
 
 ### 11.6 Volgorde en beslismomenten
 

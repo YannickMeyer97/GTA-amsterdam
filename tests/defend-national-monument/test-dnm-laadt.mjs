@@ -34,7 +34,7 @@ check('Wave 1 staat klaar (spel.wave === 1)', wereldStaat.wave === 1, wereldStaa
 // startWave(1): waveDoel = 7 + 1*3 = 10, teSpawnen begint gelijk aan waveDoel,
 // maxActieveRobots = min(5 + floor(1*0.65), 13) = 5. Zie
 // ARCHITECTURE_NOTES_monument.md §7.2 voor de formules.
-check('waveDoel klopt met de wave-1-formule (7 + 1·3 = 10)', wereldStaat.waveDoel === 10, wereldStaat);
+check('waveDoel klopt met de wave-1-formule (10 + 1·3 = 13, D53)', wereldStaat.waveDoel === 13, wereldStaat);
 check('teSpawnen begint gelijk aan waveDoel', wereldStaat.teSpawnen === wereldStaat.waveDoel, wereldStaat);
 check('maxActieveRobots klopt met de wave-1-formule (min(5 + ⌊1·0,65⌋, 13) = 5)', wereldStaat.maxActieveRobots === 5, wereldStaat);
 check('Het monument staat op 100 HP', wereldStaat.monumentHP === 100, wereldStaat);

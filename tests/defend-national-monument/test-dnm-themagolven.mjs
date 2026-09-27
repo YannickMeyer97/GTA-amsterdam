@@ -35,7 +35,7 @@ async function startEnMeet(wave) {
     d.updateWaveSysteem(0);
     const typen = [...new Set(d.robots.map(r => r.type))];
     const uit = {
-      wave, thema: d.spel.thema, waveDoel: d.spel.waveDoel, basisDoel: 7 + wave * 3,
+      wave, thema: d.spel.thema, waveDoel: d.spel.waveDoel, basisDoel: d.waveBasisAantal(wave),
       poorten: d.spel.actievePoorten.length, typen, aantalGespawnd: d.robots.length,
       banner: document.getElementById('waveBanner').textContent,
       mist: { kleur: d.scene.fog.color.getHex(), near: d.scene.fog.near, far: d.scene.fog.far, achtergrond: d.scene.background.getHex() },

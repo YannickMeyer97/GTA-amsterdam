@@ -152,7 +152,7 @@ const waveControle = await page.evaluate((waves) => {
       wave: n,
       waveDoel: d.spel.waveDoel,
       // Ticket D30: een themagolf schaalt het aantal (bv. Spitsuur × 1,3).
-      verwachtWaveDoel: Math.round((7 + n * 3) * (d.themaVoorWave(n)?.aantalFactor ?? 1)),
+      verwachtWaveDoel: Math.round((10 + n * 3) * (d.themaVoorWave(n)?.aantalFactor ?? 1)),   // D53: was 7 + 3·wave
       thema: d.themaVoorWave(n)?.naam ?? null,
       teSpawnen: d.spel.teSpawnen,
       maxActieveRobots: d.spel.maxActieveRobots,
@@ -161,7 +161,7 @@ const waveControle = await page.evaluate((waves) => {
   });
 }, [1, 5, 10, 13, 20]);
 for (const w of waveControle) {
-  check(`startWave(${w.wave}): waveDoel = 7 + ${w.wave}·3${w.thema ? ` × themafactor (${w.thema})` : ''}`, w.waveDoel === w.verwachtWaveDoel, w);
+  check(`startWave(${w.wave}): waveDoel = 10 + ${w.wave}·3${w.thema ? ` × themafactor (${w.thema})` : ''}`, w.waveDoel === w.verwachtWaveDoel, w);
   check(`startWave(${w.wave}): teSpawnen begint gelijk aan waveDoel`, w.teSpawnen === w.waveDoel, w);
   check(`startWave(${w.wave}): maxActieveRobots = min(5 + ⌊${w.wave}·0,65⌋, 13)`, w.maxActieveRobots === w.verwachtMaxActieveRobots, w);
 }
@@ -180,7 +180,7 @@ const typeControle = await page.evaluate(() => {
   const d = window.DamChaosDebug;
   const N = 1000;
   function ontgrendeldeTypesVoorWave(wave) {
-    const drempel = { normal: 1, sprinter: 2, tank: 3, bomber: 4, shieldbot: 5 };
+    const drempel = { normal: 1, sprinter: 2, tank: 2, bomber: 3, shieldbot: 4 };   // D53: elk type een wave eerder
     return new Set(Object.keys(d.ROBOT_TYPES).filter(t => wave >= drempel[t]));
   }
   return [1, 2, 3, 4, 5, 8].map(wave => {

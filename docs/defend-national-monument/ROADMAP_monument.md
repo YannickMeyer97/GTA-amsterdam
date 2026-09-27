@@ -92,7 +92,7 @@ alsnog.
 | ☑ | **D12** | Torenniveaus en reparatie |
 | ☑ | **D13** | Het hek |
 | ☑ | **D14** | Robots vallen torens aan |
-| ◐ | **D16** | Economie herijken (gemeten en bijgesteld; speeltest verhuist naar D43) |
+| ☑ | **D16** | Economie herijken (gemeten en bijgesteld; gespeeld bij M3) |
 | ☑ | **D30** | Themagolven *(nieuw)* |
 
 ### Fase M — Make-over van de Dam *(na de speeltest van fase 3, vóór fase 4)*
@@ -124,7 +124,10 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D40** | Straatwanden van de vijf straten — *schermafbeeldingen bij de eigenaar* |
 | ☑ | **D41** | Sfeer en straatmeubilair — *schermafbeeldingen bij de eigenaar* |
 | ☑ | **D42** | Prestaties (budget, instancing), direct gevolgd door D21 *(D21 ook ☑)* |
-| ◐ | **D43** | Herijken op de nieuwe kaart + eindspeeltest → **M3** *(gemeten en herijkt; de eindspeeltest door de eigenaar staat open)* |
+| ☑ | **D43** | Herijken op de nieuwe kaart + eindspeeltest → **M3** *(M3 gespeeld)* |
+| ☑ | **D52** | Bouwfase 10 s, drukpers opnieuw op 3 rondes — *na M3* |
+| ☑ | **D53** | Vroege rondes moeilijker — *na M3* |
+| ☐ | **D54** | Geschut of Bovenleiding: de keuze duidelijk maken — *na M3* |
 
 **D31 — stand.** De plattegrond staat in
 [`PLATTEGROND.html`](PLATTEGROND.html): bovenaanzicht op schaal, routes met
@@ -984,7 +987,7 @@ Dit kan later alsnog, als de eigenaar dat wil.
      (hoe voelt de torenkern?) en over fase 4 (oververhitting).
 - **Tests:**
   - `test-dnm-drukpers` toetst nu 180–215 s terugverdientijd (was
-    230–270 s).
+    230–270 s; sinds D52 150–185 s).
   - De lekcontrole in `test-dnm-prestaties` viel één keer om op +1
     geometrie: een zeldzaam effect (een schildvonk hangt af van de
     willekeurige schildtiming) kwam pas in de meetrondes voor het eerst in
@@ -993,6 +996,60 @@ Dit kan later alsnog, als de eigenaar dat wil.
     Undead-uitvallers (camerabeweging, nachthemel,
     trefferfeedback-per-wapen) zijn bekende timinggevoelige tests en zijn
     los groen, net als `test-dnm-prestaties` met de marge.
+
+**M3 — eindspeeltest, antwoorden van de eigenaar.**
+1. De eerste rondes zijn erg makkelijk → **D53**.
+2. De drukpers voelt logisch.
+3. De Bovenleiding is leuk, maar het is niet duidelijk waarom je hem
+   kiest in plaats van het geschut, of andersom → **D54**.
+4. De make-over ziet er fantastisch uit. Fase M is daarmee afgerond.
+
+Verder: de tijd tussen de rondes is te lang, maak er 10 s van → **D52**.
+Daarna fase 4 (oververhitting) en fase 6 (D22) uitvoeren, en nadenken over
+waarom de game basic voelt en je nergens naartoe werkt.
+
+**D52 — bouwfase 10 s, verslag.**
+- `BOUWFASE_DUUR` 20 → 10 s. De verste gewone bouwplek ligt 23 m van de
+  monumentrand (6,6 s heen en terug), en bouwen kan ook tijdens een wave;
+  de bouwfase telt alleen voor de vroege-startbonus (G).
+- **Drukpers opnieuw op 3 rondes.** Met de kortere pauze en de zwaardere
+  vroege waves (D53) duurt een ronde met verdediging gemiddeld 55 s
+  (waves 1–12). `DRUKPERS_TERUGVERDIEN_S` 200 → 165 s; het inkomen wordt
+  €9 / €18 / €30 per 10 s, alle drie in 167 s terug (3,0 rondes).
+- **Tests:** `test-dnm-bouwfase` leest de duur uit de game;
+  `test-dnm-drukpers` toetst 150–185 s.
+
+**D53 — vroege rondes moeilijker, verslag.**
+- **Waarom het makkelijk was.** Wave 1 had 10 gewone robots uit één
+  poort, die één schot nodig hebben. Tanks kwamen pas bij wave 3, een
+  tweede poort ook. En zonder speler hield één geschuttoren niveau 1 per
+  poort de waves 1–5 al alleen: na wave 1 zette je er één neer en deed de
+  toren het werk.
+- **Aanpassingen:**
+  - elk robottype een wave eerder (`ROBOT_TYPE_VANAF`): sprinter en tank
+    vanaf wave 2, bomber vanaf 3, Shield Bot vanaf 4. Wave 1 blijft de
+    leerwave;
+  - twee poorten vanaf wave 2 (was 3);
+  - drie robots meer per wave (`waveBasisAantal` = 10 + 3·wave; wave 1: 13,
+    wave 10: 40);
+  - geschuttoren niveau 1 vuurt elke 1,6 s (was 1,2). Vier varianten
+    gesimuleerd; deze doet precies wat nodig is zonder de latere waves te
+    veranderen;
+  - munt €2–8 (was €2–10): anders gaven de extra robots te veel geld.
+- **Gemeten, zonder speler** (wat de wave houdt, per actieve poort):
+
+  | Wave | Vóór D53 | Na D53 |
+  |---|---|---|
+  | 1 | 1 toren niv. 1 | 1 toren niv. 1 |
+  | 2–4 | 1 toren niv. 1 | toren niv. 1 + hek, of de speler schiet mee |
+  | 5 | toren niv. 1 + hek | 2 torens niv. 1 |
+  | 8–12 | 2 torens niv. 1 | 2 torens niv. 1–2 |
+
+- **Economie:** na wave 5 €820 (1,2 poort) in het basisscenario en €1.356
+  (1,9) bij goed spel. Het D16-doel houdt.
+- **Tests:** `test-dnm-kern`, `-laadt`, `-poorten` en `-themagolven`
+  volgen de nieuwe formules; de themagolventest leest `waveBasisAantal`
+  uit de game.
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 
