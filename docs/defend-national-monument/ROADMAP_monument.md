@@ -127,7 +127,7 @@ plan, met de besluiten van de eigenaar, staat in
 | ☑ | **D43** | Herijken op de nieuwe kaart + eindspeeltest → **M3** *(M3 gespeeld)* |
 | ☑ | **D52** | Bouwfase 10 s, drukpers opnieuw op 3 rondes — *na M3* |
 | ☑ | **D53** | Vroege rondes moeilijker — *na M3* |
-| ☐ | **D54** | Geschut of Bovenleiding: de keuze duidelijk maken — *na M3* |
+| ☑ | **D54** | Geschut of Bovenleiding: de keuze duidelijk maken — *na M3* |
 
 **D31 — stand.** De plattegrond staat in
 [`PLATTEGROND.html`](PLATTEGROND.html): bovenaanzicht op schaal, routes met
@@ -1050,6 +1050,47 @@ waarom de game basic voelt en je nergens naartoe werkt.
 - **Tests:** `test-dnm-kern`, `-laadt`, `-poorten` en `-themagolven`
   volgen de nieuwe formules; de themagolventest leest `waveBasisAantal`
   uit de game.
+
+**D54 — geschut of Bovenleiding, verslag.**
+- **Het probleem was echt, niet alleen de uitleg.** Na D53 was de
+  Bovenleiding in de simulatie overal beter dan het geschut, zelfs tegen
+  een Tankkonvooi. Er was dus geen reden om het geschut te kiezen.
+- **Twee rollen:**
+  - **Geschuttoren = de zware kogel.** 2 schade per schot (een tank in
+    twee schoten), het langste bereik (11 / 13 / 15 m), en hij mikt op de
+    taaiste robot binnen bereik (bij gelijke HP de dichtstbijzijnde). Je
+    ziet hem de tank eruit pikken. Tegen een zwerm verspilt hij die kogel.
+  - **Bovenleiding = tegen groepen.** Elke sprong doet nu de volle schade
+    (was aflopend: de keten verwondde een zwerm alleen maar). Tanks zijn
+    geaard: stroom doet op hen de helft. Een schild stopt de keten, zoals
+    eerst al.
+  - De Bovenleiding kiest zijn eerste doel nog steeds dichtstbij, niet
+    het taaiste.
+- **Gemeten** (één toren per actieve poort, zonder speler, gemiddelde
+  monumentschade):
+
+  | Wave | Geschut niv. 1 | Bovenleiding niv. 1 |
+  |---|---|---|
+  | 6, Tankkonvooi | 24 | 76 |
+  | 10, Spitsuur | 178 | 34 |
+  | 7, gewoon | 19 | 24 |
+  | 9, gewoon | 28 | 50 |
+
+  Tegen tanks het geschut, tegen een zwerm de Bovenleiding, en in een
+  gemengde wave werkt de combinatie het best.
+- **Zichtbaar in het spel:**
+  - het menu noemt de rol: "zware kogel, tegen tanks" en "stroom over 3,
+    tegen groepen";
+  - de aankondiging van een themagolf krijgt een tip op een eigen regel,
+    en blijft dan 4 s staan: bij het Tankkonvooi de Geschuttoren, bij
+    Spitsuur de Bovenleiding.
+- **Vroege waves (D53):** met 2 schade per schot houdt één geschuttoren
+  per poort nu waves 1–3 alleen (D53 gaf 1–2). Trager vuren (1,8 s) of
+  korter bereik (10 m) veranderde wave 3 niet en maakte later zwaarder;
+  daarom zo gelaten. Economie ongewijzigd (na wave 5 1,2–1,9 poorten).
+- **Tests:** `test-dnm-toren-geschut` (taaiste doel eerst, tank in 2
+  schoten), `test-dnm-bovenleiding` (volle schade per sprong, tanks de
+  helft) en `test-dnm-themagolven` (de tips).
 
 ### Fase 4 — Oververhitting *(voorwaardelijk: beslissen na fase 3)*
 

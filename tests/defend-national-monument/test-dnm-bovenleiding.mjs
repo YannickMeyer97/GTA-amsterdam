@@ -55,7 +55,8 @@ const r = await page.evaluate(() => {
   uit.buitenBereik = { hp: ver.hp, spoor: t.spoor.visible };
 
   // 3. Niveau 1: 6 robots op 3 m van elkaar, de stoot raakt er 3, van
-  // dichtbij naar ver, met aflopende schade.
+  // dichtbij naar ver. Sinds D54 met volle schade per sprong (factor 1):
+  // met aflopende schade doodde de keten een zwerm gewone robots niet.
   const niveau1 = rij([2, 5, 8, 11, 14, 17]);
   t.cooldown = 0;
   const treffers1 = d.vuurBovenleiding(t);
@@ -86,6 +87,12 @@ const r = await page.evaluate(() => {
     uit.niveaus.push({ niveau: t.niveau, geraakt: rijN.map(x => +(10 - x.hp).toFixed(4)), bereikGeraakt: bereik[0].hp < 10, cfg });
   }
 
+  // 5b. Ticket D54: tanks zijn geaard, stroom doet de helft.
+  const tanks = rij([2, 5], 'tank');
+  t.cooldown = 0;
+  d.vuurBovenleiding(t);
+  uit.tanks = { geraakt: tanks.map(x => +(10 - x.hp).toFixed(4)), schade: t.niveau ? d.BOVENLEIDING_NIVEAUS[t.niveau - 1].schade : null, factor: d.BOVENLEIDING_TANK_FACTOR };
+
   // 6. Een actief schild vangt de stoot op en stopt de keten.
   const schild = rij([2, 4, 6], 'shieldbot');
   schild[0].schildActief = true;
@@ -111,22 +118,23 @@ const r = await page.evaluate(() => {
   return uit;
 });
 
-const factor = 0.75;
+const factor = 1;   // D54: volle schade per sprong
 check('Het bouwmenu biedt de Bovenleiding aan als optie 2', r.menu.includes(`2, Bovenleiding €${r.bouw.prijs}`), r.menu);
 check('2 bouwt een Bovenleiding in het torenslot (prijs afgeschreven, obstakel, in de scene)', r.bouw.type === 'bovenleiding' && r.bouw.geld === 500 - r.bouw.prijs && r.bouw.obstakels === 1 && r.bouw.inScene, r.bouw);
 check('Zonder doelwit vuurt hij niet (geen treffers, geen boog, geen wachttijd)', r.leeg.treffers === 0 && !r.leeg.spoor && r.leeg.cooldown === 0, r.leeg);
 check('Een robot net buiten bereik wordt niet geraakt', r.buitenBereik.hp === 10 && !r.buitenBereik.spoor, r.buitenBereik);
 check('Niveau 1: de stoot raakt precies 3 robots, van dichtbij naar ver', r.niveau1.geraakt.filter(x => x > 0).length === 3 && r.niveau1.volgorde.join() === '0,1,2', r.niveau1);
-check('Niveau 1: de schade loopt per sprong af met factor 0,75', Math.abs(r.niveau1.geraakt[0] - 1) < 1e-9 && Math.abs(r.niveau1.geraakt[1] - factor) < 1e-9 && Math.abs(r.niveau1.geraakt[2] - factor ** 2) < 1e-9, r.niveau1.geraakt);
+check('Niveau 1: elke sprong doet de volle schade (D54)', Math.abs(r.niveau1.geraakt[0] - 1) < 1e-9 && Math.abs(r.niveau1.geraakt[1] - factor) < 1e-9 && Math.abs(r.niveau1.geraakt[2] - factor ** 2) < 1e-9, r.niveau1.geraakt);
 check('Na een stoot staat de vonkboog aan en wacht de mast een schotInterval', r.niveau1.spoor && r.niveau1.cooldown === r.niveau1.interval, r.niveau1);
 check('Een gat groter dan de sprongafstand breekt de keten', r.gat[0] > 0 && r.gat[1] === 0 && r.gat[2] === 0, r.gat);
 for (const n of r.niveaus) {
   const geraakt = n.geraakt.filter(x => x > 0);
   check(`Niveau ${n.niveau}: raakt ${n.cfg.doelen} robots (nooit meer dan 4), eerste met ${n.cfg.schade} schade`, n.niveau && geraakt.length === n.cfg.doelen && geraakt.length <= 4 && Math.abs(geraakt[0] - n.cfg.schade) < 1e-9, n);
-  check(`Niveau ${n.niveau}: de schade loopt af per sprong`, geraakt.every((x, i) => i === 0 || x < geraakt[i - 1]), geraakt);
+  check(`Niveau ${n.niveau}: elke sprong doet de volle schade (D54)`, geraakt.every(x => Math.abs(x - n.cfg.schade) < 1e-9), geraakt);
   check(`Niveau ${n.niveau}: bereik ${n.cfg.bereik} m (robot op ${n.cfg.bereik - 0.5} m geraakt)`, n.bereikGeraakt, n);
 }
 check('De niveaus lopen op in bereik, doelen en schade', r.niveaus[0].cfg.bereik > 10 && r.niveaus[1].cfg.bereik > r.niveaus[0].cfg.bereik && r.niveaus[0].cfg.doelen >= 3 && r.niveaus[1].cfg.schade > r.niveaus[0].cfg.schade, r.niveaus.map(n => n.cfg));
+check('D54: tanks zijn geaard, de stroom doet op hen de helft', r.tanks.factor === 0.5 && r.tanks.geraakt.every(x => Math.abs(x - r.tanks.schade * 0.5) < 1e-9), r.tanks);
 check('Een actief schild vangt de stoot op en stopt de keten', r.schild.every(x => x === 0), r.schild);
 check('Met een blijvend doelwit vuurt hij elke schotInterval (10 s)', Math.abs(r.tempo.stoten - r.tempo.verwacht) <= 1, r.tempo);
 check('Een bomber kiest de Bovenleiding als doelwit', r.bomberDoel === 'bovenleiding', r.bomberDoel);

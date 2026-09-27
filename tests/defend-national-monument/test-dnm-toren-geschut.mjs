@@ -102,12 +102,18 @@ const schieten = await page.evaluate(() => {
   d.updateTorens(0);
   uit.binnenBereik = { dood: !d.robots.includes(dichtbij), cooldown: toren.cooldown, interval: cfg.schotInterval };
 
-  // Twee doelen (allebei binnen bereik): de dichtstbijzijnde eerst.
+  // Ticket D54: het geschut mikt op de taaiste robot binnen bereik; bij
+  // gelijke HP op de dichtstbijzijnde.
   leeg();
   const a = zet('tank', cfg.bereik - 1, 0), b = zet('tank', 3, Math.PI);
   toren.cooldown = 0;
   d.updateTorens(0);
   uit.dichtstbij = { verreHp: a.hp, dichteHp: b.hp };
+  leeg();
+  const taai = zet('tank', cfg.bereik - 1, 0), gewoon = zet('normal', 3, Math.PI);
+  toren.cooldown = 0;
+  d.updateTorens(0);
+  uit.taaiste = { tankHp: taai.hp, gewoonLeeft: d.robots.includes(gewoon) };
 
   // Interval: tank (3 HP) op 5 m.
   leeg();
@@ -116,8 +122,7 @@ const schieten = await page.evaluate(() => {
   const hp = [];
   d.updateTorens(0);                          hp.push(tank.hp);   // schot 1
   d.updateTorens(cfg.schotInterval - 0.3);    hp.push(tank.hp);   // cooldown nog 0,3 s
-  d.updateTorens(0.31);                       hp.push(tank.hp);   // schot 2
-  d.updateTorens(cfg.schotInterval + 0.01);   hp.push(d.robots.includes(tank) ? tank.hp : 'dood');   // schot 3
+  d.updateTorens(0.31);                       hp.push(d.robots.includes(tank) ? tank.hp : 'dood');   // schot 2 (D54: 2 schade per schot)
   uit.interval = hp;
 
   // Schild blokkeert.
@@ -132,9 +137,10 @@ const schieten = await page.evaluate(() => {
 });
 check('Een robot 1 m buiten het bereik wordt niet beschoten', schieten.buitenBereik.leeft && schieten.buitenBereik.cooldown === 0, schieten.buitenBereik);
 check('Een normale robot 1 m binnen het bereik wordt in één schot vernietigd', schieten.binnenBereik.dood && schieten.binnenBereik.cooldown === schieten.binnenBereik.interval, schieten.binnenBereik);
-check('Bij twee doelen raakt de toren de dichtstbijzijnde', schieten.dichtstbij.dichteHp === 2 && schieten.dichtstbij.verreHp === 3, schieten.dichtstbij);
-check('Het schotinterval wordt gerespecteerd; een tank sneuvelt in precies 3 schoten',
-  JSON.stringify(schieten.interval) === JSON.stringify([2, 2, 1, 'dood']), schieten.interval);
+check('Bij twee even taaie doelen raakt de toren de dichtstbijzijnde', schieten.dichtstbij.dichteHp === 1 && schieten.dichtstbij.verreHp === 3, schieten.dichtstbij);
+check('D54: de toren mikt op de taaiste robot binnen bereik, ook als een gewone robot dichterbij staat', schieten.taaiste.tankHp === 1 && schieten.taaiste.gewoonLeeft, schieten.taaiste);
+check('Het schotinterval wordt gerespecteerd; een tank sneuvelt in precies 2 schoten (D54: 2 schade per schot)',
+  JSON.stringify(schieten.interval) === JSON.stringify([1, 1, 'dood']), schieten.interval);
 check('Een actief schild blokkeert ook torenschoten', schieten.schild.leeft && schieten.schild.hp === 1, schieten.schild);
 
 // --- 4. Torenkill vs spelerskill -------------------------------------------

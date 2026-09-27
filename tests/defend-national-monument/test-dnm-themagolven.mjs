@@ -107,6 +107,27 @@ const reset = await page.evaluate(() => {
 });
 check('Na resetRun() midden in Grachtenmist: geen thema meer, mist terug', reset.thema === null && reset.far === reset.basisFar, reset);
 
+// Ticket D54: de aankondiging van een themagolf koppelt hem aan een toren.
+const tips = await page.evaluate(() => {
+  const d = window.DamChaosDebug;
+  const aankondiging = wave => {
+    d.resetRun();
+    d.spel.volgendePoorten = [];
+    d.startWave(wave);
+    for (const r of [...d.robots]) { d.scene.remove(r.groep); d.robots.splice(d.robots.indexOf(r), 1); }
+    d.spel.teSpawnen = 0;
+    for (let i = 0; i < 25; i++) d.updateWaveSysteem(0.1);   // voorbij 1,8 s: de aankondiging
+    const banner = document.getElementById('waveBanner');
+    return { tekst: banner.textContent, tip: banner.querySelector('.tip')?.textContent ?? null };
+  };
+  const uit = { voorTank: aankondiging(5), voorSpits: aankondiging(9), gewoon: aankondiging(6) };
+  d.resetRun();
+  return uit;
+});
+check('Vóór het Tankkonvooi noemt de aankondiging de Geschuttoren', /Tankkonvooi/.test(tips.voorTank.tekst) && /Geschuttoren/.test(tips.voorTank.tip ?? ''), tips.voorTank);
+check('Vóór Spitsuur noemt de aankondiging de Bovenleiding', /Spitsuur/.test(tips.voorSpits.tekst) && /Bovenleiding/.test(tips.voorSpits.tip ?? ''), tips.voorSpits);
+check('Een gewone wave krijgt geen tip', tips.gewoon.tip === null, tips.gewoon);
+
 const fails = report(errs);
 await browser.close();
 process.exit(fails > 0 ? 1 : 0);

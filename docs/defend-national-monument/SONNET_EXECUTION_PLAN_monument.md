@@ -1565,7 +1565,9 @@ tijd in gevels gaat.
   vanaf wave 2, meer robots, een tragere geschuttoren niveau 1, en de
   economie terug op het D16-doel. *Uitgevoerd, zie de ROADMAP.*
 - **D54 — geschut of Bovenleiding.** De speler moet zien waarom hij de een
-  of de ander kiest.
+  of de ander kiest. *Uitgevoerd: twee rollen (zware kogel tegen tanks,
+  stroom tegen groepen), in het menu en in de themagolftips; zie de
+  ROADMAP.*
 
 ### 11.6 Volgorde en beslismomenten
 

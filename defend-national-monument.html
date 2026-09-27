@@ -223,6 +223,7 @@
     z-index: 8;
     transition: opacity 0.2s ease;
   }
+  #waveBanner .tip { margin-top: 8px; font-size: 17px; font-weight: 700; color: #cfe8ff; }   /* Ticket D54 */
 
   /* --- Klein hulptekstje onderin --- */
   #hulpUI {
@@ -3804,11 +3805,19 @@ function updateArcadeUI() {
   renderMenu();   // Ticket D35: prijzen en niveaus in een open menu bijwerken
 }
 
-function toonWaveBanner(tekst) {
+// Ticket D54: optioneel een tip op een eigen, kleinere regel; dan blijft
+// de banner langer staan, zodat je hem kunt lezen.
+function toonWaveBanner(tekst, tip = '') {
   waveBanner.textContent = tekst;
+  if (tip) {
+    const regel = document.createElement('div');
+    regel.className = 'tip';
+    regel.textContent = tip;
+    waveBanner.appendChild(regel);
+  }
   waveBanner.style.opacity = '1';
   clearTimeout(toonWaveBanner.timer);
-  toonWaveBanner.timer = setTimeout(() => { waveBanner.style.opacity = '0'; }, 1600);
+  toonWaveBanner.timer = setTimeout(() => { waveBanner.style.opacity = '0'; }, tip ? 4000 : 1600);
 }
 
 // Korte, duidelijke aankondiging zodra een nieuw robottype voor het eerst
@@ -3893,8 +3902,9 @@ const THEMA_EERSTE_WAVE = 6;
 const THEMA_INTERVAL = 4;
 const THEMA_BONUS_FACTOR = 1.5;   // de wave-bonus van een themagolf, als beloning voor het afwijkende karakter
 const THEMAGOLVEN = {
-  tankkonvooi: { naam: 'Tankkonvooi', robotType: 'tank', aantalFactor: 0.5, poorten: 1 },
-  spitsuur:    { naam: 'Spitsuur', robotType: 'sprinter', aantalFactor: 1.3, poorten: 1 },
+  // Ticket D54: de tip in de aankondiging koppelt het thema aan een toren.
+  tankkonvooi: { naam: 'Tankkonvooi', robotType: 'tank', aantalFactor: 0.5, poorten: 1, tip: 'Tanks: de Geschuttoren pakt ze, stroom doet de helft' },
+  spitsuur:    { naam: 'Spitsuur', robotType: 'sprinter', aantalFactor: 1.3, poorten: 1, tip: 'Een zwerm sprinters: de Bovenleiding raakt er meerdere tegelijk' },
   // Mist trekt dicht: je ziet robots pas als ze (bijna) binnen WAPEN_BEREIK zijn.
   grachtenmist: { naam: 'Grachtenmist', robotType: null, aantalFactor: 1, poorten: null, mist: { kleur: 0x9fb0bd, near: 6, far: 38 } },
 };
@@ -4034,7 +4044,7 @@ function updateWaveSysteem(dt) {
     if (!spel.aankondigingGetoond && spel.tussenWaveTimer > 1.8) {
       spel.aankondigingGetoond = true;
       const volgendThema = themaVoorWave(spel.wave + 1);
-      toonWaveBanner(`${volgendThema ? `Volgende wave: ${volgendThema.naam}` : 'Volgende wave'}\nvia ${poortenTekst(spel.volgendePoorten)}`);
+      toonWaveBanner(`${volgendThema ? `Volgende wave: ${volgendThema.naam}` : 'Volgende wave'}\nvia ${poortenTekst(spel.volgendePoorten)}`, volgendThema?.tip);
       speelPoortSignaal();
     }
     // Ticket D15: aftelling in de HUD, alleen bijwerken als de hele seconde
@@ -4807,12 +4817,19 @@ function animeerBouwplekken() {
 // zodat torens met de wapen-upgrades concurreren om hetzelfde geld.
 // Ticket D53 (M3: "de eerste rondes zijn erg makkelijk"): niveau 1 vuurt
 // elke 1,6 s (was 1,2). Gemeten: met 1,2 s hield één toren per poort
-// waves 1–5 alleen, zonder speler. Met 1,6 s houdt hij waves 1–2 alleen;
-// vanaf wave 3 moet de speler meeschieten of een tweede toren zetten.
+// waves 1–5 alleen, zonder speler. Na D53 en D54 (2 schade per schot) houdt
+// hij waves 1–3 alleen; vanaf wave 4 moet de speler meeschieten of een
+// tweede toren zetten. Trager (1,8 s) of korter (10 m) veranderde wave 3
+// niet, en maakte de latere waves zwaarder.
+// Ticket D54 (M3: "niet duidelijk waarom je de een of de ander kiest"):
+// twee duidelijke rollen. Het geschut is de zware enkele kogel: 2 schade per
+// schot (een tank in twee schoten), het langste bereik, en het mikt op de
+// taaiste robot binnen bereik. Tegen een zwerm verspilt het die kogel. De
+// Bovenleiding is het antwoord op groepen (zie daar).
 const GESCHUT_NIVEAUS = [
-  { prijs: 150, bereik: 10, schadePerSchot: 1, schotInterval: 1.6, hp: 60 },
-  { prijs: 200, bereik: 12, schadePerSchot: 1, schotInterval: 1.0, hp: 90 },
-  { prijs: 300, bereik: 14, schadePerSchot: 2, schotInterval: 1.0, hp: 130 },
+  { prijs: 150, bereik: 11, schadePerSchot: 2, schotInterval: 1.6, hp: 60 },
+  { prijs: 200, bereik: 13, schadePerSchot: 2, schotInterval: 1.1, hp: 90 },
+  { prijs: 300, bereik: 15, schadePerSchot: 3, schotInterval: 0.9, hp: 130 },
 ];
 // Ticket D48: de Bovenleiding. Een tramdraadmast die per schot een
 // stroomstoot geeft. De stoot treft de dichtstbijzijnde robot binnen `bereik`
@@ -4832,7 +4849,12 @@ const BOVENLEIDING_NIVEAUS = [
   { prijs: 200, bereik: 11, schade: 1.5, doelen: 4, sprong: 4.5, schotInterval: 1.8, hp: 75 },
   { prijs: 300, bereik: 12, schade: 2,   doelen: 4, sprong: 5,   schotInterval: 1.6, hp: 110 },
 ];
-const BOVENLEIDING_SPRONG_FACTOR = 0.75;
+const BOVENLEIDING_SPRONG_FACTOR = 1;
+// Ticket D54: tanks zijn geaard, stroom doet op hen de helft. Samen met het
+// schild dat de keten stopt, maakt dat de Bovenleiding sterk tegen groepen
+// (gewone robots, sprinters) en zwak tegen de taaie types: daar is het
+// geschut voor.
+const BOVENLEIDING_TANK_FACTOR = 0.5;
 // Ticket D51 (was D49, de Muntpers): de Drukpers. Staat alleen op de
 // drie drukpersplekken voor het Paleis en levert om de DRUKPERS_INTERVAL
 // seconden geld op, los van de robots. Speeltest-eis: gemiddeld in drie
@@ -4866,13 +4888,14 @@ const TOREN_TYPES = {
   // De velden op het type zelf (prijs, bereik, …) zijn niveau 1.
   geschut: {
     naam: 'Geschuttoren', ...GESCHUT_NIVEAUS[0],
-    omschrijving: `schiet binnen ${GESCHUT_NIVEAUS[0].bereik} m`,
+    // Ticket D54: de rol, niet alleen de getallen.
+    omschrijving: 'zware kogel, tegen tanks',
     niveaus: GESCHUT_NIVEAUS,
-    niveauTekst: n => `bereik ${n.bereik} m, ${n.schadePerSchot} schade/${n.schotInterval}s, `,
+    niveauTekst: n => `bereik ${n.bereik} m, ${n.schadePerSchot} schade per ${n.schotInterval} s, `,
   },
   bovenleiding: {
     naam: 'Bovenleiding', ...BOVENLEIDING_NIVEAUS[0],
-    omschrijving: `stroomstoot over ${BOVENLEIDING_NIVEAUS[0].doelen} robots`,
+    omschrijving: `stroom over ${BOVENLEIDING_NIVEAUS[0].doelen}, tegen groepen`,
     niveaus: BOVENLEIDING_NIVEAUS,
     niveauTekst: n => `bereik ${n.bereik} m, ${n.doelen} robots, sprong ${n.sprong} m, elke ${n.schotInterval}s, `,
   },
@@ -5306,7 +5329,7 @@ function maakBovenleiding(plek) {
 // stoot op: hij krijgt niets en de keten stopt bij hem.
 function kiesKetting(toren) {
   const cfg = torenStats(toren);
-  const eerste = kiesTorenDoel(toren, cfg.bereik);
+  const eerste = dichtsteRobotBinnen(toren.plek.positie, cfg.bereik);   // D54: niet de taaiste, zoals het geschut
   if (!eerste) return [];
   const keten = [eerste];
   while (keten.length < cfg.doelen) {
@@ -5351,7 +5374,7 @@ function vuurBovenleiding(toren) {
   // Aflopende schade per sprong; het schild van een shieldbot vangt alles.
   const treffers = [];
   keten.forEach((robot, i) => {
-    const schade = cfg.schade * BOVENLEIDING_SPRONG_FACTOR ** i;
+    const schade = cfg.schade * BOVENLEIDING_SPRONG_FACTOR ** i * (robot.type === 'tank' ? BOVENLEIDING_TANK_FACTOR : 1);
     if (robot.type === 'shieldbot' && robot.schildActief) { speelSchildBlok(); treffers.push({ robot, schade: 0 }); return; }
     treffers.push({ robot, schade });
     raakRobot(robot, schade, 'toren');
@@ -5507,11 +5530,23 @@ function verkoopToren(toren) {
 }
 
 // Dichtstbijzijnde robot binnen bereik (horizontale afstand).
-function kiesTorenDoel(toren, bereik) {
+function dichtsteRobotBinnen(positie, bereik) {
   let beste = null, besteAfstand = bereik;
   for (const robot of robots) {
-    const a = Math.hypot(robot.groep.position.x - toren.plek.positie.x, robot.groep.position.z - toren.plek.positie.z);
+    const a = Math.hypot(robot.groep.position.x - positie.x, robot.groep.position.z - positie.z);
     if (a <= besteAfstand) { besteAfstand = a; beste = robot; }
+  }
+  return beste;
+}
+// Ticket D54: het geschut mikt op de taaiste robot binnen bereik (meeste
+// HP), bij gelijke HP op de dichtstbijzijnde. Zo zie je het de tank eruit
+// pikken.
+function kiesTorenDoel(toren, bereik) {
+  let beste = null, besteAfstand = Infinity;
+  for (const robot of robots) {
+    const a = Math.hypot(robot.groep.position.x - toren.plek.positie.x, robot.groep.position.z - toren.plek.positie.z);
+    if (a > bereik) continue;
+    if (!beste || robot.hp > beste.hp || (robot.hp === beste.hp && a < besteAfstand)) { besteAfstand = a; beste = robot; }
   }
   return beste;
 }
@@ -6796,7 +6831,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   WAPEN_BEREIK, raycaster,
   // Ticket D10: bouwplekken.
   BOUWPLEKKEN, BOUWPLEK_RADIUS, puntOpRoute, looproute, plekVoor, dichtsteHekLijn, opPlekTegel, slotVan,
-  BOVENLEIDING_NIVEAUS, BOVENLEIDING_SPRONG_FACTOR, kiesKetting, vuurBovenleiding, updateBovenleiding,
+  BOVENLEIDING_NIVEAUS, BOVENLEIDING_SPRONG_FACTOR, BOVENLEIDING_TANK_FACTOR, kiesKetting, vuurBovenleiding, updateBovenleiding,
   DRUKPERSPLEKKEN, DRUKPERS_NIVEAUS, DRUKPERS_INTERVAL, DRUKPERS_TERUGVERDIEN_S, updateDrukpersen, drukpersTimerStand: () => drukpersTimer,
   runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, bijenkorfShopOpen: menu === COMMANDOPOST_MENU, bouwMenuPlek: menu && menu !== COMMANDOPOST_MENU ? menu.bron : null, aantalTorens: torens.length, aantalObstakels: obstakels.length }),
   // Ticket D11: torens.
