@@ -1176,6 +1176,22 @@ D20 is naar fase 2 verhuisd; deze fase is daarmee leeg.
   knoppen en schuif, overleeft herladen (ook het effect op de camera en
   het geluid), drie soorten corrupte sleutels, en naast de kwaliteit.
 
+### Fase P — Een run met een doel *(na M3; ontwerp in het plan, §12)*
+
+Keuzes van de eigenaar: een winbare run van 15 waves met een eindbaas en
+daarna eindeloos doorspelen; ontgrendelingen tussen runs (meer keuze, geen
+extra kracht); torens splitsen op niveau 3; eindbazen; een run van 15–20
+minuten.
+
+| | Ticket | Kern |
+| --- | --- | --- |
+| ☐ | **D55** | Een run van 15 waves met een overwinning en sterren |
+| ☐ | **D56** | Het baassysteem (HP-balk, baaswave, beloning) |
+| ☐ | **D57** | De drie bazen: Sloopkogel (5), Dijkbreker (10), Stoomwals (15) |
+| ☐ | **D58** | Torens splitsen op niveau 3 |
+| ☐ | **D59** | Ontgrendelingen tussen runs |
+| ☐ | **D60** | Herijken en speeltest → **M4** |
+
 ### Backlog — bewust ná alle bovenstaande tickets
 
 | | Ticket | Kern |

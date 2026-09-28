@@ -962,8 +962,9 @@ Genoteerd zodat ze niet stilletjes door de uitvoerder worden ingevuld:
 1. **Derde torentype.** Fase 3 levert er twee (geschut, hek). Een derde —
    vertrager, mijnenveld of schijnwerper — pas beslissen als die twee
    gebalanceerd zijn en we weten welk gat er nog is.
-2. **Wat doen de torens tussen runs?** Nu: alles weg bij reset. Alternatief zou
-   meta-progressie zijn, maar dat is expliciet buiten scope gehouden.
+2. ~~**Wat doen de torens tussen runs?**~~ **Beslist na M3:** torens blijven
+   per run, maar er komt meta-progressie in de vorm van ontgrendelingen
+   (meer keuze, geen extra kracht). Zie §12, fase P.
 3. **Blijft de special-meter (X) zoals hij is?** Met torens erbij kan die
    overbodig of juist essentieel worden. Meten in D16.
 4. **Moeilijkheidsgraden.** Undead heeft ze, deze game niet. Pas zinvol als de
@@ -2051,3 +2052,139 @@ Besluiten van de eigenaar:
 Volgorde: D44 → D45 → D46 → D47 → D48 → D49, daarna D36. De economie van
 de nieuwe torens wordt in D43 herijkt, samen met de rest. Na de speeltest
 tijdens D37 kwamen D50 en D51 erbij; daarna volgt D38.
+
+
+---
+
+## 12. Fase P — Een run met een doel (na M3)
+
+*Aanleiding (M3):* "de game voelt heel basic en je werkt niet echt ergens
+naartoe". De waves zijn eindeloos, elke run begint hetzelfde en het enige
+doel is de highscore.
+
+**Keuzes van de eigenaar:**
+
+| Vraag | Keuze |
+|---|---|
+| Einddoel van een run | Een winbare run met een eindbaas, daarna eindeloos doorspelen |
+| Tussen runs | Ontgrendelingen: meer keuze, geen extra kracht |
+| Meer keuze in de run | Torens splitsen op niveau 3; eindbazen |
+| Duur van een run | 15–20 minuten |
+
+**Niet gekozen** (bewust, niet vergeten): een perk-keuze na elke wave, een
+tweede wapen, permanente upgrades, een campagne in nachten.
+
+### Ontwerp in één oogopslag
+
+- **Een run is 15 waves.** Gemeten duurt een ronde met verdediging ~55 s
+  (D52), dus 15 waves is ~14–17 minuten: binnen de gekozen duur.
+- **Bazen op wave 5, 10 en 15.** Wave 15 is de eindbaas. Versla je die,
+  dan heb je gewonnen: **"De Dam is gered"**, met 1–3 sterren. Daarna kies
+  je: stoppen of eindeloos doorspelen voor je highscore.
+- **Sterren** meten hoe goed het ging, niet of je het haalde: 1 ster voor
+  winnen, 2 als het monument aan het eind ≥ 50% heeft, 3 bij ≥ 90%.
+- **Ontgrendelingen** komen met mijlpalen (een baas voor het eerst
+  verslaan, een run winnen, sterren verzamelen). Ze geven nieuwe keuzes,
+  vooral de tweede richting van elke torensplitsing.
+- **Themagolven** schuiven op zodat ze niet op een baaswave vallen.
+
+### Ticket D55 — Een run van 15 waves met een overwinning
+
+- **Doel:** een run heeft een einde dat je kunt halen.
+- **Stappen:**
+  - `RUN_WAVES = 15`. Na wave 15 (de eindbaas, D57) het overwinningsscherm:
+    "De Dam is gered", sterren, dezelfde statistieken als het eindscherm
+    (D7), en twee knoppen: **Doorspelen** (eindeloos, de run gaat verder
+    vanaf wave 16) en **Opnieuw**.
+  - Sterren: 1 = gewonnen, 2 = monument ≥ 50% bij de overwinning, 3 = ≥ 90%.
+  - Themagolven herschikken: Tankkonvooi op 7, Spitsuur op 9, Grachtenmist
+    op 12; na wave 15 weer de oude cyclus (om de 4 waves).
+  - HUD: "Wave 7 / 15"; na de overwinning weer "Wave 16".
+  - Highscore (D8) bewaart ook "gewonnen" en het beste aantal sterren.
+- **Let op:** het eindscherm van D7 blijft het scherm bij verlies; reset
+  (D9) moet ook de overwinningsstaat wissen.
+- **Acceptatie:** `test-dnm-overwinning.mjs`: winnen na wave 15, sterren per
+  drempel, doorspelen, opnieuw, highscore-roundtrip, geen overwinning bij
+  game over.
+
+### Ticket D56 — Het baassysteem
+
+- **Doel:** één gedeeld systeem waar de drie bazen op draaien.
+- **Stappen:**
+  - Een baas is een grote robot met veel HP, een eigen naam en een HP-balk
+    bovenaan in beeld (naam + balk), zolang hij leeft.
+  - Een baaswave: de baas komt uit één aangekondigde poort, samen met een
+    kleiner escorte; de aankondiging noemt de baas en een tip (zoals D54).
+  - De baas telt als robot voor torens, hekken en het wapen; hij slaat hard
+    op het monument als hij het haalt.
+  - Beloning: een flinke munt en een banner ("Sloopkogel verslagen!").
+- **Acceptatie:** `test-dnm-baas.mjs`: baaswave spawnt precies één baas,
+  HP-balk volgt, beloning, reset ruimt op.
+
+### Ticket D57 — De drie bazen
+
+Eigen namen en vormen, gebouwd uit simpele geometrie zoals de robots.
+Startwaarden, te ijken in D60.
+
+| Wave | Baas | Wat hij doet | Tegenzet |
+|---|---|---|---|
+| 5 | **De Sloopkogel** | Traag, veel HP, zwaait met een kogel aan een ketting en slaat torens langs zijn route kapot | Het geschut (zware kogels) en zelf schieten; torens niet te dicht op de route |
+| 10 | **De Dijkbreker** | Sneller, breekt elk hek in één klap, en heeft een schild dat om de paar seconden opengaat | Wachten op het open schild; de Bovenleiding voor het escorte |
+| 15 | **De Stoomwals** (eindbaas) | Enorm en traag; laat onderweg kleine robots los en wordt sneller als hij onder de helft komt | Alles wat je hebt: torens op zijn route én het wapen |
+
+- **Acceptatie:** per baas een test op zijn eigen gedrag (torens slopen,
+  hek breken en schildfasen, robots loslaten en de woedefase).
+
+### Ticket D58 — Torens splitsen op niveau 3
+
+- **Doel:** op niveau 3 kies je een richting; zo ziet elke run er anders
+  uit.
+- **Voorstel** (namen en effecten te bevestigen bij de uitvoering):
+
+| Toren | Richting A | Richting B |
+|---|---|---|
+| Geschuttoren | **Kanon**: kogel met een kleine explosie (raakt ook robots eromheen) | **Scherpschutter**: heel ver bereik, veel schade, traag |
+| Bovenleiding | **Hoogspanning**: meer sprongen en meer schade | **Stroomval**: minder schade, maar getroffen robots lopen een paar seconden trager |
+| Hek | **Prikkeldraad**: doet schade aan robots die erop slaan | **Stadsmuur**: veel meer HP, langzaam te herstellen |
+
+- In het menu staat niveau 3 als twee opties; na de keuze ligt de richting
+  vast (verkopen en opnieuw bouwen mag).
+- Richting B van elke toren is in het begin op slot (D59).
+- **Acceptatie:** `test-dnm-splitsing.mjs`: beide richtingen per toren doen
+  wat ze beloven; een vergrendelde richting is zichtbaar maar niet te kopen.
+
+### Ticket D59 — Ontgrendelingen
+
+- **Doel:** er blijft iets tussen runs, zonder dat je sterker wordt.
+- **Mijlpalen** (voorstel):
+
+| Mijlpaal | Ontgrendelt |
+|---|---|
+| De Sloopkogel voor het eerst verslagen | Scherpschutter |
+| De Dijkbreker voor het eerst verslagen | Stroomval |
+| De eerste overwinning | Stadsmuur |
+| 6 sterren in totaal | Zware nacht: een moeilijker stand (meer robots, sneller), die 1 extra ster per overwinning geeft |
+| 12 sterren in totaal | Een tweede kleur/uiterlijk voor het monumentlicht en de torens (puur uiterlijk) |
+
+- Sterren tellen op per run (per overwinning 1–3, in Zware nacht tot 4).
+- Een scherm "Ontgrendelingen" op het startscherm: wat je hebt, wat nog op
+  slot zit en hoe je het krijgt. Een melding in het spel als je iets
+  vrijspeelt.
+- Bewaard in `localStorage` met dezelfde terugval-regels als de highscore
+  (D8); een reset van de run wist dit niet.
+- **Acceptatie:** `test-dnm-ontgrendelingen.mjs`: elke mijlpaal
+  ontgrendelt het juiste, overleeft herladen, corrupte sleutel valt terug
+  op "niets ontgrendeld".
+
+### Ticket D60 — Herijken en speeltest (M4)
+
+- `meet-dnm-economie` uitbreiden met de baaswaves; de bazen, de splitsingen
+  en de run van 15 waves op elkaar afstemmen (doel: winnen lukt bij goed
+  spel in ~15–20 minuten, 3 sterren vraagt echt iets).
+- **M4:** de eigenaar speelt een hele run. Werkt het doel? Voelt de
+  volgende run anders door de ontgrendelingen?
+
+### Volgorde
+
+D55 (run en overwinning) → D56 (baassysteem) → D57 (drie bazen) → D58
+(splitsingen) → D59 (ontgrendelingen) → D60 (herijken) ── **M4**.
