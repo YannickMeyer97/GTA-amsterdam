@@ -1185,12 +1185,43 @@ minuten.
 
 | | Ticket | Kern |
 | --- | --- | --- |
-| ☐ | **D55** | Een run van 15 waves met een overwinning en sterren |
+| ☑ | **D55** | Een run van 15 waves met een overwinning en sterren |
 | ☐ | **D56** | Het baassysteem (HP-balk, baaswave, beloning) |
 | ☐ | **D57** | De drie bazen: Sloopkogel (5), Dijkbreker (10), Stoomwals (15) |
 | ☐ | **D58** | Torens splitsen op niveau 3 |
 | ☐ | **D59** | Ontgrendelingen tussen runs |
 | ☐ | **D60** | Herijken en speeltest → **M4** |
+
+**D55 — een run van 15 waves, verslag.**
+- **De run heeft een einde.** Na wave 15 (`RUN_WAVES`) opent het
+  overwinningsscherm "DE DAM IS GERED": sterren, het monument in procenten,
+  dezelfde statistieken als het eindscherm, en twee knoppen:
+  - **Doorspelen**: het scherm gaat dicht en de bouwfase loopt verder naar
+    wave 16; daarna eindeloos, voor je highscore. Er komt geen tweede
+    overwinning;
+  - **Opnieuw**: een nieuwe run, zoals na game over.
+
+  Zolang het scherm open is, staat het spel stil (net als bij game over),
+  en een klik op de achtergrond hervat niets.
+- **Sterren** naar het monument op het moment van winnen: 1 bij winnen,
+  2 bij ≥ 50%, 3 bij ≥ 90%.
+- **HUD:** "Wave 7 / 15" tijdens de run, na de overwinning "Wave 16".
+- **Themagolven** liggen in de run vast op 7 (Tankkonvooi), 9 (Spitsuur)
+  en 12 (Grachtenmist), om de latere baaswaves 5, 10 en 15 heen. Na de run
+  weer om de 4 waves, vanaf 18.
+- **Highscore:** het record bewaart nu ook `gewonnen` en `besteSterren`,
+  los van de score. De eerste overwinning en een nieuw sterrenrecord staan
+  op het scherm. Een nieuw scorerecord laat ze staan; ongeldige waarden
+  kosten alleen dat veld.
+- **Game over na doorspelen:** het eindscherm zegt "De Dam gered (★★),
+  daarna wave 23 bereikt".
+- **Kleine schermen:** eind- en overwinningsscherm hebben nu ook een
+  compacte stand onder 560 px hoogte. Daarbij bleek dat de compacte regels
+  voor de knoppen nooit werkten: de algemene `.knop`-regel stond erna en won.
+  Het blok staat nu als laatste.
+- Wave 15 is nog een gewone wave; in D56–D57 wordt het de eindbaas.
+- **Test:** `test-dnm-overwinning` (21 checks). `test-dnm-themagolven` en
+  `test-dnm-highscore` volgen het nieuwe rooster en de twee nieuwe velden.
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

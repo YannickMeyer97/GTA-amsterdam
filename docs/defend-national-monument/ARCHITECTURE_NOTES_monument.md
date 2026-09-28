@@ -1604,3 +1604,26 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
 - **Tests:** `DamChaosDebug.simuleerVuren(duur, vuren = true)` houdt de
   vuurknop vast of los in stappen van 1/60 s, in dezelfde volgorde als
   `gameLoop`, en telt de schoten.
+
+### 15.16 Een run met een einde (D55)
+
+- **Staat in `spel`:** `gewonnen`, `sterren` en `overwinningOpen`. Ze komen
+  uit `BEGINSTAAT`, dus `resetRun()` wist ze vanzelf; het
+  overwinningsscherm gaat daar expliciet dicht.
+- **`overwinningOpen` is een tweede stilstand naast `gameOver`**, maar
+  omkeerbaar. Drie plekken lezen hem: de game-loop-gate, de
+  pointerlockchange-handler (geen pauzescherm over het overwinningsscherm)
+  en de klik op het startscherm (die hervat niets). Wie een nieuwe
+  "spel staat stil"-plek toevoegt, moet beide vlaggen lezen.
+- **Winnen gebeurt op één plek:** het wave-compleet-blok in
+  `updateWaveSysteem`, direct na de wave-bonus van wave `RUN_WAVES`. Een
+  baas (D56–D57) hoeft daar niets voor te doen; hij hoort gewoon bij
+  wave 15.
+- **Themagolven:** `themaSleutelVoorWave` leest binnen de run
+  `THEMA_IN_RUN`, daarna de oude cyclus (`THEMA_EERSTE_WAVE` = 18,
+  `THEMA_INTERVAL`).
+- **Highscore:** `verwerkOverwinning(sterren)` schrijft `gewonnen` en
+  `besteSterren`, ook zonder nieuw scorerecord; `verwerkHighscore` neemt
+  ze over bij een nieuw scorerecord.
+- **CSS:** het `@media (max-height: 560px)`-blok staat bewust als laatste
+  in de stijlen; anders winnen de algemene regels (zoals `.knop`).

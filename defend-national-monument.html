@@ -338,9 +338,9 @@
   }
   #menuLink:hover { background: rgba(20, 30, 45, 0.85); }
 
-  /* --- Startscherm / pauzescherm, en het eindscherm (Ticket D7) in
+/* --- Startscherm / pauzescherm, en het eindscherm (Ticket D7) in
      dezelfde vormtaal --- */
-  #startscherm, #eindscherm {
+  #startscherm, #eindscherm, #overwinningscherm {
     position: fixed;
     inset: 0;
     display: flex;
@@ -354,22 +354,22 @@
     cursor: pointer;
     z-index: 10;
   }
-  #eindscherm { cursor: default; z-index: 30; }
-  #startscherm h1, #eindscherm h1 {
+#eindscherm, #overwinningscherm { cursor: default; z-index: 30; }
+#startscherm h1, #eindscherm h1, #overwinningscherm h1 {
     font-size: 64px;
     margin: 0 0 4px 0;
     letter-spacing: 4px;
     color: #ffd75e;
     text-shadow: 0 4px 12px rgba(0,0,0,0.6);
   }
-  #eindscherm h1 { font-size: 52px; color: #ff8a6b; }
-  #startscherm h2, #eindscherm h2 {
+#eindscherm h1, #overwinningscherm h1 { font-size: 52px; color: #ff8a6b; }
+#startscherm h2, #eindscherm h2, #overwinningscherm h2 {
     font-size: 20px;
     font-weight: 400;
     margin: 0 0 28px 0;
     color: #cfe8ff;
   }
-  #startscherm .uitleg, #eindscherm .uitleg {
+#startscherm .uitleg, #eindscherm .uitleg, #overwinningscherm .uitleg {
     background: rgba(255,255,255,0.1);
     border-radius: 14px;
     padding: 18px 30px;
@@ -377,18 +377,18 @@
     line-height: 1.9;
     margin-bottom: 30px;
   }
-  #eindscherm .stats {
+#eindscherm .stats, #overwinningscherm .stats {
     display: grid;
     grid-template-columns: auto auto;
     column-gap: 28px;
     text-align: left;
   }
-  #eindscherm .stats b { color: #ffd75e; }
-  #eindscherm .kills-per-type { grid-column: 1 / -1; font-size: 14px; color: #cfe8ff; }
-  #eindscherm .hint { font-size: 16px; color: #cfe8ff; margin-top: 18px; }
-  #eindscherm .knop { cursor: pointer; }
-  #eindscherm .record { font-size: 18px; color: #cfe8ff; margin: -16px 0 18px 0; min-height: 1.2em; }
-  #eindscherm .record.nieuw { font-size: 28px; font-weight: 800; color: #ffd75e; letter-spacing: 2px; }
+#eindscherm .stats b, #overwinningscherm .stats b { color: #ffd75e; }
+#eindscherm .kills-per-type, #overwinningscherm .kills-per-type { grid-column: 1 / -1; font-size: 14px; color: #cfe8ff; }
+#eindscherm .hint, #overwinningscherm .hint { font-size: 16px; color: #cfe8ff; margin-top: 18px; }
+#eindscherm .knop, #overwinningscherm .knop { cursor: pointer; }
+#eindscherm .record, #overwinningscherm .record { font-size: 18px; color: #cfe8ff; margin: -16px 0 18px 0; min-height: 1.2em; }
+#eindscherm .record.nieuw, #overwinningscherm .record.nieuw { font-size: 28px; font-weight: 800; color: #ffd75e; letter-spacing: 2px; }
   /* Ticket D21: kwaliteitskeuze onder de startknop. */
   /* Ticket D22: instellingen in een klein raster: label links, keuze rechts. */
   #instellingen { margin-top: 20px; display: grid; grid-template-columns: auto auto; gap: 8px 14px; align-items: center; font-size: 14px; color: #cfe8ff; cursor: default; }
@@ -398,16 +398,7 @@
   #gevoeligheidWaarde { min-width: 3.2em; text-align: left; }
   .kwaliteitKnop { cursor: pointer; padding: 4px 12px; border-radius: 999px; background: rgba(255,255,255,0.12); color: #fff; }
   .kwaliteitKnop.actief { background: #ffd75e; color: #24303f; font-weight: 700; }
-  /* Lage schermen (telefoon liggend): alles compacter, zodat de
-     kwaliteitsknoppen onder de startknop binnen beeld blijven. */
-  @media (max-height: 560px) {
-    #startscherm h1 { font-size: 36px; }
-    #startscherm h2 { font-size: 16px; margin-bottom: 12px; }
-    #startscherm .uitleg { font-size: 13px; line-height: 1.5; padding: 8px 18px; margin-bottom: 14px; }
-    #startscherm .knop { font-size: 17px; padding: 8px 26px; }
-    #instellingen { margin-top: 10px; gap: 4px 12px; font-size: 13px; }
-  }
-  #startscherm .knop, #eindscherm .knop {
+#startscherm .knop, #eindscherm .knop, #overwinningscherm .knop {
     font-size: 22px;
     font-weight: 700;
     background: #ffd75e;
@@ -415,6 +406,33 @@
     padding: 12px 36px;
     border-radius: 999px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+  /* Ticket D55: het overwinningsscherm, in dezelfde vormtaal als het eindscherm. */
+  #overwinningscherm h1 { color: #ffd75e; }
+  #winSterren { font-size: 54px; letter-spacing: 10px; color: #ffd75e; margin: 0 0 6px 0; text-shadow: 0 4px 12px rgba(0,0,0,0.6); }
+  #winSterren .leeg { color: rgba(255,255,255,0.22); }
+  #overwinningscherm .knoppen { display: flex; gap: 16px; }
+  #overwinningscherm .knop.tweede { background: rgba(255,255,255,0.14); color: #fff; }
+  /* Lage schermen (telefoon liggend): alles compacter, zodat de
+     kwaliteitsknoppen onder de startknop binnen beeld blijven. Staat als
+     laatste, zodat hij de algemene regels (zoals .knop) overschrijft. */
+  @media (max-height: 560px) {
+    #startscherm h1 { font-size: 36px; }
+    #startscherm h2 { font-size: 16px; margin-bottom: 12px; }
+    #startscherm .uitleg { font-size: 13px; line-height: 1.5; padding: 8px 18px; margin-bottom: 14px; }
+    #startscherm .knop { font-size: 17px; padding: 8px 26px; }
+    #instellingen { margin-top: 10px; gap: 4px 12px; font-size: 13px; }
+    /* Ticket D55: ook het eind- en overwinningsscherm passen dan. */
+    #eindscherm, #overwinningscherm { justify-content: flex-start; padding-top: 10px; overflow-y: auto; }
+    #eindscherm h1, #overwinningscherm h1 { font-size: 28px; }
+    #eindscherm h2, #overwinningscherm h2 { font-size: 14px; margin-bottom: 6px; }
+    #eindscherm .record, #overwinningscherm .record { margin: 0 0 4px 0; font-size: 14px; }
+    #eindscherm .record.nieuw, #overwinningscherm .record.nieuw { font-size: 18px; }
+    #eindscherm .uitleg, #overwinningscherm .uitleg { font-size: 12px; line-height: 1.35; padding: 6px 16px; margin-bottom: 8px; }
+    #winSterren { font-size: 30px; margin: 0; }
+    #eindscherm .knop, #overwinningscherm .knop { font-size: 16px; padding: 7px 24px; }
+    #eindscherm .hint, #overwinningscherm .hint { margin-top: 6px; font-size: 13px; }
+    #eindscherm .kills-per-type, #overwinningscherm .kills-per-type { font-size: 11px; }
   }
 </style>
 </head>
@@ -476,6 +494,20 @@
   <div class="uitleg stats" id="eindStats"></div>
   <div class="knop" id="opnieuwKnop">Opnieuw spelen</div>
   <a class="hint" id="eindMenuLink" href="index.html">← Terug naar het menu</a>
+</div>
+
+<!-- Ticket D55: de run is gewonnen. -->
+<div id="overwinningscherm" style="display:none">
+  <h1>DE DAM IS GERED</h1>
+  <div id="winSterren"></div>
+  <h2 id="winOndertitel"></h2>
+  <div class="record" id="winRecord"></div>
+  <div class="uitleg stats" id="winStats"></div>
+  <div class="knoppen">
+    <div class="knop" id="doorspeelKnop">Doorspelen</div>
+    <div class="knop tweede" id="winOpnieuwKnop">Opnieuw</div>
+  </div>
+  <a class="hint" href="index.html">← Terug naar het menu</a>
 </div>
 
 <!-- Three.js laden vanaf een CDN. Dankzij deze "importmap" kunnen we
@@ -3610,7 +3642,8 @@ const minimapUI = document.getElementById('minimapUI');
 
 startscherm.addEventListener('click', () => {
   // Ticket D7: na game over mag een klik de run niet stilletjes hervatten.
-  if (spel.gameOver) return;
+  // Ticket D55: tijdens het overwinningsscherm ook niet (daar kies je).
+  if (spel.gameOver || spel.overwinningOpen) return;
   initGeluid();   // geluid mag pas starten na een klik (browserregel)
   renderer.domElement.requestPointerLock();
 });
@@ -3619,7 +3652,7 @@ document.addEventListener('pointerlockchange', () => {
   const actief = document.pointerLockElement === renderer.domElement;
   // Ticket D7: bij game over verlaat eindigRun() de pointer lock zelf; dan
   // hoort hier het eindscherm te staan, niet het pauzescherm.
-  startscherm.style.display = actief || spel.gameOver ? 'none' : 'flex';
+  startscherm.style.display = actief || spel.gameOver || spel.overwinningOpen ? 'none' : 'flex';   // D55: ook niet over het overwinningsscherm
   richtkruis.style.display = actief ? 'block' : 'none';
   warmteUI.style.display = actief ? 'block' : 'none';   // Ticket D18
   hulpUI.style.display = actief ? 'block' : 'none';
@@ -3819,6 +3852,9 @@ const spel = {
   tussenWaveTimer: 0,
   waveBonusGegeven: false,
   gameOver: false,
+  gewonnen: false,          // Ticket D55: wave RUN_WAVES gehaald (daarna eventueel doorspelen)
+  sterren: 0,               // Ticket D55: 1–3, vastgelegd op het moment van de overwinning
+  overwinningOpen: false,   // Ticket D55: het overwinningsscherm staat open (spel staat stil)
   laatsteSpawnPoort: 'Damrak',
   // Ticket D28: namen uit SPAWN_POORTEN. actievePoorten = waar de lopende
   // wave vandaan komt; volgendePoorten = al gekozen en aangekondigd voor de
@@ -3878,7 +3914,7 @@ function updateArcadeUI() {
   const poortRegel = spel.volgendePoorten.length
     ? `Wave ${spel.wave + 1} over ${Math.ceil(bouwfaseResterend())} s via ${poortenTekst(spel.volgendePoorten)} — G = nu starten`
     : `via ${poortenTekst(spel.actievePoorten)}`;
-  waveUI.innerHTML = `Wave ${spel.wave}, nog ${spel.teSpawnen + robots.length} robots<span class="poorten">${poortRegel}</span>`;
+  waveUI.innerHTML = `Wave ${waveLabel(spel.wave)}, nog ${spel.teSpawnen + robots.length} robots<span class="poorten">${poortRegel}</span>`;
   objectiveUI.textContent = spel.gameOver
     ? 'Game over, het Monument is gevallen.'
     : `Bescherm het Nationaal Monument, ${Math.max(0, Math.ceil(spel.monumentHP))}%`;
@@ -3984,7 +4020,11 @@ function startVolgendeWaveNu() {
 // overschrijven. Welk thema: roteren door de lijst, niet loten —
 // deterministisch en dus testbaar, en je ziet ze allemaal voordat er één
 // terugkomt.
-const THEMA_EERSTE_WAVE = 6;
+// Ticket D55: binnen de run van RUN_WAVES waves liggen de thema's vast, om
+// de baaswaves (5, 10, 15) heen. Daarna, bij doorspelen, weer de oude
+// cyclus: om de THEMA_INTERVAL waves, vanaf THEMA_EERSTE_WAVE.
+const THEMA_IN_RUN = { 7: 'tankkonvooi', 9: 'spitsuur', 12: 'grachtenmist' };
+const THEMA_EERSTE_WAVE = 18;
 const THEMA_INTERVAL = 4;
 const THEMA_BONUS_FACTOR = 1.5;   // de wave-bonus van een themagolf, als beloning voor het afwijkende karakter
 const THEMAGOLVEN = {
@@ -3998,6 +4038,7 @@ const THEMA_VOLGORDE = ['tankkonvooi', 'spitsuur', 'grachtenmist'];
 
 // Pure functies: geven alleen iets terug, muteren niets.
 function themaSleutelVoorWave(wave) {
+  if (wave <= RUN_WAVES) return THEMA_IN_RUN[wave] ?? null;
   if (wave < THEMA_EERSTE_WAVE || (wave - THEMA_EERSTE_WAVE) % THEMA_INTERVAL !== 0) return null;
   return THEMA_VOLGORDE[((wave - THEMA_EERSTE_WAVE) / THEMA_INTERVAL) % THEMA_VOLGORDE.length];
 }
@@ -4049,6 +4090,19 @@ function kiesActievePoorten(aantal, vorige = []) {
 }
 function poortenTekst(namen) {
   return namen.length === 2 ? `${namen[0]} en ${namen[1]}` : namen.join(', ');
+}
+
+// Ticket D55: een run heeft een einde. Na wave RUN_WAVES heb je gewonnen;
+// daarna kun je eindeloos doorspelen voor je highscore. Sterren meten hoe
+// goed het ging: het monument bij de overwinning.
+const RUN_WAVES = 15;
+const STER_DREMPELS = [0.5, 0.9];   // ≥ 50% → 2 sterren, ≥ 90% → 3
+function sterrenVoor(monumentHP) {
+  const f = monumentHP / MONUMENT_MAX_HP;
+  return 1 + STER_DREMPELS.filter(d => f >= d).length;
+}
+function waveLabel(wave) {
+  return !spel.gewonnen && wave <= RUN_WAVES ? `${wave} / ${RUN_WAVES}` : `${wave}`;
 }
 
 // Ticket D53: drie robots meer per wave (was 7 + 3·wave). Vroeg merk je
@@ -4125,6 +4179,8 @@ function updateWaveSysteem(dt) {
       spel.volgendePoorten = kiesActievePoorten(aantalPoortenVoorWave(spel.wave + 1), spel.actievePoorten);
       updatePoortBakens();
       updateArcadeUI();
+      // Ticket D55: de laatste wave van de run is gehaald.
+      if (spel.wave === RUN_WAVES && !spel.gewonnen) winRun();
     }
     // De aankondiging pas na de "gehaald"-banner (1,6 s), zodat die twee
     // elkaar niet overschrijven. Frame-gestuurd i.p.v. setTimeout, zodat een
@@ -4405,6 +4461,28 @@ function eindigRun() {
   if (document.pointerLockElement) document.exitPointerLock();
 }
 
+// Ticket D55: de overwinning. Het spel valt stil (zoals bij game over, maar
+// omkeerbaar): pointer lock los, het overwinningsscherm open. Doorspelen
+// sluit het scherm en gaat verder met de bouwfase naar wave RUN_WAVES + 1.
+function winRun() {
+  if (spel.gewonnen || spel.gameOver) return;
+  spel.gewonnen = true;
+  spel.sterren = sterrenVoor(spel.monumentHP);
+  spel.overwinningOpen = true;
+  schietKnopIngedrukt = false;
+  toonOverwinningscherm(verwerkOverwinning(spel.sterren));
+  updateArcadeUI();
+  if (document.pointerLockElement) document.exitPointerLock();
+}
+function doorspelen() {
+  if (!spel.overwinningOpen) return;
+  spel.overwinningOpen = false;
+  overwinningscherm.style.display = 'none';
+  startscherm.querySelector('h2').textContent = 'Doorspelen — eindeloos, voor je highscore';
+  startscherm.style.display = 'flex';
+  renderer.domElement.requestPointerLock();
+}
+
 // Ticket D8 — één bewaard record. Gekopieerd en aangepast van het patroon
 // in Amsterdam Undead (geen gedeelde code). localStorage kan ontbreken,
 // geweigerd zijn (privacymodus) of met de hand kapotgemaakt zijn; geen van
@@ -4426,6 +4504,9 @@ function leesHighscore() {
       score: record.score,
       wave: Number.isInteger(record.wave) && record.wave > 0 ? record.wave : null,
       datum: typeof record.datum === 'string' ? record.datum : null,
+      // Ticket D55: los van de score bijgehouden.
+      gewonnen: record.gewonnen === true,
+      besteSterren: Number.isInteger(record.besteSterren) && record.besteSterren >= 1 && record.besteSterren <= 3 ? record.besteSterren : 0,
     };
   } catch {
     return null;
@@ -4446,11 +4527,28 @@ function schrijfHighscore(record) {
 function verwerkHighscore() {
   const vorig = leesHighscore();
   if (spel.score > (vorig ? vorig.score : 0)) {
-    const record = { score: spel.score, wave: spel.wave, datum: new Date().toISOString().slice(0, 10) };
+    // Ticket D55: gewonnen en beste sterren blijven staan bij een nieuw scorerecord.
+    const record = { score: spel.score, wave: spel.wave, datum: new Date().toISOString().slice(0, 10),
+      gewonnen: !!vorig?.gewonnen, besteSterren: vorig?.besteSterren ?? 0 };
     schrijfHighscore(record);
     return { nieuw: true, record };
   }
   return { nieuw: false, record: vorig };
+}
+// Ticket D55: bij een overwinning "gewonnen" en de beste sterren bewaren,
+// ook als de score geen record is. Geeft ook terug of dit de eerste
+// overwinning is en of de sterren een nieuw record zijn.
+function verwerkOverwinning(sterren) {
+  const vorig = leesHighscore();
+  const record = vorig
+    ? { ...vorig }
+    : { score: 0, wave: null, datum: null, gewonnen: false, besteSterren: 0 };
+  const eerste = !record.gewonnen;
+  const meerSterren = sterren > record.besteSterren;
+  record.gewonnen = true;
+  record.besteSterren = Math.max(record.besteSterren, sterren);
+  schrijfHighscore(record);
+  return { eerste, meerSterren, record };
 }
 
 const eindscherm = document.getElementById('eindscherm');
@@ -4462,7 +4560,6 @@ function formatteerSpeelduur(seconden) {
 }
 
 function toonEindscherm(recordUitslag = null) {
-  const s = runStats;
   const recordEl = document.getElementById('eindRecord');
   recordEl.classList.toggle('nieuw', !!recordUitslag?.nieuw);
   if (recordUitslag?.nieuw) {
@@ -4473,14 +4570,24 @@ function toonEindscherm(recordUitslag = null) {
   } else {
     recordEl.textContent = '';
   }
+  // Ticket D55: na een overwinning en doorspelen zegt de ondertitel dat ook.
+  document.getElementById('eindOndertitel').textContent = spel.gewonnen
+    ? `De Dam gered (${'★'.repeat(spel.sterren)}), daarna wave ${spel.wave} bereikt`
+    : `Wave ${spel.wave} bereikt`;
+  document.getElementById('eindStats').innerHTML = statsHTML();
+  eindscherm.style.display = 'flex';
+}
+
+// Ticket D55: dezelfde statistieken voor het eind- en het overwinningsscherm.
+function statsHTML() {
+  const s = runStats;
   const totaalKills = Object.values(s.kills).reduce((a, b) => a + b, 0);
   const trefferPct = s.schoten > 0 ? Math.round((s.treffers / s.schoten) * 100) : 0;
   const perType = Object.entries(s.kills)
     .filter(([, n]) => n > 0)
     .map(([type, n]) => `${ROBOT_WEERGAVENAMEN[type] ?? type} ${n}`)
     .join(' · ');
-  document.getElementById('eindOndertitel').textContent = `Wave ${spel.wave} bereikt`;
-  document.getElementById('eindStats').innerHTML = `
+  return `
     <span>Score</span><b>${spel.score}</b>
     <span>Robots vernietigd</span><b>${totaalKills}${s.torenKills > 0 ? ` (${s.torenKills} door torens)` : ''}</b>
     <span>Torens gebouwd</span><b>${s.torensGebouwd}</b>
@@ -4490,8 +4597,24 @@ function toonEindscherm(recordUitslag = null) {
     <span>Speelduur</span><b>${formatteerSpeelduur(s.speelduur)}</b>
     <span class="kills-per-type">${perType || 'Geen robots vernietigd'}</span>
   `;
-  eindscherm.style.display = 'flex';
 }
+
+const overwinningscherm = document.getElementById('overwinningscherm');
+function toonOverwinningscherm(uitslag = null) {
+  const n = spel.sterren;
+  document.getElementById('winSterren').innerHTML = '★'.repeat(n) + `<span class="leeg">${'★'.repeat(3 - n)}</span>`;
+  document.getElementById('winOndertitel').textContent =
+    `${RUN_WAVES} waves overleefd, het monument staat nog op ${Math.max(0, Math.ceil(spel.monumentHP))}%`;
+  const recordEl = document.getElementById('winRecord');
+  const nieuw = !!(uitslag?.eerste || uitslag?.meerSterren);
+  recordEl.classList.toggle('nieuw', nieuw);
+  recordEl.textContent = uitslag?.eerste ? 'EERSTE OVERWINNING!'
+    : uitslag?.meerSterren ? 'NIEUW STERRENRECORD!'
+    : uitslag?.record ? `Beste: ${'★'.repeat(uitslag.record.besteSterren)}` : '';
+  document.getElementById('winStats').innerHTML = statsHTML();
+  overwinningscherm.style.display = 'flex';
+}
+document.getElementById('doorspeelKnop').addEventListener('click', doorspelen);
 
 function upgradeKosten(type) {
   const basis = { vuurtempo: 100, pickup: 150, snelheid: 200, koeling: 125 }[type];
@@ -6879,6 +7002,7 @@ function resetRun() {
   hitmarkerUI.style.opacity = '0';
   verbergInteractiePrompt();
   eindscherm.style.display = 'none';
+  overwinningscherm.style.display = 'none';   // Ticket D55
 
   // Monument weer heel (Ticket D20). Rechtstreeks i.p.v. via
   // updateMonumentSchade(): een reset is geen "herstel"-overgang binnen een
@@ -6894,12 +7018,14 @@ function resetRun() {
 // Opnieuw-knop: resetten en meteen weer spelen. Het startscherm gaat eerst
 // aan als vangnet: lukt de pointer lock niet (de browser mag weigeren), dan
 // staat de speler niet voor een leeg scherm maar voor "klik om te spelen".
-document.getElementById('opnieuwKnop').addEventListener('click', () => {
+function opnieuwSpelen() {
   resetRun();
   startscherm.querySelector('h2').textContent = 'Verdedig de Dam — Amsterdam';
   startscherm.style.display = 'flex';
   renderer.domElement.requestPointerLock();
-});
+}
+document.getElementById('opnieuwKnop').addEventListener('click', opnieuwSpelen);
+document.getElementById('winOpnieuwKnop').addEventListener('click', opnieuwSpelen);   // Ticket D55
 
 // Zet bij de start de eerste wave en duiven neer.
 startWave(1);
@@ -6920,7 +7046,7 @@ function gameLoop(nu) {
   // (pointer lock inactief, bijvoorbeeld na Esc). Voorheen liepen robots,
   // munten en de tram gewoon door tijdens de pauze.
   // Ticket D7: ook na game over valt álles stil, niet alleen robots en waves.
-  const spelActief = document.pointerLockElement === renderer.domElement && !spel.gameOver;
+  const spelActief = document.pointerLockElement === renderer.domElement && !spel.gameOver && !spel.overwinningOpen;
   if (spelActief) {
     runStats.speelduur += dt;
     if (schietKnopIngedrukt) probeerTeSchieten();
@@ -7000,6 +7126,8 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   robotRoutePunt, robotBaan, hekVoorRobot, hekOpRoute, robotMoetWachten, ROBOT_ACHTERSTAND, ROBOT_VOORUITKIJK, ROBOT_BAAN_MARGE, ROBOT_ONDERLING, ROBOT_BAAN_BOTSING,
   // Ticket D7: eindscherm en runstatistieken.
   runStats, eindigRun, toonEindscherm, verdienGeld,
+  // Ticket D55: een run met een einde.
+  RUN_WAVES, STER_DREMPELS, sterrenVoor, waveLabel, winRun, doorspelen, verwerkOverwinning, THEMA_IN_RUN,
   // Ticket D8: highscore.
   HIGHSCORE_KEY, leesHighscore, schrijfHighscore, verwerkHighscore,
   // Ticket D9: opnieuw spelen. runStateStand bundelt de losse `let`-

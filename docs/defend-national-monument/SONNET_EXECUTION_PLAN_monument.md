@@ -2106,6 +2106,8 @@ tweede wapen, permanente upgrades, een campagne in nachten.
 - **Acceptatie:** `test-dnm-overwinning.mjs`: winnen na wave 15, sterren per
   drempel, doorspelen, opnieuw, highscore-roundtrip, geen overwinning bij
   game over.
+- **Uitgevoerd:** zoals beschreven; `test-dnm-overwinning` (21 checks) is
+  groen. Zie de ROADMAP.
 
 ### Ticket D56 — Het baassysteem
 

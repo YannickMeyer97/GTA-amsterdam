@@ -28,8 +28,9 @@ const basis = await page.evaluate(() => {
 });
 check('De sleutel heet defendNationalMonumentHighscore', basis.key === 'defendNationalMonumentHighscore', basis);
 check('Zonder opgeslagen waarde is er geen record', basis.leeg === null, basis);
-check('Schrijven en teruglezen geeft hetzelfde record', JSON.stringify(basis.terug) === JSON.stringify({ score: 1234, wave: 5, datum: '2026-01-01' }), basis);
-check('Onbekende extra velden worden genegeerd', basis.extra && Object.keys(basis.extra).sort().join() === 'datum,score,wave' && basis.extra.score === 10, basis);
+// Ticket D55: het record kent ook "gewonnen" en "besteSterren" (standaard false en 0).
+check('Schrijven en teruglezen geeft hetzelfde record', JSON.stringify(basis.terug) === JSON.stringify({ score: 1234, wave: 5, datum: '2026-01-01', gewonnen: false, besteSterren: 0 }), basis);
+check('Onbekende extra velden worden genegeerd', basis.extra && Object.keys(basis.extra).sort().join() === 'besteSterren,datum,gewonnen,score,wave' && basis.extra.score === 10, basis);
 check('Een ongeldige wave kost niet het hele record, alleen dat veld', basis.slechteWave && basis.slechteWave.score === 50 && basis.slechteWave.wave === null, basis);
 
 // --- 2. Corrupte vormen: nooit een crash, altijd "geen record" ------------
