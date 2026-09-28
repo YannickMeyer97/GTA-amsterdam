@@ -152,8 +152,11 @@ const waveControle = await page.evaluate((waves) => {
       wave: n,
       waveDoel: d.spel.waveDoel,
       // Ticket D30: een themagolf schaalt het aantal (bv. Spitsuur × 1,3).
-      verwachtWaveDoel: Math.round((10 + n * 3) * (d.themaVoorWave(n)?.aantalFactor ?? 1)),   // D53: was 7 + 3·wave
-      thema: d.themaVoorWave(n)?.naam ?? null,
+      // D53: was 7 + 3·wave. D56: een baaswave is de baas plus een half escorte.
+      verwachtWaveDoel: d.baasVoorWave(n)
+        ? Math.round((10 + n * 3) * d.BAAS_ESCORTE_FACTOR) + 1
+        : Math.round((10 + n * 3) * (d.themaVoorWave(n)?.aantalFactor ?? 1)),
+      thema: d.baasVoorWave(n) ? `baas ${d.baasVoorWave(n)}` : d.themaVoorWave(n)?.naam ?? null,
       teSpawnen: d.spel.teSpawnen,
       maxActieveRobots: d.spel.maxActieveRobots,
       verwachtMaxActieveRobots: Math.min(5 + Math.floor(n * 0.65), 13),
@@ -161,7 +164,7 @@ const waveControle = await page.evaluate((waves) => {
   });
 }, [1, 5, 10, 13, 20]);
 for (const w of waveControle) {
-  check(`startWave(${w.wave}): waveDoel = 10 + ${w.wave}·3${w.thema ? ` × themafactor (${w.thema})` : ''}`, w.waveDoel === w.verwachtWaveDoel, w);
+  check(`startWave(${w.wave}): waveDoel = 10 + ${w.wave}·3${w.thema ? ` × factor (${w.thema})` : ''}`, w.waveDoel === w.verwachtWaveDoel, w);
   check(`startWave(${w.wave}): teSpawnen begint gelijk aan waveDoel`, w.teSpawnen === w.waveDoel, w);
   check(`startWave(${w.wave}): maxActieveRobots = min(5 + ⌊${w.wave}·0,65⌋, 13)`, w.maxActieveRobots === w.verwachtMaxActieveRobots, w);
 }
@@ -293,8 +296,8 @@ check('robotRaaktMonument() zet gameOver op true zodra monumentHP het nulpunt ra
 
 // Ticket D53: de aankondiging van nieuwe types volgt ROBOT_TYPE_VANAF.
 const banners = await page.evaluate(() => [2, 3, 4, 5].map(w => window.DamChaosDebug.waveBannerTekst(w)));
-check('Wave 2 kondigt sprinters én tanks aan, wave 3 bommenwerpers, wave 4 Shield Bots, wave 5 niets nieuws',
-  /Sprinters en Tanks/.test(banners[0]) && /Bommenwerpers/.test(banners[1]) && /Shield Bots/.test(banners[2]) && banners[3] === 'Wave 5', banners);
+check('Wave 2 kondigt sprinters én tanks aan, wave 3 bommenwerpers, wave 4 Shield Bots, wave 5 de baas (D56)',
+  /Sprinters en Tanks/.test(banners[0]) && /Bommenwerpers/.test(banners[1]) && /Shield Bots/.test(banners[2]) && banners[3] === 'Wave 5: De Sloopkogel!', banners);
 
 const fails = report(errs);
 await browser.close();

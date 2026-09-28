@@ -1186,7 +1186,7 @@ minuten.
 | | Ticket | Kern |
 | --- | --- | --- |
 | ☑ | **D55** | Een run van 15 waves met een overwinning en sterren |
-| ☐ | **D56** | Het baassysteem (HP-balk, baaswave, beloning) |
+| ☑ | **D56** | Het baassysteem (HP-balk, baaswave, beloning) |
 | ☐ | **D57** | De drie bazen: Sloopkogel (5), Dijkbreker (10), Stoomwals (15) |
 | ☐ | **D58** | Torens splitsen op niveau 3 |
 | ☐ | **D59** | Ontgrendelingen tussen runs |
@@ -1222,6 +1222,28 @@ minuten.
 - Wave 15 is nog een gewone wave; in D56–D57 wordt het de eindbaas.
 - **Test:** `test-dnm-overwinning` (21 checks). `test-dnm-themagolven` en
   `test-dnm-highscore` volgen het nieuwe rooster en de twee nieuwe velden.
+
+**D56 — het baassysteem, verslag.**
+- De drie bazen zijn robottypes (`ROBOT_TYPES.sloopkogel`, `dijkbreker`,
+  `stoomwals`, met `baas: true`). Zo werken torens, hekken, het wapen en
+  het monument zonder uitzonderingen; alleen de beloning en de balk zijn
+  eigen.
+- **Baaswaves** 5, 10 en 15 (`BAAS_WAVES`, alleen binnen de run): één
+  poort, de baas als eerste spawn, midden op de strook, met een escorte
+  van de helft van de gewone wave.
+- **HP-balk** bovenin met de naam, zolang de baas leeft; een grotere stip
+  op de minimap.
+- **Kill:** geen munt maar een vaste beloning (€150 / €250 / €400), 1000
+  punten, een banner, extra brokken en een eigen geluid. Het eindscherm
+  telt de verslagen bazen.
+- **Het monument halen:** de klap van de baas (40 / 40 / 100), met een
+  banner. De Stoomwals is dus meteen game over.
+- **Aankondiging** in de pauze ervoor: "Volgende wave: De Sloopkogel!" met
+  een tip.
+- De eigen vorm en het eigen gedrag komen in D57; nu zijn het grote,
+  gekleurde robots.
+- **Test:** `test-dnm-baas` (12 checks). `test-dnm-kern` en
+  `test-dnm-poorten` kennen de baaswaves (half escorte, één poort).
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

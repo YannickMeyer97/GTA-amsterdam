@@ -76,6 +76,15 @@
     color: #ffd75e;
   }
 
+  /* Ticket D56: naam en HP-balk van de baas, onder de doelregel. */
+  #baasUI {
+    position: fixed; top: 64px; left: 50%; transform: translateX(-50%);
+    width: 360px; padding: 6px 12px 8px; border-radius: 12px;
+    background: rgba(40, 10, 10, 0.72); color: #ffd7cf; font-size: 15px; font-weight: 900;
+    letter-spacing: 1px; text-align: center; pointer-events: none; z-index: 6; display: none;
+  }
+  #baasBalk { margin-top: 5px; height: 9px; border-radius: 5px; background: rgba(255,255,255,0.15); overflow: hidden; }
+  #baasVul { height: 100%; width: 100%; background: linear-gradient(90deg, #ff5a3c, #ffb03c); }
   #objectiveUI {
     position: fixed;
     top: 16px;   /* Ticket D35: bovenste rij, tussen geld en score (overlapte de wave-regel) */
@@ -446,6 +455,7 @@
 <div id="scoreUI">Score 0<br>Combo x0</div>
 <div id="specialUI">⚡ Special: 0%</div>
 <div id="waveUI">Wave 1</div>
+<div id="baasUI"><span id="baasNaam"></span><div id="baasBalk"><div id="baasVul"></div></div></div>
 <div id="objectiveUI">Bescherm het Nationaal Monument, 100%</div>
 <div id="comboUI">COMBO x2</div>
 <div id="hitmarker"></div>
@@ -3855,6 +3865,8 @@ const spel = {
   gewonnen: false,          // Ticket D55: wave RUN_WAVES gehaald (daarna eventueel doorspelen)
   sterren: 0,               // Ticket D55: 1–3, vastgelegd op het moment van de overwinning
   overwinningOpen: false,   // Ticket D55: het overwinningsscherm staat open (spel staat stil)
+  baas: null,               // Ticket D56: sleutel uit BAZEN voor een baaswave, of null
+  baasGespawnd: false,      // Ticket D56: de baas van deze wave is al op pad
   laatsteSpawnPoort: 'Damrak',
   // Ticket D28: namen uit SPAWN_POORTEN. actievePoorten = waar de lopende
   // wave vandaan komt; volgendePoorten = al gekozen en aangekondigd voor de
@@ -3884,6 +3896,7 @@ function nieuweRunStats() {
     torensGebouwd: 0,   // Ticket D11
     torenKills: 0,      // Ticket D11: deel van de kills hierboven dat door een toren kwam
     oververhit: 0,      // Ticket D17: hoe vaak het wapen oververhit raakte
+    bazenVerslagen: 0,  // Ticket D56
   };
 }
 const runStats = nieuweRunStats();
@@ -3949,6 +3962,8 @@ function toonWaveBanner(tekst, tip = '') {
 // meer achterloopt op wanneer een type echt komt.
 const ROBOT_TYPE_MEERVOUD = { sprinter: 'Sprinters', tank: 'Tanks', bomber: 'Bommenwerpers', shieldbot: 'Shield Bots' };
 function waveBannerTekst(nummer) {
+  const baas = baasVoorWave(nummer);
+  if (baas) return `Wave ${nummer}: ${BAZEN[baas].naam}!`;   // Ticket D56
   const thema = themaVoorWave(nummer);
   if (thema) return `Wave ${nummer}: ${thema.naam}!`;
   const nieuw = Object.keys(ROBOT_TYPE_MEERVOUD).filter(t => ROBOT_TYPE_VANAF[t] === nummer).map(t => ROBOT_TYPE_MEERVOUD[t]);
@@ -4047,9 +4062,12 @@ function themaVoorWave(wave) {
   return sleutel ? THEMAGOLVEN[sleutel] : null;
 }
 function aantalPoortenVoorWave(wave) {
+  if (baasVoorWave(wave)) return 1;   // Ticket D56: de baas komt uit één poort
   return themaVoorWave(wave)?.poorten ?? aantalActievePoorten(wave);
 }
 function robotTypeVoorLopendeWave() {
+  // Ticket D56: de baas is de eerste spawn van zijn wave.
+  if (spel.baas && !spel.baasGespawnd) { spel.baasGespawnd = true; return spel.baas; }
   const thema = spel.thema ? THEMAGOLVEN[spel.thema] : null;
   return thema?.robotType ?? kiesRobotTypeVoorWave(spel.wave);
 }
@@ -4128,6 +4146,10 @@ function startWave(nummer) {
   spel.thema = themaSleutelVoorWave(nummer);
   pasMistToe(thema);
   spel.waveDoel = Math.round(waveBasisAantal(nummer) * (thema?.aantalFactor ?? 1));
+  // Ticket D56: een baaswave is de baas plus een half zo groot escorte.
+  spel.baas = baasVoorWave(nummer);
+  spel.baasGespawnd = false;
+  if (spel.baas) spel.waveDoel = Math.round(waveBasisAantal(nummer) * BAAS_ESCORTE_FACTOR) + 1;
   spel.teSpawnen = spel.waveDoel;
   spel.maxActieveRobots = Math.min(5 + Math.floor(nummer * 0.65), 13);
   spel.tussenWaveTimer = 0;
@@ -4188,7 +4210,9 @@ function updateWaveSysteem(dt) {
     if (!spel.aankondigingGetoond && spel.tussenWaveTimer > 1.8) {
       spel.aankondigingGetoond = true;
       const volgendThema = themaVoorWave(spel.wave + 1);
-      toonWaveBanner(`${volgendThema ? `Volgende wave: ${volgendThema.naam}` : 'Volgende wave'}\nvia ${poortenTekst(spel.volgendePoorten)}`, volgendThema?.tip);
+      const volgendeBaas = baasVoorWave(spel.wave + 1) ? BAZEN[baasVoorWave(spel.wave + 1)] : null;   // Ticket D56
+      const titel = volgendeBaas ? `Volgende wave: ${volgendeBaas.naam}!` : volgendThema ? `Volgende wave: ${volgendThema.naam}` : 'Volgende wave';
+      toonWaveBanner(`${titel}\nvia ${poortenTekst(spel.volgendePoorten)}`, volgendeBaas?.tip ?? volgendThema?.tip);
       speelPoortSignaal();
     }
     // Ticket D15: aftelling in de HUD, alleen bijwerken als de hele seconde
@@ -4392,6 +4416,7 @@ function robotRaaktMonument(robot) {
   scene.remove(robot.groep);
   robots.splice(robots.indexOf(robot), 1);
   const schade = robot.monumentSchade ?? 8;
+  if (robot.baas) { toonWaveBanner(`${BAZEN[robot.type].naam} raakt het monument!`); updateBaasUI(); }   // Ticket D56
   spel.monumentHP -= schade;
   spel.combo = 0;
   spel.waveGeenMonumentSchade = false;   // deze wave is niet meer "perfect" (zie updateWaveSysteem)
@@ -4591,6 +4616,7 @@ function statsHTML() {
     <span>Score</span><b>${spel.score}</b>
     <span>Robots vernietigd</span><b>${totaalKills}${s.torenKills > 0 ? ` (${s.torenKills} door torens)` : ''}</b>
     <span>Torens gebouwd</span><b>${s.torensGebouwd}</b>
+    ${s.bazenVerslagen > 0 ? `<span>Bazen verslagen</span><b>${s.bazenVerslagen}</b>` : ''}
     <span>Trefferpercentage</span><b>${trefferPct}%</b>
     <span>Geld verdiend</span><b>€${s.verdiendGeld}</b>
     <span>Hoogste combo</span><b>x${s.hoogsteCombo}</b>
@@ -5903,7 +5929,29 @@ const ROBOT_TYPES = {
   tank:      { hpMax: 3, snelheidMultiplier: 0.55, beloningMultiplier: 2.5, kleur: 0xd1315c, schaal: 1.19,   monumentSchade: 8 },   // Tank
   bomber:    { hpMax: 1, snelheidMultiplier: 1.15, beloningMultiplier: 1.0, kleur: 0xff8c00, schaal: 0.8925, monumentSchade: 25 },  // Bomber
   shieldbot: { hpMax: 1, snelheidMultiplier: 0.85, beloningMultiplier: 1.8, kleur: 0x3ad1ff, schaal: 0.85,   monumentSchade: 10, schildDuur: 1.8, schildPauze: 1.0 },  // Shield Bot
+  // Tickets D56–D57: de drie bazen. Groot, traag, veel HP, en een zware klap
+  // als ze het monument halen. Geen munt: bij de kill een vaste beloning
+  // (BAZEN). Startwaarden, te ijken in D60.
+  sloopkogel: { hpMax: 60,  snelheidMultiplier: 0.5,  beloningMultiplier: 0, kleur: 0xff9a3c, schaal: 2.1, monumentSchade: 40,  baas: true },
+  dijkbreker: { hpMax: 90,  snelheidMultiplier: 0.75, beloningMultiplier: 0, kleur: 0x6fd2ff, schaal: 1.9, monumentSchade: 40,  baas: true },
+  stoomwals:  { hpMax: 180, snelheidMultiplier: 0.4,  beloningMultiplier: 0, kleur: 0xff4a3c, schaal: 2.8, monumentSchade: 100, baas: true },
 };
+
+// Ticket D56: het baassysteem. Een baaswave (alleen binnen de run) begint met
+// de baas, uit één poort, met een escorte van de helft van de gewone wave.
+const BAZEN = {
+  sloopkogel: { naam: 'De Sloopkogel', beloning: 150, tip: 'Hij slaat torens langs zijn route kapot: schiet hem zelf, het geschut helpt' },
+  dijkbreker: { naam: 'De Dijkbreker', beloning: 250, tip: 'Hij breekt elk hek in één klap; raak hem als zijn schild opengaat' },
+  stoomwals:  { naam: 'De Stoomwals',  beloning: 400, tip: 'De eindbaas: hij laat robots los en wordt sneller onder de helft' },
+};
+const BAAS_WAVES = { 5: 'sloopkogel', 10: 'dijkbreker', 15: 'stoomwals' };
+const BAAS_ESCORTE_FACTOR = 0.5;
+function baasVoorWave(wave) {
+  return wave <= RUN_WAVES ? BAAS_WAVES[wave] ?? null : null;
+}
+function levendeBaas() {
+  return robots.find(r => r.baas) ?? null;
+}
 
 // Ticket D42: de delen die niet los bewegen (lijf, kop, antenne; paneel,
 // ogen, antennebol) zijn per robot samengevoegd tot twee meshes: een romp
@@ -6052,8 +6100,16 @@ function spawnRobot(poort = null, type = 'normal') {
   // Ticket D6 voor de volledige afweging tussen de drie opties.
   const basisSnelheid = Math.min(1.35 + Math.random() * 0.7 + spel.wave * 0.07, 3.0) * 1.1;   // standaard 10% sneller
   robot.snelheid = basisSnelheid * config.snelheidMultiplier;
+  // Ticket D56: een baas loopt midden over de strook en houdt zijn maximum-HP
+  // bij voor de balk bovenin.
+  if (config.baas) {
+    robot.baas = true;
+    robot.hpMax = config.hpMax;
+    robot.laanFractie = 0;
+  }
   scene.add(robot.groep);
   robots.push(robot);
+  if (robot.baas) updateBaasUI();
   updateArcadeUI();
 }
 
@@ -6606,6 +6662,31 @@ function schiet() {
 function raakRobot(robot, schade = 1, bron = 'speler') {
   robot.hp -= schade;
   if (robot.hp <= 0) vernietigRobot(robot, bron);
+  else if (robot.baas) updateBaasUI();   // Ticket D56
+}
+
+// Ticket D56: de balk bovenin volgt de levende baas; zonder baas verborgen.
+const baasUI = document.getElementById('baasUI');
+function updateBaasUI() {
+  const baas = levendeBaas();
+  baasUI.style.display = baas ? 'block' : 'none';
+  if (!baas) return;
+  document.getElementById('baasNaam').textContent = BAZEN[baas.type].naam.toUpperCase();
+  document.getElementById('baasVul').style.width = `${Math.max(0, baas.hp / baas.hpMax) * 100}%`;
+}
+function baasVerslagen(robot) {
+  const cfg = BAZEN[robot.type];
+  verdienGeld(cfg.beloning);
+  updateGeldUI();
+  runStats.bazenVerslagen += 1;
+  toonPopup(`${cfg.naam} verslagen! +€${cfg.beloning}`);
+  toonWaveBanner(`${cfg.naam} verslagen!`);
+  speelBaasVerslagen();
+  // Een grotere knal: extra brokken rond de plek.
+  for (let i = 0; i < 10; i++) {
+    const brok = new THREE.Mesh(EFFECT_GEO.brok, mat(0x55606b, 0.7));
+    maakBrokstuk(brok, robot.groep.position.clone().setY(1.5), 9);
+  }
 }
 
 // Robot kapot: alle onderdelen vliegen in het rond, munt blijft achter.
@@ -6629,6 +6710,13 @@ function vernietigRobot(robot, bron = 'speler') {
   robots.splice(robots.indexOf(robot), 1);
   if (robot.type in runStats.kills) runStats.kills[robot.type] += 1;
   spel.waveKills += 1;
+  if (robot.baas) {   // Ticket D56: vaste beloning in plaats van een munt
+    baasVerslagen(robot);
+    updateBaasUI();
+    spel.score += 1000;
+    updateArcadeUI();
+    return;
+  }
 
   if (bron === 'toren') {
     runStats.torenKills += 1;
@@ -6811,6 +6899,7 @@ function speelKerkklok() {
 // raakt: duidelijk anders dan speelSchot()/een normale treffer, zodat de
 // speler meteen hoort dat het schot niets deed.
 // Ticket D18: sissen bij oververhitting, een klikje als hij weer mag.
+function speelBaasVerslagen() { piep('sawtooth', 220, 60, 0.7, 0.18); setTimeout(() => piep('triangle', 523, 1046, 0.5, 0.14), 250); }   // Ticket D56
 function speelOververhit() { piep('sawtooth', 1800, 300, 0.45, 0.07); setTimeout(() => piep('square', 180, 120, 0.12, 0.06), 60); }
 function speelAfgekoeld()  { piep('triangle', 520, 780, 0.08, 0.08); }
 function speelSchildBlok() { piep('triangle', 900, 700, 0.09, 0.14); }
@@ -6917,7 +7006,7 @@ function tekenMinimap() {
   for (const robot of robots) {
     const [rx, rz] = naarMinimap(robot.groep.position.x, robot.groep.position.z);
     minimapCtx.beginPath();
-    minimapCtx.arc(rx, rz, 2.5, 0, Math.PI * 2);
+    minimapCtx.arc(rx, rz, robot.baas ? 5 : 2.5, 0, Math.PI * 2);   // Ticket D56: de baas groter
     minimapCtx.fill();
   }
 
@@ -7003,6 +7092,7 @@ function resetRun() {
   verbergInteractiePrompt();
   eindscherm.style.display = 'none';
   overwinningscherm.style.display = 'none';   // Ticket D55
+  updateBaasUI();                              // Ticket D56
 
   // Monument weer heel (Ticket D20). Rechtstreeks i.p.v. via
   // updateMonumentSchade(): een reset is geen "herstel"-overgang binnen een
@@ -7127,6 +7217,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   // Ticket D7: eindscherm en runstatistieken.
   runStats, eindigRun, toonEindscherm, verdienGeld,
   // Ticket D55: een run met een einde.
+  BAZEN, BAAS_WAVES, BAAS_ESCORTE_FACTOR, baasVoorWave, levendeBaas, updateBaasUI,
   RUN_WAVES, STER_DREMPELS, sterrenVoor, waveLabel, winRun, doorspelen, verwerkOverwinning, THEMA_IN_RUN,
   // Ticket D8: highscore.
   HIGHSCORE_KEY, leesHighscore, schrijfHighscore, verwerkHighscore,

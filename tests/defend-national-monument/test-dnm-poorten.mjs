@@ -84,7 +84,7 @@ const overgangen = await page.evaluate(() => {
     rijen.push({
       wave: w, actief, aangekondigd, gestart: [...d.spel.actievePoorten], nieuweWave: d.spel.wave,
       verwachtAantal: d.aantalPoortenVoorWave(w + 1),
-      themaPoorten: d.themaVoorWave(w + 1)?.poorten ?? null,
+      themaPoorten: d.baasVoorWave(w + 1) ? 1 : d.themaVoorWave(w + 1)?.poorten ?? null,   // D56: een baaswave komt uit één poort
       bakensTijdensWave, bakensInPauze, hudTijdensWave, hudInPauze, bannerVroeg, bannerNogNiet, bannerAankondiging,
     });
   }
@@ -95,7 +95,7 @@ check('Over 8 waves: elke wave start met precies de aangekondigde poorten',
   overgangen.every(r => zelfde(r.gestart, r.aangekondigd) && r.nieuweWave === r.wave + 1), overgangen.map(r => [r.wave, r.aangekondigd, r.gestart]));
 check('Over 8 waves: de aangekondigde set is nooit gelijk aan die van de lopende wave',
   overgangen.every(r => !zelfde(r.aangekondigd, r.actief)), overgangen.map(r => [r.actief, r.aangekondigd]));
-check('Over 8 waves: aantal aangekondigde poorten klopt met de volgende wave (2 vanaf wave 2 sinds D53, een themagolf mag afwijken)',
+check('Over 8 waves: aantal aangekondigde poorten klopt met de volgende wave (2 vanaf wave 2 sinds D53, een thema- of baaswave mag afwijken)',
   overgangen.every(r => r.aangekondigd.length === r.verwachtAantal && r.verwachtAantal === (r.themaPoorten ?? (r.wave + 1 <= 1 ? 1 : 2))), overgangen.map(r => [r.wave + 1, r.aangekondigd.length]));
 check('Tijdens een wave branden precies de bakens van de actieve poorten',
   overgangen.every(r => zelfde(r.bakensTijdensWave, r.actief)), overgangen.map(r => [r.actief, r.bakensTijdensWave]));
