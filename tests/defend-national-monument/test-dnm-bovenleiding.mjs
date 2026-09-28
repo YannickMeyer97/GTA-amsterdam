@@ -72,7 +72,8 @@ const r = await page.evaluate(() => {
   d.vuurBovenleiding(t);
   uit.gat = gat.map(x => +(10 - x.hp).toFixed(4));
 
-  // 5. Niveaus: meer bereik, meer doelen, meer schade; nooit meer dan 4.
+  // 5. Niveaus: meer bereik, meer doelen, meer schade. Niveau 3 is sinds D58
+  // richting A (Hoogspanning, 5 robots); de vonkboog groeit mee.
   uit.niveaus = [];
   for (const niveau of [2, 3]) {
     d.geldZet(1000);
@@ -129,7 +130,7 @@ check('Na een stoot staat de vonkboog aan en wacht de mast een schotInterval', r
 check('Een gat groter dan de sprongafstand breekt de keten', r.gat[0] > 0 && r.gat[1] === 0 && r.gat[2] === 0, r.gat);
 for (const n of r.niveaus) {
   const geraakt = n.geraakt.filter(x => x > 0);
-  check(`Niveau ${n.niveau}: raakt ${n.cfg.doelen} robots (nooit meer dan 4), eerste met ${n.cfg.schade} schade`, n.niveau && geraakt.length === n.cfg.doelen && geraakt.length <= 4 && Math.abs(geraakt[0] - n.cfg.schade) < 1e-9, n);
+  check(`Niveau ${n.niveau}: raakt ${n.cfg.doelen} robots, eerste met ${n.cfg.schade} schade`, n.niveau && geraakt.length === n.cfg.doelen && Math.abs(geraakt[0] - n.cfg.schade) < 1e-9, n);
   check(`Niveau ${n.niveau}: elke sprong doet de volle schade (D54)`, geraakt.every(x => Math.abs(x - n.cfg.schade) < 1e-9), geraakt);
   check(`Niveau ${n.niveau}: bereik ${n.cfg.bereik} m (robot op ${n.cfg.bereik - 0.5} m geraakt)`, n.bereikGeraakt, n);
 }

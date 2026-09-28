@@ -1188,7 +1188,7 @@ minuten.
 | ☑ | **D55** | Een run van 15 waves met een overwinning en sterren |
 | ☑ | **D56** | Het baassysteem (HP-balk, baaswave, beloning) |
 | ☑ | **D57** | De drie bazen: Sloopkogel (5), Dijkbreker (10), Stoomwals (15) |
-| ☐ | **D58** | Torens splitsen op niveau 3 |
+| ☑ | **D58** | Torens splitsen op niveau 3 |
 | ☐ | **D59** | Ontgrendelingen tussen runs |
 | ☐ | **D60** | Herijken en speeltest → **M4** |
 
@@ -1260,6 +1260,30 @@ kleur zwart). Waarden zijn startwaarden voor D60.
   met `schildDuur`. Zo werkt het schild van de Dijkbreker overal (wapen,
   geschut, Bovenleiding) zonder nieuwe uitzonderingen.
 - **Test:** `test-dnm-bazen` (11 checks).
+
+**D58 — torens splitsen op niveau 3, verslag.**
+
+| Toren | Richting A | Richting B |
+|---|---|---|
+| Geschuttoren | **Kanon**: 3 schade, en de ontploffing doet 2 aan robots binnen 3 m | **Scherpschutter**: 22 m bereik, 6 schade, om de 1,6 s |
+| Bovenleiding | **Hoogspanning**: tot 5 robots, sprong 6 m | **Stroomval**: 1 schade, maar getroffen robots lopen 3 s half zo snel |
+| Hek | **Prikkeldraad**: 300 HP, en wie erop slaat krijgt 1 schade terug | **Stadsmuur**: 600 HP (€200) |
+
+- Richting A is niveau 3 uit de bestaande niveaulijst; richting B staat
+  in `TOREN_RICHTINGEN`. `torenStats` kiest op niveau 3 de stats van de
+  gekozen richting, zodat alle bestaande code (bereik, schade, HP,
+  reparatie) vanzelf meewerkt.
+- **Menu:** op niveau 2 twee opties, "Geschuttoren → Kanon €300, …" en
+  "→ Scherpschutter". Daarna ligt de richting vast; de naam staat in de
+  prompt ("Scherpschutter niv. 3"). Verkopen en opnieuw bouwen mag.
+- `upgradeToren(t)` zonder keuze kiest richting A, zodat bestaande tests
+  en meetscripts blijven werken.
+- De vonkboog van de Bovenleiding groeit mee met het grootste aantal
+  doelen.
+- **Tests:** `test-dnm-splitsing` (10 checks). `test-dnm-bovenleiding`,
+  `-toren-niveaus` en `-routes` bijgewerkt. De routetest geeft het
+  monument nu ruim HP: de robots die de Stoomwals loslaat, haalden het
+  monument vóór hem en gaven game over.
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

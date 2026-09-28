@@ -41,7 +41,8 @@ const [n1, n2, n3] = niveaus.rij;
 const [c1, c2, c3] = niveaus.cfg;
 check('Upgradeprijzen zijn de niveauprijzen van niveau 2 en 3, daarna geen', n1.prijs === c2.prijs && n2.prijs === c3.prijs && n3.prijs === null, niveaus.rij.map(r => r.prijs));
 check('Upgraden schrijft precies de upgradeprijs af', n2.betaald === c2.prijs && n3.betaald === c3.prijs, niveaus.rij);
-check('Bereik loopt per niveau op', n1.stats.bereik < n2.stats.bereik && n2.stats.bereik < n3.stats.bereik, niveaus.rij.map(r => r.stats.bereik));
+// Ticket D58: niveau 3 is richting A (Kanon, 13 m); de Scherpschutter (B) heeft het langste bereik.
+check('Bereik loopt op van niveau 1 naar 2; niveau 3 houdt het bereik of (Scherpschutter) verdubbelt het bijna', n1.stats.bereik < n2.stats.bereik && n3.stats.bereik >= n2.stats.bereik, niveaus.rij.map(r => r.stats.bereik));
 check('Tempo en schade: niveau 2 vuurt sneller, niveau 3 doet meer schade per schot', n2.stats.schotInterval < n1.stats.schotInterval && n3.stats.schadePerSchot > n1.stats.schadePerSchot, niveaus.rij.map(r => r.stats));
 check('Maximale HP loopt per niveau op', n1.hpMax === c1.hp && n2.hpMax === c2.hp && n3.hpMax === c3.hp && c1.hp < c2.hp && c2.hp < c3.hp, niveaus.rij.map(r => r.hpMax));
 check('Niveau is zichtbaar aan de ringen (0 → 1 → 2)', n1.ringen === 0 && n2.ringen === 1 && n3.ringen === 2, niveaus.rij.map(r => r.ringen));
@@ -151,8 +152,8 @@ const menu = await page.evaluate(() => {
   return { prompt, tekst, niveauVoor, naUpgrade, naVerkoop: { plekLeeg: plek.toren === null, menuOpen: d.bouwMenuStand() === plek, tekst: bouwUI.textContent } };
 });
 check('De prompt bij een toren noemt niveau, HP en "T voor opties"', menu.prompt.includes('niv. 2') && menu.prompt.includes('T voor opties'), menu.prompt);
-check('T op een bezette plek toont upgraden, repareren en verkopen', menu.tekst.includes('Geschuttoren naar niveau 3') && menu.tekst.includes('Toren repareren') && menu.tekst.includes('Toren verkopen'), menu.tekst);
-check('1 upgradet en laat het menu open (met bijgewerkte tekst)', menu.niveauVoor === 2 && menu.naUpgrade.niveau === 3 && menu.naUpgrade.menuOpen && menu.naUpgrade.tekst.includes('maximaal niveau'), menu.naUpgrade);
+check('T op een bezette plek toont de twee richtingen (D58), repareren en verkopen', menu.tekst.includes('1, Geschuttoren → Kanon') && menu.tekst.includes('2, Geschuttoren → Scherpschutter') && menu.tekst.includes('Toren repareren') && menu.tekst.includes('Toren verkopen'), menu.tekst);
+check('1 kiest het Kanon en laat het menu open (met bijgewerkte tekst)', menu.niveauVoor === 2 && menu.naUpgrade.niveau === 3 && menu.naUpgrade.menuOpen && menu.naUpgrade.tekst.includes('Kanon: maximaal niveau'), menu.naUpgrade);
 check('3 verkoopt; het menu blijft open en biedt weer torens aan (D47)', menu.naVerkoop.plekLeeg && menu.naVerkoop.menuOpen && menu.naVerkoop.tekst.includes('Geschuttoren €'), menu.naVerkoop);
 
 const fails = report(errs);

@@ -24,7 +24,9 @@ const perType = await page.evaluate(() => {
   for (const poort of d.SPAWN_POORTEN) {
     for (const type of Object.keys(d.ROBOT_TYPES)) {
       for (const r of [...d.robots]) { d.scene.remove(r.groep); d.robots.splice(d.robots.indexOf(r), 1); }
-      d.spel.monumentHP = 100; d.spel.gameOver = false;
+      // Ruim HP: de Stoomwals (D57) laat robots los die het monument eerder
+      // halen; bij 100 HP viel het spel dan stil vóór de baas zelf aankwam.
+      d.spel.monumentHP = 1e6; d.spel.gameOver = false;
       d.spawnRobot(poort, type);
       const robot = d.robots[d.robots.length - 1];
       const route = d.ROUTES.get(poort.naam);
@@ -43,7 +45,7 @@ const perType = await page.evaluate(() => {
         if (robot.s < vorigeS - 1e-9) sTerug = true;
         vorigeS = robot.s;
       }
-      uit.push({ poort: poort.naam, type, bereikt: !d.robots.includes(robot) && d.spel.monumentHP < 100, tijd: +t.toFixed(1),
+      uit.push({ poort: poort.naam, type, bereikt: !d.robots.includes(robot) && d.spel.monumentHP < 1e6, tijd: +t.toFixed(1),
         maxBuiten: +maxBuiten.toFixed(2), maxBuitenInfo, sTerug, lengte: route.lengte });
     }
   }

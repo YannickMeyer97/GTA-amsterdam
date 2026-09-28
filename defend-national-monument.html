@@ -5064,10 +5064,13 @@ function animeerBouwplekken() {
 // schot (een tank in twee schoten), het langste bereik, en het mikt op de
 // taaiste robot binnen bereik. Tegen een zwerm verspilt het die kogel. De
 // Bovenleiding is het antwoord op groepen (zie daar).
+// Ticket D58: op niveau 3 kies je een richting. Niveau 3 in deze lijst is
+// richting A; richting B staat in TOREN_RICHTINGEN. Beide kosten hetzelfde.
 const GESCHUT_NIVEAUS = [
   { prijs: 150, bereik: 11, schadePerSchot: 2, schotInterval: 1.6, hp: 60 },
   { prijs: 200, bereik: 13, schadePerSchot: 2, schotInterval: 1.1, hp: 90 },
-  { prijs: 300, bereik: 15, schadePerSchot: 3, schotInterval: 0.9, hp: 130 },
+  // Kanon: de kogel ontploft en raakt ook robots eromheen.
+  { prijs: 300, bereik: 13, schadePerSchot: 3, schotInterval: 1.2, hp: 140, splash: 3, splashSchade: 2 },
 ];
 // Ticket D48: de Bovenleiding. Een tramdraadmast die per schot een
 // stroomstoot geeft. De stoot treft de dichtstbijzijnde robot binnen `bereik`
@@ -5085,7 +5088,8 @@ const GESCHUT_NIVEAUS = [
 const BOVENLEIDING_NIVEAUS = [
   { prijs: 150, bereik: 10, schade: 1,   doelen: 3, sprong: 4,   schotInterval: 2.0, hp: 50 },
   { prijs: 200, bereik: 11, schade: 1.5, doelen: 4, sprong: 4.5, schotInterval: 1.8, hp: 75 },
-  { prijs: 300, bereik: 12, schade: 2,   doelen: 4, sprong: 5,   schotInterval: 1.6, hp: 110 },
+  // Ticket D58, richting A — Hoogspanning: meer robots, langere sprongen.
+  { prijs: 300, bereik: 12, schade: 2,   doelen: 5, sprong: 6,   schotInterval: 1.6, hp: 110 },
 ];
 const BOVENLEIDING_SPRONG_FACTOR = 1;
 // Ticket D54: tanks zijn geaard, stroom doet op hen de helft. Samen met het
@@ -5120,8 +5124,34 @@ const DRUKPERS_NIVEAUS = [
 const HEK_NIVEAUS = [
   { prijs: 100, hp: 120 },
   { prijs: 100, hp: 200 },
-  { prijs: 150, hp: 300 },
+  // Ticket D58, richting A — Prikkeldraad: wie erop slaat, krijgt schade terug.
+  { prijs: 150, hp: 300, terugSchade: 1 },
 ];
+
+// Ticket D58: de twee richtingen op niveau 3, per torentype. Richting A is
+// niveau 3 uit de niveaulijst; richting B is het alternatief. Na de keuze
+// ligt de richting vast (verkopen en opnieuw bouwen mag).
+const TOREN_RICHTINGEN = {
+  geschut: {
+    kanon: { naam: 'Kanon', omschrijving: 'ontploffing raakt ook robots eromheen', stats: GESCHUT_NIVEAUS[2] },
+    scherpschutter: { naam: 'Scherpschutter', omschrijving: 'heel ver en hard, maar traag',
+      stats: { prijs: 300, bereik: 22, schadePerSchot: 6, schotInterval: 1.6, hp: 110 } },
+  },
+  bovenleiding: {
+    hoogspanning: { naam: 'Hoogspanning', omschrijving: 'springt over naar 5 robots', stats: BOVENLEIDING_NIVEAUS[2] },
+    stroomval: { naam: 'Stroomval', omschrijving: 'minder schade, getroffen robots lopen trager',
+      stats: { prijs: 300, bereik: 12, schade: 1, doelen: 5, sprong: 5.5, schotInterval: 1.3, hp: 110, vertraging: 0.5, vertragingDuur: 3 } },
+  },
+  hek: {
+    prikkeldraad: { naam: 'Prikkeldraad', omschrijving: 'wie erop slaat, raakt zichzelf', stats: HEK_NIVEAUS[2] },
+    stadsmuur: { naam: 'Stadsmuur', omschrijving: 'dubbel zo sterk', stats: { prijs: 200, hp: 600 } },
+  },
+};
+const RICHTING_NIVEAU = 3;
+// Ticket D59 vult dit in; tot dan is alles open.
+function richtingOntgrendeld(type, richting) { return true; }
+function ontgrendelHint() { return ''; }
+function richtingen(type) { return TOREN_RICHTINGEN[type] ?? null; }
 const TOREN_TYPES = {
   // De velden op het type zelf (prijs, bereik, …) zijn niveau 1.
   geschut: {
@@ -5171,10 +5201,18 @@ const HEK_PAAL_STAP = 0.9;     // 0,3 m tussenruimte: te smal voor een robot (0,
 const TOREN_VERKOOP_FRACTIE = 0.5;
 const TOREN_REPARATIE_PER_HP = 1;   // € per ontbrekend HP
 
-function torenStats(toren) { return TOREN_TYPES[toren.type].niveaus[toren.niveau - 1]; }
-function upgradePrijs(toren) {
+function torenStats(toren) {
+  // Ticket D58: op niveau 3 de stats van de gekozen richting.
+  if (toren.richting && toren.niveau === RICHTING_NIVEAU) return TOREN_RICHTINGEN[toren.type][toren.richting].stats;
+  return TOREN_TYPES[toren.type].niveaus[toren.niveau - 1];
+}
+function upgradePrijs(toren, richting = null) {
+  if (richting && toren.niveau + 1 === RICHTING_NIVEAU) return TOREN_RICHTINGEN[toren.type]?.[richting]?.stats.prijs ?? null;
   const volgend = TOREN_TYPES[toren.type].niveaus[toren.niveau];
   return volgend ? volgend.prijs : null;
+}
+function torenNaam(toren) {
+  return toren.richting ? TOREN_RICHTINGEN[toren.type][toren.richting].naam : TOREN_TYPES[toren.type].naam;
 }
 function reparatieKosten(toren) { return Math.ceil((toren.hpMax - toren.hp) * TOREN_REPARATIE_PER_HP); }
 function verkoopOpbrengst(toren) { return Math.round(toren.geinvesteerd * TOREN_VERKOOP_FRACTIE); }
@@ -5185,7 +5223,7 @@ const torens = [];
 // eigen slot.
 const slotVan = type => type === 'hek' ? 'hek' : 'toren';
 function slotStatus(t) {
-  return `${TOREN_TYPES[t.type].naam} niv. ${t.niveau} ${Math.ceil(t.hp)}/${t.hpMax} HP`;
+  return `${torenNaam(t)} niv. ${t.niveau} ${Math.ceil(t.hp)}/${t.hpMax} HP`;
 }
 function bouwplekPrompt(plek) {
   const open = menu?.bron === plek;
@@ -5200,10 +5238,17 @@ function slotOpties(t, woord) {
   const prijs = upgradePrijs(t);
   const volgend = cfg.niveaus[t.niveau];
   const reparatie = reparatieKosten(t);
+  // Ticket D58: naar niveau 3 twee opties, één per richting.
+  const splitsing = t.niveau + 1 === RICHTING_NIVEAU && richtingen(t.type);
+  const upgradeOpties = splitsing
+    ? Object.entries(richtingen(t.type)).map(([sleutel, r]) => richtingOntgrendeld(t.type, sleutel)
+      ? { tekst: `${cfg.naam} → ${r.naam} €${r.stats.prijs}, ${r.omschrijving}`, prijs: r.stats.prijs, actie: () => upgradeToren(t, sleutel) }
+      : { tekst: `${r.naam}: op slot (${ontgrendelHint(t.type, sleutel)})`, klaar: true, actie: () => {} })
+    : [prijs === null
+      ? { tekst: `${torenNaam(t)}: maximaal niveau`, klaar: true, actie: () => {} }
+      : { tekst: `${cfg.naam} naar niveau ${t.niveau + 1} €${prijs}, ${cfg.niveauTekst(volgend)}${volgend.hp} HP`, prijs, actie: () => upgradeToren(t) }];
   return [
-    prijs === null
-      ? { tekst: `${cfg.naam}: maximaal niveau`, klaar: true, actie: () => {} }
-      : { tekst: `${cfg.naam} naar niveau ${t.niveau + 1} €${prijs}, ${cfg.niveauTekst(volgend)}${volgend.hp} HP`, prijs, actie: () => upgradeToren(t) },
+    ...upgradeOpties,
     reparatie === 0
       ? { tekst: `${woord} repareren, is heel`, klaar: true, actie: () => {} }
       : { tekst: `${woord} repareren €${reparatie} (${Math.ceil(t.hp)}/${t.hpMax} HP)`, prijs: reparatie, actie: () => repareerToren(t) },
@@ -5546,7 +5591,8 @@ function maakBovenleiding(plek) {
   scene.add(g);
 
   const boogGeo = new THREE.BufferGeometry();
-  boogGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3 * (1 + BOVENLEIDING_NIVEAUS.at(-1).doelen * BOOG_PUNTEN_PER_SPRONG)), 3));
+  const maxDoelen = Math.max(...BOVENLEIDING_NIVEAUS.map(n => n.doelen), ...Object.values(TOREN_RICHTINGEN.bovenleiding).map(r => r.stats.doelen));   // D58
+  boogGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3 * (1 + maxDoelen * BOOG_PUNTEN_PER_SPRONG)), 3));
   const spoor = new THREE.Line(boogGeo, new THREE.LineBasicMaterial({ color: 0xcdeeff, toneMapped: false }));
   spoor.visible = false;
   spoor.frustumCulled = false;
@@ -5616,6 +5662,8 @@ function vuurBovenleiding(toren) {
     const schade = cfg.schade * BOVENLEIDING_SPRONG_FACTOR ** i * (robot.type === 'tank' ? BOVENLEIDING_TANK_FACTOR : 1);
     if (robot.schildActief) { speelSchildBlok(); treffers.push({ robot, schade: 0 }); return; }
     treffers.push({ robot, schade });
+    // Ticket D58, Stroomval: getroffen robots lopen een tijd trager.
+    if (cfg.vertraging) robot.vertraging = { factor: cfg.vertraging, timer: cfg.vertragingDuur };
     raakRobot(robot, schade, 'toren');
   });
   toren.laatsteKetting = treffers;
@@ -5726,14 +5774,22 @@ function verwijderToren(toren) {
   if (menu?.bron === toren.plek) renderMenu();
 }
 
-function upgradeToren(toren) {
-  const prijs = upgradePrijs(toren);
+function upgradeToren(toren, richting = null) {
+  // Ticket D58: naar niveau 3 met een richting; zonder keuze richting A.
+  const opsplitsing = toren.niveau + 1 === RICHTING_NIVEAU && richtingen(toren.type);
+  if (opsplitsing) {
+    richting ??= Object.keys(richtingen(toren.type))[0];
+    if (!richtingen(toren.type)[richting]) return false;
+    if (!richtingOntgrendeld(toren.type, richting)) { toonFeedbackMelding(`${richtingen(toren.type)[richting].naam} is nog op slot`); return false; }
+  }
+  const prijs = upgradePrijs(toren, opsplitsing ? richting : null);
   if (prijs === null) { toonFeedbackMelding('Deze toren is al op het hoogste niveau'); return false; }
   if (spel.gameOver) return false;
   if (geld < prijs) { toonFeedbackMelding(`Niet genoeg geld (upgrade kost €${prijs})`); return false; }
   geld -= prijs;
   toren.geinvesteerd += prijs;
   toren.niveau += 1;
+  if (opsplitsing) toren.richting = richting;
   // Nieuwe maximum-HP; de schade die de toren al had, blijft staan.
   const nieuw = torenStats(toren);
   toren.hp += nieuw.hp - toren.hpMax;
@@ -5741,7 +5797,7 @@ function upgradeToren(toren) {
   toren.ringen.forEach((ring, i) => { ring.visible = toren.niveau >= i + 2; });
   updateGeldUI();
   speelBouw();
-  toonFeedbackMelding(`${TOREN_TYPES[toren.type].naam} naar niveau ${toren.niveau}`);
+  toonFeedbackMelding(toren.richting && opsplitsing ? `${TOREN_TYPES[toren.type].naam} wordt ${torenNaam(toren)}` : `${TOREN_TYPES[toren.type].naam} naar niveau ${toren.niveau}`);
   return true;
 }
 
@@ -5810,6 +5866,18 @@ function vuurToren(toren, robot) {
     return;
   }
   raakRobot(robot, cfg.schadePerSchot, 'toren');
+  // Ticket D58, Kanon: de kogel ontploft en raakt robots eromheen.
+  if (cfg.splash) {
+    const p = robot.groep.position;
+    for (const ander of [...robots]) {
+      if (ander === robot || ander.schildActief) continue;
+      if (Math.hypot(ander.groep.position.x - p.x, ander.groep.position.z - p.z) <= cfg.splash) raakRobot(ander, cfg.splashSchade, 'toren');
+    }
+    for (let i = 0; i < 4; i++) {
+      const vonk = new THREE.Mesh(EFFECT_GEO.bomVonk, i % 2 ? EFFECT_MAT.bomOranje : EFFECT_MAT.bomGeel);
+      maakBrokstuk(vonk, p.clone().setY(1), 5);
+    }
+  }
 }
 
 function updateBovenleiding(toren, dt) {
@@ -6387,8 +6455,10 @@ function updateRobots(dt) {
       robot.slagTimer = (robot.slagTimer ?? ROBOT_SLAG_INTERVAL) - dt;
       if (robot.slagTimer <= 0) {
         robot.slagTimer = ROBOT_SLAG_INTERVAL;
+        const terug = torenStats(hek).terugSchade ?? 0;   // Ticket D58: Prikkeldraad
         beschadigToren(hek, ROBOT_HEK_SCHADE[robot.type] ?? 6);
         speelHekKlap();
+        if (terug) { raakRobot(robot, terug, 'toren'); if (!robots.includes(robot)) continue; }
       }
       // Naar het hek kijken en met beide armen slaan.
       const { ax, az, bx, bz } = dichtsteHekLijn(hek, positie);
@@ -6440,7 +6510,9 @@ function updateRobots(dt) {
     // Kerkklok Boost werkt via een multiplier die hier wordt toegepast, dus
     // er wordt nooit iets permanent op robot.snelheid gestapeld en nieuwe
     // spawns tijdens de boost lopen automatisch ook sneller.
-    const effectieveSnelheid = robot.snelheid * getRobotSpeedMultiplier();
+    // Ticket D58: vertraagd door een Stroomval?
+    if (robot.vertraging) { robot.vertraging.timer -= dt; if (robot.vertraging.timer <= 0) robot.vertraging = null; }
+    const effectieveSnelheid = robot.snelheid * getRobotSpeedMultiplier() * (robot.vertraging?.factor ?? 1);
     const verplaatsing = wacht ? 0 : effectieveSnelheid * dt;
     positie.x += dx * Math.min(verplaatsing, afstandTotDoel);
     positie.z += dz * Math.min(verplaatsing, afstandTotDoel);
@@ -7352,6 +7424,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   // Ticket D7: eindscherm en runstatistieken.
   runStats, eindigRun, toonEindscherm, verdienGeld,
   // Ticket D55: een run met een einde.
+  TOREN_RICHTINGEN, RICHTING_NIVEAU, torenNaam, richtingOntgrendeld,
   BAZEN, BAAS_WAVES, BAAS_ESCORTE_FACTOR, baasVoorWave, levendeBaas, updateBaasUI,
   SLOOPKOGEL_INTERVAL, SLOOPKOGEL_BEREIK, SLOOPKOGEL_SCHADE, STOOMWALS_LOSLAAT_INTERVAL, STOOMWALS_LOSLAAT_AANTAL, STOOMWALS_WOEDE_DREMPEL, STOOMWALS_WOEDE_SNELHEID, vuurToren,
   RUN_WAVES, STER_DREMPELS, sterrenVoor, waveLabel, winRun, doorspelen, verwerkOverwinning, THEMA_IN_RUN,
