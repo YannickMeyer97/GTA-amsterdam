@@ -1364,6 +1364,14 @@ kleur zwart). Waarden zijn startwaarden voor D60.
   suite 153/154; de uitvaller (Undead `test-golf1-economie`, bekend
   timinggevoelig) is los groen.
 
+### Audit na fase P
+
+Een volledige audit van de game staat in [`AUDIT.md`](AUDIT.md): vijf
+automatische runs met het nieuwe meetscript `meet-dnm-run`, de HUD op drie
+schermmaten, prestaties en een codereview. Er zijn 17 verbeterpunten in
+drie prioriteiten. Nog niets daarvan is uitgevoerd; de volgorde volgt na
+de speeltest M4.
+
 ### Backlog — bewust ná alle bovenstaande tickets
 
 | | Ticket | Kern |
