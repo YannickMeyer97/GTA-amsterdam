@@ -5157,7 +5157,8 @@ const TOREN_TYPES = {
 };
 // Ticket D13: hoeveel schade één klap van een robot op een hek doet, per
 // type (elke ROBOT_SLAG_INTERVAL seconden). Een tank slaat het hardst.
-const ROBOT_HEK_SCHADE = { normal: 6, sprinter: 4, tank: 15, bomber: 6, shieldbot: 6 };
+const ROBOT_HEK_SCHADE = { normal: 6, sprinter: 4, tank: 15, bomber: 6, shieldbot: 6,
+  sloopkogel: 30, dijkbreker: 10000, stoomwals: 40 };   // Ticket D57: de Dijkbreker breekt elk hek in één klap
 const ROBOT_SLAG_INTERVAL = 0.8;
 // Afstand (robotmidden → hek-lijn) waarop een robot het hek "raakt": zijn
 // botsstraal (0,45) + halve paaldikte (0,3) + een kleine marge.
@@ -5572,7 +5573,7 @@ function kiesKetting(toren) {
   const keten = [eerste];
   while (keten.length < cfg.doelen) {
     const vorige = keten[keten.length - 1];
-    if (vorige.type === 'shieldbot' && vorige.schildActief) break;
+    if (vorige.schildActief) break;   // D57: Shield Bot én Dijkbreker
     let beste = null, besteAfstand = cfg.sprong;
     for (const robot of robots) {
       if (keten.includes(robot)) continue;
@@ -5613,7 +5614,7 @@ function vuurBovenleiding(toren) {
   const treffers = [];
   keten.forEach((robot, i) => {
     const schade = cfg.schade * BOVENLEIDING_SPRONG_FACTOR ** i * (robot.type === 'tank' ? BOVENLEIDING_TANK_FACTOR : 1);
-    if (robot.type === 'shieldbot' && robot.schildActief) { speelSchildBlok(); treffers.push({ robot, schade: 0 }); return; }
+    if (robot.schildActief) { speelSchildBlok(); treffers.push({ robot, schade: 0 }); return; }
     treffers.push({ robot, schade });
     raakRobot(robot, schade, 'toren');
   });
@@ -5804,7 +5805,7 @@ function vuurToren(toren, robot) {
   toren.spoorTimer = 0.07;
   speelTorenSchot();
   // Zelfde regel als voor het spelerswapen: een actief schild blokkeert.
-  if (robot.type === 'shieldbot' && robot.schildActief) {
+  if (robot.schildActief) {
     speelSchildBlok();
     return;
   }
@@ -5933,7 +5934,7 @@ const ROBOT_TYPES = {
   // als ze het monument halen. Geen munt: bij de kill een vaste beloning
   // (BAZEN). Startwaarden, te ijken in D60.
   sloopkogel: { hpMax: 60,  snelheidMultiplier: 0.5,  beloningMultiplier: 0, kleur: 0xff9a3c, schaal: 2.1, monumentSchade: 40,  baas: true },
-  dijkbreker: { hpMax: 90,  snelheidMultiplier: 0.75, beloningMultiplier: 0, kleur: 0x6fd2ff, schaal: 1.9, monumentSchade: 40,  baas: true },
+  dijkbreker: { hpMax: 90,  snelheidMultiplier: 0.75, beloningMultiplier: 0, kleur: 0x6fd2ff, schaal: 1.9, monumentSchade: 40,  baas: true, schildDuur: 3.5, schildPauze: 2.5 },
   stoomwals:  { hpMax: 180, snelheidMultiplier: 0.4,  beloningMultiplier: 0, kleur: 0xff4a3c, schaal: 2.8, monumentSchade: 100, baas: true },
 };
 
@@ -5974,7 +5975,24 @@ const ROBOT_GEO = {
   romp: null,
   gloed: new Map(),   // accentkleur → geometrie
 };
-function robotGeometrie(deel, accent) {
+// Ticket D57: een baas krijgt een eigen rompkleur (per type één keer gebouwd).
+const BAAS_ROMPKLEUR = { sloopkogel: 0xd09a3a, dijkbreker: 0x4a7fb0, stoomwals: 0xa8432f };
+// Minder metaal dan de gewone robot: zonder omgeving oogt 0,8 metalness bijna zwart,
+// en dan zie je de kleur van de baas niet.
+const BAAS_ROMP_MATERIAAL = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, metalness: 0.25, vertexColors: true });
+function robotGeometrie(deel, accent, rompKleur = null) {
+  if (deel === 'romp' && rompKleur !== null) {
+    const sleutel = `romp:${rompKleur}`;
+    if (ROBOT_GEO.gloed.has(sleutel)) return ROBOT_GEO.gloed.get(sleutel);
+    const b = maakBouwer();
+    b.voeg('romp', ROBOT_METAAL, new THREE.BoxGeometry(0.75, 0.85, 0.45).translate(0, 1.05, 0), null, rompKleur);
+    b.voeg('romp', ROBOT_METAAL, new THREE.BoxGeometry(0.5, 0.45, 0.45).translate(0, 1.75, 0), null, rompKleur);
+    b.voeg('romp', ROBOT_METAAL, new THREE.CylinderGeometry(0.02, 0.02, 0.3, 6).translate(0, 2.12, 0), null, 0x5c6672);
+    const tijdelijk = new THREE.Group();
+    b.bouw(tijdelijk);
+    ROBOT_GEO.gloed.set(sleutel, tijdelijk.children[0].geometry);
+    return tijdelijk.children[0].geometry;
+  }
   if (deel === 'romp' && ROBOT_GEO.romp) return ROBOT_GEO.romp;
   if (deel === 'gloed' && ROBOT_GEO.gloed.has(accent)) return ROBOT_GEO.gloed.get(accent);
   const b = maakBouwer();
@@ -6010,7 +6028,7 @@ function maakRobot(type = 'normal') {
 
   // Lijf met een gloeiend "hartje" op de borst, kop met gloeiende ogen en
   // een antenne: twee meshes met gedeelde geometrie (zie hierboven).
-  const romp = new THREE.Mesh(robotGeometrie('romp'), ROBOT_METAAL);
+  const romp = new THREE.Mesh(robotGeometrie('romp', null, BAAS_ROMPKLEUR[type] ?? null), BAAS_ROMPKLEUR[type] ? BAAS_ROMP_MATERIAAL : ROBOT_METAAL);
   romp.name = 'romp';
   romp.receiveShadow = true;
   const gloed = new THREE.Mesh(robotGeometrie('gloed', accent), ROBOT_GLOED);
@@ -6037,6 +6055,10 @@ function maakRobot(type = 'normal') {
     schildMesh.userData.geenSchaduw = true;
     groep.add(schildMesh);
   }
+
+  // Tickets D57: de eigen vorm van elke baas (zie bouwBaasDelen).
+  const baasDelen = config.baas ? bouwBaasDelen(type, groep) : {};
+  if (baasDelen.schildMesh) schildMesh = baasDelen.schildMesh;
 
   // Alle onderdelen werpen schaduw (het schildpaneel niet: geenSchaduw hierboven).
   groep.traverse(deel => { if (deel.isMesh) deel.castShadow = !deel.userData.geenSchaduw; });
@@ -6068,11 +6090,121 @@ function maakRobot(type = 'normal') {
     // types blijven dit onschadelijke standaardwaarden die nergens gelezen
     // worden omdat alle checks expliciet op type === 'shieldbot' gaten.
     schildMesh,
-    schildActief: type === 'shieldbot',
+    schildActief: !!config.schildDuur,   // D57: ook de Dijkbreker
     schildTimer: config.schildDuur ?? 0,
   };
+  Object.assign(robot, baasDelen.velden ?? {});   // Ticket D57
   groep.userData.robot = robot;          // zo vinden we bij een raak schot de robot terug
   return robot;
+}
+
+// --- Ticket D57: de drie bazen ----------------------------------------------
+//
+// Eigen vormen, in het lokale stelsel van de robot (hij wordt als geheel
+// geschaald). De geometrie wordt één keer gemaakt en gedeeld (zie D42).
+const BAAS_GEO = {};
+function baasGeo(naam, maak) { return BAAS_GEO[naam] ??= maak(); }
+const BAAS_IJZER = new THREE.MeshStandardMaterial({ color: 0x2c3036, roughness: 0.45, metalness: 0.8 });
+const BAAS_ROEST = new THREE.MeshStandardMaterial({ color: 0x7a4a2c, roughness: 0.7, metalness: 0.4 });
+function bouwBaasDelen(type, groep) {
+  if (type === 'sloopkogel') {
+    // Een kogel aan een ketting, die om de robot heen zwaait.
+    const pivot = new THREE.Group();
+    pivot.position.set(0, 1.55, 0);
+    const ketting = new THREE.Mesh(baasGeo('ketting', () => new THREE.CylinderGeometry(0.035, 0.035, 1.25, 6).rotateZ(Math.PI / 2).translate(0.62, 0, 0)), BAAS_IJZER);
+    const kogel = new THREE.Mesh(baasGeo('kogel', () => new THREE.SphereGeometry(0.42, 14, 10).translate(1.45, -0.1, 0)), BAAS_IJZER);
+    pivot.add(ketting, kogel);
+    groep.add(pivot);
+    return { velden: { kogelPivot: pivot, sloopTimer: SLOOPKOGEL_INTERVAL } };
+  }
+  if (type === 'dijkbreker') {
+    // Een stormram voor de borst en een groot schild dat open en dicht gaat.
+    const ram = new THREE.Mesh(baasGeo('ram', () => new THREE.BoxGeometry(0.5, 0.35, 0.9).translate(0, 1.0, 0.55)), BAAS_ROEST);
+    const kop = new THREE.Mesh(baasGeo('ramkop', () => new THREE.BoxGeometry(0.7, 0.55, 0.18).translate(0, 1.0, 1.02)), BAAS_IJZER);
+    groep.add(ram, kop);
+    const schildMesh = new THREE.Mesh(
+      baasGeo('dijkschild', () => new THREE.BoxGeometry(1.3, 1.5, 0.08).translate(0, 1.15, 0.72)),
+      new THREE.MeshStandardMaterial({ color: 0x6fd2ff, transparent: true, opacity: 0.55, emissive: 0x6fd2ff, emissiveIntensity: 0.5, roughness: 0.3 })
+    );
+    schildMesh.userData.geenSchaduw = true;
+    groep.add(schildMesh);
+    return { schildMesh };
+  }
+  if (type === 'stoomwals') {
+    // Een wals voorop en een schoorsteen die rookt.
+    const wals = new THREE.Mesh(baasGeo('wals', () => new THREE.CylinderGeometry(0.42, 0.42, 1.3, 16).rotateZ(Math.PI / 2).translate(0, 0.42, 0.62)), BAAS_IJZER);
+    const beugel = new THREE.Mesh(baasGeo('walsbeugel', () => new THREE.BoxGeometry(1.4, 0.12, 0.5).translate(0, 0.9, 0.45)), BAAS_ROEST);
+    const schoorsteen = new THREE.Mesh(baasGeo('schoorsteen', () => new THREE.CylinderGeometry(0.1, 0.13, 0.7, 10).translate(0, 2.35, -0.15)), BAAS_IJZER);
+    groep.add(wals, beugel, schoorsteen);
+    return { velden: { wals, loslaatTimer: STOOMWALS_LOSLAAT_INTERVAL, woedend: false, rookTimer: 0 } };
+  }
+  return {};
+}
+
+// De Sloopkogel slaat om de SLOOPKOGEL_INTERVAL seconden elke toren (en elk
+// hek) binnen SLOOPKOGEL_BEREIK. Een toren van niveau 1 (60 HP) is dan weg.
+const SLOOPKOGEL_INTERVAL = 2.5;
+const SLOOPKOGEL_BEREIK = 5;
+const SLOOPKOGEL_SCHADE = 70;
+// De Stoomwals laat om de STOOMWALS_LOSLAAT_INTERVAL seconden een paar
+// robots los op zijn plek op de route, en loopt onder de helft sneller.
+const STOOMWALS_LOSLAAT_INTERVAL = 6;
+const STOOMWALS_LOSLAAT_AANTAL = 3;
+const STOOMWALS_WOEDE_DREMPEL = 0.5;
+const STOOMWALS_WOEDE_SNELHEID = 1.6;
+const rookMateriaal = new THREE.MeshBasicMaterial({ color: 0x5b5f66, transparent: true, opacity: 0.6, depthWrite: false });
+
+function updateBaasGedrag(robot, dt) {
+  if (robot.type === 'sloopkogel') {
+    robot.kogelPivot.rotation.y += dt * 2.4;
+    robot.sloopTimer -= dt;
+    if (robot.sloopTimer <= 0) {
+      robot.sloopTimer = SLOOPKOGEL_INTERVAL;
+      const p = robot.groep.position;
+      let raak = 0;
+      for (const toren of [...torens]) {
+        if (toren.type === 'drukpers') continue;
+        const punt = bouwwerkPunt(toren, p);
+        if (Math.hypot(punt.x - p.x, punt.z - p.z) <= SLOOPKOGEL_BEREIK) { beschadigToren(toren, SLOOPKOGEL_SCHADE); raak++; }
+      }
+      if (raak) { speelHekKlap(); cameraShake = Math.max(cameraShake, 0.08); }
+    }
+  } else if (robot.type === 'stoomwals') {
+    robot.wals.rotation.x += dt * robot.snelheid * 2;
+    robot.rookTimer -= dt;
+    if (robot.rookTimer <= 0) {
+      robot.rookTimer = robot.woedend ? 0.12 : 0.3;
+      robot.groep.updateMatrixWorld(true);
+      const wolk = new THREE.Mesh(EFFECT_GEO.stof, rookMateriaal);
+      wolk.position.set(0, 2.75, -0.15).applyMatrix4(robot.groep.matrixWorld);
+      wolk.scale.setScalar(2 + Math.random());
+      wolk.castShadow = false;
+      scene.add(wolk);
+      brokstukken.push({ mesh: wolk, snelheid: new THREE.Vector3((Math.random() - 0.5) * 0.4, 1.4, (Math.random() - 0.5) * 0.4), draai: new THREE.Vector3(), leeftijd: kwaliteitPreset().brokstukLeven - 0.3, zwevend: true });
+    }
+    robot.loslaatTimer -= dt;
+    if (robot.loslaatTimer <= 0 && robot.route) {
+      robot.loslaatTimer = STOOMWALS_LOSLAAT_INTERVAL;
+      laatRobotsLos(robot);
+    }
+    if (!robot.woedend && robot.hp <= robot.hpMax * STOOMWALS_WOEDE_DREMPEL) {
+      robot.woedend = true;
+      robot.snelheid *= STOOMWALS_WOEDE_SNELHEID;
+      toonWaveBanner('De Stoomwals wordt woedend!');
+      speelMonumentKraak();
+    }
+  }
+}
+function laatRobotsLos(wals) {
+  const poort = SPAWN_POORTEN.find(p => p.naam === wals.route.poort);
+  for (let i = 0; i < STOOMWALS_LOSLAAT_AANTAL; i++) {
+    spawnRobot(poort, i === 0 ? 'sprinter' : 'normal');
+    const r = robots[robots.length - 1];
+    r.s = Math.max(0, wals.s - 1.5 - i);
+    const plek = robotRoutePunt(r, r.s);
+    r.groep.position.set(plek.x, 0, plek.z);
+  }
+  speelPoortSignaal();
 }
 
 function spawnRobot(poort = null, type = 'normal') {
@@ -6204,15 +6336,18 @@ function updateRobots(dt) {
     // Shield Bot: schild wisselt AAN/UIT op een vaste cyclus (zie schiet()
     // voor de schot-blokkade zelf). Volledig geïsoleerd per type, raakt
     // beweging/pathing van geen enkel robottype aan.
-    if (robot.type === 'shieldbot') {
+    // Ticket D57: elk type met een schildcyclus (Shield Bot, Dijkbreker).
+    if (ROBOT_TYPES[robot.type]?.schildDuur) {
       robot.schildTimer -= dt;
       if (robot.schildTimer <= 0) {
         robot.schildActief = !robot.schildActief;
-        const config = ROBOT_TYPES.shieldbot;
+        const config = ROBOT_TYPES[robot.type];
         robot.schildTimer = robot.schildActief ? config.schildDuur : config.schildPauze;
       }
       if (robot.schildMesh) robot.schildMesh.visible = robot.schildActief;
     }
+
+    if (robot.baas) updateBaasGedrag(robot, dt);   // Ticket D57
 
     // Raakt de robot het monument-vlak zelf (niet alleen het middelpunt)?
     if (afstandTotMonument(positie) < 0.6) {
@@ -6634,7 +6769,7 @@ function schiet() {
     // Shield Bot: terwijl het schild AAN staat blokkeert elk schot volledig,
     // vóór de normale hitmarker/cameraShake/raakRobot — anders krijgt de
     // speler misleidende "het werkte"-feedback op een schot dat niets deed.
-    if (robot.type === 'shieldbot' && robot.schildActief) {
+    if (robot.schildActief) {   // D57: Shield Bot én Dijkbreker
       speelSchildBlok();
       const vonk = new THREE.Mesh(EFFECT_GEO.schildVonk, EFFECT_MAT.schildVonk);
       vonk.position.copy(raak[0].point);
@@ -7218,6 +7353,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   runStats, eindigRun, toonEindscherm, verdienGeld,
   // Ticket D55: een run met een einde.
   BAZEN, BAAS_WAVES, BAAS_ESCORTE_FACTOR, baasVoorWave, levendeBaas, updateBaasUI,
+  SLOOPKOGEL_INTERVAL, SLOOPKOGEL_BEREIK, SLOOPKOGEL_SCHADE, STOOMWALS_LOSLAAT_INTERVAL, STOOMWALS_LOSLAAT_AANTAL, STOOMWALS_WOEDE_DREMPEL, STOOMWALS_WOEDE_SNELHEID, vuurToren,
   RUN_WAVES, STER_DREMPELS, sterrenVoor, waveLabel, winRun, doorspelen, verwerkOverwinning, THEMA_IN_RUN,
   // Ticket D8: highscore.
   HIGHSCORE_KEY, leesHighscore, schrijfHighscore, verwerkHighscore,

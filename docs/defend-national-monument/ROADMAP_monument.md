@@ -1187,7 +1187,7 @@ minuten.
 | --- | --- | --- |
 | ☑ | **D55** | Een run van 15 waves met een overwinning en sterren |
 | ☑ | **D56** | Het baassysteem (HP-balk, baaswave, beloning) |
-| ☐ | **D57** | De drie bazen: Sloopkogel (5), Dijkbreker (10), Stoomwals (15) |
+| ☑ | **D57** | De drie bazen: Sloopkogel (5), Dijkbreker (10), Stoomwals (15) |
 | ☐ | **D58** | Torens splitsen op niveau 3 |
 | ☐ | **D59** | Ontgrendelingen tussen runs |
 | ☐ | **D60** | Herijken en speeltest → **M4** |
@@ -1244,6 +1244,22 @@ minuten.
   gekleurde robots.
 - **Test:** `test-dnm-baas` (12 checks). `test-dnm-kern` en
   `test-dnm-poorten` kennen de baaswaves (half escorte, één poort).
+
+**D57 — de drie bazen, verslag.** Eigen vormen uit simpele geometrie, met
+een eigen rompkleur (minder metaal dan een gewone robot, anders oogt de
+kleur zwart). Waarden zijn startwaarden voor D60.
+
+| Baas | Vorm | Gedrag |
+|---|---|---|
+| **De Sloopkogel** (wave 5, 60 HP, oranje) | Een kogel aan een ketting die rond zwaait | Om de 2,5 s 70 schade aan elke toren en elk hek binnen 5 m: een toren van niveau 1 is dan weg. Verdere torens blijven heel. |
+| **De Dijkbreker** (wave 10, 90 HP, blauw) | Een stormram voor de borst en een groot schild | Breekt elk hek in één klap. Het schild is 3,5 s dicht en 2,5 s open; dicht houdt het wapen, het geschut en de stroom tegen. |
+| **De Stoomwals** (wave 15, 180 HP, rood) | Een wals voorop en een rokende schoorsteen | Laat om de 6 s drie robots los op zijn route, achter zich. Onder de helft wordt hij woedend: 1,6 × zo snel, met een banner. |
+
+- **Schilden:** de check `type === 'shieldbot' && schildActief` staat nu op
+  vier plekken als `schildActief`, en de schildcyclus geldt voor elk type
+  met `schildDuur`. Zo werkt het schild van de Dijkbreker overal (wapen,
+  geschut, Bovenleiding) zonder nieuwe uitzonderingen.
+- **Test:** `test-dnm-bazen` (11 checks).
 
 ### Backlog — bewust ná alle bovenstaande tickets
 
