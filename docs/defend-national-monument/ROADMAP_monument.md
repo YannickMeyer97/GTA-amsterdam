@@ -1189,7 +1189,7 @@ minuten.
 | ☑ | **D56** | Het baassysteem (HP-balk, baaswave, beloning) |
 | ☑ | **D57** | De drie bazen: Sloopkogel (5), Dijkbreker (10), Stoomwals (15) |
 | ☑ | **D58** | Torens splitsen op niveau 3 |
-| ☐ | **D59** | Ontgrendelingen tussen runs |
+| ☑ | **D59** | Ontgrendelingen tussen runs |
 | ☐ | **D60** | Herijken en speeltest → **M4** |
 
 **D55 — een run van 15 waves, verslag.**
@@ -1284,6 +1284,39 @@ kleur zwart). Waarden zijn startwaarden voor D60.
   `-toren-niveaus` en `-routes` bijgewerkt. De routetest geeft het
   monument nu ruim HP: de robots die de Stoomwals loslaat, haalden het
   monument vóór hem en gaven game over.
+
+**D59 — ontgrendelingen, verslag.**
+
+| Mijlpaal | Ontgrendelt |
+|---|---|
+| De Sloopkogel verslaan | Scherpschutter (richting B van het geschut) |
+| De Dijkbreker verslaan | Stroomval (richting B van de Bovenleiding) |
+| Een run winnen | Stadsmuur (richting B van het hek) |
+| 6 sterren in totaal | **Zware nacht**: 1,3 × zoveel robots, 15% sneller, +1 ster per overwinning (dus tot 4) |
+| 12 sterren in totaal | **Avond op de Dam**: de Dam bij zonsondergang (paarse lucht, oranje zon); alleen uiterlijk |
+
+- **Voortgang** onder `defendNationalMonumentVoortgang`: welke bazen ooit
+  verslagen, aantal overwinningen, sterren in totaal. Wat open is, wordt
+  daaruit afgeleid. Een reset van de run wist het niet; een kapotte sleutel
+  betekent "niets ontgrendeld".
+- **Op het startscherm:** twee nieuwe rijen, Nacht (Normaal / Zware nacht)
+  en Sfeer (Dag / Avond), met een slot en de voortgang zolang ze dicht
+  zijn ("🔒 4/6★"). De knop "Ontgrendelingen 3/5" opent een paneel met
+  alles wat er is, wat al open is en hoe je de rest krijgt.
+- **In het spel:** een melding "Ontgrendeld: Scherpschutter!" zodra het
+  gebeurt, en op het overwinningsscherm een regel met wat die overwinning
+  opleverde. In het bouwmenu staat een vergrendelde richting erbij, met de
+  mijlpaal ("Scherpschutter: op slot (versla de Sloopkogel)").
+- **Zware nacht geldt per run:** gekozen vóór de eerste klik geldt hij
+  meteen; midden in een run pas vanaf de volgende. De HUD toont een
+  maantje.
+- **Avond:** de Grachtenmist valt terug op de avondlucht, niet op de dag
+  (`basisMist()`).
+- Op lage schermen verdwijnt de uitleg van het startscherm, om ruimte te
+  maken voor de extra instellingen; de toetsen staan tijdens het spel
+  onderin.
+- **Test:** `test-dnm-ontgrendelingen` (18 checks). `test-dnm-splitsing`
+  speelt met alles ontgrendeld; `test-dnm-toren-niveaus` ziet het slot.
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

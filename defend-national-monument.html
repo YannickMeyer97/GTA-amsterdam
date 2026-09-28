@@ -405,6 +405,18 @@
   #kwaliteitKeuze, #geluidKeuze, .instelRij { display: flex; gap: 8px; align-items: center; }
   #gevoeligheid { width: 150px; accent-color: #ffd75e; cursor: pointer; }
   #gevoeligheidWaarde { min-width: 3.2em; text-align: left; }
+  /* Ticket D59: ontgrendelingen. */
+  .kwaliteitKnop.slot { opacity: 0.45; cursor: not-allowed; }
+  #nachtKeuze, #sfeerKeuze { display: flex; gap: 8px; align-items: center; }
+  #ontgrendelPaneel { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 12; cursor: default;
+    background: rgba(10, 20, 40, 0.95); border-radius: 16px; padding: 18px 26px; min-width: 340px; text-align: left; color: #e8f6ff; }
+  #ontgrendelPaneel h3 { margin: 0 0 6px 0; color: #ffd75e; font-size: 22px; }
+  #ontgrendelTotaal { font-size: 14px; color: #cfe8ff; margin-bottom: 10px; }
+  #ontgrendelLijst .rij { display: grid; grid-template-columns: 1.6em auto; gap: 2px 8px; margin: 6px 0; font-size: 15px; }
+  #ontgrendelLijst .rij .uitleg2 { grid-column: 2; font-size: 13px; color: #9fb6c9; }
+  #ontgrendelLijst .rij.open b { color: #ffd75e; }
+  #ontgrendelSluit { display: inline-block; margin-top: 10px; }
+  #winOntgrendeld { font-size: 17px; font-weight: 800; color: #9ff0a8; margin: -8px 0 12px 0; min-height: 0; }
   .kwaliteitKnop { cursor: pointer; padding: 4px 12px; border-radius: 999px; background: rgba(255,255,255,0.12); color: #fff; }
   .kwaliteitKnop.actief { background: #ffd75e; color: #24303f; font-weight: 700; }
 #startscherm .knop, #eindscherm .knop, #overwinningscherm .knop {
@@ -430,7 +442,9 @@
     #startscherm h2 { font-size: 16px; margin-bottom: 12px; }
     #startscherm .uitleg { font-size: 13px; line-height: 1.5; padding: 8px 18px; margin-bottom: 14px; }
     #startscherm .knop { font-size: 17px; padding: 8px 26px; }
-    #instellingen { margin-top: 10px; gap: 4px 12px; font-size: 13px; }
+    #instellingen { margin-top: 10px; gap: 3px 12px; font-size: 12px; }
+    #instellingen .kwaliteitKnop { padding: 2px 10px; }
+    #startscherm .uitleg { display: none; }   /* D59: ruimte voor de extra instellingen; de uitleg staat ook onderin tijdens het spel */
     /* Ticket D55: ook het eind- en overwinningsscherm passen dan. */
     #eindscherm, #overwinningscherm { justify-content: flex-start; padding-top: 10px; overflow-y: auto; }
     #eindscherm h1, #overwinningscherm h1 { font-size: 28px; }
@@ -494,6 +508,24 @@
       <span class="kwaliteitKnop" data-geluid="aan">Aan</span>
       <span class="kwaliteitKnop" data-geluid="uit">Uit</span>
     </div>
+    <span>Nacht</span>
+    <div id="nachtKeuze">
+      <span class="kwaliteitKnop" data-nacht="normaal">Normaal</span>
+      <span class="kwaliteitKnop" data-nacht="zwaar">Zware nacht</span>
+    </div>
+    <span>Sfeer</span>
+    <div id="sfeerKeuze">
+      <span class="kwaliteitKnop" data-sfeer="dag">Dag</span>
+      <span class="kwaliteitKnop" data-sfeer="avond">Avond</span>
+    </div>
+    <span></span>
+    <div><span class="kwaliteitKnop" id="ontgrendelKnop">Ontgrendelingen</span></div>
+  </div>
+  <div id="ontgrendelPaneel" style="display:none">
+    <h3>Ontgrendelingen</h3>
+    <div id="ontgrendelTotaal"></div>
+    <div id="ontgrendelLijst"></div>
+    <span class="kwaliteitKnop" id="ontgrendelSluit">Sluiten</span>
   </div>
 </div>
 
@@ -512,6 +544,7 @@
   <div id="winSterren"></div>
   <h2 id="winOndertitel"></h2>
   <div class="record" id="winRecord"></div>
+  <div id="winOntgrendeld"></div>
   <div class="uitleg stats" id="winStats"></div>
   <div class="knoppen">
     <div class="knop" id="doorspeelKnop">Doorspelen</div>
@@ -582,7 +615,7 @@ function kwaliteitPixelRatio() { return Math.min(devicePixelRatio, kwaliteitPres
 // onder één sleutel. De kwaliteit houdt zijn eigen sleutel uit D21. Een
 // ontbrekende, corrupte of onzinnige waarde valt stil terug op de standaard.
 const INSTELLINGEN_KEY = 'defendNationalMonumentInstellingen';
-const INSTELLINGEN_STANDAARD = { gevoeligheid: 1, geluid: true };
+const INSTELLINGEN_STANDAARD = { gevoeligheid: 1, geluid: true, zwareNacht: false, avond: false };   // D59: nacht en sfeer
 const GEVOELIGHEID_MIN = 0.3, GEVOELIGHEID_MAX = 2;
 function leesInstellingen() {
   const uit = { ...INSTELLINGEN_STANDAARD };
@@ -592,6 +625,8 @@ function leesInstellingen() {
     const g = bewaard.gevoeligheid;
     if (typeof g === 'number' && g >= GEVOELIGHEID_MIN && g <= GEVOELIGHEID_MAX) uit.gevoeligheid = g;
     if (typeof bewaard.geluid === 'boolean') uit.geluid = bewaard.geluid;
+    if (typeof bewaard.zwareNacht === 'boolean') uit.zwareNacht = bewaard.zwareNacht;   // Ticket D59
+    if (typeof bewaard.avond === 'boolean') uit.avond = bewaard.avond;
   }
   return uit;
 }
@@ -625,7 +660,8 @@ zon.shadow.camera.far    = 300;
 scene.add(zon);
 
 // Hemellicht: zachte vulling zodat schaduwkanten niet pikzwart zijn.
-scene.add(new THREE.HemisphereLight(0xbfe3ff, 0x9b8f7a, 1.15));
+const hemiLicht = new THREE.HemisphereLight(0xbfe3ff, 0x9b8f7a, 1.15);   // D59: benoemd, voor de avondsfeer
+scene.add(hemiLicht);
 
 // Bij het schalen van het venster passen we camera + renderer aan.
 addEventListener('resize', () => {
@@ -3644,6 +3680,64 @@ function zetGeluid(aan) {
   werkInstellingenBij();
 }
 gevoeligheidUI.addEventListener('input', () => zetGevoeligheid(gevoeligheidUI.value));
+
+// Ticket D59: nacht, sfeer en het ontgrendelpaneel.
+const nachtKnoppen = document.querySelectorAll('#nachtKeuze [data-nacht]');
+const sfeerKnoppen = document.querySelectorAll('#sfeerKeuze [data-sfeer]');
+const ontgrendelPaneel = document.getElementById('ontgrendelPaneel');
+for (const soort of ['click', 'mousedown', 'pointerdown']) ontgrendelPaneel.addEventListener(soort, e => e.stopPropagation());
+function werkOntgrendelUIBij() {
+  const zwaarOpen = ontgrendeld('zwareNacht'), avondOpen = ontgrendeld('avond');
+  for (const k of nachtKnoppen) {
+    k.classList.toggle('actief', (k.dataset.nacht === 'zwaar') === (instellingen.zwareNacht && zwaarOpen));
+    if (k.dataset.nacht === 'zwaar') { k.classList.toggle('slot', !zwaarOpen); k.textContent = zwaarOpen ? 'Zware nacht' : `Zware nacht 🔒 ${Math.min(voortgang.sterren, 6)}/6★`; }
+  }
+  for (const k of sfeerKnoppen) {
+    k.classList.toggle('actief', (k.dataset.sfeer === 'avond') === (instellingen.avond && avondOpen));
+    if (k.dataset.sfeer === 'avond') { k.classList.toggle('slot', !avondOpen); k.textContent = avondOpen ? 'Avond' : `Avond 🔒 ${Math.min(voortgang.sterren, 12)}/12★`; }
+  }
+  const aantalOpen = ONTGRENDELINGEN.filter(o => o.open(voortgang)).length;
+  document.getElementById('ontgrendelKnop').textContent = `Ontgrendelingen ${aantalOpen}/${ONTGRENDELINGEN.length}`;
+  document.getElementById('ontgrendelTotaal').textContent =
+    `${voortgang.sterren} sterren · ${voortgang.overwinningen} overwinning${voortgang.overwinningen === 1 ? '' : 'en'} · bazen verslagen: ${Object.values(voortgang.bazen).filter(Boolean).length}/3`;
+  const lijst = document.getElementById('ontgrendelLijst');
+  lijst.replaceChildren(...ONTGRENDELINGEN.map(o => {
+    const open = o.open(voortgang);
+    const rij = document.createElement('div');
+    rij.className = `rij${open ? ' open' : ''}`;
+    const icoon = document.createElement('span'); icoon.textContent = open ? '✓' : '🔒';
+    const naam = document.createElement('b'); naam.textContent = o.naam;
+    const uitleg = document.createElement('span'); uitleg.className = 'uitleg2';
+    uitleg.textContent = open ? o.wat : `${o.hint}${o.doel ? ` (${Math.min(voortgang.sterren, o.doel)}/${o.doel})` : ''}`;
+    rij.append(icoon, naam, uitleg);
+    return rij;
+  }));
+}
+// Een zware nacht geldt voor de hele run: kiezen vóór de start telt meteen,
+// anders vanaf de volgende run.
+function kiesZwareNacht(aan) {
+  if (aan && !ontgrendeld('zwareNacht')) return false;
+  instellingen.zwareNacht = !!aan;
+  schrijfInstellingen();
+  if (runNogNietBegonnen()) { spel.zwareNacht = instellingen.zwareNacht; startWave(1); }
+  else toonFeedbackMelding('Geldt vanaf de volgende run');
+  werkOntgrendelUIBij();
+  updateArcadeUI();
+  return true;
+}
+function runNogNietBegonnen() { return spel.wave === 1 && runStats.speelduur === 0 && robots.length === 0 && !spel.gameOver; }
+function kiesAvond(aan) {
+  if (aan && !ontgrendeld('avond')) return false;
+  instellingen.avond = !!aan;
+  schrijfInstellingen();
+  pasSfeerToe();
+  werkOntgrendelUIBij();
+  return true;
+}
+for (const k of nachtKnoppen) k.addEventListener('click', () => kiesZwareNacht(k.dataset.nacht === 'zwaar'));
+for (const k of sfeerKnoppen) k.addEventListener('click', () => kiesAvond(k.dataset.sfeer === 'avond'));
+document.getElementById('ontgrendelKnop').addEventListener('click', () => { werkOntgrendelUIBij(); ontgrendelPaneel.style.display = 'block'; });
+document.getElementById('ontgrendelSluit').addEventListener('click', () => { ontgrendelPaneel.style.display = 'none'; });
 for (const k of geluidKnoppen) k.addEventListener('click', () => zetGeluid(k.dataset.geluid === 'aan'));
 werkInstellingenBij();
 const richtkruis = document.getElementById('richtkruis');
@@ -3867,6 +3961,7 @@ const spel = {
   overwinningOpen: false,   // Ticket D55: het overwinningsscherm staat open (spel staat stil)
   baas: null,               // Ticket D56: sleutel uit BAZEN voor een baaswave, of null
   baasGespawnd: false,      // Ticket D56: de baas van deze wave is al op pad
+  zwareNacht: false,        // Ticket D59: deze run is een zware nacht (vast bij de start)
   laatsteSpawnPoort: 'Damrak',
   // Ticket D28: namen uit SPAWN_POORTEN. actievePoorten = waar de lopende
   // wave vandaan komt; volgendePoorten = al gekozen en aangekondigd voor de
@@ -4076,11 +4171,12 @@ function robotTypeVoorLopendeWave() {
 // laden vastgelegd) of het thema — nooit "terugzetten" vanuit een vorige
 // stand (architectuurregel 6).
 function pasMistToe(thema) {
-  const m = thema?.mist ?? MIST_BASIS;
+  const basis = basisMist();   // Ticket D59: dag of avond
+  const m = thema?.mist ?? basis;
   scene.fog.color.setHex(m.kleur);
   scene.fog.near = m.near;
   scene.fog.far = m.far;
-  scene.background.setHex(thema?.mist ? m.kleur : MIST_BASIS.achtergrond);
+  scene.background.setHex(thema?.mist ? m.kleur : basis.achtergrond);
 }
 
 // Ticket D28 — aangekondigde poorten. Eén poort in de eerste twee waves
@@ -4120,7 +4216,8 @@ function sterrenVoor(monumentHP) {
   return 1 + STER_DREMPELS.filter(d => f >= d).length;
 }
 function waveLabel(wave) {
-  return !spel.gewonnen && wave <= RUN_WAVES ? `${wave} / ${RUN_WAVES}` : `${wave}`;
+  const nacht = spel.zwareNacht ? ' ☾' : '';   // Ticket D59
+  return (!spel.gewonnen && wave <= RUN_WAVES ? `${wave} / ${RUN_WAVES}` : `${wave}`) + nacht;
 }
 
 // Ticket D53: drie robots meer per wave (was 7 + 3·wave). Vroeg merk je
@@ -4150,6 +4247,8 @@ function startWave(nummer) {
   spel.baas = baasVoorWave(nummer);
   spel.baasGespawnd = false;
   if (spel.baas) spel.waveDoel = Math.round(waveBasisAantal(nummer) * BAAS_ESCORTE_FACTOR) + 1;
+  // Ticket D59: een zware nacht heeft meer robots (de baas blijft er één).
+  if (spel.zwareNacht) spel.waveDoel = Math.round((spel.waveDoel - (spel.baas ? 1 : 0)) * ZWARE_NACHT_AANTAL) + (spel.baas ? 1 : 0);
   spel.teSpawnen = spel.waveDoel;
   spel.maxActieveRobots = Math.min(5 + Math.floor(nummer * 0.65), 13);
   spel.tussenWaveTimer = 0;
@@ -4492,10 +4591,11 @@ function eindigRun() {
 function winRun() {
   if (spel.gewonnen || spel.gameOver) return;
   spel.gewonnen = true;
-  spel.sterren = sterrenVoor(spel.monumentHP);
+  spel.sterren = sterrenVoor(spel.monumentHP) + (spel.zwareNacht ? 1 : 0);   // D59: zware nacht +1
   spel.overwinningOpen = true;
   schietKnopIngedrukt = false;
-  toonOverwinningscherm(verwerkOverwinning(spel.sterren));
+  const nieuw = registreerMijlpaal(v => { v.overwinningen += 1; v.sterren += spel.sterren; });   // Ticket D59
+  toonOverwinningscherm(verwerkOverwinning(spel.sterren), nieuw);
   updateArcadeUI();
   if (document.pointerLockElement) document.exitPointerLock();
 }
@@ -4506,6 +4606,48 @@ function doorspelen() {
   startscherm.querySelector('h2').textContent = 'Doorspelen — eindeloos, voor je highscore';
   startscherm.style.display = 'flex';
   renderer.domElement.requestPointerLock();
+}
+
+// Ticket D59 — voortgang tussen runs: welke bazen je ooit versloeg, hoe vaak
+// je won en hoeveel sterren je in totaal haalde. Ontgrendelingen worden
+// daaruit afgeleid, niet los bewaard. Meer keuze, geen extra kracht. Zelfde
+// regels als de highscore: geen of een kapotte sleutel = niets ontgrendeld.
+const VOORTGANG_KEY = 'defendNationalMonumentVoortgang';
+const ZWARE_NACHT_AANTAL = 1.3;
+const ZWARE_NACHT_SNELHEID = 1.15;
+const ONTGRENDELINGEN = [
+  { id: 'scherpschutter', naam: 'Scherpschutter', wat: 'richting B van de geschuttoren', hint: 'versla de Sloopkogel', open: v => v.bazen.sloopkogel },
+  { id: 'stroomval', naam: 'Stroomval', wat: 'richting B van de Bovenleiding', hint: 'versla de Dijkbreker', open: v => v.bazen.dijkbreker },
+  { id: 'stadsmuur', naam: 'Stadsmuur', wat: 'richting B van het hek', hint: 'win een run', open: v => v.overwinningen >= 1 },
+  { id: 'zwareNacht', naam: 'Zware nacht', wat: 'meer en snellere robots, +1 ster per overwinning', hint: 'verzamel 6 sterren', doel: 6, open: v => v.sterren >= 6 },
+  { id: 'avond', naam: 'Avond op de Dam', wat: 'de Dam bij zonsondergang (alleen uiterlijk)', hint: 'verzamel 12 sterren', doel: 12, open: v => v.sterren >= 12 },
+];
+function legeVoortgang() { return { bazen: { sloopkogel: false, dijkbreker: false, stoomwals: false }, overwinningen: 0, sterren: 0 }; }
+function leesVoortgang() {
+  const v = legeVoortgang();
+  try {
+    const raw = JSON.parse(localStorage.getItem(VOORTGANG_KEY));
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return v;
+    for (const b of Object.keys(v.bazen)) v.bazen[b] = raw.bazen?.[b] === true;
+    if (Number.isInteger(raw.overwinningen) && raw.overwinningen >= 0) v.overwinningen = raw.overwinningen;
+    if (Number.isInteger(raw.sterren) && raw.sterren >= 0) v.sterren = raw.sterren;
+  } catch { /* kapot: niets ontgrendeld */ }
+  return v;
+}
+function schrijfVoortgang() {
+  try { localStorage.setItem(VOORTGANG_KEY, JSON.stringify(voortgang)); } catch { /* niet bewaren, geen crash */ }
+}
+const voortgang = leesVoortgang();
+function ontgrendeld(id) { return !!ONTGRENDELINGEN.find(o => o.id === id)?.open(voortgang); }
+// Past de voortgang aan, bewaart hem, meldt wat er nieuw open is en geeft dat terug.
+function registreerMijlpaal(wijzig) {
+  const voor = new Set(ONTGRENDELINGEN.filter(o => o.open(voortgang)).map(o => o.id));
+  wijzig(voortgang);
+  schrijfVoortgang();
+  const nieuw = ONTGRENDELINGEN.filter(o => o.open(voortgang) && !voor.has(o.id));
+  for (const o of nieuw) toonFeedbackMelding(`Ontgrendeld: ${o.naam}!`);
+  if (nieuw.length) werkOntgrendelUIBij();
+  return nieuw;
 }
 
 // Ticket D8 — één bewaard record. Gekopieerd en aangepast van het patroon
@@ -4531,7 +4673,7 @@ function leesHighscore() {
       datum: typeof record.datum === 'string' ? record.datum : null,
       // Ticket D55: los van de score bijgehouden.
       gewonnen: record.gewonnen === true,
-      besteSterren: Number.isInteger(record.besteSterren) && record.besteSterren >= 1 && record.besteSterren <= 3 ? record.besteSterren : 0,
+      besteSterren: Number.isInteger(record.besteSterren) && record.besteSterren >= 1 && record.besteSterren <= 4 ? record.besteSterren : 0,   // D59: zware nacht tot 4
     };
   } catch {
     return null;
@@ -4626,9 +4768,10 @@ function statsHTML() {
 }
 
 const overwinningscherm = document.getElementById('overwinningscherm');
-function toonOverwinningscherm(uitslag = null) {
-  const n = spel.sterren;
-  document.getElementById('winSterren').innerHTML = '★'.repeat(n) + `<span class="leeg">${'★'.repeat(3 - n)}</span>`;
+function toonOverwinningscherm(uitslag = null, ontgrendeld = []) {
+  const n = spel.sterren, max = spel.zwareNacht ? 4 : 3;
+  document.getElementById('winSterren').innerHTML = '★'.repeat(n) + `<span class="leeg">${'★'.repeat(Math.max(0, max - n))}</span>`;
+  document.getElementById('winOntgrendeld').textContent = ontgrendeld.length ? `Ontgrendeld: ${ontgrendeld.map(o => o.naam).join(', ')}` : '';   // D59
   document.getElementById('winOndertitel').textContent =
     `${RUN_WAVES} waves overleefd, het monument staat nog op ${Math.max(0, Math.ceil(spel.monumentHP))}%`;
   const recordEl = document.getElementById('winRecord');
@@ -5148,9 +5291,15 @@ const TOREN_RICHTINGEN = {
   },
 };
 const RICHTING_NIVEAU = 3;
-// Ticket D59 vult dit in; tot dan is alles open.
-function richtingOntgrendeld(type, richting) { return true; }
-function ontgrendelHint() { return ''; }
+// Ticket D59: richting A is altijd open; richting B wordt ontgrendeld.
+const RICHTING_ONTGRENDELING = { scherpschutter: 'scherpschutter', stroomval: 'stroomval', stadsmuur: 'stadsmuur' };
+function richtingOntgrendeld(type, richting) {
+  const id = RICHTING_ONTGRENDELING[richting];
+  return !id || ontgrendeld(id);
+}
+function ontgrendelHint(type, richting) {
+  return ONTGRENDELINGEN.find(o => o.id === RICHTING_ONTGRENDELING[richting])?.hint ?? '';
+}
 function richtingen(type) { return TOREN_RICHTINGEN[type] ?? null; }
 const TOREN_TYPES = {
   // De velden op het type zelf (prijs, bereik, …) zijn niveau 1.
@@ -6299,7 +6448,7 @@ function spawnRobot(poort = null, type = 'normal') {
   // ARCHITECTURE_NOTES_monument.md §6.2/§6.3 en SONNET_EXECUTION_PLAN_monument.md
   // Ticket D6 voor de volledige afweging tussen de drie opties.
   const basisSnelheid = Math.min(1.35 + Math.random() * 0.7 + spel.wave * 0.07, 3.0) * 1.1;   // standaard 10% sneller
-  robot.snelheid = basisSnelheid * config.snelheidMultiplier;
+  robot.snelheid = basisSnelheid * config.snelheidMultiplier * (spel.zwareNacht ? ZWARE_NACHT_SNELHEID : 1);   // D59
   // Ticket D56: een baas loopt midden over de strook en houdt zijn maximum-HP
   // bij voor de balk bovenin.
   if (config.baas) {
@@ -6883,6 +7032,7 @@ function updateBaasUI() {
 }
 function baasVerslagen(robot) {
   const cfg = BAZEN[robot.type];
+  registreerMijlpaal(v => { v.bazen[robot.type] = true; });   // Ticket D59
   verdienGeld(cfg.beloning);
   updateGeldUI();
   runStats.bazenVerslagen += 1;
@@ -7242,6 +7392,19 @@ let vorigeTijd = performance.now();
 // Ticket D30: basiswaarden van de mist, vastgelegd na het bouwen van de
 // wereld (de wereld zet de definitieve mist pas in STAP 2).
 const MIST_BASIS = { kleur: scene.fog.color.getHex(), near: scene.fog.near, far: scene.fog.far, achtergrond: scene.background.getHex() };
+// Ticket D59: "Avond op de Dam" — dezelfde Dam bij zonsondergang. Alleen
+// uiterlijk: zicht en licht blijven ruim genoeg om te spelen.
+const MIST_AVOND = { kleur: 0x8a6f86, near: MIST_BASIS.near, far: MIST_BASIS.far, achtergrond: 0x5a4a78 };
+const LICHT_DAG = { zonKleur: zon.color.getHex(), zon: zon.intensity, hemi: hemiLicht.intensity, hemiKleur: hemiLicht.color.getHex() };
+const LICHT_AVOND = { zonKleur: 0xffa060, zon: 1.9, hemi: 0.8, hemiKleur: 0xb9a2d8 };
+function avondActief() { return instellingen.avond && ontgrendeld('avond'); }
+function basisMist() { return avondActief() ? MIST_AVOND : MIST_BASIS; }
+function pasSfeerToe() {
+  const l = avondActief() ? LICHT_AVOND : LICHT_DAG;
+  zon.color.setHex(l.zonKleur); zon.intensity = l.zon;
+  hemiLicht.intensity = l.hemi; hemiLicht.color.setHex(l.hemiKleur);
+  pasMistToe(spel.thema ? THEMAGOLVEN[spel.thema] : null);
+}
 
 const BEGINSTAAT = {
   spel: JSON.parse(JSON.stringify(spel)),
@@ -7299,6 +7462,7 @@ function resetRun() {
   verbergInteractiePrompt();
   eindscherm.style.display = 'none';
   overwinningscherm.style.display = 'none';   // Ticket D55
+  spel.zwareNacht = instellingen.zwareNacht && ontgrendeld('zwareNacht');   // Ticket D59: per run vast
   updateBaasUI();                              // Ticket D56
 
   // Monument weer heel (Ticket D20). Rechtstreeks i.p.v. via
@@ -7325,7 +7489,10 @@ document.getElementById('opnieuwKnop').addEventListener('click', opnieuwSpelen);
 document.getElementById('winOpnieuwKnop').addEventListener('click', opnieuwSpelen);   // Ticket D55
 
 // Zet bij de start de eerste wave en duiven neer.
+spel.zwareNacht = instellingen.zwareNacht && ontgrendeld('zwareNacht');   // Ticket D59
 startWave(1);
+pasSfeerToe();
+werkOntgrendelUIBij();
 for (let i = 0; i < kwaliteitPreset().duiven; i++) plaatsDuif();   // Ticket D21: 6/12/18
 
 function gameLoop(nu) {
@@ -7425,6 +7592,8 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   runStats, eindigRun, toonEindscherm, verdienGeld,
   // Ticket D55: een run met een einde.
   TOREN_RICHTINGEN, RICHTING_NIVEAU, torenNaam, richtingOntgrendeld,
+  VOORTGANG_KEY, ONTGRENDELINGEN, voortgang, leesVoortgang, ontgrendeld, registreerMijlpaal, kiesZwareNacht, kiesAvond, pasSfeerToe, avondActief,
+  ZWARE_NACHT_AANTAL, ZWARE_NACHT_SNELHEID, hemiLicht,
   BAZEN, BAAS_WAVES, BAAS_ESCORTE_FACTOR, baasVoorWave, levendeBaas, updateBaasUI,
   SLOOPKOGEL_INTERVAL, SLOOPKOGEL_BEREIK, SLOOPKOGEL_SCHADE, STOOMWALS_LOSLAAT_INTERVAL, STOOMWALS_LOSLAAT_AANTAL, STOOMWALS_WOEDE_DREMPEL, STOOMWALS_WOEDE_SNELHEID, vuurToren,
   RUN_WAVES, STER_DREMPELS, sterrenVoor, waveLabel, winRun, doorspelen, verwerkOverwinning, THEMA_IN_RUN,

@@ -7,7 +7,8 @@
 // Het menu biedt beide aan; de keuze ligt daarna vast en staat in de naam.
 import { openDefend, makeChecker } from '../helpers-defend.mjs';
 
-const { browser, page, errs } = await openDefend();
+// Ticket D59: richting B is op slot tot je hem vrijspeelt; hier alles open.
+const { browser, page, errs } = await openDefend({ initScript: `try { localStorage.setItem('defendNationalMonumentVoortgang', JSON.stringify({ bazen: { sloopkogel: true, dijkbreker: true, stoomwals: true }, overwinningen: 1, sterren: 3 })); } catch {}` });
 const { check, report } = makeChecker();
 
 const r = await page.evaluate(() => {

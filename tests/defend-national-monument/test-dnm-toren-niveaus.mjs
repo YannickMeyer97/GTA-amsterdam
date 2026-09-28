@@ -152,7 +152,7 @@ const menu = await page.evaluate(() => {
   return { prompt, tekst, niveauVoor, naUpgrade, naVerkoop: { plekLeeg: plek.toren === null, menuOpen: d.bouwMenuStand() === plek, tekst: bouwUI.textContent } };
 });
 check('De prompt bij een toren noemt niveau, HP en "T voor opties"', menu.prompt.includes('niv. 2') && menu.prompt.includes('T voor opties'), menu.prompt);
-check('T op een bezette plek toont de twee richtingen (D58), repareren en verkopen', menu.tekst.includes('1, Geschuttoren → Kanon') && menu.tekst.includes('2, Geschuttoren → Scherpschutter') && menu.tekst.includes('Toren repareren') && menu.tekst.includes('Toren verkopen'), menu.tekst);
+check('T op een bezette plek toont de twee richtingen (D58; de Scherpschutter nog op slot, D59), repareren en verkopen', menu.tekst.includes('1, Geschuttoren → Kanon') && menu.tekst.includes('2, Scherpschutter: op slot (versla de Sloopkogel)') && menu.tekst.includes('Toren repareren') && menu.tekst.includes('Toren verkopen'), menu.tekst);
 check('1 kiest het Kanon en laat het menu open (met bijgewerkte tekst)', menu.niveauVoor === 2 && menu.naUpgrade.niveau === 3 && menu.naUpgrade.menuOpen && menu.naUpgrade.tekst.includes('Kanon: maximaal niveau'), menu.naUpgrade);
 check('3 verkoopt; het menu blijft open en biedt weer torens aan (D47)', menu.naVerkoop.plekLeeg && menu.naVerkoop.menuOpen && menu.naVerkoop.tekst.includes('Geschuttoren €'), menu.naVerkoop);
 
