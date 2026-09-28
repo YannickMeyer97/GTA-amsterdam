@@ -1627,3 +1627,40 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
   ze over bij een nieuw scorerecord.
 - **CSS:** het `@media (max-height: 560px)`-blok staat bewust als laatste
   in de stijlen; anders winnen de algemene regels (zoals `.knop`).
+
+### 15.17 Bazen, richtingen en voortgang (D56–D60)
+
+- **Een baas is een robot.** De drie bazen staan in `ROBOT_TYPES` met
+  `baas: true` (en `vasteSnelheid`: de wave-formule geldt voor hen niet).
+  Torens, hekken, het wapen, de minimap en het monument werken zonder
+  uitzonderingen. Eigen zijn alleen: `BAZEN` (naam, beloning, tip), de
+  balk (`updateBaasUI`, zoekt zelf `levendeBaas()`), de beloning in
+  `vernietigRobot` (geen munt) en het gedrag in `updateBaasGedrag`.
+- **Baaswave:** `baasVoorWave(w)` (alleen binnen de run). `startWave` zet
+  `spel.baas`; `robotTypeVoorLopendeWave` geeft de baas als eerste spawn.
+  Eén poort (`aantalPoortenVoorWave`), escorte `BAAS_ESCORTE_FACTOR`.
+- **Schilden zijn algemeen.** Elke plek leest `robot.schildActief`, en de
+  cyclus geldt voor elk type met `schildDuur` (Shield Bot, Dijkbreker).
+  Een nieuw type met een schild heeft genoeg aan die twee velden.
+- **Geometrie van bazen** wordt één keer gemaakt (`BAAS_GEO`, `baasGeo`) en
+  gedeeld, net als die van gewone robots (D42). De romp heeft een eigen
+  kleur en een minder metalen materiaal (`BAAS_ROMP_MATERIAAL`).
+- **Richtingen (D58):** niveau 3 in de niveaulijst is richting A; richting
+  B staat in `TOREN_RICHTINGEN`. Lees stats altijd via `torenStats(t)`,
+  namen via `torenNaam(t)`, nooit direct `niveaus[2]`. Effecten per
+  richting: `splash` (Kanon, in `vuurToren`), `vertraging` (Stroomval, in
+  `vuurBovenleiding`; `updateRobots` telt hem af), `terugSchade`
+  (Prikkeldraad, bij de hekklap).
+- **Voortgang (D59):** `voortgang` (bazen, overwinningen, sterren) in
+  `localStorage`; ontgrendelingen worden afgeleid (`ONTGRENDELINGEN`,
+  `ontgrendeld(id)`), nooit los bewaard. Alles wat een mijlpaal is, gaat
+  via `registreerMijlpaal(wijzig)`: die bewaart, meldt en geeft terug wat
+  er nieuw open is. `resetRun` raakt de voortgang niet.
+- **Zware nacht** wordt per run vastgelegd in `spel.zwareNacht` (bij de
+  start en bij `resetRun`), niet live uit de instelling gelezen: midden in
+  een run omzetten geldt pas voor de volgende.
+- **Avond:** `basisMist()` en `pasSfeerToe()`; `pasMistToe` valt terug op
+  `basisMist()`, dus een themagolf met mist keert terug naar de avond.
+- **Meten:** `meet-dnm-bazen` heeft een gesimuleerde speler met de echte
+  warmte- en vuurtempofuncties; gebruik dat voor elke wijziging aan de
+  bazen, want de simulatie in `meet-dnm-economie` schiet niet zelf.

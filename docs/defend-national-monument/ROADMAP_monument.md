@@ -1190,7 +1190,7 @@ minuten.
 | ☑ | **D57** | De drie bazen: Sloopkogel (5), Dijkbreker (10), Stoomwals (15) |
 | ☑ | **D58** | Torens splitsen op niveau 3 |
 | ☑ | **D59** | Ontgrendelingen tussen runs |
-| ☐ | **D60** | Herijken en speeltest → **M4** |
+| ◐ | **D60** | Herijken en speeltest → **M4** *(herijkt; de speeltest door de eigenaar staat open)* |
 
 **D55 — een run van 15 waves, verslag.**
 - **De run heeft een einde.** Na wave 15 (`RUN_WAVES`) opent het
@@ -1317,6 +1317,52 @@ kleur zwart). Waarden zijn startwaarden voor D60.
   onderin.
 - **Test:** `test-dnm-ontgrendelingen` (18 checks). `test-dnm-splitsing`
   speelt met alles ontgrendeld; `test-dnm-toren-niveaus` ziet het slot.
+
+**D60 — herijken, verslag.**
+- **Nieuw meetscript `meet-dnm-bazen`.** De verdedigingssimulatie schiet
+  niet zelf, en een baas moet je juist zelf bevechten. Hier staat een
+  gesimuleerde speler aan de monumentrand, die vuurt en oververhit met de
+  functies van de game zelf. Hij heeft per baaswave de upgrades van een
+  goede speler (wave 10: vuurtempo 2 + koeling 1; wave 15: vuurtempo 3 +
+  koeling 2), loopt niet en mikt nooit mis.
+- **De eerste meting: de Dijkbreker en de Stoomwals waren onverslaanbaar.**
+  Zelfs tegen twee Kanonnen en de speler haalden ze het monument met een
+  derde tot de helft van hun HP. Oorzaak: een baas liep net zo snel als
+  een gewone robot van die wave (Dijkbreker ~22 s over de route).
+  Bijgesteld:
+  - bazen hebben een vaste snelheid: Sloopkogel 1,1, Dijkbreker 1,0 en
+    Stoomwals 0,8 m/s;
+  - de woede van de Stoomwals: × 1,35 (was 1,6);
+  - het schild van de Dijkbreker: 2,5 s dicht en 3,5 s open (was 3,5 en
+    2,5).
+- **Na bijstelling** (3 pogingen; monumentschade; "door" = de baas haalde
+  het monument):
+
+  | Wave | Alleen de speler | 2 torens niv. 2 | Kanon + Hoogspanning | 2 Kanonnen |
+  |---|---|---|---|---|
+  | 5, Sloopkogel | door (40–48) | verslagen (0) | — | — |
+  | 10, Dijkbreker | door (40–82) | 1 van 3 door | 1 van 3 door | verslagen (0) |
+  | 15, Stoomwals | door (game over) | door (game over) | 2 van 3 verslagen | verslagen (0) |
+
+  Winnen vraagt dus een echte verdediging op de baaspoort, en 3 sterren
+  een sterke. Op wave 5 zijn twee torens van niveau 1 genoeg.
+- **Economie over de run** (`meet-dnm-economie`, nu met baaswaves en
+  thema's): na wave 5 €898 (1,3 poort) basis en €1.415 (2,0) bij goed spel;
+  na wave 15 €5.223 basis en €7.840 bij goed spel. Genoeg voor twee
+  torens van niveau 3 op de baaspoort én upgrades, niet voor alles.
+- **Runduur:** de waves met een verdediging die ze houdt, tellen op tot
+  ~880 s: ~15 minuten, binnen de gekozen 15–20.
+- **Drukpers:** een ronde duurt gemiddeld 58 s, dus 165 s is 2,9 rondes.
+  Klopt nog.
+- **Voor de speeltest (M4), vragen aan de eigenaar:**
+  1. Lukt winnen, en voelt de run als iets waar je naartoe werkt?
+  2. Zijn de bazen spannend, en is duidelijk wat je tegen elke baas moet
+     doen?
+  3. Kies je bewust een richting op niveau 3?
+  4. Voelt de volgende run anders door wat je ontgrendeld hebt?
+- **Tests:** `test-dnm-bazen` leest de woedefactor uit de game. Volledige
+  suite 153/154; de uitvaller (Undead `test-golf1-economie`, bekend
+  timinggevoelig) is los groen.
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

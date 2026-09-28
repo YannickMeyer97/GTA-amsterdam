@@ -2185,6 +2185,10 @@ Startwaarden, te ijken in D60.
   spel in ~15–20 minuten, 3 sterren vraagt echt iets).
 - **M4:** de eigenaar speelt een hele run. Werkt het doel? Voelt de
   volgende run anders door de ontgrendelingen?
+- **Uitgevoerd (deels):** D55–D59 zijn gebouwd. Herijkt met het nieuwe
+  meetscript `meet-dnm-bazen`: bazen hebben nu een vaste snelheid; eerst
+  waren de Dijkbreker en de Stoomwals onverslaanbaar. Open: de speeltest
+  (**M4**). Zie de ROADMAP.
 
 ### Volgorde
 

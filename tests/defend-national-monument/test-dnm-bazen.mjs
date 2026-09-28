@@ -104,7 +104,7 @@ const r = await page.evaluate(() => {
   };
   d.raakRobot(wals, Math.ceil(wals.hpMax * (1 - d.STOOMWALS_WOEDE_DREMPEL)) + 1);
   d.updateRobots(1 / 20);
-  uit.woede = { woedend: wals.woedend, factor: wals.snelheid / walsSnelheid, banner: document.getElementById('waveBanner').textContent };
+  uit.woede = { woedend: wals.woedend, verwacht: d.STOOMWALS_WOEDE_SNELHEID, factor: wals.snelheid / walsSnelheid, banner: document.getElementById('waveBanner').textContent };
   d.updateRobots(1 / 20);
   uit.woede.eenmaal = wals.snelheid / walsSnelheid;
 
@@ -124,7 +124,7 @@ check('Dijkbreker: een schild dat dicht toren- en stroomschade tegenhoudt, open 
 check('Dijkbreker: het schild gaat vanzelf open en dicht, en je ziet het', r.schild.standen.includes('true:true') && r.schild.standen.includes('false:false'), r.schild.standen);
 check('Stoomwals: een wals voorop', r.wals.heeftWals, r.wals);
 check('Stoomwals: laat na het interval robots los, op zijn eigen route, achter hem', r.wals.erbij === r.wals.verwacht && r.wals.opZijnRoute && r.wals.dichtbij, r.wals);
-check('Stoomwals: onder de helft woedend, sneller, met een banner — en maar één keer', r.woede.woedend && Math.abs(r.woede.factor - 1.6) < 1e-9 && Math.abs(r.woede.eenmaal - 1.6) < 1e-9 && /woedend/.test(r.woede.banner), r.woede);
+check('Stoomwals: onder de helft woedend, sneller, met een banner — en maar één keer', r.woede.woedend && Math.abs(r.woede.factor - r.woede.verwacht) < 1e-9 && Math.abs(r.woede.eenmaal - r.woede.verwacht) < 1e-9 && /woedend/.test(r.woede.banner), r.woede);
 check('Stoomwals: de schoorsteen rookt', r.rook > 0, r.rook);
 check('Reset ruimt alle bazen en losgelaten robots op', r.naReset.robots === 0, r.naReset);
 

@@ -6150,9 +6150,13 @@ const ROBOT_TYPES = {
   // Tickets D56–D57: de drie bazen. Groot, traag, veel HP, en een zware klap
   // als ze het monument halen. Geen munt: bij de kill een vaste beloning
   // (BAZEN). Startwaarden, te ijken in D60.
-  sloopkogel: { hpMax: 60,  snelheidMultiplier: 0.5,  beloningMultiplier: 0, kleur: 0xff9a3c, schaal: 2.1, monumentSchade: 40,  baas: true },
-  dijkbreker: { hpMax: 90,  snelheidMultiplier: 0.75, beloningMultiplier: 0, kleur: 0x6fd2ff, schaal: 1.9, monumentSchade: 40,  baas: true, schildDuur: 3.5, schildPauze: 2.5 },
-  stoomwals:  { hpMax: 180, snelheidMultiplier: 0.4,  beloningMultiplier: 0, kleur: 0xff4a3c, schaal: 2.8, monumentSchade: 100, baas: true },
+  // Ticket D60: een baas heeft een vaste snelheid (m/s). Met de wave-formule
+  // liep de Dijkbreker in ~22 s naar het monument en haalden de Dijkbreker
+  // en de Stoomwals het altijd, zelfs tegen twee Kanonnen en de speler
+  // (meet-dnm-bazen). snelheidMultiplier geldt voor bazen niet.
+  sloopkogel: { hpMax: 60,  vasteSnelheid: 1.1, snelheidMultiplier: 1, beloningMultiplier: 0, kleur: 0xff9a3c, schaal: 2.1, monumentSchade: 40,  baas: true },
+  dijkbreker: { hpMax: 90,  vasteSnelheid: 1.0, snelheidMultiplier: 1, beloningMultiplier: 0, kleur: 0x6fd2ff, schaal: 1.9, monumentSchade: 40,  baas: true, schildDuur: 2.5, schildPauze: 3.5 },
+  stoomwals:  { hpMax: 180, vasteSnelheid: 0.8, snelheidMultiplier: 1, beloningMultiplier: 0, kleur: 0xff4a3c, schaal: 2.8, monumentSchade: 100, baas: true },
 };
 
 // Ticket D56: het baassysteem. Een baaswave (alleen binnen de run) begint met
@@ -6368,7 +6372,7 @@ const SLOOPKOGEL_SCHADE = 70;
 const STOOMWALS_LOSLAAT_INTERVAL = 6;
 const STOOMWALS_LOSLAAT_AANTAL = 3;
 const STOOMWALS_WOEDE_DREMPEL = 0.5;
-const STOOMWALS_WOEDE_SNELHEID = 1.6;
+const STOOMWALS_WOEDE_SNELHEID = 1.35;   // D60: was 1,6
 const rookMateriaal = new THREE.MeshBasicMaterial({ color: 0x5b5f66, transparent: true, opacity: 0.6, depthWrite: false });
 
 function updateBaasGedrag(robot, dt) {
@@ -6448,7 +6452,7 @@ function spawnRobot(poort = null, type = 'normal') {
   // ARCHITECTURE_NOTES_monument.md §6.2/§6.3 en SONNET_EXECUTION_PLAN_monument.md
   // Ticket D6 voor de volledige afweging tussen de drie opties.
   const basisSnelheid = Math.min(1.35 + Math.random() * 0.7 + spel.wave * 0.07, 3.0) * 1.1;   // standaard 10% sneller
-  robot.snelheid = basisSnelheid * config.snelheidMultiplier * (spel.zwareNacht ? ZWARE_NACHT_SNELHEID : 1);   // D59
+  robot.snelheid = (config.vasteSnelheid ?? basisSnelheid * config.snelheidMultiplier) * (spel.zwareNacht ? ZWARE_NACHT_SNELHEID : 1);   // D59, D60
   // Ticket D56: een baas loopt midden over de strook en houdt zijn maximum-HP
   // bij voor de balk bovenin.
   if (config.baas) {

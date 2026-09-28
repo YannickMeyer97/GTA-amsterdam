@@ -35,20 +35,25 @@ const inkomsten = await page.evaluate((MAX_WAVE) => {
   const d = window.DamChaosDebug;
   const rijen = [];
   for (let wave = 1; wave <= MAX_WAVE; wave++) {
-    const aantal = d.waveBasisAantal(wave);   // zelfde formule als startWave() (D53: 10 + 3·wave)
+    // Zelfde formule als startWave(): D53 10 + 3·wave, D30 themafactor,
+    // D56 een baaswave = half escorte (de baas zelf geeft een vaste beloning).
+    const baas = d.baasVoorWave(wave);
+    const thema = d.themaVoorWave(wave);
+    const aantal = baas ? Math.round(d.waveBasisAantal(wave) * d.BAAS_ESCORTE_FACTOR) : Math.round(d.waveBasisAantal(wave) * (thema?.aantalFactor ?? 1));
+    const baasBeloning = baas ? d.BAZEN[baas].beloning : 0;
     const telling = {};
     const N = 20000;
     for (let i = 0; i < N; i++) { const t = d.kiesRobotTypeVoorWave(wave); telling[t] = (telling[t] || 0) + 1; }
     const gemiddeldeMunt = (d.MUNT_BASIS_MIN + d.MUNT_BASIS_MAX) / 2;
     let muntPerRobot = 0;
     for (const [type, n] of Object.entries(telling)) muntPerRobot += (n / N) * gemiddeldeMunt * d.ROBOT_TYPES[type].beloningMultiplier;
-    const waveBonus = d.WAVE_BONUS_BASIS + wave * d.WAVE_BONUS_PER_WAVE;
+    const waveBonus = Math.round((d.WAVE_BONUS_BASIS + wave * d.WAVE_BONUS_PER_WAVE) * (thema ? d.THEMA_BONUS_FACTOR : 1));
     const perfect = d.PERFECT_BONUS_BASIS + wave * d.PERFECT_BONUS_PER_WAVE;
     rijen.push({
       wave, aantal,
       mix: Object.fromEntries(Object.entries(telling).map(([t, n]) => [t, Math.round((n / N) * 100)])),
-      basis: Math.round(aantal * muntPerRobot + waveBonus),
-      goed: Math.round(aantal * muntPerRobot * 1.25 + waveBonus + perfect),
+      basis: Math.round(aantal * muntPerRobot + waveBonus + baasBeloning),
+      goed: Math.round(aantal * muntPerRobot * 1.25 + waveBonus + perfect + baasBeloning),
     });
   }
   return rijen;
