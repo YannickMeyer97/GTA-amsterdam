@@ -57,7 +57,7 @@ const w9 = await startEnMeet(9);
 check('Wave 9 = Spitsuur: alleen sprinters, 1,3× zoveel robots, via één poort', w9.thema === 'spitsuur' && w9.typen.join() === 'sprinter' && w9.waveDoel === Math.round(w9.basisDoel * 1.3) && w9.poorten === 1, w9);
 
 const w12 = await startEnMeet(12);
-check('Wave 12 = Grachtenmist: normale mix en aantallen, twee poorten', w12.thema === 'grachtenmist' && w12.typen.length > 1 && w12.waveDoel === w12.basisDoel && w12.poorten === 2, w12);
+check('Wave 12 = Grachtenmist: normale mix en aantallen, drie poorten (D67: vanaf wave 11)', w12.thema === 'grachtenmist' && w12.typen.length > 1 && w12.waveDoel === w12.basisDoel && w12.poorten === 3, w12);
 check('...de mist trekt dicht (zicht ~38 m, lucht in mistkleur)', w12.mist.far === 38 && w12.mist.near === 6 && w12.mist.achtergrond === w12.mist.kleur && w12.mist.far < w12.basisMist.far, w12.mist);
 const w15 = await startEnMeet(15);
 check('Wave 15: de mist is exact terug op de basiswaarden', JSON.stringify(w15.mist) === JSON.stringify(w15.basisMist), { mist: w15.mist, basis: w15.basisMist });
@@ -122,13 +122,14 @@ const tips = await page.evaluate(() => {
     const banner = document.getElementById('waveBanner');
     return { tekst: banner.textContent, tip: banner.querySelector('.tip')?.textContent ?? null };
   };
-  const uit = { voorTank: aankondiging(6), voorSpits: aankondiging(8), gewoon: aankondiging(10) };
+  const uit = { voorTank: aankondiging(6), voorSpits: aankondiging(8), gewoon: aankondiging(12), derdePoort: aankondiging(10) };
   d.resetRun();
   return uit;
 });
 check('Vóór het Tankkonvooi noemt de aankondiging de Geschuttoren', /Tankkonvooi/.test(tips.voorTank.tekst) && /Geschuttoren/.test(tips.voorTank.tip ?? ''), tips.voorTank);
 check('Vóór Spitsuur noemt de aankondiging de Bovenleiding', /Spitsuur/.test(tips.voorSpits.tekst) && /Bovenleiding/.test(tips.voorSpits.tip ?? ''), tips.voorSpits);
 check('Een gewone wave krijgt geen tip', tips.gewoon.tip === null, tips.gewoon);
+check('Vóór wave 11 (D67) meldt de aankondiging de derde poort', /drie poorten/.test(tips.derdePoort.tip ?? ''), tips.derdePoort);
 
 const fails = report(errs);
 await browser.close();

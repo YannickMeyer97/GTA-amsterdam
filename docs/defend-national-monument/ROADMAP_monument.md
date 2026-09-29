@@ -1402,7 +1402,7 @@ Verder:
 | ☑ | **D64** | Volumeregelaar |
 | ☑ | **D65** | M4: niveau 3 duurder, Stoomwals laat zichtbaar robots los, langere bouwfase, bereik Sloopkogel |
 | ☑ | **D66** | "Nacht: Zware nacht" heet nu "Moeilijkheid: Zwaar (+1★)" |
-| ☐ | **D67** | Derde poort vanaf wave 11 (audit 4) |
+| ☑ | **D67** | Derde poort vanaf wave 11 (audit 4) |
 | ☐ | **D68** | Elite-robots: Pantserbot en Splitser (audit 4) |
 | ☐ | **D69** | Een run van 20 waves, met De Heimachine als vierde baas |
 | ☐ | **D70** | Herijken na D66–D69 |
@@ -1515,6 +1515,22 @@ toont "· zwaar" (was een maantje). Intern heten sleutel en vlag nog
     waarden;
   - in `test-dnm-splitsing` rijdt de tank nu met een vaste snelheid: een
     trage tank haalde het hek (~39 m) soms niet binnen 40 s.
+
+**D67 — derde poort, verslag.**
+- Vanaf wave 11 komen robots via drie van de vier poorten (`DERDE_POORT_VANAF`),
+  daarvoor twee (wave 1: één). Bazen en themagolven met een eigen aantal
+  (Tankkonvooi en Spitsuur: één) blijven daarbuiten; Grachtenmist volgt de
+  gewone regel en heeft in wave 12 dus drie poorten.
+- De aankondiging van wave 11 krijgt een tip: "Vanaf nu drie poorten
+  tegelijk: bouw ook bij de derde straat".
+- **Automatische runs** (`meet-dnm-run`):
+  - goed: twee keer gewonnen (13:42 en 13:44, 1 ster). Het geld gaat nu op
+    aan torens bij de derde straat: €291–427 over na wave 14 (was €872).
+  - zwak: verloren in wave 15, zoals eerst.
+  - Buiten de baaswaves loopt het monument nog steeds niets op. Dat is voor
+    D68 (elite-robots); D70 herijkt het geheel.
+- **Tests:** `test-dnm-poorten` (drie poorten vanaf wave 11) en
+  `test-dnm-themagolven` (Grachtenmist drie poorten, de tip vóór wave 11).
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

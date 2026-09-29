@@ -977,7 +977,7 @@ projecteerOpScherm · robotPijlenPool · ARENA_SCHAAL
 Door fase 3 toegevoegd (zie §14):
 
 ```
-aantalActievePoorten · kiesActievePoorten · kiesSpawnPoort · poortBakens · updatePoortBakens      (D28)
+aantalActievePoorten · kiesActievePoorten · kiesSpawnPoort · poortBakens · updatePoortBakens      (D28; drie poorten vanaf DERDE_POORT_VANAF, D67)
 WAPEN_BEREIK · raycaster                                                                        (D29)
 BOUWPLEKKEN · BOUWPLEK_RADIUS · puntOpRoute · looproute                                         (D10)
 TOREN_TYPES · torens · bouwToren · verwijderToren · updateTorens · activeerBouwplek

@@ -4203,8 +4203,13 @@ function pasMistToe(thema) {
 // weer overal tegelijk moet zijn. Nooit exact dezelfde set als de vorige
 // wave, anders voelt een nieuwe wave niet als nieuw.
 // Ticket D53: twee poorten vanaf wave 2 (was 3).
+// Ticket D67 (audit 4, M4: "makkelijk als je op tijd goede torens bouwt"):
+// drie poorten vanaf wave 11. Twee goed uitgeruste straten zijn dan niet
+// meer genoeg; je moet kiezen en bijbouwen. Bazen en themagolven met een
+// eigen aantal poorten blijven daarbuiten.
+const DERDE_POORT_VANAF = 11;
 function aantalActievePoorten(wave) {
-  return wave <= 1 ? 1 : 2;
+  return wave <= 1 ? 1 : wave >= DERDE_POORT_VANAF ? 3 : 2;
 }
 function kiesActievePoorten(aantal, vorige = []) {
   const namen = SPAWN_POORTEN.map(p => p.naam);
@@ -4335,7 +4340,9 @@ function updateWaveSysteem(dt) {
       const volgendThema = themaVoorWave(spel.wave + 1);
       const volgendeBaas = baasVoorWave(spel.wave + 1) ? BAZEN[baasVoorWave(spel.wave + 1)] : null;   // Ticket D56
       const titel = volgendeBaas ? `Volgende wave: ${volgendeBaas.naam}!` : volgendThema ? `Volgende wave: ${volgendThema.naam}` : 'Volgende wave';
-      toonWaveBanner(`${titel}\nvia ${poortenTekst(spel.volgendePoorten)}`, volgendeBaas?.tip ?? volgendThema?.tip);
+      // Ticket D67: de eerste wave met drie poorten krijgt een tip.
+      const derdePoortTip = spel.wave + 1 === DERDE_POORT_VANAF && spel.volgendePoorten.length === 3 ? 'Vanaf nu drie poorten tegelijk: bouw ook bij de derde straat' : undefined;
+      toonWaveBanner(`${titel}\nvia ${poortenTekst(spel.volgendePoorten)}`, volgendeBaas?.tip ?? volgendThema?.tip ?? derdePoortTip);
       speelPoortSignaal();
     }
     // Ticket D15: aftelling in de HUD, alleen bijwerken als de hele seconde
@@ -7730,7 +7737,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   // Ticket D20: zichtbare monumentschade.
   monumentSchade, monumentSchadeTier, updateMonumentSchade, pasMonumentSchadeToe, MONUMENT_SCHADE_DREMPELS,
   // Ticket D28: aangekondigde poorten.
-  aantalActievePoorten, kiesActievePoorten, ROBOT_TYPE_VANAF, waveBasisAantal, kiesSpawnPoort, poortBakens, updatePoortBakens,
+  aantalActievePoorten, kiesActievePoorten, ROBOT_TYPE_VANAF, waveBasisAantal, DERDE_POORT_VANAF, kiesSpawnPoort, poortBakens, updatePoortBakens,
   // Ticket D29: wapenbereik.
   WAPEN_BEREIK, raycaster,
   // Ticket D10: bouwplekken.

@@ -28,8 +28,8 @@ const keuze = await page.evaluate(() => {
   }
   return { aantallen, eenZelfde, tweeZelfde, ongeldig, dubbel };
 });
-const verwachtAantal = { 1: 1, 2: 2, 3: 2, 4: 2, 10: 2, 25: 2 };   // D53: twee poorten vanaf wave 2
-check('Wave 1: één poort, vanaf wave 2: twee', keuze.aantallen.every(([w, n]) => n === verwachtAantal[w]), keuze.aantallen);
+const verwachtAantal = { 1: 1, 2: 2, 3: 2, 4: 2, 10: 2, 25: 3 };   // D53: twee vanaf wave 2; D67: drie vanaf wave 11
+check('Wave 1: één poort, vanaf wave 2: twee, vanaf wave 11: drie', keuze.aantallen.every(([w, n]) => n === verwachtAantal[w]), keuze.aantallen);
 check('Eén poort: nooit dezelfde als de vorige wave (300 lotingen)', keuze.eenZelfde === 0, keuze);
 check('Twee poorten: nooit exact dezelfde set als de vorige wave (300 lotingen)', keuze.tweeZelfde === 0, keuze);
 check('Alleen bestaande poortnamen, nooit twee keer dezelfde poort', keuze.ongeldig === 0 && keuze.dubbel === 0, keuze);
@@ -96,7 +96,7 @@ check('Over 8 waves: elke wave start met precies de aangekondigde poorten',
 check('Over 8 waves: de aangekondigde set is nooit gelijk aan die van de lopende wave',
   overgangen.every(r => !zelfde(r.aangekondigd, r.actief)), overgangen.map(r => [r.actief, r.aangekondigd]));
 check('Over 8 waves: aantal aangekondigde poorten klopt met de volgende wave (2 vanaf wave 2 sinds D53, een thema- of baaswave mag afwijken)',
-  overgangen.every(r => r.aangekondigd.length === r.verwachtAantal && r.verwachtAantal === (r.themaPoorten ?? (r.wave + 1 <= 1 ? 1 : 2))), overgangen.map(r => [r.wave + 1, r.aangekondigd.length]));
+  overgangen.every(r => r.aangekondigd.length === r.verwachtAantal && r.verwachtAantal === (r.themaPoorten ?? (r.wave + 1 <= 1 ? 1 : r.wave + 1 >= 11 ? 3 : 2))), overgangen.map(r => [r.wave + 1, r.aangekondigd.length]));
 check('Tijdens een wave branden precies de bakens van de actieve poorten',
   overgangen.every(r => zelfde(r.bakensTijdensWave, r.actief)), overgangen.map(r => [r.actief, r.bakensTijdensWave]));
 check('In de pauze branden precies de bakens van de aangekondigde poorten',
