@@ -36,46 +36,63 @@ op een `.html`-bestand werkt meestal ook, zolang er internet is voor de CDN.
 
 ## Defend National Monument
 
-Verdedig het Nationaal Monument op de Dam in Amsterdam tegen golven robots
-die uit de omliggende straten komen aanlopen. Bestand: `defend-national-monument.html`.
-Gebruik de "← Menu"-knop rechtsboven om terug te gaan naar het hoofdmenu.
+Verdedig het Nationaal Monument op de Dam in Amsterdam tegen robots die uit
+de omliggende straten komen. Overleef 15 waves en versla drie bazen, dan is
+de Dam gered. Daarna kun je eindeloos doorspelen voor je highscore.
+Bestand: `defend-national-monument.html`. Gebruik de "← Menu"-knop
+rechtsboven om terug te gaan naar het hoofdmenu.
 
-## Besturing
+### Besturing
 
 | Actie | Toets |
 | --- | --- |
 | Lopen | `W` `A` `S` `D` |
 | Rondkijken | Muis (klik eerst in het spel) |
-| Schieten | Linkermuisknop |
-| Upgrade vuurtempo | `1` |
-| Upgrade pickup-radius | `2` |
-| Upgrade loopsnelheid | `3` |
-| Pauze | `Esc` |
+| Schieten | Linkermuisknop (ingedrukt houden = doorvuren) |
+| Kiezen in een menu | `1`–`5` (het menu opent vanzelf bij een bouwplek of de commandopost) |
+| Menu sluiten / Kerkklok luiden | `T` |
+| Volgende wave meteen starten | `G` (in de pauze tussen twee waves, met een kleine bonus) |
+| Special gebruiken | `X` (als de special-meter vol is) |
+| Pauze en instellingen | `Esc` |
 
-## Gameplay: Verdedig de Dam
+### Zo speel je
 
-- Robots spawnen uit vijf herkenbare straatopeningen: Damrak, Rokin,
-  Damstraat, Kalverstraat en Nieuwendijk, en lopen recht op het Nationaal
-  Monument af.
-- Bereikt een robot het monument, dan verliest het monument HP (zichtbaar
-  als percentage in de UI). Zakt het monument naar 0%, dan is het game over.
-- Schiet robots neer voordat ze aankomen: ze vallen uiteen in brokstukken
-  en laten een munt van €5–€25 achter.
-- Elke wave heeft een kill-doel; haal je dat, dan krijg je een wave-bonus
-  en begint de volgende, moeilijkere wave automatisch.
-- Combo's, score, hitmarker en een korte camera-shake bij treffers en
-  monumentschade geven het geheel een arcade-gevoel.
-- Geld kun je tijdens het spelen direct besteden aan drie upgrades
-  (vuurtempo, pickup-radius, loopsnelheid), elk tot max. niveau 5.
+- **Robots** lopen over vaste routes door vijf straten (Damrak, Rokin,
+  Damstraat, Kalverstraat en Nieuwendijk) naar het monument. Een lichtbaken
+  en een oplichtend spoor laten zien waar de volgende wave vandaan komt.
+  Haalt een robot het monument, dan kost dat monument-HP; bij 0% is het game
+  over.
+- **Torens** bouw je op de gouden cirkels langs de straten, ook tijdens een
+  wave:
+  - de **Geschuttoren** schiet een zware kogel en pakt de taaiste robot:
+    goed tegen tanks;
+  - de **Bovenleiding** geeft een stroomstoot die overspringt naar een
+    groepje robots: goed tegen zwermen;
+  - het **Hek** blokkeert de straat.
 
-## Herkenbare Dam
+  Op niveau 3 kies je een richting (bijvoorbeeld Kanon of Scherpschutter).
+- **Munten** laten robots achter; raap ze op. Bij de **commandopost** aan de
+  voet van het monument koop je upgrades (vuurtempo, pickup-radius,
+  loopsnelheid, koeling) en repareer je het monument. Een **drukpers** voor
+  het Paleis levert vast geld op.
+- **Oververhitting:** lang doorvuren maakt het wapen te heet. De meter onder
+  het richtkruis laat zien hoe ver je bent; laat even los om af te koelen.
+- **Bazen** komen op wave 5 (de Sloopkogel), 10 (de Dijkbreker) en 15 (de
+  Stoomwals). Elke baas vraagt een eigen aanpak; de aankondiging geeft een
+  tip.
+- **Sterren:** win je de run, dan krijg je 1 tot 3 sterren. Met sterren en
+  verslagen bazen speel je nieuwe torenrichtingen, een zwaardere nacht en
+  een avondsfeer vrij.
+- **Instellingen** op het startscherm (ook met `Esc`): beeldkwaliteit,
+  muisgevoeligheid en geluid.
 
-Een compacte, gestileerde low-poly versie van het plein: het Koninklijk
-Paleis, de Nieuwe Kerk, het Nationaal Monument, De Bijenkorf, Hotel
-Krasnapolsky en Madame Tussauds (met leesbare gevelborden), straatnaam-
-borden, tramrails met een rijdende tram en bel, grachtenpandjes met
-trapgevels, zebrapaden, duiven, terrasjes, fietsenrekken, lantaarnpalen,
-een straatmuzikant en een levend standbeeld.
+### Herkenbare Dam
+
+Een gestileerde versie van het plein op mensmaat: het Paleis op de Dam, de
+Nieuwe Kerk, het Nationaal Monument, De Bijenkorf, Hotel Krasnapolsky, Hotel
+TwentySeven en Madame Tussauds, rijen grachtenpanden met trap-, hals-,
+lijst- en tuitgevels langs de vijf straten, tramrails met een tramhalte,
+Amsterdammertjes, lantaarns, fietsenrekken, duiven en toeristen.
 
 ## Amsterdam Undead
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dam Chaos — Verdedig de Dam v4</title>
+<title>Defend National Monument</title>
 <style>
   /* ============================================================
      STIJL VAN DE PAGINA EN DE UI (alles wat GEEN 3D is)
@@ -235,6 +235,13 @@
   #waveBanner .tip { margin-top: 8px; font-size: 17px; font-weight: 700; color: #cfe8ff; }   /* Ticket D54 */
 
   /* --- Klein hulptekstje onderin --- */
+  /* Ticket D61: eenmalige hints in de eerste run, bovenin onder de baasbalk en de golfregel. */
+  #hintUI {
+    position: fixed; top: 150px; left: 50%; transform: translateX(-50%);   /* onder de golfregel links (tot ~136 px) */
+    max-width: min(480px, calc(100vw - 32px)); padding: 10px 16px; border-radius: 12px;
+    background: rgba(255, 215, 94, 0.94); color: #24303f; font-size: 15px; font-weight: 700;
+    text-align: center; pointer-events: none; z-index: 7; opacity: 0; transition: opacity 0.3s ease;
+  }
   #hulpUI {
     position: fixed;
     bottom: 12px;
@@ -365,7 +372,7 @@
   }
 #eindscherm, #overwinningscherm { cursor: default; z-index: 30; }
 #startscherm h1, #eindscherm h1, #overwinningscherm h1 {
-    font-size: 64px;
+    font-size: 52px;   /* D61: de langere titel past zo ook op 1024 breed */
     margin: 0 0 4px 0;
     letter-spacing: 4px;
     color: #ffd75e;
@@ -438,7 +445,7 @@
      kwaliteitsknoppen onder de startknop binnen beeld blijven. Staat als
      laatste, zodat hij de algemene regels (zoals .knop) overschrijft. */
   @media (max-height: 560px) {
-    #startscherm h1 { font-size: 36px; }
+    #startscherm h1 { font-size: 28px; }
     #startscherm h2 { font-size: 16px; margin-bottom: 12px; }
     #startscherm .uitleg { font-size: 13px; line-height: 1.5; padding: 8px 18px; margin-bottom: 14px; }
     #startscherm .knop { font-size: 17px; padding: 8px 26px; }
@@ -480,18 +487,20 @@
 <div id="richtkruis" style="display:none"></div>
 <div id="warmteUI" style="display:none"><div id="warmteVul"></div><div id="warmteTekst">OVERVERHIT</div></div>
 <div id="popups"></div>
-<div id="hulpUI" style="display:none">WASD lopen &nbsp;·&nbsp; muis kijken &nbsp;·&nbsp; klik schieten &nbsp;·&nbsp; T actie &nbsp;·&nbsp; G volgende wave &nbsp;·&nbsp; Esc pauze</div>
+<div id="hulpUI" style="display:none">WASD lopen · klik schieten · 1–5 kiezen · T menu · G volgende wave · X special · Esc pauze</div>
+<div id="hintUI"></div>
 <div id="minimapUI" style="display:none"><canvas id="minimapCanvas" width="140" height="140"></canvas></div>
 
 <div id="startscherm">
-  <h1>DAM CHAOS</h1>
+  <h1>DEFEND NATIONAL MONUMENT</h1>
   <h2>Verdedig de Dam — Amsterdam</h2>
+  <!-- Ticket D61: de uitleg dekt weer de hele game. -->
   <div class="uitleg">
-    🚶 <b>WASD</b> om te lopen, <b>muis</b> om rond te kijken<br>
-    🔫 <b>Linkermuisknop</b> om robots tegen te houden<br>
-    🏛️ Bescherm het <b>Nationaal Monument</b> tegen robots uit de straten<br>
-    💰 Verzamel munten, en druk bij een bordje op <b>T</b> voor upgrades of andere hulp<br>
-    ⏸️ <b>Esc</b> om te pauzeren
+    🏛️ Houd het <b>Nationaal Monument</b> overeind: overleef <b>15 waves</b> en versla <b>drie bazen</b><br>
+    🚶 <b>WASD</b> lopen, <b>muis</b> kijken, <b>klik</b> schieten — lang doorvuren maakt je wapen te heet<br>
+    🔧 Bouw torens op de <b>gouden cirkels</b> langs de straten: het menu opent vanzelf, kies met <b>1–5</b><br>
+    💰 Raap munten op; bij de <b>commandopost</b> koop je upgrades en repareer je het monument<br>
+    ⏩ <b>G</b> start de volgende wave eerder · <b>X</b> special · <b>Esc</b> pauze
   </div>
   <div class="knop">Klik om te spelen</div>
   <div id="instellingen">
@@ -4295,6 +4304,7 @@ function updateWaveSysteem(dt) {
       } else {
         toonWaveBanner(`Wave ${spel.wave} gehaald`);
       }
+      toonHint('bouwfase');   // Ticket D61
       // Ticket D28: de poorten voor de volgende wave staan vanaf nu vast, zodat
       // de speler de pauze kan gebruiken om zich te positioneren.
       spel.volgendePoorten = kiesActievePoorten(aantalPoortenVoorWave(spel.wave + 1), spel.actievePoorten);
@@ -4648,6 +4658,32 @@ function registreerMijlpaal(wijzig) {
   for (const o of nieuw) toonFeedbackMelding(`Ontgrendeld: ${o.naam}!`);
   if (nieuw.length) werkOntgrendelUIBij();
   return nieuw;
+}
+
+// Ticket D61 — eenmalige hints op het juiste moment, tot de speler ze één
+// keer gezien heeft (bewaard, zodat ze in een volgende run niet terugkomen).
+const HINTS_KEY = 'defendNationalMonumentHints';
+const HINTS = {
+  bouwplek: 'Kies een toren met een cijfer. Bouwen kan ook tijdens een wave.',
+  bouwfase: 'Even pauze: bouw of upgrade je torens, of druk G om meteen door te gaan.',
+  oververhit: 'Te heet! Laat de muis even los om af te koelen. Koeling koop je bij de commandopost.',
+  baas: 'Een baas! Schiet hem zelf en zet sterke torens langs zijn route.',
+  commandopost: 'De commandopost: upgrades voor je wapen, en het monument repareren.',
+};
+function leesGezieneHints() {
+  try { const r = JSON.parse(localStorage.getItem(HINTS_KEY)); return Array.isArray(r) ? new Set(r.filter(x => typeof x === 'string')) : new Set(); } catch { return new Set(); }
+}
+const gezieneHints = leesGezieneHints();
+const hintUI = document.getElementById('hintUI');
+function toonHint(id) {
+  if (gezieneHints.has(id) || !HINTS[id]) return false;
+  gezieneHints.add(id);
+  try { localStorage.setItem(HINTS_KEY, JSON.stringify([...gezieneHints])); } catch { /* niet bewaren */ }
+  hintUI.textContent = HINTS[id];
+  hintUI.style.opacity = '1';
+  clearTimeout(toonHint.timer);
+  toonHint.timer = setTimeout(() => { hintUI.style.opacity = '0'; }, 7000);
+  return true;
 }
 
 // Ticket D8 — één bewaard record. Gekopieerd en aangepast van het patroon
@@ -6086,6 +6122,7 @@ function updateInteracties(dt) {
   if (huidigeInteractie !== menuHandmatigGesloten) menuHandmatigGesloten = null;
   if (huidigeInteractie?.menu && !menu && huidigeInteractie !== menuHandmatigGesloten && !spel.gameOver) {
     openMenu(huidigeInteractie.menu());
+    toonHint(huidigeInteractie.type === 'commandopost' ? 'commandopost' : 'bouwplek');   // Ticket D61
   }
   if (huidigeInteractie) {
     const tekst = typeof huidigeInteractie.prompt === 'function' ? huidigeInteractie.prompt() : huidigeInteractie.prompt;
@@ -6462,7 +6499,7 @@ function spawnRobot(poort = null, type = 'normal') {
   }
   scene.add(robot.groep);
   robots.push(robot);
-  if (robot.baas) updateBaasUI();
+  if (robot.baas) { updateBaasUI(); toonHint('baas'); }   // Ticket D61
   updateArcadeUI();
 }
 
@@ -6911,6 +6948,7 @@ function probeerTeSchieten() {
   wapenWarmte.sindsSchot = 0;
   wapenWarmte.warmte = Math.min(100, wapenWarmte.warmte + warmtePerSchot());
   if (wapenWarmte.warmte >= 100) {
+    toonHint('oververhit');   // Ticket D61
     wapenWarmte.oververhit = true;
     runStats.oververhit += 1;
     speelOververhit();
@@ -7596,6 +7634,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   runStats, eindigRun, toonEindscherm, verdienGeld,
   // Ticket D55: een run met een einde.
   TOREN_RICHTINGEN, RICHTING_NIVEAU, torenNaam, richtingOntgrendeld,
+  HINTS, HINTS_KEY, toonHint, gezieneHints,
   VOORTGANG_KEY, ONTGRENDELINGEN, voortgang, leesVoortgang, ontgrendeld, registreerMijlpaal, kiesZwareNacht, kiesAvond, pasSfeerToe, avondActief,
   ZWARE_NACHT_AANTAL, ZWARE_NACHT_SNELHEID, hemiLicht,
   BAZEN, BAAS_WAVES, BAAS_ESCORTE_FACTOR, baasVoorWave, levendeBaas, updateBaasUI,

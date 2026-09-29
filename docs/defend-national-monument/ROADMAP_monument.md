@@ -1372,7 +1372,63 @@ schermmaten, prestaties en een codereview. Er zijn 17 verbeterpunten in
 drie prioriteiten. Nog niets daarvan is uitgevoerd; de volgorde volgt na
 de speeltest M4.
 
+### Na M4 en de audit
+
+**M4 — speeltest van fase P, antwoorden van de eigenaar.**
+1. Winnen lukt. Een toren op niveau 3 is wel echt goed; dat mag duurder.
+2. De bazen zijn spannend, maar dat de Stoomwals robots loslaat zie je
+   niet direct.
+3. Ja, bewust een richting gekozen. Graag iets meer tijd tussen de rondes
+   om naar de torens te kijken.
+4. De volgende run voelt een beetje anders door de ontgrendelingen.
+
+Verder:
+- Haalt de Sloopkogel met zijn bereik de torens die hij tegenkomt?
+- "Nacht: Normaal / Zware nacht" klinkt vaag; welke opties zijn er?
+- Lekker spelen, maar opgejaagd: makkelijk als je op tijd goede torens
+  bouwt, en je bent zo door de 15 rondes heen. Dat bevestigt auditpunt 4.
+
+**Keuzes bij de audit:**
+- punten 1, 2 en 3 uitvoeren;
+- overal de naam "Defend National Monument";
+- een volumeregelaar;
+- een telefoonversie wel, maar later (zie de backlog).
+
+| | Ticket | Kern |
+| --- | --- | --- |
+| ☑ | **D61** | Overal "Defend National Monument"; uitleg, hulpbalk, eenmalige hints, README (audit 1) |
+| ☐ | **D62** | Eerlijke sterren: naar de opgelopen schade, niet te koop met reparaties (audit 2) |
+| ☐ | **D63** | De eindbaas maakt de run niet meer in één klap ongedaan (audit 3) |
+| ☐ | **D64** | Volumeregelaar |
+| ☐ | **D65** | M4: niveau 3 duurder, Stoomwals laat zichtbaar robots los, langere bouwfase, bereik Sloopkogel |
+
+**D61 — naam, uitleg en hints, verslag.**
+- **Titel:** "Defend National Monument" in de paginatitel en op het
+  startscherm (52 px, zodat de langere titel op 1024 breed past; 28 px op
+  lage schermen). De interne debug-hook heet nog `DamChaosDebug`: die ziet
+  de speler niet, en alle tests leunen erop.
+- **Startscherm:** vijf regels die de hele game dekken:
+  - het doel: 15 waves en drie bazen;
+  - lopen en schieten, met oververhitting;
+  - bouwen op de gouden cirkels, kiezen met 1–5;
+  - munten en de commandopost;
+  - G, X en Esc.
+
+  De onjuiste zin "druk bij een bordje op T" is weg.
+- **Hulpbalk:** WASD, klik, 1–5, T, G, X en Esc.
+- **Eenmalige hints** in een gele box bovenin: bij de eerste bouwplek, de
+  commandopost, de eerste bouwfase, de eerste oververhitting en de eerste
+  baas. Elke hint één keer, bewaard onder `defendNationalMonumentHints`;
+  een kapotte sleutel betekent dat de hints gewoon weer komen.
+- **README:** de sectie over deze game is herschreven naar de huidige
+  game.
+- **Test:** `test-dnm-hints` (12 checks), met een overlapcontrole van de
+  hintbox op 1024×640.
+
 ### Backlog — bewust ná alle bovenstaande tickets
+
+- **Telefoonversie** (eigenaar, na de audit): wel gewenst, later. De
+  geschrapte touch-tickets D23–D26 zijn het startpunt.
 
 | | Ticket | Kern |
 | --- | --- | --- |
