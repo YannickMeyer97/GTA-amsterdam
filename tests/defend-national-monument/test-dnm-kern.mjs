@@ -183,10 +183,10 @@ const typeControle = await page.evaluate(() => {
   const d = window.DamChaosDebug;
   const N = 1000;
   function ontgrendeldeTypesVoorWave(wave) {
-    const drempel = { normal: 1, sprinter: 2, tank: 2, bomber: 3, shieldbot: 4 };   // D53: elk type een wave eerder
+    const drempel = { normal: 1, sprinter: 2, tank: 2, bomber: 3, shieldbot: 4, pantserbot: 6, splitser: 8 };   // D53: elk type een wave eerder; D68: elite-robots
     return new Set(Object.keys(d.ROBOT_TYPES).filter(t => wave >= drempel[t]));
   }
-  return [1, 2, 3, 4, 5, 8].map(wave => {
+  return [1, 2, 3, 4, 5, 6, 7, 8, 12].map(wave => {
     const getrokken = new Set();
     for (let i = 0; i < N; i++) getrokken.add(d.kiesRobotTypeVoorWave(wave));
     return { wave, getrokken: [...getrokken].sort(), verwacht: [...ontgrendeldeTypesVoorWave(wave)].sort() };

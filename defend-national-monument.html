@@ -3998,7 +3998,7 @@ const spel = {
 // object in-place kan vullen en de debug-export geldig blijft.
 function nieuweRunStats() {
   return {
-    kills: { normal: 0, sprinter: 0, tank: 0, bomber: 0, shieldbot: 0 },
+    kills: { normal: 0, sprinter: 0, tank: 0, bomber: 0, shieldbot: 0, pantserbot: 0, splitser: 0, splinter: 0 },
     schoten: 0,
     treffers: 0,        // alleen schoten die effect hadden (een schild-blok telt niet)
     verdiendGeld: 0,    // alles wat binnenkwam (munten + bonussen), uitgaven niet afgetrokken
@@ -4072,7 +4072,12 @@ function toonWaveBanner(tekst, tip = '') {
 // kiesRobotTypeVoorWave() en de bestaande waveDoel/maxActieveRobots-formules.
 // Ticket D53: afgeleid uit ROBOT_TYPE_VANAF, zodat de aankondiging nooit
 // meer achterloopt op wanneer een type echt komt.
-const ROBOT_TYPE_MEERVOUD = { sprinter: 'Sprinters', tank: 'Tanks', bomber: 'Bommenwerpers', shieldbot: 'Shield Bots' };
+const ROBOT_TYPE_MEERVOUD = { sprinter: 'Sprinters', tank: 'Tanks', bomber: 'Bommenwerpers', shieldbot: 'Shield Bots', pantserbot: 'Pantserbots', splitser: 'Splitsers' };
+// Ticket D68: de aankondiging vóór de eerste wave met een elite-robot legt zijn trucje uit.
+const ROBOT_TYPE_TIP = {
+  pantserbot: 'Pantserbots: torens doen maar een derde van hun schade. Schiet ze zelf.',
+  splitser: 'Splitsers vallen uiteen in twee snelle splinters: houd iets over voor daarna.',
+};
 function waveBannerTekst(nummer) {
   const baas = baasVoorWave(nummer);
   if (baas) return `Wave ${nummer}: ${BAZEN[baas].naam}!`;   // Ticket D56
@@ -4088,9 +4093,10 @@ function waveBannerTekst(nummer) {
 // aangekondigd (zie waveBannerTekst) blijft daarna gewoon meedoen.
 // Ticket D53 (M3: "de eerste rondes zijn erg makkelijk"): elk type komt
 // een wave eerder. Wave 1 blijft de leerwave met alleen gewone robots.
-const ROBOT_TYPE_VANAF = { normal: 1, sprinter: 2, tank: 2, bomber: 3, shieldbot: 4 };
+// Ticket D68: de elite-robots na de eerste baas (splinters nooit via een poort).
+const ROBOT_TYPE_VANAF = { normal: 1, sprinter: 2, tank: 2, bomber: 3, shieldbot: 4, pantserbot: 6, splitser: 8 };
 function kiesRobotTypeVoorWave(wave) {
-  const gewichten = [['normal', 10], ['sprinter', 5], ['tank', 3], ['bomber', 3], ['shieldbot', 3]]
+  const gewichten = [['normal', 10], ['sprinter', 5], ['tank', 3], ['bomber', 3], ['shieldbot', 3], ['pantserbot', 3], ['splitser', 3]]
     .filter(([type]) => wave >= ROBOT_TYPE_VANAF[type]);
   const totaal = gewichten.reduce((som, [, gewicht]) => som + gewicht, 0);
   let r = Math.random() * totaal;
@@ -4342,7 +4348,9 @@ function updateWaveSysteem(dt) {
       const titel = volgendeBaas ? `Volgende wave: ${volgendeBaas.naam}!` : volgendThema ? `Volgende wave: ${volgendThema.naam}` : 'Volgende wave';
       // Ticket D67: de eerste wave met drie poorten krijgt een tip.
       const derdePoortTip = spel.wave + 1 === DERDE_POORT_VANAF && spel.volgendePoorten.length === 3 ? 'Vanaf nu drie poorten tegelijk: bouw ook bij de derde straat' : undefined;
-      toonWaveBanner(`${titel}\nvia ${poortenTekst(spel.volgendePoorten)}`, volgendeBaas?.tip ?? volgendThema?.tip ?? derdePoortTip);
+      // Ticket D68: een nieuwe elite-robot (alleen als de volgende wave de gewone mix heeft).
+      const eliteTip = volgendThema?.robotType ? undefined : ROBOT_TYPE_TIP[Object.keys(ROBOT_TYPE_TIP).find(t => ROBOT_TYPE_VANAF[t] === spel.wave + 1)];
+      toonWaveBanner(`${titel}\nvia ${poortenTekst(spel.volgendePoorten)}`, volgendeBaas?.tip ?? volgendThema?.tip ?? derdePoortTip ?? eliteTip);
       speelPoortSignaal();
     }
     // Ticket D15: aftelling in de HUD, alleen bijwerken als de hele seconde
@@ -4778,7 +4786,7 @@ function verwerkOverwinning(sterren) {
 }
 
 const eindscherm = document.getElementById('eindscherm');
-const ROBOT_WEERGAVENAMEN = { normal: 'Grunt', sprinter: 'Runner', tank: 'Tank', bomber: 'Bomber', shieldbot: 'Shield Bot' };
+const ROBOT_WEERGAVENAMEN = { normal: 'Grunt', sprinter: 'Runner', tank: 'Tank', bomber: 'Bomber', shieldbot: 'Shield Bot', pantserbot: 'Pantserbot', splitser: 'Splitser', splinter: 'Splinter' };
 
 function formatteerSpeelduur(seconden) {
   const totaal = Math.floor(seconden);
@@ -5400,6 +5408,7 @@ const TOREN_TYPES = {
 // Ticket D13: hoeveel schade één klap van een robot op een hek doet, per
 // type (elke ROBOT_SLAG_INTERVAL seconden). Een tank slaat het hardst.
 const ROBOT_HEK_SCHADE = { normal: 6, sprinter: 4, tank: 15, bomber: 6, shieldbot: 6,
+  pantserbot: 12, splitser: 6, splinter: 3,   // Ticket D68
   sloopkogel: 30, dijkbreker: 10000, stoomwals: 40 };   // Ticket D57: de Dijkbreker breekt elk hek in één klap
 const ROBOT_SLAG_INTERVAL = 0.8;
 // Afstand (robotmidden → hek-lijn) waarop een robot het hek "raakt": zijn
@@ -6211,6 +6220,16 @@ const ROBOT_TYPES = {
   tank:      { hpMax: 3, snelheidMultiplier: 0.55, beloningMultiplier: 2.5, kleur: 0xd1315c, schaal: 1.19,   monumentSchade: 8 },   // Tank
   bomber:    { hpMax: 1, snelheidMultiplier: 1.15, beloningMultiplier: 1.0, kleur: 0xff8c00, schaal: 0.8925, monumentSchade: 25 },  // Bomber
   shieldbot: { hpMax: 1, snelheidMultiplier: 0.85, beloningMultiplier: 1.8, kleur: 0x3ad1ff, schaal: 0.85,   monumentSchade: 10, schildDuur: 1.8, schildPauze: 1.0 },  // Shield Bot
+  // Ticket D68 (audit 4, M4: "makkelijk als je op tijd goede torens bouwt"):
+  // twee elite-robots met een trucje, zodat de speler tussen de bazen zelf
+  // moet ingrijpen.
+  // - Pantserbot: torens (en stroom en prikkeldraad) doen maar een derde
+  //   (torenFactor); het spelerswapen gewoon 1 per treffer.
+  // - Splitser: valt bij zijn dood uiteen in twee kleine, snelle splinters
+  //   (splitsIn), op zijn plek op de route. Splinters komen nooit uit een poort.
+  pantserbot: { hpMax: 5, snelheidMultiplier: 0.8,  beloningMultiplier: 3.0, kleur: 0xffb347, schaal: 0.95,   monumentSchade: 12, torenFactor: 1 / 3 },
+  splitser:   { hpMax: 2, snelheidMultiplier: 1.0,  beloningMultiplier: 1.5, kleur: 0xd65cff, schaal: 0.9,    monumentSchade: 8,  splitsIn: 2 },
+  splinter:   { hpMax: 1, snelheidMultiplier: 1.45, beloningMultiplier: 0.4, kleur: 0xd65cff, schaal: 0.55,   monumentSchade: 4 },
   // Tickets D56–D57: de drie bazen. Groot, traag, veel HP, en een zware klap
   // als ze het monument halen. Geen munt: bij de kill een vaste beloning
   // (BAZEN). Startwaarden, te ijken in D60.
@@ -6302,6 +6321,23 @@ function robotGeometrie(deel, accent, rompKleur = null) {
   if (deel === 'romp') ROBOT_GEO.romp = geo; else ROBOT_GEO.gloed.set(accent, geo);
   return geo;
 }
+// Ticket D68: gedeelde geometrie voor de elite-robots (zie D42).
+const ELITE_GEO = {};
+const PANTSER_KLEUR = 0x9a7a45;
+function eliteGeometrie(deel) {
+  if (ELITE_GEO[deel]) return ELITE_GEO[deel];
+  const b = maakBouwer();
+  if (deel === 'pantser') {
+    for (const kant of [-0.5, 0.5]) b.voeg('pantser', BAAS_ROMP_MATERIAAL, new THREE.BoxGeometry(0.36, 0.22, 0.58).translate(kant, 1.52, 0), null, PANTSER_KLEUR);
+    b.voeg('pantser', BAAS_ROMP_MATERIAAL, new THREE.BoxGeometry(0.6, 0.16, 0.54).translate(0, 2.02, 0), null, PANTSER_KLEUR);
+    b.voeg('pantser', BAAS_ROMP_MATERIAAL, new THREE.BoxGeometry(0.82, 0.34, 0.1).translate(0, 0.8, 0.26), null, PANTSER_KLEUR);
+  } else {
+    b.voeg('naad', ROBOT_GLOED, new THREE.BoxGeometry(0.06, 1.35, 0.5).translate(0, 1.32, 0), null, ROBOT_TYPES.splitser.kleur);
+  }
+  const tijdelijk = new THREE.Group();
+  b.bouw(tijdelijk);
+  return (ELITE_GEO[deel] = tijdelijk.children[0].geometry);
+}
 function maakRobot(type = 'normal') {
   const config = ROBOT_TYPES[type] ?? ROBOT_TYPES.normal;
   const groep = new THREE.Group();
@@ -6344,6 +6380,11 @@ function maakRobot(type = 'normal') {
     schildMesh.userData.geenSchaduw = true;
     groep.add(schildMesh);
   }
+
+  // Ticket D68: de Pantserbot draagt platen (schouders, helm, buik), een
+  // Splitser en zijn splinters hebben een gloeiende naad over het midden.
+  if (type === 'pantserbot') groep.add(new THREE.Mesh(eliteGeometrie('pantser'), BAAS_ROMP_MATERIAAL));
+  if (type === 'splitser' || type === 'splinter') groep.add(new THREE.Mesh(eliteGeometrie('naad'), ROBOT_GLOED));
 
   // Tickets D57: de eigen vorm van elke baas (zie bouwBaasDelen).
   const baasDelen = config.baas ? bouwBaasDelen(type, groep) : {};
@@ -7140,9 +7181,44 @@ function schiet() {
 // Ticket D11: `schade` en `bron` erbij, met standaardwaarden die het
 // spelerswapen exact laten zoals het was (1 schade, bron 'speler').
 function raakRobot(robot, schade = 1, bron = 'speler') {
+  // Ticket D68: pantser vangt het grootste deel van een torenschot op.
+  const torenFactor = ROBOT_TYPES[robot.type]?.torenFactor;
+  if (bron === 'toren' && torenFactor) {
+    schade *= torenFactor;
+    pantserVonk(robot);
+  }
   robot.hp -= schade;
   if (robot.hp <= 0) vernietigRobot(robot, bron);
   else if (robot.baas) updateBaasUI();   // Ticket D56
+}
+
+// Ticket D68: een vonk op het pantser, zodat je ziet dat de toren afketst.
+function pantserVonk(robot) {
+  const vonk = new THREE.Mesh(EFFECT_GEO.vonk, EFFECT_MAT.vonk);
+  vonk.position.set(robot.groep.position.x + (Math.random() - 0.5) * 0.6, 1.4 + Math.random() * 0.5, robot.groep.position.z + (Math.random() - 0.5) * 0.6);
+  scene.add(vonk);
+  brokstukken.push({ mesh: vonk, snelheid: new THREE.Vector3((Math.random() - 0.5) * 3, 2.5, (Math.random() - 0.5) * 3), draai: new THREE.Vector3(), leeftijd: 1.5 });
+}
+
+// Ticket D68: een Splitser valt uiteen in splinters, op zijn plek op de
+// route, in banen links en rechts van de zijne.
+function splitsRobot(robot) {
+  const aantal = ROBOT_TYPES[robot.type]?.splitsIn ?? 0;
+  for (let i = 0; i < aantal; i++) {
+    const poort = robot.route ? SPAWN_POORTEN.find(p => p.naam === robot.route.poort) : null;
+    spawnRobot(poort, 'splinter');
+    const r = robots[robots.length - 1];
+    const kant = i % 2 === 0 ? -1 : 1;
+    if (robot.route) {
+      r.laanFractie = Math.max(-1, Math.min(1, robot.laanFractie + kant * 0.5));
+      r.s = robot.s;
+      const plek = robotRoutePunt(r, r.s);
+      r.groep.position.set(plek.x, 0, plek.z);
+      r.groep.rotation.y = robot.groep.rotation.y;
+    } else {
+      r.groep.position.copy(robot.groep.position).add(new THREE.Vector3(kant * 0.6, 0, 0));
+    }
+  }
 }
 
 // Ticket D56: de balk bovenin volgt de levende baas; zonder baas verborgen.
@@ -7189,6 +7265,7 @@ function vernietigRobot(robot, bron = 'speler') {
 
   scene.remove(robot.groep);
   robots.splice(robots.indexOf(robot), 1);
+  splitsRobot(robot);   // Ticket D68
   if (robot.type in runStats.kills) runStats.kills[robot.type] += 1;
   spel.waveKills += 1;
   if (robot.baas) {   // Ticket D56: vaste beloning in plaats van een munt
@@ -7737,7 +7814,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   // Ticket D20: zichtbare monumentschade.
   monumentSchade, monumentSchadeTier, updateMonumentSchade, pasMonumentSchadeToe, MONUMENT_SCHADE_DREMPELS,
   // Ticket D28: aangekondigde poorten.
-  aantalActievePoorten, kiesActievePoorten, ROBOT_TYPE_VANAF, waveBasisAantal, DERDE_POORT_VANAF, kiesSpawnPoort, poortBakens, updatePoortBakens,
+  aantalActievePoorten, kiesActievePoorten, ROBOT_TYPE_VANAF, ROBOT_TYPE_TIP, ROBOT_WEERGAVENAMEN, ROBOT_TYPE_MEERVOUD, waveBasisAantal, DERDE_POORT_VANAF, splitsRobot, kiesSpawnPoort, poortBakens, updatePoortBakens,
   // Ticket D29: wapenbereik.
   WAPEN_BEREIK, raycaster,
   // Ticket D10: bouwplekken.

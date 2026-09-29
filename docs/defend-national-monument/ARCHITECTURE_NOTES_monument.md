@@ -1664,3 +1664,29 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
 - **Meten:** `meet-dnm-bazen` heeft een gesimuleerde speler met de echte
   warmte- en vuurtempofuncties; gebruik dat voor elke wijziging aan de
   bazen, want de simulatie in `meet-dnm-economie` schiet niet zelf.
+
+### 15.18 Meer dreiging tussen de bazen (D67–D68)
+
+- **Poorten:** `aantalActievePoorten(w)` geeft 1 (wave 1), 2, en vanaf
+  `DERDE_POORT_VANAF` (11) 3. Een baas of een thema met een eigen aantal
+  gaat voor (`aantalPoortenVoorWave`); Grachtenmist heeft `poorten: null`
+  en volgt dus de gewone regel.
+- **Elite-robots zijn gewone robottypes** met één extra veld in
+  `ROBOT_TYPES`:
+  - `torenFactor` (Pantserbot): `raakRobot` vermenigvuldigt schade met
+    bron `'toren'` ermee. Dat geldt dus ook voor stroom en prikkeldraad,
+    want die melden zich ook als `'toren'`. Het spelerswapen gaat er buiten.
+  - `splitsIn` (Splitser): `vernietigRobot` roept `splitsRobot` aan, dat
+    zoveel `splinter`s op dezelfde `s` van dezelfde route zet, in banen
+    ±0,5 naast de zijne. `robotRaaktMonument` splitst niet.
+- **Splinters tellen niet mee in `teSpawnen`**, maar een wave eindigt pas
+  als `robots` leeg is, dus ze moeten wel weg. Zelfde patroon als de
+  robots die de Stoomwals loslaat.
+- **Een nieuw type** moet op zes plekken staan: `ROBOT_TYPES`,
+  `ROBOT_TYPE_VANAF` en de gewichten in `kiesRobotTypeVoorWave` (alleen als
+  het uit een poort mag komen), `ROBOT_TYPE_MEERVOUD` (banner),
+  `ROBOT_WEERGAVENAMEN` (eindscherm), `ROBOT_HEK_SCHADE`, en
+  `runStats.kills`. `test-dnm-kern` heeft een eigen kopie van de drempels.
+- **Tip bij de aankondiging:** baas, dan thema, dan de derde poort, dan
+  een nieuw elitetype (`ROBOT_TYPE_TIP`, alleen als de volgende wave de
+  gewone mix heeft).

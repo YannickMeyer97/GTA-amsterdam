@@ -1403,7 +1403,7 @@ Verder:
 | ☑ | **D65** | M4: niveau 3 duurder, Stoomwals laat zichtbaar robots los, langere bouwfase, bereik Sloopkogel |
 | ☑ | **D66** | "Nacht: Zware nacht" heet nu "Moeilijkheid: Zwaar (+1★)" |
 | ☑ | **D67** | Derde poort vanaf wave 11 (audit 4) |
-| ☐ | **D68** | Elite-robots: Pantserbot en Splitser (audit 4) |
+| ☑ | **D68** | Elite-robots: Pantserbot en Splitser (audit 4) |
 | ☐ | **D69** | Een run van 20 waves, met De Heimachine als vierde baas |
 | ☐ | **D70** | Herijken na D66–D69 |
 
@@ -1531,6 +1531,41 @@ toont "· zwaar" (was een maantje). Intern heten sleutel en vlag nog
     D68 (elite-robots); D70 herijkt het geheel.
 - **Tests:** `test-dnm-poorten` (drie poorten vanaf wave 11) en
   `test-dnm-themagolven` (Grachtenmist drie poorten, de tip vóór wave 11).
+
+**D68 — elite-robots, verslag.**
+- **Pantserbot** (vanaf wave 6): 5 HP, trager (×0,8), €3× beloning.
+  - Torens, stroom en prikkeldraad doen maar een derde van hun schade; het
+    spelerswapen gewoon 1 per treffer. Een Kanon heeft er zo 5 schoten
+    voor nodig, de speler 5 treffers.
+  - Platen op schouders, helm en buik, en een vonk bij elke torentreffer,
+    zodat je ziet dat de toren afketst.
+- **Splitser** (vanaf wave 8): 2 HP, met een gloeiende naad over het
+  midden.
+  - Bij zijn dood, door speler of toren, valt hij uiteen in twee
+    splinters, op zijn plek op de route, links en rechts van zijn baan.
+  - Een splinter: klein, 1 HP, ×1,45 snelheid, 4 monumentschade.
+  - Haalt de Splitser het monument, dan komen er geen splinters.
+- Beide met gewicht 3 in de mix (net als tank, bomber en Shield Bot).
+- De wavebanner meldt ze de eerste keer ("Pantserbots gesignaleerd!"), en
+  de aankondiging ervoor legt het trucje uit.
+- Het eindscherm noemt ze Pantserbot, Splitser en Splinter.
+- **Automatische runs** (`meet-dnm-run`):
+
+  | | vóór D68 (na D67) | na D68 |
+  |---|---|---|
+  | goed | gewonnen, 13:42–13:44 | gewonnen, 14:25–14:36 |
+  | kills door torens | 82–83% | 74–78% |
+  | schoten van de speler | ~335 | ~420 |
+  | zwak | verloren in wave 15 | verloren in wave 15 |
+
+  - De speler doet dus meer zelf.
+  - Het monument loopt buiten de baaswaves nog steeds niets op. De
+    gesimuleerde speler mist nooit en staat met 26 m bereik aan de rand;
+    dat is D70 (herijken), met de 20 waves van D69 erbij.
+- **Tests:**
+  - nieuw: `test-dnm-elite` (17 checks);
+  - `test-dnm-kern`: drempels voor de nieuwe types, en de trekkingen nu
+    ook voor waves 6, 7 en 12.
 
 ### Backlog — bewust ná alle bovenstaande tickets
 
