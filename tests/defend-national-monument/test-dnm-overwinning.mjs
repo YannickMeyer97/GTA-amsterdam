@@ -1,10 +1,10 @@
 // Ticket D55 (SONNET_EXECUTION_PLAN_monument.md, §12, fase P) — een run van
-// 15 waves met een overwinning.
+// 15 waves met een overwinning; sinds D69 20 waves.
 //
-// Winnen na wave 15, sterren per drempel, het overwinningsscherm, het spel
+// Winnen na wave 20, sterren per drempel, het overwinningsscherm, het spel
 // staat stil tot je kiest, doorspelen (eindeloos, met de oude themacyclus),
 // opnieuw, de highscore-roundtrip (gewonnen en beste sterren), en geen
-// overwinning bij game over of vóór wave 15.
+// overwinning bij game over of vóór wave 20.
 import { openDefend, makeChecker } from '../helpers-defend.mjs';
 
 const { browser, page, errs } = await openDefend({ simuleerPointerLock: true });
@@ -46,24 +46,28 @@ const naarWave = (wave, hp = 100) => page.evaluate(([wave, hp]) => {
 const sterren = await page.evaluate(() => [0, 10, 10.1, 50, 50.1, 95].map(s => window.DamChaosDebug.sterrenVoor(s)));
 check('Sterren naar opgelopen schade (D62, D63): ≤ 10% → 3, ≤ 50% → 2, anders 1', JSON.stringify(sterren) === JSON.stringify([3, 3, 2, 2, 1, 1]), sterren);
 
-// 2. De run is 15 waves; de HUD toont dat.
+// 2. De run is 20 waves (D69); de HUD toont dat.
 await naarWave(7);
 const hud7 = (await stand()).hud;
-check('HUD tijdens de run: "Wave 7 / 15"', hud7.startsWith('Wave 7 / 15,'), hud7);
+check('HUD tijdens de run: "Wave 7 / 20"', hud7.startsWith('Wave 7 / 20,'), hud7);
 
-// 3. Wave 14 afronden: nog geen overwinning.
-await naarWave(14);
+// 3. Wave 19 afronden: nog geen overwinning (ook niet na wave 15, de oude eindwave).
+await naarWave(15);
 await rondAf();
-const na14 = await stand();
-check('Na wave 14: nog geen overwinning, geen scherm', !na14.gewonnen && !na14.open && !na14.scherm, na14);
+const na15 = await stand();
+check('Na wave 15 (D69): nog geen overwinning', !na15.gewonnen && !na15.open && !na15.scherm, na15);
+await naarWave(19);
+await rondAf();
+const na19 = await stand();
+check('Na wave 19: nog geen overwinning, geen scherm', !na19.gewonnen && !na19.open && !na19.scherm, na19);
 
-// 4. Wave 15 afronden met 40% opgelopen schade (monument op 60%): gewonnen, 2 sterren.
-await naarWave(15, 60);
+// 4. Wave 20 afronden met 40% opgelopen schade (monument op 60%): gewonnen, 2 sterren.
+await naarWave(20, 60);
 await rondAf();
 const gewonnen = await stand();
-check('Na wave 15: gewonnen, het overwinningsscherm staat open', gewonnen.gewonnen && gewonnen.open && gewonnen.scherm && !gewonnen.startscherm && !gewonnen.eindscherm, gewonnen);
+check('Na wave 20: gewonnen, het overwinningsscherm staat open', gewonnen.gewonnen && gewonnen.open && gewonnen.scherm && !gewonnen.startscherm && !gewonnen.eindscherm, gewonnen);
 check('40% opgelopen: 2 van de 3 sterren, en dat staat op het scherm', gewonnen.sterren === 2 && gewonnen.gevuld === 2 && gewonnen.sterrenTekst.length === 3, gewonnen);
-check('De ondertitel noemt 15 waves, de opgelopen schade (40%) en de drempels', /15 waves/.test(gewonnen.ondertitel) && /40% schade opgelopen/.test(gewonnen.ondertitel) && /≤ 10%/.test(gewonnen.ondertitel) && /≤ 50%/.test(gewonnen.ondertitel), gewonnen.ondertitel);
+check('De ondertitel noemt 20 waves, de opgelopen schade (40%) en de drempels', /20 waves/.test(gewonnen.ondertitel) && /40% schade opgelopen/.test(gewonnen.ondertitel) && /≤ 10%/.test(gewonnen.ondertitel) && /≤ 50%/.test(gewonnen.ondertitel), gewonnen.ondertitel);
 check('Eerste overwinning: dat staat erbij, met de statistieken van de run', gewonnen.record === 'EERSTE OVERWINNING!' && /Score/.test(gewonnen.stats) && /Speelduur/.test(gewonnen.stats), gewonnen);
 check('De overwinning is bewaard: gewonnen, beste sterren 2', gewonnen.highscore?.gewonnen === true && gewonnen.highscore?.besteSterren === 2, gewonnen.highscore);
 
@@ -76,10 +80,10 @@ const stil = await page.evaluate(async () => {
   await new Promise(r => setTimeout(r, 400));
   return { voor, na: d.spel.tussenWaveTimer, open: d.spel.overwinningOpen, wave: d.spel.wave };
 });
-check('Zolang het overwinningsscherm open is, loopt de bouwfase niet door', stil.na === stil.voor && stil.open && stil.wave === 15, stil);
+check('Zolang het overwinningsscherm open is, loopt de bouwfase niet door', stil.na === stil.voor && stil.open && stil.wave === 20, stil);
 
-// 6. Doorspelen: scherm dicht, de bouwfase gaat verder naar wave 16, HUD
-// zonder "/ 15", en er volgt geen tweede overwinning.
+// 6. Doorspelen: scherm dicht, de bouwfase gaat verder naar wave 21, HUD
+// zonder "/ 20", en er volgt geen tweede overwinning.
 await page.click('#doorspeelKnop');
 const door = await stand();
 // (Het startscherm is alleen het vangnet als de pointer lock geweigerd wordt;
@@ -91,7 +95,7 @@ const verder = await page.evaluate(() => {
   d.updateWaveSysteem(0);
   return { wave: d.spel.wave, hud: document.getElementById('waveUI').textContent };
 });
-check('Na de bouwfase start wave 16, en de HUD zegt "Wave 16" zonder "/ 15"', verder.wave === 16 && verder.hud.startsWith('Wave 16,'), verder);
+check('Na de bouwfase start wave 21, en de HUD zegt "Wave 21" zonder "/ 20"', verder.wave === 21 && verder.hud.startsWith('Wave 21,'), verder);
 await page.evaluate(() => { const d = window.DamChaosDebug; d.spel.wave = 29; d.startWave(30); });
 await rondAf();
 const geenTweede = await stand();
@@ -108,14 +112,14 @@ check('Game over na doorspelen: het eindscherm noemt "De Dam gered" en de sterre
 
 // 8. Tweede overwinning: minder sterren houdt het record, meer sterren is
 // een nieuw sterrenrecord. Een nieuw scorerecord laat "gewonnen" staan.
-await naarWave(15, 30);
+await naarWave(20, 30);
 await rondAf();
 const minder = await stand();
 check('Tweede overwinning met 1 ster: beste blijft 2, geen "nieuw"', minder.sterren === 1 && minder.highscore.besteSterren === 2 && minder.record === 'Beste: ★★', minder);
 await page.click('#winOpnieuwKnop');
 const opnieuw = await stand();
 check('Opnieuw vanaf het overwinningsscherm: terug naar wave 1, niet gewonnen, scherm dicht', opnieuw.wave === 1 && !opnieuw.gewonnen && !opnieuw.open && !opnieuw.scherm, opnieuw);
-await naarWave(15, 95);
+await naarWave(20, 95);
 await rondAf();
 const meer = await stand();
 check('Overwinning met 3 sterren: NIEUW STERRENRECORD en beste wordt 3', meer.sterren === 3 && meer.record === 'NIEUW STERRENRECORD!' && meer.highscore.besteSterren === 3, meer);
@@ -127,7 +131,7 @@ const scoreRecord = await page.evaluate(() => {
 });
 check('Een nieuw scorerecord laat "gewonnen" en de beste sterren staan', scoreRecord.score === 999999 && scoreRecord.gewonnen && scoreRecord.besteSterren === 3, scoreRecord);
 
-// 9. Game over vóór wave 15: geen overwinning.
+// 9. Game over vóór wave 20: geen overwinning.
 const verloren = await page.evaluate(() => {
   const d = window.DamChaosDebug;
   d.resetRun();
@@ -146,9 +150,9 @@ const themas = await page.evaluate(() => {
   for (let w = 1; w <= 30; w++) { const t = d.themaSleutelVoorWave(w); if (t) uit[w] = t; }
   return uit;
 });
-check('Thema\'s in de run: Tankkonvooi 7, Spitsuur 9, Grachtenmist 12; niets op 5, 10 of 15',
-  JSON.stringify(Object.entries(themas).filter(([w]) => w <= 15)) === JSON.stringify([['7', 'tankkonvooi'], ['9', 'spitsuur'], ['12', 'grachtenmist']]), themas);
-check('Na de run weer om de 4 waves: 18, 22, 26, 30', JSON.stringify(Object.keys(themas).filter(w => w > 15)) === JSON.stringify(['18', '22', '26', '30']) && themas[18] === 'tankkonvooi', themas);
+check('Thema\'s in de run (D69): Tankkonvooi 7, Spitsuur 9, Grachtenmist 12, Spitsuur 16, Grachtenmist 18; niets op 5, 10, 15 of 20',
+  JSON.stringify(Object.entries(themas).filter(([w]) => w <= 20)) === JSON.stringify([['7', 'tankkonvooi'], ['9', 'spitsuur'], ['12', 'grachtenmist'], ['16', 'spitsuur'], ['18', 'grachtenmist']]), themas);
+check('Na de run weer om de 4 waves: 23 en 27', JSON.stringify(Object.keys(themas).filter(w => w > 20)) === JSON.stringify(['23', '27']) && themas[23] === 'tankkonvooi', themas);
 
 // 11. Een corrupt highscorerecord met rare velden: gewonnen en sterren vallen stil terug.
 const corrupt = await page.evaluate(() => {
@@ -163,7 +167,7 @@ const repareren = await page.evaluate(() => {
   const d = window.DamChaosDebug;
   localStorage.clear();
   d.resetRun();
-  d.startWave(15);
+  d.startWave(20);
   for (let i = 0; i < 5; i++) { d.spawnRobot(null, 'normal'); d.robotRaaktMonument(d.robots[d.robots.length - 1]); }
   const na = { hp: d.spel.monumentHP, opgelopen: d.spel.schadeOpgelopen };
   d.geldZet(1000);

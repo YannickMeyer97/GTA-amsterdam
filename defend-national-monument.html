@@ -496,7 +496,7 @@
   <h2>Verdedig de Dam — Amsterdam</h2>
   <!-- Ticket D61: de uitleg dekt weer de hele game. -->
   <div class="uitleg">
-    🏛️ Houd het <b>Nationaal Monument</b> overeind: overleef <b>15 waves</b> en versla <b>drie bazen</b><br>
+    🏛️ Houd het <b>Nationaal Monument</b> overeind: overleef <b>20 waves</b> en versla <b>vier bazen</b><br>
     🚶 <b>WASD</b> lopen, <b>muis</b> kijken, <b>klik</b> schieten — lang doorvuren maakt je wapen te heet<br>
     🔧 Bouw torens op de <b>gouden cirkels</b> langs de straten: het menu opent vanzelf, kies met <b>1–5</b><br>
     💰 Raap munten op; bij de <b>commandopost</b> koop je upgrades en repareer je het monument<br>
@@ -3716,7 +3716,7 @@ function werkOntgrendelUIBij() {
   const aantalOpen = ONTGRENDELINGEN.filter(o => o.open(voortgang)).length;
   document.getElementById('ontgrendelKnop').textContent = `Ontgrendelingen ${aantalOpen}/${ONTGRENDELINGEN.length}`;
   document.getElementById('ontgrendelTotaal').textContent =
-    `${voortgang.sterren} sterren · ${voortgang.overwinningen} overwinning${voortgang.overwinningen === 1 ? '' : 'en'} · bazen verslagen: ${Object.values(voortgang.bazen).filter(Boolean).length}/3`;
+    `${voortgang.sterren} sterren · ${voortgang.overwinningen} overwinning${voortgang.overwinningen === 1 ? '' : 'en'} · bazen verslagen: ${Object.values(voortgang.bazen).filter(Boolean).length}/${Object.keys(BAZEN).length}`;
   const lijst = document.getElementById('ontgrendelLijst');
   lijst.replaceChildren(...ONTGRENDELINGEN.map(o => {
     const open = o.open(voortgang);
@@ -4157,8 +4157,10 @@ function startVolgendeWaveNu() {
 // Ticket D55: binnen de run van RUN_WAVES waves liggen de thema's vast, om
 // de baaswaves (5, 10, 15) heen. Daarna, bij doorspelen, weer de oude
 // cyclus: om de THEMA_INTERVAL waves, vanaf THEMA_EERSTE_WAVE.
-const THEMA_IN_RUN = { 7: 'tankkonvooi', 9: 'spitsuur', 12: 'grachtenmist' };
-const THEMA_EERSTE_WAVE = 18;
+// Ticket D69: de run is 20 waves; er komen twee thema's bij (16 en 18, om
+// de Stoomwals en de Heimachine heen), en de cyclus begint pas na de run.
+const THEMA_IN_RUN = { 7: 'tankkonvooi', 9: 'spitsuur', 12: 'grachtenmist', 16: 'spitsuur', 18: 'grachtenmist' };
+const THEMA_EERSTE_WAVE = 23;
 const THEMA_INTERVAL = 4;
 const THEMA_BONUS_FACTOR = 1.5;   // de wave-bonus van een themagolf, als beloning voor het afwijkende karakter
 const THEMAGOLVEN = {
@@ -4242,7 +4244,8 @@ function poortenTekst(namen) {
 // naar de stand bij de overwinning. Repareren houdt je in leven, maar koopt
 // geen sterren meer (eerst kon je met het geld van het eind van de run
 // vlak voor de laatste robot naar 100% repareren).
-const RUN_WAVES = 15;
+// Ticket D69 (eigenaar na M4: "20 waves met een vierde baas"): was 15.
+const RUN_WAVES = 20;
 // D63: 2 sterren tot 50% (was 40%): één baas die doorkomt (40%) plus een
 // paar robots uit het escorte is 2 sterren, twee bazen is 1 ster.
 const STER_DREMPELS = [50, 10];   // ≤ 50% opgelopen → 2 sterren, ≤ 10% → 3
@@ -4663,7 +4666,7 @@ const ONTGRENDELINGEN = [
   { id: 'zwareNacht', naam: 'Moeilijkheid Zwaar', wat: 'meer en snellere robots, +1 ster per overwinning', hint: 'verzamel 6 sterren', doel: 6, open: v => v.sterren >= 6 },
   { id: 'avond', naam: 'Avond op de Dam', wat: 'de Dam bij zonsondergang (alleen uiterlijk)', hint: 'verzamel 12 sterren', doel: 12, open: v => v.sterren >= 12 },
 ];
-function legeVoortgang() { return { bazen: { sloopkogel: false, dijkbreker: false, stoomwals: false }, overwinningen: 0, sterren: 0 }; }
+function legeVoortgang() { return { bazen: { sloopkogel: false, dijkbreker: false, stoomwals: false, heimachine: false }, overwinningen: 0, sterren: 0 }; }   // D69: heimachine
 function leesVoortgang() {
   const v = legeVoortgang();
   try {
@@ -4687,7 +4690,7 @@ function registreerMijlpaal(wijzig) {
   schrijfVoortgang();
   const nieuw = ONTGRENDELINGEN.filter(o => o.open(voortgang) && !voor.has(o.id));
   for (const o of nieuw) toonFeedbackMelding(`Ontgrendeld: ${o.naam}!`);
-  if (nieuw.length) werkOntgrendelUIBij();
+  werkOntgrendelUIBij();   // D69: ook zonder nieuwe ontgrendeling (de teller "bazen verslagen")
   return nieuw;
 }
 
@@ -5409,7 +5412,7 @@ const TOREN_TYPES = {
 // type (elke ROBOT_SLAG_INTERVAL seconden). Een tank slaat het hardst.
 const ROBOT_HEK_SCHADE = { normal: 6, sprinter: 4, tank: 15, bomber: 6, shieldbot: 6,
   pantserbot: 12, splitser: 6, splinter: 3,   // Ticket D68
-  sloopkogel: 30, dijkbreker: 10000, stoomwals: 40 };   // Ticket D57: de Dijkbreker breekt elk hek in één klap
+  sloopkogel: 30, dijkbreker: 10000, stoomwals: 40, heimachine: 40 };   // Ticket D57: de Dijkbreker breekt elk hek in één klap
 const ROBOT_SLAG_INTERVAL = 0.8;
 // Afstand (robotmidden → hek-lijn) waarop een robot het hek "raakt": zijn
 // botsstraal (0,45) + halve paaldikte (0,3) + een kleine marge.
@@ -6115,6 +6118,7 @@ function updateTorens(dt) {
   updateDrukpersen(dt);   // Ticket D51
   for (const toren of torens) {
     updateHpBalk(toren);
+    if (toren.stilTimer > 0 && updateStoring(toren, dt)) continue;   // Ticket D69
     if (toren.type === 'bovenleiding') { updateBovenleiding(toren, dt); continue; }
     if (toren.type === 'drukpers') continue;   // valt niet aan; zie updateDrukpersen
     if (toren.type !== 'geschut') continue;   // een hek schiet niet
@@ -6244,6 +6248,8 @@ const ROBOT_TYPES = {
   // monument nog op 60% stond: een run van 13 minuten weg in één klap. Nu
   // maakt hij alleen een gehavend monument af.
   stoomwals:  { hpMax: 180, vasteSnelheid: 0.8, snelheidMultiplier: 1, beloningMultiplier: 0, kleur: 0xff4a3c, schaal: 2.8, monumentSchade: 60, baas: true },
+  // Ticket D69: de eindbaas van de run van 20 waves (zie HEIMACHINE_*).
+  heimachine: { hpMax: 260, vasteSnelheid: 0.7, snelheidMultiplier: 1, beloningMultiplier: 0, kleur: 0xd8e04a, schaal: 2.4, monumentSchade: 60, baas: true },
 };
 
 // Ticket D56: het baassysteem. Een baaswave (alleen binnen de run) begint met
@@ -6251,9 +6257,10 @@ const ROBOT_TYPES = {
 const BAZEN = {
   sloopkogel: { naam: 'De Sloopkogel', beloning: 150, tip: 'Hij slaat torens langs zijn route kapot: schiet hem zelf, het geschut helpt' },
   dijkbreker: { naam: 'De Dijkbreker', beloning: 250, tip: 'Hij breekt elk hek in één klap; raak hem als zijn schild opengaat' },
-  stoomwals:  { naam: 'De Stoomwals',  beloning: 400, tip: 'De eindbaas: hij laat robots los en wordt sneller onder de helft' },
+  stoomwals:  { naam: 'De Stoomwals',  beloning: 400, tip: 'Hij laat robots los en wordt sneller onder de helft' },
+  heimachine: { naam: 'De Heimachine', beloning: 500, tip: 'De eindbaas: elke klap legt torens binnen 10 m stil. Schiet hem zelf, of van verder weg' },
 };
-const BAAS_WAVES = { 5: 'sloopkogel', 10: 'dijkbreker', 15: 'stoomwals' };
+const BAAS_WAVES = { 5: 'sloopkogel', 10: 'dijkbreker', 15: 'stoomwals', 20: 'heimachine' };
 const BAAS_ESCORTE_FACTOR = 0.5;
 function baasVoorWave(wave) {
   return wave <= RUN_WAVES ? BAAS_WAVES[wave] ?? null : null;
@@ -6284,7 +6291,7 @@ const ROBOT_GEO = {
   gloed: new Map(),   // accentkleur → geometrie
 };
 // Ticket D57: een baas krijgt een eigen rompkleur (per type één keer gebouwd).
-const BAAS_ROMPKLEUR = { sloopkogel: 0xd09a3a, dijkbreker: 0x4a7fb0, stoomwals: 0xa8432f };
+const BAAS_ROMPKLEUR = { sloopkogel: 0xd09a3a, dijkbreker: 0x4a7fb0, stoomwals: 0xa8432f, heimachine: 0x7a8038 };
 // Minder metaal dan de gewone robot: zonder omgeving oogt 0,8 metalness bijna zwart,
 // en dan zie je de kleur van de baas niet.
 const BAAS_ROMP_MATERIAAL = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, metalness: 0.25, vertexColors: true });
@@ -6468,6 +6475,22 @@ function bouwBaasDelen(type, groep) {
     groep.add(wals, beugel, schoorsteen);
     return { velden: { wals, loslaatTimer: STOOMWALS_LOSLAAT_INTERVAL, woedend: false, rookTimer: 0 } };
   }
+  if (type === 'heimachine') {
+    // Ticket D69: een heistelling voorop: een mast met een paal eronder en
+    // een blok dat langzaam omhoog gaat en dan op de paal valt.
+    const mast = new THREE.Mesh(baasGeo('heimast', () => {
+      const b = maakBouwer();
+      for (const x of [-0.28, 0.28]) b.voeg('mast', BAAS_IJZER, new THREE.BoxGeometry(0.09, 2.6, 0.09).translate(x, 1.9, 0.75));
+      b.voeg('mast', BAAS_IJZER, new THREE.BoxGeometry(0.7, 0.1, 0.16).translate(0, 3.2, 0.75));
+      b.voeg('mast', BAAS_IJZER, new THREE.BoxGeometry(0.1, 0.1, 0.6).translate(0, 3.2, 0.45));
+      const g = new THREE.Group(); b.bouw(g); return g.children[0].geometry;
+    }), BAAS_IJZER);
+    const paal = new THREE.Mesh(baasGeo('heipaal', () => new THREE.CylinderGeometry(0.11, 0.11, 1.25, 10).translate(0, 0.62, 0.75)), BAAS_ROEST);
+    const blok = new THREE.Mesh(baasGeo('heiblok', () => new THREE.BoxGeometry(0.46, 0.42, 0.34)), BAAS_ROEST);
+    blok.position.set(0, HEIBLOK_LAAG, 0.75);
+    groep.add(mast, paal, blok);
+    return { velden: { heiBlok: blok, heiTimer: HEIMACHINE_INTERVAL } };
+  }
   return {};
 }
 
@@ -6489,7 +6512,76 @@ const STOOMWALS_WOEDE_DREMPEL = 0.5;
 const STOOMWALS_WOEDE_SNELHEID = 1.35;   // D60: was 1,6
 const rookMateriaal = new THREE.MeshBasicMaterial({ color: 0x5b5f66, transparent: true, opacity: 0.6, depthWrite: false });
 
+// Ticket D69: De Heimachine slaat om de HEIMACHINE_INTERVAL seconden op zijn
+// paal. Elke geschuttoren en Bovenleiding binnen HEIMACHINE_BEREIK ligt dan
+// HEIMACHINE_STIL seconden stil. Het blok gaat vooraf zichtbaar omhoog, dus
+// je ziet de klap aankomen. Een Scherpschutter (22 m) kan buiten bereik
+// blijven; dichtbij moet de speler het zelf doen.
+const HEIMACHINE_INTERVAL = 5;
+const HEIMACHINE_BEREIK = 10;
+const HEIMACHINE_STIL = 4;
+const HEIBLOK_LAAG = 1.46, HEIBLOK_HOOG = 2.9;   // lokaal, onderkant blok op de paal / tegen de kop van de mast
+const STORING_GEO = new THREE.TorusGeometry(0.45, 0.07, 6, 16).rotateX(Math.PI / 2);
+const STORING_MAT = new THREE.MeshBasicMaterial({ color: 0xff7a1a });
+function heiKlap(robot) {
+  const p = robot.groep.position;
+  let stil = 0;
+  for (const toren of torens) {
+    if (toren.type !== 'geschut' && toren.type !== 'bovenleiding') continue;
+    if (Math.hypot(toren.plek.positie.x - p.x, toren.plek.positie.z - p.z) > HEIMACHINE_BEREIK) continue;
+    legTorenStil(toren);
+    stil++;
+  }
+  // Een schokgolf van stof over de straat.
+  for (let i = 0; i < 14; i++) {
+    const hoek = (i / 14) * Math.PI * 2;
+    const stof = new THREE.Mesh(EFFECT_GEO.stof, EFFECT_MAT.stof);
+    stof.position.set(p.x + Math.cos(hoek) * 1.5, 0.3, p.z + Math.sin(hoek) * 1.5);
+    stof.scale.setScalar(3);
+    stof.castShadow = false;
+    scene.add(stof);
+    brokstukken.push({ mesh: stof, snelheid: new THREE.Vector3(Math.cos(hoek) * 7, 0.4, Math.sin(hoek) * 7), draai: new THREE.Vector3(), leeftijd: kwaliteitPreset().brokstukLeven - 0.6, zwevend: true });
+  }
+  speelHeiKlap();
+  const afstandSpeler = Math.hypot(speler.positie.x - p.x, speler.positie.z - p.z);
+  cameraShake = Math.max(cameraShake, afstandSpeler < 25 ? 0.12 : 0.05);
+  if (stil) toonPopup(`De Heimachine legt ${stil} ${stil === 1 ? 'toren' : 'torens'} stil!`);
+  return stil;
+}
+function legTorenStil(toren) {
+  if (!toren.storing) {
+    toren.storing = new THREE.Mesh(STORING_GEO, STORING_MAT);
+    toren.groep.updateMatrixWorld(true);
+    const hoogte = new THREE.Box3().setFromObject(toren.groep).max.y;
+    toren.storing.position.set(0, hoogte - toren.groep.position.y + 0.5, 0);
+    toren.storing.castShadow = false;
+    toren.groep.add(toren.storing);
+  }
+  toren.stilTimer = HEIMACHINE_STIL;
+  toren.storing.visible = true;
+  if (toren.spoor) toren.spoor.visible = false;
+}
+// Geeft true zolang de toren stilligt (updateTorens slaat hem dan over).
+function updateStoring(toren, dt) {
+  toren.stilTimer = Math.max(0, toren.stilTimer - dt);
+  toren.storing.rotation.y += dt * 5;
+  toren.storing.visible = toren.stilTimer > 0;
+  return toren.stilTimer > 0;
+}
+
 function updateBaasGedrag(robot, dt) {
+  if (robot.type === 'heimachine') {
+    robot.heiTimer -= dt;
+    // Omhoog in 85% van het interval, dan even hangen, dan de klap.
+    const f = Math.min(1, (1 - Math.max(0, robot.heiTimer) / HEIMACHINE_INTERVAL) / 0.85);
+    robot.heiBlok.position.y = HEIBLOK_LAAG + (HEIBLOK_HOOG - HEIBLOK_LAAG) * f;
+    if (robot.heiTimer <= 0) {
+      robot.heiTimer = HEIMACHINE_INTERVAL;
+      robot.heiBlok.position.y = HEIBLOK_LAAG;
+      heiKlap(robot);
+    }
+    return;
+  }
   if (robot.type === 'sloopkogel') {
     // Ticket D65: tijdens een slag zwaait de kogel uit naar de toren (de
     // ketting rekt mee), zodat je ziet dat hij ook een toren op 7 m haalt.
@@ -7463,6 +7555,7 @@ function speelKerkklok() {
 // raakt: duidelijk anders dan speelSchot()/een normale treffer, zodat de
 // speler meteen hoort dat het schot niets deed.
 // Ticket D18: sissen bij oververhitting, een klikje als hij weer mag.
+function speelHeiKlap() { piep('sine', 90, 35, 0.4, 0.3); piep('square', 140, 60, 0.12, 0.08); }   // Ticket D69
 function speelStoomfluit() { piep('sine', 740, 760, 0.35, 0.12); setTimeout(() => piep('sine', 988, 1000, 0.45, 0.12), 180); }   // Ticket D65
 function speelBaasVerslagen() { piep('sawtooth', 220, 60, 0.7, 0.18); setTimeout(() => piep('triangle', 523, 1046, 0.5, 0.14), 250); }   // Ticket D56
 function speelOververhit() { piep('sawtooth', 1800, 300, 0.45, 0.07); setTimeout(() => piep('square', 180, 120, 0.12, 0.06), 60); }
@@ -7801,10 +7894,11 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   // Ticket D55: een run met een einde.
   TOREN_RICHTINGEN, RICHTING_NIVEAU, torenNaam, richtingOntgrendeld,
   HINTS, HINTS_KEY, toonHint, gezieneHints,
-  VOORTGANG_KEY, ONTGRENDELINGEN, voortgang, leesVoortgang, ontgrendeld, registreerMijlpaal, kiesZwareNacht, kiesAvond, pasSfeerToe, avondActief,
+  VOORTGANG_KEY, ONTGRENDELINGEN, voortgang, leesVoortgang, ontgrendeld, registreerMijlpaal, werkOntgrendelUIBij, kiesZwareNacht, kiesAvond, pasSfeerToe, avondActief,
   ZWARE_NACHT_AANTAL, ZWARE_NACHT_SNELHEID, hemiLicht,
   BAZEN, BAAS_WAVES, BAAS_ESCORTE_FACTOR, baasVoorWave, levendeBaas, updateBaasUI,
   SLOOPKOGEL_INTERVAL, SLOOPKOGEL_BEREIK, SLOOPKOGEL_SCHADE, STOOMWALS_WAARSCHUWING, stoomStoot, STOOMWALS_LOSLAAT_INTERVAL, STOOMWALS_LOSLAAT_AANTAL, STOOMWALS_WOEDE_DREMPEL, STOOMWALS_WOEDE_SNELHEID, vuurToren,
+  HEIMACHINE_INTERVAL, HEIMACHINE_BEREIK, HEIMACHINE_STIL, heiKlap, legTorenStil,
   RUN_WAVES, STER_DREMPELS, sterrenVoor, waveLabel, winRun, doorspelen, verwerkOverwinning, THEMA_IN_RUN,
   // Ticket D8: highscore.
   HIGHSCORE_KEY, leesHighscore, schrijfHighscore, verwerkHighscore,

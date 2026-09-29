@@ -1690,3 +1690,18 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
 - **Tip bij de aankondiging:** baas, dan thema, dan de derde poort, dan
   een nieuw elitetype (`ROBOT_TYPE_TIP`, alleen als de volgende wave de
   gewone mix heeft).
+
+### 15.19 De run van 20 waves en De Heimachine (D69)
+
+- `RUN_WAVES` bepaalt alles wat met het einde van de run te maken heeft:
+  `winRun`, `waveLabel`, `baasVoorWave` en `themaSleutelVoorWave`. Tests
+  horen de waarde te lezen of expliciet te noemen, niet "15" aan te nemen.
+- **Stilleggen is een torenveld:** `toren.stilTimer` (en de lazily gemaakte
+  ring `toren.storing`, gedeelde geometrie en materiaal). `updateTorens`
+  slaat een toren over zolang `updateStoring` true geeft. De cooldown loopt
+  dan ook niet af. Wie een nieuwe schietende toren toevoegt, zet hem achter
+  dezelfde regel.
+- `heiKlap(robot)` is los aan te roepen (tests); de cyclus zelf zit in
+  `updateBaasGedrag` (`heiTimer`, het blok volgt de timer).
+- De voortgang heeft vier bazen; `leesVoortgang` vult een ontbrekende baas
+  in oude opslag met `false`, dus bewaarde voortgang blijft geldig.

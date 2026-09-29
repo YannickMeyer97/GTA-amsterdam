@@ -1404,7 +1404,7 @@ Verder:
 | ☑ | **D66** | "Nacht: Zware nacht" heet nu "Moeilijkheid: Zwaar (+1★)" |
 | ☑ | **D67** | Derde poort vanaf wave 11 (audit 4) |
 | ☑ | **D68** | Elite-robots: Pantserbot en Splitser (audit 4) |
-| ☐ | **D69** | Een run van 20 waves, met De Heimachine als vierde baas |
+| ☑ | **D69** | Een run van 20 waves, met De Heimachine als vierde baas |
 | ☐ | **D70** | Herijken na D66–D69 |
 
 **Keuzes van de eigenaar na D65:**
@@ -1566,6 +1566,44 @@ toont "· zwaar" (was een maantje). Intern heten sleutel en vlag nog
   - nieuw: `test-dnm-elite` (17 checks);
   - `test-dnm-kern`: drempels voor de nieuwe types, en de trekkingen nu
     ook voor waves 6, 7 en 12.
+
+**D69 — 20 waves en De Heimachine, verslag.**
+- **De run is 20 waves** (`RUN_WAVES`).
+  - Bazen op 5, 10, 15 en 20.
+  - Thema's in de run op 7, 9, 12, 16 (Spitsuur) en 18 (Grachtenmist); na
+    de run de oude cyclus vanaf wave 23.
+  - Startscherm en README: "20 waves en vier bazen". De Stoomwals heet in
+    zijn tip niet meer "de eindbaas".
+- **De Heimachine** (wave 20): 260 HP, 0,7 m/s, 60 monumentschade, €500.
+  - Een olijfgroene romp met een heistelling voorop: een mast, een paal en
+    een blok.
+  - Het blok gaat in 5 s langzaam omhoog en valt dan op de paal.
+  - Elke klap legt elke geschuttoren en Bovenleiding binnen 10 m 4 s stil,
+    met een oranje ring die boven de toren draait en een melding ("De
+    Heimachine legt 2 torens stil!"). Hekken en drukpersen niet.
+  - Verder: een schokgolf van stof, een doffe dreun en camera-schok.
+  - Een Scherpschutter (22 m) kan buiten zijn bereik blijven; dichtbij moet
+    je het zelf doen.
+- **Voortgang:** `bazen.heimachine`; het paneel telt "x/4".
+  `registreerMijlpaal` ververst het paneel nu altijd, ook als er niets
+  nieuws opengaat: de teller liep anders achter.
+- **Metingen** (startwaarden, D70 herijkt):
+  - `meet-dnm-run goed`: twee keer gewonnen, in 18:48 en 19:17, met 1 ster.
+    Dat is binnen het doel van ~20 minuten.
+  - De Heimachine haalde in beide runs het monument (86 en 95 van 260 HP
+    over).
+  - Na wave 16 stapelt het geld op (€1.239–4.235): alle torens staan dan
+    op niveau 3 en er is niets meer te kopen (auditpunt 14).
+  - `meet-dnm-bazen`, wave 20: de Heimachine komt er in elke opstelling
+    door. Alleen de speler: 161/260 over. Kanon + Hoogspanning: 85–113
+    over. Twee Kanonnen: 64–77 over.
+  - Met 60 schade is 3 sterren zo onmogelijk en 2 sterren bijna. Dat is de
+    eerste knop voor D70.
+- **Tests:**
+  - nieuw: `test-dnm-heimachine` (12 checks);
+  - `test-dnm-baas`, `-overwinning`, `-ontgrendelingen`, `-themagolven` en
+    `-hints` volgen de run van 20 waves.
+  - `meet-dnm-bazen` meet ook wave 20.
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

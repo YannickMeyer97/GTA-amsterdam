@@ -6,7 +6,9 @@
 > **Stand van de punten** (na M4): 1, 2 en 3 zijn uitgevoerd in D61, D62
 > en D63; de naam "Defend National Monument" staat overal (D61), en er is
 > een volumeregelaar (D64, uit punt 12). Punt 4 is door de speeltest
-> bevestigd; de aanpak volgt. De telefoonversie (punt 13) komt later.
+> bevestigd en aangepakt met een derde poort vanaf wave 11 (D67) en
+> elite-robots (D68); de run is daarbij 20 waves geworden met een vierde
+> baas (D69). De telefoonversie (punt 13) komt later.
 
 ## Hoe er gekeken is
 

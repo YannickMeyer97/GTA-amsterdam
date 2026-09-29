@@ -1,7 +1,7 @@
 // Ticket D56 (SONNET_EXECUTION_PLAN_monument.md, §12, fase P) — het
 // baassysteem.
 //
-// Een baaswave (5, 10, 15) spawnt precies één baas, als eerste, uit één
+// Een baaswave (5, 10, 15, en sinds D69 20) spawnt precies één baas, als eerste, uit één
 // poort, met een half zo groot escorte. De HP-balk bovenin volgt de baas;
 // een kill geeft een vaste beloning en een banner, het monument halen een
 // zware klap. De aankondiging noemt de baas met een tip, en een reset ruimt
@@ -88,7 +88,7 @@ const r = await page.evaluate(() => {
   return uit;
 });
 
-check('Bazen op wave 5, 10 en 15, en nergens anders (ook niet na de run)', JSON.stringify(r.rooster) === JSON.stringify({ 5: 'sloopkogel', 10: 'dijkbreker', 15: 'stoomwals' }), r.rooster);
+check('Bazen op wave 5, 10, 15 en 20 (D69), en nergens anders (ook niet na de run)', JSON.stringify(r.rooster) === JSON.stringify({ 5: 'sloopkogel', 10: 'dijkbreker', 15: 'stoomwals', 20: 'heimachine' }), r.rooster);
 check('Een baaswave komt uit één poort, met de baas plus een half zo groot escorte', r.wave5.poorten === 1 && r.wave5.doel === r.wave5.verwachtDoel, r.wave5);
 check('De wavebanner noemt de baas', /Wave 5: De Sloopkogel!/.test(r.wave5.banner), r.wave5.banner);
 check('De eerste spawn is de baas, met vol HP, midden op de strook, groot, op de route van de actieve poort',

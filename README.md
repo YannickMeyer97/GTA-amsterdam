@@ -37,7 +37,7 @@ op een `.html`-bestand werkt meestal ook, zolang er internet is voor de CDN.
 ## Defend National Monument
 
 Verdedig het Nationaal Monument op de Dam in Amsterdam tegen robots die uit
-de omliggende straten komen. Overleef 15 waves en versla drie bazen, dan is
+de omliggende straten komen. Overleef 20 waves en versla vier bazen, dan is
 de Dam gered. Daarna kun je eindeloos doorspelen voor je highscore.
 Bestand: `defend-national-monument.html`. Gebruik de "← Menu"-knop
 rechtsboven om terug te gaan naar het hoofdmenu.
@@ -61,7 +61,10 @@ rechtsboven om terug te gaan naar het hoofdmenu.
   Damstraat, Kalverstraat en Nieuwendijk) naar het monument. Een lichtbaken
   en een oplichtend spoor laten zien waar de volgende wave vandaan komt.
   Haalt een robot het monument, dan kost dat monument-HP; bij 0% is het game
-  over.
+  over. Vanaf wave 11 komen ze uit drie straten tegelijk.
+- **Elite-robots** komen na de eerste baas: de **Pantserbot** (torens doen
+  maar een derde van hun schade, dus schiet hem zelf) en de **Splitser**
+  (valt bij zijn dood uiteen in twee snelle splinters).
 - **Torens** bouw je op de gouden cirkels langs de straten, ook tijdens een
   wave:
   - de **Geschuttoren** schiet een zware kogel en pakt de taaiste robot:
@@ -77,8 +80,8 @@ rechtsboven om terug te gaan naar het hoofdmenu.
   het Paleis levert vast geld op.
 - **Oververhitting:** lang doorvuren maakt het wapen te heet. De meter onder
   het richtkruis laat zien hoe ver je bent; laat even los om af te koelen.
-- **Bazen** komen op wave 5 (de Sloopkogel), 10 (de Dijkbreker) en 15 (de
-  Stoomwals). Elke baas vraagt een eigen aanpak; de aankondiging geeft een
+- **Bazen** komen op wave 5 (de Sloopkogel), 10 (de Dijkbreker), 15 (de
+  Stoomwals) en 20 (de Heimachine, die torens in de buurt stillegt). Elke baas vraagt een eigen aanpak; de aankondiging geeft een
   tip.
 - **Sterren:** win je de run, dan krijg je 1 tot 3 sterren, naar de schade
   die het monument in de hele run opliep (3 sterren bij hooguit 10%;

@@ -5,6 +5,8 @@
 // een tank-themagolf op wave 4 zou die introductie overschrijven.
 // Ticket D55: binnen de run van 15 waves liggen de thema's vast op 7, 9 en
 // 12 (om de baaswaves 5, 10 en 15 heen); daarna weer om de 4, vanaf 18.
+// Ticket D69: de run is 20 waves, met ook 16 (Spitsuur) en 18 (Grachtenmist);
+// de cyclus begint nu bij 23.
 import { openDefend, makeChecker } from '../helpers-defend.mjs';
 
 const { browser, page, errs } = await openDefend();
@@ -17,13 +19,13 @@ const LEEG = `(() => { const d = window.DamChaosDebug; for (const r of [...d.rob
 const rooster = await page.evaluate(() => {
   const d = window.DamChaosDebug;
   const uit = {};
-  for (let w = 1; w <= 26; w++) { const s = d.themaSleutelVoorWave(w); if (s) uit[w] = s; }
+  for (let w = 1; w <= 31; w++) { const s = d.themaSleutelVoorWave(w); if (s) uit[w] = s; }
   return uit;
 });
-check('Alleen waves 7, 9, 12, 18, 22, 26 zijn themagolven (D55)',
-  Object.keys(rooster).join() === '7,9,12,18,22,26', rooster);
-check('Thema’s rouleren in vaste volgorde: Tankkonvooi, Spitsuur, Grachtenmist, en dan opnieuw',
-  JSON.stringify(Object.values(rooster)) === JSON.stringify(['tankkonvooi', 'spitsuur', 'grachtenmist', 'tankkonvooi', 'spitsuur', 'grachtenmist']), rooster);
+check('Alleen waves 7, 9, 12, 16, 18 (de run) en 23, 27, 31 (daarna) zijn themagolven (D55, D69)',
+  Object.keys(rooster).join() === '7,9,12,16,18,23,27,31', rooster);
+check('In de run vast; daarna rouleren ze in vaste volgorde: Tankkonvooi, Spitsuur, Grachtenmist',
+  JSON.stringify(Object.values(rooster)) === JSON.stringify(['tankkonvooi', 'spitsuur', 'grachtenmist', 'spitsuur', 'grachtenmist', 'tankkonvooi', 'spitsuur', 'grachtenmist']), rooster);
 
 // --- 2. Elk thema: overrides gelden, en alleen voor die wave ---------------
 

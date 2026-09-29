@@ -22,6 +22,8 @@ const SCENARIO = [
   { wave: 5, upgrades: {}, configs: [['alleen de speler', []], ['2 torens niv. 1', [['geschut', 1], ['geschut', 1]]], ['2 torens niv. 2', [['geschut', 2], ['geschut', 2]]]] },
   { wave: 10, upgrades: { vuurtempo: 2, koeling: 1 }, configs: [['alleen de speler', []], ['2 torens niv. 2', [['geschut', 2], ['geschut', 2]]], ['Kanon + Hoogspanning', [['geschut', 3], ['bovenleiding', 3]]], ['2 Kanonnen', [['geschut', 3], ['geschut', 3]]]] },
   { wave: 15, upgrades: { vuurtempo: 3, koeling: 2 }, configs: [['alleen de speler', []], ['2 torens niv. 2', [['geschut', 2], ['geschut', 2]]], ['Kanon + Hoogspanning', [['geschut', 3], ['bovenleiding', 3]]], ['2 Kanonnen', [['geschut', 3], ['geschut', 3]]]] },
+  // Ticket D69: de Heimachine.
+  { wave: 20, upgrades: { vuurtempo: 3, koeling: 2 }, configs: [['alleen de speler', []], ['Kanon + Hoogspanning', [['geschut', 3], ['bovenleiding', 3]]], ['2 Kanonnen', [['geschut', 3], ['geschut', 3]]]] },
 ];
 
 const r = await page.evaluate((SCENARIO) => {
@@ -76,5 +78,5 @@ const r = await page.evaluate((SCENARIO) => {
 console.log('=== Baaswaves met een gesimuleerde speler (3 pogingen) ===');
 console.log('wave  baas         verdediging              monumentschade      de baas                                   waveduur');
 for (const x of r) console.log(`${String(x.wave).padStart(4)}  ${x.baas.padEnd(11)}  ${x.naam.padEnd(23)}  ${x.schade.join(' / ').padEnd(18)}  ${x.baas_.join(' / ').padEnd(40)}  ${x.duur.join(' / ')} s`);
-console.log('\n"DOOR (rest/max)": de baas haalde het monument met zoveel HP over (40 / 40 / 60 schade, sinds D63). Monumentschade ≥ 100 is game over.');
+console.log('\n"DOOR (rest/max)": de baas haalde het monument met zoveel HP over (40 / 40 / 60 / 60 schade, sinds D63 en D69). Monumentschade ≥ 100 is game over.');
 await browser.close();

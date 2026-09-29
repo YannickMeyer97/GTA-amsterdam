@@ -65,7 +65,7 @@ const spelen = await met({}, page => page.evaluate(() => {
   uit.naDijk = d.ontgrendeld('stroomval');
   // Winnen met 3 sterren.
   d.resetRun();
-  d.startWave(15);
+  d.startWave(20);
   for (const x of [...d.robots]) { d.scene.remove(x.groep); d.robots.splice(d.robots.indexOf(x), 1); }
   d.spel.teSpawnen = 0;
   d.updateWaveSysteem(0.1);
@@ -96,7 +96,7 @@ const zwaar = await met(bewaar(JSON.stringify({ bazen: {}, overwinningen: 2, ste
   d.updateWaveSysteem(0);
   uit.snelheid = d.robots[0].snelheid;
   // Winnen met 3 "gewone" sterren wordt er 4.
-  d.startWave(15);
+  d.startWave(20);
   for (const x of [...d.robots]) { d.scene.remove(x.groep); d.robots.splice(d.robots.indexOf(x), 1); }
   d.spel.teSpawnen = 0;
   d.updateWaveSysteem(0.1);

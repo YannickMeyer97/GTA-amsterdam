@@ -21,8 +21,8 @@ const teksten = await met({}, page => page.evaluate(() => ({
   body: document.body.innerText,
 })));
 check('De titel is overal "Defend National Monument"', teksten.titel === 'Defend National Monument' && teksten.h1 === 'DEFEND NATIONAL MONUMENT' && !/dam chaos/i.test(teksten.body), teksten.h1);
-check('Het startscherm noemt 15 waves, bazen, torens, 1–5, G, X, oververhitting en de commandopost',
-  ['15 waves', 'bazen', 'torens', '1–5', 'G', 'X', 'te heet', 'commandopost'].every(w => teksten.uitleg.includes(w)), teksten.uitleg);
+check('Het startscherm noemt 20 waves (D69), bazen, torens, 1–5, G, X, oververhitting en de commandopost',
+  ['20 waves', 'vier bazen', 'torens', '1–5', 'G', 'X', 'te heet', 'commandopost'].every(w => teksten.uitleg.includes(w)), teksten.uitleg);
 check('De oude, onjuiste zin over "bij een bordje op T" is weg', !teksten.uitleg.includes('bordje'), teksten.uitleg);
 check('De hulpbalk noemt 1–5, G en X', ['1–5', 'G volgende wave', 'X special'].every(w => teksten.hulp.includes(w)), teksten.hulp);
 
