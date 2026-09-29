@@ -1705,3 +1705,7 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
   `updateBaasGedrag` (`heiTimer`, het blok volgt de timer).
 - De voortgang heeft vier bazen; `leesVoortgang` vult een ontbrekende baas
   in oude opslag met `false`, dus bewaarde voortgang blijft geldig.
+- **Druk in de late waves (D70):** `maxActieveRobotsVoorWave(w)` (tot wave
+  12 de oude formule, daarna +1 per wave tot `MAX_ACTIEF_PLAFOND`) en
+  `eliteGewicht(w)`. Beide zijn pure functies; `startWave` en
+  `kiesRobotTypeVoorWave` lezen ze, tests ook.

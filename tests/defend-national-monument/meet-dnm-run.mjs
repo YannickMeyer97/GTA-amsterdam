@@ -10,13 +10,16 @@
 //         actieve en aangekondigde poorten, alles naar niveau 3 (richting A),
 //         vuurtempo tot 3 en koeling tot 2, een drukpers, en repareren onder 80%.
 //   zwak: alleen een geschuttoren niveau 1 op het knooppunt, geen upgrades.
-// Hij loopt niet en mikt nooit mis. Draaien: `node meet-dnm-run.mjs goed`.
+// Hij loopt niet. Ticket D70: een derde argument is de trefkans (standaard 1,
+// nooit mis); `node meet-dnm-run.mjs goed 0.6` lijkt meer op een mens.
+// Draaien: `node meet-dnm-run.mjs goed`.
 import { openDefend } from '../helpers-defend.mjs';
 
 const strategie = process.argv[2] || 'goed';
+const trefkans = Number(process.argv[3]) || 1;
 const { browser, page, errs } = await openDefend();
 
-const r = await page.evaluate((strategie) => {
+const r = await page.evaluate(([strategie, trefkans]) => {
   const d = window.DamChaosDebug;
   const DT = 1 / 20, M = d.MONUMENT_POSITIE, BEREIK = 22;
   const goed = strategie !== 'zwak';
@@ -63,7 +66,7 @@ const r = await page.evaluate((strategie) => {
         cd = d.huidigeSchotCooldown(); sinds = 0; spelerSchoten++;
         warmte = Math.min(100, warmte + d.warmtePerSchot());
         if (warmte >= 100) { oververhit = true; oververhitTeller++; }
-        if (!doel.schildActief) d.raakRobot(doel, 1, 'speler');
+        if (!doel.schildActief && Math.random() < trefkans) d.raakRobot(doel, 1, 'speler');
       }
     }
     if (Math.round(t / DT) % 20 === 0) koop();
@@ -86,9 +89,9 @@ const r = await page.evaluate((strategie) => {
     piepsPerMinuut: Math.round((d.piepTeller() - piepVoor) / (t / 60)),
     torens: d.torens.map(x => `${d.torenNaam(x)} ${x.niveau}`),
   };
-}, strategie);
+}, [strategie, trefkans]);
 
-console.log(`=== Automatische run, strategie "${strategie}" ===`);
+console.log(`=== Automatische run, strategie "${strategie}", trefkans ${trefkans} ===`);
 console.log(`Uitkomst: ${r.uitkomst} na ${Math.floor(r.tijd / 60)}:${String(r.tijd % 60).padStart(2, '0')} (monument ${r.hp}%)`);
 console.log(`Bazen: ${Object.entries(r.bazen).map(([k, v]) => `${k} ${v}`).join(' · ') || '—'}`);
 console.log(`Monument na elke wave: ${Object.entries(r.perWave).map(([w, x]) => `${w}:${x.hp}`).join(' ')}`);

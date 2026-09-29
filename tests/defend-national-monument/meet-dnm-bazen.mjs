@@ -18,13 +18,16 @@ import { openDefend } from '../helpers-defend.mjs';
 
 const { browser, page } = await openDefend();
 
-const SCENARIO = [
+// Ticket D70: `node meet-dnm-bazen.mjs 20` meet alleen wave 20.
+const alleenWave = Number(process.argv[2]) || null;
+const ALLE_SCENARIO = [
   { wave: 5, upgrades: {}, configs: [['alleen de speler', []], ['2 torens niv. 1', [['geschut', 1], ['geschut', 1]]], ['2 torens niv. 2', [['geschut', 2], ['geschut', 2]]]] },
   { wave: 10, upgrades: { vuurtempo: 2, koeling: 1 }, configs: [['alleen de speler', []], ['2 torens niv. 2', [['geschut', 2], ['geschut', 2]]], ['Kanon + Hoogspanning', [['geschut', 3], ['bovenleiding', 3]]], ['2 Kanonnen', [['geschut', 3], ['geschut', 3]]]] },
   { wave: 15, upgrades: { vuurtempo: 3, koeling: 2 }, configs: [['alleen de speler', []], ['2 torens niv. 2', [['geschut', 2], ['geschut', 2]]], ['Kanon + Hoogspanning', [['geschut', 3], ['bovenleiding', 3]]], ['2 Kanonnen', [['geschut', 3], ['geschut', 3]]]] },
   // Ticket D69: de Heimachine.
   { wave: 20, upgrades: { vuurtempo: 3, koeling: 2 }, configs: [['alleen de speler', []], ['Kanon + Hoogspanning', [['geschut', 3], ['bovenleiding', 3]]], ['2 Kanonnen', [['geschut', 3], ['geschut', 3]]]] },
 ];
+const SCENARIO = ALLE_SCENARIO.filter(x => !alleenWave || x.wave === alleenWave);
 
 const r = await page.evaluate((SCENARIO) => {
   const d = window.DamChaosDebug;

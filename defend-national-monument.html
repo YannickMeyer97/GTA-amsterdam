@@ -4095,8 +4095,22 @@ function waveBannerTekst(nummer) {
 // een wave eerder. Wave 1 blijft de leerwave met alleen gewone robots.
 // Ticket D68: de elite-robots na de eerste baas (splinters nooit via een poort).
 const ROBOT_TYPE_VANAF = { normal: 1, sprinter: 2, tank: 2, bomber: 3, shieldbot: 4, pantserbot: 6, splitser: 8 };
+// Hoeveel robots er tegelijk rondlopen. Ticket D70: tot wave 12 zoals het
+// was (hooguit 13); daarna één extra per wave. Met drie poorten verdeelden
+// 13 robots zich over drie straten en hielden torens het vanaf wave 13
+// moeiteloos bij: het monument liep tussen de bazen niets op.
+const MAX_ACTIEF_BASIS = 13, MAX_ACTIEF_GROEI_VANAF = 13, MAX_ACTIEF_PLAFOND = 20;
+function maxActieveRobotsVoorWave(wave) {
+  const basis = Math.min(5 + Math.floor(wave * 0.65), MAX_ACTIEF_BASIS);
+  return Math.min(basis + Math.max(0, wave - MAX_ACTIEF_GROEI_VANAF + 1), MAX_ACTIEF_PLAFOND);
+}
+// Ticket D70: vanaf de derde poort (wave 11) worden de elite-robots elke
+// wave iets talrijker: tussen de bazen liep het monument anders niets op.
+const ELITE_GROEI_VANAF = 11, ELITE_GROEI_PER_WAVE = 0.6;
+function eliteGewicht(wave) { return 3 + Math.max(0, wave - ELITE_GROEI_VANAF + 1) * ELITE_GROEI_PER_WAVE; }
 function kiesRobotTypeVoorWave(wave) {
-  const gewichten = [['normal', 10], ['sprinter', 5], ['tank', 3], ['bomber', 3], ['shieldbot', 3], ['pantserbot', 3], ['splitser', 3]]
+  const elite = eliteGewicht(wave);
+  const gewichten = [['normal', 10], ['sprinter', 5], ['tank', 3], ['bomber', 3], ['shieldbot', 3], ['pantserbot', elite], ['splitser', elite]]
     .filter(([type]) => wave >= ROBOT_TYPE_VANAF[type]);
   const totaal = gewichten.reduce((som, [, gewicht]) => som + gewicht, 0);
   let r = Math.random() * totaal;
@@ -4287,7 +4301,7 @@ function startWave(nummer) {
   // Ticket D59: een zware nacht heeft meer robots (de baas blijft er één).
   if (spel.zwareNacht) spel.waveDoel = Math.round((spel.waveDoel - (spel.baas ? 1 : 0)) * ZWARE_NACHT_AANTAL) + (spel.baas ? 1 : 0);
   spel.teSpawnen = spel.waveDoel;
-  spel.maxActieveRobots = Math.min(5 + Math.floor(nummer * 0.65), 13);
+  spel.maxActieveRobots = maxActieveRobotsVoorWave(nummer);
   spel.tussenWaveTimer = 0;
   spel.waveBonusGegeven = false;
   spel.waveGeenMonumentSchade = true;   // reset hier, niet in het wave-compleet-blok (zie updateWaveSysteem)
@@ -6242,14 +6256,14 @@ const ROBOT_TYPES = {
   // en de Stoomwals het altijd, zelfs tegen twee Kanonnen en de speler
   // (meet-dnm-bazen). snelheidMultiplier geldt voor bazen niet.
   sloopkogel: { hpMax: 60,  vasteSnelheid: 1.1, snelheidMultiplier: 1, beloningMultiplier: 0, kleur: 0xff9a3c, schaal: 2.1, monumentSchade: 40,  baas: true },
-  dijkbreker: { hpMax: 90,  vasteSnelheid: 1.0, snelheidMultiplier: 1, beloningMultiplier: 0, kleur: 0x6fd2ff, schaal: 1.9, monumentSchade: 40,  baas: true, schildDuur: 2.5, schildPauze: 3.5 },
+  dijkbreker: { hpMax: 75,  vasteSnelheid: 1.0, snelheidMultiplier: 1, beloningMultiplier: 0, kleur: 0x6fd2ff, schaal: 1.9, monumentSchade: 40,  baas: true, schildDuur: 2.5, schildPauze: 3.5 },
   // Ticket D63 (audit 3): de Stoomwals doet 60, niet 100. Met 100 was hij
   // altijd game over, ook als hij met 9 van zijn 180 HP aankwam en het
   // monument nog op 60% stond: een run van 13 minuten weg in één klap. Nu
   // maakt hij alleen een gehavend monument af.
   stoomwals:  { hpMax: 180, vasteSnelheid: 0.8, snelheidMultiplier: 1, beloningMultiplier: 0, kleur: 0xff4a3c, schaal: 2.8, monumentSchade: 60, baas: true },
   // Ticket D69: de eindbaas van de run van 20 waves (zie HEIMACHINE_*).
-  heimachine: { hpMax: 260, vasteSnelheid: 0.7, snelheidMultiplier: 1, beloningMultiplier: 0, kleur: 0xd8e04a, schaal: 2.4, monumentSchade: 60, baas: true },
+  heimachine: { hpMax: 200, vasteSnelheid: 0.7, snelheidMultiplier: 1, beloningMultiplier: 0, kleur: 0xd8e04a, schaal: 2.4, monumentSchade: 60, baas: true },
 };
 
 // Ticket D56: het baassysteem. Een baaswave (alleen binnen de run) begint met
@@ -6517,9 +6531,9 @@ const rookMateriaal = new THREE.MeshBasicMaterial({ color: 0x5b5f66, transparent
 // HEIMACHINE_STIL seconden stil. Het blok gaat vooraf zichtbaar omhoog, dus
 // je ziet de klap aankomen. Een Scherpschutter (22 m) kan buiten bereik
 // blijven; dichtbij moet de speler het zelf doen.
-const HEIMACHINE_INTERVAL = 5;
+const HEIMACHINE_INTERVAL = 6;
 const HEIMACHINE_BEREIK = 10;
-const HEIMACHINE_STIL = 4;
+const HEIMACHINE_STIL = 2.5;
 const HEIBLOK_LAAG = 1.46, HEIBLOK_HOOG = 2.9;   // lokaal, onderkant blok op de paal / tegen de kop van de mast
 const STORING_GEO = new THREE.TorusGeometry(0.45, 0.07, 6, 16).rotateX(Math.PI / 2);
 const STORING_MAT = new THREE.MeshBasicMaterial({ color: 0xff7a1a });
@@ -7908,7 +7922,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   // Ticket D20: zichtbare monumentschade.
   monumentSchade, monumentSchadeTier, updateMonumentSchade, pasMonumentSchadeToe, MONUMENT_SCHADE_DREMPELS,
   // Ticket D28: aangekondigde poorten.
-  aantalActievePoorten, kiesActievePoorten, ROBOT_TYPE_VANAF, ROBOT_TYPE_TIP, ROBOT_WEERGAVENAMEN, ROBOT_TYPE_MEERVOUD, waveBasisAantal, DERDE_POORT_VANAF, splitsRobot, kiesSpawnPoort, poortBakens, updatePoortBakens,
+  aantalActievePoorten, kiesActievePoorten, eliteGewicht, maxActieveRobotsVoorWave, ROBOT_TYPE_VANAF, ROBOT_TYPE_TIP, ROBOT_WEERGAVENAMEN, ROBOT_TYPE_MEERVOUD, waveBasisAantal, DERDE_POORT_VANAF, splitsRobot, kiesSpawnPoort, poortBakens, updatePoortBakens,
   // Ticket D29: wapenbereik.
   WAPEN_BEREIK, raycaster,
   // Ticket D10: bouwplekken.

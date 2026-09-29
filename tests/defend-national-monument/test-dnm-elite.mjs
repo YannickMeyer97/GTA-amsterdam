@@ -34,6 +34,8 @@ const r = await page.evaluate(() => {
     nooitSplinter: !w20.has('splinter'),
   };
   uit.banner = { w6: d.waveBannerTekst(6), w8: d.waveBannerTekst(8) };
+  // Ticket D70: vanaf wave 11 groeit hun aandeel.
+  uit.groei = [8, 10, 11, 15, 19].map(w => d.eliteGewicht(w));
 
   // 2. De Pantserbot: een derde van de torenschade, volle spelerschade.
   d.resetRun();
@@ -131,6 +133,7 @@ const r = await page.evaluate(() => {
 
 check('Pantserbot pas vanaf wave 6, Splitser vanaf wave 8 in de mix', r.mix.pantserVanaf6 && r.mix.splitserVanaf8, r.mix);
 check('Een splinter komt nooit uit een poort', r.mix.nooitSplinter, r.mix);
+check('Hun gewicht is 3 tot wave 10 en groeit daarna elke wave (D70)', r.groei[0] === 3 && r.groei[1] === 3 && r.groei[2] > 3 && r.groei[3] > r.groei[2] && r.groei[4] > r.groei[3], r.groei);
 check('De wavebanner meldt ze de eerste keer', /Pantserbots/.test(r.banner.w6) && /Splitsers/.test(r.banner.w8), r.banner);
 check('Pantserbot: een torenschot doet een derde van zijn schade', Math.abs((r.pantser.hp0 - r.pantser.naToren) - r.pantser.torenSchade / 3) < 1e-9, r.pantser);
 check('Pantserbot: de speler doet gewoon 1 per treffer', Math.abs((r.pantser.naToren - r.pantser.naSpeler) - 1) < 1e-9, r.pantser);

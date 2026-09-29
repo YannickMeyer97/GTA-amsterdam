@@ -159,17 +159,18 @@ const waveControle = await page.evaluate((waves) => {
       thema: d.baasVoorWave(n) ? `baas ${d.baasVoorWave(n)}` : d.themaVoorWave(n)?.naam ?? null,
       teSpawnen: d.spel.teSpawnen,
       maxActieveRobots: d.spel.maxActieveRobots,
-      verwachtMaxActieveRobots: Math.min(5 + Math.floor(n * 0.65), 13),
+      // D70: vanaf wave 13 één extra per wave, tot 20.
+      verwachtMaxActieveRobots: Math.min(Math.min(5 + Math.floor(n * 0.65), 13) + Math.max(0, n - 12), 20),
     };
   });
-}, [1, 5, 10, 13, 20]);
+}, [1, 5, 10, 12, 13, 16, 20]);
 for (const w of waveControle) {
   check(`startWave(${w.wave}): waveDoel = 10 + ${w.wave}·3${w.thema ? ` × factor (${w.thema})` : ''}`, w.waveDoel === w.verwachtWaveDoel, w);
   check(`startWave(${w.wave}): teSpawnen begint gelijk aan waveDoel`, w.teSpawnen === w.waveDoel, w);
-  check(`startWave(${w.wave}): maxActieveRobots = min(5 + ⌊${w.wave}·0,65⌋, 13)`, w.maxActieveRobots === w.verwachtMaxActieveRobots, w);
+  check(`startWave(${w.wave}): maxActieveRobots = min(5 + ⌊${w.wave}·0,65⌋, 13), vanaf wave 13 +1 per wave tot 20 (D70)`, w.maxActieveRobots === w.verwachtMaxActieveRobots, w);
 }
-check('Het plafond van 13 actieve robots is bereikt bij wave 13 én blijft zo bij wave 20',
-  waveControle.find(w => w.wave === 13).maxActieveRobots === 13 && waveControle.find(w => w.wave === 20).maxActieveRobots === 13,
+check('Tot wave 12 de oude formule (12 bij wave 12); daarna groeit het (D70): 14 bij wave 13, 17 bij wave 16, 20 bij wave 20',
+  waveControle.find(w => w.wave === 12).maxActieveRobots === 12 && waveControle.find(w => w.wave === 13).maxActieveRobots === 14 && waveControle.find(w => w.wave === 16).maxActieveRobots === 17 && waveControle.find(w => w.wave === 20).maxActieveRobots === 20,
   waveControle);
 
 // --- 5. kiesRobotTypeVoorWave: alleen ontgrendelde types per wave ----------

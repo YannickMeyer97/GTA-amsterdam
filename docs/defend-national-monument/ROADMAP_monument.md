@@ -1405,7 +1405,8 @@ Verder:
 | ☑ | **D67** | Derde poort vanaf wave 11 (audit 4) |
 | ☑ | **D68** | Elite-robots: Pantserbot en Splitser (audit 4) |
 | ☑ | **D69** | Een run van 20 waves, met De Heimachine als vierde baas |
-| ☐ | **D70** | Herijken na D66–D69 |
+| ☑ | **D70** | Herijken na D66–D69 |
+| ☐ | **M5** | Speeltest door de eigenaar na D67–D70 |
 
 **Keuzes van de eigenaar na D65:**
 - de moeilijkheidskeuze heet "Moeilijkheid: Normaal / Zwaar";
@@ -1604,6 +1605,76 @@ toont "· zwaar" (was een maantje). Intern heten sleutel en vlag nog
   - `test-dnm-baas`, `-overwinning`, `-ontgrendelingen`, `-themagolven` en
     `-hints` volgen de run van 20 waves.
   - `meet-dnm-bazen` meet ook wave 20.
+
+**D70 — herijken, verslag.**
+- **De Heimachine** was onverslaanbaar: een toren binnen bereik lag 4 van
+  de 5 s stil. Nu:
+  - een klap om de 6 s (was 5), 2,5 s stil (was 4), dus ~40% van de tijd;
+  - 200 HP (was 260).
+- **De Dijkbreker** haalde in elke goede run het monument (auditpunt 8):
+  75 HP, was 90.
+- **Elite-robots** worden vanaf wave 11 elke wave talrijker
+  (`eliteGewicht`: gewicht 3, daarna +0,6 per wave; 8,4 bij wave 19).
+- **Meer robots tegelijk** vanaf wave 13 (`maxActieveRobotsVoorWave`): +1
+  per wave, tot 20 (was vast 13). Met drie poorten waren dat ~4 robots per
+  straat.
+- `meet-dnm-run` kreeg een trefkans (`node meet-dnm-run.mjs goed 0.6`):
+  een speler die nooit mist, is geen mens. `meet-dnm-bazen` meet met een
+  argument één wave (`node meet-dnm-bazen.mjs 20`).
+
+**Metingen, bazen** (`meet-dnm-bazen`, 3 pogingen, speler aan de rand):
+
+| Baas | Alleen de speler | Kanon + Hoogspanning | 2 Kanonnen |
+|---|---|---|---|
+| Dijkbreker (75) | door | 3× dood | 3× dood |
+| Stoomwals (180) | door | 2× dood | 3× dood |
+| Heimachine (200) | door | 1× dood | 3× dood |
+
+De eindbaas is dus iets zwaarder dan de Stoomwals, en vraagt de juiste
+torens op de juiste plek.
+
+**Metingen, hele runs** (`meet-dnm-run`):
+
+| Strategie | Uitkomst | Duur | Kills door torens |
+|---|---|---|---|
+| goed, trefkans 1 (2×) | gewonnen, 1 ster | 18:15 en 19:06 | 78–79% |
+| goed, trefkans 0,6 (2×) | gewonnen, 1 ster | 18:45 en 18:46 | 77–80% |
+| zwak | verloren in wave 15 | 15:52 | 32% |
+
+- De duur zit op het doel (~20 minuten).
+- Met trefkans 0,6 haalt elke baas het monument, en repareren houdt de run
+  overeind: winnen blijft haalbaar, sterren niet.
+- **Wat de simulatie niet laat zien:** tussen de bazen loopt het monument
+  ook nu niets op, ook met trefkans 0,6. De oorzaak zit in de opzet:
+  - een gewone robot heeft in elke wave 1 HP (een tank 3);
+  - één stroomstoot van de Hoogspanning doodt er vijf;
+  - een volledig uitgebouwde straat laat dus niets door.
+
+  Hogere HP per wave zou vooral het spelerswapen raken (1 per treffer), en
+  dat is het omgekeerde van wat we willen. De gesimuleerde speler loopt
+  bovendien niet naar een baas toe, en koopt alleen op de actieve poorten.
+  Of de druk nu goed voelt, moet de speeltest (M5) laten zien.
+- **Ook open:**
+  - na wave 15 stapelt het geld op (€3.300–5.500 aan het eind; auditpunt
+    14);
+  - in de simulatie is 1 ster de norm voor een goede run, omdat meestal
+    een of twee bazen het monument halen. Na M5 kijken of de
+    sterrendrempels (≤ 10% / ≤ 50%) passen bij vier bazen.
+- **Tests:**
+  - `test-dnm-kern` volgt het nieuwe plafond;
+  - `test-dnm-elite` controleert de groei;
+  - `test-dnm-heimachine` en `test-dnm-bazen` blijven groen met de nieuwe
+    waarden.
+- 40 DNM-scripts groen. De prestaties blijven ruim binnen het budget: 30
+  robots tegelijk kosten 330 draw calls.
+
+**M5 — vragen voor de speeltest:**
+1. Voelen de waves 11–19 nu als druk (drie straten, Pantserbots,
+   Splitsers, meer robots tegelijk)?
+2. Is de Heimachine eerlijk: zie je de klap aankomen, en weet je wat je
+   moet doen?
+3. Hoeveel sterren haal je, en voelt dat terecht?
+4. Hoe lang duurde je run, en voelde 20 waves te lang of goed?
 
 ### Backlog — bewust ná alle bovenstaande tickets
 
