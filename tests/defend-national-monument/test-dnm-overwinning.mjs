@@ -32,17 +32,19 @@ const stand = () => page.evaluate(() => {
     highscore: d.leesHighscore(),
   };
 });
+// D62: sterren volgen de opgelopen schade; `hp` zet beide (100 − hp opgelopen).
 const naarWave = (wave, hp = 100) => page.evaluate(([wave, hp]) => {
   const d = window.DamChaosDebug;
   d.resetRun();
   d.spel.volgendePoorten = [];
   d.startWave(wave);
   d.spel.monumentHP = hp;
+  d.spel.schadeOpgelopen = 100 - hp;
 }, [wave, hp]);
 
 // 1. Sterren per drempel (pure functie).
-const sterren = await page.evaluate(() => [100, 90, 89.9, 50, 49.9, 5].map(hp => window.DamChaosDebug.sterrenVoor(hp)));
-check('Sterren: ≥ 90% → 3, ≥ 50% → 2, anders 1', JSON.stringify(sterren) === JSON.stringify([3, 3, 2, 2, 1, 1]), sterren);
+const sterren = await page.evaluate(() => [0, 10, 10.1, 40, 40.1, 95].map(s => window.DamChaosDebug.sterrenVoor(s)));
+check('Sterren naar opgelopen schade (D62): ≤ 10% → 3, ≤ 40% → 2, anders 1', JSON.stringify(sterren) === JSON.stringify([3, 3, 2, 2, 1, 1]), sterren);
 
 // 2. De run is 15 waves; de HUD toont dat.
 await naarWave(7);
@@ -55,13 +57,13 @@ await rondAf();
 const na14 = await stand();
 check('Na wave 14: nog geen overwinning, geen scherm', !na14.gewonnen && !na14.open && !na14.scherm, na14);
 
-// 4. Wave 15 afronden met het monument op 60%: gewonnen, 2 sterren.
+// 4. Wave 15 afronden met 40% opgelopen schade (monument op 60%): gewonnen, 2 sterren.
 await naarWave(15, 60);
 await rondAf();
 const gewonnen = await stand();
 check('Na wave 15: gewonnen, het overwinningsscherm staat open', gewonnen.gewonnen && gewonnen.open && gewonnen.scherm && !gewonnen.startscherm && !gewonnen.eindscherm, gewonnen);
-check('Monument op 60%: 2 van de 3 sterren, en dat staat op het scherm', gewonnen.sterren === 2 && gewonnen.gevuld === 2 && gewonnen.sterrenTekst.length === 3, gewonnen);
-check('De ondertitel noemt 15 waves en het monument (60%)', /15 waves/.test(gewonnen.ondertitel) && /60%/.test(gewonnen.ondertitel), gewonnen.ondertitel);
+check('40% opgelopen: 2 van de 3 sterren, en dat staat op het scherm', gewonnen.sterren === 2 && gewonnen.gevuld === 2 && gewonnen.sterrenTekst.length === 3, gewonnen);
+check('De ondertitel noemt 15 waves, de opgelopen schade (40%) en de drempels', /15 waves/.test(gewonnen.ondertitel) && /40% schade opgelopen/.test(gewonnen.ondertitel) && /≤ 10%/.test(gewonnen.ondertitel), gewonnen.ondertitel);
 check('Eerste overwinning: dat staat erbij, met de statistieken van de run', gewonnen.record === 'EERSTE OVERWINNING!' && /Score/.test(gewonnen.stats) && /Speelduur/.test(gewonnen.stats), gewonnen);
 check('De overwinning is bewaard: gewonnen, beste sterren 2', gewonnen.highscore?.gewonnen === true && gewonnen.highscore?.besteSterren === 2, gewonnen.highscore);
 
@@ -154,6 +156,26 @@ const corrupt = await page.evaluate(() => {
   return window.DamChaosDebug.leesHighscore();
 });
 check('Ongeldige "gewonnen" of sterren kosten het record niet, alleen dat veld', corrupt.score === 10 && corrupt.gewonnen === false && corrupt.besteSterren === 0, corrupt);
+
+// 12. Ticket D62: repareren koopt geen sterren. 5 robots halen het monument
+// (5 × 8 = 40%), dan terugrepareren naar 100%: nog steeds 2 sterren.
+const repareren = await page.evaluate(() => {
+  const d = window.DamChaosDebug;
+  localStorage.clear();
+  d.resetRun();
+  d.startWave(15);
+  for (let i = 0; i < 5; i++) { d.spawnRobot(null, 'normal'); d.robotRaaktMonument(d.robots[d.robots.length - 1]); }
+  const na = { hp: d.spel.monumentHP, opgelopen: d.spel.schadeOpgelopen };
+  d.geldZet(1000);
+  d.koopMonumentReparatie(); d.koopMonumentReparatie();
+  for (const x of [...d.robots]) { d.scene.remove(x.groep); d.robots.splice(d.robots.indexOf(x), 1); }
+  d.spel.teSpawnen = 0;
+  d.updateWaveSysteem(0.1);
+  return { na, hpBijWinst: d.spel.monumentHP, opgelopen: d.spel.schadeOpgelopen, sterren: d.spel.sterren };
+});
+check('Repareren koopt geen sterren: 40% opgelopen, teruggerepareerd naar 100%, blijft 2 sterren', repareren.na.opgelopen === 40 && repareren.hpBijWinst === 100 && repareren.opgelopen === 40 && repareren.sterren === 2, repareren);
+const naReset = await page.evaluate(() => { const d = window.DamChaosDebug; d.resetRun(); return d.spel.schadeOpgelopen; });
+check('Een nieuwe run begint met 0% opgelopen schade', naReset === 0, naReset);
 
 const fails = report(errs);
 await browser.close();

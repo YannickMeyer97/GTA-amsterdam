@@ -3969,6 +3969,7 @@ const spel = {
   sterren: 0,               // Ticket D55: 1–3, vastgelegd op het moment van de overwinning
   overwinningOpen: false,   // Ticket D55: het overwinningsscherm staat open (spel staat stil)
   baas: null,               // Ticket D56: sleutel uit BAZEN voor een baaswave, of null
+  schadeOpgelopen: 0,       // Ticket D62: alle monumentschade van de run, reparaties niet afgetrokken
   baasGespawnd: false,      // Ticket D56: de baas van deze wave is al op pad
   zwareNacht: false,        // Ticket D59: deze run is een zware nacht (vast bij de start)
   laatsteSpawnPoort: 'Damrak',
@@ -4217,12 +4218,15 @@ function poortenTekst(namen) {
 
 // Ticket D55: een run heeft een einde. Na wave RUN_WAVES heb je gewonnen;
 // daarna kun je eindeloos doorspelen voor je highscore. Sterren meten hoe
-// goed het ging: het monument bij de overwinning.
+// goed het ging.
+// Ticket D62: naar de schade die het monument in de hele run opliep, niet
+// naar de stand bij de overwinning. Repareren houdt je in leven, maar koopt
+// geen sterren meer (eerst kon je met het geld van het eind van de run
+// vlak voor de laatste robot naar 100% repareren).
 const RUN_WAVES = 15;
-const STER_DREMPELS = [0.5, 0.9];   // ≥ 50% → 2 sterren, ≥ 90% → 3
-function sterrenVoor(monumentHP) {
-  const f = monumentHP / MONUMENT_MAX_HP;
-  return 1 + STER_DREMPELS.filter(d => f >= d).length;
+const STER_DREMPELS = [40, 10];   // ≤ 40% opgelopen → 2 sterren, ≤ 10% → 3
+function sterrenVoor(schadeOpgelopen) {
+  return 1 + STER_DREMPELS.filter(d => schadeOpgelopen <= d).length;
 }
 function waveLabel(wave) {
   const nacht = spel.zwareNacht ? ' ☾' : '';   // Ticket D59
@@ -4525,6 +4529,7 @@ function robotRaaktMonument(robot) {
   scene.remove(robot.groep);
   robots.splice(robots.indexOf(robot), 1);
   const schade = robot.monumentSchade ?? 8;
+  spel.schadeOpgelopen += schade;   // Ticket D62
   if (robot.baas) { toonWaveBanner(`${BAZEN[robot.type].naam} raakt het monument!`); updateBaasUI(); }   // Ticket D56
   spel.monumentHP -= schade;
   spel.combo = 0;
@@ -4601,7 +4606,7 @@ function eindigRun() {
 function winRun() {
   if (spel.gewonnen || spel.gameOver) return;
   spel.gewonnen = true;
-  spel.sterren = sterrenVoor(spel.monumentHP) + (spel.zwareNacht ? 1 : 0);   // D59: zware nacht +1
+  spel.sterren = sterrenVoor(spel.schadeOpgelopen) + (spel.zwareNacht ? 1 : 0);   // D59: zware nacht +1; D62: opgelopen schade
   spel.overwinningOpen = true;
   schietKnopIngedrukt = false;
   const nieuw = registreerMijlpaal(v => { v.overwinningen += 1; v.sterren += spel.sterren; });   // Ticket D59
@@ -4809,7 +4814,7 @@ function toonOverwinningscherm(uitslag = null, ontgrendeld = []) {
   document.getElementById('winSterren').innerHTML = '★'.repeat(n) + `<span class="leeg">${'★'.repeat(Math.max(0, max - n))}</span>`;
   document.getElementById('winOntgrendeld').textContent = ontgrendeld.length ? `Ontgrendeld: ${ontgrendeld.map(o => o.naam).join(', ')}` : '';   // D59
   document.getElementById('winOndertitel').textContent =
-    `${RUN_WAVES} waves overleefd, het monument staat nog op ${Math.max(0, Math.ceil(spel.monumentHP))}%`;
+    `${RUN_WAVES} waves overleefd, ${Math.round(spel.schadeOpgelopen)}% schade opgelopen (★★★ bij ≤ ${STER_DREMPELS[1]}%, ★★ bij ≤ ${STER_DREMPELS[0]}%)`;   // D62
   const recordEl = document.getElementById('winRecord');
   const nieuw = !!(uitslag?.eerste || uitslag?.meerSterren);
   recordEl.classList.toggle('nieuw', nieuw);

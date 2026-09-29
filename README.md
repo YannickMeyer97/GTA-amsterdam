@@ -80,7 +80,9 @@ rechtsboven om terug te gaan naar het hoofdmenu.
 - **Bazen** komen op wave 5 (de Sloopkogel), 10 (de Dijkbreker) en 15 (de
   Stoomwals). Elke baas vraagt een eigen aanpak; de aankondiging geeft een
   tip.
-- **Sterren:** win je de run, dan krijg je 1 tot 3 sterren. Met sterren en
+- **Sterren:** win je de run, dan krijg je 1 tot 3 sterren, naar de schade
+  die het monument in de hele run opliep (3 sterren bij hooguit 10%;
+  repareren telt niet mee). Met sterren en
   verslagen bazen speel je nieuwe torenrichtingen, een zwaardere nacht en
   een avondsfeer vrij.
 - **Instellingen** op het startscherm (ook met `Esc`): beeldkwaliteit,

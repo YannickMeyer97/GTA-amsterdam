@@ -1397,7 +1397,7 @@ Verder:
 | | Ticket | Kern |
 | --- | --- | --- |
 | ☑ | **D61** | Overal "Defend National Monument"; uitleg, hulpbalk, eenmalige hints, README (audit 1) |
-| ☐ | **D62** | Eerlijke sterren: naar de opgelopen schade, niet te koop met reparaties (audit 2) |
+| ☑ | **D62** | Eerlijke sterren: naar de opgelopen schade, niet te koop met reparaties (audit 2) |
 | ☐ | **D63** | De eindbaas maakt de run niet meer in één klap ongedaan (audit 3) |
 | ☐ | **D64** | Volumeregelaar |
 | ☐ | **D65** | M4: niveau 3 duurder, Stoomwals laat zichtbaar robots los, langere bouwfase, bereik Sloopkogel |
@@ -1424,6 +1424,21 @@ Verder:
   game.
 - **Test:** `test-dnm-hints` (12 checks), met een overlapcontrole van de
   hintbox op 1024×640.
+
+**D62 — eerlijke sterren, verslag.**
+- `spel.schadeOpgelopen` telt alle monumentschade van de run op;
+  reparaties trekken er niets van af.
+- Sterren: 3 bij hooguit 10% opgelopen, 2 bij hooguit 40%, anders 1
+  (Zware nacht nog steeds +1).
+- Eerst telde de stand bij de overwinning, en die kon je met het geld van
+  het eind van de run naar 100% repareren.
+- Het overwinningsscherm noemt de opgelopen schade en de drempels.
+- **Ter vergelijking** (de automatische runs uit de audit): een goede run
+  liep 31–40% op, vooral doordat de Dijkbreker het monument haalde. Dat is
+  nu 2 sterren; 3 sterren vraagt een run waarin geen baas het monument
+  haalt.
+- **Test:** `test-dnm-overwinning` (23 checks), met een run die 40% oploopt
+  en terugrepareert naar 100%: nog steeds 2 sterren.
 
 ### Backlog — bewust ná alle bovenstaande tickets
 
