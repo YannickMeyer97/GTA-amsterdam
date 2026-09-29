@@ -44,7 +44,7 @@ const nieuw = await met({}, async page => {
 check('Een nieuwe speler: alles op slot', Object.values(nieuw.open).every(v => v === false), nieuw.open);
 check('Een vergrendelde richting is niet te kopen', nieuw.ui.geweigerd === false && nieuw.ui.niveau === 2, nieuw.ui);
 check('Het ontgrendelpaneel opent vanaf het startscherm (0/5) en noemt hoe je elk ding krijgt', nieuw.ui.knop === 'Ontgrendelingen 0/5' && nieuw.ui.paneel === 'block' && /versla de Sloopkogel/.test(nieuw.ui.lijst) && /verzamel 12 sterren \(0\/12\)/.test(nieuw.ui.lijst) && nieuw.ui.startschermOpen, nieuw.ui);
-check('Zware nacht staat op slot met de voortgang, en kiezen kan niet', /🔒 0\/6★/.test(nieuw.ui.nacht) && nieuw.ui.nachtKiezen === false && nieuw.ui.zwaar === false, nieuw.ui);
+check('Zwaar staat op slot met de voortgang, en kiezen kan niet', /^Zwaar 🔒 0\/6★/.test(nieuw.ui.nacht) && nieuw.ui.nachtKiezen === false && nieuw.ui.zwaar === false, nieuw.ui);
 
 // 2. Mijlpalen in het spel: baas verslaan en winnen.
 const spelen = await met({}, page => page.evaluate(() => {
@@ -113,7 +113,7 @@ const zwaar = await met(bewaar(JSON.stringify({ bazen: {}, overwinningen: 2, ste
   return uit;
 }));
 check('Met 6 sterren is Zware nacht open en te kiezen', zwaar.open && zwaar.kies, zwaar);
-check('Zware nacht: 1,3 × zoveel robots, en de HUD toont het maantje', zwaar.doel.zwaar === zwaar.doel.verwacht && zwaar.doel.zwaar > zwaar.doel.normaal && /☾/.test(zwaar.doel.hud), zwaar.doel);
+check('Zwaar (D66, was "Zware nacht"): 1,3 × zoveel robots, en de HUD zegt "zwaar"', zwaar.doel.zwaar === zwaar.doel.verwacht && zwaar.doel.zwaar > zwaar.doel.normaal && /· zwaar/.test(zwaar.doel.hud), zwaar.doel);
 check('Zware nacht: een overwinning met 3 sterren wordt er 4 (en 4 plekken op het scherm)', zwaar.sterren === 4 && zwaar.getoond === 4 && zwaar.besteSterren === 4, zwaar);
 check('Uitzetten midden in een run geldt pas vanaf de volgende run', zwaar.middenInRun === true && zwaar.volgendeRun === false, zwaar);
 

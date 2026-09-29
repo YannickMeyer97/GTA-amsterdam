@@ -83,7 +83,7 @@ rechtsboven om terug te gaan naar het hoofdmenu.
 - **Sterren:** win je de run, dan krijg je 1 tot 3 sterren, naar de schade
   die het monument in de hele run opliep (3 sterren bij hooguit 10%;
   repareren telt niet mee). Met sterren en
-  verslagen bazen speel je nieuwe torenrichtingen, een zwaardere nacht en
+  verslagen bazen speel je nieuwe torenrichtingen, de moeilijkheid Zwaar en
   een avondsfeer vrij.
 - **Instellingen** op het startscherm (ook met `Esc`): beeldkwaliteit,
   muisgevoeligheid en volume.

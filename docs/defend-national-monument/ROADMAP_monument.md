@@ -1401,6 +1401,22 @@ Verder:
 | ☑ | **D63** | De eindbaas maakt de run niet meer in één klap ongedaan (audit 3) |
 | ☑ | **D64** | Volumeregelaar |
 | ☑ | **D65** | M4: niveau 3 duurder, Stoomwals laat zichtbaar robots los, langere bouwfase, bereik Sloopkogel |
+| ☑ | **D66** | "Nacht: Zware nacht" heet nu "Moeilijkheid: Zwaar (+1★)" |
+| ☐ | **D67** | Derde poort vanaf wave 11 (audit 4) |
+| ☐ | **D68** | Elite-robots: Pantserbot en Splitser (audit 4) |
+| ☐ | **D69** | Een run van 20 waves, met De Heimachine als vierde baas |
+| ☐ | **D70** | Herijken na D66–D69 |
+
+**Keuzes van de eigenaar na D65:**
+- de moeilijkheidskeuze heet "Moeilijkheid: Normaal / Zwaar";
+- tegen de lege middenfase: een derde poort vanaf wave 11 en
+  elite-robots met een eigen trucje;
+- een run wordt 20 waves, met een vierde baas.
+
+**D66 — verslag.** De rij "Nacht" heet "Moeilijkheid", met "Normaal" en
+"Zwaar (+1★)". Het ontgrendelpaneel noemt "Moeilijkheid Zwaar", en de HUD
+toont "· zwaar" (was een maantje). Intern heten sleutel en vlag nog
+`zwareNacht`, zodat bewaarde keuzes blijven werken.
 
 **D61 — naam, uitleg en hints, verslag.**
 - **Titel:** "Defend National Monument" in de paginatitel en op het

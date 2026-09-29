@@ -514,10 +514,10 @@
     <div class="instelRij"><input type="range" id="gevoeligheid" min="0.3" max="2" step="0.1" value="1"><span id="gevoeligheidWaarde">1,0×</span></div>
     <span>Geluid</span>
     <div class="instelRij"><input type="range" id="volume" min="0" max="100" step="5" value="100"><span id="volumeWaarde">100%</span></div>
-    <span>Nacht</span>
+    <span>Moeilijkheid</span>
     <div id="nachtKeuze">
       <span class="kwaliteitKnop" data-nacht="normaal">Normaal</span>
-      <span class="kwaliteitKnop" data-nacht="zwaar">Zware nacht</span>
+      <span class="kwaliteitKnop" data-nacht="zwaar">Zwaar (+1★)</span>
     </div>
     <span>Sfeer</span>
     <div id="sfeerKeuze">
@@ -3707,7 +3707,7 @@ function werkOntgrendelUIBij() {
   const zwaarOpen = ontgrendeld('zwareNacht'), avondOpen = ontgrendeld('avond');
   for (const k of nachtKnoppen) {
     k.classList.toggle('actief', (k.dataset.nacht === 'zwaar') === (instellingen.zwareNacht && zwaarOpen));
-    if (k.dataset.nacht === 'zwaar') { k.classList.toggle('slot', !zwaarOpen); k.textContent = zwaarOpen ? 'Zware nacht' : `Zware nacht 🔒 ${Math.min(voortgang.sterren, 6)}/6★`; }
+    if (k.dataset.nacht === 'zwaar') { k.classList.toggle('slot', !zwaarOpen); k.textContent = zwaarOpen ? 'Zwaar (+1★)' : `Zwaar 🔒 ${Math.min(voortgang.sterren, 6)}/6★`; }
   }
   for (const k of sfeerKnoppen) {
     k.classList.toggle('actief', (k.dataset.sfeer === 'avond') === (instellingen.avond && avondOpen));
@@ -4239,7 +4239,7 @@ function sterrenVoor(schadeOpgelopen) {
   return 1 + STER_DREMPELS.filter(d => schadeOpgelopen <= d).length;
 }
 function waveLabel(wave) {
-  const nacht = spel.zwareNacht ? ' ☾' : '';   // Ticket D59
+  const nacht = spel.zwareNacht ? ' · zwaar' : '';   // Ticket D59; D66: heet nu "Zwaar"
   return (!spel.gewonnen && wave <= RUN_WAVES ? `${wave} / ${RUN_WAVES}` : `${wave}`) + nacht;
 }
 
@@ -4644,7 +4644,8 @@ const ONTGRENDELINGEN = [
   { id: 'scherpschutter', naam: 'Scherpschutter', wat: 'richting B van de geschuttoren', hint: 'versla de Sloopkogel', open: v => v.bazen.sloopkogel },
   { id: 'stroomval', naam: 'Stroomval', wat: 'richting B van de Bovenleiding', hint: 'versla de Dijkbreker', open: v => v.bazen.dijkbreker },
   { id: 'stadsmuur', naam: 'Stadsmuur', wat: 'richting B van het hek', hint: 'win een run', open: v => v.overwinningen >= 1 },
-  { id: 'zwareNacht', naam: 'Zware nacht', wat: 'meer en snellere robots, +1 ster per overwinning', hint: 'verzamel 6 sterren', doel: 6, open: v => v.sterren >= 6 },
+  // Ticket D66 (M4): heet voor de speler "Moeilijkheid: Zwaar"; intern nog zwareNacht.
+  { id: 'zwareNacht', naam: 'Moeilijkheid Zwaar', wat: 'meer en snellere robots, +1 ster per overwinning', hint: 'verzamel 6 sterren', doel: 6, open: v => v.sterren >= 6 },
   { id: 'avond', naam: 'Avond op de Dam', wat: 'de Dam bij zonsondergang (alleen uiterlijk)', hint: 'verzamel 12 sterren', doel: 12, open: v => v.sterren >= 12 },
 ];
 function legeVoortgang() { return { bazen: { sloopkogel: false, dijkbreker: false, stoomwals: false }, overwinningen: 0, sterren: 0 }; }
