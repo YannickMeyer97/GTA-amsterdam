@@ -4110,7 +4110,8 @@ function kiesRobotTypeVoorWave(wave) {
 // Ticket D52 (M3): 20 → 10 s, de eigenaar vond de pauze te lang. Op de
 // nieuwe kaart ligt de verste gewone bouwplek 23 m van de monumentrand
 // (6,6 s heen en terug); bouwen kan ook tijdens een wave.
-const BOUWFASE_DUUR = 10;
+// Ticket D65 (M4: "iets langer tussendoor om naar de torens te kijken"): 15 s.
+const BOUWFASE_DUUR = 15;
 // Ticket D16: wave-bonus was 40 + 15·wave. Vroeg in de run was dat bijna
 // 40 % van alle inkomsten (€425 van €1.123 na wave 5), en daarmee kon je
 // torens kopen vóór je er één robot voor had hoeven raken. De perfect-bonus
@@ -5264,7 +5265,8 @@ const GESCHUT_NIVEAUS = [
   { prijs: 150, bereik: 11, schadePerSchot: 2, schotInterval: 1.6, hp: 60 },
   { prijs: 200, bereik: 13, schadePerSchot: 2, schotInterval: 1.1, hp: 90 },
   // Kanon: de kogel ontploft en raakt ook robots eromheen.
-  { prijs: 300, bereik: 13, schadePerSchot: 3, schotInterval: 1.2, hp: 140, splash: 3, splashSchade: 2 },
+  // Ticket D65 (M4: "niveau 3 is echt goed, mag duurder"): €450, was €300.
+  { prijs: 450, bereik: 13, schadePerSchot: 3, schotInterval: 1.2, hp: 140, splash: 3, splashSchade: 2 },
 ];
 // Ticket D48: de Bovenleiding. Een tramdraadmast die per schot een
 // stroomstoot geeft. De stoot treft de dichtstbijzijnde robot binnen `bereik`
@@ -5283,7 +5285,7 @@ const BOVENLEIDING_NIVEAUS = [
   { prijs: 150, bereik: 10, schade: 1,   doelen: 3, sprong: 4,   schotInterval: 2.0, hp: 50 },
   { prijs: 200, bereik: 11, schade: 1.5, doelen: 4, sprong: 4.5, schotInterval: 1.8, hp: 75 },
   // Ticket D58, richting A — Hoogspanning: meer robots, langere sprongen.
-  { prijs: 300, bereik: 12, schade: 2,   doelen: 5, sprong: 6,   schotInterval: 1.6, hp: 110 },
+  { prijs: 450, bereik: 12, schade: 2,   doelen: 5, sprong: 6,   schotInterval: 1.6, hp: 110 },   // D65: was €300
 ];
 const BOVENLEIDING_SPRONG_FACTOR = 1;
 // Ticket D54: tanks zijn geaard, stroom doet op hen de helft. Samen met het
@@ -5306,7 +5308,9 @@ const BOVENLEIDING_TANK_FACTOR = 0.5;
 // waves (D53) duurt zo'n ronde gemiddeld 55 s (waves 1–12), dus 165 s.
 // Het inkomen wordt €9 / €18 / €30 per 10 s: alle drie in 167 s terug.
 const DRUKPERS_INTERVAL = 10;
-const DRUKPERS_TERUGVERDIEN_S = 165;
+// Ticket D65: met een bouwfase van 15 s duurt een ronde ~5 s langer (~63 s),
+// dus 190 s voor 3 rondes; inkomen €8 / €16 / €26 per 10 s.
+const DRUKPERS_TERUGVERDIEN_S = 190;
 const DRUKPERS_NIVEAUS = [
   { prijs: 150, hp: 60 },
   { prijs: 150, hp: 90 },
@@ -5319,7 +5323,7 @@ const HEK_NIVEAUS = [
   { prijs: 100, hp: 120 },
   { prijs: 100, hp: 200 },
   // Ticket D58, richting A — Prikkeldraad: wie erop slaat, krijgt schade terug.
-  { prijs: 150, hp: 300, terugSchade: 1 },
+  { prijs: 225, hp: 300, terugSchade: 1 },   // D65: was €150
 ];
 
 // Ticket D58: de twee richtingen op niveau 3, per torentype. Richting A is
@@ -5329,16 +5333,16 @@ const TOREN_RICHTINGEN = {
   geschut: {
     kanon: { naam: 'Kanon', omschrijving: 'ontploffing raakt ook robots eromheen', stats: GESCHUT_NIVEAUS[2] },
     scherpschutter: { naam: 'Scherpschutter', omschrijving: 'heel ver en hard, maar traag',
-      stats: { prijs: 300, bereik: 22, schadePerSchot: 6, schotInterval: 1.6, hp: 110 } },
+      stats: { prijs: 450, bereik: 22, schadePerSchot: 6, schotInterval: 1.6, hp: 110 } },
   },
   bovenleiding: {
     hoogspanning: { naam: 'Hoogspanning', omschrijving: 'springt over naar 5 robots', stats: BOVENLEIDING_NIVEAUS[2] },
     stroomval: { naam: 'Stroomval', omschrijving: 'minder schade, getroffen robots lopen trager',
-      stats: { prijs: 300, bereik: 12, schade: 1, doelen: 5, sprong: 5.5, schotInterval: 1.3, hp: 110, vertraging: 0.5, vertragingDuur: 3 } },
+      stats: { prijs: 450, bereik: 12, schade: 1, doelen: 5, sprong: 5.5, schotInterval: 1.3, hp: 110, vertraging: 0.5, vertragingDuur: 3 } },
   },
   hek: {
     prikkeldraad: { naam: 'Prikkeldraad', omschrijving: 'wie erop slaat, raakt zichzelf', stats: HEK_NIVEAUS[2] },
-    stadsmuur: { naam: 'Stadsmuur', omschrijving: 'dubbel zo sterk', stats: { prijs: 200, hp: 600 } },
+    stadsmuur: { naam: 'Stadsmuur', omschrijving: 'dubbel zo sterk', stats: { prijs: 300, hp: 600 } },   // D65: was €200
   },
 };
 const RICHTING_NIVEAU = 3;
@@ -6392,7 +6396,7 @@ function bouwBaasDelen(type, groep) {
     const kogel = new THREE.Mesh(baasGeo('kogel', () => new THREE.SphereGeometry(0.42, 14, 10).translate(1.45, -0.1, 0)), BAAS_IJZER);
     pivot.add(ketting, kogel);
     groep.add(pivot);
-    return { velden: { kogelPivot: pivot, sloopTimer: SLOOPKOGEL_INTERVAL } };
+    return { velden: { kogelPivot: pivot, ketting, kogel, sloopTimer: SLOOPKOGEL_INTERVAL, slag: null } };
   }
   if (type === 'dijkbreker') {
     // Een stormram voor de borst en een groot schild dat open en dicht gaat.
@@ -6421,7 +6425,12 @@ function bouwBaasDelen(type, groep) {
 // De Sloopkogel slaat om de SLOOPKOGEL_INTERVAL seconden elke toren (en elk
 // hek) binnen SLOOPKOGEL_BEREIK. Een toren van niveau 1 (60 HP) is dan weg.
 const SLOOPKOGEL_INTERVAL = 2.5;
-const SLOOPKOGEL_BEREIK = 5;
+// Ticket D65 (M4: "haalt hij de torens die hij tegenkomt?"): 7 m, was 5 m.
+// Gemeten staan de bouwplekken 3,1–6,4 m van hun route; met 5 m sloeg hij
+// vanaf de Nieuwendijk niets en vanaf Damrak en Kalverstraat één van de
+// twee plekken mis. Met 7 m raakt hij elke toren langs zijn route.
+const SLOOPKOGEL_BEREIK = 7;
+const SLOOPKOGEL_SLAGDUUR = 0.45;   // zo lang zwaait de kogel uit naar de toren
 const SLOOPKOGEL_SCHADE = 70;
 // De Stoomwals laat om de STOOMWALS_LOSLAAT_INTERVAL seconden een paar
 // robots los op zijn plek op de route, en loopt onder de helft sneller.
@@ -6433,7 +6442,22 @@ const rookMateriaal = new THREE.MeshBasicMaterial({ color: 0x5b5f66, transparent
 
 function updateBaasGedrag(robot, dt) {
   if (robot.type === 'sloopkogel') {
-    robot.kogelPivot.rotation.y += dt * 2.4;
+    // Ticket D65: tijdens een slag zwaait de kogel uit naar de toren (de
+    // ketting rekt mee), zodat je ziet dat hij ook een toren op 7 m haalt.
+    if (robot.slag) {
+      robot.slag.t -= dt;
+      const ry = robot.groep.rotation.y, schaal = robot.groep.scale.x;
+      const lx = robot.slag.dx * Math.cos(ry) - robot.slag.dz * Math.sin(ry);
+      const lz = robot.slag.dx * Math.sin(ry) + robot.slag.dz * Math.cos(ry);
+      robot.kogelPivot.rotation.y = Math.atan2(-lz, lx);
+      const uit = Math.sin(Math.PI * Math.max(0, robot.slag.t) / SLOOPKOGEL_SLAGDUUR);   // heen en terug
+      const lengte = 1.45 + (robot.slag.afstand / schaal - 1.45) * uit;
+      robot.ketting.scale.x = lengte / 1.45;
+      robot.kogel.position.x = lengte - 1.45;
+      if (robot.slag.t <= 0) { robot.slag = null; robot.ketting.scale.x = 1; robot.kogel.position.x = 0; }
+    } else {
+      robot.kogelPivot.rotation.y += dt * 2.4;
+    }
     robot.sloopTimer -= dt;
     if (robot.sloopTimer <= 0) {
       robot.sloopTimer = SLOOPKOGEL_INTERVAL;
@@ -6442,7 +6466,12 @@ function updateBaasGedrag(robot, dt) {
       for (const toren of [...torens]) {
         if (toren.type === 'drukpers') continue;
         const punt = bouwwerkPunt(toren, p);
-        if (Math.hypot(punt.x - p.x, punt.z - p.z) <= SLOOPKOGEL_BEREIK) { beschadigToren(toren, SLOOPKOGEL_SCHADE); raak++; }
+        const afstand = Math.hypot(punt.x - p.x, punt.z - p.z);
+        if (afstand <= SLOOPKOGEL_BEREIK) {
+          if (!robot.slag) robot.slag = { dx: punt.x - p.x, dz: punt.z - p.z, afstand, t: SLOOPKOGEL_SLAGDUUR };
+          beschadigToren(toren, SLOOPKOGEL_SCHADE);
+          raak++;
+        }
       }
       if (raak) { speelHekKlap(); cameraShake = Math.max(cameraShake, 0.08); }
     }
@@ -6460,8 +6489,16 @@ function updateBaasGedrag(robot, dt) {
       brokstukken.push({ mesh: wolk, snelheid: new THREE.Vector3((Math.random() - 0.5) * 0.4, 1.4, (Math.random() - 0.5) * 0.4), draai: new THREE.Vector3(), leeftijd: kwaliteitPreset().brokstukLeven - 0.3, zwevend: true });
     }
     robot.loslaatTimer -= dt;
+    // Ticket D65 (M4: "dat hij robots loslaat zie je niet direct"): eerst
+    // een waarschuwing (stoomstoot en fluit), dan pas de robots.
+    if (!robot.waarschuwd && robot.loslaatTimer <= STOOMWALS_WAARSCHUWING && robot.route) {
+      robot.waarschuwd = true;
+      speelStoomfluit();
+      stoomStoot(robot.groep.position, 6);
+    }
     if (robot.loslaatTimer <= 0 && robot.route) {
       robot.loslaatTimer = STOOMWALS_LOSLAAT_INTERVAL;
+      robot.waarschuwd = false;
       laatRobotsLos(robot);
     }
     if (!robot.woedend && robot.hp <= robot.hpMax * STOOMWALS_WOEDE_DREMPEL) {
@@ -6472,16 +6509,34 @@ function updateBaasGedrag(robot, dt) {
     }
   }
 }
+// Ticket D65: de robots komen naast en vóór de wals tevoorschijn (niet meer
+// achter hem, waar de wals ze verborg), elk met een stoomwolk.
+const STOOMWALS_WAARSCHUWING = 1.2;   // s vóór het loslaten
+const STOOMWALS_BANEN = [-0.85, 0.85, 0];
 function laatRobotsLos(wals) {
   const poort = SPAWN_POORTEN.find(p => p.naam === wals.route.poort);
   for (let i = 0; i < STOOMWALS_LOSLAAT_AANTAL; i++) {
     spawnRobot(poort, i === 0 ? 'sprinter' : 'normal');
     const r = robots[robots.length - 1];
-    r.s = Math.max(0, wals.s - 1.5 - i);
+    r.laanFractie = STOOMWALS_BANEN[i % STOOMWALS_BANEN.length];
+    r.s = Math.min(wals.route.lengte - 1, wals.s + 1.2 + 0.4 * i);
     const plek = robotRoutePunt(r, r.s);
     r.groep.position.set(plek.x, 0, plek.z);
+    stoomStoot(r.groep.position, 3);
   }
+  toonPopup(`De Stoomwals laat ${STOOMWALS_LOSLAAT_AANTAL} robots los!`);
   speelPoortSignaal();
+}
+// Een korte stoomwolk op een plek (gedeelde geometrie, zwevend).
+function stoomStoot(positie, aantal) {
+  for (let i = 0; i < aantal; i++) {
+    const wolk = new THREE.Mesh(EFFECT_GEO.stof, stoomMateriaal);
+    wolk.position.set(positie.x + (Math.random() - 0.5) * 1.2, 1 + Math.random(), positie.z + (Math.random() - 0.5) * 1.2);
+    wolk.scale.setScalar(3 + Math.random() * 2);
+    wolk.castShadow = false;
+    scene.add(wolk);
+    brokstukken.push({ mesh: wolk, snelheid: new THREE.Vector3((Math.random() - 0.5), 1.6, (Math.random() - 0.5)), draai: new THREE.Vector3(), leeftijd: kwaliteitPreset().brokstukLeven - 0.5, zwevend: true });
+  }
 }
 
 function spawnRobot(poort = null, type = 'normal') {
@@ -7323,6 +7378,7 @@ function speelKerkklok() {
 // raakt: duidelijk anders dan speelSchot()/een normale treffer, zodat de
 // speler meteen hoort dat het schot niets deed.
 // Ticket D18: sissen bij oververhitting, een klikje als hij weer mag.
+function speelStoomfluit() { piep('sine', 740, 760, 0.35, 0.12); setTimeout(() => piep('sine', 988, 1000, 0.45, 0.12), 180); }   // Ticket D65
 function speelBaasVerslagen() { piep('sawtooth', 220, 60, 0.7, 0.18); setTimeout(() => piep('triangle', 523, 1046, 0.5, 0.14), 250); }   // Ticket D56
 function speelOververhit() { piep('sawtooth', 1800, 300, 0.45, 0.07); setTimeout(() => piep('square', 180, 120, 0.12, 0.06), 60); }
 function speelAfgekoeld()  { piep('triangle', 520, 780, 0.08, 0.08); }
@@ -7663,7 +7719,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   VOORTGANG_KEY, ONTGRENDELINGEN, voortgang, leesVoortgang, ontgrendeld, registreerMijlpaal, kiesZwareNacht, kiesAvond, pasSfeerToe, avondActief,
   ZWARE_NACHT_AANTAL, ZWARE_NACHT_SNELHEID, hemiLicht,
   BAZEN, BAAS_WAVES, BAAS_ESCORTE_FACTOR, baasVoorWave, levendeBaas, updateBaasUI,
-  SLOOPKOGEL_INTERVAL, SLOOPKOGEL_BEREIK, SLOOPKOGEL_SCHADE, STOOMWALS_LOSLAAT_INTERVAL, STOOMWALS_LOSLAAT_AANTAL, STOOMWALS_WOEDE_DREMPEL, STOOMWALS_WOEDE_SNELHEID, vuurToren,
+  SLOOPKOGEL_INTERVAL, SLOOPKOGEL_BEREIK, SLOOPKOGEL_SCHADE, STOOMWALS_WAARSCHUWING, stoomStoot, STOOMWALS_LOSLAAT_INTERVAL, STOOMWALS_LOSLAAT_AANTAL, STOOMWALS_WOEDE_DREMPEL, STOOMWALS_WOEDE_SNELHEID, vuurToren,
   RUN_WAVES, STER_DREMPELS, sterrenVoor, waveLabel, winRun, doorspelen, verwerkOverwinning, THEMA_IN_RUN,
   // Ticket D8: highscore.
   HIGHSCORE_KEY, leesHighscore, schrijfHighscore, verwerkHighscore,

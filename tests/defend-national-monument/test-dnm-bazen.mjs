@@ -47,6 +47,19 @@ const r = await page.evaluate(() => {
     bereik: d.SLOOPKOGEL_BEREIK,
   };
 
+  // 1b. Ticket D65: vanaf de Nieuwendijk staat Plein noord 6,4 m van de route;
+  // met 5 m bereik sloeg hij daar mis, met 7 m niet meer. En de kogel zwaait uit.
+  d.resetRun();
+  d.geldZet(1e6);
+  const noord = d.plekVoor('Nieuwendijk', 'knooppunt');
+  const noordToren = d.bouwToren(noord, 'geschut');
+  const sN = d.projecteerOpRoute(d.ROUTES.get('Nieuwendijk'), noord.positie.x, noord.positie.z).s;
+  const sloopN = baasOp('sloopkogel', 'Nieuwendijk', sN);
+  sloopN.snelheid = 0;
+  let maxUit = 0;
+  tik(d.SLOOPKOGEL_INTERVAL + 0.3, () => { d.updateRobots(1 / 20); maxUit = Math.max(maxUit, sloopN.ketting.scale.x); });
+  uit.nieuwendijk = { afstand: Math.hypot(noord.positie.x - sloopN.groep.position.x, noord.positie.z - sloopN.groep.position.z), weg: !d.torens.includes(noordToren), maxUit };
+
   // 2. De Dijkbreker: een hek van niveau 3 in één klap.
   d.resetRun();
   d.geldZet(1e6);
@@ -95,12 +108,19 @@ const r = await page.evaluate(() => {
   const wals = baasOp('stoomwals', 'Kalverstraat', 5);
   const walsSnelheid = wals.snelheid;
   const voor = d.robots.length;
-  tik(d.STOOMWALS_LOSLAAT_INTERVAL + 0.2);
+  const stoom = () => d.scene.children.filter(m => m.isMesh && m.material?.color?.getHex() === 0xe8eef2).length;
+  // Ticket D65: eerst de waarschuwing (stoom), dan de robots.
+  tik(d.STOOMWALS_LOSLAAT_INTERVAL - d.STOOMWALS_WAARSCHUWING + 0.1);
+  const waarschuwing = { robots: d.robots.length - voor, stoom: stoom(), gewaarschuwd: wals.waarschuwd };
+  tik(d.STOOMWALS_WAARSCHUWING + 0.1);
   const losgelaten = d.robots.filter(x => x !== wals);
   uit.wals = {
-    heeftWals: !!wals.wals, erbij: d.robots.length - voor, verwacht: d.STOOMWALS_LOSLAAT_AANTAL,
-    opZijnRoute: losgelaten.every(x => x.route === wals.route && x.modus === 'route' && x.s <= wals.s),
+    heeftWals: !!wals.wals, erbij: d.robots.length - voor, verwacht: d.STOOMWALS_LOSLAAT_AANTAL, waarschuwing,
+    opZijnRoute: losgelaten.every(x => x.route === wals.route && x.modus === 'route'),
+    naastOfVoor: losgelaten.every(x => x.s >= wals.s - 0.5 && x.s <= wals.s + 4),
+    banen: [...new Set(losgelaten.map(x => x.laanFractie))].length,
     dichtbij: losgelaten.every(x => x.groep.position.distanceTo(wals.groep.position) < 6),
+    popup: document.body.innerText.includes('laat 3 robots los'),
   };
   d.raakRobot(wals, Math.ceil(wals.hpMax * (1 - d.STOOMWALS_WOEDE_DREMPEL)) + 1);
   d.updateRobots(1 / 20);
@@ -119,11 +139,13 @@ const r = await page.evaluate(() => {
 check('Sloopkogel: een kogel aan een ketting, die rond draait', r.sloop.heeftKogel && r.sloop.draait, r.sloop);
 check('Sloopkogel: de toren binnen bereik gaat kapot', r.sloop.afstandDichtbij <= r.sloop.bereik && r.sloop.dichtbijWeg, r.sloop);
 check('Sloopkogel: een toren verder weg blijft heel', r.sloop.afstandVer > r.sloop.bereik && r.sloop.verStaat && r.sloop.verHp === r.sloop.verHpMax, r.sloop);
+check('Sloopkogel (D65): vanaf de Nieuwendijk raakt hij de toren op Plein noord (~6,4 m), en de kogel zwaait uit', r.nieuwendijk.afstand > 5 && r.nieuwendijk.weg && r.nieuwendijk.maxUit > 1.5, r.nieuwendijk);
 check('Dijkbreker: een hek op niveau 3 breekt in één klap (binnen één slaginterval)', r.dijk.hekWeg && r.dijk.hekHp >= 200 && r.dijk.klapNa !== null && r.dijk.klapNa <= 0.9, r.dijk);
 check('Dijkbreker: een schild dat dicht toren- en stroomschade tegenhoudt, open niet', r.schild.naDicht === r.schild.hp0 && r.schild.naOpen < r.schild.naDicht, r.schild);
 check('Dijkbreker: het schild gaat vanzelf open en dicht, en je ziet het', r.schild.standen.includes('true:true') && r.schild.standen.includes('false:false'), r.schild.standen);
 check('Stoomwals: een wals voorop', r.wals.heeftWals, r.wals);
-check('Stoomwals: laat na het interval robots los, op zijn eigen route, achter hem', r.wals.erbij === r.wals.verwacht && r.wals.opZijnRoute && r.wals.dichtbij, r.wals);
+check('Stoomwals: eerst een waarschuwing (stoom), nog zonder robots', r.wals.waarschuwing.robots === 0 && r.wals.waarschuwing.gewaarschuwd && r.wals.waarschuwing.stoom > 0, r.wals.waarschuwing);
+check('Stoomwals: daarna robots naast en vóór hem op zijn route, in verschillende banen, met een melding (D65)', r.wals.erbij === r.wals.verwacht && r.wals.opZijnRoute && r.wals.naastOfVoor && r.wals.banen >= 2 && r.wals.dichtbij && r.wals.popup, r.wals);
 check('Stoomwals: onder de helft woedend, sneller, met een banner — en maar één keer', r.woede.woedend && Math.abs(r.woede.factor - r.woede.verwacht) < 1e-9 && Math.abs(r.woede.eenmaal - r.woede.verwacht) < 1e-9 && /woedend/.test(r.woede.banner), r.woede);
 check('Stoomwals: de schoorsteen rookt', r.rook > 0, r.rook);
 check('Reset ruimt alle bazen en losgelaten robots op', r.naReset.robots === 0, r.naReset);

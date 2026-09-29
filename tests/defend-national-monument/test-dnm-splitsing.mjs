@@ -84,6 +84,7 @@ const r = await page.evaluate(() => {
   d.spawnRobot(d.SPAWN_POORTEN.find(p => p.naam === 'Damstraat'), 'tank');
   const tank = d.robots[0];
   tank.hp = 50;
+  tank.snelheid = 2;   // vast: een trage tank haalde het hek (~39 m) soms niet binnen 40 s
   for (let t = 0; t < 40 && !d.hekVoorRobot(tank); t += 1 / 20) d.updateRobots(1 / 20);
   const hpBijHek = tank.hp;
   for (let i = 0; i < 20 * 4; i++) d.updateRobots(1 / 20);   // 4 s slaan: ~5 klappen
@@ -124,7 +125,7 @@ check('Stroomval: een getroffen robot loopt half zo snel', r.val.naam === 'Stroo
 check('Stroomval: na 3 s loopt hij weer gewoon', r.val.vertraging === null && Math.abs(r.val.weer - r.val.normaal) < 0.05, r.val);
 check('Prikkeldraad: een tank die op het hek slaat, verliest zelf HP (1 per klap)', r.prikkel.naam === 'Prikkeldraad' && r.prikkel.verlies >= 4 && r.prikkel.verlies <= 6 && r.prikkel.hekHp < r.prikkel.hekMax, r.prikkel);
 check('Stadsmuur: 600 HP (dubbel zo veel als niveau 3 was)', r.muur.naam === 'Stadsmuur' && r.muur.hp === 600, r.muur);
-check('Het menu op niveau 2 biedt beide richtingen, met prijs en uitleg', /1, Geschuttoren → Kanon €300/.test(r.menu.voor) && /2, Geschuttoren → Scherpschutter €300/.test(r.menu.voor), r.menu.voor);
+check('Het menu op niveau 2 biedt beide richtingen, met prijs (€450 sinds D65) en uitleg', /1, Geschuttoren → Kanon €450/.test(r.menu.voor) && /2, Geschuttoren → Scherpschutter €450/.test(r.menu.voor), r.menu.voor);
 check('Toets 2 kiest de Scherpschutter; het menu en de prompt noemen hem', r.menu.richting === 'scherpschutter' && r.menu.niveau === 3 && /Scherpschutter: maximaal niveau/.test(r.menu.na) && /Scherpschutter niv\. 3/.test(r.menu.prompt), r.menu);
 check('Daarna ligt de richting vast: nog een upgrade kan niet', r.menu.nogmaals === false, r.menu);
 

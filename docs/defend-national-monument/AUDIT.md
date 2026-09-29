@@ -3,6 +3,11 @@
 *Stand: na D60 (fase P gebouwd, speeltest M4 open). Alleen
 `defend-national-monument.html` en zijn documentatie en tests.*
 
+> **Stand van de punten** (na M4): 1, 2 en 3 zijn uitgevoerd in D61, D62
+> en D63; de naam "Defend National Monument" staat overal (D61), en er is
+> een volumeregelaar (D64, uit punt 12). Punt 4 is door de speeltest
+> bevestigd; de aanpak volgt. De telefoonversie (punt 13) komt later.
+
 ## Hoe er gekeken is
 
 - **De code gelezen**, met de nadruk op wat de speler ziet (startscherm,

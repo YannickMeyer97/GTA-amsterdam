@@ -31,7 +31,7 @@ const fase = await page.evaluate(() => {
   uit.na = { wave: d.spel.wave, robots: d.robots.length, inFase: d.inBouwfase(), startWave: wave };
   return uit;
 });
-check('De bouwfase duurt 10 s (D52)', fase.duur === 10, fase.duur);
+check('De bouwfase duurt 15 s (D65, na M4; was 10 s in D52)', fase.duur === 15, fase.duur);
 check('Na een voltooide wave staat het spel in de bouwfase', fase.inFase, fase);
 check('Tijdens de hele bouwfase spawnt er geen enkele robot en blijft het dezelfde wave',
   fase.metingen.every(m => m.robots === 0 && m.teSpawnen === 0 && m.wave === fase.na.startWave), fase.metingen.map(m => [m.t, m.robots, m.wave]));
@@ -44,15 +44,15 @@ check('Na de bouwfase start de volgende wave en komen er robots', fase.na.wave =
 await page.evaluate(RONDWAVEAF);
 const vroeg = await page.evaluate(() => {
   const d = window.DamChaosDebug;
-  d.updateWaveSysteem(3.0);   // tussenWaveTimer ≈ 3,1 → nog ≈ 6,9 s
+  d.updateWaveSysteem(3.0);   // tussenWaveTimer ≈ 3,1 → nog ≈ 11,9 s
   const geldVoor = d.geldStand(), verdiendVoor = d.runStats.verdiendGeld, wave = d.spel.wave;
   const verwacht = Math.round(d.bouwfaseResterend() * d.VROEGE_START_BONUS_PER_SECONDE);
   const bonus = d.startVolgendeWaveNu();
   return { bonus, verwacht, geld: d.geldStand() - geldVoor, verdiend: d.runStats.verdiendGeld - verdiendVoor,
     wave: d.spel.wave, startWave: wave, inFase: d.inBouwfase() };
 });
-check('Vroeg starten na ~3 s: bonus = resterende seconden × €2 (≈ €14)', vroeg.bonus === vroeg.verwacht && vroeg.bonus === 14, vroeg);
-check('...de bonus komt bij het geld en telt als verdiend', vroeg.geld === 14 && vroeg.verdiend === 14, vroeg);
+check('Vroeg starten na ~3 s: bonus = resterende seconden × €2 (≈ €24)', vroeg.bonus === vroeg.verwacht && vroeg.bonus === 24, vroeg);
+check('...de bonus komt bij het geld en telt als verdiend', vroeg.geld === 24 && vroeg.verdiend === 24, vroeg);
 check('...en de volgende wave is meteen gestart', vroeg.wave === vroeg.startWave + 1 && !vroeg.inFase, vroeg);
 
 // --- 3. Buiten de bouwfase doet vroeg starten niets ----------------------

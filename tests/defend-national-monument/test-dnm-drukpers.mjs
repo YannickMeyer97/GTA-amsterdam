@@ -99,8 +99,8 @@ check('Eén popup per uitbetaling, niet één per pers', r.inkomen.popups === 2,
 check('Elke pers houdt bij wat hij verdiend heeft', r.inkomen.verdiend.every(v => v === 2 * r.inkomen.perPers), r.inkomen.verdiend);
 check('Los van de robots: een kill naast de pers levert hetzelfde als elders', r.killBijPers === r.killElders, r);
 check('Upgraden verhoogt het inkomen', r.upgrade.niveau === 2 && r.upgrade.na > r.upgrade.voor, r.upgrade);
-// Ticket D43/D52: een ronde met verdediging duurt gemeten ~55 s (bouwfase 10 s).
-check('Elk niveau verdient zich in ~3 rondes (van ~55 s) terug: 150–185 s', r.terugverdien.every(t => t.seconden >= 150 && t.seconden <= 185), r.terugverdien);
+// Ticket D43/D52/D65: een ronde met verdediging duurt ~63 s (bouwfase 15 s).
+check('Elk niveau verdient zich in ~3 rondes (van ~63 s) terug: 175–205 s', r.terugverdien.every(t => t.seconden >= 175 && t.seconden <= 205), r.terugverdien);
 check('Een bezette drukpersplek: upgraden en verkopen, geen hek en geen reparatie', r.bezetMenu.includes('Drukpers naar niveau 3') && r.bezetMenu.includes('Drukpers verkopen') && !r.bezetMenu.includes('Hek') && !r.bezetMenu.includes('repareren'), r.bezetMenu);
 check('Verkopen levert de helft op en maakt de plek vrij', r.verkoop.opbrengst === 75 && r.verkoop.plekLeeg && r.verkoop.geld === 75, r.verkoop);
 check('Een nieuwe run begint zonder persen en met de teller op nul', r.naReset.persen === 0 && r.naReset.timer === 0, r.naReset);

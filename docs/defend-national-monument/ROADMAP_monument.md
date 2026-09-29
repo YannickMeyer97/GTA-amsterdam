@@ -1400,7 +1400,7 @@ Verder:
 | ☑ | **D62** | Eerlijke sterren: naar de opgelopen schade, niet te koop met reparaties (audit 2) |
 | ☑ | **D63** | De eindbaas maakt de run niet meer in één klap ongedaan (audit 3) |
 | ☑ | **D64** | Volumeregelaar |
-| ☐ | **D65** | M4: niveau 3 duurder, Stoomwals laat zichtbaar robots los, langere bouwfase, bereik Sloopkogel |
+| ☑ | **D65** | M4: niveau 3 duurder, Stoomwals laat zichtbaar robots los, langere bouwfase, bereik Sloopkogel |
 
 **D61 — naam, uitleg en hints, verslag.**
 - **Titel:** "Defend National Monument" in de paginatitel en op het
@@ -1463,6 +1463,42 @@ Verder:
   Een oude opslag met alleen `geluid: false` wordt volume 0; een kapotte
   waarde valt terug op 100%.
 - **Test:** `test-dnm-instellingen` (18 checks).
+
+**D65 — M4-punten, verslag.**
+- **Niveau 3 duurder:**
+  - geschuttoren en Bovenleiding naar niveau 3 (beide richtingen) €450,
+    was €300;
+  - Prikkeldraad €225 (was €150), Stadsmuur €300 (was €200).
+- **Bouwfase 15 s** (was 10). De drukpers is opnieuw op 3 rondes gezet:
+  een ronde duurt ~63 s, dus 190 s; inkomen €8 / €16 / €26 per 10 s.
+- **Stoomwals laat zichtbaar robots los:**
+  - 1,2 s vooraf een stoomwolk en een stoomfluit;
+  - de robots komen naast en vóór hem tevoorschijn, in drie banen (eerst
+    kwamen ze achter hem, waar de wals ze verborg), elk met een
+    stoomwolk;
+  - een melding "De Stoomwals laat 3 robots los!".
+- **Bereik van de Sloopkogel:** gemeten staan de bouwplekken 3,1–6,4 m van
+  hun route.
+  - Met 5 m sloeg hij vanaf de Nieuwendijk niets (beide plekken op
+    6,3–6,4 m), en vanaf Damrak en Kalverstraat één van de twee plekken
+    mis.
+  - Nu 7 m: hij raakt elke toren langs zijn route.
+  - Bij een slag zwaait de kogel uit naar de toren (de ketting rekt mee),
+    zodat je ziet dat hij zo ver reikt.
+- **Automatische runs** (`meet-dnm-run goed`): twee keer gewonnen, in ~14
+  minuten (was ~12,5).
+  - In één run haalde de Sloopkogel het monument, met 3 van 60 HP over,
+    nadat hij torens langs zijn route had gesloopt.
+  - Die run eindigde met het monument op 84% na reparaties, maar met 1
+    ster (meer dan 50% opgelopen): de sterrenregel van D62 doet wat hij
+    moet doen.
+- **Tests:**
+  - `test-dnm-bazen` (13): de waarschuwing vóór het loslaten, de banen
+    naast en vóór de wals, de Sloopkogel vanaf de Nieuwendijk;
+  - `test-dnm-bouwfase`, `-drukpers` en `-splitsing` volgen de nieuwe
+    waarden;
+  - in `test-dnm-splitsing` rijdt de tank nu met een vaste snelheid: een
+    trage tank haalde het hek (~39 m) soms niet binnen 40 s.
 
 ### Backlog — bewust ná alle bovenstaande tickets
 
