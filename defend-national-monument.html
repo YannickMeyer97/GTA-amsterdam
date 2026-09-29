@@ -4224,7 +4224,9 @@ function poortenTekst(namen) {
 // geen sterren meer (eerst kon je met het geld van het eind van de run
 // vlak voor de laatste robot naar 100% repareren).
 const RUN_WAVES = 15;
-const STER_DREMPELS = [40, 10];   // ≤ 40% opgelopen → 2 sterren, ≤ 10% → 3
+// D63: 2 sterren tot 50% (was 40%): één baas die doorkomt (40%) plus een
+// paar robots uit het escorte is 2 sterren, twee bazen is 1 ster.
+const STER_DREMPELS = [50, 10];   // ≤ 50% opgelopen → 2 sterren, ≤ 10% → 3
 function sterrenVoor(schadeOpgelopen) {
   return 1 + STER_DREMPELS.filter(d => schadeOpgelopen <= d).length;
 }
@@ -4982,6 +4984,7 @@ function updateKerkklokBoost(dt) {
 
 function koopMonumentReparatie() {
   const kosten = 100;
+  if (spel.gameOver) return;   // D63: zelfde bewaking als koopUpgrade
   if (spel.monumentHP >= MONUMENT_MAX_HP) {
     toonFeedbackMelding('Monument is al volledig hersteld');
     return;
@@ -6198,7 +6201,11 @@ const ROBOT_TYPES = {
   // (meet-dnm-bazen). snelheidMultiplier geldt voor bazen niet.
   sloopkogel: { hpMax: 60,  vasteSnelheid: 1.1, snelheidMultiplier: 1, beloningMultiplier: 0, kleur: 0xff9a3c, schaal: 2.1, monumentSchade: 40,  baas: true },
   dijkbreker: { hpMax: 90,  vasteSnelheid: 1.0, snelheidMultiplier: 1, beloningMultiplier: 0, kleur: 0x6fd2ff, schaal: 1.9, monumentSchade: 40,  baas: true, schildDuur: 2.5, schildPauze: 3.5 },
-  stoomwals:  { hpMax: 180, vasteSnelheid: 0.8, snelheidMultiplier: 1, beloningMultiplier: 0, kleur: 0xff4a3c, schaal: 2.8, monumentSchade: 100, baas: true },
+  // Ticket D63 (audit 3): de Stoomwals doet 60, niet 100. Met 100 was hij
+  // altijd game over, ook als hij met 9 van zijn 180 HP aankwam en het
+  // monument nog op 60% stond: een run van 13 minuten weg in één klap. Nu
+  // maakt hij alleen een gehavend monument af.
+  stoomwals:  { hpMax: 180, vasteSnelheid: 0.8, snelheidMultiplier: 1, beloningMultiplier: 0, kleur: 0xff4a3c, schaal: 2.8, monumentSchade: 60, baas: true },
 };
 
 // Ticket D56: het baassysteem. Een baaswave (alleen binnen de run) begint met

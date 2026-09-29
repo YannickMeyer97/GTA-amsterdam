@@ -1398,7 +1398,7 @@ Verder:
 | --- | --- | --- |
 | ☑ | **D61** | Overal "Defend National Monument"; uitleg, hulpbalk, eenmalige hints, README (audit 1) |
 | ☑ | **D62** | Eerlijke sterren: naar de opgelopen schade, niet te koop met reparaties (audit 2) |
-| ☐ | **D63** | De eindbaas maakt de run niet meer in één klap ongedaan (audit 3) |
+| ☑ | **D63** | De eindbaas maakt de run niet meer in één klap ongedaan (audit 3) |
 | ☐ | **D64** | Volumeregelaar |
 | ☐ | **D65** | M4: niveau 3 duurder, Stoomwals laat zichtbaar robots los, langere bouwfase, bereik Sloopkogel |
 
@@ -1428,8 +1428,8 @@ Verder:
 **D62 — eerlijke sterren, verslag.**
 - `spel.schadeOpgelopen` telt alle monumentschade van de run op;
   reparaties trekken er niets van af.
-- Sterren: 3 bij hooguit 10% opgelopen, 2 bij hooguit 40%, anders 1
-  (Zware nacht nog steeds +1).
+- Sterren: 3 bij hooguit 10% opgelopen, 2 bij hooguit 40% (sinds D63
+  50%), anders 1 (Zware nacht nog steeds +1).
 - Eerst telde de stand bij de overwinning, en die kon je met het geld van
   het eind van de run naar 100% repareren.
 - Het overwinningsscherm noemt de opgelopen schade en de drempels.
@@ -1439,6 +1439,19 @@ Verder:
   haalt.
 - **Test:** `test-dnm-overwinning` (23 checks), met een run die 40% oploopt
   en terugrepareert naar 100%: nog steeds 2 sterren.
+
+**D63 — de eindbaas, verslag.**
+- De Stoomwals doet 60 schade in plaats van 100. Hij maakt nu alleen een
+  gehavend monument af: haalde de Dijkbreker het ook (40) en repareerde je
+  niet, dan is het nog steeds game over.
+- `koopMonumentReparatie` weigert na game over (zelfde bewaking als
+  `koopUpgrade`); het meetscript kon anders na game over nog repareren.
+- **Sterrendrempel bijgesteld:** 2 sterren tot 50% opgelopen (D62 zei
+  40%). Eén baas die doorkomt (40%) plus een paar robots uit het escorte
+  was anders al 1 ster; nu is dat 2 sterren, en twee bazen 1 ster.
+- **Automatische runs** (`meet-dnm-run goed`, repareren onder 80%):
+  gewonnen met 3 sterren (geen baas door) en gewonnen met de Dijkbreker
+  door (46% opgelopen; nu 2 sterren).
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

@@ -76,5 +76,5 @@ const r = await page.evaluate((SCENARIO) => {
 console.log('=== Baaswaves met een gesimuleerde speler (3 pogingen) ===');
 console.log('wave  baas         verdediging              monumentschade      de baas                                   waveduur');
 for (const x of r) console.log(`${String(x.wave).padStart(4)}  ${x.baas.padEnd(11)}  ${x.naam.padEnd(23)}  ${x.schade.join(' / ').padEnd(18)}  ${x.baas_.join(' / ').padEnd(40)}  ${x.duur.join(' / ')} s`);
-console.log('\n"DOOR (rest/max)": de baas haalde het monument met zoveel HP over. Monumentschade ≥ 100 is game over.');
+console.log('\n"DOOR (rest/max)": de baas haalde het monument met zoveel HP over (40 / 40 / 60 schade, sinds D63). Monumentschade ≥ 100 is game over.');
 await browser.close();

@@ -8,7 +8,7 @@
 // koopt hij volgens een strategie:
 //   goed: geschut op het knooppunt en een Bovenleiding op de voorpost van de
 //         actieve en aangekondigde poorten, alles naar niveau 3 (richting A),
-//         vuurtempo tot 3 en koeling tot 2, een drukpers, en repareren onder 60%.
+//         vuurtempo tot 3 en koeling tot 2, een drukpers, en repareren onder 80%.
 //   zwak: alleen een geschuttoren niveau 1 op het knooppunt, geen upgrades.
 // Hij loopt niet en mikt nooit mis. Draaien: `node meet-dnm-run.mjs goed`.
 import { openDefend } from '../helpers-defend.mjs';
@@ -28,7 +28,7 @@ const r = await page.evaluate((strategie) => {
   let maxRobots = 0, nan = 0, laatsteWave = 1, waveStart = 0;
   const geld = () => d.geldStand();
   function koop() {
-    if (goed && d.spel.monumentHP < 60 && geld() >= 100) d.koopMonumentReparatie();
+    if (goed && d.spel.monumentHP < 80 && geld() >= 100) d.koopMonumentReparatie();
     const poorten = [...new Set([...d.spel.actievePoorten, ...d.spel.volgendePoorten])];
     for (const pn of poorten) {
       const kp = d.plekVoor(pn, 'knooppunt'), vp = d.plekVoor(pn, 'voorpost');

@@ -43,8 +43,8 @@ const naarWave = (wave, hp = 100) => page.evaluate(([wave, hp]) => {
 }, [wave, hp]);
 
 // 1. Sterren per drempel (pure functie).
-const sterren = await page.evaluate(() => [0, 10, 10.1, 40, 40.1, 95].map(s => window.DamChaosDebug.sterrenVoor(s)));
-check('Sterren naar opgelopen schade (D62): ≤ 10% → 3, ≤ 40% → 2, anders 1', JSON.stringify(sterren) === JSON.stringify([3, 3, 2, 2, 1, 1]), sterren);
+const sterren = await page.evaluate(() => [0, 10, 10.1, 50, 50.1, 95].map(s => window.DamChaosDebug.sterrenVoor(s)));
+check('Sterren naar opgelopen schade (D62, D63): ≤ 10% → 3, ≤ 50% → 2, anders 1', JSON.stringify(sterren) === JSON.stringify([3, 3, 2, 2, 1, 1]), sterren);
 
 // 2. De run is 15 waves; de HUD toont dat.
 await naarWave(7);
@@ -63,7 +63,7 @@ await rondAf();
 const gewonnen = await stand();
 check('Na wave 15: gewonnen, het overwinningsscherm staat open', gewonnen.gewonnen && gewonnen.open && gewonnen.scherm && !gewonnen.startscherm && !gewonnen.eindscherm, gewonnen);
 check('40% opgelopen: 2 van de 3 sterren, en dat staat op het scherm', gewonnen.sterren === 2 && gewonnen.gevuld === 2 && gewonnen.sterrenTekst.length === 3, gewonnen);
-check('De ondertitel noemt 15 waves, de opgelopen schade (40%) en de drempels', /15 waves/.test(gewonnen.ondertitel) && /40% schade opgelopen/.test(gewonnen.ondertitel) && /≤ 10%/.test(gewonnen.ondertitel), gewonnen.ondertitel);
+check('De ondertitel noemt 15 waves, de opgelopen schade (40%) en de drempels', /15 waves/.test(gewonnen.ondertitel) && /40% schade opgelopen/.test(gewonnen.ondertitel) && /≤ 10%/.test(gewonnen.ondertitel) && /≤ 50%/.test(gewonnen.ondertitel), gewonnen.ondertitel);
 check('Eerste overwinning: dat staat erbij, met de statistieken van de run', gewonnen.record === 'EERSTE OVERWINNING!' && /Score/.test(gewonnen.stats) && /Speelduur/.test(gewonnen.stats), gewonnen);
 check('De overwinning is bewaard: gewonnen, beste sterren 2', gewonnen.highscore?.gewonnen === true && gewonnen.highscore?.besteSterren === 2, gewonnen.highscore);
 
