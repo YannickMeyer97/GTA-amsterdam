@@ -1399,7 +1399,7 @@ Verder:
 | ☑ | **D61** | Overal "Defend National Monument"; uitleg, hulpbalk, eenmalige hints, README (audit 1) |
 | ☑ | **D62** | Eerlijke sterren: naar de opgelopen schade, niet te koop met reparaties (audit 2) |
 | ☑ | **D63** | De eindbaas maakt de run niet meer in één klap ongedaan (audit 3) |
-| ☐ | **D64** | Volumeregelaar |
+| ☑ | **D64** | Volumeregelaar |
 | ☐ | **D65** | M4: niveau 3 duurder, Stoomwals laat zichtbaar robots los, langere bouwfase, bereik Sloopkogel |
 
 **D61 — naam, uitleg en hints, verslag.**
@@ -1452,6 +1452,17 @@ Verder:
 - **Automatische runs** (`meet-dnm-run goed`, repareren onder 80%):
   gewonnen met 3 sterren (geen baas door) en gewonnen met de Dijkbreker
   door (46% opgelopen; nu 2 sterren).
+
+**D64 — volumeregelaar, verslag.**
+- In het instellingenblok vervangt een schuif (0–100%, in stappen van 5)
+  de knoppen Aan/Uit; op 0 staat er "uit".
+- Alle geluiden lopen via één hoofdvolume (`audio.hoofdvolume`, een
+  GainNode vóór de uitgang); de schuif werkt meteen, ook midden in het
+  spel via Esc.
+- Bewaard als `volume` (0–1) onder `defendNationalMonumentInstellingen`.
+  Een oude opslag met alleen `geluid: false` wordt volume 0; een kapotte
+  waarde valt terug op 100%.
+- **Test:** `test-dnm-instellingen` (18 checks).
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

@@ -86,7 +86,7 @@ rechtsboven om terug te gaan naar het hoofdmenu.
   verslagen bazen speel je nieuwe torenrichtingen, een zwaardere nacht en
   een avondsfeer vrij.
 - **Instellingen** op het startscherm (ook met `Esc`): beeldkwaliteit,
-  muisgevoeligheid en geluid.
+  muisgevoeligheid en volume.
 
 ### Herkenbare Dam
 
