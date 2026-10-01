@@ -1929,7 +1929,7 @@ friendly kunnen maken."
 | ☑ | **D82** | Lopen, kijken en vuren met twee duimen |
 | ☑ | **D83** | Knoppen en aantikbare menu's: bouwen, Klokslag, volgende wave, kerkklok, pauze |
 | ☑ | **D84** | Liggend, safe-area, een HUD die op een telefoon past, iPhone-beginscherm, wake lock |
-| ☐ | **D85** | Lichte richthulp op touch |
+| ☑ | **D85** | Lichte richthulp op touch |
 | ☐ | **D86** | Uitleg, afronding en regressie |
 | ☐ | **M6** | Speeltest op de iPhone |
 
@@ -2025,6 +2025,22 @@ friendly kunnen maken."
 - Een les uit het meten: de code zet de minimap inline op `block`, en dat
   wint van gewone CSS; vandaar `!important` op het verbergen.
 - **Test:** nieuw `test-dnm-mobiel` (18 checks).
+
+**D85 — lichte richthulp, verslag.**
+- Alleen op touch; met de muis verandert er niets.
+- **Trefmarge:** mist de straal een robot, dan telt een robot waarvan de
+  borst binnen 3,5° van het richtkruis staat (plus zijn eigen halve
+  breedte, dus een grote robot iets ruimer), binnen het wapenbereik. Alleen
+  met vrij zicht: de eerste treffer op de lijn naar de robot moet de robot
+  zelf zijn, geen muur of monument.
+- **Kleven:** staat het richtkruis binnen 6° van een robot, dan draait een
+  duimveeg 0,55× zo ver, zodat je erop blijft. Geen trekken naar het doel:
+  de speler blijft zelf richten.
+- **Test:** nieuw `test-dnm-richthulp` (9 checks). Daarin:
+  - 4° naast (0,7 m) is met de muis mis en op touch raak; 10° naast is mis;
+  - geen treffer door het monument heen;
+  - een echte duimveeg draait vlak bij een robot 0,55× zo ver.
+  - Eerst testte ik 2,5° naast, maar dan raakte het schot de arm al.
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

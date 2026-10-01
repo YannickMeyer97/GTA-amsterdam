@@ -4144,7 +4144,7 @@ addEventListener('touchmove', e => {
   for (const t of e.changedTouches) {
     if (t.identifier === touchStick.vinger) zetTouchStick(t.clientX, t.clientY);
     else if (t.identifier === touchKijkVinger) {
-      draaiKijkrichting(t.clientX - touchKijkX, t.clientY - touchKijkY, TOUCH_KIJK_FACTOR);
+      draaiKijkrichting(t.clientX - touchKijkX, t.clientY - touchKijkY, TOUCH_KIJK_FACTOR * richthulpKleef());   // D85
       touchKijkX = t.clientX; touchKijkY = t.clientY;
     }
   }
@@ -7899,6 +7899,55 @@ function blaasStoom(aantal) {
   }
 }
 
+/* --- Ticket D85: lichte richthulp, alleen op touch ---------------------------
+   Mikken met je duim is lastiger dan met een muis (keuze van de eigenaar:
+   lichte richthulp, alleen op touch). Twee delen:
+   - Trefmarge: gaat een schot net naast een robot (binnen RICHTHULP_HOEK
+     van zijn borst, plus zijn eigen breedte) en is er vrij zicht, dan raakt
+     het toch.
+   - Kleven: staat het richtkruis binnen RICHTHULP_KLEEF_HOEK van een robot,
+     dan draait het kijken trager (RICHTHULP_KLEEF_FACTOR), zodat je erop
+     blijft. Geen trekken naar het doel: de speler blijft zelf richten.
+   Met de muis verandert er niets. */
+const RICHTHULP_HOEK = 3.5 * Math.PI / 180;
+const RICHTHULP_KLEEF_HOEK = 6 * Math.PI / 180;
+const RICHTHULP_KLEEF_FACTOR = 0.55;
+const richtNaar = new THREE.Vector3(), richtKijk = new THREE.Vector3();
+const richtStraal = new THREE.Raycaster();
+// De robot die het dichtst bij het richtkruis staat binnen `maxHoek` (plus
+// zijn eigen halve breedte), binnen het wapenbereik; null op de muis.
+function robotBijRichtkruis(maxHoek) {
+  if (besturingModus !== 'touch') return null;
+  camera.getWorldDirection(richtKijk);
+  let beste = null, besteRest = Infinity;
+  for (const r of robots) {
+    const schaal = r.groep.scale.x;
+    richtNaar.set(r.groep.position.x, r.groep.position.y + 1.1 * schaal, r.groep.position.z).sub(camera.position);
+    const afstand = richtNaar.length();
+    if (afstand > WAPEN_BEREIK || afstand < 0.5) continue;
+    const rest = richtNaar.angleTo(richtKijk) - Math.atan((0.45 * schaal) / afstand);
+    if (rest <= maxHoek && rest < besteRest) { besteRest = rest; beste = r; }
+  }
+  return beste;
+}
+// Een treffer via de trefmarge: alleen met vrij zicht (de eerste treffer op
+// de lijn naar de robot is de robot zelf, geen muur of monument).
+function richthulpTreffer() {
+  const r = robotBijRichtkruis(RICHTHULP_HOEK);
+  if (!r) return null;
+  const punt = new THREE.Vector3(r.groep.position.x, r.groep.position.y + 1.1 * r.groep.scale.x, r.groep.position.z);
+  richtNaar.copy(punt).sub(camera.position).normalize();
+  richtStraal.set(camera.position, richtNaar);
+  richtStraal.far = WAPEN_BEREIK;
+  const eerste = richtStraal.intersectObjects([r.groep, wereld], true)[0];
+  let o = eerste?.object;
+  while (o && !o.userData.robot) o = o.parent;
+  return o?.userData.robot === r ? { groep: r.groep, punt: eerste.point } : null;
+}
+function richthulpKleef() {
+  return robotBijRichtkruis(RICHTHULP_KLEEF_HOEK) ? RICHTHULP_KLEEF_FACTOR : 1;
+}
+
 function schiet() {
   // Wapen-effectjes: terugslag, vlam en geluid.
   terugslag = 1;
@@ -7914,14 +7963,21 @@ function schiet() {
   const doelwitten = robots.map(r => r.groep).concat([wereld]);
   const raak = raycaster.intersectObjects(doelwitten, true);
   if (raak.length === 0) {
-    toonBuitenBereik(doelwitten);
-    return;
+    // Ticket D85: ook in de lucht naast een robot geschoten telt de trefmarge.
+    const hulp = richthulpTreffer();
+    if (hulp) raak.push({ point: hulp.punt, object: hulp.groep });
+    else { toonBuitenBereik(doelwitten); return; }
   }
 
   // Kijk of we een robot hebben geraakt: loop omhoog door de "ouders"
   // van het geraakte onderdeel tot we (misschien) een robot vinden.
   let onderdeel = raak[0].object;
   while (onderdeel && !onderdeel.userData.robot) onderdeel = onderdeel.parent;
+  // Ticket D85: op touch een trefmarge voor een schot dat net naast ging.
+  if (!onderdeel) {
+    const hulp = richthulpTreffer();
+    if (hulp) { onderdeel = hulp.groep; raak[0] = { point: hulp.punt, object: hulp.groep }; }
+  }
 
   if (onderdeel) {
     const robot = onderdeel.userData.robot;
@@ -8558,7 +8614,7 @@ requestAnimationFrame(gameLoop);
 // waarde: anders bevriest de export de waarde van het moment dat deze regel
 // voor het eerst uitgevoerd wordt, in plaats van live mee te lezen.
 window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, toonWaveBanner, waveBannerDuur, WAVE_BANNER_DUUR, verbergWaveBanner, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, commandopostOpenStand: () => menu === COMMANDOPOST_MENU, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, spelerSchade, upgradeMax, UPGRADE_MAX, KLOKSLAG, klokslag, vertraagRobot, BAAS_VERTRAGING_EFFECT, warmtePerSchotNu: () => warmtePerSchot(), activeerKerkklokBoost, updateKerkklokBoost,
-  GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerCommandopost, besturingActief, startBesturing, verlaatBesturing, zetBesturingModus, besturingModusStand: () => besturingModus, staatToestelStaand, werkOrientatieBij, wakeLockStand: () => !!wakeLock, voorInvoer, werkTouchKnoppenBij, touchStick, touchStand: () => ({ kijkVinger: touchKijkVinger, schieten: schietKnopIngedrukt, zichtbaar: !touchBedieningUI.hidden }), updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
+  GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerCommandopost, besturingActief, startBesturing, verlaatBesturing, zetBesturingModus, besturingModusStand: () => besturingModus, robotBijRichtkruis, richthulpTreffer, RICHTHULP_HOEK, RICHTHULP_KLEEF_HOEK, RICHTHULP_KLEEF_FACTOR, staatToestelStaand, werkOrientatieBij, wakeLockStand: () => !!wakeLock, voorInvoer, werkTouchKnoppenBij, touchStick, touchStand: () => ({ kijkVinger: touchKijkVinger, schieten: schietKnopIngedrukt, zichtbaar: !touchBedieningUI.hidden }), updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
   // Speeltest-feedback (na D6): overzicht-hulpmiddelen.
   // M2: de richtingspijlen (D27) zijn geschrapt; het lichtspoor en de
   // bakens tonen waar de robots vandaan komen.
