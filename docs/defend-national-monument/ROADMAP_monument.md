@@ -1876,7 +1876,18 @@ torens op de juiste plek.
   - Tussen de bazen loopt het monument nog steeds niets op. Het geld
     stapelt na de kogels nog steeds op (€2.000–4.500 aan het eind).
     Beide horen bij de speeltest M5.
-- **Volledige regressie:** zie de regel hieronder.
+- **Volledige regressie: groen.**
+  - Defend National Monument: 47 van 47 scripts. `test-dnm-prestaties`
+    viel één keer op de laadtijd (5,7 s, grens 4 s) terwijl de
+    Undead-suite tegelijk liep; los 17/17.
+  - Amsterdam Undead (sinds D67 niet aangeraakt): 117 van 117.
+    - Met vier tegelijk waren er zeven rood: drie liepen tegen een limiet
+      van 300 s per script aan, vier vielen op tijd- of frame-afhankelijke
+      grenzen.
+    - Los waren alle zeven groen.
+  - `run-all-parallel` paste in deze omgeving niet binnen de tijdslimiet
+    van een achtergrondtaak (30 min) en geeft pas aan het eind uitvoer;
+    daarom per script gedraaid.
 
 **M5 — extra vragen (na D71–D80):**
 5. Staat de wavebanner nu goed (niet meer over het richtkruis)?
