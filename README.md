@@ -52,7 +52,7 @@ rechtsboven om terug te gaan naar het hoofdmenu.
 | Kiezen in een menu | `1`–`5` (het menu opent vanzelf bij een bouwplek of de commandopost) |
 | Menu sluiten / Kerkklok luiden | `T` |
 | Volgende wave meteen starten | `G` (in de pauze tussen twee waves, met een kleine bonus) |
-| Special gebruiken | `X` (als de special-meter vol is) |
+| Klokslag (special) | `X` (als de meter vol is): robots om je heen lopen even veel trager, je wapen blijft koel |
 | Pauze en instellingen | `Esc` |
 
 ### Zo speel je
@@ -78,6 +78,8 @@ rechtsboven om terug te gaan naar het hoofdmenu.
   voet van het monument koop je upgrades (vuurtempo, pickup-radius,
   loopsnelheid, koeling) en repareer je het monument. Een **drukpers** voor
   het Paleis levert vast geld op.
+- **De Kerkklok** bij de Nieuwe Kerk (`T`): 30 seconden dubbel geld, maar
+  de robots lopen dan ook sneller. Een gok, geen gratis bonus.
 - **Oververhitting:** lang doorvuren maakt het wapen te heet. De meter onder
   het richtkruis laat zien hoe ver je bent; laat even los om af te koelen.
 - **Bazen** komen op wave 5 (de Sloopkogel), 10 (de Dijkbreker), 15 (de

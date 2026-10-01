@@ -1409,7 +1409,7 @@ Verder:
 | ☑ | **D71** | Wavebanner hoger en korter, niet meer over het richtkruis (audit 5) |
 | ☑ | **D72** | Eén Nederlandse naamset voor de robots (audit 10) |
 | ☑ | **D73** | Bereikcirkel bij het bouwen (audit 9) |
-| ☐ | **D74** | De Kerkklok (X) als echte beloning, met uitleg (audit 6) |
+| ☑ | **D74** | De Kerkklok (X) als echte beloning, met uitleg (audit 6) |
 | ☐ | **D75** | Stroomval: half effect op bazen (audit 7) |
 | ☐ | **D76** | Voortgang wissen en camera-schok uit te zetten (audit 11, 12) |
 | ☐ | **D77** | Melding op een apparaat zonder muis en toetsenbord (audit 13) |
@@ -1735,6 +1735,25 @@ torens op de juiste plek.
   `-splitsing` en `-toren-niveaus` lezen de menutekst en volgen de stip (die
   ging eerst mee in de D73-commit terwijl ze nog rood waren; hersteld in een
   aparte commit).
+
+**D74 — de Klokslag, verslag (audit 6).**
+- X startte de Kerkklok Boost: dubbel geld, maar ook snellere robots. Als
+  beloning voor een volle meter voelde dat als straf. X heeft nu een eigen
+  special, de **Klokslag**:
+  - elke robot binnen het wapenbereik (22 m) loopt 4 s op 40% van zijn
+    snelheid;
+  - het wapen koelt meteen af en blijft 5 s koel (geen warmte per schot);
+  - een gouden schokgolf vanaf de speler, de klok, en een melding met het
+    aantal geraakte robots.
+- De Boost bij de kerk (T) blijft zoals hij was: een bewuste gok.
+- Vertragingen lopen via `vertraagRobot`: de sterkste factor en de langste
+  duur tellen, zodat een Stroomval-treffer een Klokslag niet afzwakt.
+- **Uitleg:** de meter heet "Klokslag" ("KLOKSLAG GEREED — druk X!"); de
+  hulpbalk zegt "X klokslag", het startscherm wat hij doet, en de eerste
+  keer dat de meter vol is, legt een hint het uit. README bijgewerkt (ook
+  de Kerkklok bij de kerk).
+- **Tests:** nieuw `test-dnm-klokslag` (10 checks); `test-dnm-hints` volgt
+  de hulpbalk.
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

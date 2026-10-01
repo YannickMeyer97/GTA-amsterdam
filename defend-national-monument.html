@@ -498,7 +498,7 @@
 <div id="richtkruis" style="display:none"></div>
 <div id="warmteUI" style="display:none"><div id="warmteVul"></div><div id="warmteTekst">OVERVERHIT</div></div>
 <div id="popups"></div>
-<div id="hulpUI" style="display:none">WASD lopen · klik schieten · 1–5 kiezen · T menu · G volgende wave · X special · Esc pauze</div>
+<div id="hulpUI" style="display:none">WASD lopen · klik schieten · 1–5 kiezen · T menu · G volgende wave · X klokslag · Esc pauze</div>
 <div id="hintUI"></div>
 <div id="minimapUI" style="display:none"><canvas id="minimapCanvas" width="140" height="140"></canvas></div>
 
@@ -511,7 +511,7 @@
     🚶 <b>WASD</b> lopen, <b>muis</b> kijken, <b>klik</b> schieten — lang doorvuren maakt je wapen te heet<br>
     🔧 Bouw torens op de <b>gouden cirkels</b> langs de straten: het menu opent vanzelf, kies met <b>1–5</b><br>
     💰 Raap munten op; bij de <b>commandopost</b> koop je upgrades en repareer je het monument<br>
-    ⏩ <b>G</b> start de volgende wave eerder · <b>X</b> special · <b>Esc</b> pauze
+    ⏩ <b>G</b> volgende wave eerder · <b>X</b> klokslag (meter vol): robots om je heen trager · <b>Esc</b> pauze
   </div>
   <div class="knop">Klik om te spelen</div>
   <div id="instellingen">
@@ -4057,7 +4057,7 @@ function updateArcadeUI() {
   comboUI.textContent = `COMBO x${spel.combo}`;
   comboUI.style.opacity = spel.combo >= 2 && spel.comboTimer > 0 ? '1' : '0';
   const specialGereed = spel.specialMeter >= 100;
-  specialUI.textContent = specialGereed ? '⚡ SPECIAL GEREED — druk X!' : `⚡ Special: ${Math.floor(spel.specialMeter)}%`;
+  specialUI.textContent = specialGereed ? '🔔 KLOKSLAG GEREED — druk X!' : `🔔 Klokslag: ${Math.floor(spel.specialMeter)}%`;   // D74
   specialUI.classList.toggle('gereed', specialGereed);
   renderMenu();   // Ticket D35: prijzen en niveaus in een open menu bijwerken
 }
@@ -4743,6 +4743,7 @@ const HINTS = {
   oververhit: 'Te heet! Laat de muis even los om af te koelen. Koeling koop je bij de commandopost.',
   baas: 'Een baas! Schiet hem zelf en zet sterke torens langs zijn route.',
   commandopost: 'De commandopost: upgrades voor je wapen, en het monument repareren.',
+  special: 'De meter is vol! Druk X voor een klokslag: robots om je heen lopen even veel trager en je wapen blijft koel.',   // D74
 };
 function leesGezieneHints() {
   try { const r = JSON.parse(localStorage.getItem(HINTS_KEY)); return Array.isArray(r) ? new Set(r.filter(x => typeof x === 'string')) : new Set(); } catch { return new Set(); }
@@ -4995,18 +4996,13 @@ const COMBO_TIER_MELDING = {
   3: '⚡ Combo x10 — MAX bonus!',
 };
 
-// Gedeelde "start de boost"-body, hergebruikt door zowel de normale
-// T-interactie bij de kerk (via activeerKerkklokBoost, na de cooldown-check)
-// als door de special-meter (via gebruikSpecial, die de cooldown-check
-// bewust overslaat maar verder exact hetzelfde effect triggert: zelfde duur,
-// zelfde snelheids/beloningsmultiplier, zelfde banner/geluid). De cooldown
-// NA afloop loopt in beide gevallen via de ongewijzigde updateKerkklokBoost()
-// hieronder, dus een gratis special geeft nooit een permanente gratis-loop.
-function startKerkklokBoost(viaSpecial = false) {
+// De Kerkklok Boost bij de Nieuwe Kerk (T). Sinds D74 heeft de special (X)
+// een eigen effect (de Klokslag); de Boost start alleen nog bij de kerk.
+function startKerkklokBoost() {
   kerkklokBoost.active = true;
   kerkklokBoost.resterend = kerkklokBoost.duration;
   speelKerkklok();
-  toonFeedbackMelding(viaSpecial ? '⚡ SPECIAL: Kerkklok Boost gestart!' : '🔔 Kerkklok Boost gestart!');
+  toonFeedbackMelding('🔔 Kerkklok Boost gestart!');
   kerkklokBannerUI.style.opacity = '1';
 }
 
@@ -5016,24 +5012,50 @@ function activeerKerkklokBoost() {
     toonFeedbackMelding(`Kerkklok rust nog: ${Math.ceil(kerkklokBoost.cooldownResterend)}s`);
     return;
   }
-  startKerkklokBoost(false);
+  startKerkklokBoost();
 }
 
 // Special-meter: vult per kill (zie vernietigRobot), gecapt op 100. Bij 100%
-// kan de speler zelf het moment kiezen om 'm te verzilveren met X — een
-// gratis Kerkklok Boost, ongeacht een lopende cooldown. Bypast alléén de
-// cooldown-GATE (kerkklokBoost.cooldownResterend), niet de cooldown die NA
-// afloop van de boost start: die blijft via updateKerkklokBoost(dt) precies
-// zo lopen als na een normale, bij de kerk geactiveerde boost.
+// kiest de speler zelf het moment om hem met X te verzilveren.
+// Ticket D74 (audit 6): X startte de Kerkklok Boost, en die maakt robots ook
+// sneller: een beloning die als straf voelde. Nu heeft X een eigen special,
+// de Klokslag: robots binnen het wapenbereik lopen even veel trager, en het
+// wapen blijft een paar seconden koel. De Boost bij de kerk (T) blijft de
+// bewuste gok: meer geld, snellere robots.
+const KLOKSLAG = { factor: 0.4, duur: 4, koelDuur: 5 };
+const klokslag = { koelResterend: 0 };
 function gebruikSpecial() {
-  if (spel.specialMeter < 100) return;
-  if (kerkklokBoost.active) {
-    toonFeedbackMelding('Kerkklok Boost is al actief');
-    return;
-  }
+  if (spel.specialMeter < 100 || spel.gameOver) return;
   spel.specialMeter = 0;
-  startKerkklokBoost(true);
+  const p = speler.positie;
+  let geraakt = 0;
+  for (const robot of robots) {
+    if (Math.hypot(robot.groep.position.x - p.x, robot.groep.position.z - p.z) > WAPEN_BEREIK) continue;
+    vertraagRobot(robot, KLOKSLAG.factor, KLOKSLAG.duur);
+    geraakt++;
+  }
+  klokslag.koelResterend = KLOKSLAG.koelDuur;
+  wapenWarmte.warmte = 0;
+  wapenWarmte.oververhit = false;
+  // Een gouden schokgolf vanaf de speler.
+  for (let i = 0; i < 18; i++) {
+    const hoek = (i / 18) * Math.PI * 2;
+    const vonk = new THREE.Mesh(EFFECT_GEO.bomVonk, EFFECT_MAT.bomGeel);
+    vonk.position.set(p.x + Math.cos(hoek), 0.6, p.z + Math.sin(hoek));
+    scene.add(vonk);
+    brokstukken.push({ mesh: vonk, snelheid: new THREE.Vector3(Math.cos(hoek) * 14, 0.3, Math.sin(hoek) * 14), draai: new THREE.Vector3(), leeftijd: kwaliteitPreset().brokstukLeven - 0.6, zwevend: true });
+  }
+  speelKerkklok();
+  cameraShake = Math.max(cameraShake, 0.06);
+  toonFeedbackMelding(`🔔 KLOKSLAG! ${geraakt} ${geraakt === 1 ? 'robot' : 'robots'} trager, wapen koel`);
   updateArcadeUI();
+  return geraakt;
+}
+// Een vertraging (Stroomval, Klokslag): de sterkste en de langste tellen,
+// zodat een zwakkere de andere niet overschrijft.
+function vertraagRobot(robot, factor, duur) {
+  const nu = robot.vertraging;
+  robot.vertraging = { factor: Math.min(factor, nu?.factor ?? 1), timer: Math.max(duur, nu?.timer ?? 0) };
 }
 
 // Wordt elke frame aangeroepen (alleen als het spel actief is, dus de
@@ -5050,6 +5072,7 @@ function updateKerkklokBoost(dt) {
   } else if (kerkklokBoost.cooldownResterend > 0) {
     kerkklokBoost.cooldownResterend = Math.max(0, kerkklokBoost.cooldownResterend - dt);
   }
+  if (klokslag.koelResterend > 0) klokslag.koelResterend = Math.max(0, klokslag.koelResterend - dt);   // Ticket D74
 }
 
 // --- Koninklijke Reparatiepost (Paleis) ---------------------------
@@ -6000,7 +6023,7 @@ function vuurBovenleiding(toren) {
     if (robot.schildActief) { speelSchildBlok(); treffers.push({ robot, schade: 0 }); return; }
     treffers.push({ robot, schade });
     // Ticket D58, Stroomval: getroffen robots lopen een tijd trager.
-    if (cfg.vertraging) robot.vertraging = { factor: cfg.vertraging, timer: cfg.vertragingDuur };
+    if (cfg.vertraging) vertraagRobot(robot, cfg.vertraging, cfg.vertragingDuur);   // D74: via de helper
     raakRobot(robot, schade, 'toren');
   });
   toren.laatsteKetting = treffers;
@@ -7264,7 +7287,7 @@ const WARMTE_HERVAT_DREMPEL = 35;
 const KOELING_WARMTE_FACTOR = 0.12;
 const KOELING_AFKOELING_PER_NIVEAU = 8;
 const wapenWarmte = { warmte: 0, oververhit: false, sindsSchot: 99, stoomTimer: 0 };
-function warmtePerSchot() { return WARMTE_PER_SCHOT * (1 - KOELING_WARMTE_FACTOR * upgrades.koeling); }
+function warmtePerSchot() { return klokslag.koelResterend > 0 ? 0 : WARMTE_PER_SCHOT * (1 - KOELING_WARMTE_FACTOR * upgrades.koeling); }   // D74: na een Klokslag even koel
 function warmteAfkoeling() { return WARMTE_AFKOELING + KOELING_AFKOELING_PER_NIVEAU * upgrades.koeling; }
 
 function probeerTeSchieten() {
@@ -7505,6 +7528,7 @@ function vernietigRobot(robot, bron = 'speler') {
   // Tijdens de Kerkklok Boost mag een lopende combo iets langer doorlopen.
   spel.comboTimer = kerkklokBoost.active ? 4.5 : 3.2;
   spel.specialMeter = Math.min(100, spel.specialMeter + 8);   // elk robottype telt gelijk mee
+  if (spel.specialMeter >= 100) toonHint('special');   // Ticket D74
   const punten = 100 * Math.max(1, spel.combo);
   spel.score += punten;
   toonPopup(`+${punten} score`);
@@ -7853,6 +7877,7 @@ function resetRun() {
   geld = 0;
   laatsteSchotTijd = -999;
   Object.assign(wapenWarmte, { warmte: 0, oververhit: false, sindsSchot: 99, stoomTimer: 0 });   // Ticket D17
+  klokslag.koelResterend = 0;   // Ticket D74
   toonWarmte();
   terugslag = 0;
   vlamTimer = 0;
@@ -7987,7 +8012,7 @@ requestAnimationFrame(gameLoop);
 // (…Stand, zelfde patroon als het bestaande `geldStand`) i.p.v. de kale
 // waarde: anders bevriest de export de waarde van het moment dat deze regel
 // voor het eerst uitgevoerd wordt, in plaats van live mee te lezen.
-window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, toonWaveBanner, waveBannerDuur, WAVE_BANNER_DUUR, verbergWaveBanner, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => menu === COMMANDOPOST_MENU, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, activeerKerkklokBoost, updateKerkklokBoost,
+window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, toonWaveBanner, waveBannerDuur, WAVE_BANNER_DUUR, verbergWaveBanner, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => menu === COMMANDOPOST_MENU, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, KLOKSLAG, klokslag, vertraagRobot, warmtePerSchotNu: () => warmtePerSchot(), activeerKerkklokBoost, updateKerkklokBoost,
   GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerBijenkorfUpgradeShop: activeerCommandopost, updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
   // Speeltest-feedback (na D6): overzicht-hulpmiddelen.
   // M2: de richtingspijlen (D27) zijn geschrapt; het lichtspoor en de
