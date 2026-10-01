@@ -1928,7 +1928,7 @@ friendly kunnen maken."
 | ☑ | **D81** | Besturingsgate: muis of touch, los van pointer lock |
 | ☑ | **D82** | Lopen, kijken en vuren met twee duimen |
 | ☑ | **D83** | Knoppen en aantikbare menu's: bouwen, Klokslag, volgende wave, kerkklok, pauze |
-| ☐ | **D84** | Liggend, safe-area, een HUD die op een telefoon past, iPhone-beginscherm, wake lock |
+| ☑ | **D84** | Liggend, safe-area, een HUD die op een telefoon past, iPhone-beginscherm, wake lock |
 | ☐ | **D85** | Lichte richthulp op touch |
 | ☐ | **D86** | Uitleg, afronding en regressie |
 | ☐ | **M6** | Speeltest op de iPhone |
@@ -1991,6 +1991,40 @@ friendly kunnen maken."
 - **Test:** nieuw `test-dnm-touch-bouwen` (14 checks: bouwen en upgraden
   door regels aan te tikken, menu open en dicht, Kerkklok, Klokslag,
   volgende wave, pauze, teksten).
+
+**D84 — de HUD op een telefoon, verslag.**
+- **Indeling op touch** (alleen `html.touchModus`, de muisindeling blijft):
+  - **bovenrand:** geld links, de doelregel in het midden, score en combo
+    rechts;
+  - **daaronder:** de golfregel links, de baasbalk in het midden, de minimap
+    rechts (84 px);
+  - **onder de baasbalk:** banner en hint, compact (op schermen tot 400 px
+    hoog nog compacter);
+  - **onderin:** de knoppen rond de vuurknop, pauze linksonder, de prompt
+    in het midden.
+- **Weg op touch:** de Klokslag-meter (zit in de knop), de grote combo (de
+  score toont hem) en de toetsenhulp. "← Menu" alleen op het pauzescherm.
+- **Bouwmenu open:** het menu houdt de linkerhelft (links van de hitmarker).
+  Baasbalk en banner schuiven naar de rechterhelft; golfregel en minimap
+  wijken. Op 375 px hoog passen anders geen aantikbare regels.
+- **Gemeten** (`test-dnm-mobiel`): geen enkele overlap op 667×375 (iPhone
+  SE), 844×390 (iPhone 14), 932×430 (Pro Max) en 1024×768 (iPad), met
+  bouwmenu en midden in een wave. Vóór D84: 24–30 overlappingen.
+- **Draaischerm** (uit Undead): staand op een telefoon verschijnt "Draai je
+  toestel" en pauzeert het spel. Een smal laptopvenster met muis krijgt
+  hem niet.
+- **iPhone:** `viewport-fit=cover`, en `apple-mobile-web-app-capable` met
+  een doorzichtige statusbalk. "Zet op beginscherm" geeft zo een volledig
+  scherm, want Safari kent op een iPhone geen Fullscreen API. Op Android en
+  iPad een fullscreenpoging bij de start-tik.
+- **Wake lock:** aangevraagd bij het spelen, losgelaten bij pauze, opnieuw
+  aangevraagd na terugkomen.
+- **Geen knijpzoom** op touch (ook Safari's gesture-events).
+- **Teksten:** "Tik om te spelen", "Gepauzeerd, tik om verder te spelen",
+  "Kijkgevoeligheid"; de golfregel noemt op touch geen G.
+- Een les uit het meten: de code zet de minimap inline op `block`, en dat
+  wint van gewone CSS; vandaar `!important` op het verbergen.
+- **Test:** nieuw `test-dnm-mobiel` (18 checks).
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

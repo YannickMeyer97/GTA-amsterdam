@@ -2,7 +2,16 @@
 <html lang="nl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Ticket D84: viewport-fit=cover laat het spel tot achter de notch lopen
+     (de HUD rekent met env(safe-area-inset-*)); de apple-/mobile-web-app-tags
+     maken "Zet op beginscherm" op een iPhone tot een volledig scherm zonder
+     adresbalk, want Safari kent op een iPhone geen Fullscreen API. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Monument">
+<meta name="theme-color" content="#0c1420">
 <title>Defend National Monument</title>
 <style>
   /* ============================================================
@@ -445,12 +454,60 @@
   .touchKnop.rond { width: 54px; height: 54px; padding: 0; border-radius: 50%; font-size: 22px; }
   .touchKnop.uit { opacity: 0.4; border-color: rgba(190, 215, 230, 0.25); }
   .touchKnop.ingedrukt { background: rgba(255, 215, 94, 0.45); }
-  #touchActie { right: max(20px, env(safe-area-inset-right)); bottom: max(118px, calc(env(safe-area-inset-bottom) + 100px)); min-width: 88px; box-sizing: border-box; }
-  #touchKlokslag { right: max(124px, calc(env(safe-area-inset-right) + 104px)); bottom: max(22px, env(safe-area-inset-bottom));
+  #touchActie { right: max(20px, env(safe-area-inset-right)); bottom: max(118px, calc(env(safe-area-inset-bottom) + 100px)); width: 140px; padding: 0 8px; box-sizing: border-box; }
+  #touchKlokslag { right: max(124px, calc(env(safe-area-inset-right) + 104px)); bottom: max(34px, calc(env(safe-area-inset-bottom) + 16px));
     background: conic-gradient(rgba(255, 215, 94, 0.55) var(--vul, 0%), rgba(18, 28, 40, 0.55) 0); }
   #touchKlokslag.vol { border-color: #ffd75e; box-shadow: 0 0 14px rgba(255, 215, 94, 0.7); opacity: 1; }
-  #touchVolgende { right: max(124px, calc(env(safe-area-inset-right) + 104px)); bottom: max(124px, calc(env(safe-area-inset-bottom) + 106px)); }
-  #touchPauze { left: max(16px, env(safe-area-inset-left)); bottom: max(16px, env(safe-area-inset-bottom)); }
+  #touchVolgende { right: max(172px, calc(env(safe-area-inset-right) + 152px)); bottom: max(118px, calc(env(safe-area-inset-bottom) + 100px)); }
+  #touchPauze { left: max(14px, env(safe-area-inset-left)); bottom: max(14px, env(safe-area-inset-bottom)); }
+  /* --- Ticket D84: de HUD op een liggende telefoon -------------------------
+     Alles binnen env(safe-area-inset-*) (de notch ligt liggend links of
+     rechts). Geld, doel en score bovenin; golfregel, baasbalk en minimap
+     daaronder; banner en hint onder de baasbalk; knoppen onderin. Het
+     bouwmenu ligt links, en zolang het open is wijkt de golfregel (op 375 px
+     hoog passen anders geen zes aantikbare regels). Weg op touch: de
+     Klokslag-meter (zit in de knop), de grote combo (de score toont hem) en
+     de toetsenhulp. */
+  #draaiScherm[hidden] { display: none; }
+  #draaiScherm { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    background: #0c1420; color: #eef3fa; text-align: center; padding: 24px; }
+  #draaiSchermIcoon { font-size: 54px; animation: draai 2.4s ease-in-out infinite; }
+  @keyframes draai { 0%, 30% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
+  #draaiSchermKop { font-size: 22px; font-weight: 800; color: #ffd75e; }
+  #draaiSchermTekst { font-size: 14px; opacity: 0.85; }
+  html.touchModus #geldUI { top: max(8px, env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); padding: 4px 10px; font-size: 16px; border-radius: 9px; }
+  html.touchModus #waveUI { top: max(44px, calc(env(safe-area-inset-top) + 36px)); left: max(10px, env(safe-area-inset-left)); padding: 4px 10px; font-size: 12px; max-width: 32vw; border-radius: 9px; }
+  html.touchModus #waveUI .poorten { font-size: 11px; }
+  html.touchModus.menuOpen #waveUI { display: none; }
+  html.touchModus #objectiveUI { top: max(8px, env(safe-area-inset-top)); padding: 5px 10px; font-size: 12px; max-width: 38vw; border-radius: 9px; }
+  html.touchModus #baasUI { top: max(42px, calc(env(safe-area-inset-top) + 34px)); width: min(280px, 34vw); padding: 3px 10px 5px; font-size: 11px; box-sizing: border-box; }
+  html.touchModus #baasBalk { margin-top: 3px; height: 7px; }
+  html.touchModus #scoreUI { top: max(8px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); padding: 4px 10px; font-size: 12px; border-radius: 9px; }
+  html.touchModus #specialUI, html.touchModus #comboUI, html.touchModus #hulpUI { display: none !important; }
+  html.touchModus #minimapUI { top: max(54px, calc(env(safe-area-inset-top) + 46px)); bottom: auto; right: max(10px, env(safe-area-inset-right)); width: 84px; height: 84px; }
+  html.touchModus.speelt #menuLink { display: none; }
+  html.touchModus #waveBanner { top: max(82px, calc(env(safe-area-inset-top) + 74px)); font-size: 16px; line-height: 1.15; padding: 6px 16px; max-width: min(540px, 58vw); border-radius: 12px; }
+  html.touchModus #waveBanner .tip { font-size: 11px; margin-top: 3px; }
+  html.touchModus #hintUI { top: max(82px, calc(env(safe-area-inset-top) + 74px)); font-size: 12px; padding: 6px 12px; max-width: min(480px, 56vw); }
+  html.touchModus #kerkklokBanner { top: auto; bottom: max(50px, calc(env(safe-area-inset-bottom) + 42px)); font-size: 11px; padding: 4px 10px; max-width: 34vw; white-space: normal; text-align: center; }
+  html.touchModus .popup { font-size: 16px; }
+  html.touchModus #popups { max-width: 46vw; }
+  /* Zolang het bouwmenu open is: het menu houdt de linkerhelft, de baasbalk en
+     de banner schuiven naar de rechterhelft, de golfregel en de minimap wijken. */
+  html.touchModus.menuOpen #minimapUI { display: none !important; }   /* !important: de code zet hem inline op block */
+  html.touchModus.menuOpen #baasUI { left: calc(50% + 24px); transform: none; width: calc(50vw - 24px - max(10px, env(safe-area-inset-right))); top: max(52px, calc(env(safe-area-inset-top) + 44px)); }
+  html.touchModus.menuOpen #waveBanner, html.touchModus.menuOpen #hintUI { left: calc(50% + 40px); transform: none; top: max(92px, calc(env(safe-area-inset-top) + 84px));
+    max-width: calc(50vw - 40px - max(10px, env(safe-area-inset-right))); font-size: 13px; }
+  html.touchModus.menuOpen #waveBanner .tip { font-size: 10px; }
+  /* Lage telefoons (iPhone SE: 375 px): de banner compacter, zodat hij met tip
+     boven de hitmarker blijft. */
+  @media (max-height: 400px) {
+    html.touchModus #waveBanner { top: max(88px, calc(env(safe-area-inset-top) + 80px)); font-size: 14px; line-height: 1.1; padding: 3px 12px; max-width: min(560px, 64vw); }
+    html.touchModus #waveBanner .tip { font-size: 10px; line-height: 1.15; margin-top: 2px; }
+  }
+  html.touchModus #interactiePrompt { bottom: max(12px, env(safe-area-inset-bottom)); font-size: 12px; padding: 5px 12px; max-width: 36vw; box-sizing: border-box; }
+  html.touchModus #menuUI { top: max(44px, calc(env(safe-area-inset-top) + 36px)); bottom: auto; left: max(10px, env(safe-area-inset-left));
+    max-width: min(440px, calc(50vw - 56px)); box-sizing: border-box;   /* links van de hitmarker (66 px breed) */ max-height: calc(100vh - 124px); overflow: hidden; font-size: 12px; line-height: 1.3; padding: 6px 10px; border-radius: 12px; }
   html.touchModus #menuUI .regel { padding: 5px 4px; border-radius: 8px; }
   html.touchModus #menuUI .regel:active { background: rgba(255, 215, 94, 0.25); }
   html.touchModus, html.touchModus body { touch-action: none; overscroll-behavior: none; -webkit-user-select: none; user-select: none; }
@@ -551,6 +608,13 @@
 <div id="popups"></div>
 <!-- Ticket D82: touchbesturing. De laag vangt zelf niets; de stick verschijnt
      waar je linkerduim landt, de vuurknop richt ook (zoals in Undead). -->
+<!-- Ticket D84: staand is het spel op een telefoon onspeelbaar; liever eerlijk
+     pauzeren en vragen te draaien dan een halve indeling tonen. -->
+<div id="draaiScherm" hidden>
+  <div id="draaiSchermIcoon">📱</div>
+  <div id="draaiSchermKop">Draai je toestel</div>
+  <div id="draaiSchermTekst">Defend National Monument speel je liggend.</div>
+</div>
 <div id="touchBediening" hidden>
   <div id="touchStick"><div id="touchStickKnop"></div></div>
   <div id="touchVuur" data-touch-eigen>VUUR</div>
@@ -559,7 +623,7 @@
        grijst uit maar blijft staan: een knop die verspringt raak je mis. -->
   <div id="touchActie" class="touchKnop uit" data-touch-eigen><span id="touchActieLabel">Actie</span></div>
   <div id="touchKlokslag" class="touchKnop rond uit" data-touch-eigen title="Klokslag"><span>🔔</span></div>
-  <div id="touchVolgende" class="touchKnop uit" data-touch-eigen>Volgende wave ▶</div>
+  <div id="touchVolgende" class="touchKnop uit" data-touch-eigen>▶ Volgende</div>
   <div id="touchPauze" class="touchKnop rond" data-touch-eigen title="Pauze">⏸</div>
 </div>
 <div id="hulpUI" style="display:none">WASD lopen · klik schieten · 1–6 kiezen · T menu · G volgende wave · X klokslag · Esc pauze</div>
@@ -3890,6 +3954,7 @@ startscherm.addEventListener('click', () => {
   // Ticket D55: tijdens het overwinningsscherm ook niet (daar kies je).
   if (spel.gameOver || spel.overwinningOpen) return;
   initGeluid();   // geluid mag pas starten na een klik (browserregel)
+  probeerFullscreen();   // Ticket D84: moet uit ditzelfde gebaar komen
   startBesturing();   // Ticket D81
 });
 
@@ -3955,6 +4020,8 @@ document.addEventListener('pointerlockchange', () => {
 // Wat er gebeurt als het spel start of pauzeert, in beide modi.
 function pasBesturingToe(actief) {
   toonTouchBediening(actief && besturingModus === 'touch');   // Ticket D82
+  document.documentElement.classList.toggle('speelt', actief);   // Ticket D84
+  if (actief) vraagWakeLock(); else laatWakeLockLos();         // Ticket D84
   // Ticket D7: bij game over verlaat eindigRun() de pointer lock zelf; dan
   // hoort hier het eindscherm te staan, niet het pauzescherm.
   startscherm.style.display = actief || spel.gameOver || spel.overwinningOpen ? 'none' : 'flex';   // D55: ook niet over het overwinningsscherm
@@ -3970,7 +4037,7 @@ function pasBesturingToe(actief) {
     // mouseup kan gemist zijn terwijl het venster geen focus had, dus
     // schietKnopIngedrukt moet hier ook expliciet gereset worden —
     // anders blijft het wapen na het heractiveren vanzelf doorvuren.
-    startscherm.querySelector('h2').textContent = 'Gepauzeerd, klik om verder te spelen';
+    startscherm.querySelector('h2').textContent = besturingModus === 'touch' ? 'Gepauzeerd, tik om verder te spelen' : 'Gepauzeerd, klik om verder te spelen';   // D84
     for (const k in ingedrukt) ingedrukt[k] = false;   // toetsen loslaten
     schietKnopIngedrukt = false;
     // Ook het menu en de interactieprompt netjes sluiten, zodat pauzeren
@@ -4198,6 +4265,76 @@ function voorInvoer(tekst) {
     .replace(/druk T/g, 'tik op de actieknop');
 }
 bijBesturingModus.push(() => { touchKnopStand.actie = undefined; touchKnopStand.klokslag = -1; touchKnopStand.volgende = null; renderMenu(); });
+
+/* --- Ticket D84: liggend, fullscreen, wake lock, teksten ---------------------
+   Draaischerm (uit Undead): alleen op een telefoon. Voor de BESTURING geldt
+   "invoer, niet apparaat" (D81), maar het draaischerm is alleen informatief:
+   verkeerd raden kost hooguit een overbodige melding. Daarom mag het hier
+   het grove signaal "(pointer: coarse) and (hover: none)" gebruiken, dat al
+   bij het laden klopt, vóór de eerste tik. Staand pauzeert het spel. */
+const staandeOrientatie = matchMedia('(orientation: portrait)');
+const grofPointerGeenHover = matchMedia('(pointer: coarse) and (hover: none)');
+const draaiSchermUI = document.getElementById('draaiScherm');
+function staatToestelStaand() {
+  return (besturingModus === 'touch' || grofPointerGeenHover.matches) && staandeOrientatie.matches;
+}
+function werkOrientatieBij() {
+  const staand = staatToestelStaand();
+  draaiSchermUI.hidden = !staand;
+  if (staand && besturingActief()) verlaatBesturing();
+}
+staandeOrientatie.addEventListener?.('change', werkOrientatieBij);
+grofPointerGeenHover.addEventListener?.('change', werkOrientatieBij);
+addEventListener('orientationchange', werkOrientatieBij);
+addEventListener('resize', werkOrientatieBij);
+bijBesturingModus.push(werkOrientatieBij);
+// Safari op iOS negeert user-scalable=no; knijpzoomen blokkeren via de
+// gesture-events, alleen op touch (een trackpad-knijp op macOS blijft werken).
+for (const soort of ['gesturestart', 'gesturechange', 'gestureend']) {
+  addEventListener(soort, e => { if (besturingModus === 'touch') e.preventDefault(); }, { passive: false });
+}
+// Fullscreen: Android en iPad kunnen de adresbalk echt wegnemen; een iPhone
+// niet (daar is "Zet op beginscherm" de route, zie de meta-tags). Moet uit
+// een gebruikersgebaar komen; een weigering is geen fout.
+function probeerFullscreen() {
+  if (besturingModus !== 'touch' || document.fullscreenElement) return;
+  const el = document.documentElement;
+  const vraag = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!vraag) return;
+  try { const uit = vraag.call(el, { navigationUI: 'hide' }); uit?.catch?.(() => {}); } catch { /* prima, gewoon doorspelen */ }
+}
+// Wake lock: het scherm gaat niet uit tijdens het spelen (tussen twee waves
+// raak je het toestel soms even niet aan). De browser laat hem los als de
+// pagina verborgen wordt; bij terugkomen opnieuw aanvragen. Niet overal
+// beschikbaar en altijd te weigeren: dan stil verder.
+let wakeLock = null;
+async function vraagWakeLock() {
+  if (!('wakeLock' in navigator) || wakeLock) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch { wakeLock = null; }
+}
+function laatWakeLockLos() {
+  const wl = wakeLock;
+  wakeLock = null;
+  wl?.release?.().catch?.(() => {});
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && besturingActief()) vraagWakeLock();
+});
+// Teksten op het start- en pauzescherm: "Klik" wordt "Tik".
+const startKnopUI = document.querySelector('#startscherm .knop');
+const gevoeligheidLabelUI = [...document.querySelectorAll('#instellingen > span')].find(x => x.textContent === 'Muisgevoeligheid');
+function werkStartteksten() {
+  const touch = besturingModus === 'touch';
+  startKnopUI.textContent = touch ? 'Tik om te spelen' : 'Klik om te spelen';
+  if (gevoeligheidLabelUI) gevoeligheidLabelUI.textContent = touch ? 'Kijkgevoeligheid' : 'Muisgevoeligheid';
+  const kop = startscherm.querySelector('h2');
+  kop.textContent = touch ? kop.textContent.replace('klik om verder', 'tik om verder') : kop.textContent.replace('tik om verder', 'klik om verder');
+}
+bijBesturingModus.push(werkStartteksten);
+werkOrientatieBij();
 
 // --- Botsingen: duw een punt (met straal) uit alle obstakels ----
 
@@ -4428,7 +4565,7 @@ function updateArcadeUI() {
   // en in de pauze al de aangekondigde poorten van de volgende. Poortnamen
   // komen uit de vaste SPAWN_POORTEN-lijst, dus innerHTML is hier veilig.
   const poortRegel = spel.volgendePoorten.length
-    ? `Wave ${spel.wave + 1} over ${Math.ceil(bouwfaseResterend())} s via ${poortenTekst(spel.volgendePoorten)} — G = nu starten`
+    ? `Wave ${spel.wave + 1} over ${Math.ceil(bouwfaseResterend())} s via ${poortenTekst(spel.volgendePoorten)}${besturingModus === 'touch' ? '' : ' — G = nu starten'}`   // D84: op touch is er een knop
     : `via ${poortenTekst(spel.actievePoorten)}`;
   waveUI.innerHTML = `Wave ${waveLabel(spel.wave)}, nog ${spel.teSpawnen + robots.length} robots<span class="poorten">${poortRegel}</span>`;
   objectiveUI.textContent = spel.gameOver
@@ -5505,11 +5642,13 @@ let menu = null;
 
 function openMenu(def) {
   menu = def;
+  document.documentElement.classList.add('menuOpen');   // Ticket D84
   renderMenu();
   menuUI.style.display = 'block';
 }
 function sluitMenu() {
   menu = null;
+  document.documentElement.classList.remove('menuOpen');   // Ticket D84
   menuUI.style.display = 'none';
   updateBereikCirkels();   // Ticket D73
 }
@@ -8419,7 +8558,7 @@ requestAnimationFrame(gameLoop);
 // waarde: anders bevriest de export de waarde van het moment dat deze regel
 // voor het eerst uitgevoerd wordt, in plaats van live mee te lezen.
 window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, toonWaveBanner, waveBannerDuur, WAVE_BANNER_DUUR, verbergWaveBanner, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, commandopostOpenStand: () => menu === COMMANDOPOST_MENU, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, spelerSchade, upgradeMax, UPGRADE_MAX, KLOKSLAG, klokslag, vertraagRobot, BAAS_VERTRAGING_EFFECT, warmtePerSchotNu: () => warmtePerSchot(), activeerKerkklokBoost, updateKerkklokBoost,
-  GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerCommandopost, besturingActief, startBesturing, verlaatBesturing, zetBesturingModus, besturingModusStand: () => besturingModus, voorInvoer, werkTouchKnoppenBij, touchStick, touchStand: () => ({ kijkVinger: touchKijkVinger, schieten: schietKnopIngedrukt, zichtbaar: !touchBedieningUI.hidden }), updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
+  GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerCommandopost, besturingActief, startBesturing, verlaatBesturing, zetBesturingModus, besturingModusStand: () => besturingModus, staatToestelStaand, werkOrientatieBij, wakeLockStand: () => !!wakeLock, voorInvoer, werkTouchKnoppenBij, touchStick, touchStand: () => ({ kijkVinger: touchKijkVinger, schieten: schietKnopIngedrukt, zichtbaar: !touchBedieningUI.hidden }), updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
   // Speeltest-feedback (na D6): overzicht-hulpmiddelen.
   // M2: de richtingspijlen (D27) zijn geschrapt; het lichtspoor en de
   // bakens tonen waar de robots vandaan komen.
