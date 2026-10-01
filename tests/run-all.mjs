@@ -125,10 +125,20 @@ const HERKANSING = new Set([
 // het script process.exit() nooit aanroept). Een cache-bustende query
 // zorgt dat elke aanroep (ook een herkansing) het bestand ECHT opnieuw
 // uitvoert i.p.v. de ESM-modulecache te raken.
+// Ticket D87: de [FAIL]-regels van het laatst gedraaide script, voor de
+// samenvatting onderaan (in CI toont GitHub alleen de staart van het log).
+let laatsteFails = [];
 async function draaiScript(script) {
   const origExit = process.exit;
   let exitCode = 0;
   process.exit = (code) => { exitCode = code ?? 0; };
+  laatsteFails = [];
+  const origLog = console.log;
+  console.log = (...args) => {
+    const regel = args.map(String).join(' ');
+    if (regel.startsWith('[FAIL]')) laatsteFails.push(regel.slice(0, 400));
+    origLog(...args);
+  };
   try {
     const url = pathToFileURL(path.join(__dirname, script)).href + '?run=' + Date.now() + '-' + Math.random();
     await import(url);
@@ -137,6 +147,7 @@ async function draaiScript(script) {
     exitCode = 1;
   } finally {
     process.exit = origExit;
+    console.log = origLog;
   }
   return exitCode;
 }
@@ -150,14 +161,14 @@ for (const script of scripts) {
     console.log(`\n(herkansing: ${script} staat bekend als wall-clock-timing-gevoelig in deze omgeving — zie ROADMAP_undead.md Ticket 78)`);
     code = await draaiScript(script);
   }
-  if (code !== 0) { fails++; rood.push(script); }
+  if (code !== 0) { fails++; rood.push({ script, regels: laatsteFails.length ? laatsteFails : ['(geen [FAIL]-regel: fout of exitcode, zie het script hierboven)'] }); }
 }
 
 await browser.close();
 // Ticket D87: de namen van de rode scripts vlak boven de samenvatting. In CI
 // is het log duizenden regels lang en toont GitHub alleen de staart; zonder
 // deze lijst zag je wel "163/169" maar niet welke zes.
-if (rood.length) console.log(`\nRood:\n${rood.map(s => `  - ${s}`).join('\n')}`);
+if (rood.length) console.log(`\nRood:\n${rood.map(r => `  - ${r.script}\n${r.regels.map(x => `      ${x}`).join('\n')}`).join('\n')}`);
 console.log(`\n${scripts.length - fails}/${scripts.length} scripts groen`);
 // Machine-leesbare regel voor run-all-parallel.mjs — de mens-leesbare regel
 // hierboven blijft ONGEWIJZIGD (bestaande gewoonte/tooling elders leest
