@@ -49,7 +49,7 @@ rechtsboven om terug te gaan naar het hoofdmenu.
 | Lopen | `W` `A` `S` `D` |
 | Rondkijken | Muis (klik eerst in het spel) |
 | Schieten | Linkermuisknop (ingedrukt houden = doorvuren) |
-| Kiezen in een menu | `1`–`5` (het menu opent vanzelf bij een bouwplek of de commandopost) |
+| Kiezen in een menu | `1`–`6` (het menu opent vanzelf bij een bouwplek of de commandopost) |
 | Menu sluiten / Kerkklok luiden | `T` |
 | Volgende wave meteen starten | `G` (in de pauze tussen twee waves, met een kleine bonus) |
 | Klokslag (special) | `X` (als de meter vol is): robots om je heen lopen even veel trager, je wapen blijft koel |
@@ -76,7 +76,8 @@ rechtsboven om terug te gaan naar het hoofdmenu.
   Op niveau 3 kies je een richting (bijvoorbeeld Kanon of Scherpschutter).
 - **Munten** laten robots achter; raap ze op. Bij de **commandopost** aan de
   voet van het monument koop je upgrades (vuurtempo, pickup-radius,
-  loopsnelheid, koeling) en repareer je het monument. Een **drukpers** voor
+  loopsnelheid, koeling, en voor later in de run zware kogels) en repareer
+  je het monument. Een **drukpers** voor
   het Paleis levert vast geld op.
 - **De Kerkklok** bij de Nieuwe Kerk (`T`): 30 seconden dubbel geld, maar
   de robots lopen dan ook sneller. Een gok, geen gratis bonus.

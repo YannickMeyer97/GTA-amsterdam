@@ -1413,7 +1413,7 @@ Verder:
 | ☑ | **D75** | Stroomval: half effect op bazen (audit 7) |
 | ☑ | **D76** | Voortgang wissen en camera-schok uit te zetten (audit 11, 12) |
 | ☑ | **D77** | Melding op een apparaat zonder muis en toetsenbord (audit 13) |
-| ☐ | **D78** | Geld met een bestemming: zwaardere kogels voor het wapen (audit 14) |
+| ☑ | **D78** | Geld met een bestemming: zwaardere kogels voor het wapen (audit 14) |
 | ☐ | **D79** | Onderhoud: dode code, torens opruimen, een test die een run speelt (audit 15–17) |
 | ☐ | **D80** | Herijken en volledige regressie na D71–D79 |
 | ☐ | **M5** | Speeltest door de eigenaar na D67–D80 |
@@ -1802,6 +1802,23 @@ torens op de juiste plek.
 - De telefoonversie zelf blijft in de backlog.
 - **Test:** nieuw `test-dnm-apparaat` (4 checks: telefoon en computer, in
   de game en in `index.html`; de melding blijft vrij van de menuknop).
+
+**D78 — Zware kogels, verslag (audit 14).**
+- Na wave 15 stapelde het geld op (€3.300–5.500 aan het eind van een
+  goede run): alle torens stonden op niveau 3 en er was niets meer te
+  kopen.
+- Nieuw bij de commandopost, optie 6: **Zware kogels**, +50% schade per
+  treffer van de speler, twee niveaus (€500, €1000). Een treffer doet dan
+  1,5 of 2 schade. Torens veranderen niet: het geld gaat naar wat de
+  speler zelf doet (auditpunt 4).
+- Een Pantserbot (5 HP) kost op niveau 2 drie treffers in plaats van vijf,
+  de Heimachine (200 HP) 100 in plaats van 200.
+- Optie 6, zodat 5 repareren blijft. De hulpbalk zegt "1–6 kiezen".
+- Upgrades hebben nu een eigen maximum (`upgradeMax`; kogels 2, de rest
+  5).
+- **Tests:** nieuw `test-dnm-kogels` (9 checks, met een echte treffer);
+  `test-dnm-commandopost` (zes opties) en `-hints` volgen. README
+  bijgewerkt. Het effect op een hele run meet D80.
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

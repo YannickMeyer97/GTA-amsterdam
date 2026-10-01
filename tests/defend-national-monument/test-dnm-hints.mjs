@@ -24,7 +24,7 @@ check('De titel is overal "Defend National Monument"', teksten.titel === 'Defend
 check('Het startscherm noemt 20 waves (D69), bazen, torens, 1–5, G, X, oververhitting en de commandopost',
   ['20 waves', 'vier bazen', 'torens', '1–5', 'G', 'X', 'te heet', 'commandopost'].every(w => teksten.uitleg.includes(w)), teksten.uitleg);
 check('De oude, onjuiste zin over "bij een bordje op T" is weg', !teksten.uitleg.includes('bordje'), teksten.uitleg);
-check('De hulpbalk noemt 1–5, G en X (D74: de klokslag)', ['1–5', 'G volgende wave', 'X klokslag'].every(w => teksten.hulp.includes(w)), teksten.hulp);
+check('De hulpbalk noemt 1–5, G en X (D74: de klokslag)', ['1–6', 'G volgende wave', 'X klokslag'].every(w => teksten.hulp.includes(w)), teksten.hulp);
 
 // 2. Hints: elk één keer, op het juiste moment.
 const hints = await met({ contextOpties: { viewport: { width: 1024, height: 640 } } }, page => page.evaluate(() => {

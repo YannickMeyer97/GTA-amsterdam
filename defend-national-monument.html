@@ -517,7 +517,7 @@
 <div id="richtkruis" style="display:none"></div>
 <div id="warmteUI" style="display:none"><div id="warmteVul"></div><div id="warmteTekst">OVERVERHIT</div></div>
 <div id="popups"></div>
-<div id="hulpUI" style="display:none">WASD lopen · klik schieten · 1–5 kiezen · T menu · G volgende wave · X klokslag · Esc pauze</div>
+<div id="hulpUI" style="display:none">WASD lopen · klik schieten · 1–6 kiezen · T menu · G volgende wave · X klokslag · Esc pauze</div>
 <div id="hintUI"></div>
 <div id="minimapUI" style="display:none"><canvas id="minimapCanvas" width="140" height="140"></canvas></div>
 
@@ -4098,6 +4098,7 @@ const upgrades = {
   pickup: 0,
   snelheid: 0,
   koeling: 0,   // Ticket D19
+  kogels: 0,    // Ticket D78
 };
 
 const scoreUI = document.getElementById('scoreUI');
@@ -4971,13 +4972,22 @@ function toonOverwinningscherm(uitslag = null, ontgrendeld = []) {
 document.getElementById('doorspeelKnop').addEventListener('click', doorspelen);
 
 function upgradeKosten(type) {
-  const basis = { vuurtempo: 100, pickup: 150, snelheid: 200, koeling: 125 }[type];
+  const basis = { vuurtempo: 100, pickup: 150, snelheid: 200, koeling: 125, kogels: 500 }[type];
   return basis + upgrades[type] * basis;
 }
+// Ticket D78 (audit 14): na wave 15 stapelde het geld op zonder bestemming
+// (€3.300–5.500 aan het eind van een goede run). Zware kogels zijn een dure
+// bestemming die de speler zelf sterker maakt, niet de torens: +50% schade
+// per treffer, twee niveaus (€500, €1000). Een Pantserbot (5 HP) kost op
+// niveau 2 drie treffers in plaats van vijf.
+const UPGRADE_MAX = { kogels: 2 };
+const KOGEL_SCHADE_PER_NIVEAU = 0.5;
+function upgradeMax(type) { return UPGRADE_MAX[type] ?? 5; }
+function spelerSchade() { return 1 + KOGEL_SCHADE_PER_NIVEAU * upgrades.kogels; }
 
 function koopUpgrade(type) {
   if (!upgrades || spel.gameOver) return;
-  if (upgrades[type] >= 5) {
+  if (upgrades[type] >= upgradeMax(type)) {
     toonPopup('Max upgrade');
     return;
   }
@@ -5288,16 +5298,22 @@ const COMMANDOPOST_UPGRADES = [
   ['snelheid', 'Loopsnelheid, sneller lopen'],
   ['koeling', 'Koeling, later oververhit'],   // Ticket D19
 ];
+function upgradeOptie([type, tekst]) {
+  const max = upgradeMax(type);
+  return upgrades[type] >= max
+    ? { tekst: `${tekst}, maximaal (niv. ${max})`, klaar: true, actie: () => {} }
+    : { tekst: `${tekst} €${upgradeKosten(type)} (niv. ${upgrades[type]}${max !== 5 ? `/${max}` : ''})`, prijs: upgradeKosten(type), actie: () => koopUpgrade(type) };
+}
 const COMMANDOPOST_MENU = {
   bron: 'commandopost',
   titel: () => 'Commandopost',
   opties: () => [
-    ...COMMANDOPOST_UPGRADES.map(([type, tekst]) => upgrades[type] >= 5
-      ? { tekst: `${tekst}, maximaal (niv. 5)`, klaar: true, actie: () => {} }
-      : { tekst: `${tekst} €${upgradeKosten(type)} (niv. ${upgrades[type]})`, prijs: upgradeKosten(type), actie: () => koopUpgrade(type) }),
+    ...COMMANDOPOST_UPGRADES.map(upgradeOptie),
     spel.monumentHP >= MONUMENT_MAX_HP
       ? { tekst: 'Monument repareren, het monument is heel', klaar: true, actie: () => {} }
       : { tekst: 'Monument repareren €100 (+25 HP)', prijs: 100, actie: koopMonumentReparatie },
+    // Ticket D78: na repareren, zodat 5 repareren blijft.
+    upgradeOptie(['kogels', 'Zware kogels, +50% schade per treffer']),
   ],
   hoortBij: punt => punt.type === 'commandopost',
 };
@@ -7468,7 +7484,7 @@ function schiet() {
     toonHitmarker();
     cameraShake = Math.max(cameraShake, 0.12);
     runStats.treffers += 1;
-    raakRobot(robot);
+    raakRobot(robot, spelerSchade());   // Ticket D78
   } else {
     // Muur of grond geraakt: klein grijs vonkje op de inslagplek.
     const vonk = new THREE.Mesh(EFFECT_GEO.vonk, EFFECT_MAT.vonk);
@@ -8086,7 +8102,7 @@ requestAnimationFrame(gameLoop);
 // (…Stand, zelfde patroon als het bestaande `geldStand`) i.p.v. de kale
 // waarde: anders bevriest de export de waarde van het moment dat deze regel
 // voor het eerst uitgevoerd wordt, in plaats van live mee te lezen.
-window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, toonWaveBanner, waveBannerDuur, WAVE_BANNER_DUUR, verbergWaveBanner, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => menu === COMMANDOPOST_MENU, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, KLOKSLAG, klokslag, vertraagRobot, BAAS_VERTRAGING_EFFECT, warmtePerSchotNu: () => warmtePerSchot(), activeerKerkklokBoost, updateKerkklokBoost,
+window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, toonWaveBanner, waveBannerDuur, WAVE_BANNER_DUUR, verbergWaveBanner, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => menu === COMMANDOPOST_MENU, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, spelerSchade, upgradeMax, UPGRADE_MAX, KLOKSLAG, klokslag, vertraagRobot, BAAS_VERTRAGING_EFFECT, warmtePerSchotNu: () => warmtePerSchot(), activeerKerkklokBoost, updateKerkklokBoost,
   GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerBijenkorfUpgradeShop: activeerCommandopost, updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
   // Speeltest-feedback (na D6): overzicht-hulpmiddelen.
   // M2: de richtingspijlen (D27) zijn geschrapt; het lichtspoor en de
