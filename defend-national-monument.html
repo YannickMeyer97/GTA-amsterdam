@@ -4094,7 +4094,11 @@ function verbergWaveBanner() {
 // kiesRobotTypeVoorWave() en de bestaande waveDoel/maxActieveRobots-formules.
 // Ticket D53: afgeleid uit ROBOT_TYPE_VANAF, zodat de aankondiging nooit
 // meer achterloopt op wanneer een type echt komt.
-const ROBOT_TYPE_MEERVOUD = { sprinter: 'Sprinters', tank: 'Tanks', bomber: 'Bommenwerpers', shieldbot: 'Shield Bots', pantserbot: 'Pantserbots', splitser: 'Splitsers' };
+// Ticket D72 (audit 10): één Nederlandse naamset, hier op één plek. Het
+// eindscherm zei Grunt, Runner, Bomber en Shield Bot; de banners
+// Sprinters, Bommenwerpers en Shield Bots. De interne sleutels blijven.
+const ROBOT_WEERGAVENAMEN = { normal: 'Loper', sprinter: 'Sprinter', tank: 'Tank', bomber: 'Bommenwerper', shieldbot: 'Schildbot', pantserbot: 'Pantserbot', splitser: 'Splitser', splinter: 'Splinter' };
+const ROBOT_TYPE_MEERVOUD = { sprinter: 'Sprinters', tank: 'Tanks', bomber: 'Bommenwerpers', shieldbot: 'Schildbots', pantserbot: 'Pantserbots', splitser: 'Splitsers' };
 // Ticket D68: de aankondiging vóór de eerste wave met een elite-robot legt zijn trucje uit.
 const ROBOT_TYPE_TIP = {
   pantserbot: 'Pantserbots: torens doen maar een derde van hun schade. Schiet ze zelf.',
@@ -4831,7 +4835,6 @@ function verwerkOverwinning(sterren) {
 }
 
 const eindscherm = document.getElementById('eindscherm');
-const ROBOT_WEERGAVENAMEN = { normal: 'Grunt', sprinter: 'Runner', tank: 'Tank', bomber: 'Bomber', shieldbot: 'Shield Bot', pantserbot: 'Pantserbot', splitser: 'Splitser', splinter: 'Splinter' };
 
 function formatteerSpeelduur(seconden) {
   const totaal = Math.floor(seconden);
@@ -5758,7 +5761,7 @@ function bomberOntploftBijToren(robot, toren) {
   robots.splice(robots.indexOf(robot), 1);
   const naam = `${TOREN_TYPES[toren.type].naam} bij ${toren.plek.naam}`;
   beschadigToren(toren, BOMBER_TORENSCHADE);
-  if (torens.includes(toren)) toonFeedbackMelding(`Bomber raakt ${naam}!`);
+  if (torens.includes(toren)) toonFeedbackMelding(`${ROBOT_WEERGAVENAMEN.bomber} raakt ${naam}!`);
   updateArcadeUI();
 }
 

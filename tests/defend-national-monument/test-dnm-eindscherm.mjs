@@ -128,7 +128,7 @@ check('Eindscherm toont de bereikte wave', eind.tekst.includes(`Wave ${eind.wave
 check('Eindscherm toont het totaal aantal kills', eind.tekst.includes(`Robots vernietigd${eind.totaalKills}`), eind);
 check('Eindscherm toont het trefferpercentage', eind.tekst.includes(`${eind.trefferPct}%`), eind);
 check('Eindscherm toont het verdiende geld', eind.tekst.includes(`€${eind.verdiend}`), eind);
-check('Eindscherm toont kills per type met weergavenaam', eind.tekst.includes('Grunt 1') && eind.tekst.includes('Tank 1'), eind);
+check('Eindscherm toont kills per type met de Nederlandse naam (D72)', eind.tekst.includes('Loper 1') && eind.tekst.includes('Tank 1'), eind);
 
 // --- 4. Na game over valt alles stil (pointer lock nog gesimuleerd aan) ----
 

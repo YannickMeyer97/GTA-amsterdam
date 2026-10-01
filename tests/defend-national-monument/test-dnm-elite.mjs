@@ -64,6 +64,7 @@ const r = await page.evaluate(() => {
   d.resetRun();
   const splitser = opRoute('splitser', 'Damrak', 15);
   splitser.laanFractie = 0;
+  { const p = d.robotRoutePunt(splitser, 15); splitser.groep.position.set(p.x, 0, p.z); }   // ook echt op die baan
   const voor = d.robots.length;
   const killsVoor = { ...d.runStats.kills };
   d.raakRobot(splitser, 1, 'speler');
@@ -126,6 +127,14 @@ const r = await page.evaluate(() => {
   };
   uit.tips = { voor6: aankondiging(5), voor8: aankondiging(7) };
   uit.namen = ['pantserbot', 'splitser', 'splinter'].map(t => d.ROBOT_WEERGAVENAMEN[t]);
+  // Ticket D72: elk gewoon type een Nederlandse naam, elk type uit een poort een meervoud.
+  const gewoneTypes = Object.keys(d.ROBOT_TYPES).filter(t => !d.ROBOT_TYPES[t].baas);
+  uit.naamset = {
+    zonderNaam: gewoneTypes.filter(t => !d.ROBOT_WEERGAVENAMEN[t]),
+    zonderMeervoud: Object.keys(d.ROBOT_TYPE_VANAF).filter(t => t !== 'normal' && !d.ROBOT_TYPE_MEERVOUD[t]),
+    engels: [...Object.values(d.ROBOT_WEERGAVENAMEN), ...Object.values(d.ROBOT_TYPE_MEERVOUD)].filter(n => /grunt|runner|bomber\b|shield/i.test(n)),
+    namen: d.ROBOT_WEERGAVENAMEN,
+  };
   d.resetRun();
   uit.naReset = d.robots.length;
   return uit;
@@ -148,6 +157,7 @@ check('De wave is pas klaar als de splinters ook weg zijn', r.wave.klaarMetSplin
 check('Vóór wave 6 legt de aankondiging de Pantserbot uit', /Pantserbot/.test(r.tips.voor6.tip ?? ''), r.tips.voor6);
 check('Vóór wave 8 legt de aankondiging de Splitser uit', /Splitser/.test(r.tips.voor8.tip ?? ''), r.tips.voor8);
 check('Eigen namen in het eindscherm', r.namen.join() === 'Pantserbot,Splitser,Splinter', r.namen);
+check('Eén Nederlandse naamset (D72): elk type een naam en een meervoud, geen Engelse namen meer', r.naamset.zonderNaam.length === 0 && r.naamset.zonderMeervoud.length === 0 && r.naamset.engels.length === 0 && r.naamset.namen.normal === 'Loper' && r.naamset.namen.shieldbot === 'Schildbot', r.naamset);
 check('Reset ruimt alles op', r.naReset === 0, r.naReset);
 
 const fails = report(errs);

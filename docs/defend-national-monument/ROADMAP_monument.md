@@ -1407,7 +1407,7 @@ Verder:
 | ☑ | **D69** | Een run van 20 waves, met De Heimachine als vierde baas |
 | ☑ | **D70** | Herijken na D66–D69 |
 | ☑ | **D71** | Wavebanner hoger en korter, niet meer over het richtkruis (audit 5) |
-| ☐ | **D72** | Eén Nederlandse naamset voor de robots (audit 10) |
+| ☑ | **D72** | Eén Nederlandse naamset voor de robots (audit 10) |
 | ☐ | **D73** | Bereikcirkel bij het bouwen (audit 9) |
 | ☐ | **D74** | De Kerkklok (X) als echte beloning, met uitleg (audit 6) |
 | ☐ | **D75** | Stroomval: half effect op bazen (audit 7) |
@@ -1705,6 +1705,19 @@ torens op de juiste plek.
   bouwfase kwamen ze eerst tegelijk).
 - **Test:** nieuw `test-dnm-banner` (9 checks: overlap op drie formaten,
   duur, de hint die wacht).
+
+**D72 — één naamset, verslag (audit 10).**
+- Robots heten overal: Loper, Sprinter, Tank, Bommenwerper, Schildbot,
+  Pantserbot, Splitser en Splinter (meervoud in de banners: Sprinters,
+  Tanks, Bommenwerpers, Schildbots, Pantserbots, Splitsers).
+- Eerst noemde het eindscherm Grunt, Runner, Bomber en Shield Bot, en een
+  bannermelding "Bomber raakt …". Beide maps staan nu naast elkaar op één
+  plek; de interne sleutels (`normal`, `shieldbot`, …) blijven.
+- De titel stond al overal goed (D61).
+- **Tests:** `test-dnm-elite` controleert de hele set (elk type een naam
+  en een meervoud, geen Engelse namen); `-eindscherm` en `-kern` volgen.
+  In `test-dnm-elite` stond de Splitser niet op de baan die de test hem
+  gaf, waardoor "dichtbij" soms faalde; dat is rechtgezet.
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

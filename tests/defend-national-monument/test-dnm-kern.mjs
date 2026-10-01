@@ -297,8 +297,8 @@ check('robotRaaktMonument() zet gameOver op true zodra monumentHP het nulpunt ra
 
 // Ticket D53: de aankondiging van nieuwe types volgt ROBOT_TYPE_VANAF.
 const banners = await page.evaluate(() => [2, 3, 4, 5].map(w => window.DamChaosDebug.waveBannerTekst(w)));
-check('Wave 2 kondigt sprinters én tanks aan, wave 3 bommenwerpers, wave 4 Shield Bots, wave 5 de baas (D56)',
-  /Sprinters en Tanks/.test(banners[0]) && /Bommenwerpers/.test(banners[1]) && /Shield Bots/.test(banners[2]) && banners[3] === 'Wave 5: De Sloopkogel!', banners);
+check('Wave 2 kondigt sprinters én tanks aan, wave 3 bommenwerpers, wave 4 Schildbots (D72), wave 5 de baas (D56)',
+  /Sprinters en Tanks/.test(banners[0]) && /Bommenwerpers/.test(banners[1]) && /Schildbots/.test(banners[2]) && banners[3] === 'Wave 5: De Sloopkogel!', banners);
 
 const fails = report(errs);
 await browser.close();
