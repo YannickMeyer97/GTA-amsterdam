@@ -5094,14 +5094,81 @@ function openMenu(def) {
 function sluitMenu() {
   menu = null;
   menuUI.style.display = 'none';
+  updateBereikCirkels();   // Ticket D73
 }
 function renderMenu() {
   if (!menu) return;
   const regels = menu.opties().map((o, i) => {
     const klasse = o.klaar ? ' gekocht' : (o.prijs != null && geld < o.prijs ? ' te-duur' : '');
-    return `<span class="regel${klasse}">${i + 1}, ${o.tekst}</span>`;
+    // Ticket D73: een stip in de kleur van de bereikcirkel op straat.
+    const stip = o.kleur ? `<span class="stip" style="color:#${o.kleur.toString(16).padStart(6, '0')}">●</span> ` : '';
+    return `<span class="regel${klasse}">${i + 1}, ${stip}${o.tekst}</span>`;
   }).join('');
   menuUI.innerHTML = `<b>${menu.titel()}</b>, druk een cijfer, T om te sluiten:<br>${regels}`;
+  updateBereikCirkels();   // Ticket D73
+}
+
+// --- Ticket D73 (audit 9): bereikcirkels bij het bouwen -------------------
+//
+// Zolang het menu van een bouwplek open is, liggen er cirkels op straat:
+// op een lege plek het bereik van de geschuttoren en de Bovenleiding; bij
+// een toren het huidige bereik (fel) en dat van het volgende niveau of van
+// beide richtingen (vaag). Een pool van drie ringen, geometrie per straal
+// gedeeld; ze worden alleen bijgewerkt als het menu verandert.
+const BEREIK_KLEUR = { geschut: 0xffd75e, bovenleiding: 0x7fd4ff };
+const BEREIK_FEL = 0.85, BEREIK_VAAG = 0.45;
+function bereikCirkelsVoorPlek(plek) {
+  if (!plek || plek.soort === 'drukpers') return [];
+  const t = plek.toren;
+  if (!t) return ['geschut', 'bovenleiding'].map(type => ({ type, straal: TOREN_TYPES[type].niveaus[0].bereik, fel: true }));
+  if (!BEREIK_KLEUR[t.type]) return [];
+  const nu = torenStats(t).bereik;
+  const cirkels = [{ type: t.type, straal: nu, fel: true }];
+  const volgende = t.niveau + 1 === RICHTING_NIVEAU && richtingen(t.type)
+    ? Object.entries(richtingen(t.type)).filter(([sleutel]) => richtingOntgrendeld(t.type, sleutel)).map(([, r]) => r.stats.bereik)
+    : [TOREN_TYPES[t.type].niveaus[t.niveau]?.bereik];
+  for (const straal of new Set(volgende)) if (straal && straal !== nu) cirkels.push({ type: t.type, straal, fel: false });
+  return cirkels;
+}
+// Van ooghoogte is een dunne ring een streepje: de rand is 0,4 m breed, en
+// een felle cirkel krijgt een lichte vulling, zodat je het vlak ziet.
+const BEREIK_RAND = 0.4, BEREIK_VULLING = 0.12;
+const bereikRingGeo = new Map(), bereikVulGeo = new Map();
+const bereikRingen = [];
+function bereikRing(i) {
+  if (!bereikRingen[i]) {
+    const ring = new THREE.Mesh(undefined, new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.renderOrder = 2;
+    ring.visible = false;
+    const vulling = new THREE.Mesh(undefined, new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, opacity: BEREIK_VULLING }));
+    vulling.renderOrder = 1;
+    ring.add(vulling);
+    ring.userData.vulling = vulling;
+    scene.add(ring);
+    bereikRingen[i] = ring;
+  }
+  return bereikRingen[i];
+}
+function updateBereikCirkels() {
+  const plek = menu && typeof menu.bron === 'object' ? menu.bron : null;
+  const cirkels = bereikCirkelsVoorPlek(plek);
+  cirkels.forEach((c, i) => {
+    const ring = bereikRing(i);
+    if (!bereikRingGeo.has(c.straal)) {
+      bereikRingGeo.set(c.straal, new THREE.RingGeometry(c.straal - BEREIK_RAND, c.straal, 96));
+      bereikVulGeo.set(c.straal, new THREE.CircleGeometry(c.straal - BEREIK_RAND, 96));
+    }
+    ring.geometry = bereikRingGeo.get(c.straal);
+    ring.material.color.setHex(BEREIK_KLEUR[c.type]);
+    ring.userData.vulling.geometry = bereikVulGeo.get(c.straal);
+    ring.userData.vulling.material.color.setHex(BEREIK_KLEUR[c.type]);
+    ring.userData.vulling.visible = c.fel;
+    ring.material.opacity = c.fel ? BEREIK_FEL : BEREIK_VAAG;
+    ring.position.set(plek.positie.x, 0.07, plek.positie.z);
+    ring.visible = true;
+  });
+  for (let i = cirkels.length; i < bereikRingen.length; i++) bereikRingen[i].visible = false;
 }
 function kiesMenuOptie(i) {
   if (!menu) return;
@@ -5511,7 +5578,7 @@ function slotOpties(t, woord) {
   const splitsing = t.niveau + 1 === RICHTING_NIVEAU && richtingen(t.type);
   const upgradeOpties = splitsing
     ? Object.entries(richtingen(t.type)).map(([sleutel, r]) => richtingOntgrendeld(t.type, sleutel)
-      ? { tekst: `${cfg.naam} → ${r.naam} €${r.stats.prijs}, ${r.omschrijving}`, prijs: r.stats.prijs, actie: () => upgradeToren(t, sleutel) }
+      ? { tekst: `${cfg.naam} → ${r.naam} €${r.stats.prijs}, ${r.omschrijving}${r.stats.bereik ? `, bereik ${r.stats.bereik} m` : ''}`, prijs: r.stats.prijs, kleur: BEREIK_KLEUR[t.type], actie: () => upgradeToren(t, sleutel) }
       : { tekst: `${r.naam}: op slot (${ontgrendelHint(t.type, sleutel)})`, klaar: true, actie: () => {} })
     : [prijs === null
       ? { tekst: `${torenNaam(t)}: maximaal niveau`, klaar: true, actie: () => {} }
@@ -5535,6 +5602,7 @@ function bouwMenu(plek) {
     opties: () => {
       const bouwOptie = ([type, cfg]) => ({
         tekst: `${cfg.naam} €${cfg.prijs}, ${cfg.omschrijving}${cfg.alleenOp ? '' : `, ${cfg.hp} HP`}`, prijs: cfg.prijs,
+        kleur: BEREIK_KLEUR[type],   // Ticket D73
         actie: () => bouwToren(plek, type),
       });
       // Ticket D51: op een drukpersplek alleen de drukpers, zonder hekslot.
@@ -7953,7 +8021,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   // Ticket D20: zichtbare monumentschade.
   monumentSchade, monumentSchadeTier, updateMonumentSchade, pasMonumentSchadeToe, MONUMENT_SCHADE_DREMPELS,
   // Ticket D28: aangekondigde poorten.
-  aantalActievePoorten, kiesActievePoorten, eliteGewicht, maxActieveRobotsVoorWave, ROBOT_TYPE_VANAF, ROBOT_TYPE_TIP, ROBOT_WEERGAVENAMEN, ROBOT_TYPE_MEERVOUD, waveBasisAantal, DERDE_POORT_VANAF, splitsRobot, kiesSpawnPoort, poortBakens, updatePoortBakens,
+  bereikCirkelsVoorPlek, bereikRingen, BEREIK_KLEUR, BEREIK_FEL, BEREIK_VAAG, aantalActievePoorten, kiesActievePoorten, eliteGewicht, maxActieveRobotsVoorWave, ROBOT_TYPE_VANAF, ROBOT_TYPE_TIP, ROBOT_WEERGAVENAMEN, ROBOT_TYPE_MEERVOUD, waveBasisAantal, DERDE_POORT_VANAF, splitsRobot, kiesSpawnPoort, poortBakens, updatePoortBakens,
   // Ticket D29: wapenbereik.
   WAPEN_BEREIK, raycaster,
   // Ticket D10: bouwplekken.

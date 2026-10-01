@@ -1408,7 +1408,7 @@ Verder:
 | ☑ | **D70** | Herijken na D66–D69 |
 | ☑ | **D71** | Wavebanner hoger en korter, niet meer over het richtkruis (audit 5) |
 | ☑ | **D72** | Eén Nederlandse naamset voor de robots (audit 10) |
-| ☐ | **D73** | Bereikcirkel bij het bouwen (audit 9) |
+| ☑ | **D73** | Bereikcirkel bij het bouwen (audit 9) |
 | ☐ | **D74** | De Kerkklok (X) als echte beloning, met uitleg (audit 6) |
 | ☐ | **D75** | Stroomval: half effect op bazen (audit 7) |
 | ☐ | **D76** | Voortgang wissen en camera-schok uit te zetten (audit 11, 12) |
@@ -1718,6 +1718,20 @@ torens op de juiste plek.
   en een meervoud, geen Engelse namen); `-eindscherm` en `-kern` volgen.
   In `test-dnm-elite` stond de Splitser niet op de baan die de test hem
   gaf, waardoor "dichtbij" soms faalde; dat is rechtgezet.
+
+**D73 — bereikcirkels, verslag (audit 9).**
+- Zolang het menu van een bouwplek open is, liggen er cirkels op straat,
+  rond de plek (het punt waarvan torens hun bereik meten):
+  - lege plek: geschut 11 m (goud) en Bovenleiding 10 m (blauw);
+  - een toren: het huidige bereik fel, met een lichte vulling; het
+    volgende niveau vaag. Vlak voor niveau 3 de ontgrendelde richtingen
+    (Scherpschutter 22 m pas na de Sloopkogel).
+- In het menu staat voor elke toren- en richtingsoptie een stip in de
+  kleur van zijn cirkel; de richtingen noemen hun bereik.
+- Van ooghoogte is een dunne ring een streepje: de rand is 0,4 m breed.
+- Drie ringen in een pool, geometrie per straal gedeeld; alleen
+  bijgewerkt als het menu verandert (`renderMenu`, `sluitMenu`).
+- **Test:** nieuw `test-dnm-bereik` (11 checks).
 
 ### Backlog — bewust ná alle bovenstaande tickets
 
