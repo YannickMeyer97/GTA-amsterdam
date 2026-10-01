@@ -426,6 +426,23 @@
   /* Ticket D59: ontgrendelingen. */
   .kwaliteitKnop.slot { opacity: 0.45; cursor: not-allowed; }
   .kwaliteitKnop.gevaar { margin-left: 8px; color: #ffb3a6; }   /* Ticket D76 */
+  /* Ticket D82: touchbesturing (overgenomen uit Amsterdam Undead, aangepast). */
+  #touchBediening[hidden] { display: none; }
+  #touchBediening { position: fixed; inset: 0; z-index: 9; pointer-events: none; }
+  #touchStick { position: absolute; width: 120px; height: 120px; border-radius: 50%; left: -999px; top: -999px; pointer-events: none;
+    border: 2px solid rgba(255,255,255,0.22); background: rgba(12, 18, 28, 0.28); }
+  #touchStickKnop { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%;
+    background: rgba(230, 240, 235, 0.42); border: 1px solid rgba(255,255,255,0.35); }
+  #touchVuur { position: absolute; right: max(20px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom));
+    width: 88px; height: 88px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    background: rgba(200, 70, 60, 0.30); border: 2px solid rgba(255, 140, 130, 0.55); color: #ffe8e4;
+    font-size: 13px; font-weight: 700; letter-spacing: 1px; pointer-events: auto; user-select: none; -webkit-user-select: none; }
+  #touchVuur.ingedrukt { background: rgba(220, 90, 75, 0.55); }
+  html.touchModus, html.touchModus body { touch-action: none; overscroll-behavior: none; -webkit-user-select: none; user-select: none; }
+  /* Op touch vangt de HUD geen aanrakingen af: die gaan naar de stick, het
+     kijken of de knoppen eronder. Alleen elementen met data-touch-eigen
+     (knoppen, het menu) zijn aan te tikken. */
+  html.touchModus body > div:not(#touchBediening):not([data-touch-eigen]):not(#startscherm):not(#eindscherm):not(#overwinningscherm):not(#ontgrendelPaneel) { pointer-events: none; }
   /* Ticket D77 (audit 13): op een apparaat zonder muis (telefoon, tablet)
      zegt het startscherm dat de game toetsenbord en muis vraagt. */
   #apparaatMelding { display: none; max-width: max(260px, min(520px, calc(100vw - 240px)));   /* rechts ruimte voor "← Menu" */ margin: 0 0 12px; padding: 8px 14px; border-radius: 10px;
@@ -517,6 +534,12 @@
 <div id="richtkruis" style="display:none"></div>
 <div id="warmteUI" style="display:none"><div id="warmteVul"></div><div id="warmteTekst">OVERVERHIT</div></div>
 <div id="popups"></div>
+<!-- Ticket D82: touchbesturing. De laag vangt zelf niets; de stick verschijnt
+     waar je linkerduim landt, de vuurknop richt ook (zoals in Undead). -->
+<div id="touchBediening" hidden>
+  <div id="touchStick"><div id="touchStickKnop"></div></div>
+  <div id="touchVuur">VUUR</div>
+</div>
 <div id="hulpUI" style="display:none">WASD lopen · klik schieten · 1–6 kiezen · T menu · G volgende wave · X klokslag · Esc pauze</div>
 <div id="hintUI"></div>
 <div id="minimapUI" style="display:none"><canvas id="minimapCanvas" width="140" height="140"></canvas></div>
@@ -3909,6 +3932,7 @@ document.addEventListener('pointerlockchange', () => {
 });
 // Wat er gebeurt als het spel start of pauzeert, in beide modi.
 function pasBesturingToe(actief) {
+  toonTouchBediening(actief && besturingModus === 'touch');   // Ticket D82
   // Ticket D7: bij game over verlaat eindigRun() de pointer lock zelf; dan
   // hoort hier het eindscherm te staan, niet het pauzescherm.
   startscherm.style.display = actief || spel.gameOver || spel.overwinningOpen ? 'none' : 'flex';   // D55: ook niet over het overwinningsscherm
@@ -3955,6 +3979,118 @@ addEventListener('mousedown', e => {
 addEventListener('mouseup', e => {
   if (e.button === 0) schietKnopIngedrukt = false;
 });
+
+/* --- Ticket D82: lopen, kijken en vuren met twee duimen ---------------------
+   Overgenomen uit Amsterdam Undead (T177 en de speeltest-fixes), aangepast.
+   Drie kanalen werken tegelijk: lopen (linkerhelft), kijken (rechterhelft) en
+   vuren (de knop). Elke aanraking wordt op zijn eigen `identifier` gevolgd,
+   zodat een tweede vinger de stick of het kijken nooit steelt.
+   - De stick verschijnt waar je duim landt (geen vaste plek).
+   - De vuurknop RICHT OOK: je hebt maar twee duimen, en met een aparte
+     kijkvinger kon je in Undead niet schieten en rondkijken tegelijk.
+   - Kijken gebruikt dezelfde gevoeligheid als de muis, maal een factor:
+     een duimveeg legt minder pixels af dan een muisbeweging.
+   Een element met data-touch-eigen (menu, knoppen, D83) handelt zijn eigen
+   aanrakingen af; daar begint geen stick of kijkbeweging. */
+const TOUCH_STICK_STRAAL = 52;      // px: volle uitslag
+const TOUCH_STICK_DODE_ZONE = 6;    // px: daaronder geen beweging
+const TOUCH_KIJK_FACTOR = 2.6;      // duimveeg tegenover muisbeweging, per pixel
+const touchStick = { vinger: null, oorsprongX: 0, oorsprongY: 0, x: 0, y: 0, kracht: 0 };
+let touchKijkVinger = null, touchKijkX = 0, touchKijkY = 0;
+const touchBedieningUI = document.getElementById('touchBediening');
+const touchStickUI = document.getElementById('touchStick');
+const touchStickKnopUI = document.getElementById('touchStickKnop');
+const touchVuurKnop = document.getElementById('touchVuur');
+
+function draaiKijkrichting(dx, dy, schaal) {
+  speler.yaw -= dx * 0.0022 * instellingen.gevoeligheid * schaal;
+  speler.pitch -= dy * 0.0022 * instellingen.gevoeligheid * schaal;
+  speler.pitch = Math.max(-1.45, Math.min(1.45, speler.pitch));
+}
+function toonTouchBediening(aan) {
+  touchBedieningUI.hidden = !aan;
+  if (!aan) { laatTouchStickLos(); touchKijkVinger = null; touchVuurKnop.classList.remove('ingedrukt'); }
+}
+function laatTouchStickLos() {
+  touchStick.vinger = null;
+  touchStick.x = 0; touchStick.y = 0; touchStick.kracht = 0;
+  touchStickUI.style.left = '-999px'; touchStickUI.style.top = '-999px';
+  touchStickKnopUI.style.transform = '';
+}
+function zetTouchStick(x, y) {
+  let dx = x - touchStick.oorsprongX, dy = y - touchStick.oorsprongY;
+  const afstand = Math.hypot(dx, dy);
+  if (afstand < TOUCH_STICK_DODE_ZONE) {
+    touchStick.x = 0; touchStick.y = 0; touchStick.kracht = 0;
+  } else {
+    const begrensd = Math.min(afstand, TOUCH_STICK_STRAAL);
+    touchStick.x = dx / afstand; touchStick.y = dy / afstand;
+    touchStick.kracht = begrensd / TOUCH_STICK_STRAAL;
+    dx = touchStick.x * begrensd; dy = touchStick.y * begrensd;
+  }
+  touchStickKnopUI.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
+}
+bijBesturingModus.push(() => { laatTouchStickLos(); touchKijkVinger = null; });
+
+addEventListener('touchstart', e => {
+  if (besturingModus !== 'touch' || !besturingActief()) return;
+  if (e.target.closest?.('[data-touch-eigen]')) return;
+  const helft = innerWidth / 2;
+  for (const t of e.changedTouches) {
+    if (t.clientX < helft) {
+      if (touchStick.vinger !== null) continue;   // stick bezet: niet stelen
+      touchStick.vinger = t.identifier;
+      touchStick.oorsprongX = t.clientX; touchStick.oorsprongY = t.clientY;
+      touchStickUI.style.left = `${t.clientX - 60}px`; touchStickUI.style.top = `${t.clientY - 60}px`;
+      zetTouchStick(t.clientX, t.clientY);
+    } else if (touchKijkVinger === null) {
+      touchKijkVinger = t.identifier;
+      touchKijkX = t.clientX; touchKijkY = t.clientY;
+    }
+  }
+  e.preventDefault();   // geen scrollen, zoomen of nagebootste muisklik
+}, { passive: false });
+addEventListener('touchmove', e => {
+  if (besturingModus !== 'touch' || !besturingActief()) return;
+  for (const t of e.changedTouches) {
+    if (t.identifier === touchStick.vinger) zetTouchStick(t.clientX, t.clientY);
+    else if (t.identifier === touchKijkVinger) {
+      draaiKijkrichting(t.clientX - touchKijkX, t.clientY - touchKijkY, TOUCH_KIJK_FACTOR);
+      touchKijkX = t.clientX; touchKijkY = t.clientY;
+    }
+  }
+  if (besturingActief()) e.preventDefault();
+}, { passive: false });
+function beeindigTouch(e) {
+  for (const t of e.changedTouches) {
+    if (t.identifier === touchStick.vinger) laatTouchStickLos();
+    else if (t.identifier === touchKijkVinger) touchKijkVinger = null;
+  }
+}
+addEventListener('touchend', beeindigTouch, { passive: true });
+addEventListener('touchcancel', beeindigTouch, { passive: true });
+
+// De vuurknop: dezelfde vlag als de linkermuisknop, en hij claimt de
+// kijkvinger als die nog vrij is (vasthouden én richten met één duim).
+touchVuurKnop.addEventListener('touchstart', e => {
+  e.stopPropagation();
+  e.preventDefault();
+  zetBesturingModus('touch');
+  if (!besturingActief() || spel.gameOver) return;
+  schietKnopIngedrukt = true;
+  touchVuurKnop.classList.add('ingedrukt');
+  const t = e.changedTouches[0];
+  if (t && touchKijkVinger === null) { touchKijkVinger = t.identifier; touchKijkX = t.clientX; touchKijkY = t.clientY; }
+  probeerTeSchieten();
+}, { passive: false });
+const laatVuurknopLos = e => {
+  e.stopPropagation();
+  schietKnopIngedrukt = false;
+  touchVuurKnop.classList.remove('ingedrukt');
+  for (const t of e.changedTouches) if (t.identifier === touchKijkVinger) touchKijkVinger = null;
+};
+touchVuurKnop.addEventListener('touchend', laatVuurknopLos);
+touchVuurKnop.addEventListener('touchcancel', laatVuurknopLos);
 
 // --- Botsingen: duw een punt (met straal) uit alle obstakels ----
 
@@ -4028,19 +4164,27 @@ function updateSpeler(dt) {
     if (ingedrukt['KeyS']) stapVooruit -= 1;
     if (ingedrukt['KeyD']) stapZijwaarts += 1;
     if (ingedrukt['KeyA']) stapZijwaarts -= 1;
+    // Ticket D82: de touchstick, analoog (kracht 0–1; omhoog duwen = vooruit).
+    if (touchStick.vinger !== null && touchStick.kracht > 0) {
+      stapVooruit -= touchStick.y * touchStick.kracht;
+      stapZijwaarts += touchStick.x * touchStick.kracht;
+    }
 
     if (stapVooruit !== 0 || stapZijwaarts !== 0) {
       // "Vooruit" hangt af van waar je heen kijkt (de yaw).
       const sin = Math.sin(speler.yaw), cos = Math.cos(speler.yaw);
       let bewegingX = (-sin * stapVooruit) + (cos * stapZijwaarts);
       let bewegingZ = (-cos * stapVooruit) + (-sin * stapZijwaarts);
-      // Normaliseren zodat diagonaal lopen niet sneller is.
+      // Normaliseren zodat diagonaal lopen niet sneller is. D82: alleen
+      // inkorten tot 1, zodat een half uitgeduwde stick ook half zo snel loopt
+      // (met toetsen is de lengte altijd 1 of √2, dus daar verandert niets).
       const lengte = Math.hypot(bewegingX, bewegingZ);
-      bewegingX /= lengte; bewegingZ /= lengte;
+      const deler = Math.max(1, lengte);
+      bewegingX /= deler; bewegingZ /= deler;
 
       speler.positie.x += bewegingX * speler.snelheid * dt;
       speler.positie.z += bewegingZ * speler.snelheid * dt;
-      speler.bobTijd += dt * 9;   // camera wiebelt tijdens het lopen
+      speler.bobTijd += dt * 9 * Math.min(1, lengte);   // camera wiebelt tijdens het lopen
     }
   }
 
@@ -8167,7 +8311,7 @@ requestAnimationFrame(gameLoop);
 // waarde: anders bevriest de export de waarde van het moment dat deze regel
 // voor het eerst uitgevoerd wordt, in plaats van live mee te lezen.
 window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, toonWaveBanner, waveBannerDuur, WAVE_BANNER_DUUR, verbergWaveBanner, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, commandopostOpenStand: () => menu === COMMANDOPOST_MENU, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, spelerSchade, upgradeMax, UPGRADE_MAX, KLOKSLAG, klokslag, vertraagRobot, BAAS_VERTRAGING_EFFECT, warmtePerSchotNu: () => warmtePerSchot(), activeerKerkklokBoost, updateKerkklokBoost,
-  GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerCommandopost, besturingActief, startBesturing, verlaatBesturing, zetBesturingModus, besturingModusStand: () => besturingModus, updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
+  GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerCommandopost, besturingActief, startBesturing, verlaatBesturing, zetBesturingModus, besturingModusStand: () => besturingModus, touchStick, touchStand: () => ({ kijkVinger: touchKijkVinger, schieten: schietKnopIngedrukt, zichtbaar: !touchBedieningUI.hidden }), updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
   // Speeltest-feedback (na D6): overzicht-hulpmiddelen.
   // M2: de richtingspijlen (D27) zijn geschrapt; het lichtspoor en de
   // bakens tonen waar de robots vandaan komen.

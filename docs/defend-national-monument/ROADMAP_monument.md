@@ -1926,7 +1926,7 @@ friendly kunnen maken."
 | | Ticket | Kern |
 | --- | --- | --- |
 | ☑ | **D81** | Besturingsgate: muis of touch, los van pointer lock |
-| ☐ | **D82** | Lopen, kijken en vuren met twee duimen |
+| ☑ | **D82** | Lopen, kijken en vuren met twee duimen |
 | ☐ | **D83** | Knoppen en aantikbare menu's: bouwen, Klokslag, volgende wave, kerkklok, pauze |
 | ☐ | **D84** | Liggend, safe-area, een HUD die op een telefoon past, iPhone-beginscherm, wake lock |
 | ☐ | **D85** | Lichte richthulp op touch |
@@ -1951,6 +1951,24 @@ friendly kunnen maken."
   duidelijk de plek zijn om te tikken (D84).
 - **Test:** nieuw `test-dnm-besturingsgate` (10 checks, met echte
   aanrakingen via `hasTouch`).
+
+**D82 — twee duimen, verslag.**
+- Overgenomen uit Undead (T177 en de speeltest-fixes daar), aangepast:
+  - **links** een stick die verschijnt waar je duim landt (120 px, volle
+    uitslag op 52 px, dode zone 6 px);
+  - **rechts** vegen om te kijken, met de muisgevoeligheid × 2,6;
+  - **een vuurknop** (rechtsonder) die vuurt én de kijkvinger claimt, zodat
+    je met één duim schiet en richt.
+- Elke vinger wordt op zijn eigen id gevolgd: een tweede vinger steelt de
+  stick niet.
+- **Lopen is analoog:** een half uitgeduwde stick loopt half zo snel. Voor
+  toetsen verandert niets (de lengte is daar altijd 1 of √2).
+- In de touchmodus vangen HUD-elementen geen aanrakingen af; alleen knoppen
+  en het menu (`data-touch-eigen`, D83). Eerst lag de minimap over de
+  vuurknop en ving hij de tik op.
+- Pauzeren verbergt de bediening en laat stick, kijkvinger en vuurknop los.
+- **Test:** nieuw `test-dnm-touch` (13 checks, met echte meervinger-
+  aanrakingen via `Input.dispatchTouchEvent`).
 
 ### Backlog — bewust ná alle bovenstaande tickets
 
