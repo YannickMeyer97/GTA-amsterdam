@@ -1190,7 +1190,7 @@ minuten.
 | ☑ | **D57** | De drie bazen: Sloopkogel (5), Dijkbreker (10), Stoomwals (15) |
 | ☑ | **D58** | Torens splitsen op niveau 3 |
 | ☑ | **D59** | Ontgrendelingen tussen runs |
-| ◐ | **D60** | Herijken en speeltest → **M4** *(herijkt; de speeltest door de eigenaar staat open)* |
+| ☑ | **D60** | Herijken en speeltest → **M4** *(speeltest gedaan; zie "Na M4 en de audit")* |
 
 **D55 — een run van 15 waves, verslag.**
 - **De run heeft een einde.** Na wave 15 (`RUN_WAVES`) opent het
@@ -1406,13 +1406,27 @@ Verder:
 | ☑ | **D68** | Elite-robots: Pantserbot en Splitser (audit 4) |
 | ☑ | **D69** | Een run van 20 waves, met De Heimachine als vierde baas |
 | ☑ | **D70** | Herijken na D66–D69 |
-| ☐ | **M5** | Speeltest door de eigenaar na D67–D70 |
+| ☑ | **D71** | Wavebanner hoger en korter, niet meer over het richtkruis (audit 5) |
+| ☐ | **D72** | Eén Nederlandse naamset voor de robots (audit 10) |
+| ☐ | **D73** | Bereikcirkel bij het bouwen (audit 9) |
+| ☐ | **D74** | De Kerkklok (X) als echte beloning, met uitleg (audit 6) |
+| ☐ | **D75** | Stroomval: half effect op bazen (audit 7) |
+| ☐ | **D76** | Voortgang wissen en camera-schok uit te zetten (audit 11, 12) |
+| ☐ | **D77** | Melding op een apparaat zonder muis en toetsenbord (audit 13) |
+| ☐ | **D78** | Geld met een bestemming: zwaardere kogels voor het wapen (audit 14) |
+| ☐ | **D79** | Onderhoud: dode code, torens opruimen, een test die een run speelt (audit 15–17) |
+| ☐ | **D80** | Herijken en volledige regressie na D71–D79 |
+| ☐ | **M5** | Speeltest door de eigenaar na D67–D80 |
 
 **Keuzes van de eigenaar na D65:**
 - de moeilijkheidskeuze heet "Moeilijkheid: Normaal / Zwaar";
 - tegen de lege middenfase: een derde poort vanaf wave 11 en
   elite-robots met een eigen trucje;
 - een run wordt 20 waves, met een vierde baas.
+
+**Keuze van de eigenaar na D70:** alle open auditpunten verwerken (D71–D79),
+daarna de speeltest M5. De telefoonversie zelf blijft in de backlog; D77 is
+alleen de melding die auditpunt 13 voorstelde.
 
 **D66 — verslag.** De rij "Nacht" heet "Moeilijkheid", met "Normaal" en
 "Zwaar (+1★)". Het ontgrendelpaneel noemt "Moeilijkheid Zwaar", en de HUD
@@ -1675,6 +1689,22 @@ torens op de juiste plek.
    moet doen?
 3. Hoeveel sterren haal je, en voelt dat terecht?
 4. Hoe lang duurde je run, en voelde 20 waves te lang of goed?
+
+**D71 — wavebanner, verslag (audit 5).**
+- De banner staat op 148 px van boven, onder de baasbalk en de golfregel
+  (was 38% van de hoogte). Compacter: 28 px (22 px op schermen tot 700 px
+  hoog), tip 15 px, hooguit 760 px breed.
+- Gemeten met de langste banner (baasaankondiging, drie poorten, tip),
+  baasbalk en een open bouwmenu: de onderkant ligt op 280 px (1080 en 720
+  hoog) en 241 px (640 hoog), 46–247 px boven de hitmarker. Eerst liep hij
+  op 1024×640 tot 483 px, over richtkruis, menu en warmtemeter.
+- Duur: tijdens een wave 1,2 s (was 1,6), in de bouwfase 1,6 s, met een
+  tip 4 s.
+- Een hint deelt de strook bovenin met de banner; staat de banner er, dan
+  komt de hint zodra de banner weg is (bij de eerste baas en de eerste
+  bouwfase kwamen ze eerst tegelijk).
+- **Test:** nieuw `test-dnm-banner` (9 checks: overlap op drie formaten,
+  duur, de hint die wacht).
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

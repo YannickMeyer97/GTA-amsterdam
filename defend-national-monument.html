@@ -213,26 +213,37 @@
     transition: opacity 0.07s ease;
   }
 
+  /* Ticket D71 (audit 5): direct onder de baasbalk en compacter. Op 38%
+     viel de banner met tip over het richtkruis, en op 1024×640 ook over
+     het menu en de warmtemeter. */
   #waveBanner {
     position: fixed;
-    top: 38%;
+    top: 148px;   /* onder de baasbalk (tot 110 px) en de golfregel links (tot ~136 px) */
     left: 50%;
     transform: translateX(-50%);
     white-space: pre-line;   /* Ticket D28: tweede regel "via <poorten>" */
     text-align: center;
-    padding: 14px 34px;
+    width: max-content;
+    max-width: min(760px, calc(100vw - 32px));
+    box-sizing: border-box;
+    padding: 10px 28px;
     background: rgba(10, 20, 40, 0.78);
     color: #ffd75e;
-    font-size: 36px;
+    font-size: 28px;
+    line-height: 1.2;
     font-weight: 950;
-    border-radius: 18px;
+    border-radius: 16px;
     text-shadow: 0 4px 12px rgba(0,0,0,0.55);
     opacity: 0;
     pointer-events: none;
     z-index: 8;
     transition: opacity 0.2s ease;
   }
-  #waveBanner .tip { margin-top: 8px; font-size: 17px; font-weight: 700; color: #cfe8ff; }   /* Ticket D54 */
+  #waveBanner .tip { margin-top: 6px; font-size: 15px; line-height: 1.3; font-weight: 700; color: #cfe8ff; }   /* Ticket D54 */
+  @media (max-height: 700px) {   /* Ticket D71: lage schermen */
+    #waveBanner { font-size: 22px; padding: 8px 20px; }
+    #waveBanner .tip { font-size: 14px; }
+  }
 
   /* --- Klein hulptekstje onderin --- */
   /* Ticket D61: eenmalige hints in de eerste run, bovenin onder de baasbalk en de golfregel. */
@@ -4063,7 +4074,18 @@ function toonWaveBanner(tekst, tip = '') {
   }
   waveBanner.style.opacity = '1';
   clearTimeout(toonWaveBanner.timer);
-  toonWaveBanner.timer = setTimeout(() => { waveBanner.style.opacity = '0'; }, tip ? 4000 : 1600);
+  toonWaveBanner.timer = setTimeout(verbergWaveBanner, waveBannerDuur(tip));
+}
+// Ticket D71: tijdens een wave (woedende baas, baas verslagen) korter in
+// beeld dan in de bouwfase; met een tip langer, want die lees je.
+const WAVE_BANNER_DUUR = { tip: 4000, bouwfase: 1600, wave: 1200 };
+function waveBannerDuur(tip) {
+  if (tip) return WAVE_BANNER_DUUR.tip;
+  return spel.waveBonusGegeven || spel.gameOver ? WAVE_BANNER_DUUR.bouwfase : WAVE_BANNER_DUUR.wave;
+}
+function verbergWaveBanner() {
+  waveBanner.style.opacity = '0';
+  if (toonHint.wacht) { toonHint.wacht = false; laatHintZien(); }   // Ticket D71
 }
 
 // Korte, duidelijke aankondiging zodra een nieuw robottype voor het eerst
@@ -4728,10 +4750,16 @@ function toonHint(id) {
   gezieneHints.add(id);
   try { localStorage.setItem(HINTS_KEY, JSON.stringify([...gezieneHints])); } catch { /* niet bewaren */ }
   hintUI.textContent = HINTS[id];
+  // Ticket D71: de hint en de wavebanner delen de strook bovenin; staat de
+  // banner er, dan komt de hint zodra de banner weg is.
+  if (waveBanner.style.opacity === '1') { toonHint.wacht = true; hintUI.style.opacity = '0'; return true; }
+  laatHintZien();
+  return true;
+}
+function laatHintZien() {
   hintUI.style.opacity = '1';
   clearTimeout(toonHint.timer);
   toonHint.timer = setTimeout(() => { hintUI.style.opacity = '0'; }, 7000);
-  return true;
 }
 
 // Ticket D8 — één bewaard record. Gekopieerd en aangepast van het patroon
@@ -7888,7 +7916,7 @@ requestAnimationFrame(gameLoop);
 // (…Stand, zelfde patroon als het bestaande `geldStand`) i.p.v. de kale
 // waarde: anders bevriest de export de waarde van het moment dat deze regel
 // voor het eerst uitgevoerd wordt, in plaats van live mee te lezen.
-window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => menu === COMMANDOPOST_MENU, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, activeerKerkklokBoost, updateKerkklokBoost,
+window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, toonWaveBanner, waveBannerDuur, WAVE_BANNER_DUUR, verbergWaveBanner, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => menu === COMMANDOPOST_MENU, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, activeerKerkklokBoost, updateKerkklokBoost,
   GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerBijenkorfUpgradeShop: activeerCommandopost, updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
   // Speeltest-feedback (na D6): overzicht-hulpmiddelen.
   // M2: de richtingspijlen (D27) zijn geschrapt; het lichtspoor en de
