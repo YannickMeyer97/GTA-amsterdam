@@ -425,6 +425,9 @@
   #gevoeligheidWaarde { min-width: 3.2em; text-align: left; }
   /* Ticket D59: ontgrendelingen. */
   .kwaliteitKnop.slot { opacity: 0.45; cursor: not-allowed; }
+  .kwaliteitKnop.gevaar { margin-left: 8px; color: #ffb3a6; }   /* Ticket D76 */
+  .kwaliteitKnop.gevaar.bevestig { background: #c0392b; color: #fff; }
+  #schokKeuze { display: flex; gap: 8px; }
   #nachtKeuze, #sfeerKeuze { display: flex; gap: 8px; align-items: center; }
   #ontgrendelPaneel { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 12; cursor: default;
     background: rgba(10, 20, 40, 0.95); border-radius: 16px; padding: 18px 26px; min-width: 340px; text-align: left; color: #e8f6ff; }
@@ -455,6 +458,17 @@
   /* Lage schermen (telefoon liggend): alles compacter, zodat de
      kwaliteitsknoppen onder de startknop binnen beeld blijven. Staat als
      laatste, zodat hij de algemene regels (zoals .knop) overschrijft. */
+  /* Ticket D76: tussen 561 en 700 px hoog (laptops met een balk) een iets
+     compacter startscherm, zodat de instellingen, met de rij voor de
+     camera-schok erbij, binnen beeld blijven. */
+  @media (max-height: 700px) and (min-height: 561px) {
+    #startscherm h1 { font-size: 44px; margin-bottom: 0; }
+    #startscherm h2 { margin-bottom: 10px; }
+    #startscherm .uitleg { font-size: 14px; line-height: 1.65; padding: 8px 22px; margin-bottom: 14px; }
+    #startscherm .knop { padding: 10px 30px; }
+    #instellingen { margin-top: 10px; gap: 4px 14px; }
+    #instellingen .kwaliteitKnop { padding: 2px 10px; }
+  }
   @media (max-height: 560px) {
     #startscherm h1 { font-size: 28px; }
     #startscherm h2 { font-size: 16px; margin-bottom: 12px; }
@@ -535,6 +549,11 @@
       <span class="kwaliteitKnop" data-sfeer="dag">Dag</span>
       <span class="kwaliteitKnop" data-sfeer="avond">Avond</span>
     </div>
+    <span>Camera-schok</span>
+    <div id="schokKeuze">
+      <span class="kwaliteitKnop" data-schok="aan">Aan</span>
+      <span class="kwaliteitKnop" data-schok="uit">Uit</span>
+    </div>
     <span></span>
     <div><span class="kwaliteitKnop" id="ontgrendelKnop">Ontgrendelingen</span></div>
   </div>
@@ -543,6 +562,7 @@
     <div id="ontgrendelTotaal"></div>
     <div id="ontgrendelLijst"></div>
     <span class="kwaliteitKnop" id="ontgrendelSluit">Sluiten</span>
+    <span class="kwaliteitKnop gevaar" id="voortgangWis">Voortgang wissen</span>
   </div>
 </div>
 
@@ -633,7 +653,7 @@ function kwaliteitPixelRatio() { return Math.min(devicePixelRatio, kwaliteitPres
 // ontbrekende, corrupte of onzinnige waarde valt stil terug op de standaard.
 const INSTELLINGEN_KEY = 'defendNationalMonumentInstellingen';
 // D64: `volume` (0–1) vervangt de aan/uit-knop van D22; 0 is stil.
-const INSTELLINGEN_STANDAARD = { gevoeligheid: 1, volume: 1, zwareNacht: false, avond: false };   // D59: nacht en sfeer
+const INSTELLINGEN_STANDAARD = { gevoeligheid: 1, volume: 1, zwareNacht: false, avond: false, schok: true };   // D59: nacht en sfeer; D76: camera-schok
 const GEVOELIGHEID_MIN = 0.3, GEVOELIGHEID_MAX = 2;
 function leesInstellingen() {
   const uit = { ...INSTELLINGEN_STANDAARD };
@@ -647,6 +667,7 @@ function leesInstellingen() {
     else if (typeof bewaard.geluid === 'boolean') uit.volume = bewaard.geluid ? 1 : 0;
     if (typeof bewaard.zwareNacht === 'boolean') uit.zwareNacht = bewaard.zwareNacht;   // Ticket D59
     if (typeof bewaard.avond === 'boolean') uit.avond = bewaard.avond;
+    if (typeof bewaard.schok === 'boolean') uit.schok = bewaard.schok;   // Ticket D76
   }
   return uit;
 }
@@ -3687,7 +3708,18 @@ function werkInstellingenBij() {
   gevoeligheidWaardeUI.textContent = `${instellingen.gevoeligheid.toFixed(1).replace('.', ',')}×`;
   volumeUI.value = String(Math.round(instellingen.volume * 100));
   volumeWaardeUI.textContent = instellingen.volume === 0 ? 'uit' : `${Math.round(instellingen.volume * 100)}%`;
+  for (const k of schokKnoppen) k.classList.toggle('actief', (k.dataset.schok === 'aan') === instellingen.schok);   // Ticket D76
 }
+// Ticket D76 (audit 12): de camera-schok kan uit (de schok zelf blijft
+// bijgehouden, alleen de camera beweegt niet).
+const schokKnoppen = document.querySelectorAll('#schokKeuze [data-schok]');
+function zetSchok(aan) {
+  instellingen.schok = !!aan;
+  schrijfInstellingen();
+  werkInstellingenBij();
+  return true;
+}
+for (const k of schokKnoppen) k.addEventListener('click', () => zetSchok(k.dataset.schok === 'aan'));
 function zetGevoeligheid(waarde) {
   const g = Math.round(Math.min(GEVOELIGHEID_MAX, Math.max(GEVOELIGHEID_MIN, Number(waarde))) * 10) / 10;
   if (!Number.isFinite(g)) return false;
@@ -3765,7 +3797,38 @@ function kiesAvond(aan) {
 for (const k of nachtKnoppen) k.addEventListener('click', () => kiesZwareNacht(k.dataset.nacht === 'zwaar'));
 for (const k of sfeerKnoppen) k.addEventListener('click', () => kiesAvond(k.dataset.sfeer === 'avond'));
 document.getElementById('ontgrendelKnop').addEventListener('click', () => { werkOntgrendelUIBij(); ontgrendelPaneel.style.display = 'block'; });
-document.getElementById('ontgrendelSluit').addEventListener('click', () => { ontgrendelPaneel.style.display = 'none'; });
+document.getElementById('ontgrendelSluit').addEventListener('click', () => { ontgrendelPaneel.style.display = 'none'; zetWisBevestiging(false); });
+// Ticket D76 (audit 11): voortgang wissen, met bevestiging (twee klikken).
+// Wist de voortgang (bazen, overwinningen, sterren), de highscore en de
+// geziene hints; Zwaar en Avond gaan uit, want ze zijn weer op slot. De
+// overige instellingen (kwaliteit, gevoeligheid, volume, schok) blijven.
+const voortgangWisKnop = document.getElementById('voortgangWis');
+const WIS_BEVESTIG_TIJD = 4000;
+function zetWisBevestiging(aan) {
+  clearTimeout(zetWisBevestiging.timer);
+  voortgangWisKnop.classList.toggle('bevestig', aan);
+  voortgangWisKnop.textContent = aan ? 'Zeker weten? Klik nog eens' : 'Voortgang wissen';
+  if (aan) zetWisBevestiging.timer = setTimeout(() => zetWisBevestiging(false), WIS_BEVESTIG_TIJD);
+}
+function wisVoortgang() {
+  Object.assign(voortgang, legeVoortgang());
+  schrijfVoortgang();
+  try { localStorage.removeItem(HIGHSCORE_KEY); localStorage.removeItem(HINTS_KEY); } catch { /* niets te wissen */ }
+  gezieneHints.clear();
+  instellingen.zwareNacht = false;
+  instellingen.avond = false;
+  schrijfInstellingen();
+  pasSfeerToe();
+  if (runNogNietBegonnen()) { spel.zwareNacht = false; startWave(1); }
+  werkOntgrendelUIBij();
+  updateArcadeUI();
+  toonFeedbackMelding('Voortgang gewist');
+}
+voortgangWisKnop.addEventListener('click', () => {
+  if (!voortgangWisKnop.classList.contains('bevestig')) { zetWisBevestiging(true); return; }
+  zetWisBevestiging(false);
+  wisVoortgang();
+});
 werkInstellingenBij();
 const richtkruis = document.getElementById('richtkruis');
 const hulpUI = document.getElementById('hulpUI');
@@ -7998,7 +8061,7 @@ function gameLoop(nu) {
     if (hitmarkerTimer <= 0) hitmarkerUI.style.opacity = '0';
   }
   if (cameraShake > 0) {
-    const sterkte = cameraShake * 0.12;
+    const sterkte = instellingen.schok ? cameraShake * 0.12 : 0;   // Ticket D76
     camera.position.x += (Math.random() - 0.5) * sterkte;
     camera.position.y += (Math.random() - 0.5) * sterkte;
     cameraShake = Math.max(0, cameraShake - dt * 1.9);
@@ -8026,7 +8089,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   // Ticket D32: het nieuwe fundament (ARENA_SCHAAL bestaat niet meer).
   DAM_LAYOUT, ROUTES, wereld, vloerHoogte, puntOp, projecteerOpRoute, vloerTextuur, TEXTUUR_TEKENAARS, gebouwGroepen, GEVELNAMEN,
   KWALITEIT_PRESETS, KWALITEIT_KEY, kwaliteitStand: () => kwaliteitNu, kiesKwaliteit,
-  instellingen, INSTELLINGEN_KEY, zetGevoeligheid, zetVolume, piepTeller: () => piep.teller ?? 0, initGeluid, get audio() { return audio; }, duiven, zon,
+  instellingen, INSTELLINGEN_KEY, zetGevoeligheid, zetVolume, zetSchok, wisVoortgang, zetWisBevestiging, zetCameraShake: (n) => { cameraShake = n; }, piepTeller: () => piep.teller ?? 0, initGeluid, get audio() { return audio; }, duiven, zon,
   THREE, PALEIS, PALEIS_GEVELS, paleisSprong, KERK, gevelStelsel, STRAATWANDEN, PAND_TYPES, straatmeubilair, voegGeometrieenSamen, TEXTUUR_TEGEL, TEXTUUR_STEEN, TEXTUUR_PIXELS, steenPixels, tekstZaad, maakZaadRandom, gevelMateriaal, textuurOpWereldschaal,
   // Ticket D34: routes zichtbaar.
   routeSporen, spoorTextuur, straatIngang, straatNaamborden, SPOOR_HELDER, SPOOR_GEDIMD, animeerPoortBakens,

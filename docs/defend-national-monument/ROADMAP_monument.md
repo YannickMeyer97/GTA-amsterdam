@@ -1411,7 +1411,7 @@ Verder:
 | ☑ | **D73** | Bereikcirkel bij het bouwen (audit 9) |
 | ☑ | **D74** | De Kerkklok (X) als echte beloning, met uitleg (audit 6) |
 | ☑ | **D75** | Stroomval: half effect op bazen (audit 7) |
-| ☐ | **D76** | Voortgang wissen en camera-schok uit te zetten (audit 11, 12) |
+| ☑ | **D76** | Voortgang wissen en camera-schok uit te zetten (audit 11, 12) |
 | ☐ | **D77** | Melding op een apparaat zonder muis en toetsenbord (audit 13) |
 | ☐ | **D78** | Geld met een bestemming: zwaardere kogels voor het wapen (audit 14) |
 | ☐ | **D79** | Onderhoud: dode code, torens opruimen, een test die een run speelt (audit 15–17) |
@@ -1773,6 +1773,21 @@ torens op de juiste plek.
   duidelijk een toren tegen groepen, niet tegen bazen.
 - **Test:** `test-dnm-splitsing` controleert het halve effect op een baas
   (factor en loopsnelheid).
+
+**D76 — voortgang wissen en camera-schok, verslag (audit 11, 12).**
+- **Camera-schok:** een rij "Camera-schok: Aan / Uit" in de instellingen,
+  bewaard als `schok` (een ongeldige waarde: aan). Uit betekent dat de
+  camera niet beweegt; de schok zelf loopt gewoon af.
+- **Voortgang wissen:** een knop in het ontgrendelpaneel. De eerste klik
+  vraagt "Zeker weten? Klik nog eens" (vervalt na 4 s); de tweede wist de
+  voortgang (bazen, overwinningen, sterren), de highscore en de geziene
+  hints. Zwaar en Avond gaan uit, want ze zijn weer op slot; kwaliteit,
+  gevoeligheid, volume en schok blijven.
+- **Startscherm:** met de extra rij liep het op 1366×580 20 px buiten beeld
+  (en vóór D76 al 4 px). Een tussenregel voor 561–700 px hoog maakt het
+  compacter; gemeten past het nu van 580 tot 720 px hoog.
+- **Test:** nieuw `test-dnm-wissen` (17 checks, ook de pasvorm van het
+  startscherm op vier formaten). README bijgewerkt.
 
 ### Backlog — bewust ná alle bovenstaande tickets
 
