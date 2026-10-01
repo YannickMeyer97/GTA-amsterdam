@@ -20,16 +20,18 @@ const { browser, page } = await openDefend();
 
 // Ticket D70: `node meet-dnm-bazen.mjs 20` meet alleen wave 20.
 const alleenWave = Number(process.argv[2]) || null;
+// Ticket D80: een tweede argument is de trefkans (standaard 1).
+const trefkans = Number(process.argv[3]) || 1;
 const ALLE_SCENARIO = [
   { wave: 5, upgrades: {}, configs: [['alleen de speler', []], ['2 torens niv. 1', [['geschut', 1], ['geschut', 1]]], ['2 torens niv. 2', [['geschut', 2], ['geschut', 2]]]] },
   { wave: 10, upgrades: { vuurtempo: 2, koeling: 1 }, configs: [['alleen de speler', []], ['2 torens niv. 2', [['geschut', 2], ['geschut', 2]]], ['Kanon + Hoogspanning', [['geschut', 3], ['bovenleiding', 3]]], ['2 Kanonnen', [['geschut', 3], ['geschut', 3]]]] },
   { wave: 15, upgrades: { vuurtempo: 3, koeling: 2 }, configs: [['alleen de speler', []], ['Kanon + Stroomval', [['geschut', 3], ['bovenleiding', 3, 'stroomval']]], ['2 torens niv. 2', [['geschut', 2], ['geschut', 2]]], ['Kanon + Hoogspanning', [['geschut', 3], ['bovenleiding', 3]]], ['2 Kanonnen', [['geschut', 3], ['geschut', 3]]]] },
   // Ticket D69: de Heimachine.
-  { wave: 20, upgrades: { vuurtempo: 3, koeling: 2 }, configs: [['alleen de speler', []], ['Kanon + Stroomval', [['geschut', 3], ['bovenleiding', 3, 'stroomval']]], ['Kanon + Hoogspanning', [['geschut', 3], ['bovenleiding', 3]]], ['2 Kanonnen', [['geschut', 3], ['geschut', 3]]]] },
+  { wave: 20, upgrades: { vuurtempo: 3, koeling: 2, kogels: 2 }, configs: [['alleen de speler', []], ['Kanon + Stroomval', [['geschut', 3], ['bovenleiding', 3, 'stroomval']]], ['Kanon + Hoogspanning', [['geschut', 3], ['bovenleiding', 3]]], ['2 Kanonnen', [['geschut', 3], ['geschut', 3]]]] },
 ];
 const SCENARIO = ALLE_SCENARIO.filter(x => !alleenWave || x.wave === alleenWave);
 
-const r = await page.evaluate((SCENARIO) => {
+const r = await page.evaluate(([SCENARIO, trefkans]) => {
   const d = window.DamChaosDebug;
   const DT = 1 / 20;
   const BEREIK = 22;
@@ -58,7 +60,7 @@ const r = await page.evaluate((SCENARIO) => {
             cd = d.huidigeSchotCooldown(); sinds = 0;
             warmte = Math.min(100, warmte + d.warmtePerSchot());
             if (warmte >= 100) oververhit = true;
-            if (!doel.schildActief) d.raakRobot(doel, 1, 'speler');
+            if (!doel.schildActief && Math.random() < trefkans) d.raakRobot(doel, d.spelerSchade(), 'speler');   // D80: kogels en trefkans
           }
         }
       }
@@ -76,7 +78,7 @@ const r = await page.evaluate((SCENARIO) => {
   }
   d.resetRun();
   return uit;
-}, SCENARIO);
+}, [SCENARIO, trefkans]);
 
 console.log('=== Baaswaves met een gesimuleerde speler (3 pogingen) ===');
 console.log('wave  baas         verdediging              monumentschade      de baas                                   waveduur');

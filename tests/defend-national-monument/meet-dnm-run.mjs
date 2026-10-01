@@ -9,6 +9,8 @@
 //   goed: geschut op het knooppunt en een Bovenleiding op de voorpost van de
 //         actieve en aangekondigde poorten, alles naar niveau 3 (richting A),
 //         vuurtempo tot 3 en koeling tot 2, een drukpers, en repareren onder 80%.
+//         Sinds D80: Zware kogels van overgebleven geld, en de Klokslag (X)
+//         zodra de meter vol is en er minstens drie robots in de buurt zijn.
 //   zwak: alleen een geschuttoren niveau 1 op het knooppunt, geen upgrades.
 // Hij loopt niet. Ticket D70: een derde argument is de trefkans (standaard 1,
 // nooit mis); `node meet-dnm-run.mjs goed 0.6` lijkt meer op een mens.
@@ -28,7 +30,7 @@ const r = await page.evaluate(([strategie, trefkans]) => {
   const piepVoor = d.piepTeller();
   const bazen = {}, perWave = {};
   let t = 0, cd = 0, warmte = 0, sinds = 99, oververhit = false, spelerSchoten = 0, oververhitTeller = 0;
-  let maxRobots = 0, nan = 0, laatsteWave = 1, waveStart = 0;
+  let maxRobots = 0, nan = 0, laatsteWave = 1, waveStart = 0, klokslagen = 0;
   const geld = () => d.geldStand();
   function koop() {
     if (goed && d.spel.monumentHP < 80 && geld() >= 100) d.koopMonumentReparatie();
@@ -45,6 +47,8 @@ const r = await page.evaluate(([strategie, trefkans]) => {
         const tw = d.plekVoor(pn, soort)?.toren;
         if (tw && tw.niveau < 3 && geld() >= (d.upgradePrijs(tw) ?? 300) + 100) d.upgradeToren(tw);
       }
+      // D80: wat overblijft naar de Zware kogels.
+      if (d.upgrades.kogels < d.upgradeMax('kogels') && d.spel.wave >= 8 && geld() >= d.upgradeKosten('kogels') + 400) d.koopUpgrade('kogels');
       const pp = d.DRUKPERSPLEKKEN[0];
       if (d.spel.wave >= 2 && pp && !pp.toren && geld() >= 400) d.bouwToren(pp, 'drukpers');
     }
@@ -66,10 +70,14 @@ const r = await page.evaluate(([strategie, trefkans]) => {
         cd = d.huidigeSchotCooldown(); sinds = 0; spelerSchoten++;
         warmte = Math.min(100, warmte + d.warmtePerSchot());
         if (warmte >= 100) { oververhit = true; oververhitTeller++; }
-        if (!doel.schildActief && Math.random() < trefkans) d.raakRobot(doel, 1, 'speler');
+        if (!doel.schildActief && Math.random() < trefkans) d.raakRobot(doel, d.spelerSchade(), 'speler');
       }
     }
     if (Math.round(t / DT) % 20 === 0) koop();
+    // D80: de Klokslag (de speler staat aan de rand, op MONUMENT + bereik).
+    if (d.spel.specialMeter >= 100 && d.robots.filter(x => x.groep.position.distanceTo(M) <= BEREIK).length >= 3) {
+      d.speler.positie.set(M.x, 0, M.z); d.gebruikSpecial(); klokslagen++; warmte = 0; oververhit = false;
+    }
     maxRobots = Math.max(maxRobots, d.robots.length);
     for (const x of d.robots) if (!Number.isFinite(x.groep.position.x) || !Number.isFinite(x.groep.position.z)) nan++;
     if (d.spel.wave !== laatsteWave) {
@@ -84,7 +92,7 @@ const r = await page.evaluate(([strategie, trefkans]) => {
     uitkomst: d.spel.gewonnen ? `gewonnen, ${d.spel.sterren} sterren` : d.spel.gameOver ? `verloren in wave ${d.spel.wave}` : 'tijd op',
     tijd: Math.round(t), hp: Math.round(d.spel.monumentHP), perWave,
     bazen: Object.fromEntries(Object.entries(bazen).map(([k, v]) => [k, v.hp > 0 ? `door met ${Math.ceil(v.hp)}/${v.hpMax}` : 'verslagen'])),
-    kills, torenKills: d.runStats.torenKills, spelerSchoten, oververhitTeller, hoogsteCombo: d.runStats.hoogsteCombo,
+    kills, torenKills: d.runStats.torenKills, klokslagen, kogels: d.upgrades.kogels, opgelopen: Math.round(d.spel.schadeOpgelopen), spelerSchoten, oververhitTeller, hoogsteCombo: d.runStats.hoogsteCombo,
     maxRobots, nan, vastloop: d.spel.vastloopTeller, geometrieen: d.renderer.info.memory.geometries,
     piepsPerMinuut: Math.round((d.piepTeller() - piepVoor) / (t / 60)),
     torens: d.torens.map(x => `${d.torenNaam(x)} ${x.niveau}`),
@@ -96,6 +104,7 @@ console.log(`Uitkomst: ${r.uitkomst} na ${Math.floor(r.tijd / 60)}:${String(r.ti
 console.log(`Bazen: ${Object.entries(r.bazen).map(([k, v]) => `${k} ${v}`).join(' · ') || '—'}`);
 console.log(`Monument na elke wave: ${Object.entries(r.perWave).map(([w, x]) => `${w}:${x.hp}`).join(' ')}`);
 console.log(`Geld na elke wave:     ${Object.entries(r.perWave).map(([w, x]) => `${w}:${x.geld}`).join(' ')}`);
+console.log(`Opgelopen schade: ${r.opgelopen}%; klokslagen: ${r.klokslagen}; zware kogels: niveau ${r.kogels}`);
 console.log(`Kills: ${r.kills}, waarvan ${r.torenKills} door torens (${Math.round(100 * r.torenKills / Math.max(1, r.kills))}%); schoten van de speler: ${r.spelerSchoten}; oververhit: ${r.oververhitTeller}×; hoogste combo: ${r.hoogsteCombo}`);
 console.log(`Torens aan het eind: ${r.torens.join(', ')}`);
 console.log(`Techniek: max ${r.maxRobots} robots tegelijk, ${r.nan} ongeldige posities, ${r.vastloop}× vastgelopen, ${r.geometrieen} geometrieën, ${r.piepsPerMinuut} geluiden per minuut`);

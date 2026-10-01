@@ -1415,8 +1415,8 @@ Verder:
 | ☑ | **D77** | Melding op een apparaat zonder muis en toetsenbord (audit 13) |
 | ☑ | **D78** | Geld met een bestemming: zwaardere kogels voor het wapen (audit 14) |
 | ☑ | **D79** | Onderhoud: dode code, torens opruimen, een test die een run speelt (audit 15–17) |
-| ☐ | **D80** | Herijken en volledige regressie na D71–D79 |
-| ☐ | **M5** | Speeltest door de eigenaar na D67–D80 |
+| ☑ | **D80** | Herijken en volledige regressie na D71–D79 |
+| ☐ | **M5** | Speeltest door de eigenaar na D67–D80 *(vragen onder D70, aangevuld onder D80)* |
 
 **Keuzes van de eigenaar na D65:**
 - de moeilijkheidskeuze heet "Moeilijkheid: Normaal / Zwaar";
@@ -1840,6 +1840,49 @@ torens op de juiste plek.
     behalve de kleurcache, binnen het D42-budget van 300.
   - Zonder de dispose-fix faalt hij, zoals bedoeld.
 - `test-dnm-laadt` volgt de nieuwe debugnamen.
+
+**D80 — herijken na D71–D79, verslag.**
+- **Meetscripts bijgewerkt:**
+  - `meet-dnm-run`: de gesimuleerde speler gebruikt de Klokslag (meter vol,
+    minstens drie robots in de buurt), koopt Zware kogels van overgebleven
+    geld (vanaf wave 8) en doet schade volgens `spelerSchade()`;
+  - `meet-dnm-bazen`: een trefkans als tweede argument
+    (`node meet-dnm-bazen.mjs 20 0.6`), en wave 20 met Zware kogels
+    (een goede speler heeft ze dan).
+- **De Heimachine weer 260 HP** (D70: 200). Met Zware kogels sneuvelde hij
+  bij 200 HP tegen elke opstelling, ook bij 60% trefkans: geen eindbaas
+  meer. Met 260 (`meet-dnm-bazen`, wave 20, kogels niveau 2):
+
+  | Trefkans | Alleen de speler | Kanon + Stroomval | Kanon + Hoogspanning | 2 Kanonnen |
+  |---|---|---|---|---|
+  | 1 | door | 1× dood | 3× dood | 3× dood |
+  | 0,6 | door | door | door | door (3–23 HP over) |
+
+  Zonder kogels haalde hij in D69 bij 260 HP het monument in elke
+  opstelling; de kogels zijn zo een echte bestemming voor het geld.
+- **Hele runs** (`meet-dnm-run`):
+
+  | Strategie | Uitkomst | Duur | Opgelopen schade |
+  |---|---|---|---|
+  | goed, trefkans 1 | gewonnen, 3 sterren; gewonnen, 1 ster | 17:58, 19:12 | 0%, 126% |
+  | goed, trefkans 0,6 | gewonnen, 1 ster (2×) | 19:16, 19:35 | 320–332% |
+  | zwak | verloren in wave 15 | 15:41 | — |
+
+  - "Opgelopen" telt alle schade van de run, ook wat daarna gerepareerd
+    is (D62); boven 100% betekent dat repareren de run overeind hield.
+  - Een speler die nooit mist en de Klokslag en kogels gebruikt, kan nu 3
+    sterren halen (vóór D71–D79: altijd 1). Bij 60% trefkans haalt elke
+    baas het monument en win je met reparaties.
+  - Tussen de bazen loopt het monument nog steeds niets op. Het geld
+    stapelt na de kogels nog steeds op (€2.000–4.500 aan het eind).
+    Beide horen bij de speeltest M5.
+- **Volledige regressie:** zie de regel hieronder.
+
+**M5 — extra vragen (na D71–D80):**
+5. Staat de wavebanner nu goed (niet meer over het richtkruis)?
+6. Helpen de bereikcirkels bij het kiezen van een plek?
+7. Voelt de Klokslag (X) als beloning?
+8. Koop je de Zware kogels, en maken ze het verschil bij de Heimachine?
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

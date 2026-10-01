@@ -1709,3 +1709,30 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
   12 de oude formule, daarna +1 per wave tot `MAX_ACTIEF_PLAFOND`) en
   `eliteGewicht(w)`. Beide zijn pure functies; `startWave` en
   `kiesRobotTypeVoorWave` lezen ze, tests ook.
+
+### 15.20 Afwerking na de audit (D71–D80)
+
+- **Strook bovenin:** de baasbalk (64 px), de wavebanner (148 px) en de
+  hint (150 px) delen het midden bovenin. Een hint wacht tot de banner
+  weg is (`toonHint.wacht`, `verbergWaveBanner`). `test-dnm-banner`
+  controleert de overlap op drie formaten.
+- **Namen:** `ROBOT_WEERGAVENAMEN` en `ROBOT_TYPE_MEERVOUD` staan naast
+  elkaar en zijn de enige plek voor wat de speler leest; een nieuw type
+  hoort in allebei (`test-dnm-elite` controleert dat).
+- **Bereikcirkels:** `bereikCirkelsVoorPlek(plek)` is puur;
+  `updateBereikCirkels` wordt alleen vanuit `renderMenu` en `sluitMenu`
+  aangeroepen. Een menuoptie kan `kleur` hebben (de stip).
+- **Vertragingen** gaan altijd via `vertraagRobot(robot, factor, duur)`:
+  de sterkste factor en de langste duur tellen, en een baas krijgt
+  `BAAS_VERTRAGING_EFFECT` van het effect. Nooit `robot.vertraging`
+  direct zetten.
+- **De special** is de Klokslag (`gebruikSpecial`, `KLOKSLAG`,
+  `klokslag.koelResterend`); de Kerkklok Boost start alleen bij de kerk.
+  `warmtePerSchot()` geeft 0 zolang het wapen koel is.
+- **Upgrades** hebben een eigen maximum (`upgradeMax`); schade van de
+  speler loopt via `spelerSchade()`, ook in meetscripts.
+- **Instellingen:** `schok` (camera). `wisVoortgang` wist voortgang,
+  highscore en hints, en zet Zwaar en Avond uit.
+- **Torens opruimen:** `verwijderToren` disposet alle geometrie in de toren
+  behalve wat `geometry.userData.gedeeld` heeft. Wie gedeelde geometrie in
+  een toren hangt, markeert die zo. `test-dnm-run` vangt een lek.

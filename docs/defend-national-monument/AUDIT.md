@@ -9,6 +9,17 @@
 > bevestigd en aangepakt met een derde poort vanaf wave 11 (D67) en
 > elite-robots (D68); de run is daarbij 20 waves geworden met een vierde
 > baas (D69). De telefoonversie (punt 13) komt later.
+>
+> **Na D80:** alle punten zijn verwerkt:
+> - 5 wavebanner (D71), 6 Klokslag onder X (D74), 7 Stroomval op bazen
+>   (D75);
+> - 8 Dijkbreker 75 HP (D70), 9 bereikcirkels (D73), 10 één naamset (D72);
+> - 11 voortgang wissen en 12 camera-schok (D76; volume al in D64);
+> - 13 een melding op apparaten zonder muis (D77; de telefoonversie zelf
+>   staat in de backlog), 14 Zware kogels (D78);
+> - 15–17 onderhoud en een test die een run speelt (D79).
+>
+> Herijkt in D80; de speeltest M5 staat open.
 
 ## Hoe er gekeken is
 
