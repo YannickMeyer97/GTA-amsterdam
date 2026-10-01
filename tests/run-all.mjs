@@ -142,6 +142,7 @@ async function draaiScript(script) {
 }
 
 let fails = 0;
+const rood = [];   // Ticket D87: welke scripts rood bleven, zodat CI ze aan het eind noemt
 for (const script of scripts) {
   console.log(`\n========== ${script} ==========`);
   let code = await draaiScript(script);
@@ -149,10 +150,14 @@ for (const script of scripts) {
     console.log(`\n(herkansing: ${script} staat bekend als wall-clock-timing-gevoelig in deze omgeving — zie ROADMAP_undead.md Ticket 78)`);
     code = await draaiScript(script);
   }
-  if (code !== 0) fails++;
+  if (code !== 0) { fails++; rood.push(script); }
 }
 
 await browser.close();
+// Ticket D87: de namen van de rode scripts vlak boven de samenvatting. In CI
+// is het log duizenden regels lang en toont GitHub alleen de staart; zonder
+// deze lijst zag je wel "163/169" maar niet welke zes.
+if (rood.length) console.log(`\nRood:\n${rood.map(s => `  - ${s}`).join('\n')}`);
 console.log(`\n${scripts.length - fails}/${scripts.length} scripts groen`);
 // Machine-leesbare regel voor run-all-parallel.mjs — de mens-leesbare regel
 // hierboven blijft ONGEWIJZIGD (bestaande gewoonte/tooling elders leest
