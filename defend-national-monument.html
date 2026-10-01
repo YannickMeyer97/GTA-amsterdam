@@ -438,6 +438,21 @@
     background: rgba(200, 70, 60, 0.30); border: 2px solid rgba(255, 140, 130, 0.55); color: #ffe8e4;
     font-size: 13px; font-weight: 700; letter-spacing: 1px; pointer-events: auto; user-select: none; -webkit-user-select: none; }
   #touchVuur.ingedrukt { background: rgba(220, 90, 75, 0.55); }
+  /* Ticket D83: de actieknoppen. .uit verandert alleen kleur en dekking. */
+  .touchKnop { position: absolute; display: flex; align-items: center; justify-content: center; gap: 6px; pointer-events: auto;
+    height: 46px; padding: 0 16px; border-radius: 23px; background: rgba(18, 28, 40, 0.55); border: 2px solid rgba(190, 215, 230, 0.5);
+    color: #eaf2f6; font-size: 14px; font-weight: 800; white-space: nowrap; user-select: none; -webkit-user-select: none; }
+  .touchKnop.rond { width: 54px; height: 54px; padding: 0; border-radius: 50%; font-size: 22px; }
+  .touchKnop.uit { opacity: 0.4; border-color: rgba(190, 215, 230, 0.25); }
+  .touchKnop.ingedrukt { background: rgba(255, 215, 94, 0.45); }
+  #touchActie { right: max(20px, env(safe-area-inset-right)); bottom: max(118px, calc(env(safe-area-inset-bottom) + 100px)); min-width: 88px; box-sizing: border-box; }
+  #touchKlokslag { right: max(124px, calc(env(safe-area-inset-right) + 104px)); bottom: max(22px, env(safe-area-inset-bottom));
+    background: conic-gradient(rgba(255, 215, 94, 0.55) var(--vul, 0%), rgba(18, 28, 40, 0.55) 0); }
+  #touchKlokslag.vol { border-color: #ffd75e; box-shadow: 0 0 14px rgba(255, 215, 94, 0.7); opacity: 1; }
+  #touchVolgende { right: max(124px, calc(env(safe-area-inset-right) + 104px)); bottom: max(124px, calc(env(safe-area-inset-bottom) + 106px)); }
+  #touchPauze { left: max(16px, env(safe-area-inset-left)); bottom: max(16px, env(safe-area-inset-bottom)); }
+  html.touchModus #menuUI .regel { padding: 5px 4px; border-radius: 8px; }
+  html.touchModus #menuUI .regel:active { background: rgba(255, 215, 94, 0.25); }
   html.touchModus, html.touchModus body { touch-action: none; overscroll-behavior: none; -webkit-user-select: none; user-select: none; }
   /* Op touch vangt de HUD geen aanrakingen af: die gaan naar de stick, het
      kijken of de knoppen eronder. Alleen elementen met data-touch-eigen
@@ -528,7 +543,7 @@
 <div id="comboUI">COMBO x2</div>
 <div id="hitmarker"></div>
 <div id="waveBanner"></div>
-<div id="menuUI" style="display:none"></div>
+<div id="menuUI" style="display:none" data-touch-eigen></div>
 <div id="interactiePrompt"></div>
 <div id="kerkklokBanner">🔔 KERKKLOK BOOST: robots sneller, 2x geld</div>
 <div id="richtkruis" style="display:none"></div>
@@ -538,7 +553,14 @@
      waar je linkerduim landt, de vuurknop richt ook (zoals in Undead). -->
 <div id="touchBediening" hidden>
   <div id="touchStick"><div id="touchStickKnop"></div></div>
-  <div id="touchVuur">VUUR</div>
+  <div id="touchVuur" data-touch-eigen>VUUR</div>
+  <!-- Ticket D83: de actieknop toont wat er nu kan (T); Klokslag (X),
+       volgende wave (G) en pauze (Esc) staan vast. Wie niets te doen heeft,
+       grijst uit maar blijft staan: een knop die verspringt raak je mis. -->
+  <div id="touchActie" class="touchKnop uit" data-touch-eigen><span id="touchActieLabel">Actie</span></div>
+  <div id="touchKlokslag" class="touchKnop rond uit" data-touch-eigen title="Klokslag"><span>🔔</span></div>
+  <div id="touchVolgende" class="touchKnop uit" data-touch-eigen>Volgende wave ▶</div>
+  <div id="touchPauze" class="touchKnop rond" data-touch-eigen title="Pauze">⏸</div>
 </div>
 <div id="hulpUI" style="display:none">WASD lopen · klik schieten · 1–6 kiezen · T menu · G volgende wave · X klokslag · Esc pauze</div>
 <div id="hintUI"></div>
@@ -4092,6 +4114,91 @@ const laatVuurknopLos = e => {
 touchVuurKnop.addEventListener('touchend', laatVuurknopLos);
 touchVuurKnop.addEventListener('touchcancel', laatVuurknopLos);
 
+/* --- Ticket D83: knoppen en aantikbare menu's --------------------------------
+   Alles wat aan een toets hing, kan nu met een tik:
+   - de actieknop doet wat T doet, en toont wat dat nu is;
+   - Klokslag (X), volgende wave (G) en pauze (Esc) staan vast;
+   - elke regel van het menu is aan te tikken (de cijfertoetsen).
+   Elke knop: stopPropagation (anders start dezelfde duim een kijkbeweging),
+   preventDefault (anders volgt er een nagebootste muisklik) en
+   zetBesturingModus('touch') (het kan de eerste aanraking zijn). */
+function koppelTouchKnop(knop, actie) {
+  knop.addEventListener('touchstart', e => {
+    e.stopPropagation();
+    e.preventDefault();
+    zetBesturingModus('touch');
+    if (!besturingActief() || spel.gameOver) return;
+    knop.classList.add('ingedrukt');
+    if (knop.classList.contains('uit')) return;
+    actie();
+    werkTouchKnoppenBij();
+  }, { passive: false });
+  const los = e => { e.stopPropagation(); knop.classList.remove('ingedrukt'); };
+  knop.addEventListener('touchend', los);
+  knop.addEventListener('touchcancel', los);
+}
+const touchActieKnop = document.getElementById('touchActie');
+const touchActieLabel = document.getElementById('touchActieLabel');
+const touchKlokslagKnop = document.getElementById('touchKlokslag');
+const touchVolgendeKnop = document.getElementById('touchVolgende');
+koppelTouchKnop(touchActieKnop, activeerHuidigeInteractie);
+koppelTouchKnop(touchKlokslagKnop, gebruikSpecial);
+koppelTouchKnop(touchVolgendeKnop, startVolgendeWaveNu);
+koppelTouchKnop(document.getElementById('touchPauze'), verlaatBesturing);
+// Het menu: een tik op een regel kiest die optie. (Op id: de constante menuUI
+// wordt pas verderop in het bestand gedeclareerd.)
+document.getElementById('menuUI').addEventListener('touchstart', e => {
+  e.stopPropagation();
+  e.preventDefault();
+  zetBesturingModus('touch');
+  if (!besturingActief() || spel.gameOver) return;
+  const regel = e.target.closest?.('[data-optie]');
+  if (regel) kiesMenuOptie(Number(regel.dataset.optie));
+}, { passive: false });
+
+// Wat de actieknop nu doet. Bij een interactiepunt met een menu: openen of
+// sluiten; bij de kerk: de Kerkklok; nergens: uitgegrijsd.
+function touchActieTekst() {
+  const punt = huidigeInteractie;
+  if (!punt) return null;
+  if (punt.type === 'kerkklok') return '🔔 Kerkklok';
+  const menuOpen = menu && menu.hoortBij?.(punt);
+  return menuOpen ? '✕ Sluiten' : punt.type === 'commandopost' ? '🛠 Commandopost' : '🔧 Bouwen';
+}
+const touchKnopStand = { actie: undefined, klokslag: -1, volgende: null };
+function werkTouchKnoppenBij() {
+  if (besturingModus !== 'touch' || touchBedieningUI.hidden) return;
+  const actie = touchActieTekst();
+  if (actie !== touchKnopStand.actie) {
+    touchKnopStand.actie = actie;
+    touchActieLabel.textContent = actie ?? 'Actie';
+    touchActieKnop.classList.toggle('uit', !actie);
+  }
+  const meter = Math.floor(spel.specialMeter);
+  if (meter !== touchKnopStand.klokslag) {
+    touchKnopStand.klokslag = meter;
+    touchKlokslagKnop.style.setProperty('--vul', `${meter}%`);
+    touchKlokslagKnop.classList.toggle('uit', meter < 100);
+    touchKlokslagKnop.classList.toggle('vol', meter >= 100);
+  }
+  const volgende = inBouwfase();
+  if (volgende !== touchKnopStand.volgende) {
+    touchKnopStand.volgende = volgende;
+    touchVolgendeKnop.classList.toggle('uit', !volgende);
+  }
+}
+// Toetsenteksten op touch omzetten: "Druk T" wordt "tik op de actieknop", "kies
+// een cijfer" wordt "tik een optie". Op één plek, zodat alle prompts meegaan.
+function voorInvoer(tekst) {
+  if (besturingModus !== 'touch') return tekst;
+  return tekst
+    .replace(/, (druk|kies) een cijfer, T om te sluiten/g, ', tik een optie')
+    .replace(/Kies 1–\d+, T om te sluiten/g, 'Tik een optie')
+    .replace(/Druk T/g, 'Tik op de actieknop')
+    .replace(/druk T/g, 'tik op de actieknop');
+}
+bijBesturingModus.push(() => { touchKnopStand.actie = undefined; touchKnopStand.klokslag = -1; touchKnopStand.volgende = null; renderMenu(); });
+
 // --- Botsingen: duw een punt (met straal) uit alle obstakels ----
 
 function losBotsingenOp(positie, straal) {
@@ -5412,9 +5519,9 @@ function renderMenu() {
     const klasse = o.klaar ? ' gekocht' : (o.prijs != null && geld < o.prijs ? ' te-duur' : '');
     // Ticket D73: een stip in de kleur van de bereikcirkel op straat.
     const stip = o.kleur ? `<span class="stip" style="color:#${o.kleur.toString(16).padStart(6, '0')}">●</span> ` : '';
-    return `<span class="regel${klasse}">${i + 1}, ${stip}${o.tekst}</span>`;
+    return `<span class="regel${klasse}" data-optie="${i}">${i + 1}, ${stip}${o.tekst}</span>`;
   }).join('');
-  menuUI.innerHTML = `<b>${menu.titel()}</b>, druk een cijfer, T om te sluiten:<br>${regels}`;
+  menuUI.innerHTML = `<b>${menu.titel()}</b>${voorInvoer(', druk een cijfer, T om te sluiten:')}<br>${regels}`;
   updateBereikCirkels();   // Ticket D73
 }
 
@@ -6613,7 +6720,7 @@ function vindDichtstbijzijndeInteractie() {
 }
 
 function toonInteractiePrompt(tekst) {
-  interactiePromptUI.textContent = tekst;
+  interactiePromptUI.textContent = voorInvoer(tekst);   // Ticket D83
   interactiePromptUI.style.opacity = '1';
 }
 
@@ -8250,6 +8357,7 @@ function gameLoop(nu) {
   // Ticket D7: ook na game over valt álles stil, niet alleen robots en waves.
   const spelActief = besturingActief() && !spel.gameOver && !spel.overwinningOpen;   // Ticket D81
   if (spelActief) {
+    werkTouchKnoppenBij();   // Ticket D83 (alleen op touch; doet iets als er iets veranderde)
     runStats.speelduur += dt;
     if (schietKnopIngedrukt) probeerTeSchieten();
     updateWarmte(dt);   // Ticket D17
@@ -8311,7 +8419,7 @@ requestAnimationFrame(gameLoop);
 // waarde: anders bevriest de export de waarde van het moment dat deze regel
 // voor het eerst uitgevoerd wordt, in plaats van live mee te lezen.
 window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, toonWaveBanner, waveBannerDuur, WAVE_BANNER_DUUR, verbergWaveBanner, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, commandopostOpenStand: () => menu === COMMANDOPOST_MENU, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, spelerSchade, upgradeMax, UPGRADE_MAX, KLOKSLAG, klokslag, vertraagRobot, BAAS_VERTRAGING_EFFECT, warmtePerSchotNu: () => warmtePerSchot(), activeerKerkklokBoost, updateKerkklokBoost,
-  GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerCommandopost, besturingActief, startBesturing, verlaatBesturing, zetBesturingModus, besturingModusStand: () => besturingModus, touchStick, touchStand: () => ({ kijkVinger: touchKijkVinger, schieten: schietKnopIngedrukt, zichtbaar: !touchBedieningUI.hidden }), updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
+  GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerCommandopost, besturingActief, startBesturing, verlaatBesturing, zetBesturingModus, besturingModusStand: () => besturingModus, voorInvoer, werkTouchKnoppenBij, touchStick, touchStand: () => ({ kijkVinger: touchKijkVinger, schieten: schietKnopIngedrukt, zichtbaar: !touchBedieningUI.hidden }), updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
   // Speeltest-feedback (na D6): overzicht-hulpmiddelen.
   // M2: de richtingspijlen (D27) zijn geschrapt; het lichtspoor en de
   // bakens tonen waar de robots vandaan komen.

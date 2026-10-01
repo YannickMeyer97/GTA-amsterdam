@@ -1927,7 +1927,7 @@ friendly kunnen maken."
 | --- | --- | --- |
 | ☑ | **D81** | Besturingsgate: muis of touch, los van pointer lock |
 | ☑ | **D82** | Lopen, kijken en vuren met twee duimen |
-| ☐ | **D83** | Knoppen en aantikbare menu's: bouwen, Klokslag, volgende wave, kerkklok, pauze |
+| ☑ | **D83** | Knoppen en aantikbare menu's: bouwen, Klokslag, volgende wave, kerkklok, pauze |
 | ☐ | **D84** | Liggend, safe-area, een HUD die op een telefoon past, iPhone-beginscherm, wake lock |
 | ☐ | **D85** | Lichte richthulp op touch |
 | ☐ | **D86** | Uitleg, afronding en regressie |
@@ -1969,6 +1969,28 @@ friendly kunnen maken."
 - Pauzeren verbergt de bediening en laat stick, kijkvinger en vuurknop los.
 - **Test:** nieuw `test-dnm-touch` (13 checks, met echte meervinger-
   aanrakingen via `Input.dispatchTouchEvent`).
+
+**D83 — knoppen en aantikbare menu's, verslag.**
+- **Vier knoppen** naast de vuurknop:
+  - een **actieknop** die doet wat T doet, met een label voor wat dat nu
+    is: "🔧 Bouwen", "🛠 Commandopost", "✕ Sluiten" of "🔔 Kerkklok";
+  - de **Klokslag**, met de meter als vulling in de knop; vol licht hij op;
+  - **Volgende wave**, alleen actief in de bouwfase;
+  - **Pauze**.
+- Een knop zonder actie grijst uit en blijft staan (les uit Undead): een
+  knop die verspringt raak je mis.
+- **Het menu:** elke regel is aan te tikken (`data-optie`). Het menu blijft
+  na een keuze open, zoals met toetsen.
+- **Teksten:** op touch worden "druk een cijfer, T om te sluiten" en "Druk
+  T" via `voorInvoer` "tik een optie" en "tik op de actieknop", op één plek
+  voor alle prompts. Met de muis blijven ze gelijk.
+- De knoppen worden alleen bijgewerkt als er iets verandert
+  (`werkTouchKnoppenBij`, per frame, alleen op touch).
+- Fout onderweg: een TDZ-fout bij het laden (`menuUI` werd gebruikt vóór de
+  declaratie verderop); opgelost door het element op id te pakken.
+- **Test:** nieuw `test-dnm-touch-bouwen` (14 checks: bouwen en upgraden
+  door regels aan te tikken, menu open en dicht, Kerkklok, Klokslag,
+  volgende wave, pauze, teksten).
 
 ### Backlog — bewust ná alle bovenstaande tickets
 
