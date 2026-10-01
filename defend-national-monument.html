@@ -6217,6 +6217,11 @@ function bouwToren(plek, type) {
 function verwijderToren(toren) {
   scene.remove(toren.groep);
   if (toren.spoor) scene.remove(toren.spoor);
+  // Ticket D79 (audit 16): de geometrie van een toren is van hem alleen
+  // (behalve wat als gedeeld gemarkeerd is, zoals de stilleg-ring van D69);
+  // zonder dispose groeide het geheugen met elke verkochte of gesloopte
+  // toren. Materialen komen grotendeels uit de cache van mat() en blijven.
+  for (const deel of [toren.groep, toren.spoor]) deel?.traverse(o => { if (o.geometry && !o.geometry.userData.gedeeld) o.geometry.dispose(); });
   for (const handle of toren.obstakelHandles) verwijderObstakel(handle);
   toren.plek[toren.slot] = null;
   const i = torens.indexOf(toren);
@@ -6644,7 +6649,7 @@ function maakRobot(type = 'normal') {
     laanFractie: 0,                      // eigen baan binnen de strook, −1..1
     modus: 'vrij',                       // 'route', 'bouwwerk', 'terug' of 'vrij'
     pauze: 0,                            // even stilstaan bij aankomst
-    snelheid: 1.4 + Math.random(),       // elke robot loopt anders snel
+    snelheid: 0,                         // D79: spawnRobot zet de echte snelheid (per type en wave)
     stapfase: Math.random() * 10,        // zodat ze niet synchroon lopen
     vastTijd: 0,                         // hoe lang staat hij al nauwelijks te bewegen?
     ontwijkTimer: 0,                     // tijdelijk zijwaarts uitwijken bij vastlopen
@@ -6748,6 +6753,7 @@ const HEIMACHINE_BEREIK = 10;
 const HEIMACHINE_STIL = 2.5;
 const HEIBLOK_LAAG = 1.46, HEIBLOK_HOOG = 2.9;   // lokaal, onderkant blok op de paal / tegen de kop van de mast
 const STORING_GEO = new THREE.TorusGeometry(0.45, 0.07, 6, 16).rotateX(Math.PI / 2);
+STORING_GEO.userData.gedeeld = true;   // D79: verwijderToren laat hem staan
 const STORING_MAT = new THREE.MeshBasicMaterial({ color: 0xff7a1a });
 function heiKlap(robot) {
   const p = robot.groep.position;
@@ -8050,7 +8056,6 @@ function gameLoop(nu) {
     updateDuiven(dt);
     updateMunten(dt);
     updateBrokstukken(dt);
-    if (typeof updateBewegendeTrams === 'function') updateBewegendeTrams(dt);
     updateInteracties(dt);
     updateKerkklokBoost(dt);
     updateMonumentEffecten();
@@ -8102,8 +8107,8 @@ requestAnimationFrame(gameLoop);
 // (…Stand, zelfde patroon als het bestaande `geldStand`) i.p.v. de kale
 // waarde: anders bevriest de export de waarde van het moment dat deze regel
 // voor het eerst uitgevoerd wordt, in plaats van live mee te lezen.
-window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, toonWaveBanner, waveBannerDuur, WAVE_BANNER_DUUR, verbergWaveBanner, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, bijenkorfShopOpenStand: () => menu === COMMANDOPOST_MENU, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, spelerSchade, upgradeMax, UPGRADE_MAX, KLOKSLAG, klokslag, vertraagRobot, BAAS_VERTRAGING_EFFECT, warmtePerSchotNu: () => warmtePerSchot(), activeerKerkklokBoost, updateKerkklokBoost,
-  GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerBijenkorfUpgradeShop: activeerCommandopost, updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
+window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, toonWaveBanner, waveBannerDuur, WAVE_BANNER_DUUR, verbergWaveBanner, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, commandopostOpenStand: () => menu === COMMANDOPOST_MENU, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, spelerSchade, upgradeMax, UPGRADE_MAX, KLOKSLAG, klokslag, vertraagRobot, BAAS_VERTRAGING_EFFECT, warmtePerSchotNu: () => warmtePerSchot(), activeerKerkklokBoost, updateKerkklokBoost,
+  GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerCommandopost, updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
   // Speeltest-feedback (na D6): overzicht-hulpmiddelen.
   // M2: de richtingspijlen (D27) zijn geschrapt; het lichtspoor en de
   // bakens tonen waar de robots vandaan komen.
@@ -8159,7 +8164,7 @@ window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnR
   WARMTE_PER_SCHOT, WARMTE_AFKOELING, WARMTE_AFKOEL_VERTRAGING, WARMTE_HERVAT_DREMPEL, KOELING_WARMTE_FACTOR, KOELING_AFKOELING_PER_NIVEAU,
   BOVENLEIDING_NIVEAUS, BOVENLEIDING_SPRONG_FACTOR, BOVENLEIDING_TANK_FACTOR, kiesKetting, vuurBovenleiding, updateBovenleiding,
   DRUKPERSPLEKKEN, DRUKPERS_NIVEAUS, DRUKPERS_INTERVAL, DRUKPERS_TERUGVERDIEN_S, updateDrukpersen, drukpersTimerStand: () => drukpersTimer,
-  runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, bijenkorfShopOpen: menu === COMMANDOPOST_MENU, bouwMenuPlek: menu && menu !== COMMANDOPOST_MENU ? menu.bron : null, aantalTorens: torens.length, aantalObstakels: obstakels.length }),
+  runStateStand: () => ({ geld, laatsteSchotTijd, terugslag, vlamTimer, hitmarkerTimer, cameraShake, schietKnopIngedrukt, huidigeInteractie, commandopostOpen: menu === COMMANDOPOST_MENU, bouwMenuPlek: menu && menu !== COMMANDOPOST_MENU ? menu.bron : null, aantalTorens: torens.length, aantalObstakels: obstakels.length }),
   // Ticket D11: torens.
   TOREN_TYPES, torens, bouwToren, verwijderToren, updateTorens, activeerBouwplek, kiesTorenDoel, verwijderObstakel,
   bouwMenuStand: () => (menu && menu !== COMMANDOPOST_MENU ? menu.bron : null),

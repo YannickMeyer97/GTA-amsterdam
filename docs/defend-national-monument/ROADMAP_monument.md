@@ -1414,7 +1414,7 @@ Verder:
 | ☑ | **D76** | Voortgang wissen en camera-schok uit te zetten (audit 11, 12) |
 | ☑ | **D77** | Melding op een apparaat zonder muis en toetsenbord (audit 13) |
 | ☑ | **D78** | Geld met een bestemming: zwaardere kogels voor het wapen (audit 14) |
-| ☐ | **D79** | Onderhoud: dode code, torens opruimen, een test die een run speelt (audit 15–17) |
+| ☑ | **D79** | Onderhoud: dode code, torens opruimen, een test die een run speelt (audit 15–17) |
 | ☐ | **D80** | Herijken en volledige regressie na D71–D79 |
 | ☐ | **M5** | Speeltest door de eigenaar na D67–D80 |
 
@@ -1819,6 +1819,27 @@ torens op de juiste plek.
 - **Tests:** nieuw `test-dnm-kogels` (9 checks, met een echte treffer);
   `test-dnm-commandopost` (zes opties) en `-hints` volgen. README
   bijgewerkt. Het effect op een hele run meet D80.
+
+**D79 — onderhoud, verslag (audit 15–17).**
+- **Dode en verouderde code (15):**
+  - de aanroep van het niet-bestaande `updateBewegendeTrams` is weg;
+  - `maakRobot` zet geen willekeurige snelheid meer die `spawnRobot`
+    altijd overschreef;
+  - de debugnamen van vóór D35 heten nu `activeerCommandopost`,
+    `commandopostOpenStand` en `runStateStand().commandopostOpen`;
+  - in ARCHITECTURE_NOTES heet §15 niet meer "nog niet gebouwd".
+- **Torens opruimen (16):** `verwijderToren` geeft de geometrie van de
+  toren vrij (wat gedeeld is, zoals de stilleg-ring, is gemarkeerd en
+  blijft). Gemeten: vijf rondes alle bouwplekken vol bouwen en verkopen
+  ging van 209 naar 789 geometrieën; nu blijft het op 209.
+- **Een test die een run speelt (17):** `test-dnm-run` (7 checks, ~6 s).
+  - Een gesimuleerde speler speelt twee keer van wave 1 tot voorbij wave 6,
+    met de Sloopkogel. Gecontroleerd: geen fouten, geen ongeldige posities
+    of vastlopers, en geen eindeloze wave.
+  - Daarna bouwen en verkopen zonder lek, en na de reset niets gegroeid
+    behalve de kleurcache, binnen het D42-budget van 300.
+  - Zonder de dispose-fix faalt hij, zoals bedoeld.
+- `test-dnm-laadt` volgt de nieuwe debugnamen.
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

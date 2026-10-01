@@ -51,7 +51,7 @@ const BESTAANDE_SLEUTELS = [
   'spawnRobotVanafPoort', 'vernietigRobot', 'raakRobot', 'ROBOT_TYPES',
   'kiesRobotTypeVoorWave', 'waveBannerTekst', 'spel', 'upgrades', 'startWave',
   'geldStand', 'obstakels', 'interactiePunten', 'isVrijePlek', 'kerkklokBoost',
-  'bijenkorfShopOpenStand', 'geldZet', 'getRobotSpeedMultiplier',
+  'commandopostOpenStand', 'geldZet', 'getRobotSpeedMultiplier',
   'getRewardMultiplier', 'schiet', 'getComboGeldMultiplier',
   'getComboVuurtempoMultiplier', 'robotRaaktMonument', 'huidigeSchotCooldown',
   'updateWaveSysteem', 'gebruikSpecial', 'activeerKerkklokBoost',
@@ -63,7 +63,7 @@ const NIEUWE_D1_SLEUTELS = [
   'SPAWN_POORTEN', 'afstandTotMonument', 'upgradeKosten', 'losBotsingenOp',
   'updateRobots', 'koopUpgrade', 'koopMonumentReparatie', 'legMuntNeer',
   'updateInteracties', 'activeerHuidigeInteractie',
-  'activeerBijenkorfUpgradeShop', 'updateMunten', 'updateSpeler',
+  'activeerCommandopost', 'updateMunten', 'updateSpeler',
   'probeerTeSchieten', 'klokStand', 'huidigeInteractieStand',
 ];
 

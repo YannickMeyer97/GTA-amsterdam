@@ -48,7 +48,7 @@ eerst.
 | 12 | Debug-hook |
 | 13 | Testdekking |
 | 14 | De torenkern (fase 3): poorten, bereik, bouwplekken, torens, hek, bouwfase, economie, themagolven |
-| 15 | Doelarchitectuur fase M (make-over van de Dam) — nog niet gebouwd |
+| 15 | Doelarchitectuur fase M (make-over van de Dam), gebouwd in D32–D51, met wat daarna kwam |
 
 ---
 
@@ -1190,7 +1190,7 @@ thema het robottype bepalen, zonder `kiesRobotTypeVoorWave()` aan te passen.
 
 ---
 
-## 15. Doelarchitectuur fase M — nog niet gebouwd
+## 15. Doelarchitectuur fase M — gebouwd (D32–D51), aangevuld tot D79
 
 **Dit beschrijft de game ná fase M (D32–D43), niet de game van vandaag.**
 Zolang een ticket niet af is, gelden §1–§14. Het volledige ontwerp met de
