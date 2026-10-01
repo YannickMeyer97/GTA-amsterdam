@@ -1736,3 +1736,33 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
 - **Torens opruimen:** `verwijderToren` disposet alle geometrie in de toren
   behalve wat `geometry.userData.gedeeld` heeft. Wie gedeelde geometrie in
   een toren hangt, markeert die zo. `test-dnm-run` vangt een lek.
+
+### 15.21 Touch (fase T, D81–D86)
+
+- **De gate:** `besturingActief()` is de enige vraag "speelt het spel?".
+  In de muismodus is hij letterlijk `document.pointerLockElement ===
+  renderer.domElement` (alle tests mocken dat); in de touchmodus
+  `touchSessieActief`. Starten en pauzeren altijd via `startBesturing()` en
+  `verlaatBesturing()`, nooit `requestPointerLock` of `exitPointerLock`
+  rechtstreeks. `pasBesturingToe(actief)` is wat er bij start en pauze
+  gebeurt, in beide modi.
+- **De modus volgt de invoer:** een `touchstart` zet touch, een
+  `pointerdown` met `pointerType === 'mouse'` zet muis. Wie iets moet doen
+  bij een wissel, haakt in op `bijBesturingModus`. Op `<html>`: `touchModus`
+  (de modus), `speelt` (actief) en `menuOpen` (het bouwmenu).
+- **Aanrakingen:** de globale handlers doen stick (linkerhelft) en kijken
+  (rechterhelft), op `identifier`. Een element met `data-touch-eigen`
+  (knoppen, menu) handelt zijn eigen aanrakingen af, met stopPropagation en
+  preventDefault. Al het andere in de HUD heeft op touch
+  `pointer-events: none`.
+- **Teksten:** toetsentekst gaat op touch door `voorInvoer()`; hints door
+  de vervangingen in `toonHint`.
+- **Indeling:** de touch-HUD staat in CSS onder `html.touchModus`, binnen
+  `env(safe-area-inset-*)`. `test-dnm-mobiel` meet overlap op vier
+  formaten. Een element dat de code inline op `display: block` zet (de
+  minimap) verberg je met `!important`.
+- **Richthulp:** alleen in `schiet()` (trefmarge, met vrij zicht) en in de
+  touch-kijkveeg (kleven), allebei via `robotBijRichtkruis()`, die op de
+  muis `null` geeft.
+- **Draaischerm:** informatief, dus mag het grove signaal
+  `(pointer: coarse) and (hover: none)` gebruiken; de besturing nooit.

@@ -1930,7 +1930,7 @@ friendly kunnen maken."
 | ☑ | **D83** | Knoppen en aantikbare menu's: bouwen, Klokslag, volgende wave, kerkklok, pauze |
 | ☑ | **D84** | Liggend, safe-area, een HUD die op een telefoon past, iPhone-beginscherm, wake lock |
 | ☑ | **D85** | Lichte richthulp op touch |
-| ☐ | **D86** | Uitleg, afronding en regressie |
+| ☑ | **D86** | Uitleg, afronding en regressie |
 | ☐ | **M6** | Speeltest op de iPhone |
 
 **D81 — besturingsgate, verslag.**
@@ -2041,6 +2041,38 @@ friendly kunnen maken."
   - geen treffer door het monument heen;
   - een echte duimveeg draait vlak bij een robot 0,55× zo ver.
   - Eerst testte ik 2,5° naast, maar dan raakte het schot de arm al.
+
+**D86 — uitleg en afronding van fase T, verslag.**
+- **De melding van D77** ("kun je (nog) niet spelen") is uitleg geworden:
+  "Speel liggend. Op een iPhone: deel → Zet op beginscherm voor een
+  volledig scherm. Geen geluid? Zet de stille modus uit." Het
+  beginscherm-advies verdwijnt als je al vanaf het beginscherm speelt
+  (`display-mode: standalone` of `navigator.standalone`).
+- **`index.html`:** bij deze game "Ook op je telefoon: speel liggend".
+- **Startscherm:** na de eerste aanraking noemt de uitleg duimen, VUUR,
+  "tik een regel", 🔔, ▶ en ⏸ in plaats van WASD, klik, 1–5, G, X en Esc.
+- **Hints:** een eenmalige touch-hint bij de eerste start. Hints over toetsen
+  ("Druk X", "druk G", "laat de muis los", "met een cijfer") zeggen op
+  touch wat je moet tikken.
+- **README:** een sectie "Op je telefoon of tablet", met de iPhone-route
+  en de stille modus.
+- **ARCHITECTURE_NOTES §15.21:** de contracten van de touchmodus.
+- **Prestaties:** op een apparaat zonder muis staat de kwaliteit al sinds
+  D21 standaard op Laag.
+- **Tests:** `test-dnm-apparaat` herzien (10 checks). In totaal 52
+  DNM-scripts, allemaal groen. Amsterdam Undead is in fase T niet
+  aangeraakt (alleen de kaart van deze game in `index.html`, die geen
+  Undead-test leest).
+
+**M6 — vragen voor de speeltest op de iPhone:**
+1. Lopen en kijken: voelt de stick goed, en is de kijksnelheid goed? De
+   schuif "Kijkgevoeligheid" op het startscherm stelt hem bij.
+2. Lukt schieten en richten tegelijk met VUUR?
+3. Is de richthulp merkbaar, te weinig of te veel?
+4. Bouwen: zijn de menuregels goed aan te tikken, en is alles leesbaar?
+5. Zit er een knop of tekst in de weg, of valt er iets weg achter de notch?
+6. Werkt "Zet op beginscherm", en is er geluid (stille modus uit)?
+7. Loopt het soepel, of hapert het (op Laag)?
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

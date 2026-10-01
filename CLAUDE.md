@@ -59,7 +59,7 @@ houden hun kale naam; de map zegt al bij welke game ze horen.
 ## Testinstructies
 - Headless: Playwright + lokale Chromium (`executablePath: '/opt/pw-browsers/chromium'`), CDN-intercept die `three.module.js` lokaal serveert (zie bestaande testscripts in de scratchpad); pointer lock simuleren via `Object.defineProperty(document, 'pointerLockElement', ...)`.
 - Handmatig (macOS): `python3 -m http.server 8000` in de repo-root, dan `http://localhost:8000/` in Chrome of Safari. Dubbelklikken op het bestand werkt meestal ook (CDN vereist internet).
-- De regressiesuite in `tests/` (164 testscripts: 117 voor Amsterdam Undead, 47 voor Defend National Monument met het voorvoegsel `test-dnm-`) moet groen blijven: `node run-all.mjs`, of sneller `node run-all-parallel.mjs`. De `meet-dnm-*`-scripts zijn meetscripts en draaien niet mee.
+- De regressiesuite in `tests/` (169 testscripts: 117 voor Amsterdam Undead, 52 voor Defend National Monument met het voorvoegsel `test-dnm-`) moet groen blijven: `node run-all.mjs`, of sneller `node run-all-parallel.mjs`. De `meet-dnm-*`-scripts zijn meetscripts en draaien niet mee.
 
 ## Bekende valkuilen
 - De pauze-gate (`document.pointerLockElement === renderer.domElement`) bepaalt of de game-loop simuleert; tests moeten pointer lock simuleren.

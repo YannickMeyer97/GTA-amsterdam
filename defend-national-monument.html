@@ -520,6 +520,10 @@
   #apparaatMelding { display: none; max-width: max(260px, min(520px, calc(100vw - 240px)));   /* rechts ruimte voor "← Menu" */ margin: 0 0 12px; padding: 8px 14px; border-radius: 10px;
     background: rgba(255, 215, 94, 0.94); color: #24303f; font-size: 14px; font-weight: 700; text-align: center; }
   @media (hover: none) and (pointer: coarse) { #apparaatMelding { display: block; } }
+  /* Ticket D86: vanaf het beginscherm gestart hoeft dat advies niet meer. */
+  @media (display-mode: standalone) { #apparaatMelding .beginscherm { display: none; } }
+  html.zelfstandig #apparaatMelding .beginscherm { display: none; }
+  @media (max-height: 560px) { #apparaatMelding { font-size: 12px; padding: 5px 12px; margin-bottom: 8px; } }
   .kwaliteitKnop.gevaar.bevestig { background: #c0392b; color: #fff; }
   #schokKeuze { display: flex; gap: 8px; }
   #nachtKeuze, #sfeerKeuze { display: flex; gap: 8px; align-items: center; }
@@ -641,7 +645,9 @@
     💰 Raap munten op; bij de <b>commandopost</b> koop je upgrades en repareer je het monument<br>
     ⏩ <b>G</b> volgende wave eerder · <b>X</b> klokslag (meter vol): robots om je heen trager · <b>Esc</b> pauze
   </div>
-  <div id="apparaatMelding">📱 Deze game vraagt een toetsenbord en een muis. Op een telefoon of tablet kun je (nog) niet spelen.</div>
+  <!-- Ticket D86: sinds fase T speelbaar op een telefoon; de melding van D77
+       ("kun je (nog) niet spelen") is nu uitleg. -->
+  <div id="apparaatMelding">📱 Speel liggend. <span class="beginscherm">Op een iPhone: deel ⬆︎ → <b>Zet op beginscherm</b> voor een volledig scherm. </span>Geen geluid? Zet de stille modus uit.</div>
   <div class="knop">Klik om te spelen</div>
   <div id="instellingen">
     <span>Beeldkwaliteit</span>
@@ -3978,6 +3984,7 @@ function startBesturing() {
   if (besturingModus === 'touch') {
     touchSessieActief = true;
     pasBesturingToe(true);
+    toonHint('touch');   // Ticket D86: één keer, de eerste keer op touch
   } else {
     renderer.domElement.requestPointerLock();
   }
@@ -4326,14 +4333,24 @@ document.addEventListener('visibilitychange', () => {
 // Teksten op het start- en pauzescherm: "Klik" wordt "Tik".
 const startKnopUI = document.querySelector('#startscherm .knop');
 const gevoeligheidLabelUI = [...document.querySelectorAll('#instellingen > span')].find(x => x.textContent === 'Muisgevoeligheid');
+const uitlegUI = document.querySelector('#startscherm .uitleg');
+const UITLEG_MUIS = uitlegUI.innerHTML;
+const UITLEG_TOUCH = `🏛️ Houd het <b>Nationaal Monument</b> overeind: overleef <b>20 waves</b> en versla <b>vier bazen</b><br>
+    🕹️ <b>Linkerduim</b> lopen, <b>rechterduim</b> kijken, <b>VUUR</b> schieten en richten — lang doorvuren maakt je wapen te heet<br>
+    🔧 Bouw torens op de <b>gouden cirkels</b> langs de straten: het menu opent vanzelf, <b>tik een regel</b><br>
+    💰 Raap munten op; bij de <b>commandopost</b> koop je upgrades en repareer je het monument<br>
+    🔔 <b>Klokslag</b> als de meter vol is · <b>▶ Volgende</b> wave eerder · <b>⏸</b> pauze`;
 function werkStartteksten() {
   const touch = besturingModus === 'touch';
+  uitlegUI.innerHTML = touch ? UITLEG_TOUCH : UITLEG_MUIS;   // Ticket D86
   startKnopUI.textContent = touch ? 'Tik om te spelen' : 'Klik om te spelen';
   if (gevoeligheidLabelUI) gevoeligheidLabelUI.textContent = touch ? 'Kijkgevoeligheid' : 'Muisgevoeligheid';
   const kop = startscherm.querySelector('h2');
   kop.textContent = touch ? kop.textContent.replace('klik om verder', 'tik om verder') : kop.textContent.replace('tik om verder', 'klik om verder');
 }
 bijBesturingModus.push(werkStartteksten);
+// iOS kent display-mode niet overal; navigator.standalone is de iPhone-variant.
+if (navigator.standalone) document.documentElement.classList.add('zelfstandig');
 werkOrientatieBij();
 
 // --- Botsingen: duw een punt (met straal) uit alle obstakels ----
@@ -5261,6 +5278,7 @@ const HINTS = {
   baas: 'Een baas! Schiet hem zelf en zet sterke torens langs zijn route.',
   commandopost: 'De commandopost: upgrades voor je wapen, en het monument repareren.',
   special: 'De meter is vol! Druk X voor een klokslag: robots om je heen lopen even veel trager en je wapen blijft koel.',   // D74
+  touch: 'Linkerduim: lopen. Rechterduim: rondkijken. VUUR: schieten en richten tegelijk. Bouwen: tik een regel in het menu.',   // D86
 };
 function leesGezieneHints() {
   try { const r = JSON.parse(localStorage.getItem(HINTS_KEY)); return Array.isArray(r) ? new Set(r.filter(x => typeof x === 'string')) : new Set(); } catch { return new Set(); }
@@ -5271,7 +5289,7 @@ function toonHint(id) {
   if (gezieneHints.has(id) || !HINTS[id]) return false;
   gezieneHints.add(id);
   try { localStorage.setItem(HINTS_KEY, JSON.stringify([...gezieneHints])); } catch { /* niet bewaren */ }
-  hintUI.textContent = HINTS[id];
+  hintUI.textContent = besturingModus === 'touch' ? HINTS[id].replace('Druk X voor een klokslag', 'Tik op 🔔 voor een klokslag').replace(', of druk G om meteen door te gaan', ', of tik ▶ Volgende').replace('Laat de muis even los', 'Laat VUUR even los').replace('Kies een toren met een cijfer', 'Tik een toren in het menu') : HINTS[id];   // D86
   // Ticket D71: de hint en de wavebanner delen de strook bovenin; staat de
   // banner er, dan komt de hint zodra de banner weg is.
   if (waveBanner.style.opacity === '1') { toonHint.wacht = true; hintUI.style.opacity = '0'; return true; }

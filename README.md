@@ -55,6 +55,29 @@ rechtsboven om terug te gaan naar het hoofdmenu.
 | Klokslag (special) | `X` (als de meter vol is): robots om je heen lopen even veel trager, je wapen blijft koel |
 | Pauze en instellingen | `Esc` |
 
+### Op je telefoon of tablet
+
+Speel liggend. Een tik op het startscherm zet de touchbediening aan:
+
+| Actie | Touch |
+| --- | --- |
+| Lopen | Linkerduim: de stick verschijnt waar je duim landt |
+| Rondkijken | Rechterduim vegen |
+| Schieten | **VUUR** vasthouden; vegen vanaf de knop richt tegelijk |
+| Bouwen, upgraden, kopen | Tik een regel in het menu (opent vanzelf bij een bouwplek of de commandopost) |
+| Menu openen/sluiten, Kerkklok | De actieknop boven VUUR (zegt wat hij nu doet) |
+| Klokslag | 🔔 (als de meter in de knop vol is) |
+| Volgende wave eerder | ▶ Volgende (in de pauze tussen twee waves) |
+| Pauze | ⏸ linksonder |
+
+- **Richthulp:** op touch telt een schot dat net naast een robot gaat toch,
+  en het richtkruis kleeft een beetje aan een robot. Met de muis niet.
+- **iPhone:** Safari kan geen volledig scherm maken. Tik op deel ⬆︎ en kies
+  **Zet op beginscherm**; vanaf daar start de game zonder adresbalk.
+- **Geen geluid?** Op een iPhone dempt de stille modus (het schakelaartje
+  opzij) ook het geluid van de game.
+- Staand houden pauzeert het spel en vraagt je te draaien.
+
 ### Zo speel je
 
 - **Robots** lopen over vaste routes door vijf straten (Damrak, Rokin,
