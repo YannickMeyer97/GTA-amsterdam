@@ -3637,7 +3637,7 @@ addEventListener('keydown', e => {
   // Ticket D35: cijfertoetsen kiezen een optie uit het open menu
   // (commandopost of bouwplek). Zelfde veiligheidspatroon als T: !e.repeat
   // en alleen binnen pointer lock.
-  if (menu && !e.repeat && document.pointerLockElement === renderer.domElement && !spel.gameOver) {
+  if (menu && !e.repeat && besturingActief() && !spel.gameOver) {
     // Ticket D47: tot 6, want een bouwplek met toren én hek heeft 6 opties.
     const keuze = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, Digit5: 4, Digit6: 5 }[e.code];
     if (keuze !== undefined) kiesMenuOptie(keuze);
@@ -3647,17 +3647,17 @@ addEventListener('keydown', e => {
   // browser stuurt anders herhaalde keydown-events terwijl de toets down
   // blijft). Alleen buiten pointer lock geen interactie, zodat het
   // start-/pauzescherm niet per ongeluk een aankoop triggert.
-  if (e.code === 'KeyT' && !e.repeat && document.pointerLockElement === renderer.domElement && !spel.gameOver) {
+  if (e.code === 'KeyT' && !e.repeat && besturingActief() && !spel.gameOver) {
     activeerHuidigeInteractie();
   }
   // X verzilvert de special-meter (zie STAP 3.5, gebruikSpecial) zodra die
   // vol is. Zelfde veiligheidspatroon als T: !e.repeat tegen toets-herhaling,
   // en alleen binnen pointer lock zodat het start-/pauzescherm niets triggert.
-  if (e.code === 'KeyX' && !e.repeat && document.pointerLockElement === renderer.domElement && !spel.gameOver) {
+  if (e.code === 'KeyX' && !e.repeat && besturingActief() && !spel.gameOver) {
     gebruikSpecial();
   }
   // Ticket D15: G start de volgende wave meteen (alleen tijdens de bouwfase).
-  if (e.code === 'KeyG' && !e.repeat && document.pointerLockElement === renderer.domElement && !spel.gameOver) {
+  if (e.code === 'KeyG' && !e.repeat && besturingActief() && !spel.gameOver) {
     startVolgendeWaveNu();
   }
 });
@@ -3845,11 +3845,70 @@ startscherm.addEventListener('click', () => {
   // Ticket D55: tijdens het overwinningsscherm ook niet (daar kies je).
   if (spel.gameOver || spel.overwinningOpen) return;
   initGeluid();   // geluid mag pas starten na een klik (browserregel)
-  renderer.domElement.requestPointerLock();
+  startBesturing();   // Ticket D81
 });
 
+/* --- Ticket D81: de besturingsgate, muis of touch ---------------------------
+   Pointer lock bestaat niet op een telefoon, en "het spel is actief" hing op
+   elf plekken aan `document.pointerLockElement === renderer.domElement`.
+   Overgenomen uit Amsterdam Undead (T176), aangepast:
+   - De modus volgt de eerste echte invoer, niet het apparaat: een tik zet
+     touch, een klik met een echte muis (pointerType 'mouse') zet muis.
+     maxTouchPoints en de user agent liegen allebei.
+   - In de muismodus is de gate LETTERLIJK de oude vergelijking: de tests
+     mocken document.pointerLockElement om precies die uitkomst te sturen.
+   - In de touchmodus is er geen browser-event dat start of pauze meldt,
+     dus startBesturing/verlaatBesturing roepen pasBesturingToe zelf aan. */
+let besturingModus = 'muis';     // 'muis' | 'touch'
+let touchSessieActief = false;   // alleen betekenisvol in de touchmodus
+function besturingActief() {
+  return besturingModus === 'touch' ? touchSessieActief : document.pointerLockElement === renderer.domElement;
+}
+function startBesturing() {
+  if (besturingModus === 'touch') {
+    touchSessieActief = true;
+    pasBesturingToe(true);
+  } else {
+    renderer.domElement.requestPointerLock();
+  }
+}
+function verlaatBesturing() {
+  if (besturingModus === 'touch') {
+    if (!touchSessieActief) return;
+    touchSessieActief = false;
+    pasBesturingToe(false);
+  } else if (document.pointerLockElement) {
+    document.exitPointerLock();
+  }
+}
+function zetBesturingModus(modus) {
+  if (modus === besturingModus) return;
+  // Eerst de OUDE besturing afsluiten, dan pas omzetten (les uit Undead:
+  // andersom bleef pointer lock vastzitten).
+  if (besturingModus === 'muis') {
+    if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
+  } else if (touchSessieActief) {
+    touchSessieActief = false;
+    pasBesturingToe(false);
+  }
+  besturingModus = modus;
+  schietKnopIngedrukt = false;
+  for (const k in ingedrukt) ingedrukt[k] = false;
+  document.documentElement.classList.toggle('touchModus', modus === 'touch');
+  bijBesturingModus.forEach(f => f(modus));
+}
+const bijBesturingModus = [];   // latere tickets haken hier in (knoppen, teksten, draaischerm)
+addEventListener('touchstart', () => zetBesturingModus('touch'), { passive: true, capture: true });
+addEventListener('pointerdown', e => { if (e.pointerType === 'mouse') zetBesturingModus('muis'); }, { capture: true });
+
 document.addEventListener('pointerlockchange', () => {
-  const actief = document.pointerLockElement === renderer.domElement;
+  // Alleen in de muismodus: wisselt de speler naar touch, dan laat
+  // zetBesturingModus pointer lock los, en dat mag de touchsessie niet stoppen.
+  if (besturingModus !== 'muis') return;
+  pasBesturingToe(document.pointerLockElement === renderer.domElement);
+});
+// Wat er gebeurt als het spel start of pauzeert, in beide modi.
+function pasBesturingToe(actief) {
   // Ticket D7: bij game over verlaat eindigRun() de pointer lock zelf; dan
   // hoort hier het eindscherm te staan, niet het pauzescherm.
   startscherm.style.display = actief || spel.gameOver || spel.overwinningOpen ? 'none' : 'flex';   // D55: ook niet over het overwinningsscherm
@@ -3873,7 +3932,7 @@ document.addEventListener('pointerlockchange', () => {
     sluitMenu();
     verbergInteractiePrompt();
   }
-});
+}
 
 // Rondkijken met de muis (alleen als pointer lock actief is).
 addEventListener('mousemove', e => {
@@ -3962,7 +4021,7 @@ function willekeurigePlek(minAfstand = 0) {
 function updateSpeler(dt) {
   // Alleen bewegen als het spel actief is (pointer lock aan, en sinds
   // Ticket D7 ook niet meer na game over).
-  if (document.pointerLockElement === renderer.domElement && !spel.gameOver) {
+  if (besturingActief() && !spel.gameOver) {   // Ticket D81
     // Bepaal de gewenste richting op basis van WASD.
     let stapVooruit = 0, stapZijwaarts = 0;
     if (ingedrukt['KeyW']) stapVooruit += 1;
@@ -4735,7 +4794,7 @@ function eindigRun() {
   schietKnopIngedrukt = false;
   toonWaveBanner('Game over');
   toonEindscherm(verwerkHighscore());
-  if (document.pointerLockElement) document.exitPointerLock();
+  verlaatBesturing();   // Ticket D81
 }
 
 // Ticket D55: de overwinning. Het spel valt stil (zoals bij game over, maar
@@ -4750,7 +4809,7 @@ function winRun() {
   const nieuw = registreerMijlpaal(v => { v.overwinningen += 1; v.sterren += spel.sterren; });   // Ticket D59
   toonOverwinningscherm(verwerkOverwinning(spel.sterren), nieuw);
   updateArcadeUI();
-  if (document.pointerLockElement) document.exitPointerLock();
+  verlaatBesturing();   // Ticket D81
 }
 function doorspelen() {
   if (!spel.overwinningOpen) return;
@@ -4758,7 +4817,7 @@ function doorspelen() {
   overwinningscherm.style.display = 'none';
   startscherm.querySelector('h2').textContent = 'Doorspelen — eindeloos, voor je highscore';
   startscherm.style.display = 'flex';
-  renderer.domElement.requestPointerLock();
+  startBesturing();   // Ticket D81
 }
 
 // Ticket D59 — voortgang tussen runs: welke bazen je ooit versloeg, hoe vaak
@@ -8018,7 +8077,7 @@ function opnieuwSpelen() {
   resetRun();
   startscherm.querySelector('h2').textContent = 'Verdedig de Dam — Amsterdam';
   startscherm.style.display = 'flex';
-  renderer.domElement.requestPointerLock();
+  startBesturing();   // Ticket D81
 }
 document.getElementById('opnieuwKnop').addEventListener('click', opnieuwSpelen);
 document.getElementById('winOpnieuwKnop').addEventListener('click', opnieuwSpelen);   // Ticket D55
@@ -8045,7 +8104,7 @@ function gameLoop(nu) {
   // (pointer lock inactief, bijvoorbeeld na Esc). Voorheen liepen robots,
   // munten en de tram gewoon door tijdens de pauze.
   // Ticket D7: ook na game over valt álles stil, niet alleen robots en waves.
-  const spelActief = document.pointerLockElement === renderer.domElement && !spel.gameOver && !spel.overwinningOpen;
+  const spelActief = besturingActief() && !spel.gameOver && !spel.overwinningOpen;   // Ticket D81
   if (spelActief) {
     runStats.speelduur += dt;
     if (schietKnopIngedrukt) probeerTeSchieten();
@@ -8108,7 +8167,7 @@ requestAnimationFrame(gameLoop);
 // waarde: anders bevriest de export de waarde van het moment dat deze regel
 // voor het eerst uitgevoerd wordt, in plaats van live mee te lezen.
 window.DamChaosDebug = { scene, camera, renderer, speler, robots, munten, spawnRobot, spawnRobotVanafPoort, vernietigRobot, raakRobot, ROBOT_TYPES, kiesRobotTypeVoorWave, waveBannerTekst, toonWaveBanner, waveBannerDuur, WAVE_BANNER_DUUR, verbergWaveBanner, spel, upgrades, startWave, geldStand: () => geld, obstakels, interactiePunten, isVrijePlek, kerkklokBoost, commandopostOpenStand: () => menu === COMMANDOPOST_MENU, geldZet: (n) => { geld = n; updateGeldUI(); }, getRobotSpeedMultiplier, getRewardMultiplier, schiet, getComboGeldMultiplier, getComboVuurtempoMultiplier, robotRaaktMonument, huidigeSchotCooldown, updateWaveSysteem, gebruikSpecial, spelerSchade, upgradeMax, UPGRADE_MAX, KLOKSLAG, klokslag, vertraagRobot, BAAS_VERTRAGING_EFFECT, warmtePerSchotNu: () => warmtePerSchot(), activeerKerkklokBoost, updateKerkklokBoost,
-  GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerCommandopost, updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
+  GRENS, MONUMENT_POSITIE, MONUMENT_BOX, MONUMENT_MAX_HP, SPAWN_POORTEN, afstandTotMonument, upgradeKosten, losBotsingenOp, updateRobots, koopUpgrade, koopMonumentReparatie, legMuntNeer, updateInteracties, activeerHuidigeInteractie, activeerCommandopost, besturingActief, startBesturing, verlaatBesturing, zetBesturingModus, besturingModusStand: () => besturingModus, updateMunten, updateSpeler, probeerTeSchieten, klokStand: () => klok, huidigeInteractieStand: () => huidigeInteractie,
   // Speeltest-feedback (na D6): overzicht-hulpmiddelen.
   // M2: de richtingspijlen (D27) zijn geschrapt; het lichtspoor en de
   // bakens tonen waar de robots vandaan komen.

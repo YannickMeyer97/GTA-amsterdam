@@ -1895,6 +1895,63 @@ torens op de juiste plek.
 7. Voelt de Klokslag (X) als beloning?
 8. Koop je de Zware kogels, en maken ze het verschil bij de Heimachine?
 
+### Fase T — Mobiel speelbaar *(na D80, op verzoek van de eigenaar)*
+
+**Vraag:** "Onderzoek en implementeer hoe we hem op de beste manier mobile
+friendly kunnen maken."
+
+**Onderzoek:**
+- De geschrapte touch-tickets D23–D26 (plan §7) zijn het startpunt.
+- Amsterdam Undead heeft touch al opgelost, met lessen uit speeltests. Die
+  nemen we over door te kopiëren en aan te passen; Undead zelf blijft
+  onaangeroerd:
+  - de modus volgt de eerste echte aanraking, geen apparaatdetectie;
+  - de muisbesturing blijft letterlijk gelijk;
+  - een stick die verschijnt waar je duim landt;
+  - een vuurknop die ook kijkvinger is;
+  - een draaischerm bij staand houden;
+  - geen knijpzoom.
+- Pointer lock (bestaat niet op een telefoon) staat op elf plekken als
+  "het spel is actief".
+- Gemeten op een liggende telefoon (844×390 en 740×360, baaswave met
+  bouwmenu): 24 en 30 overlappende HUD-elementen; het menu ligt over het
+  richtkruis.
+
+**Keuzes van de eigenaar:**
+- **Besturing:** twee duimen met een vuurknop, zoals Undead.
+- **Richthulp:** licht, en alleen op touch.
+- **Apparaat:** een iPhone. Safari geeft daar geen fullscreen; de route
+  is "Zet op beginscherm", met de meta-tags daarvoor.
+
+| | Ticket | Kern |
+| --- | --- | --- |
+| ☑ | **D81** | Besturingsgate: muis of touch, los van pointer lock |
+| ☐ | **D82** | Lopen, kijken en vuren met twee duimen |
+| ☐ | **D83** | Knoppen en aantikbare menu's: bouwen, Klokslag, volgende wave, kerkklok, pauze |
+| ☐ | **D84** | Liggend, safe-area, een HUD die op een telefoon past, iPhone-beginscherm, wake lock |
+| ☐ | **D85** | Lichte richthulp op touch |
+| ☐ | **D86** | Uitleg, afronding en regressie |
+| ☐ | **M6** | Speeltest op de iPhone |
+
+**D81 — besturingsgate, verslag.**
+- `besturingActief()` vervangt de pointer-lock-check op alle plekken die
+  "het spel is actief" bedoelen: toetsen, lopen, de game-loop, starten,
+  pauzeren, game over, winnen, doorspelen en opnieuw. Alleen het kijken en
+  schieten met de muis kijken nog naar pointer lock, want dat is muis.
+- Muismodus: de gate is letterlijk de oude vergelijking (alle tests mocken
+  die). Touchmodus: `touchSessieActief`, gezet door `startBesturing` en
+  `verlaatBesturing`; die roepen `pasBesturingToe` (de oude
+  pointerlockchange-inhoud) zelf aan.
+- De modus volgt de invoer, niet het apparaat: de eerste aanraking zet
+  touch (met de klasse `touchModus` op `<html>`), een klik met een echte muis
+  (`pointerType === 'mouse'`) zet muis terug. Undead kent alleen de weg naar
+  touch; hier kan een laptop met touchscreen terugwisselen.
+- Les uit de test: op een liggende telefoon bestaat het startscherm vooral
+  uit instellingen, en een tik daarop start niets. De startknop moet dus
+  duidelijk de plek zijn om te tikken (D84).
+- **Test:** nieuw `test-dnm-besturingsgate` (10 checks, met echte
+  aanrakingen via `hasTouch`).
+
 ### Backlog — bewust ná alle bovenstaande tickets
 
 - **Telefoonversie** (eigenaar, na de audit): wel gewenst, later. De
