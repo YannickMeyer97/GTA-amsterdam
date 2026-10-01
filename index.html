@@ -76,6 +76,9 @@
     color: #241a05;
   }
   .knop-monument:hover { background: #ffe08a; }
+  /* Alleen op een apparaat zonder muis (telefoon, tablet). */
+  .kaart p.apparaat { display: none; flex: 0; margin: -8px 0 14px; color: #ffd75e; font-weight: 700; }
+  @media (hover: none) and (pointer: coarse) { .kaart p.apparaat { display: block; } }
   .knop-undead {
     background: #3fae63;
     color: #04170a;
@@ -91,7 +94,8 @@
 <div class="games">
   <div class="kaart">
     <h2>🏛️ Defend National Monument</h2>
-    <p>Verdedig het Nationaal Monument op de Dam tegen golven robots. Schiet, verzamel munten, koop upgrades en houd het plein schoon.</p>
+    <p>Verdedig het Nationaal Monument op de Dam tegen golven robots. Bouw torens langs de straten, schiet zelf mee en versla vier bazen in 20 waves.</p>
+    <p class="apparaat">📱 Vraagt een toetsenbord en een muis.</p>
     <a class="knop-monument" href="defend-national-monument.html">Defend National Monument</a>
   </div>
   <div class="kaart">

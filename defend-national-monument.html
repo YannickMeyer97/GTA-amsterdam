@@ -426,6 +426,11 @@
   /* Ticket D59: ontgrendelingen. */
   .kwaliteitKnop.slot { opacity: 0.45; cursor: not-allowed; }
   .kwaliteitKnop.gevaar { margin-left: 8px; color: #ffb3a6; }   /* Ticket D76 */
+  /* Ticket D77 (audit 13): op een apparaat zonder muis (telefoon, tablet)
+     zegt het startscherm dat de game toetsenbord en muis vraagt. */
+  #apparaatMelding { display: none; max-width: max(260px, min(520px, calc(100vw - 240px)));   /* rechts ruimte voor "← Menu" */ margin: 0 0 12px; padding: 8px 14px; border-radius: 10px;
+    background: rgba(255, 215, 94, 0.94); color: #24303f; font-size: 14px; font-weight: 700; text-align: center; }
+  @media (hover: none) and (pointer: coarse) { #apparaatMelding { display: block; } }
   .kwaliteitKnop.gevaar.bevestig { background: #c0392b; color: #fff; }
   #schokKeuze { display: flex; gap: 8px; }
   #nachtKeuze, #sfeerKeuze { display: flex; gap: 8px; align-items: center; }
@@ -527,6 +532,7 @@
     💰 Raap munten op; bij de <b>commandopost</b> koop je upgrades en repareer je het monument<br>
     ⏩ <b>G</b> volgende wave eerder · <b>X</b> klokslag (meter vol): robots om je heen trager · <b>Esc</b> pauze
   </div>
+  <div id="apparaatMelding">📱 Deze game vraagt een toetsenbord en een muis. Op een telefoon of tablet kun je (nog) niet spelen.</div>
   <div class="knop">Klik om te spelen</div>
   <div id="instellingen">
     <span>Beeldkwaliteit</span>

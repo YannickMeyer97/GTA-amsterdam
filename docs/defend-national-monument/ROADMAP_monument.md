@@ -1412,7 +1412,7 @@ Verder:
 | ☑ | **D74** | De Kerkklok (X) als echte beloning, met uitleg (audit 6) |
 | ☑ | **D75** | Stroomval: half effect op bazen (audit 7) |
 | ☑ | **D76** | Voortgang wissen en camera-schok uit te zetten (audit 11, 12) |
-| ☐ | **D77** | Melding op een apparaat zonder muis en toetsenbord (audit 13) |
+| ☑ | **D77** | Melding op een apparaat zonder muis en toetsenbord (audit 13) |
 | ☐ | **D78** | Geld met een bestemming: zwaardere kogels voor het wapen (audit 14) |
 | ☐ | **D79** | Onderhoud: dode code, torens opruimen, een test die een run speelt (audit 15–17) |
 | ☐ | **D80** | Herijken en volledige regressie na D71–D79 |
@@ -1788,6 +1788,20 @@ torens op de juiste plek.
   compacter; gemeten past het nu van 580 tot 720 px hoog.
 - **Test:** nieuw `test-dnm-wissen` (17 checks, ook de pasvorm van het
   startscherm op vier formaten). README bijgewerkt.
+
+**D77 — melding zonder muis, verslag (audit 13).**
+- Op een apparaat zonder muis (`hover: none` en `pointer: coarse`:
+  telefoon, tablet) staat op het startscherm een gele melding: "Deze game
+  vraagt een toetsenbord en een muis. Op een telefoon of tablet kun je
+  (nog) niet spelen." Alleen CSS; met een muis zie je hem niet.
+- In `index.html` staat op zo'n apparaat bij de kaart van deze game
+  "Vraagt een toetsenbord en een muis". De kaarttekst beschreef nog de
+  game van vóór fase M ("houd het plein schoon"); nu: torens, zelf
+  meeschieten, vier bazen in 20 waves. Alleen de kaart van deze game is
+  aangepast.
+- De telefoonversie zelf blijft in de backlog.
+- **Test:** nieuw `test-dnm-apparaat` (4 checks: telefoon en computer, in
+  de game en in `index.html`; de melding blijft vrij van de menuknop).
 
 ### Backlog — bewust ná alle bovenstaande tickets
 
