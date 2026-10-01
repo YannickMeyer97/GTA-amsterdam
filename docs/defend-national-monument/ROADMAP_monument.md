@@ -1731,7 +1731,10 @@ torens op de juiste plek.
 - Van ooghoogte is een dunne ring een streepje: de rand is 0,4 m breed.
 - Drie ringen in een pool, geometrie per straal gedeeld; alleen
   bijgewerkt als het menu verandert (`renderMenu`, `sluitMenu`).
-- **Test:** nieuw `test-dnm-bereik` (11 checks).
+- **Tests:** nieuw `test-dnm-bereik` (11 checks). `test-dnm-bovenleiding`,
+  `-splitsing` en `-toren-niveaus` lezen de menutekst en volgen de stip (die
+  ging eerst mee in de D73-commit terwijl ze nog rood waren; hersteld in een
+  aparte commit).
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

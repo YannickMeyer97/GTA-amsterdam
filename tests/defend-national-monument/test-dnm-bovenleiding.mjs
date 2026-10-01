@@ -120,7 +120,7 @@ const r = await page.evaluate(() => {
 });
 
 const factor = 1;   // D54: volle schade per sprong
-check('Het bouwmenu biedt de Bovenleiding aan als optie 2', r.menu.includes(`2, Bovenleiding €${r.bouw.prijs}`), r.menu);
+check('Het bouwmenu biedt de Bovenleiding aan als optie 2', r.menu.includes(`2, ● Bovenleiding €${r.bouw.prijs}`)   /* D73: met de stip van de bereikcirkel */, r.menu);
 check('2 bouwt een Bovenleiding in het torenslot (prijs afgeschreven, obstakel, in de scene)', r.bouw.type === 'bovenleiding' && r.bouw.geld === 500 - r.bouw.prijs && r.bouw.obstakels === 1 && r.bouw.inScene, r.bouw);
 check('Zonder doelwit vuurt hij niet (geen treffers, geen boog, geen wachttijd)', r.leeg.treffers === 0 && !r.leeg.spoor && r.leeg.cooldown === 0, r.leeg);
 check('Een robot net buiten bereik wordt niet geraakt', r.buitenBereik.hp === 10 && !r.buitenBereik.spoor, r.buitenBereik);
