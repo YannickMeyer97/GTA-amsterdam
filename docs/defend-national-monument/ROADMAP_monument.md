@@ -1410,7 +1410,7 @@ Verder:
 | ☑ | **D72** | Eén Nederlandse naamset voor de robots (audit 10) |
 | ☑ | **D73** | Bereikcirkel bij het bouwen (audit 9) |
 | ☑ | **D74** | De Kerkklok (X) als echte beloning, met uitleg (audit 6) |
-| ☐ | **D75** | Stroomval: half effect op bazen (audit 7) |
+| ☑ | **D75** | Stroomval: half effect op bazen (audit 7) |
 | ☐ | **D76** | Voortgang wissen en camera-schok uit te zetten (audit 11, 12) |
 | ☐ | **D77** | Melding op een apparaat zonder muis en toetsenbord (audit 13) |
 | ☐ | **D78** | Geld met een bestemming: zwaardere kogels voor het wapen (audit 14) |
@@ -1754,6 +1754,25 @@ torens op de juiste plek.
   de Kerkklok bij de kerk).
 - **Tests:** nieuw `test-dnm-klokslag` (10 checks); `test-dnm-hints` volgt
   de hulpbalk.
+
+**D75 — Stroomval op bazen, verslag (audit 7).**
+- Een baas krijgt het halve effect van elke vertraging
+  (`BAAS_VERTRAGING_EFFECT`, in `vertraagRobot`): de Stroomval maakt hem
+  0,75× zo snel in plaats van 0,5×, de Klokslag 0,7× in plaats van 0,4×.
+- **Gemeten** (`meet-dnm-bazen`, nu ook met "Kanon + Stroomval"; een
+  opstelling kan een richting noemen):
+
+  | Baas | Kanon + Stroomval, vol effect | half effect (nu) | Kanon + Hoogspanning |
+  |---|---|---|---|
+  | Stoomwals (wave 15) | 1× dood | 0× dood (4–32 HP over) | 2× dood |
+  | Heimachine (wave 20) | 0× dood | 0× dood (2–41 HP over) | 1× dood |
+
+  De zorg uit de audit (de Stroomval als standaardkeuze tegen bazen) bleek
+  in de simulatie kleiner dan gedacht: ook met het volle effect deed hij
+  het niet beter dan de Hoogspanning. Met het halve effect is hij
+  duidelijk een toren tegen groepen, niet tegen bazen.
+- **Test:** `test-dnm-splitsing` controleert het halve effect op een baas
+  (factor en loopsnelheid).
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

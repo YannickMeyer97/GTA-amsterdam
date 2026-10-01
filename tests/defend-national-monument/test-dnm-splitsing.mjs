@@ -65,6 +65,20 @@ const r = await page.evaluate(() => {
   for (let i = 0; i < 80; i++) d.updateRobots(1 / 20);   // 4 s later: voorbij
   const weer = meetStap();
   uit.val = { naam: d.torenNaam(val), normaal, traag, weer, verhouding: traag / normaal, vertraging: loper.vertraging };
+  // Ticket D75 (audit 7): een baas krijgt het halve effect.
+  leeg();
+  d.spawnRobot(d.SPAWN_POORTEN.find(p => p.naam === 'Damstraat'), 'sloopkogel');
+  const baas = d.robots[0];
+  baas.sloopTimer = 999;   // hij slaat de mast niet kapot tijdens de meting
+  const meetBaas = () => { const s0 = baas.s; for (let i = 0; i < 20; i++) d.updateRobots(1 / 20); return baas.s - s0; };
+  const baasNormaal = meetBaas();
+  const bpos = baas.groep.position.clone();
+  baas.groep.position.set(val.plek.positie.x + 2, 0, val.plek.positie.z);
+  val.cooldown = 0;
+  d.vuurBovenleiding(val);
+  baas.groep.position.copy(bpos);
+  const baasTraag = meetBaas();
+  uit.valBaas = { factor: baas.vertraging?.factor, verhouding: baasTraag / baasNormaal, effect: d.BAAS_VERTRAGING_EFFECT };
 
   // 5. Prikkeldraad: een robot die op het hek slaat, verliest HP. Stadsmuur: 600 HP.
   d.resetRun();
@@ -128,6 +142,8 @@ check('Stadsmuur: 600 HP (dubbel zo veel als niveau 3 was)', r.muur.naam === 'St
 check('Het menu op niveau 2 biedt beide richtingen, met prijs (€450 sinds D65) en uitleg', /1, ● Geschuttoren → Kanon €450/.test(r.menu.voor) && /2, ● Geschuttoren → Scherpschutter €450/.test(r.menu.voor)   /* D73: stip */, r.menu.voor);
 check('Toets 2 kiest de Scherpschutter; het menu en de prompt noemen hem', r.menu.richting === 'scherpschutter' && r.menu.niveau === 3 && /Scherpschutter: maximaal niveau/.test(r.menu.na) && /Scherpschutter niv\. 3/.test(r.menu.prompt), r.menu);
 check('Daarna ligt de richting vast: nog een upgrade kan niet', r.menu.nogmaals === false, r.menu);
+
+check('Stroomval op een baas (D75): het halve effect, 0,75 in plaats van 0,5', Math.abs(r.valBaas.factor - 0.75) < 1e-9 && r.valBaas.verhouding > 0.7 && r.valBaas.verhouding < 0.8, r.valBaas);
 
 const fails = report(errs);
 await browser.close();

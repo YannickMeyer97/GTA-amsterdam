@@ -23,9 +23,9 @@ const alleenWave = Number(process.argv[2]) || null;
 const ALLE_SCENARIO = [
   { wave: 5, upgrades: {}, configs: [['alleen de speler', []], ['2 torens niv. 1', [['geschut', 1], ['geschut', 1]]], ['2 torens niv. 2', [['geschut', 2], ['geschut', 2]]]] },
   { wave: 10, upgrades: { vuurtempo: 2, koeling: 1 }, configs: [['alleen de speler', []], ['2 torens niv. 2', [['geschut', 2], ['geschut', 2]]], ['Kanon + Hoogspanning', [['geschut', 3], ['bovenleiding', 3]]], ['2 Kanonnen', [['geschut', 3], ['geschut', 3]]]] },
-  { wave: 15, upgrades: { vuurtempo: 3, koeling: 2 }, configs: [['alleen de speler', []], ['2 torens niv. 2', [['geschut', 2], ['geschut', 2]]], ['Kanon + Hoogspanning', [['geschut', 3], ['bovenleiding', 3]]], ['2 Kanonnen', [['geschut', 3], ['geschut', 3]]]] },
+  { wave: 15, upgrades: { vuurtempo: 3, koeling: 2 }, configs: [['alleen de speler', []], ['Kanon + Stroomval', [['geschut', 3], ['bovenleiding', 3, 'stroomval']]], ['2 torens niv. 2', [['geschut', 2], ['geschut', 2]]], ['Kanon + Hoogspanning', [['geschut', 3], ['bovenleiding', 3]]], ['2 Kanonnen', [['geschut', 3], ['geschut', 3]]]] },
   // Ticket D69: de Heimachine.
-  { wave: 20, upgrades: { vuurtempo: 3, koeling: 2 }, configs: [['alleen de speler', []], ['Kanon + Hoogspanning', [['geschut', 3], ['bovenleiding', 3]]], ['2 Kanonnen', [['geschut', 3], ['geschut', 3]]]] },
+  { wave: 20, upgrades: { vuurtempo: 3, koeling: 2 }, configs: [['alleen de speler', []], ['Kanon + Stroomval', [['geschut', 3], ['bovenleiding', 3, 'stroomval']]], ['Kanon + Hoogspanning', [['geschut', 3], ['bovenleiding', 3]]], ['2 Kanonnen', [['geschut', 3], ['geschut', 3]]]] },
 ];
 const SCENARIO = ALLE_SCENARIO.filter(x => !alleenWave || x.wave === alleenWave);
 
@@ -37,7 +37,7 @@ const r = await page.evaluate((SCENARIO) => {
     d.resetRun(); d.geldZet(1e7); Object.assign(d.upgrades, upgrades); d.startWave(wave); d.spel.monumentHP = 100000;
     for (const pn of d.spel.actievePoorten) {
       const ps = [d.plekVoor(pn, 'knooppunt'), d.plekVoor(pn, 'voorpost')];
-      plekken.forEach(([type, niv], i) => { if (!ps[i] || ps[i].toren) return; const t = d.bouwToren(ps[i], type); for (let n = 1; n < niv; n++) d.upgradeToren(t); });
+      plekken.forEach(([type, niv, richting], i) => { if (!ps[i] || ps[i].toren) return; const t = d.bouwToren(ps[i], type); for (let n = 1; n < niv; n++) d.upgradeToren(t, n === 2 ? richting : undefined); });   // D75: optioneel een richting
     }
     let t = 0, cd = 0, warmte = 0, sinds = 99, oververhit = false, baasDood = null, baasObj = null, baasRestHp = null;
     const M = d.MONUMENT_POSITIE;
