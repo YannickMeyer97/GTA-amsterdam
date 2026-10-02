@@ -8224,6 +8224,35 @@ terwijl het exact op de boot zelf gewoon nog werkt.
 
 ---
 
+## CI-onderhoud: vier tests die alleen op GitHub rood waren ✅
+
+- **Type:** tests. `amsterdam-undead.html` is niet aangeraakt.
+- **Aanleiding.** De testworkflow op GitHub stond rood. De rode scripts zijn
+  te vinden via de "Rood:"-lijst die `run-all.mjs` nu onderaan zet (zie D87
+  in `ROADMAP_monument.md`). Van Amsterdam Undead waren het er vier.
+- **`test-mobiel-verbeteringen`:** de headless shell die CI gebruikt weigert
+  elke echte wake lock, dus de check viel daar altijd om. Nu draait hij met
+  een nagebootste Wake Lock API, via de nieuwe `initScript`-optie van
+  `openAmsterdamUndead()`. Wat getest wordt, is de bedrading in het spel
+  (aanvragen, loslaten, opnieuw aanvragen); de browser zelf hoort daar niet
+  bij.
+- **`test-inslagsporen`:** schreef zijn screenshot naar een vast pad dat
+  maar in één sessie bestond. In CI viel het script daardoor om met ENOENT.
+  Het screenshot gaat nu naar `os.tmpdir()`.
+- **`test-omgeving-sfeer`:** de lampdip herstelt in 0,8 s **speltijd**. De
+  test wachtte 850 ms klok. Op de runner loopt de speltijd (dt-cap per frame)
+  ruim twee keer trager, en stond de factor na die wachttijd nog op 0,79. Nu
+  pollt de test tot de factor 1 is, met een deadline van 10 s.
+- **`test-ontsnapping-vensters`:** zelfde patroon. De aankondiging duurt 5 s
+  speltijd; lokaal is dat al ~14 s klok, en in CI was 45 s niet genoeg. De
+  test wacht nu zolang de timer nog daalt en geeft pas op als die 15 s
+  stilstaat. Er geldt een harde grens van 240 s. Gaat het toch mis, dan
+  staan timer, golf en gameOver in de details.
+- **Verificatie:** alle vier groen met de lokale Chromium én de headless
+  shell (`TEST_BROWSER=<pad>`).
+
+---
+
 ## Later (na v1, alleen indien gewenst)
 - Meer kamers/grachtenzones, meer ondood-types, meer upgrades
 - Pas over gedeelde engine nadenken als beide games stabiel zijn

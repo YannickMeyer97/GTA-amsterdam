@@ -27,7 +27,11 @@ const LOKAAL_CHROMIUM_PAD = '/opt/pw-browsers/chromium';
 // Geëxporteerd voor scripts die (net als test-faalmodi.mjs) bewust hun eigen
 // chromium.launch() doen i.p.v. openAmsterdamUndead() — die hebben dezelfde
 // CI-fallback nodig, anders faalt precies zo'n script alsnog hard op CI.
-export const executablePathOptie = existsSync(LOKAAL_CHROMIUM_PAD) ? { executablePath: LOKAAL_CHROMIUM_PAD } : {};
+// Ticket D87: TEST_BROWSER=ci laat de lokale Chromium weg en neemt Playwright's
+// standaard (in headless de headless shell), zoals CI; TEST_BROWSER=<pad> neemt die
+// browser (bv. een headless shell). Zo zijn CI-fouten lokaal na te spelen.
+export const executablePathOptie = process.env.TEST_BROWSER && process.env.TEST_BROWSER !== 'ci' ? { executablePath: process.env.TEST_BROWSER }   // een pad: die browser
+  : existsSync(LOKAAL_CHROMIUM_PAD) && process.env.TEST_BROWSER !== 'ci' ? { executablePath: LOKAAL_CHROMIUM_PAD } : {};
 
 // Ticket 78 (v0.20, §8.8.1): run-all.mjs draait de hele suite in één
 // process en launcht daar één gedeelde browser (globalThis, zie
@@ -78,9 +82,12 @@ async function verkrijgBrowserEnContext({ touch = false } = {}) {
 // determinisme) zelfs bij zijn herkansing rood, terwijl allebei los prima
 // slaagden. Vooraf zetten laat de pagina vanaf frame nul op de juiste stand
 // draaien, precies zoals vóór de omzetting.
-export async function openAmsterdamUndead({ simuleerPointerLock = false, touch = false, kwaliteit = null, query = null } = {}) {
+// `initScript` (D87): een stukje JS dat vóór het laden in de pagina draait,
+// bijvoorbeeld een nagebootste browser-API (zoals in helpers-defend.mjs).
+export async function openAmsterdamUndead({ simuleerPointerLock = false, touch = false, kwaliteit = null, query = null, initScript = null } = {}) {
   const { browser, context } = await verkrijgBrowserEnContext({ touch });
   const page = await context.newPage();
+  if (initScript) await page.addInitScript(initScript);
   if (kwaliteit) {
     // De sleutel staat hier als letterlijke string omdat hij nodig is vóórdat
     // de pagina (en dus KWALITEIT_KEY) bestaat. openVoorVisueleMeting()

@@ -133,10 +133,18 @@ check('Direct na de dip-trigger blijft elke lampintensiteit onder de eigen (basi
 check('De dip-factor staat op het sample-moment nog duidelijk onder 1 (de dip is echt actief, de grens hierboven is dus geen loze upper bound)',
   dipDirect.every(l => l.dipFactor < 0.95), dipDirect);
 
-await page.waitForTimeout(850);   // ruim boven de 0.8s hersteltijd
-const dipHersteld = await page.evaluate(() => window.AmsterdamUndeadDebug.lampDipFactor);
-check('Binnen ~1s is lampDipFactor volledig hersteld naar 1',
-  dipHersteld === 1, { dipHersteld });
+// D87: pollen i.p.v. een vaste 850 ms. De hersteltijd van 0.8 s is SPELtijd;
+// op een trage CI-runner loopt de speltijd (dt-cap per frame) ruim twee keer
+// zo langzaam als de klok, en stond de factor na 850 ms pas op 0.79. Een
+// ruime deadline houdt de test over het herstel zelf, niet over de runner.
+const dipStart = Date.now();
+let dipHersteld = await page.evaluate(() => window.AmsterdamUndeadDebug.lampDipFactor);
+while (dipHersteld !== 1 && Date.now() - dipStart < 10000) {
+  await page.waitForTimeout(100);
+  dipHersteld = await page.evaluate(() => window.AmsterdamUndeadDebug.lampDipFactor);
+}
+check('Na de hersteltijd is lampDipFactor volledig hersteld naar 1',
+  dipHersteld === 1, { dipHersteld, msTotHerstel: Date.now() - dipStart });
 
 const fails = report(errs);
 await browser.close();

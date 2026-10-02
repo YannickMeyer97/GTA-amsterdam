@@ -17,7 +17,11 @@ export const BUDGET = {
   geometrieen: 300,           // plan §11.7.10; gemeten: 258 (was 378)
   texturen: 32,               // plan zei 24, vóór D36 en de straatnaamborden; gemeten: 27
   textuurPixels: 1024 * 1024, // per textuur; de grootste is 1600×320
-  laadtijdMs: 4000,           // headless tot de debug-hook; gemeten: ~1,6 s
+  // Headless tot de debug-hook (incl. de vaste 800 ms wachttijd van openDefend);
+  // gemeten: ~1,6 s. D87: op een GitHub-runner (CI=true) is alles trager en
+  // werd 5,3 s gemeten; daar geldt een eigen, ruimere grens, zodat de test
+  // nog een echte verdubbeling vangt maar niet op de runner zelf struikelt.
+  laadtijdMs: process.env.CI ? 10000 : 4000,
 };
 
 const t0 = Date.now();

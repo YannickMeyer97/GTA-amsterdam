@@ -2074,6 +2074,28 @@ friendly kunnen maken."
 6. Werkt "Zet op beginscherm", en is er geluid (stille modus uit)?
 7. Loopt het soepel, of hapert het (op Laag)?
 
+**D87 — CI groen maken, verslag.**
+Op GitHub stond de testworkflow rood: 163 van de 169 scripts groen. Lokaal
+waren alle zes groen.
+- **Eerst zien welke.** GitHub toont alleen de staart van een log van
+  duizenden regels, en het volledige log is hier niet te downloaden.
+  `run-all.mjs` zet daarom onder "Rood:" de naam van elk rood script, met
+  zijn `[FAIL]`-regels. Gooit een script een fout, dan staat de foutmelding
+  er als `[FOUT]`-regel bij.
+- **Lokaal naspelen.** CI gebruikt Playwright's eigen headless shell, niet
+  de lokale Chromium. `TEST_BROWSER=<pad>` (in `helpers-defend.mjs`,
+  `helpers.mjs` en `run-all.mjs`) laat de tests in een andere browser
+  draaien. `TEST_BROWSER=ci` neemt Playwright's standaardbrowser.
+- **De zes:**
+  - **`test-dnm-prestaties`:** de laadtijd was in CI 5,3 s, met een budget
+    van 4 s. Op een trage runner geldt nu een eigen grens van 10 s
+    (`process.env.CI`). Lokaal blijft het 4 s.
+  - **`test-dnm-mobiel`:** gaf in CI een fout. Lokaal is het groen, ook in
+    de headless shell en in een gedeelde browser zoals run-all. De volgende
+    CI-run toont de foutmelding via de `[FOUT]`-regel.
+  - **Vier Undead-scripts:** zie `ROADMAP_undead.md`, "CI-onderhoud".
+- De game zelf is niet aangeraakt.
+
 ### Backlog — bewust ná alle bovenstaande tickets
 
 - **Telefoonversie** (eigenaar, na de audit): wel gewenst, later. De

@@ -69,7 +69,11 @@ if (shardEnv) {
 }
 
 const LOKAAL_CHROMIUM_PAD = '/opt/pw-browsers/chromium';
-const executablePathOptie = existsSync(LOKAAL_CHROMIUM_PAD) ? { executablePath: LOKAAL_CHROMIUM_PAD } : {};
+// Ticket D87: TEST_BROWSER=ci laat de lokale Chromium weg en neemt Playwright's
+// standaard (in headless de headless shell), zoals CI; TEST_BROWSER=<pad> neemt die
+// browser (bv. een headless shell). Zo zijn CI-fouten lokaal na te spelen.
+const executablePathOptie = process.env.TEST_BROWSER && process.env.TEST_BROWSER !== 'ci' ? { executablePath: process.env.TEST_BROWSER }   // een pad: die browser
+  : existsSync(LOKAAL_CHROMIUM_PAD) && process.env.TEST_BROWSER !== 'ci' ? { executablePath: LOKAAL_CHROMIUM_PAD } : {};
 const browser = await chromium.launch(executablePathOptie);
 globalThis.__AMSTERDAM_UNDEAD_SHARED_BROWSER__ = browser;
 
@@ -144,6 +148,9 @@ async function draaiScript(script) {
     await import(url);
   } catch (e) {
     console.error(e);
+    // Ticket D87: ook de foutmelding zelf in de samenvatting (de stacktrace
+    // staat hierboven, maar in CI is alleen de staart van het log te lezen).
+    laatsteFails.push(`[FOUT] ${String(e?.message ?? e).split('\n').slice(0, 3).join(' | ').slice(0, 400)}`);
     exitCode = 1;
   } finally {
     process.exit = origExit;

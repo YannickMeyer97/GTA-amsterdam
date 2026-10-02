@@ -17,8 +17,19 @@ let alleErrs = [];
 // ===========================================================================
 // 1. Wake Lock
 // ===========================================================================
+// Ticket D87 (CI groen): of de browser een ECHTE wake lock geeft, hangt af van
+// de browser en de omgeving. De headless shell die CI gebruikt (Playwright's
+// standaard) weigert hem altijd; de volledige Chromium lokaal gaf hem wel.
+// Daardoor was deze sectie in CI altijd rood (4 checks), en lokaal groen. Wat
+// we willen toetsen is de logica van de game (aanvragen, loslaten, opnieuw
+// aanvragen), dus krijgt de pagina een nagebootste API die zich gedraagt als
+// een browser die de lock geeft. De weiger- en kapot-varianten hieronder
+// overschrijven hem tijdelijk, zoals voorheen.
+const NEP_WAKE_LOCK = `Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: {
+  request: async () => { const s = new EventTarget(); s.released = false;
+    s.release = async () => { if (!s.released) { s.released = true; s.dispatchEvent(new Event('release')); } }; return s; } } });`;
 {
-  const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
+  const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true, initScript: NEP_WAKE_LOCK });
 
   // --- 1a. Aanvragen/loslaten zelf. Let op: simuleerPointerLock: true
   // dispatcht bij het laden al een 'pointerlockchange'-event die
@@ -35,7 +46,7 @@ let alleErrs = [];
     const naTweedeLoslaten = d.wakeLock;
     return { ondersteund, naLoslaten, naAanvraag, naTweedeLoslaten };
   });
-  check('Deze Chromium ondersteunt de Wake Lock API (anders is de rest van deze sectie een stille no-op-meting)',
+  check('De (nagebootste, D87) Wake Lock API is er (anders is de rest van deze sectie een stille no-op-meting)',
     basis.ondersteund, basis);
   check('laatWakeLockLos() op een lege staat crasht niet en laat null staan', basis.naLoslaten === null, basis);
   check('vraagWakeLockAan() zet een echte wake lock (wakeLock !== null)', basis.naAanvraag === true, basis);
@@ -138,7 +149,7 @@ let alleErrs = [];
   // laat de wake-lock-sentinel ZELF los zodra het document verborgen wordt
   // (spec-gedrag) — bij terugkeer, terwijl de besturing nog actief hoort te
   // zijn, moet 'm opnieuw aangevraagd worden. --------------------------------
-  const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true });
+  const { browser, page, errs } = await openAmsterdamUndead({ simuleerPointerLock: true, initScript: NEP_WAKE_LOCK });
   const zichtbaarheid = await page.evaluate(async () => {
     const d = window.AmsterdamUndeadDebug;
     d.zetBesturingActief(true);

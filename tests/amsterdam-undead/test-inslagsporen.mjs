@@ -10,6 +10,8 @@
 import { openAmsterdamUndead, openVoorVisueleMeting, makeChecker } from '../helpers.mjs';
 import { PNG } from 'pngjs';
 import { writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import path from 'path';
 
 const { browser, page, errs } = await openAmsterdamUndead();
 const { check, report } = makeChecker();
@@ -207,7 +209,11 @@ let maxVerschil = 0;
 for (let i = 0; i < png1.data.length; i++) maxVerschil = Math.max(maxVerschil, Math.abs(png1.data[i] - png2.data[i]));
 check('Twee opeenvolgende renders van hetzelfde schuine decal zijn pixel-identiek (geen depth-buffer-race/flikkering, een grof proxy-signaal voor z-fighting)',
   maxVerschil === 0, { maxVerschil });
-writeFileSync('/tmp/claude-0/-home-user-GTA-amsterdam/42c9d8c5-74c5-5e54-ba43-81b0c4fb1d6a/scratchpad/t157-schuin-decal.png', buf1);
+// D87: naar de tijdelijke map van het systeem — het oude, vaste scratchpad-pad
+// bestond alleen in één sessie en liet dit script in CI met ENOENT omvallen.
+const pngPad = path.join(tmpdir(), 't157-schuin-decal.png');
+writeFileSync(pngPad, buf1);
+console.log(`(screenshot voor handmatige beoordeling: ${pngPad})`);
 await browser2.close();
 
 const fails = report(errs);

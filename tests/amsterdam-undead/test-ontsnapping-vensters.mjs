@@ -539,14 +539,27 @@ check('Ruim binnen de aankondigingsduur (2s wall-clock) bestaat het punt nog ste
 // deze empirische ~0.45 gesimuleerde-seconde-per-reële-seconde bleek zelfs
 // 15s totaal niet genoeg. Poll i.p.v. gokken: wacht nooit langer dan nodig,
 // en geef een ruime deadline i.p.v. een ruime-maar-nog-steeds-vaste marge.
-let uiteindelijkWel = false;
-const pollDeadline = Date.now() + 45000;
-while (!uiteindelijkWel && Date.now() < pollDeadline) {
-  await p2.waitForTimeout(2000);
-  uiteindelijkWel = await p2.evaluate(() => window.AmsterdamUndeadDebug.ontsnappingsPunt !== null);
+// D87: ook 45 s bleek in CI te krap (lokaal al ~0.35 speltijd-seconde per
+// reële seconde, in CI nog trager). Geen vaste deadline meer, maar een
+// voortgangsdeadline: wachten zolang de timer nog afloopt; pas als hij 15 s
+// lang niet meer daalt (de gameLoop tikt hem niet) is dat een echte fout.
+// Harde bovengrens 240 s, en de staat in de details als het toch misgaat.
+const leesStaat = () => p2.evaluate(() => {
+  const d = window.AmsterdamUndeadDebug;
+  return { punt: d.ontsnappingsPunt !== null, actief: d.ontsnappingAankondigingActief, timer: d.ontsnappingAankondigingTimer,
+    golf: d.spelStaat.golf, gameOver: d.spelStaat.gameOver };
+});
+const pollStart = Date.now();
+let staat = await leesStaat();
+let laagsteTimer = staat.timer, laatsteVoortgang = Date.now();
+while (!staat.punt && Date.now() - laatsteVoortgang < 15000 && Date.now() - pollStart < 240000) {
+  await p2.waitForTimeout(1000);
+  staat = await leesStaat();
+  if (staat.timer < laagsteTimer) { laagsteTimer = staat.timer; laatsteVoortgang = Date.now(); }
 }
+const uiteindelijkWel = staat.punt;
 check('Na de volledige ONTSNAPPING_AANKONDIGING_DUUR (via de echte gameLoop) verschijnt het punt vanzelf',
-  uiteindelijkWel === true, { uiteindelijkWel });
+  uiteindelijkWel === true, { ...staat, msGewacht: Date.now() - pollStart });
 await b2.close();
 
 const fails = report([...errs, ...errs2]);

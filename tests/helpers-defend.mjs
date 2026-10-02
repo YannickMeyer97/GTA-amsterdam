@@ -24,7 +24,11 @@ const JSM_ROOT = path.join(__dirname, 'node_modules', 'three', 'examples', 'jsm'
 // deze dev-omgeving, CI valt terug op Playwright's eigen geïnstalleerde
 // browser.
 const LOKAAL_CHROMIUM_PAD = '/opt/pw-browsers/chromium';
-export const executablePathOptie = existsSync(LOKAAL_CHROMIUM_PAD) ? { executablePath: LOKAAL_CHROMIUM_PAD } : {};
+// Ticket D87: TEST_BROWSER=ci laat de lokale Chromium weg en neemt Playwright's
+// standaard (in headless de headless shell), zoals CI; TEST_BROWSER=<pad> neemt die
+// browser (bv. een headless shell). Zo zijn CI-fouten lokaal na te spelen.
+export const executablePathOptie = process.env.TEST_BROWSER && process.env.TEST_BROWSER !== 'ci' ? { executablePath: process.env.TEST_BROWSER }   // een pad: die browser
+  : existsSync(LOKAAL_CHROMIUM_PAD) && process.env.TEST_BROWSER !== 'ci' ? { executablePath: LOKAAL_CHROMIUM_PAD } : {};
 
 // Zelfde gedeelde-browser-truc als helpers.mjs: run-all.mjs launcht één
 // browser voor de HELE suite (beide games, sinds Ticket D0) en zet 'm op
