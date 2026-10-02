@@ -65,7 +65,13 @@ for (const [w, h] of [[667, 375], [844, 390], [932, 430], [1024, 768]]) {
 }
 
 // Staand: draaischerm en pauze. Meta-tags. Wake lock (met een nagebootste API).
+// D87: ook requestFullscreen is nagebootst (telt alleen). De headless shell van
+// CI gaat bij de eerste tik écht fullscreen, en dan weigert setViewportSize
+// het draaien naar staand. Een iPhone heeft geen fullscreen, dus zo lijkt het
+// ook meer op het doeltoestel.
 const wakeStub = `
+  window.__fullscreen = 0;
+  Element.prototype.requestFullscreen = function () { window.__fullscreen++; return Promise.resolve(); };
   window.__wake = { aanvragen: 0, losgelaten: 0 };
   Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => { window.__wake.aanvragen++; const l = new EventTarget(); l.release = async () => { window.__wake.losgelaten++; l.dispatchEvent(new Event('release')); }; return l; } } });`;
 const { browser, page, errs } = await openDefend({ initScript: wakeStub, contextOpties: { isMobile: true, hasTouch: true, viewport: { width: 844, height: 390 } } });
@@ -78,7 +84,7 @@ check('Meta-tags voor de iPhone: viewport-fit=cover en "Zet op beginscherm" als 
 const voorTik = await page.evaluate(() => !document.getElementById('draaiScherm').hidden);
 await tikStart(page);
 await page.waitForTimeout(100);
-const wake1 = await page.evaluate(() => ({ ...window.__wake, stand: window.DamChaosDebug.wakeLockStand() }));
+const wake1 = await page.evaluate(() => ({ ...window.__wake, stand: window.DamChaosDebug.wakeLockStand(), fullscreenAanvragen: window.__fullscreen }));
 check('Bij het starten wordt de wake lock aangevraagd', wake1.aanvragen === 1 && wake1.stand, wake1);
 await page.setViewportSize({ width: 390, height: 844 });
 await page.waitForTimeout(300);

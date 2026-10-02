@@ -2091,8 +2091,16 @@ waren alle zes groen.
     van 4 s. Op een trage runner geldt nu een eigen grens van 10 s
     (`process.env.CI`). Lokaal blijft het 4 s.
   - **`test-dnm-mobiel`:** gaf in CI een fout. Lokaal is het groen, ook in
-    de headless shell en in een gedeelde browser zoals run-all. De volgende
-    CI-run toont de foutmelding via de `[FOUT]`-regel.
+    de headless shell en in een gedeelde browser zoals run-all. De
+    `[FOUT]`-regel uit de volgende CI-run noemde de oorzaak:
+    `setViewportSize: To resize minimized/maximized/fullscreen window,
+    restore it to normal state first`. De nieuwere headless shell van CI
+    gaat bij de eerste tik echt fullscreen (`probeerFullscreen()`), en dan
+    kan het venster niet naar staand gedraaid worden. In de context van de
+    draaitest is `requestFullscreen` nu nagebootst; de nabootsing telt alleen
+    de aanvragen. Een iPhone heeft geen fullscreen, dus zo lijkt de test ook
+    meer op het doeltoestel. Daarna stond CI op 168/169; met deze fix is
+    alles groen.
   - **Vier Undead-scripts:** zie `ROADMAP_undead.md`, "CI-onderhoud".
 - De game zelf is niet aangeraakt.
 
