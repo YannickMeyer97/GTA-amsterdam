@@ -77,6 +77,8 @@ Speel liggend. Een tik op het startscherm zet de touchbediening aan:
 - **Geen geluid?** Op een iPhone dempt de stille modus (het schakelaartje
   opzij) ook het geluid van de game.
 - Staand houden pauzeert het spel en vraagt je te draaien.
+- **Beeldkwaliteit** staat ook op een telefoon standaard op Hoog. Hapert
+  het, kies dan Normaal of Laag op het startscherm; die keuze wordt onthouden.
 
 ### Zo speel je
 

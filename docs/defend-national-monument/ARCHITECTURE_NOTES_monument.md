@@ -1554,8 +1554,8 @@ De volledige overgangstabel staat in plan §11.7.8, de testmigratie in
 - **Kwaliteit (D21):**
   - `KWALITEIT_PRESETS` (laag/normaal/hoog), `kwaliteitNu`,
     `kwaliteitPreset()`. De stand wordt bij het laden gelezen
-    (`leesKwaliteit`: corrupte sleutel → terugval; grove aanwijzer zonder
-    keuze → laag) en vóór de renderer gebruikt, want anti-aliasing kan
+    (`leesKwaliteit`: corrupte sleutel → terugval; zonder keuze → hoog, sinds
+    D90 ook bij een grove aanwijzer, was laag) en vóór de renderer gebruikt, want anti-aliasing kan
     alleen bij het aanmaken.
   - Wat de preset raakt: pixelratio, anti-aliasing, schaduwen en hun
     resolutie, het aantal duiven, de toeristen (`zetToeristen`) en hoe lang

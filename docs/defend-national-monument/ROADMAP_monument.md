@@ -2072,7 +2072,7 @@ friendly kunnen maken."
 4. Bouwen: zijn de menuregels goed aan te tikken, en is alles leesbaar?
 5. Zit er een knop of tekst in de weg, of valt er iets weg achter de notch?
 6. Werkt "Zet op beginscherm", en is er geluid (stille modus uit)?
-7. Loopt het soepel, of hapert het (op Laag)?
+7. Loopt het soepel, of hapert het? (Sinds D90 standaard op Hoog.)
 
 **D87 — CI groen maken, verslag.**
 Op GitHub stond de testworkflow rood: 163 van de 169 scripts groen. Lokaal
@@ -2168,6 +2168,24 @@ waren alle zes groen.
   wavebanner (D71), en op een trage runner stond de banner van het laden
   er nog. De test verbergt de banner nu eerst, zoals `test-dnm-apparaat`
   al deed. De game is niet aangeraakt.
+
+**D90 — op een telefoon standaard kwaliteit Hoog, verslag.**
+- **Aanleiding:** verzoek van de eigenaar.
+- **Wat veranderd is:** sinds D21 viel `leesKwaliteit()` op een apparaat met
+  een grove aanwijzer (telefoon, tablet) zonder eigen keuze terug op Laag.
+  Nu is de standaard overal Hoog. `isGrofPointerApparaat()` had geen andere
+  gebruikers en is weg.
+- **Gevolgen voor spelers:**
+  - Een bewaarde keuze wint nog steeds.
+  - Wie op de telefoon nooit zelf koos, krijgt nu Hoog. De oude standaard
+    werd niet opgeslagen, dus daar hoeft niets gemigreerd te worden.
+  - Hoog betekent op een telefoon: pixelratio tot 2, schaduwen 2048 en meer
+    duiven. Hapert het, dan schakel je op het startscherm terug.
+  - Dat staat ook in de README, in de sectie over de telefoon.
+- **Tests:** `test-dnm-kwaliteit` verwacht bij een grove aanwijzer zonder
+  keuze Hoog, met de knop Hoog actief. De check "bewaarde keuze wint" toetst
+  nu Laag, anders zou hij niets bewijzen.
+- **M6, vraag 7** (soepel of haperend) geldt nu voor Hoog.
 
 ### Backlog — bewust ná alle bovenstaande tickets
 

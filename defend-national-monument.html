@@ -742,8 +742,9 @@ camera.rotation.order = 'YXZ';                          // eerst draaien (yaw), 
 /* Ticket D21: kwaliteitsinstellingen Laag/Normaal/Hoog, gekopieerd en
    aangepast uit amsterdam-undead.html (T159, T180, T187). `hoog` is de stand
    van vóór D21, waarop alle schermafbeeldingen van fase M zijn beoordeeld;
-   daarom is hij de standaard. Op een grof-pointer-apparaat (telefoon,
-   tablet) zonder eigen keuze is `laag` de standaard. Alles wordt bij het
+   daarom is hij de standaard, sinds D90 ook op een telefoon of tablet (was
+   daar `laag`; op verzoek van de eigenaar standaard de mooiste stand, terug
+   te schakelen op het startscherm). Alles wordt bij het
    LADEN uit de preset gelezen (Undead-les T187), niet pas bij een klik. */
 const KWALITEIT_KEY = 'defendNationalMonumentKwaliteit';
 const KWALITEIT_STANDAARD = 'hoog';
@@ -752,15 +753,12 @@ const KWALITEIT_PRESETS = {
   normaal: { label: 'Normaal', pixelRatioMax: 1,    antialias: true,  schaduwen: true,  schaduwResolutie: 1024, duiven: 12, toeristen: true,  brokstukLeven: 1.2 },
   hoog:    { label: 'Hoog',    pixelRatioMax: 2,    antialias: true,  schaduwen: true,  schaduwResolutie: 2048, duiven: 18, toeristen: true,  brokstukLeven: 1.6 },
 };
-function isGrofPointerApparaat() {
-  return !!(window.matchMedia && window.matchMedia('(pointer: coarse) and (hover: none)').matches);
-}
 // Een onbekende of corrupte sleutel breekt het spel nooit: stille terugval.
 function leesKwaliteit() {
   let raw = null;
   try { raw = localStorage.getItem(KWALITEIT_KEY); } catch { /* geweigerd: terugval */ }
   if (KWALITEIT_PRESETS[raw]) return raw;
-  return isGrofPointerApparaat() ? 'laag' : KWALITEIT_STANDAARD;
+  return KWALITEIT_STANDAARD;
 }
 function schrijfKwaliteit(naam) {
   try { localStorage.setItem(KWALITEIT_KEY, naam); } catch { /* niet bewaren, geen crash */ }

@@ -1,7 +1,7 @@
 // Ticket D21 (SONNET_EXECUTION_PLAN_monument.md) — kwaliteitsinstellingen.
 //
 // Laag/Normaal/Hoog, gekozen op het startscherm en bewaard in localStorage.
-// Deze test bewaakt: de standaard (hoog op desktop, laag op een apparaat met
+// Deze test bewaakt: de standaard (hoog, sinds D90 ook op een apparaat met
 // grove aanwijzer), dat een bewaarde keuze bij het LADEN al geldt, dat een
 // corrupte sleutel stil terugvalt, en dat één klik op een knop runtime
 // omschakelt en de keuze bewaart.
@@ -76,16 +76,16 @@ await met(bewaar('ultra{kapot'), async page => {
   check('Corrupte sleutel: terugval naar hoog, zonder fout', s.kwaliteit === 'hoog' && s.knopActief === 'hoog', s);
 });
 
-// 5. Grove aanwijzer (telefoon/tablet) zonder keuze: laag; een bewaarde keuze wint.
+// 5. Grove aanwijzer (telefoon/tablet) zonder keuze: hoog (D90, was laag); een bewaarde keuze wint.
 const mobiel = { isMobile: true, hasTouch: true, viewport: { width: 640, height: 400 } };
 await met({ contextOpties: mobiel }, async page => {
   const grof = await page.evaluate(() => matchMedia('(pointer: coarse) and (hover: none)').matches);
   const s = await stand(page);
-  check('Grove aanwijzer zonder keuze: laag', grof && s.kwaliteit === 'laag', { grof, ...s });
+  check('Grove aanwijzer zonder keuze: hoog (D90)', grof && s.kwaliteit === 'hoog' && s.knopActief === 'hoog', { grof, ...s });
 });
-await met({ contextOpties: mobiel, ...bewaar('hoog') }, async page => {
+await met({ contextOpties: mobiel, ...bewaar('laag') }, async page => {
   const s = await stand(page);
-  check('Grove aanwijzer met bewaarde keuze hoog: de keuze wint', s.kwaliteit === 'hoog', s);
+  check('Grove aanwijzer met bewaarde keuze laag: de keuze wint', s.kwaliteit === 'laag', s);
 });
 
 const fails = report(alleErrs);
