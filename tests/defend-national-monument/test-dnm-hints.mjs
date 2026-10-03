@@ -31,6 +31,9 @@ const hints = await met({ contextOpties: { viewport: { width: 1024, height: 640 
   const d = window.DamChaosDebug;
   const hint = () => ({ tekst: document.getElementById('hintUI').textContent, zichtbaar: document.getElementById('hintUI').style.opacity === '1' });
   const uit = {};
+  // D89: de hint wacht op de wavebanner (D71). Op een trage CI-runner stond de
+  // banner van het laden er soms nog, en dan bleef de bouwhint onzichtbaar.
+  d.verbergWaveBanner();
   // Bouwplek: het menu opent vanzelf.
   const p = d.plekVoor('Damrak', 'knooppunt').positie;
   d.speler.positie.set(p.x + 1.4, 0, p.z); d.updateInteracties(0);

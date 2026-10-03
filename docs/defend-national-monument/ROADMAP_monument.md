@@ -2163,6 +2163,11 @@ waren alle zes groen.
   - liggend staan de kaarten naast elkaar, met beide knoppen in beeld.
 
   Op de oude `index.html` falen alle zes.
+- **Bijvangst uit CI:** de run van D88 op main gaf één rode check in
+  `test-dnm-hints`: de bouwhint was niet zichtbaar. Die hint wacht op de
+  wavebanner (D71), en op een trage runner stond de banner van het laden
+  er nog. De test verbergt de banner nu eerst, zoals `test-dnm-apparaat`
+  al deed. De game is niet aangeraakt.
 
 ### Backlog — bewust ná alle bovenstaande tickets
 
