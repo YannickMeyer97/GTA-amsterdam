@@ -8250,6 +8250,21 @@ terwijl het exact op de boot zelf gewoon nog werkt.
   staan timer, golf en gameOver in de details.
 - **Verificatie:** alle vier groen met de lokale Chromium én de headless
   shell (`TEST_BROWSER=<pad>`).
+- **Later gevonden: `test-camerabeweging`.** In één CI-run raakte geen van
+  de 20 schoten tijdens de bob-check (HP bleef op 100000). Bij herhalen
+  faalde hij lokaal ook af en toe, dus het was geen CI-probleem.
+  - **Oorzaak:** de test schoot recht vooruit op ooghoogte (1,7 m) naar een
+    ondode op 3 m. Ook met de vaste traits (lengte 1) krijgt een ondode
+    nog een willekeurige schaal (0,95–1,06), en bij een lage schaal zakt het
+    hoofd onder 1,7 m. De straal ging er dan overheen, voor alle 20 schoten.
+  - **Gemeten** met de raycaster van `schiet()` over 100 spawns: recht vooruit
+    76 treffers, op de borst 100.
+  - **Fix:** de test richt op de borst (pitch naar ~1,1 m). Wat hij bewijst,
+    dat camera-bob de raycast niet raakt, blijft gelijk.
+  - **Diagnose:** faalt de check ooit weer, dan staan camera, doel, wapen en
+    de eerste treffer van een kale straal in de details (met de
+    hitbox-laag van T120).
+  - `amsterdam-undead.html` is niet aangeraakt.
 
 ---
 

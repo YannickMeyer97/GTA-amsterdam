@@ -268,13 +268,21 @@ const treffersTijdensBeweging = await page.evaluate(async () => {
   o.hp = 100000;
   const hpVoor = o.hp;
   const AANTAL_SCHOTEN = 20;
+  // CI-onderhoud: richten op de borst (~1,1 m op 3 m afstand), niet recht
+  // vooruit op ooghoogte. Ook met lengte: 1 krijgt een ondode nog een
+  // willekeurige schaal (gemeten 0,95-1,06), en bij een lage schaal zakt
+  // het hoofd onder de ooghoogte. Gemeten met de raycaster van schiet() over
+  // 100 spawns: recht vooruit 76 treffers, op de borst 100. Bij een misser
+  // misten alle 20 schoten (zelfde ondode), wat in CI precies zo gebeurde.
+  // Wat deze test bewijst (bob raakt de raycast niet) blijft gelijk.
+  const RICHT_PITCH = -Math.atan2(1.7 - 1.1, 3);
   for (let i = 0; i < AANTAL_SCHOTEN; i++) {
     // Exact de tick-volgorde van de echte gameLoop: updateSpeler() ZET de
     // camera vers (inclusief de rotation.z=0-reset uit sectie 7), pas
     // DAARNA schiet() — bobFase zelf blijft intact (blijft "actief"), maar
     // de raycast-bron is elke keer opnieuw gegarandeerd de kale baseline.
     d.speler.positie.set(0, 0, 0);
-    d.speler.yaw = 0; d.speler.pitch = 0;
+    d.speler.yaw = 0; d.speler.pitch = RICHT_PITCH;
     // cameraKick (bestaande recoil, Ticket 34) decayt normaliter in de
     // cosmetische gameLoop-zone via echte dt — die draait hier nooit (geen
     // enkel rAF-frame tussen deze synchrone schoten), dus zonder reset zou
@@ -291,7 +299,25 @@ const treffersTijdensBeweging = await page.evaluate(async () => {
     d.wapenStaat.herladen = false;
     d.schiet();
   }
-  return { hpVoor, hpNa: o.hp, AANTAL_SCHOTEN, bobFaseActief };
+  // CI-onderhoud: in één CI-run raakte geen enkel schot (hpNa bleef
+  // 100000). Mocht het ooit weer gebeuren, dan staat de toestand in de
+  // details: camera en doel, wapen, en wat een kale straal (zonder spreiding)
+  // vanuit het midden van de camera als eerste raakt.
+  const THREE = d.THREE;
+  const straal = new THREE.Raycaster();
+  straal.layers.enable(d.ONDODE_HITBOX_LAYER);   // zoals de raycaster van schiet() (Ticket 120)
+  straal.setFromCamera({ x: 0, y: 0 }, d.camera);
+  const naam = h => h ? `${h.object.name || h.object.type}@${h.distance.toFixed(2)}${h.object.userData?.lichaamsdeel ? `(${h.object.userData.lichaamsdeel})` : ''}` : null;
+  const camPos = new THREE.Vector3(); d.camera.getWorldPosition(camPos);
+  const diagnose = {
+    camera: camPos.toArray().map(v => +v.toFixed(2)), doel: o.groep.position.toArray(),
+    doelInGroep: o.groep.parent === d.ondodenGroep, ondoden: d.ondoden.length,
+    wapen: d.actiefWapenNaam, spreadOpbouw: d.wapenStaat.spreadOpbouw,
+    vertrek: d.vertrekCinematiekActief, gameOver: d.spelStaat.gameOver,
+    eersteOndode: naam(straal.intersectObject(d.ondodenGroep, true)[0]),
+    eersteWereld: naam(straal.intersectObject(d.wereld, true)[0]),
+  };
+  return { hpVoor, hpNa: o.hp, AANTAL_SCHOTEN, bobFaseActief, diagnose };
 });
 check('Vóór de schotenreeks was bob daadwerkelijk actief (testopzet klopt)',
   treffersTijdensBeweging.bobFaseActief > 0, treffersTijdensBeweging);
