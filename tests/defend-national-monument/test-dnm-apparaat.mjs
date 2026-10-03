@@ -38,6 +38,37 @@ for (const [naam, opties] of [['telefoon', mobiel], ['computer', {}]]) {
   await browser.close();
 }
 
+// D89: het hoofdmenu (index.html) op telefoonformaten, staand en liggend.
+// Vroeger centreerde het verticaal in een vaste hoogte: was het menu hoger
+// dan het scherm, dan viel de titel boven de rand weg, buiten bereik van het
+// scrollen. Nu: niets buiten de zijkanten, de titel in beeld, en liggend
+// staan beide kaarten met hun knop volledig in beeld, naast elkaar.
+{
+  const { browser, page, errs } = await openDefend({ contextOpties: mobiel });
+  await page.goto(page.url().replace(/defend-national-monument\.html.*$/, 'index.html'));
+  for (const [w, h] of [[320, 568], [375, 667], [390, 844], [667, 375], [844, 390], [932, 430]]) {
+    await page.setViewportSize({ width: w, height: h });
+    const r = await page.evaluate(() => {
+      const rect = el => el.getBoundingClientRect();
+      const kaarten = [...document.querySelectorAll('.kaart')].map(rect);
+      const knoppen = [...document.querySelectorAll('.kaart a')].map(rect);
+      return {
+        breedte: document.documentElement.scrollWidth, vw: innerWidth, vh: innerHeight,
+        titelBoven: rect(document.querySelector('h1')).top,
+        kaartenBinnen: kaarten.every(k => k.left >= 0 && k.right <= innerWidth),
+        knoppenInBeeld: knoppen.every(k => k.top >= 0 && k.bottom <= innerHeight),
+        naastElkaar: kaarten.length === 2 && Math.abs(kaarten[0].top - kaarten[1].top) < 1,
+        telefoonRegels: [...document.querySelectorAll('.kaart p.apparaat')].filter(p => getComputedStyle(p).display !== 'none').length,
+      };
+    });
+    const liggend = w > h;
+    check(`index.html ${w}×${h}: geen zijwaarts scrollen, titel in beeld, beide kaarten zeggen "ook op je telefoon"${liggend ? ', liggend naast elkaar met beide knoppen in beeld' : ''}`,
+      r.breedte <= r.vw && r.titelBoven >= 0 && r.kaartenBinnen && r.telefoonRegels === 2 && (!liggend || (r.naastElkaar && r.knoppenInBeeld)), r);
+  }
+  alleErrs.push(...errs);
+  await browser.close();
+}
+
 // Vanaf het beginscherm (iPhone: navigator.standalone): geen beginscherm-advies.
 {
   const { browser, page, errs } = await openDefend({ initScript: `Object.defineProperty(navigator, 'standalone', { get: () => true })`, contextOpties: mobiel });

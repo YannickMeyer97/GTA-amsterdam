@@ -2128,6 +2128,42 @@ waren alle zes groen.
   `actions/setup-node@v7` (allebei op Node 24, was v4 op Node 20, dat
   GitHub uitfaseert). De suite zelf draait nu ook op Node 24.
 
+**D89 — het hoofdmenu (`index.html`) op een telefoon, verslag.**
+- **Aanleiding:** de eigenaar vond het hoofdmenu op mobiel nog niet fijn.
+- **Gevonden:**
+  - **De bovenkant viel weg.** `body` had een vaste hoogte (100%) met
+    `justify-content: center`. Was het menu hoger dan het scherm, dan viel de
+    titel boven de rand weg, en daar kon je niet naartoe scrollen. Dat
+    gebeurde op een iPhone SE staand, op elke telefoon liggend en op
+    320 px.
+  - **De titel** (40 px) brak over twee regels en stond dan links.
+  - **Op 320 px** was een kaart (vaste 340 px) breder dan het scherm.
+  - **Liggend** stonden de kaarten onder elkaar, met veel scrollen.
+- **Opgelost:**
+  - `main` met `margin: auto 0` binnen een `body` met `min-height: 100dvh`:
+    gecentreerd als het past, anders bovenaan beginnen en scrollen.
+  - De titel schaalt (`clamp`) en staat in het midden.
+  - Kaarten zijn hooguit 340 px en nooit breder dan het scherm.
+  - Liggend op een telefoon (hoogte ≤ 500 px) staan de kaarten compact naast
+    elkaar, met beide knoppen in beeld.
+  - `viewport-fit=cover` met safe-area-padding voor de notch, en
+    `theme-color`.
+  - Hover-effecten alleen met een muis; op touch een korte indruk bij een
+    tik.
+  - Knoppen van minstens 44 px hoog.
+- **Amsterdam Undead** krijgt op de kaart dezelfde telefoonregel ("speel
+  liggend"), want die game heeft ook een touchbediening en een draaischerm.
+  Aan de game zelf is niets veranderd.
+- **Desktop** ziet er hetzelfde uit als voorheen.
+- **Test:** `test-dnm-apparaat` meet `index.html` op zes telefoonformaten,
+  staand en liggend (16 checks):
+  - niets steekt buiten de zijkanten;
+  - de titel staat in beeld;
+  - beide kaarten hebben de telefoonregel;
+  - liggend staan de kaarten naast elkaar, met beide knoppen in beeld.
+
+  Op de oude `index.html` falen alle zes.
+
 ### Backlog — bewust ná alle bovenstaande tickets
 
 - **Telefoonversie** (eigenaar, na de audit): wel gewenst, later. De
