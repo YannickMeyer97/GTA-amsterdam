@@ -39,13 +39,13 @@ const menu = await page.evaluate(() => {
   d.updateInteracties(0);
   const prompt = document.getElementById('interactiePrompt').textContent;
   d.geldZet(1000);
-  const prijzen = { vuurtempo: d.upgradeKosten('vuurtempo'), pickup: d.upgradeKosten('pickup'), snelheid: d.upgradeKosten('snelheid') };
+  const prijzen = { vuurtempo: d.upgradeKosten('vuurtempo'), snelheid: d.upgradeKosten('snelheid') };
   // Ticket D45: aankomen opent het menu vanzelf, zonder T.
   const open = { stand: d.menuStand() === d.COMMANDOPOST_MENU, zichtbaar: menuUI.style.display === 'block', tekst: menuUI.textContent };
 
   const uit = { prompt, prijzen, open, stappen: [] };
   const snelheidVoor = d.speler.snelheid;
-  for (const [code, type] of [['Digit1', 'vuurtempo'], ['Digit2', 'pickup'], ['Digit3', 'snelheid']]) {
+  for (const [code, type] of [['Digit1', 'vuurtempo'], ['Digit2', 'snelheid']]) {   // D88: pickup radius vervallen
     const geld = d.geldStand(), niveau = d.upgrades[type];
     toets(code);
     uit.stappen.push({ type, betaald: geld - d.geldStand(), niveauErbij: d.upgrades[type] - niveau, menuOpen: d.menuStand() === d.COMMANDOPOST_MENU });
@@ -53,15 +53,16 @@ const menu = await page.evaluate(() => {
   uit.snelheidErbij = +(d.speler.snelheid - snelheidVoor).toFixed(2);
   uit.naKoop = menuUI.textContent;
 
-  // 5: monument repareren (eerst schade). Sinds D19 is 4 de koeling.
+  // 4: monument repareren (eerst schade). Sinds D19 is 3 de koeling, sinds D88
+  // (pickup radius weg) schuift alles één op.
   d.spel.monumentHP = 60;
   d.renderMenu();
   const geld = d.geldStand();
-  toets('Digit5');
+  toets('Digit4');
   uit.reparatie = { hp: d.spel.monumentHP, betaald: geld - d.geldStand(), menuOpen: d.menuStand() === d.COMMANDOPOST_MENU };
   d.spel.monumentHP = d.MONUMENT_MAX_HP;
   const geldVoorHeel = d.geldStand();
-  toets('Digit5');
+  toets('Digit4');
   uit.alHeel = { hp: d.spel.monumentHP, betaald: geldVoorHeel - d.geldStand() };
 
   // Te weinig geld (en een beschadigd monument): alle vier gemarkeerd.
@@ -86,16 +87,16 @@ const menu = await page.evaluate(() => {
   uit.kerkklok = { boost: d.kerkklokBoost.active, menu: d.menuStand(), punt: d.huidigeInteractieStand()?.type };
   return uit;
 });
-check('Bij de commandopost staat het menu meteen open en vraagt de prompt om een keuze (1–6 sinds D78)', menu.prompt.includes('Kies 1–6'), menu.prompt);
-check('Aankomen opent het menupaneel vanzelf, met titel Commandopost en zes opties (D19: Koeling, D78: Zware kogels)',
-  menu.open.stand && menu.open.zichtbaar && menu.open.tekst.includes('Commandopost') && ['1, Vuurtempo', '2, Pickup', '3, Loopsnelheid', '4, Koeling', '5, Monument repareren', '6, Zware kogels, +50% schade per treffer €500'].every(t => menu.open.tekst.includes(t)), menu.open);
-check('1–3 kopen de upgrades voor de prijs van nu en het menu blijft open',
+check('Bij de commandopost staat het menu meteen open en vraagt de prompt om een keuze (1–5 sinds D88)', menu.prompt.includes('Kies 1–5'), menu.prompt);
+check('Aankomen opent het menupaneel vanzelf, met titel Commandopost en vijf opties (D19: Koeling, D78: Zware kogels, D88: geen pickup radius meer)',
+  menu.open.stand && menu.open.zichtbaar && menu.open.tekst.includes('Commandopost') && ['1, Vuurtempo', '2, Loopsnelheid', '3, Koeling', '4, Monument repareren', '5, Zware kogels, +50% schade per treffer €500'].every(t => menu.open.tekst.includes(t)) && !/pickup/i.test(menu.open.tekst), menu.open);
+check('1 en 2 kopen de upgrades voor de prijs van nu en het menu blijft open',
   menu.stappen.every(s => s.betaald === menu.prijzen[s.type] && s.niveauErbij === 1 && s.menuOpen), menu.stappen);
 check('Loopsnelheid werkt echt (+0,65 m/s)', menu.snelheidErbij === 0.65, menu);
 check('Het menu toont na een aankoop het nieuwe niveau', menu.naKoop.includes('(niv. 1)'), menu.naKoop);
-check('5 repareert het monument: +25 HP voor €100, menu blijft open', menu.reparatie.hp === 85 && menu.reparatie.betaald === 100 && menu.reparatie.menuOpen, menu.reparatie);
+check('4 repareert het monument: +25 HP voor €100, menu blijft open', menu.reparatie.hp === 85 && menu.reparatie.betaald === 100 && menu.reparatie.menuOpen, menu.reparatie);
 check('Een heel monument repareren kost niets', menu.alHeel.hp === 100 && menu.alHeel.betaald === 0, menu.alHeel);
-check('Te weinig geld: de opties zijn als "te duur" gemarkeerd', menu.teDuur === 6, menu);
+check('Te weinig geld: de opties zijn als "te duur" gemarkeerd', menu.teDuur === 5, menu);
 check('T sluit het menu', menu.naT.stand === null && menu.naT.zichtbaar === 'none', menu.naT);
 check('Na T blijft het menu dicht zolang je blijft staan', menu.blijftDicht, menu);
 check('Weglopen en terugkomen opent het menu weer vanzelf', menu.weerOpen, menu);
@@ -121,6 +122,19 @@ const sluiten = await page.evaluate(() => {
 });
 check('Weglopen van de commandopost sluit het menu', sluiten.openVoorLopen && sluiten.naLopen === null, sluiten);
 check('Pauzeren sluit het menu', sluiten.openVoorPauze && sluiten.naPauze === null && sluiten.zichtbaar === 'none', sluiten);
+
+// --- 3b. D88: munten oprapen zonder upgrade --------------------------------
+// De pickup-radius-upgrade is vervallen; de straal staat vast op 1,4 m.
+const munt = await page.evaluate(() => {
+  const d = window.DamChaosDebug;
+  const p = d.speler.positie;
+  for (const m of [...d.munten]) { d.scene.remove(m.groep); d.munten.splice(d.munten.indexOf(m), 1); }
+  d.legMuntNeer(p.clone().add(new d.THREE.Vector3(1.3, 0, 0)));
+  d.legMuntNeer(p.clone().add(new d.THREE.Vector3(1.6, 0, 0)));
+  d.updateMunten(0);
+  return { over: d.munten.length, geenUpgrade: !('pickup' in d.upgrades) };
+});
+check('D88: geen pickup-upgrade meer; een munt op 1,3 m wordt opgeraapt, een op 1,6 m niet', munt.over === 1 && munt.geenUpgrade, munt);
 
 // --- 4. De HUD overlapt nergens --------------------------------------------
 //

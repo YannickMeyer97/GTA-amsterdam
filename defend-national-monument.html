@@ -4559,8 +4559,7 @@ const runStats = nieuweRunStats();
 
 const upgrades = {
   vuurtempo: 0,
-  pickup: 0,
-  snelheid: 0,
+  snelheid: 0,   // Ticket D88: pickup radius is vervallen (zie COMMANDOPOST_UPGRADES)
   koeling: 0,   // Ticket D19
   kogels: 0,    // Ticket D78
 };
@@ -5437,7 +5436,7 @@ function toonOverwinningscherm(uitslag = null, ontgrendeld = []) {
 document.getElementById('doorspeelKnop').addEventListener('click', doorspelen);
 
 function upgradeKosten(type) {
-  const basis = { vuurtempo: 100, pickup: 150, snelheid: 200, koeling: 125, kogels: 500 }[type];
+  const basis = { vuurtempo: 100, snelheid: 200, koeling: 125, kogels: 500 }[type];
   return basis + upgrades[type] * basis;
 }
 // Ticket D78 (audit 14): na wave 15 stapelde het geld op zonder bestemming
@@ -5759,9 +5758,11 @@ function kiesMenuOptie(i) {
 // De commandopost aan de voet van het monument: wapen-upgrades en
 // monumentreparatie op één plek. Vervangt de Bijenkorf-kiosk en de
 // Koninklijke Reparatiepost van vóór fase M.
+// Ticket D88: pickup radius is vervallen, want het menu had te veel opties
+// (wens van de eigenaar na het spelen). Munten worden nu altijd opgeraapt
+// binnen MUNT_PICKUP_STRAAL (de oude stand zonder upgrade).
 const COMMANDOPOST_UPGRADES = [
   ['vuurtempo', 'Vuurtempo, sneller schieten'],
-  ['pickup', 'Pickup radius, munten sneller oprapen'],
   ['snelheid', 'Loopsnelheid, sneller lopen'],
   ['koeling', 'Koeling, later oververhit'],   // Ticket D19
 ];
@@ -5779,7 +5780,7 @@ const COMMANDOPOST_MENU = {
     spel.monumentHP >= MONUMENT_MAX_HP
       ? { tekst: 'Monument repareren, het monument is heel', klaar: true, actie: () => {} }
       : { tekst: 'Monument repareren €100 (+25 HP)', prijs: 100, actie: koopMonumentReparatie },
-    // Ticket D78: na repareren, zodat 5 repareren blijft.
+    // Ticket D78: na repareren, zodat repareren op zijn plek blijft (sinds D88 is dat 4).
     upgradeOptie(['kogels', 'Zware kogels, +50% schade per treffer']),
   ],
   hoortBij: punt => punt.type === 'commandopost',
@@ -8208,6 +8209,8 @@ function legMuntNeer(positie, beloningMultiplier = 1) {
 // onbeperkt op. Na deze tijd verdwijnen ze vanzelf, net als brokstukken.
 const MUNT_MAX_LEEFTIJD = 45;
 
+// Ticket D88: vast, sinds de pickup-radius-upgrade vervallen is (was 1,4 + 0,45 per niveau).
+const MUNT_PICKUP_STRAAL = 1.4;
 function updateMunten(dt) {
   for (let i = munten.length - 1; i >= 0; i--) {
     const munt = munten[i];
@@ -8225,8 +8228,7 @@ function updateMunten(dt) {
     // Loopt de speler er dichtbij genoeg langs? Dan oppakken!
     const dx = munt.groep.position.x - speler.positie.x;
     const dz = munt.groep.position.z - speler.positie.z;
-    const pickupStraal = 1.4 + upgrades.pickup * 0.45;
-    if (dx * dx + dz * dz < pickupStraal * pickupStraal) {
+    if (dx * dx + dz * dz < MUNT_PICKUP_STRAAL * MUNT_PICKUP_STRAAL) {
       verdienGeld(munt.bedrag);
       updateGeldUI();
       toonPopup(`+€${munt.bedrag}`);

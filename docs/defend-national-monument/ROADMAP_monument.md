@@ -2104,6 +2104,30 @@ waren alle zes groen.
   - **Vier Undead-scripts:** zie `ROADMAP_undead.md`, "CI-onderhoud".
 - De game zelf is niet aangeraakt.
 
+**D88 — pickup radius weg uit de commandopost, CI op Node 24, verslag.**
+- **Aanleiding:** de eigenaar vond het na het spelen goed, maar de
+  commandopost had te veel opties.
+- **Pickup radius is vervallen.** De commandopost heeft nu vijf opties:
+  1 vuurtempo, 2 loopsnelheid, 3 koeling, 4 monument repareren, 5 zware
+  kogels. Repareren schuift dus van 5 naar 4.
+  - Munten worden opgeraapt binnen een vaste `MUNT_PICKUP_STRAAL = 1.4` m.
+    Dat is de stand die elke speler zonder de upgrade al had.
+  - `upgrades.pickup` en de prijs (€150 per niveau) zijn weg.
+- **Tests:**
+  - `test-dnm-commandopost` volgt het nieuwe menu (1–5, geen "Pickup") en
+    kreeg een check op de vaste straal: een munt op 1,3 m wordt opgeraapt,
+    een op 1,6 m niet. In totaal 23 checks.
+  - `test-dnm-reset` koopt koeling in plaats van pickup.
+  - `test-dnm-kern` toetst de prijsladder zonder pickup.
+  - `test-dnm-koeling` en `test-dnm-kogels` volgen de nieuwe nummers
+    (koeling 3, zware kogels 5).
+  - Alle 52 DNM-scripts zijn groen.
+- **Documentatie:** README en ARCHITECTURE_NOTES §7 (prijzen, straal)
+  bijgewerkt.
+- **CI:** de workflow gebruikt `actions/checkout@v7` en
+  `actions/setup-node@v7` (allebei op Node 24, was v4 op Node 20, dat
+  GitHub uitfaseert). De suite zelf draait nu ook op Node 24.
+
 ### Backlog — bewust ná alle bovenstaande tickets
 
 - **Telefoonversie** (eigenaar, na de audit): wel gewenst, later. De

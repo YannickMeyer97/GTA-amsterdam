@@ -56,7 +56,7 @@ check('Te weinig geld: niets gekocht', r.teWeinig.niveau === 0 && r.teWeinig.gel
 check('Niveau 1: €500, 1,5 schade per treffer; het volgende kost €1000', r.niv1.niveau === 1 && r.niv1.betaald === 500 && r.niv1.schade === 1.5 && r.niv1.volgende === 1000, r.niv1);
 check('Niveau 2: €1000, 2 schade per treffer', r.niv2.niveau === 2 && r.niv2.betaald === 1000 && r.niv2.schade === 2, r.niv2);
 check('Daarna maximaal: niets meer te kopen', r.max.niveau === 2 && r.max.betaald === 0, r.max);
-check('Het menu toont "6, Zware kogels …, maximaal (niv. 2)"', /6, Zware kogels, \+50% schade per treffer, maximaal \(niv\. 2\)/.test(r.menu), r.menu.slice(-120));
+check('Het menu toont "5, Zware kogels …, maximaal (niv. 2)" (5 sinds D88)', /5, Zware kogels, \+50% schade per treffer, maximaal \(niv\. 2\)/.test(r.menu), r.menu.slice(-120));
 check('Een treffer op een Pantserbot doet nu 2 schade', r.treffer.hp0 - r.treffer.hp === 2, r.treffer);
 check('Torens doen niet meer schade dan eerst', r.toren === 2, r.toren);
 check('Een reset zet de kogels terug', r.naReset.niveau === 0 && r.naReset.schade === 1, r.naReset);

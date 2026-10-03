@@ -68,7 +68,7 @@ const tijdensRun = await page.evaluate(() => {
   d.geldZet(100000);
   for (let i = 0; i < 5; i++) d.koopUpgrade('snelheid');
   for (let i = 0; i < 2; i++) d.koopUpgrade('vuurtempo');
-  d.koopUpgrade('pickup');
+  d.koopUpgrade('koeling');   // D88: was pickup, die upgrade is vervallen
   d.activeerKerkklokBoost();
   // Ticket D11: een toren die ook echt schiet (schotspoor, obstakel, torenkill).
   const toren = d.bouwToren(d.BOUWPLEKKEN[0], 'geschut');

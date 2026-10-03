@@ -15,7 +15,7 @@ const r = await page.evaluate(() => {
   const uit = {};
   d.resetRun();
 
-  // 1. In het commandopostmenu, als vierde upgrade (toets 4).
+  // 1. In het commandopostmenu, als derde upgrade (toets 3; was 4 tot D88).
   const cp = d.DAM_LAYOUT.commandopost;
   const punt = d.interactiePunten.find(p => p.type === 'commandopost');
   d.speler.positie.set(punt.positie.x, 0, punt.positie.z);
@@ -53,7 +53,7 @@ const r = await page.evaluate(() => {
   return uit;
 });
 
-check('Het commandopostmenu biedt Koeling aan als vierde upgrade (toets 4), vóór de reparatie', /4, Koeling/.test(r.menu) && /5, Monument repareren/.test(r.menu), r.menu);
+check('Het commandopostmenu biedt Koeling aan als derde upgrade (toets 3, sinds D88), vóór de reparatie', /3, Koeling/.test(r.menu) && /4, Monument repareren/.test(r.menu), r.menu);
 check('Prijs: €125 × (niveau + 1): 125, 250, 375, 500, 625', JSON.stringify(r.prijzen.slice(0, 5)) === JSON.stringify([125, 250, 375, 500, 625]), r.prijzen);
 check('Maximaal niveau 5: een zesde koop doet niets', r.niveauNaZes === 5 && r.geldOver === 10000 - (125 + 250 + 375 + 500 + 625), r);
 check('Per niveau minder warmte per schot en snellere afkoeling', r.perNiveau.every((x, i) => i === 0 || (x.perSchot < r.perNiveau[i - 1].perSchot && x.afkoeling > r.perNiveau[i - 1].afkoeling)), r.perNiveau);

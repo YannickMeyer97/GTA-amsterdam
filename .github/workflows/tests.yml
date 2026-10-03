@@ -16,11 +16,13 @@ jobs:
       run:
         working-directory: tests
     steps:
-      - uses: actions/checkout@v4
+      # D88: v7 van beide acties draait op Node 24 (v4 draaide op Node 20, dat
+      # GitHub uitfaseert), en de suite zelf draait ook op Node 24.
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Installeer dependencies
         run: npm ci

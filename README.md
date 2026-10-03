@@ -98,7 +98,7 @@ Speel liggend. Een tik op het startscherm zet de touchbediening aan:
 
   Op niveau 3 kies je een richting (bijvoorbeeld Kanon of Scherpschutter).
 - **Munten** laten robots achter; raap ze op. Bij de **commandopost** aan de
-  voet van het monument koop je upgrades (vuurtempo, pickup-radius,
+  voet van het monument koop je upgrades (vuurtempo,
   loopsnelheid, koeling, en voor later in de run zware kogels) en repareer
   je het monument. Een **drukpers** voor
   het Paleis levert vast geld op.

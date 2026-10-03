@@ -575,11 +575,12 @@ nog het aantal en de snelheid.**
 | Perfecte wave | €50 + wave·10 |
 | Score per kill | `100 × max(1, combo)` |
 | Reparatie | €100 → +25 monument-HP |
-| Upgrades | `basis + niveau·basis`, basis 100/150/200, max niveau 5 |
+| Upgrades | `basis + niveau·basis`, basis 100/200 (vuurtempo/snelheid), koeling 125, max niveau 5; zware kogels 500, max 2 |
 
 Munten (`legMuntNeer`, 3334) zweven, draaien, en verdwijnen na
 `MUNT_MAX_LEEFTIJD = 45` s. Oprapen gebeurt binnen
-`1.4 + upgrades.pickup * 0.45` meter.
+`MUNT_PICKUP_STRAAL = 1.4` meter. (Tot D88 was dat `1.4 + upgrades.pickup * 0.45`;
+de pickup-radius-upgrade is vervallen.)
 
 Het plafond van €150 zit er omdat Kerkklok (2×) × tank (2,5×) × combo (2×)
 samen tot ~10× kunnen oplopen (comment op regel 3335). **Dit is de enige plek
@@ -587,14 +588,14 @@ waar alle multipliers samenkomen.**
 
 De volledige upgradekosten-ladder:
 
-| Niveau | Vuurtempo | Pickup | Snelheid |
-|---:|---:|---:|---:|
-| 1 | €100 | €150 | €200 |
-| 2 | €200 | €300 | €400 |
-| 3 | €300 | €450 | €600 |
-| 4 | €400 | €600 | €800 |
-| 5 | €500 | €750 | €1000 |
-| **totaal** | **€1500** | **€2250** | **€3000** |
+| Niveau | Vuurtempo | Snelheid |
+|---:|---:|---:|
+| 1 | €100 | €200 |
+| 2 | €200 | €400 |
+| 3 | €300 | €600 |
+| 4 | €400 | €800 |
+| 5 | €500 | €1000 |
+| **totaal** | **€1500** | **€3000** |
 
 ### 7.4 Multipliers zijn pure functies — de belangrijkste invariant
 

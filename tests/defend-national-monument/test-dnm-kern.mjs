@@ -202,7 +202,7 @@ for (const t of typeControle) {
 
 const upgradeControle = await page.evaluate(() => {
   const d = window.DamChaosDebug;
-  const basis = { vuurtempo: 100, pickup: 150, snelheid: 200 };
+  const basis = { vuurtempo: 100, snelheid: 200 };   // D88: pickup radius vervallen
   const orig = { ...d.upgrades };
   const resultaat = {};
   for (const type of Object.keys(basis)) {
