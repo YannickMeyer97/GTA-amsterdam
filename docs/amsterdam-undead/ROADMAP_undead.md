@@ -8265,6 +8265,15 @@ terwijl het exact op de boot zelf gewoon nog werkt.
     de eerste treffer van een kale straal in de details (met de
     hitbox-laag van T120).
   - `amsterdam-undead.html` is niet aangeraakt.
+- **Later gevonden: `test-nachthemel`.** In één CI-run waren twee
+  screenshots op hetzelfde standpunt niet byte-gelijk. Op main, met dezelfde
+  code, was hij groen, en lokaal was het niet te reproduceren.
+  - **Waarschijnlijke oorzaak:** het patroon van `test-levend-water`. Op een
+    verse pagina en een trage runner kon een lazy shader-compile of
+    textuur-upload nog tussen de twee metingen landen.
+  - **Fix:** dezelfde als daar, een ongemeten opwarmronde (met screenshot)
+    vóór de twee metingen.
+  - **Verificatie:** lokaal vier keer groen, met beide browsers.
 
 ---
 

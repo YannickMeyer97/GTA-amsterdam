@@ -77,6 +77,13 @@ check('updateNachthemel(t) zet het tijd-uniform op de doorgegeven waarde (klok-g
 const { browser: vBrowser, page: vPage, errs: vErrs } = await openVoorVisueleMeting();
 const punten = await berekenVisueleStandpunten(vPage);
 const binnenplaats = punten.find(p => p.naam === 'binnenplaats');
+// CI-onderhoud: een ongemeten opwarmronde (met screenshot) eerst, zoals in
+// test-levend-water. Op een verse pagina en een trage runner kon een lazy
+// shader-compile of textuur-upload nog tussen meting1 en meting2 landen;
+// dan verschilden de bytes (in CI één keer gezien), zonder dat de dome zelf
+// bewoog.
+await zetVisueelStandpunt(vPage, binnenplaats);
+await vPage.screenshot({ type: 'png' });
 await zetVisueelStandpunt(vPage, binnenplaats);
 const meting1 = await vPage.screenshot({ type: 'png' });
 await zetVisueelStandpunt(vPage, binnenplaats);
